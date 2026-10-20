@@ -8,6 +8,8 @@ module DatraTypes
   , DatraType
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
+  , SyntaxFunctionInsertion (..)
+  , RuntimeFunctionInsertion (..)
   , EvaluatedFunctionBody (..)
   , functionBodySource
   , EvaluatedFunction (..)
@@ -25,6 +27,7 @@ module DatraTypes
   , withMapView
   , OrdinalIndexedFamily (..)
   , ordinalIndexedValueFamily
+  , ordinalIndexedProductFamily
   , withDependentSumAccess
   , withDependentSumFamily
   , withDependentSumReservationTarget
@@ -52,6 +55,7 @@ module DatraTypes
   , InterpretedValue
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
+  , EvaluatedGreedyStringTemplate (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
@@ -64,6 +68,18 @@ module DatraTypes
   , CanonicalResult (..)
   , InterpretedValueKind (..)
   , InterpretedMap
+  , NamedMember (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , namedMapValue
+  , withNamedMapView
   , InterpretingError (..)
   , FunctionFailure (..)
   , ModuleEvaluationFailure (..)
@@ -139,11 +155,13 @@ module DatraTypes
   , valuedIntegerRangeDownwardsValue
   , IntegerRangeKind (..)
   , integerLimitRangeValue
+  , integerLimitRangeIsSubfederationOf
   , integerTypeValue
   , dependentIdentifierTypeValue
   , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , canonicalValueMarker
@@ -210,7 +228,10 @@ module DatraTypes
   , identifierNameDisjointness
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedGreedyStringTemplate
+  , interpretedNamedMapView
   , withStringTemplatePlan
+  , withGreedyStringTemplatePlan
   , interpretedDatraType
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
@@ -399,6 +420,7 @@ import Evaluation.Range
 import Evaluation.LimitRange
   ( IntegerRangeKind (..)
   , integerLimitRangeValue
+  , integerLimitRangeIsSubfederationOf
   )
 import Evaluation.Length (mapLengthValue)
 import Evaluation.Identifier
@@ -408,6 +430,7 @@ import Evaluation.Identifier
   , canonicalValueMarker
   , hasTrailingIdentifierMarker
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , withTrailingIdentifierMarker
@@ -415,6 +438,7 @@ import Evaluation.Identifier
 import Evaluation.OrdinalIndexedFamily
   ( OrdinalIndexedFamily (..)
   , ordinalIndexedValueFamily
+  , ordinalIndexedProductFamily
   )
 import Evaluation.Specification
   ( assignIdentifierValues
@@ -435,6 +459,8 @@ import Evaluation.Value
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , EvaluatedFunctionBody (..)
+  , SyntaxFunctionInsertion (..)
+  , RuntimeFunctionInsertion (..)
   , functionBodySource
   , EvaluatedFunctionInvocation (..)
   , ReductionContext (..)
@@ -475,8 +501,21 @@ import Evaluation.Value
   , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
+  , NamedMember (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , namedMapValue
+  , withNamedMapView
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
+  , EvaluatedGreedyStringTemplate (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
@@ -488,6 +527,7 @@ import Evaluation.Value
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedCanonicalPresentation
+  , interpretedNamedMapView
   , withCanonicalReference
   , withCanonicalNamedAccess
   , withCanonicalApplication
@@ -514,10 +554,12 @@ import Evaluation.Value
   , interpretedTypeIsTotal
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedGreedyStringTemplate
   , withStringTemplatePlan
+  , withGreedyStringTemplatePlan
   )
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)
 
 import Data.Char (ord)
 import Data.List (find)
@@ -595,7 +637,7 @@ listTypeValue presentationSource elementType =
         Right
         (naturalAtOrdinal
           (interpretedMapFinalOrderType (interpretedMap source)))
-      mapM_ (validateAt source) (if count == 0 then [] else [0 .. count - 1])
+      mapM_ (validateAt source) (naturalsBelow count)
     validateAt source position = do
       member <- maybe
         (Left (FunctionEvaluationFailed

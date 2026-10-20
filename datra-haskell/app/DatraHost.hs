@@ -4,19 +4,54 @@ module DatraHost
   ( datraHostIdentifier
   , datraHostValue
   , namedMembers
-  , publicValue
   ) where
 
 import DatraLanguage.AST
-import DatraLanguage.Diagnostics.Application
-  ( SyntaxExpansionFailure (UnknownSyntaxControlAdapter) )
-import DatraLanguage.Identifier (public)
 import DatraTypes
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal (finiteOrdinalPositions)
+import IntegerRange qualified
+import NaturalRange qualified
 import SyntaxDefinitions (absorbFunSequence)
 
 datraHostIdentifier :: String
 datraHostIdentifier = "'datra"
+
+data RuntimeRangeEndpoint
+  = FiniteRangeEndpoint IntegerLimit
+  | DirectionRangeEndpoint String
+
+valuedRangeArguments
+  :: CanonicalResult
+  -> Maybe (Integer, RuntimeRangeEndpoint)
+valuedRangeArguments canonical = case canonical of
+  CanonicalValuedNaturalRange origin target ->
+    case target of
+      NaturalRange.FiniteNaturalTarget endpoint -> Just
+        ( toInteger origin
+        , FiniteRangeEndpoint (FiniteInteger (toInteger endpoint))
+        )
+      NaturalRange.UpwardsTarget -> Just
+        (toInteger origin, DirectionRangeEndpoint "up")
+  CanonicalValuedIntegerRange origin target ->
+    case target of
+      IntegerRange.FiniteIntegerTarget endpoint -> Just
+        (origin, FiniteRangeEndpoint (FiniteInteger endpoint))
+      IntegerRange.UpwardsIntegerTarget -> Just
+        (origin, DirectionRangeEndpoint "up")
+      IntegerRange.DownwardsIntegerTarget -> Just
+        (origin, DirectionRangeEndpoint "down")
+      IntegerRange.AllIntegersTarget -> Nothing
+  CanonicalCoalization
+      (CanonicalConcatenation
+        [finite, CanonicalAsciiString "PosInf"]) -> do
+    (origin, DirectionRangeEndpoint "up") <- valuedRangeArguments finite
+    Just (origin, FiniteRangeEndpoint PositiveInfinity)
+  CanonicalCoalization
+      (CanonicalConcatenation
+        [finite, CanonicalAsciiString "NegInf"]) -> do
+    (origin, DirectionRangeEndpoint "down") <- valuedRangeArguments finite
+    Just (origin, FiniteRangeEndpoint NegativeInfinity)
+  _ -> Nothing
 
 datraHostValue :: Either InterpretingError InterpretedValue
 datraHostValue = do
@@ -46,7 +81,7 @@ datraHostValue = do
     , ("IdenStr", Right identifierValueTypeValue)
     , ("Expr", Right expressionType)
     , ("DependentIdentifier", Right dependentIdentifierType)
-    , ("Declaration", Right declarationType)
+    , ("DependentDeclaration", Right dependentDeclarationType)
     , ("Block", Right blockType)
     , ("FunctionBody", Right functionBodyType)
     , ("Template", Right templateTypeValue)
@@ -55,10 +90,13 @@ datraHostValue = do
     , ("IntRange", Right integerRangeTypeValue)
     , ("NatValRange", Right naturalValuedRangeTypeValue)
     , ("IntValRange", Right integerValuedRangeTypeValue)
-    , ("public", Right publicFunction)
-    , suppliedBody "len" mapLengthValue
-    , suppliedBody "from" (nativeRange ValuedIntegerRangeKind)
-    , suppliedBody "range" (nativeRange IntegerRangeKind)
+    , suppliedBody "len_body" mapLengthValue
+    , suppliedInsertionBody "from_body" (RuntimeFunctionInsertion
+        (nativeRange ValuedIntegerRangeKind)
+        valuedRangePreimage)
+    , suppliedInsertionBody "range_body" (RuntimeFunctionInsertion
+        (nativeBoundedRange IntegerRangeKind)
+        integerLimitRangePreimage)
     , nativeBody "'datra" "add" $ \arguments -> do
         a <- lookupArgument "a" arguments
         b <- lookupArgument "b" arguments
@@ -68,105 +106,184 @@ datraHostValue = do
         number <- requireFiniteInteger LeftOperand value
         pure (integerValue (abs number))
     , ("ordinal", Right ordinalMembers)
-    , syntaxBody "let" $ \case
-        [entry] -> Just (Let (absorbAssignedConcatenation entry))
-        _ -> Nothing
-    , syntaxBody "val" $ \case
-        [entry] -> Just (Val (absorbAssignedConcatenation entry))
-        _ -> Nothing
-    , syntaxBody "assert" $ \case
-        [condition] -> Just (Assert False condition)
-        _ -> Nothing
-    , syntaxBody "assertHard" $ \case
-        [_, condition] -> Just (Assert True condition)
-        _ -> Nothing
-    , syntaxBody "begin" $ \case
-        [entries, result] -> Just (Begin (blockEntries entries) result)
-        _ -> Nothing
-    , syntaxBody "do" $ \case
-        [entries, result] -> Just (FunctionBody (blockEntries entries) result)
-        _ -> Nothing
-    , syntaxBody "fun" $ \case
-        [entry] -> Just (Fun (absorbFunSequence entry))
-        _ -> Nothing
-    , syntaxBody "if" $ \case
-        [condition, yes, no] -> Just (Conditional condition yes no)
-        _ -> Nothing
-    , syntaxBody "ifThen" $ \case
-        [condition, yes] -> Just (Conditional condition yes (AtlasMap []))
-        _ -> Nothing
-    , syntaxBody "import" $ \case
-        [paths, body@FunctionBody {}]
-          | Just requested <- importPaths paths
-          , not (null requested) -> Just (Import requested body)
-        _ -> Nothing
-    , syntaxBody "with" $ \case
-        [modules, FunctionBody bindings result] -> Just
-          (ScopeAccess
-            (ArgumentMap (withModuleOperands modules))
-            (Begin bindings result))
-        _ -> Nothing
-    , syntaxBody "in" $ \case
-        [value, body] -> Just (In value body)
-        _ -> Nothing
-    , syntaxBody "of" $ \case
-        [source, target] -> Just (Subfederation source target)
-        _ -> Nothing
-    , syntaxBody "and" $ \case
-        [left, right] -> Just (BooleanAnd left right)
-        _ -> Nothing
-    , syntaxBody "or" $ \case
-        [left, right] -> Just (BooleanOr left right)
-        _ -> Nothing
-    , syntaxBody "not" $ \case
-        [value] -> Just (BooleanNot value)
-        _ -> Nothing
+    , syntaxBody "let" (SyntaxFunctionInsertion
+        (\case
+          [entry] -> Just (Let (absorbAssignedConcatenation entry))
+          _ -> Nothing)
+        (\case
+          Let entry -> Just [entry]
+          _ -> Nothing))
+    , syntaxFunction "val" (SyntaxFunctionInsertion
+        (\case
+          [entry] -> Just (Val (absorbAssignedConcatenation entry))
+          _ -> Nothing)
+        (\case
+          Val entry -> Just [entry]
+          _ -> Nothing))
+    , syntaxBody "assert" (SyntaxFunctionInsertion
+        (\case
+          [condition] -> Just (Assert False condition)
+          [_, condition] -> Just (Assert True condition)
+          _ -> Nothing)
+        (\case
+          Assert False condition -> Just [condition]
+          _ -> Nothing))
+    , syntaxFunction "begin" (SyntaxFunctionInsertion
+        (\case
+          [entries, result] -> Just (Begin (blockEntries entries) result)
+          _ -> Nothing)
+        (\case
+          Begin entries result -> Just [AtlasMap entries, result]
+          _ -> Nothing))
+    , syntaxBody "do" (SyntaxFunctionInsertion
+        (\case
+          [entries, result] -> Just
+            (FunctionBody (blockEntries entries) result)
+          _ -> Nothing)
+        (\case
+          FunctionBody entries result -> Just [AtlasMap entries, result]
+          _ -> Nothing))
+    , syntaxBody "fun" (SyntaxFunctionInsertion
+        (\case
+          [entry] -> Just (Fun (absorbFunSequence entry))
+          _ -> Nothing)
+        (\case
+          Fun entry -> Just [entry]
+          _ -> Nothing))
+    , syntaxBody "if" (SyntaxFunctionInsertion
+        (\case
+          [condition, yes, no] -> Just (Conditional condition yes no)
+          [condition, yes] -> Just
+            (Conditional condition yes (AtlasMap []))
+          _ -> Nothing)
+        (\case
+          Conditional condition yes no -> Just [condition, yes, no]
+          _ -> Nothing))
+    , syntaxBody "import" (SyntaxFunctionInsertion
+        (\case
+          [paths, body@FunctionBody {}]
+            | Just requested <- importPaths paths
+            , not (null requested) -> Just (Import requested body)
+          _ -> Nothing)
+        (\case
+          Import paths body -> Just
+            [AtlasMap (map AsciiStringLiteral paths), body]
+          _ -> Nothing))
+    , syntaxBody "with" (SyntaxFunctionInsertion
+        (\case
+          [modules, FunctionBody bindings result] -> Just
+            (ScopeAccess
+              (ArgumentMap (withModuleOperands modules))
+              (Begin bindings result))
+          _ -> Nothing)
+        (\case
+          ScopeAccess (ArgumentMap modules) (Begin bindings result) -> Just
+            [ArgumentMap modules, FunctionBody bindings result]
+          _ -> Nothing))
+    , syntaxBody "of" (SyntaxFunctionInsertion
+        (\case
+          [source, target] -> Just (Subfederation source target)
+          _ -> Nothing)
+        (\case
+          Subfederation source target -> Just [source, target]
+          _ -> Nothing))
+    , syntaxBody "and" (SyntaxFunctionInsertion
+        (\case
+          [left, right] -> Just (BooleanAnd left right)
+          _ -> Nothing)
+        (\case
+          BooleanAnd left right -> Just [left, right]
+          _ -> Nothing))
+    , syntaxBody "or" (SyntaxFunctionInsertion
+        (\case
+          [left, right] -> Just (BooleanOr left right)
+          _ -> Nothing)
+        (\case
+          BooleanOr left right -> Just [left, right]
+          _ -> Nothing))
+    , syntaxBody "not" (SyntaxFunctionInsertion
+        (\case
+          [value] -> Just (BooleanNot value)
+          _ -> Nothing)
+        (\case
+          BooleanNot value -> Just [value]
+          _ -> Nothing))
     ]
   where
     expressionType = syntaxCategoryTypeValue ExpressionAST
     dependentIdentifierType = syntaxCategoryTypeValue DependentIdentifierAST
-    declarationType = syntaxCategoryTypeValue DeclarationAST
+    dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
-    syntaxBody name expand =
-      (name, Right (makeFunctionBodyValue
-        (EvaluatedSyntaxFunctionBody source apply)))
+    syntaxBody name insertion =
+      (bodyName, Right (makeFunctionBodyValue
+        (EvaluatedSyntaxFunctionBody source insertion)))
+      where
+        bodyName = name <> "_body"
+        source = "'datra." <> bodyName
+    syntaxFunction name insertion =
+      (name, Right (makeFunctionValue (EvaluatedFunction
+        anyTypeValue
+        anyTypeValue
+        Nothing
+        Nothing
+        (Just source)
+        (Just (EvaluatedSyntaxFunctionBody source insertion))
+        "Any -> Any"
+        Nothing
+        Nothing
+        True
+        Nothing)))
       where
         source = "'datra." <> name
-        apply captures = maybe
-          (Left (UnknownSyntaxControlAdapter source))
-          Right
-          (expand captures)
     nativeBody namespace name implementation =
-      (name, runtimeBody source invoke)
+      (name, runtimeBody source Nothing invoke)
       where
         source = namespace <> "." <> name
         invoke _ _ preparedCall = do
           result <- implementation (functionPreparedBindings preparedCall)
           pure (EvaluatedFunctionInvocation result Nothing)
     suppliedBody name implementation =
-      (name, runtimeBody source invoke)
+      suppliedFunctionBody name implementation Nothing
+    suppliedInsertionBody name insertion =
+      suppliedFunctionBody name
+        (applyRuntimeFunction insertion) (Just insertion)
+    suppliedFunctionBody name implementation insertion =
+      (name, runtimeBody source insertion invoke)
       where
         source = "'datra." <> name
         invoke _ _ preparedCall = do
           result <- implementation (functionSuppliedArgument preparedCall)
           pure (EvaluatedFunctionInvocation result Nothing)
-    runtimeBody source invoke = Right (makeFunctionBodyValue
+    runtimeBody source insertion invoke = Right (makeFunctionBodyValue
       (EvaluatedRuntimeFunctionBody source (EvaluatedFunction
         anyTypeValue anyTypeValue Nothing Nothing (Just source) Nothing
-        "Any -> Any" Nothing (Just invoke) True)))
-    publicFunction = makeFunctionValue (EvaluatedFunction
-      anyTypeValue anyTypeValue Nothing Nothing (Just "'datra.public") Nothing
-      "Any -> Any"
-      (Just (\argument -> Right
-        (PreparedFunctionArgument argument argument [])))
-      (Just (\_ _ preparedCall -> do
-        value <- publicValue (functionPreparedArgument preparedCall)
-        pure (EvaluatedFunctionInvocation value Nothing))) False)
+        "Any -> Any" Nothing (Just invoke) True insertion)))
     nativeRange kind argument = do
       startValue <- accessValues argument (naturalValue 0)
       endValue <- accessValues argument (naturalValue 1)
       integerLimitRangeValue kind startValue endValue
+    nativeBoundedRange kind argument = do
+      startValue <- accessValues argument (naturalValue 0)
+      endValue <- accessValues argument (naturalValue 1)
+      end <- requireIntegerLimit RightOperand endValue
+      integerLimitRangeValue kind startValue (makeIntegerLimit end)
+    valuedRangePreimage value = do
+      (origin, endpoint) <- valuedRangeArguments
+        (interpretedSemanticResult value)
+      endpointValue <- case endpoint of
+        FiniteRangeEndpoint limit -> Just (makeIntegerLimit limit)
+        DirectionRangeEndpoint direction -> either (const Nothing) Just
+          (asciiStringValue direction)
+      either (const Nothing) Just
+        (makeArgumentMapPreservingSingleton
+          [integerValue origin, endpointValue])
+    integerLimitRangePreimage value = case interpretedSemanticResult value of
+      CanonicalIntegerLimitRange origin target ->
+        either (const Nothing) Just
+          (makeArgumentMapPreservingSingleton
+            [makeIntegerLimit origin, makeIntegerLimit target])
+      _ -> Nothing
     lookupArgument name values = maybe
       (Left (FunctionEvaluationFailed (MissingNativeArgument name)))
       Right
@@ -217,33 +334,38 @@ hostMap entries = do
       pure (withTrailingIdentifierMarker canonicalValueMarker
         (inferredIdentifierAssignmentValue name underlying))
 
-publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
-publicValue value = do
-  members <- namedMembers value
-  pure (makeAtlasMap 2 (map snd (public members)))
-
 namedMembers
   :: InterpretedValue
   -> Either InterpretingError [(String, InterpretedValue)]
 namedMembers value =
-  case argumentMapMembers value of
-    Just members
-      | Right named <- traverse field members -> Right named
-    _ -> projectedMembers
+  case namedMapViewForValue value of
+    Just named -> do
+      positions <- maybe invalid Right
+        (finiteOrdinalPositions (namedMapOrderType named))
+      members <- traverse
+        (\position -> namedMapMemberAt named position >>= maybe invalid Right)
+        positions
+      pure
+        [ (namedMemberName member, namedMemberValue member)
+        | member <- members
+        ]
+    Nothing -> case argumentMapMembers value of
+      Just members
+        | Right named <- traverse field members -> Right named
+      _ -> projectedMembers
   where
     projectedMembers = case simpleIdentifierName value of
       Just name -> Right [(name, value)]
       Nothing -> do
-        count <- maybe invalid Right
-          (naturalAtOrdinal
+        positions <- maybe invalid Right
+          (finiteOrdinalPositions
             (interpretedMapFinalOrderType (interpretedMap value)))
-        members <- traverse memberAt
-          (if count == 0 then [] else [0 .. count - 1])
+        members <- traverse memberAt positions
         traverse field members
     invalid = Left (ModuleEvaluationFailed
       ImportedModuleRequiresNamedExports)
-    memberAt index = maybe invalid Right
-      (interpretedMapValueAt (interpretedMap value) (finiteOrdinal index))
+    memberAt position = maybe invalid Right
+      (interpretedMapValueAt (interpretedMap value) position)
     field member = case simpleIdentifierName member of
       Just name -> Right (name, member)
       Nothing -> Left (ModuleEvaluationFailed ModuleExportRequiresIdentifier)

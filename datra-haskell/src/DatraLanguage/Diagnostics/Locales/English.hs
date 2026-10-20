@@ -6,7 +6,6 @@ module DatraLanguage.Diagnostics.Locales.English
   ( localizeAccessError
   , localizeParseFailure
   , localizeModuleLoadFailure
-  , localizeSyntaxExpansionFailure
   , localizeCommandLineOptionFailure
   , localizeInterpretingError
   , localizeSuperEllipsisRangeError
@@ -19,7 +18,6 @@ import DatraLanguage.Diagnostics.Application
   ( CommandLineOptionFailure (..)
   , ModuleLoadFailure (..)
   , ParseFailure (..)
-  , SyntaxExpansionFailure (..)
   , SyntaxTemplateAdmissibilityFailure (..)
   )
 import Evaluation.Error
@@ -85,15 +83,6 @@ localizeModuleLoadFailure failure =
       LocalizedMessage "imported module could not be parsed"
         ["module: " <> path, parseFailureMessage parseFailure]
 
-localizeSyntaxExpansionFailure
-  :: SyntaxExpansionFailure
-  -> LocalizedMessage
-localizeSyntaxExpansionFailure failure =
-  case failure of
-    UnknownSyntaxControlAdapter name ->
-      LocalizedMessage "syntax control adapter is not registered"
-        ["adapter: " <> name]
-
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
   -> LocalizedMessage
@@ -141,8 +130,8 @@ localizeInterpretingError reason =
     AssertionFailed -> LocalizedMessage "assertion failed" []
     OperationHasNoEffect ->
       LocalizedMessage "operation has no effect" []
-    IdentifierStringOverlap name ->
-      LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
+    OverlappingBindings name ->
+      LocalizedMessage "bindings overlap in the same scope" ["binding: " <> name]
     InconsistentShadowing name ->
       LocalizedMessage
         "identifier shadowing is inconsistent with its existing binding"
@@ -285,10 +274,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "value does not have a canonical string conversion"
         ["only injective, round-trippable string conversions are accepted"]
-    InvalidSyntaxTemplateOperand ->
-      LocalizedMessage
-        "% expects a compile-time string or total map of strings"
-        []
     InvalidSyntaxTemplate template failure ->
       LocalizedMessage
         (syntaxTemplateFailureSummary template failure)
@@ -348,10 +333,6 @@ syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =
   case failure of
-    AstPatternRequiresFunctionSignature ->
-      LocalizedMessage "an AST pattern requires a function signature" []
-    AstPatternRequiresFunctionImplementation ->
-      LocalizedMessage "an AST pattern requires a function implementation" []
     HostSyntaxHookRequiresAstCaptures ->
       LocalizedMessage "host syntax hook requires unevaluated AST captures" []
     MissingNativeArgument name ->

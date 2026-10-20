@@ -8,6 +8,7 @@ import DatraOrdinal
   ( Ordinal
   , finiteOrdinal
   , naturalAtOrdinal
+  , naturalsBelow
   , omegaPower
   )
 import Evaluation.Access.Federation (requireInsertion)
@@ -96,5 +97,4 @@ selectedPosition insertion position =
     Nothing -> Right (finiteOrdinal 0)
 
 finitePositions :: Natural -> [Natural]
-finitePositions 0 = []
-finitePositions cardinality = [0 .. cardinality - 1]
+finitePositions = naturalsBelow

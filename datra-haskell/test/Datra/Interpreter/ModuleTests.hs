@@ -111,6 +111,24 @@ moduleTests =
     , moduleCase origin "module-scoped exported syntax"
         "import \"library_one\" do yield LibraryOne.(shift 7)"
         "11"
+    , moduleCase origin "exported dependent declaration supports lookup"
+        ( "import \"dependent_declarations\" do\n"
+            <> "yield DependentDeclarations."
+            <> "(~\"pair 1 with 2\")[0].value"
+        )
+        "{_x : Int := 1; _y : Int := 2}"
+    , moduleCase origin "scope-protected dependent declaration supports lookup"
+        ( "import \"dependent_declarations\" do\n"
+            <> "yield DependentDeclarations."
+            <> "(~\"'protected 3\")[0].value"
+        )
+        "{_x : Int := 3}"
+    , moduleFailureCase origin "private dependent declaration is not exported"
+        ( "import \"dependent_declarations\" do\n"
+            <> "yield DependentDeclarations."
+            <> "(~\"_private 3\")[0].value"
+        )
+        isEvaluationFailure
     , moduleCase origin "module scope preserves the import function return"
         ( "import \"library_one\" do LibraryOne.(\n"
             <> "  shifted := shift 7\n"

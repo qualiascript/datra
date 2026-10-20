@@ -48,9 +48,9 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (nub, nubBy, intercalate, partition, stripPrefix)
+import Data.List (nub, nubBy, intercalate, isPrefixOf, stripPrefix)
 import Data.Maybe (catMaybes)
-import BlockScope
+import DatraLanguage.DependentDeclaration
 import FunctionClosure
 import DatraHost
   ( datraHostIdentifier
@@ -58,10 +58,7 @@ import DatraHost
   , namedMembers
   )
 import DatraLanguage.Identifier
-  ( isPrivateIdentifier
-  , public
-  , requiresShadowingConsistency
-  )
+  ( requiresShadowingConsistency )
 import IdentifierValueType (isIdentifierValue)
 import RuntimeModules
   ( EvaluationMode (..)
@@ -87,7 +84,7 @@ import DatraLanguage.AST
   , GenericReference (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
-  , isDeclarationExpression
+  , attachedFunctionImplementation
   , namedBeginBlock
   , normalizeExpression
   , optionalIdentifierExpression
@@ -100,7 +97,6 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
-  , mapSyntaxHoleKind
   , traverseSyntaxTemplate
   )
 import DatraTypes
@@ -127,8 +123,7 @@ import GenericScopeProtection
 import ScopeProtection
 import SyntaxDefinitions
   ( SyntaxRule (..)
-  , SyntaxTemplateCompilationFailure (..)
-  , compileSyntaxTemplatesFromExpression
+  , SyntaxRuleSemantics (..)
   , declarationRules
   )
 import DatraLanguage.Diagnostics
@@ -139,7 +134,7 @@ import DatraLanguage.Diagnostics
   )
 import DatraLanguage.Diagnostics.Application (ParseFailure (..))
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)
 import FoliageMap (foliageMap, foliageMapPositionAt)
 import System.FilePath (takeFileName)
 
@@ -264,7 +259,8 @@ importedSyntaxRules
   -> [SyntaxRule]
 importedSyntaxRules base modules availableRules =
   scopeSyntaxRules
-    (classifySyntaxHole base modules)
+    (\declarations kind ->
+      fst (classifySyntaxHole base modules declarations kind))
     [ (namespace, rules)
     | (_, namespace, rules) <- availableRules
     ]
@@ -364,10 +360,10 @@ localScopeDeclarations :: [Expression] -> Expression -> [Expression]
 localScopeDeclarations declarations source = case source of
   IdentifierReference (IdentifierString name) ->
     case
-        [ declarationValue binding
+        [ dependentDeclarationImplementation binding
         | declaration <- reverse declarations
-        , Just binding <- [blockDeclaration declaration]
-        , declarationName binding == name
+        , Just binding <- [dependentDeclaration declaration]
+        , name `elem` bindingNames declaration
         ] of
       value : _ -> mapScopeEntries value
       [] -> []
@@ -406,7 +402,7 @@ captureSyntaxHole base modules strict declarations previous kind captured =
       FunctionBody {} -> Just captured
       _ -> Nothing
     DeclarationSyntaxHole {}
-      | isDeclarationExpression captured -> Just captured
+      | Just _ <- dependentDeclaration captured -> Just captured
       | otherwise -> Nothing
     DependentIdentifierSyntaxHole {} -> dependentIdentifierCapture captured
     ValueSyntaxHole target ->
@@ -437,13 +433,9 @@ captureSyntaxHole base modules strict declarations previous kind captured =
       where
         selectValue scope _ =
           let interpret = evalInScope scope []
-          in if identifierCaptureIsSubtype
-              scope scopedDeclarations targetExpression captured
-            then Just captured
-            else case canonicalValueCapture
-                interpret targetExpression captured of
-              Right canonical -> Just canonical
-              Left _ -> Nothing
+          in case canonicalValueCapture interpret targetExpression captured of
+            Right canonical -> Just canonical
+            Left _ -> Nothing
     captureInScopes select targetExpression =
       enclosingSyntaxCapture <|> scopedCapture
       where
@@ -453,8 +445,8 @@ captureSyntaxHole base modules strict declarations previous kind captured =
             (evalInScope enclosing [] targetExpression)
           captureSyntaxExpression target captured
         scopedCapture = do
-          (scope, _, _) <- either (const Nothing) Just
-            (declareScope enclosing
+          scope <- either (const Nothing) Just
+            (declareSyntaxScope enclosing
               (map syntaxValidationDeclaration scopedDeclarations))
           target <- either (const Nothing) Just
             (evalInScope scope [] targetExpression)
@@ -466,17 +458,29 @@ classifySyntaxHole
   -> [(String, ModuleSource)]
   -> [Expression]
   -> SyntaxHoleKind Expression
-  -> SyntaxHoleKind Expression
+  -> (SyntaxHoleKind Expression, Maybe InterpretedValue)
 classifySyntaxHole base modules declarations kind =
-  case kind of
-    ValueSyntaxHole target ->
-      either (const kind) (`specializeSyntaxHoleKind` kind) $ do
-        (scope, _, _) <- declareScope enclosing
-          (map syntaxValidationDeclaration declarations)
-        evalInScope scope [] target
-    _ -> kind
+  case classifySyntaxHoles base modules declarations [kind] of
+    [classified] -> classified
+    _ -> (kind, Nothing)
+
+classifySyntaxHoles
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> [SyntaxHoleKind Expression]
+  -> [(SyntaxHoleKind Expression, Maybe InterpretedValue)]
+classifySyntaxHoles base modules declarations kinds = map classify kinds
   where
     enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+    declared = declareSyntaxScope enclosing
+      (map syntaxValidationDeclaration declarations)
+    classify kind = case kind of
+      ValueSyntaxHole target ->
+        case declared >>= \scope -> evalInScope scope [] target of
+          Left _ -> (kind, Nothing)
+          Right value -> (specializeSyntaxHoleKind value kind, Just value)
+      _ -> (kind, Nothing)
 
 evaluateSyntaxValue
   :: Scope
@@ -486,10 +490,29 @@ evaluateSyntaxValue
   -> Maybe InterpretedValue
 evaluateSyntaxValue base modules declarations expressionValue = do
   let enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
-  (scope, _, _) <- either (const Nothing) Just
-    (declareScope enclosing
+  scope <- either (const Nothing) Just
+    (declareSyntaxScope enclosing
       (map syntaxValidationDeclaration declarations))
   either (const Nothing) Just (evalInScope scope [] expressionValue)
+
+applySyntaxValue
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> Expression
+  -> InterpretedValue
+  -> Maybe InterpretedValue
+applySyntaxValue base modules declarations functionExpression input = do
+  let enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+  scope <- either (const Nothing) Just
+    (declareSyntaxScope enclosing
+      (map syntaxValidationDeclaration declarations))
+  callable <- either (const Nothing) Just
+    (evalInScope scope [] functionExpression)
+  (result, _) <- either (const Nothing) Just
+    (applyFunction
+      (scopeActivation scope) UnrestrictedReduction callable input)
+  pure result
 
 -- Syntax evaluation uses the same contextual binding shape as runtime
 -- evaluation. The supplied value is lazy here: unknown runtime inputs need
@@ -500,20 +523,21 @@ syntaxContext
   -> [(String, String, [SyntaxRule])]
   -> SyntaxContext
 syntaxContext base modules availableRules = SyntaxContext
-  (classifySyntaxHole base modules)
+  (classifySyntaxHoles base modules)
   (captureSyntaxHole base modules)
   (importedSyntaxRules base modules availableRules)
   (evaluateSyntaxValue base modules)
+  (applySyntaxValue base modules)
   enter
   where
     enter declarations input = syntaxContext child modules availableRules
       where
         enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
-        declared = declareScope enclosing
+        declared = declareSyntaxScope enclosing
           (map syntaxValidationDeclaration declarations)
-        parent = either (const enclosing) (\(scope, _, _) -> scope) declared
+        parent = either (const enclosing) id declared
         supplied = do
-          (scope, _, _) <- declared
+          scope <- declared
           case input of
             Just expressionValue -> evalInScope scope [] expressionValue
             Nothing -> Left (UnknownIdentifier "_it")
@@ -574,36 +598,23 @@ canonicalValueCapture interpret targetExpression captured = do
 -- outside this scope and is still checked against its full signature.
 syntaxValidationDeclaration :: Expression -> Expression
 syntaxValidationDeclaration declaration = case declaration of
-  Let (IdentifierOperation name _ (Just definition))
-    | Just implementation <- recursiveFunctionImplementation definition ->
-        Let (IdentifierOperation name implementation (Just implementation))
-  Let (Val (IdentifierOperation name _ (Just definition)))
-    | Just implementation <- recursiveFunctionImplementation definition ->
-        Let (Val
-          (IdentifierOperation name implementation (Just implementation)))
+  Let value -> Let (recursiveSeed value)
   _ -> declaration
-
-identifierCaptureIsSubtype
-  :: Scope
-  -> [Expression]
-  -> Expression
-  -> Expression
-  -> Bool
-identifierCaptureIsSubtype scope declarations
-    target (IdentifierReference (IdentifierString name)) =
-  case
-      [ annotation
-      | declaration <- reverse declarations
-      , Just details <- [blockDeclaration declaration]
-      , declarationName details == name
-      , Just annotation <- [declarationAnnotation details]
-      ] of
-    annotation : _ -> either (const False) id $ do
-      source <- evalInScope scope [] annotation
-      destination <- evalInScope scope [] target
-      subfederationValues source destination >>= booleanCondition
-    [] -> False
-identifierCaptureIsSubtype _ _ _ _ = False
+  where
+    recursiveSeed (Val value) = Val (recursiveSeed value)
+    recursiveSeed original@(IdentifierOperation name _ (Just definition)) =
+      case recursiveFunctionImplementation definition of
+        Just implementation ->
+          IdentifierOperation name implementation (Just implementation)
+        Nothing -> original
+    recursiveSeed original@(IdentifierTemplateOperation
+        parts _ (Just definition)) =
+      case recursiveFunctionImplementation definition of
+        Just implementation ->
+          IdentifierTemplateOperation
+            parts implementation (Just implementation)
+        Nothing -> original
+    recursiveSeed value = value
 
 interpretLocatedExpression
   :: Located Expression
@@ -722,8 +733,7 @@ validateFunctionBodyParts expressionValue = do
   mapM_ validateFunctionBodyParts (expressionChildren expressionValue)
   where
     validatePart part
-      | isDeclarationExpression part
-      , Just _ <- blockDeclaration part = Right ()
+      | Just _ <- dependentDeclaration part = Right ()
     validatePart Let {} = Right ()
     validatePart Val {} = Right ()
     validatePart part
@@ -878,90 +888,17 @@ canonicalStringCodec =
     , decodeCanonicalString = canonicalStringCandidates
     }
 
-evaluateFunctionSyntax
-  :: (Expression -> Either InterpretingError InterpretedValue)
-  -> Expression
-  -> Either InterpretingError (FunctionSyntax InterpretedValue)
-evaluateFunctionSyntax interpret templatesExpression = do
-  templates <- validatedSyntaxTemplates templatesExpression
-  FunctionSyntax <$> traverse evaluateTemplate templates
-  where
-    evaluateTemplate (SyntaxTemplate pieces) =
-      SyntaxTemplate <$> traverse evaluatePiece pieces
-    evaluatePiece (SyntaxLiteral literal) = pure (SyntaxLiteral literal)
-    evaluatePiece (SyntaxHole kind) = do
-      specialized <- specializeSourceSyntaxHole interpret kind
-      SyntaxHole <$> traverseSyntaxHoleKind interpret specialized
-
-sourceFunctionSyntax
-  :: (Expression -> Either InterpretingError InterpretedValue)
-  -> Expression
-  -> Either InterpretingError (FunctionSyntax String)
-sourceFunctionSyntax interpret templatesExpression = do
-  templates <- validatedSyntaxTemplates templatesExpression
-  FunctionSyntax <$> traverse sourceTemplate templates
-  where
-    sourceTemplate (SyntaxTemplate pieces) =
-      SyntaxTemplate <$> traverse sourcePiece pieces
-    sourcePiece (SyntaxLiteral literal) = pure (SyntaxLiteral literal)
-    sourcePiece (SyntaxHole kind) = do
-      specialized <- specializeSourceSyntaxHole interpret kind
-      pure (SyntaxHole
-        (mapSyntaxHoleKind renderSourceExpression
-          specialized))
-
-specializeSourceSyntaxHole
-  :: (Expression -> Either InterpretingError InterpretedValue)
-  -> SyntaxHoleKind Expression
-  -> Either InterpretingError (SyntaxHoleKind Expression)
-specializeSourceSyntaxHole interpret kind@(ValueSyntaxHole target) = do
-  evaluated <- interpret target
-  let specialized = specializeSyntaxHoleKind evaluated kind
-  pure $ case specialized of
-    ValueSyntaxHole {}
-      | any syntaxCategoryExpression
-          (concatMap expressionTree (expressionChildren target)) ->
-          ExpressionSyntaxHole target
-    _ -> specialized
-  where
-    expressionTree expressionValue =
-      expressionValue
-        : concatMap expressionTree (expressionChildren expressionValue)
-    syntaxCategoryExpression expressionValue = case interpret expressionValue of
-      Right value -> case specializeSyntaxHoleKind value
-          (ValueSyntaxHole expressionValue) of
-        ValueSyntaxHole {} -> False
-        _ -> True
-      Left _ -> False
-specializeSourceSyntaxHole _ kind = pure kind
-
-traverseSyntaxHoleKind
-  :: Applicative f
-  => (source -> f target)
-  -> SyntaxHoleKind source
-  -> f (SyntaxHoleKind target)
-traverseSyntaxHoleKind transform kind = case kind of
-  ExpressionSyntaxHole value -> ExpressionSyntaxHole <$> transform value
-  BlockSyntaxHole value -> BlockSyntaxHole <$> transform value
-  FunctionBodySyntaxHole value -> FunctionBodySyntaxHole <$> transform value
-  DeclarationSyntaxHole value -> DeclarationSyntaxHole <$> transform value
-  DependentIdentifierSyntaxHole value ->
-    DependentIdentifierSyntaxHole <$> transform value
-  ValueSyntaxHole value -> ValueSyntaxHole <$> transform value
-
-validatedSyntaxTemplates
-  :: Expression
-  -> Either InterpretingError [SyntaxTemplate Expression]
-validatedSyntaxTemplates templatesExpression =
-  case compileSyntaxTemplatesFromExpression templatesExpression of
-    Left ExpectedSyntaxTemplateOperand ->
-      Left InvalidSyntaxTemplateOperand
-    Left (InadmissibleSyntaxTemplate template failure) ->
-      Left (InvalidSyntaxTemplate template failure)
-    Right templates -> Right templates
-
 canonicalStringCandidates :: String -> [InterpretedValue]
-canonicalStringCandidates characters =
+canonicalStringCandidates = canonicalStringCandidatesWith interpretExpressionReason
+
+-- Canonical decoding is lexical.  Dependent-name discovery must use the
+-- declaration family's already-captured scope instead of recursively asking
+-- the top-level interpreter to construct Std again.
+canonicalStringCandidatesWith
+  :: Interpreter
+  -> String
+  -> [InterpretedValue]
+canonicalStringCandidatesWith interpret characters =
   asciiCandidate <> parsedCanonicalCandidate
   where
     -- String-valued federations use their contents without source delimiters.
@@ -974,7 +911,7 @@ canonicalStringCandidates characters =
       case parseDatra ("(" <> characters <> "\n)") of
         Left _ -> []
         Right expressionValue ->
-          case interpretExpressionReason expressionValue of
+          case interpret expressionValue of
             Right value
               | canonicalSpelling characters
                   (renderInterpretedValue value) ->
@@ -983,7 +920,7 @@ canonicalStringCandidates characters =
                         canonicalExpressionCandidates
                           (normalizeExpression expressionValue)
                     , Right interpreted <-
-                        [interpretExpressionReason candidateExpression]
+                        [interpret candidateExpression]
                     , candidate <- evaluatedIdentifierCandidates
                         candidateExpression interpreted
                     ]
@@ -1057,8 +994,20 @@ data ScopeHandoff = ScopeHandoff
 -- is the generic exit path for values which leave this activation.
 data Scope = Scope
   { scopeBindings :: ScopeBindings
+  , scopeDependentDeclarationLayers :: [[ScopedDependentDeclaration]]
+  , scopeNamedMapLayers :: [NamedMapView]
   , scopeActivation :: ScopeActivation
   , scopeHandoff :: Maybe ScopeHandoff
+  }
+
+-- A declaration's name family and implementation are interpreted in the
+-- lexical snapshot at its source position. Ordinary declarations see only
+-- preceding ordinary declarations; every local let declaration is already
+-- present in that snapshot, but its implementation remains deferred.
+data ScopedDependentDeclaration = ScopedDependentDeclaration
+  { scopedDependentDeclarationScope :: Scope
+  , scopedDependentDeclarationFamilyScope :: Scope
+  , scopedDependentDeclarationValue :: DependentDeclaration
   }
 
 data Binding
@@ -1073,13 +1022,15 @@ data Binding
   | ImportedBinding
       PresentationDependency FilePath InterpretedValue Scope
   | ModuleCatalog [(String, ModuleSource)]
-  | ScopeMembers [ScopeMember]
+  | ScopeMembers [ScopedDependentDeclaration]
   | CanonicalNames [(String, String)]
   | LexicalScope PresentationDependency
 
 rootScope :: salt -> ScopeBindings -> Scope
 rootScope salt bindings = Scope
   { scopeBindings = bindings
+  , scopeDependentDeclarationLayers = []
+  , scopeNamedMapLayers = []
   , scopeActivation = initialScopeActivation salt
   , scopeHandoff = Nothing
   }
@@ -1111,6 +1062,8 @@ enterScope
   -> Scope
 enterScope salt bindings decide parent = Scope
   { scopeBindings = bindings <> scopeBindings parent
+  , scopeDependentDeclarationLayers = scopeDependentDeclarationLayers parent
+  , scopeNamedMapLayers = scopeNamedMapLayers parent
   , scopeActivation = enterScopeActivation salt (scopeActivation parent)
   , scopeHandoff = Just (ScopeHandoff (scopeActivation parent) decide)
   }
@@ -1236,12 +1189,11 @@ data ContextualMap = ContextualMap String [ContextualLevel]
 -- same-kind boundary, so declarations belonging to that outer scope remain
 -- visible. Scopes which introduce no binding of this kind add no hole.
 contextualLevels
-  :: Bool
-  -> [String]
+  :: [String]
   -> String
   -> Scope
   -> [ContextualLevel]
-contextualLevels includesPrivate resolving surface scope =
+contextualLevels resolving surface scope =
   go (scopeBindings scope) (scopeBindings scope)
   where
     key = "_" <> surface
@@ -1257,11 +1209,9 @@ contextualLevels includesPrivate resolving surface scope =
       case binding of
         ContextualBinding _ includesDependencies value ->
           Just (includesDependencies, value)
-        ScopeMembers members ->
-          Just (False, \reduction -> declarationMap members
-            (resolveIdentifierAccess
-              includesPrivate reduction
-              (scopeWithBindings environment scope) resolving))
+        ScopeMembers entries ->
+          Just (False, \reduction -> scopeEntriesValue
+            reduction resolving entries)
         ShadowingConsistentBinding target ->
           contextualLevel environment target
         NamedBinding dependency target -> do
@@ -1294,7 +1244,8 @@ contextualFunction surface levels@(_ : _) = do
     signatureSource
     (Just (prepare schema))
     (Just invoke)
-    False))
+    False
+    Nothing))
   where
     maximumDepth = fromIntegral (length levels - 1)
     domainExpression = ValuedNaturalRange 0 maximumDepth
@@ -1341,14 +1292,39 @@ accessContextualMap reduction depth (ContextualMap _ levels)
     unavailable = Left
       (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 
-scopeMembersBinding :: Binding -> Maybe [ScopeMember]
+scopeMembersBinding :: Binding -> Maybe [ScopedDependentDeclaration]
 scopeMembersBinding binding =
   case binding of
-    ScopeMembers names -> Just names
+    ScopeMembers entries -> Just entries
     ShadowingConsistentBinding target -> scopeMembersBinding target
     NamedBinding _ target -> scopeMembersBinding target
     QualifiedBinding _ target -> scopeMembersBinding target
     _ -> Nothing
+
+scopeEntriesValue
+  :: ReductionContext
+  -> [String]
+  -> [ScopedDependentDeclaration]
+  -> Either InterpretingError InterpretedValue
+scopeEntriesValue reduction resolving entries =
+  do
+    named <- scopeEntriesNamedView reduction resolving entries
+    case named of
+      Nothing -> Right (makeAtlasMap 0 [])
+      Just view -> Right (namedMapValue view)
+
+scopeEntriesNamedView
+  :: ReductionContext
+  -> [String]
+  -> [ScopedDependentDeclaration]
+  -> Either InterpretingError (Maybe NamedMapView)
+scopeEntriesNamedView reduction resolving =
+  foldM appendEntry Nothing
+  where
+    appendEntry accumulated entry = do
+      next <- entryView entry
+      pure (Just (maybe next (`appendNamedMapViews` next) accumulated))
+    entryView = dependentDeclarationNamedView reduction resolving
 
 contextualThisAvailable :: Scope -> Bool
 contextualThisAvailable scope = case lookupScope "_this" scope of
@@ -1446,7 +1422,7 @@ accessRepeatedPrefix captured resolving recursivePrefix insertion = do
 selectionMaximum :: InterpretedValue -> Maybe Natural
 selectionMaximum insertion = do
   count <- naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap insertion))
-  positions <- traverse selected (if count == 0 then [] else [0 .. count - 1])
+  positions <- traverse selected (naturalsBelow count)
   pure (if null positions then 0 else maximum positions)
   where
     selected position = do
@@ -1543,6 +1519,11 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     NothingLiteral -> Right nothingValue
     StringTemplate parts ->
       interpretStringTemplateWith protection interpret parts
+    greedy@(GreedyStringTemplate operand) -> do
+      rendered <- asciiStringValue (renderSourceExpression greedy)
+      Right (withGreedyStringTemplatePlan
+        (EvaluatedGreedyStringTemplate operand)
+        (templateValue rendered))
     IdentifierValueType -> Right identifierValueTypeValue
     AtlasMap expressions -> interpretContainer
       (interpretProtectedAtlasMap makeAtlasMap expressions)
@@ -1587,8 +1568,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     IntegerType -> integerTypeValue
     BooleanLiteral value -> Right (booleanValue value)
     BooleanType -> booleanTypeValue
-    EitherType left right ->
-      binary eitherValue left right
+    EitherType left right -> binary eitherValue left right
     OptionalType operand ->
       case optionalIdentifierExpression expressionValue of
         Just (present, missing) -> binary eitherValue present missing
@@ -1596,13 +1576,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           (FunctionApplication
             (IdentifierReference (IdentifierString "Maybe"))
             operand)
-    In value body -> do
-      supplied <- interpret value
-      runProtectedOperation protection [supplied] $ \actuals ->
-        case actuals of
-          [actual] -> evalInContinuationScopeWith body reduction
-            (constantContextualBindings "it" actual) scope resolving body
-          _ -> Right neverValue
     MaybeThen optional branch -> do
       optionalResult <- interpret optional >>= unconsList
       runProtectedOperation protection [optionalResult] $ \actuals ->
@@ -1693,20 +1666,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (scopeBindings imported) scope resolving body
     Import paths body -> evaluateImport
       reduction scope resolving expressionValue paths body
-    SyntaxType templates signature -> do
-      syntax <- evaluateFunctionSyntax interpret templates
-      sourceSyntax <- sourceFunctionSyntax interpret templates
-      value <- interpret signature
-      runProtectedOperation protection [value] $ \actuals ->
-        case actuals of
-          [actualValue] -> case interpretedFunction actualValue of
-            Just function -> pure (makeFunctionValue function
-              { functionSyntax = Just syntax
-              , functionSyntaxSource = Just sourceSyntax
-              })
-            Nothing -> Left (FunctionEvaluationFailed
-              AstPatternRequiresFunctionSignature)
-          _ -> Right neverValue
     FunctionTypeExpression [] domain codomain ->
       evaluateFunctionType [] expressionValue domain codomain
     FunctionTypeExpression generics domain codomain -> do
@@ -1726,19 +1685,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             (renderSourceExpression expressionValue)
             function))
         Nothing -> Left (FunctionEvaluationFailed ExpectedFunctionType)
-    FunctionApplication
-        (SyntaxType templates signature)
-        body@FunctionBody {} -> do
-      syntax <- evaluateFunctionSyntax interpret templates
-      sourceSyntax <- sourceFunctionSyntax interpret templates
-      value <- interpret (FunctionApplication signature body)
-      case interpretedFunction value of
-        Just function -> pure (makeFunctionValue function
-          { functionSyntax = Just syntax
-          , functionSyntaxSource = Just sourceSyntax
-          })
-        Nothing -> Left (FunctionEvaluationFailed
-          AstPatternRequiresFunctionImplementation)
     FunctionApplication
         signature@(FunctionTypeExpression [] domain codomain)
         (FunctionBody bindings result) ->
@@ -1849,7 +1795,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             _ <- importDomainValue publicDomains
             members <- concat <$> traverse scopeNamedMembers actuals
             let combined = makeAtlasMapPreservingSingleton 2
-                  (map snd (public members))
+                  (map snd members)
             enterOpenedScope expressionValue combined
               (zip distinctOperands actuals) body
     ScopeAccess operand body -> do
@@ -1857,9 +1803,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       runProtectedOperation protection [source] $ \actuals ->
         case actuals of
           [actual] -> case body of
-            IdentifierReference (IdentifierString name)
-              | isPrivateIdentifier name -> Left (UnknownIdentifier name)
-              | otherwise -> do
+            IdentifierReference (IdentifierString name) -> do
                   selected <- namedAccessValue actual name
                   validateOpenedBinding actual (name, selected)
                   payload <- accessValues selected (naturalValue 1)
@@ -1910,10 +1854,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                     [actualContextual, actualInsertion] ->
                       accessValues actualContextual actualInsertion
                     _ -> Right neverValue
-            _ -> projectDeclaration
-              (scopeDeclarationMembers scope)
-              (resolveIdentifierWith reduction scope resolving)
-              insertion
+            _ -> case lookupScope "_this" scope >>= scopeMembersBinding of
+              Just declarations -> do
+                contextual <- scopeEntriesValue
+                  reduction resolving declarations
+                accessValues contextual insertion
+              Nothing -> Left (UnknownIdentifier "_this")
     MapAccess mapOperand insertionOperand ->
       case lazyRecursivePrefix scope mapOperand of
         Just (captured, prefix) -> do
@@ -2093,14 +2039,31 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         _ -> Right ()
     enterOpenedScope salt actual contributions selectedBody = do
       validateShortScopeMember actual selectedBody
-      members <- scopeNamedMembers actual
-      let opened = public members
+      namedLayer <- case namedMapViewForValue actual of
+        Nothing -> Right Nothing
+        Just view -> Right (Just view)
+      opened <- case scopeNamedMembers actual of
+        Right members -> Right members
+        Left failure -> case namedLayer of
+          Just _ -> Right []
+          Nothing -> Left failure
       bindings <- concat <$>
-        traverse (openedScopeContributionBindings scope) contributions
+        traverse (openedContribution namedLayer) contributions
       validateShortScopeAccess actual opened selectedBody
       mapM_ (validateOpenedBinding actual) opened
+      let openedScope = case namedLayer of
+            Nothing -> scope
+            Just view -> scope
+              { scopeNamedMapLayers = view : scopeNamedMapLayers scope }
       evalResourceInContinuationScopeWith salt reduction
-        bindings scope resolving selectedBody
+        bindings openedScope resolving selectedBody
+    openedContribution namedLayer contribution =
+      case openedScopeContributionBindings scope contribution of
+        Right bindings -> Right bindings
+        Left (ModuleEvaluationFailed
+            ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes)
+          | Just _ <- namedLayer -> Right []
+        Left failure -> Left failure
     validateShortScopeAccess actual opened selectedBody =
       case selectedBody of
         IdentifierReference (IdentifierString name)
@@ -2191,7 +2154,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         case actuals of
           [actualInput, actualOutput] -> pure (makeFunctionValue
             (EvaluatedFunction actualInput actualOutput Nothing Nothing Nothing Nothing
-              signatureText (Just prepare) Nothing True))
+              signatureText (Just prepare) Nothing True Nothing))
           _ -> Right neverValue
 
 duplicateGenericIdentifier
@@ -2257,13 +2220,16 @@ evaluateLookup
 evaluateLookup reduction scope resolving query =
   case interpretedSemanticResult query of
     CanonicalAsciiString key ->
-      lookupResult reduction scope resolving
-        [key | scopeKeyExists scope key]
+      do
+        exists <- scopeNameExists reduction scope resolving key
+        lookupResult reduction scope resolving [key | exists]
     _ -> case interpretedStringTemplate query of
       Just template -> do
         family <- compileLookupCaptureFamily template
         keys <- filterMRight
-          (matchCanonicalTemplate template)
+          (matchCanonicalTemplate
+            (evalInScopeWith reduction scope resolving)
+            template)
           (scopeLookupKeys scope)
         lookupTemplateResult reduction scope resolving template family keys
       Nothing -> Left (LookupRequiresString (interpretedValueKind query))
@@ -2329,10 +2295,11 @@ lookupRow
   -> Either InterpretingError InterpretedValue
 lookupRow reduction scope resolving key = do
   keyValue <- asciiStringValue key
-  resolved <- resolveIdentifierAccess False reduction scope resolving key
-  keyMember <- assignIdentifierValues "key" keyValue keyValue
-  valueMember <- assignIdentifierValues "value" resolved resolved
-  pure (makeAtlasMapPreservingSingleton 2 [keyMember, valueMember])
+  resolved <- resolveIdentifierAccess reduction scope resolving key
+  pure (makeAtlasMapPreservingSingleton 2
+    [ simpleIdentifierTypeValue "key" keyValue
+    , simpleIdentifierTypeValue "value" resolved
+    ])
 
 compileLookupCaptureFamily
   :: EvaluatedStringTemplate
@@ -2419,17 +2386,27 @@ renderCanonicalCapture value = do
 -- erased to positional payloads, and the payload must render byte-for-byte to
 -- the captured substring.
 matchCanonicalTemplate
-  :: EvaluatedStringTemplate
+  :: Interpreter
+  -> EvaluatedStringTemplate
   -> String
   -> Either InterpretingError Bool
-matchCanonicalTemplate template input = do
+matchCanonicalTemplate interpret template input =
+  maybe False (const True) <$>
+    decodeCanonicalTemplateWith interpret template input
+
+decodeCanonicalTemplateWith
+  :: Interpreter
+  -> EvaluatedStringTemplate
+  -> String
+  -> Either InterpretingError (Maybe [InterpretedValue])
+decodeCanonicalTemplateWith interpret template input = do
   matches <- matchSegments
     (evaluatedStringTemplateSegments template)
     input
   let distinct = nubBy samePrepared matches
   case distinct of
-    [] -> Right False
-    [_] -> Right True
+    [] -> Right Nothing
+    [matched] -> Right (Just matched)
     _ -> Left AmbiguousStringTemplate
   where
     samePrepared left right =
@@ -2443,23 +2420,37 @@ matchCanonicalTemplate template input = do
     matchSegments
         (EvaluatedStringTemplateCapture _ schema _ : remaining)
         text = do
-      alternatives <- traverse attempt [0 .. length text]
+      alternatives <- traverse attempt (captureBoundaries remaining text)
       pure (concat alternatives)
       where
         attempt boundary = do
           let (captured, suffix) = splitAt boundary text
-          prepared <- preparedCaptureCandidates schema captured
+          prepared <- preparedCaptureCandidatesWith interpret schema captured
           tails <- matchSegments remaining suffix
           pure [value : tailValues | value <- prepared, tailValues <- tails]
 
-preparedCaptureCandidates
-  :: InterpretedValue
+    -- A following literal is a structural delimiter. Reject names which do
+    -- not contain it before attempting to interpret any capture prefix; eager
+    -- interpretation here can recursively look up the very declaration family
+    -- whose membership is being tested.
+    captureBoundaries
+        (EvaluatedStringTemplateLiteral literal : _)
+        text =
+      [ boundary
+      | boundary <- [0 .. length text]
+      , literal `isPrefixOf` drop boundary text
+      ]
+    captureBoundaries _ text = [0 .. length text]
+
+preparedCaptureCandidatesWith
+  :: Interpreter
+  -> InterpretedValue
   -> String
   -> Either InterpretingError [InterpretedValue]
-preparedCaptureCandidates schema captured =
+preparedCaptureCandidatesWith interpret schema captured =
   pure
     [ prepared
-    | candidate <- decodeCanonicalString canonicalStringCodec captured
+    | candidate <- canonicalStringCandidatesWith interpret captured
     , Right prepared <-
         [argumentSchemaValuesComplete
           (argumentSchemaFromValue schema)
@@ -2472,6 +2463,15 @@ naturalListAt :: Natural -> [value] -> Maybe value
 naturalListAt 0 (value : _) = Just value
 naturalListAt index (_ : remaining) = naturalListAt (index - 1) remaining
 naturalListAt _ [] = Nothing
+
+anyMRight
+  :: (value -> Either error Bool)
+  -> [value]
+  -> Either error Bool
+anyMRight _ [] = Right False
+anyMRight predicate (value : remaining) = do
+  accepted <- predicate value
+  if accepted then Right True else anyMRight predicate remaining
 
 filterMRight
   :: (value -> Either error Bool)
@@ -2506,6 +2506,31 @@ scopeKeyExists scope name =
   case canonicalScopeAlias scope name of
     Just generated -> maybe False queryableBinding (lookupScope generated scope)
     Nothing -> maybe False queryableBinding (lookupScope name scope)
+
+scopeNameExists
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> String
+  -> Either InterpretingError Bool
+scopeNameExists reduction scope resolving name
+  | scopeKeyExists scope name = Right True
+  | otherwise = do
+      named <- namedLayerContains (scopeNamedMapLayers scope)
+      if named then Right True else declarationLayerContains
+        (scopeDependentDeclarationLayers scope)
+  where
+    namedLayerContains [] = Right False
+    namedLayerContains (view : outer) = do
+      found <- namedMapContainsName view name
+      if found then Right True else namedLayerContains outer
+    declarationLayerContains [] = Right False
+    declarationLayerContains (declarations : outer) = do
+      found <- anyMRight
+        (\declaration -> dependentDeclarationContainsName
+          reduction resolving declaration name)
+        declarations
+      if found then Right True else declarationLayerContains outer
 
 queryableBinding :: Binding -> Bool
 queryableBinding binding =
@@ -2548,23 +2573,48 @@ resolveIdentifierWith
   -> [String]
   -> String
   -> Either InterpretingError InterpretedValue
-resolveIdentifierWith = resolveIdentifierAccess False
+resolveIdentifierWith = resolveIdentifierAccess
 
 resolveIdentifierAccess
-  :: Bool
-  -> ReductionContext
+  :: ReductionContext
   -> Scope
   -> [String]
   -> String
   -> Either InterpretingError InterpretedValue
-resolveIdentifierAccess includesPrivate reduction scope resolving name =
+resolveIdentifierAccess reduction scope resolving name =
   case canonicalScopeAlias scope name of
     Just generated -> resolveIdentifierAccess
-      includesPrivate reduction scope resolving generated
+      reduction scope resolving generated
     Nothing -> case lookupScope name scope of
       Just binding -> resolve binding
-      Nothing -> Left (UnknownIdentifier name)
+      Nothing -> do
+        member <- resolveScopeNamedMember
+        maybe (Left (UnknownIdentifier name))
+          (Right . namespaceMemberValue) member
   where
+    namespaceMemberValue member =
+      maybe (namedMemberValue member) id
+        (identifierUnderlyingValue (namedMemberValue member))
+    resolveScopeNamedMember = do
+      named <- firstNamedMapLayer (scopeNamedMapLayers scope)
+      case named of
+        Just member -> Right (Just member)
+        Nothing -> firstDeclarationLayer
+          (scopeDependentDeclarationLayers scope)
+    firstNamedMapLayer [] = Right Nothing
+    firstNamedMapLayer (view : outer) = do
+      member <- namedMapMemberByName view name
+      maybe (firstNamedMapLayer outer) (Right . Just) member
+    firstDeclarationLayer [] = Right Nothing
+    firstDeclarationLayer (declarations : outer) = do
+      members <- catMaybes <$> traverse
+        (\declaration -> dependentDeclarationMemberByName
+          reduction resolving declaration name)
+        declarations
+      case members of
+        [] -> firstDeclarationLayer outer
+        [member] -> Right (Just member)
+        _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
     resolve (NamedBinding dependency binding) =
       withCanonicalReference [dependency] name <$> resolve binding
     -- An import-all binding keeps its qualified origin for dependency
@@ -2577,7 +2627,7 @@ resolveIdentifierAccess includesPrivate reduction scope resolving name =
     resolve (EvaluatedBinding value) = Right value
     resolve (ContextualBinding surface _ _) =
       contextualFunction surface
-        (contextualLevels includesPrivate resolving surface scope)
+        (contextualLevels resolving surface scope)
     resolve (RetainedBinding captured annotation _ value) =
       Right (withCanonicalReference (scopePresentationDependencies captured) name
         (resolveInferredEitherAlias annotation value))
@@ -2585,7 +2635,7 @@ resolveIdentifierAccess includesPrivate reduction scope resolving name =
       Right (withCanonicalReference [dependency] name value)
     resolve ScopeMembers {} =
       contextualFunction "this"
-        (contextualLevels includesPrivate resolving "this" scope)
+        (contextualLevels resolving "this" scope)
     resolve CanonicalNames {} = Left (UnknownIdentifier name)
     resolve ModuleCatalog {} = Left (UnknownIdentifier name)
     resolve LexicalScope {} = Left (UnknownIdentifier name)
@@ -2636,38 +2686,17 @@ evaluateBindingDefinitionWith reduction captured resolving name annotation expre
       case expressionValue of
         contextual
           | isContextualAccessOf (IdentifierString "_this") contextual
-          , Just _ <- lookupScope "_this" captured >>= scopeMembersBinding ->
-              declarationMap
-                (visibleScopeMembers "_this" captured)
-                (resolveIdentifierWith reduction captured
-                  (resolutionKey : resolving))
+          , Just declarations <-
+              lookupScope "_this" captured >>= scopeMembersBinding ->
+              scopeEntriesValue reduction
+                (resolutionKey : resolving) declarations
         IdentifierReference (IdentifierString reference)
-          | Just _ <- lookupScope reference captured >>= scopeMembersBinding ->
-              declarationMap
-                (visibleScopeMembers reference captured)
-                (resolveIdentifierWith reduction captured
-                  (resolutionKey : resolving))
+          | Just declarations <-
+              lookupScope reference captured >>= scopeMembersBinding ->
+              scopeEntriesValue reduction
+                (resolutionKey : resolving) declarations
         _ -> evalInScopeWith reduction captured
           (resolutionKey : resolving) expressionValue
-
--- A declaration-scope reference is a first-class value. When it is aliased,
--- preserve the lexical snapshot at that declaration rather than exposing
--- declarations that occur later in the same block. The binding constructor,
--- not a particular identifier spelling, identifies this implicit reference.
-visibleScopeMembers :: String -> Scope -> [ScopeMember]
-visibleScopeMembers reference scope =
-  case break isReferencedScope (scopeBindings scope) of
-    (visible, (_, binding) : _)
-      | Just members <- scopeMembersBinding binding ->
-      let visibleNames = map fst visible
-      in [member | member <- members
-           , scopeMemberName member `elem` visibleNames]
-    _ -> []
-  where
-    isReferencedScope (name, binding) =
-      name == reference && case scopeMembersBinding binding of
-        Just _ -> True
-        Nothing -> False
 
 resolveInferredEitherAlias
   :: Maybe Expression
@@ -2686,27 +2715,20 @@ resolveInferredEitherAlias (Just _) value = value
 -- replaces it with the fully typed function value.
 recursiveFunctionImplementation :: Expression -> Maybe Expression
 recursiveFunctionImplementation expressionValue =
-  case expressionValue of
-    SyntaxType _ (FunctionApplication _ implementation) ->
-      Just implementation
-    FunctionApplication (SyntaxType {}) implementation ->
-      Just implementation
-    FunctionApplication (FunctionTypeExpression {}) implementation
+  case attachedFunctionImplementation expressionValue of
+    Just implementation
       | not (sourceFunctionBody implementation) ->
       Just implementation
-    MapSpecification implementation SyntaxType {} -> Just implementation
-    MapSpecification implementation FunctionTypeExpression {}
-      | not (sourceFunctionBody implementation) ->
-      Just implementation
-    Begin _ result -> recursiveFunctionImplementation result
-    Let value -> recursiveFunctionImplementation value
-    Val value -> recursiveFunctionImplementation value
-    EitherType left right ->
-      case recursiveFunctionImplementation left of
-        Just implementation -> Just implementation
-        Nothing -> recursiveFunctionImplementation right
-    OptionalType operand -> recursiveFunctionImplementation operand
-    _ -> Nothing
+    _ -> case expressionValue of
+      Begin _ result -> recursiveFunctionImplementation result
+      Let value -> recursiveFunctionImplementation value
+      Val value -> recursiveFunctionImplementation value
+      EitherType left right ->
+        case recursiveFunctionImplementation left of
+          Just implementation -> Just implementation
+          Nothing -> recursiveFunctionImplementation right
+      OptionalType operand -> recursiveFunctionImplementation operand
+      _ -> Nothing
   where
     sourceFunctionBody FunctionBody {} = True
     sourceFunctionBody _ = False
@@ -2729,8 +2751,8 @@ importScopeWithin = importScopeUsing scopeBuilderWithin
 
 importScopeUsing
   :: (Scope -> [Expression] -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       ))
@@ -2739,23 +2761,8 @@ importScopeUsing
   -> [Expression]
   -> Either InterpretingError Scope
 importScopeUsing build enclosing resolving entries = do
-  (rebuild, eagerNames, eagerEntries, validateConsistency) <-
+  (imported, _, eagerEntries, validateConsistency) <-
     build enclosing entries
-  let deferred = rebuild []
-      forced =
-        [ name
-        | name <- eagerNames
-        , maybe True (not . productiveRecursiveBinding name)
-            (lookupScope name deferred)
-        ]
-      (seeded, ordinary) = partition
-        (maybe False bindingHasRecursiveFunctionSeed . (`lookupScope` deferred))
-        forced
-      retainLet retained name = do
-        value <- resolveIdentifier (rebuild retained) resolving name
-        pure ((name, value) : retained)
-  retained <- foldM retainLet [] (seeded <> ordinary)
-  let imported = rebuild retained
   validateConsistency resolving imported
   -- Anonymous let entries still have eager evaluation semantics.
   mapM_ (evalInScope imported resolving) eagerEntries
@@ -2784,47 +2791,30 @@ childPresentationDependency enclosing entries = PresentationDependency
       Just (PresentationDependency identity) -> identity
       Nothing -> "<root>"
 
-bindingHasRecursiveFunctionSeed :: Binding -> Bool
-bindingHasRecursiveFunctionSeed binding =
-  case bindingDefinition binding of
-    Just (_, _, definition) ->
-      case recursiveFunctionImplementation definition of
-        Just _ -> True
-        Nothing -> False
-    Nothing -> False
-
-productiveRecursiveBinding :: String -> Binding -> Bool
-productiveRecursiveBinding name binding =
-  case bindingDefinition binding of
-    Just (_, _, definition) ->
-      case recursivePrefixFor
-          (== IdentifierReference (IdentifierString name))
-          definition of
-        Just _ -> True
-        Nothing -> False
-    _ -> False
-
--- Source reconstruction needs definitions without forcing native implementations
--- while their signatures are themselves being reconstructed.
-declareScope
+-- Syntax classification evaluates annotations inside a provisional lexical
+-- scope while the enclosing block's declaration families are themselves being
+-- admitted. Revalidating those same families here recursively rebuilds the
+-- scope. The outer rewrite/runtime boundary performs the validation once.
+declareSyntaxScope
   :: Scope
   -> [Expression]
-  -> Either InterpretingError (Scope, [String], [Expression])
-declareScope enclosing entries = do
-  (rebuild, eagerNames, eagerEntries, _) <- scopeBuilder enclosing entries
-  pure (rebuild [], eagerNames, eagerEntries)
+  -> Either InterpretingError Scope
+declareSyntaxScope enclosing entries = do
+  (scope, _, _, _) <- scopeBuilderWithContextualThisAndValidation
+    False True enclosing entries
+  pure scope
 
 -- Rebuild a declaration scope from its finite source declarations whenever an
 -- eager let becomes available.  Recursive lets make their captured scopes
 -- cyclic; recursively walking those scopes to replace a binding can therefore
--- black-hole.  Re-running 'buildScopeBindings' ties one fresh, shared knot and
--- places retained values into every lexical snapshot without traversing it.
+-- black-hole. Rebuilding ties one fresh, shared knot and places retained
+-- values into every lexical snapshot without traversing it.
 scopeBuilder
   :: Scope
   -> [Expression]
   -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       )
@@ -2834,8 +2824,8 @@ scopeBuilderWithoutContextualThis
   :: Scope
   -> [Expression]
   -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       )
@@ -2846,25 +2836,40 @@ scopeBuilderWithContextualThis
   -> Scope
   -> [Expression]
   -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       )
-scopeBuilderWithContextualThis introducesThis enclosing entries = do
+scopeBuilderWithContextualThis =
+  scopeBuilderWithContextualThisAndValidation False
+
+scopeBuilderWithContextualThisAndValidation
+  :: Bool
+  -> Bool
+  -> Scope
+  -> [Expression]
+  -> Either InterpretingError
+      ( Scope
+      , [ScopedDependentDeclaration]
+      , [Expression]
+      , [String] -> Scope -> Either InterpretingError ()
+      )
+scopeBuilderWithContextualThisAndValidation
+    validateFamilies introducesThis enclosing entries = do
   let dependency = childPresentationDependency enclosing entries
       scopedEnclosing = enterScope entries
         [("\0scope", LexicalScope dependency)]
         genericContinuationHandoff
         enclosing
-  scopeBuilderActivated introducesThis scopedEnclosing entries
+  scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries
 
 scopeBuilderWithin
   :: Scope
   -> [Expression]
   -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       )
@@ -2872,50 +2877,88 @@ scopeBuilderWithin enclosing entries =
   let dependency = childPresentationDependency enclosing entries
       scopedEnclosing = extendScope
         [("\0scope", LexicalScope dependency)] enclosing
-  in scopeBuilderActivated True scopedEnclosing entries
+  in scopeBuilderActivated True True scopedEnclosing entries
 
 scopeBuilderActivated
   :: Bool
+  -> Bool
   -> Scope
   -> [Expression]
   -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       )
-scopeBuilderActivated introducesThis scopedEnclosing entries = do
-  let (definitions, eagerEntries) = foldMap (bindingImports False) entries
-      members = map declarationScopeMember definitions
-      eagerNames =
-        [ declarationName declaration
-        | declaration <- definitions
-        , declarationIsLet declaration
+scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = do
+  let (_, eagerEntries) = foldMap (bindingImports False) entries
+      positionedMembers =
+        [ (position, declaration)
+        | (position, entry) <- zip [0 :: Int ..] entries
+        , Just declaration <- [dependentDeclaration entry]
         ]
-      blockBase
-        | not introducesThis = scopedEnclosing
-        | otherwise =
-            case lookupScope "_this" scopedEnclosing >>= contextualBinding of
-              Just _ -> scopedEnclosing
-              Nothing -> extendScope
-                [scopeBinding "_this" (ScopeMembers members)] scopedEnclosing
-  (blockOuter, scopeEntries) <- scopeEntriesFrom blockBase entries
-  let
-      rebuild retained = scopeWithBindings
-        (buildScopedBindings (makeBinding retained)
-          (scopeBindings blockBase) scopeEntries)
-        blockOuter
-      consistencyNames =
+      finalPosition = length entries
+      introduceThis = introducesThis
+        && case lookupScope "_this" scopedEnclosing >>= contextualBinding of
+          Just _ -> False
+          Nothing -> True
+      buildFrame = (scopeAt finalPosition, positionedScopeMembers)
+        where
+          positionedScopeMembers =
+            [ ScopedDependentDeclaration
+                (scopeAt position)
+                (familyScopeAt position)
+                declaration
+            | (position, declaration) <- positionedMembers
+            ]
+
+          scopeAt position = scopeAtWith True position
+          familyScopeAt position = scopeAtWith False position
+          scopeAtWith includeSelf position = scopeWithBindings bindings namedScope
+            where
+              visible =
+                [ scoped
+                | ((declaredAt, declaration), scoped) <-
+                    zip positionedMembers positionedScopeMembers
+                , declaredAt < position
+                    || ( dependentDeclarationIsLet declaration
+                      && (includeSelf || declaredAt /= position)
+                      )
+                ]
+              dependent = visible
+              namedScope = scopedEnclosing
+                { scopeDependentDeclarationLayers =
+                    [dependent | not (null dependent)]
+                      <> scopeDependentDeclarationLayers scopedEnclosing
+                }
+              bindings = [ scopeBinding "_this" (ScopeMembers visible)
+                   | introduceThis
+                   ]
+                <> scopeBindings scopedEnclosing
+
+      builtScope = fst buildFrame
+      scopedMembers = snd buildFrame
+      eagerFamilies =
+        [ scoped
+        | scoped <- scopedMembers
+        , dependentDeclarationIsLet
+            (scopedDependentDeclarationValue scoped)
+        ]
+      consistencyCandidates =
         [ name
-        | declaration <- definitions
-        , let name = declarationName declaration
-        , Just binding <- [lookupScope name blockOuter]
+        | (name, binding) <- scopeBindings scopedEnclosing
         , not (bindingHasUnrestrictedShadowing binding)
         ]
-      validateConsistency resolving imported =
+      validateConsistency resolving imported = do
+        consistencyNames <- filterMRight
+          (overlapsDeclarations resolving) consistencyCandidates
         mapM_ (validateConsistencyName resolving imported) consistencyNames
+      overlapsDeclarations resolving name = anyMRight
+        (\scoped -> dependentDeclarationContainsName
+          UnrestrictedReduction resolving scoped name)
+        scopedMembers
       validateConsistencyName resolving imported name =
-        case lookupScope name blockOuter of
+        case lookupScope name scopedEnclosing of
           -- Whole recursive scope values have no finite normal form to
           -- compare. Consistency cannot be established at this boundary.
           Just binding | bindingHasNoFiniteShadowingNormalForm binding ->
@@ -2923,7 +2966,11 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
           _ -> do
             let bounded = ShadowingConsistencyReduction
                   name shadowingConsistencyFuel
-            original <- resolveIdentifierWith bounded blockOuter resolving name
+            original <- resolveIdentifierWith
+              bounded
+              scopedEnclosing
+              resolving
+              name
             replacement <- resolveIdentifierWith
               bounded
               imported
@@ -2932,68 +2979,51 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
             if interpretedSemanticResult original
                 == interpretedSemanticResult replacement
               then Right ()
-              else Left (InconsistentShadowing name)
-      makeBinding retained capturedBindings declaration =
-        let name = declarationName declaration
-            annotation = declarationAnnotation declaration
-            expressionValue = declarationValue declaration
-            captured = scopeWithBindings capturedBindings blockOuter
-        in case lookup name retained of
-          Just value ->
-            scopeBinding name
-              (RetainedBinding captured annotation expressionValue value)
-          Nothing ->
-            scopeBinding name
-              (DeferredBinding captured annotation expressionValue)
-  _ <- foldM (checkName blockOuter) [] definitions
+            else Left (InconsistentShadowing name)
+  if validateFamilies
+    then do
+      mapM_ (checkLetShadow scopedEnclosing) eagerFamilies
+      validateDeclarationFamilies scopedMembers
+    else Right ()
   pure
-    ( rebuild
-    , eagerNames
+    ( builtScope
+    , eagerFamilies
     , eagerEntries
     , validateConsistency
     )
   where
-    checkName blockOuter declared declaration
-      | declarationIsLet declaration
-      , Just binding <- lookupScope name blockOuter
-      , not (bindingHasUnrestrictedShadowing binding) =
-          Left (LetBindingCannotShadowConsistentIdentifier name)
-      | name `elem` declared = Left (IdentifierStringOverlap name)
-      | otherwise = Right (name : declared)
-      where name = declarationName declaration
+    checkLetShadow enclosing scoped = mapM_ check
+      (scopeBindings enclosing)
+      where
+        check (name, binding)
+          | bindingHasUnrestrictedShadowing binding = Right ()
+          | otherwise = do
+              overlaps <- dependentDeclarationContainsName
+                UnrestrictedReduction [] scoped name
+              if overlaps
+                then Left (LetBindingCannotShadowConsistentIdentifier name)
+                else Right ()
 
-data ScopeEntry
-  = ScopeDeclaration Declaration
-
-scopeEntriesFrom
-  :: Scope
-  -> [Expression]
-  -> Either InterpretingError (Scope, [ScopeEntry])
-scopeEntriesFrom initial = go []
+validateDeclarationFamilies
+  :: [ScopedDependentDeclaration]
+  -> Either InterpretingError ()
+validateDeclarationFamilies = go []
   where
-    go reversed [] = Right (initial, reverse reversed)
-    go reversed (entry : remaining) = case blockDeclaration entry of
-      Just declaration ->
-        go (ScopeDeclaration declaration : reversed) remaining
-      Nothing -> go reversed remaining
+    go _ [] = Right ()
+    go earlier (scoped : remaining) = do
+      let declaration = scopedDependentDeclarationValue scoped
+      family <- evalInScope (scopedDependentDeclarationFamilyScope scoped) []
+        (dependentDeclarationNameExpression declaration)
+      mapM_ (requireDistinct declaration family) earlier
+      go ((declaration, family) : earlier) remaining
 
-buildScopedBindings
-  :: (ScopeBindings -> Declaration -> (String, Binding))
-  -> ScopeBindings
-  -> [ScopeEntry]
-  -> ScopeBindings
-buildScopedBindings makeBinding enclosing entries = foldl add initial entries
-  where
-    initial = recursiveLets <> enclosing
-    recursiveLets =
-      [ makeBinding (scopeBefore position) declaration
-      | (position, ScopeDeclaration declaration) <- zip [0 :: Int ..] entries
-      , declarationIsLet declaration
-      ]
-    scopeBefore position = foldl add initial (take position entries)
-    add bindings (ScopeDeclaration declaration)
-      | declarationIsLet declaration = bindings
-      | otherwise = makeBinding bindings declaration : bindings
+    requireDistinct declaration family (_, previous)
+      | Right _ <- eitherValue previous family = Right ()
+      | otherwise = Left (OverlappingBindings
+          (dependentDeclarationLabel declaration))
+
+    dependentDeclarationLabel = renderSourceExpression
+      . dependentDeclarationNameExpression
 
 importInvocation :: Expression -> Maybe [String]
 importInvocation expressionValue =
@@ -3004,11 +3034,15 @@ importInvocation expressionValue =
 -- Only declaration-shaped block entries create lexical bindings. Maps and map
 -- operators remain values: identifier-shaped members inside them neither enter
 -- the surrounding scope nor become visible to sibling members.
-bindingImports :: Bool -> Expression -> ([Declaration], [Expression])
+bindingImports
+  :: Bool
+  -> Expression
+  -> ([DependentDeclaration], [Expression])
 bindingImports strict expressionValue =
-  case blockDeclaration (if strict then Let expressionValue else expressionValue) of
+  case dependentDeclaration
+      (if strict then Let expressionValue else expressionValue) of
     Just declaration -> ([declaration], [])
-    Nothing -> case expressionValue of
+    _ -> case expressionValue of
       Let value -> bindingImports True value
       Val _ -> ([], [expressionValue])
       Assert {} -> ([], [expressionValue])
@@ -3113,6 +3147,346 @@ interpretStringTemplateWith protection interpret parts = do
     checkedString operation = do
       result <- operation
       pure (result, Just result)
+
+dependentDeclarationNamedView
+  :: ReductionContext
+  -> [String]
+  -> ScopedDependentDeclaration
+  -> Either InterpretingError NamedMapView
+dependentDeclarationNamedView reduction resolving scoped =
+  dynamicDependentDeclarationNamedView
+    reduction familyCaptured captured resolving declaration
+  where
+    captured = scopedDependentDeclarationScope scoped
+    familyCaptured = scopedDependentDeclarationFamilyScope scoped
+    declaration = scopedDependentDeclarationValue scoped
+
+dynamicDependentDeclarationNamedView
+  :: ReductionContext
+  -> Scope
+  -> Scope
+  -> [String]
+  -> DependentDeclaration
+  -> Either InterpretingError NamedMapView
+dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
+    declaration = do
+  prepared <- prepareDependentDeclaration
+    reduction familyCaptured resolving declaration
+  views <- traverse branchView prepared
+  case views of
+    [] -> Left AmbiguousStringTemplate
+    [single] -> Right single
+    first : remaining -> do
+      let combined = foldl appendNamedMapViews first remaining
+          projection = namedMapProjection combined
+          selectedMember name = do
+            selected <- selectPreparedBranch decode name prepared
+            traverse (uncurry (materializeSelected name)) selected
+          selectedAt position = do
+            member <- namedProjectionMemberAt projection position
+            case member of
+              Nothing -> Right Nothing
+              Just candidate -> selectedMember (namedMemberName candidate)
+      pure (NamedMapView projection
+        { namedProjectionMemberAt = selectedAt
+        , namedProjectionMemberByName = selectedMember
+        , namedProjectionContainsName =
+            fmap (maybe False (const True))
+              . selectPreparedBranchName decode prepared
+        })
+  where
+    decode = decodeCanonicalTemplateWith
+      (evalInScopeWith reduction familyCaptured resolving)
+    branchView branch = do
+      let evaluatedCaptures = preparedDeclarationCaptures branch
+          template = preparedDeclarationTemplate branch
+      captureBounds <- traverse
+        (dependentDeclarationCaptureBound reduction familyCaptured resolving)
+        [bound | (_, _, bound) <- evaluatedCaptures]
+      family <- maybe
+        (Left (LookupCaptureHasNoGenericMapView
+          0 (renderInterpretedValue (makeAtlasMap 2 captureBounds))))
+        Right
+        (ordinalIndexedProductFamily captureBounds)
+      let sourceOrder = ordinalIndexedFamilyOrderType family
+          traversal = foliageMap sourceOrder
+          localOrder = maybe omega finiteOrdinal (naturalAtOrdinal sourceOrder)
+      pure (NamedMapView (NamedMapProjection
+        localOrder
+        (memberAt evaluatedCaptures template family traversal)
+        (memberByName evaluatedCaptures template)
+        (fmap (maybe False (const True)) . decode template)))
+
+    memberAt evaluatedCaptures template family traversal position = case do
+        rank <- naturalAtOrdinal position
+        sourcePosition <- foliageMapPositionAt traversal rank
+        ordinalIndexedFamilyValueAt family sourcePosition of
+      Nothing -> Right Nothing
+      Just witness -> do
+        values <- captureWitnesses (length evaluatedCaptures) witness
+        name <- renderLookupTemplateKey template witness
+        Just <$> materializeMember evaluatedCaptures name values
+
+    memberByName evaluatedCaptures template name = do
+      decoded <- decode template name
+      traverse (materializeMember evaluatedCaptures name) decoded
+
+    materializeSelected name branch values =
+      materializeMember (preparedDeclarationCaptures branch) name values
+
+    materializeMember evaluatedCaptures name values =
+      materializeDependentDeclaration
+        reduction captured resolving declaration
+        evaluatedCaptures name values
+
+dependentDeclarationContainsName
+  :: ReductionContext
+  -> [String]
+  -> ScopedDependentDeclaration
+  -> String
+  -> Either InterpretingError Bool
+dependentDeclarationContainsName reduction resolving scoped name = do
+  prepared <- prepareDependentDeclarationForName
+    reduction familyCaptured resolving declaration name
+  maybe False (const True) <$>
+    selectPreparedBranchName decode prepared name
+  where
+    familyCaptured = scopedDependentDeclarationFamilyScope scoped
+    declaration = scopedDependentDeclarationValue scoped
+    decode = decodeCanonicalTemplateWith
+      (evalInScopeWith reduction familyCaptured resolving)
+
+dependentDeclarationCaptureBound
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+dependentDeclarationCaptureBound reduction captured resolving bound
+  | Just _ <- ordinalIndexedValueFamily bound = Right bound
+  | otherwise = case
+      ( snd <$> interpretedCanonicalPresentation bound
+      , interpretedSemanticResult bound
+      ) of
+      (Just (CanonicalReference "Nat"), _) -> naturalTypeValue
+      (Just (CanonicalReference "Int"), _) -> integerTypeValue
+      (_, CanonicalNaturalType) -> naturalTypeValue
+      (_, CanonicalIntegerType) -> integerTypeValue
+      _ -> valueExpression bound >>=
+        evalInScopeWith reduction captured resolving
+
+dependentDeclarationMemberByName
+  :: ReductionContext
+  -> [String]
+  -> ScopedDependentDeclaration
+  -> String
+  -> Either InterpretingError (Maybe NamedMember)
+dependentDeclarationMemberByName reduction resolving scoped name = do
+  prepared <- prepareDependentDeclarationForName
+    reduction familyCaptured resolving declaration name
+  selected <- selectPreparedBranch decode name prepared
+  case selected of
+    Nothing -> Right Nothing
+    Just (branch, decoded) -> Just <$> materializeDependentDeclaration
+      reduction captured resolving
+      declaration (preparedDeclarationCaptures branch) name decoded
+  where
+    captured = scopedDependentDeclarationScope scoped
+    familyCaptured = scopedDependentDeclarationFamilyScope scoped
+    declaration = scopedDependentDeclarationValue scoped
+    decode = decodeCanonicalTemplateWith
+      (evalInScopeWith reduction familyCaptured resolving)
+
+data PreparedDependentDeclaration = PreparedDependentDeclaration
+  { preparedDeclarationCaptures
+      :: [(Maybe String, InterpretedValue, InterpretedValue)]
+  , preparedDeclarationTemplate :: EvaluatedStringTemplate
+  }
+
+prepareDependentDeclaration
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> DependentDeclaration
+  -> Either InterpretingError
+      [PreparedDependentDeclaration]
+prepareDependentDeclaration reduction captured resolving declaration =
+  prepareDependentDeclarationBranches
+    reduction captured resolving branches
+  where
+    branches = maybe [] id
+      (dependentDeclarationTemplateBranches declaration)
+
+prepareDependentDeclarationForName
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> DependentDeclaration
+  -> String
+  -> Either InterpretingError
+      [PreparedDependentDeclaration]
+prepareDependentDeclarationForName reduction captured resolving declaration name =
+  prepareDependentDeclarationBranches reduction captured resolving
+    (filter (`templateLiteralSkeletonMatches` name) branches)
+  where
+    branches = maybe [] id
+      (dependentDeclarationTemplateBranches declaration)
+
+prepareDependentDeclarationBranches
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> [[StringTemplatePart Expression]]
+  -> Either InterpretingError
+      [PreparedDependentDeclaration]
+prepareDependentDeclarationBranches reduction captured resolving =
+  traverse prepareBranch
+  where
+    prepareBranch parts = do
+      let captureExpressions =
+            [ captureExpression value
+            | StringTemplateInterpolation value <- parts
+            ]
+      evaluatedCaptures <- traverse evaluateCapture captureExpressions
+      let segments = dependentTemplateSegments parts evaluatedCaptures
+      pure (PreparedDependentDeclaration
+        evaluatedCaptures
+        (EvaluatedStringTemplate segments))
+    evaluateCapture (name, expressionValue) = do
+      schema <- evalInScopeWith reduction captured resolving expressionValue
+      pure
+        ( name
+        , schema
+        , argumentSchemaPositionalDomain (argumentSchemaFromValue schema)
+        )
+
+-- Reject a branch by its literal skeleton before interpreting any capture
+-- annotations. Capture types may themselves require dependent-name lookup, so
+-- evaluating them for a structurally impossible name recursively re-enters
+-- the same declaration layer.
+templateLiteralSkeletonMatches
+  :: [StringTemplatePart Expression]
+  -> String
+  -> Bool
+templateLiteralSkeletonMatches = go
+  where
+    go [] text = null text
+    go (StringTemplateLiteral literal : remaining) text =
+      maybe False (go remaining) (stripPrefix literal text)
+    go (StringTemplateInterpolation {} : remaining) text =
+      any (\boundary -> go remaining (drop boundary text))
+        [0 .. length text]
+
+selectPreparedBranchName
+  :: (EvaluatedStringTemplate
+      -> String
+      -> Either InterpretingError (Maybe [InterpretedValue]))
+  -> [PreparedDependentDeclaration]
+  -> String
+  -> Either InterpretingError (Maybe PreparedDependentDeclaration)
+selectPreparedBranchName decode prepared name =
+  fmap (fmap fst) (selectPreparedBranch decode name prepared)
+
+selectPreparedBranch
+  :: (EvaluatedStringTemplate
+      -> String
+      -> Either InterpretingError (Maybe [InterpretedValue]))
+  -> String
+  -> [PreparedDependentDeclaration]
+  -> Either InterpretingError
+      (Maybe (PreparedDependentDeclaration, [InterpretedValue]))
+selectPreparedBranch decode name prepared = do
+  matches <- fmap concat (traverse match prepared)
+  case matches of
+    [] -> Right Nothing
+    [selected] -> Right (Just selected)
+    _ -> Left AmbiguousStringTemplate
+  where
+    match branch = do
+      decoded <- decode (preparedDeclarationTemplate branch) name
+      pure (maybe [] (\values -> [(branch, values)]) decoded)
+
+materializeDependentDeclaration
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> DependentDeclaration
+  -> [(Maybe String, InterpretedValue, InterpretedValue)]
+  -> String
+  -> [InterpretedValue]
+  -> Either InterpretingError NamedMember
+materializeDependentDeclaration reduction captured resolving declaration
+    evaluatedCaptures name values = do
+  members <- sequence (zipWith captureValue evaluatedCaptures values)
+  supplied <- makeArgumentMapPreservingSingleton members
+  let bindings = constantContextualBindings "it" supplied <>
+        ( scopeBinding "it" (EvaluatedBinding supplied)
+        : [ scopeBinding identifier (EvaluatedBinding value)
+          | ((Just identifier, _, _), value) <- zip evaluatedCaptures values
+          ]
+        )
+  payload <- evaluateBindingDefinitionWith reduction
+      (extendScope bindings captured)
+      resolving
+      name
+      Nothing
+      (dependentDeclarationImplementation declaration)
+  pure (namedDeclarationMember declaration name payload)
+  where
+    captureValue (Just captureName, schema, _) value =
+      assignIdentifierValues captureName schema value
+    captureValue (Nothing, _, _) value = Right value
+
+namedDeclarationMember
+  :: DependentDeclaration
+  -> String
+  -> InterpretedValue
+  -> NamedMember
+namedDeclarationMember declaration name payload = NamedMember
+  name marked
+  where
+    named = simpleIdentifierTypeValue name payload
+    marked
+      | dependentDeclarationIsCanonicalValue declaration =
+          withTrailingIdentifierMarker canonicalValueMarker named
+      | otherwise = named
+
+captureExpression :: Expression -> (Maybe String, Expression)
+captureExpression (SyntaxBoundary inner) = captureExpression inner
+captureExpression
+    (IdentifierOperation (IdentifierString name) annotation Nothing) =
+  (Just name, annotation)
+captureExpression expressionValue = (Nothing, expressionValue)
+
+appendLiteralSegment
+  :: String
+  -> [EvaluatedStringTemplateSegment]
+  -> [EvaluatedStringTemplateSegment]
+appendLiteralSegment "" segments = segments
+appendLiteralSegment literal segments = case reverse segments of
+  EvaluatedStringTemplateLiteral previous : remaining ->
+    reverse remaining <>
+      [EvaluatedStringTemplateLiteral (previous <> literal)]
+  _ -> segments <> [EvaluatedStringTemplateLiteral literal]
+
+dependentTemplateSegments
+  :: [StringTemplatePart Expression]
+  -> [(Maybe String, InterpretedValue, InterpretedValue)]
+  -> [EvaluatedStringTemplateSegment]
+dependentTemplateSegments = go 0 []
+  where
+    go _ segments [] _ = segments
+    go index segments
+        (StringTemplateLiteral literal : remaining)
+        captures =
+      go index (appendLiteralSegment literal segments) remaining captures
+    go index segments
+        (StringTemplateInterpolation _ : remaining)
+        ((_, schema, bound) : captures) =
+      go (index + 1)
+        (segments <> [EvaluatedStringTemplateCapture index schema bound])
+        remaining captures
+    go _ segments _ [] = segments
 
 interpretSpecificationWith
   :: ScopeActivation
@@ -3492,23 +3866,6 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
       names = map fst parameters
       consistencyScope = extendScope
         (constantContextualBindings "it" anyTypeValue) captured
-      bodyDeclarations =
-        [ declaration
-        | entry <- preparedBindings
-        , Just declaration <- [blockDeclaration entry]
-        ]
-  -- Reject an unprovable recursive-scope shadow before invocation. Finite
-  -- bindings still use the ordinary fixed-point comparison once parameter
-  -- values are available.
-  case [ name
-       | declaration <- bodyDeclarations
-       , let name = declarationName declaration
-       , Just binding <- [lookupScope name captured]
-       , not (bindingHasUnrestrictedShadowing binding)
-       , bindingHasNoFiniteShadowingNormalForm binding
-       ] of
-    name : _ -> Left (InconsistentShadowing name)
-    [] -> pure ()
   case [ name
        | name <- names
        , Just binding <- [lookupScope name consistencyScope]
@@ -3521,7 +3878,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
        , name `elem` map fst (scopeBindings captured)
           || length (filter (== name) names) > 1
        ] of
-    name : _ -> Left (IdentifierStringOverlap name)
+    name : _ -> Left (OverlappingBindings name)
     [] -> pure ()
   input <- parameterDomain schema
   let (explicitSelf, selfIncludesDependencies) = case
@@ -3647,7 +4004,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
   let functionValue = makeFunctionValue
         (EvaluatedFunction input output Nothing Nothing
           (Just (renderSourceExpression closed)) Nothing signatureText
-          (Just prepare) (Just invoke) False)
+          (Just prepare) (Just invoke) False Nothing)
       validateExistentialPackage source = do
         rows <- argumentRows source
         tryPackageRows source Nothing rows
@@ -4125,7 +4482,7 @@ evaluateImport reduction captured resolving sourceExpression paths body =
           | name <- names
           , name `elem` map fst (scopeBindings captured)
           ] of
-        name : _ -> Left (IdentifierStringOverlap name)
+        name : _ -> Left (OverlappingBindings name)
         [] -> pure ()
       domain <- importDomainValue (map loadedModuleFederation modules)
       let schema = argumentSchemaFromValue domain
@@ -4169,7 +4526,7 @@ evaluateImport reduction captured resolving sourceExpression paths body =
           callable = makeFunctionValue (EvaluatedFunction
             input anyTypeValue Nothing Nothing Nothing Nothing
             (renderSourceExpression sourceExpression)
-            (Just prepare) (Just invoke) False)
+            (Just prepare) (Just invoke) False Nothing)
       (applied, _) <- applyFunction
         (scopeActivation captured) reduction callable domain
       pure (withoutCanonicalPresentation applied)
@@ -4231,7 +4588,7 @@ importLoadedModule scope openMembers source = do
         Nothing -> Right (extendScope [entry] values)
         Just (ImportedBinding _ previous _ _) | previous == identity ->
           Right values
-        _ -> Left (IdentifierStringOverlap name)
+        _ -> Left (OverlappingBindings name)
     openBinderMembers alreadyImported identity values binder = do
       exported <- moduleExportsFromValue (loadedModuleBinderValue binder)
       entries <- moduleExportBindings
@@ -4245,12 +4602,12 @@ importLoadedModule scope openMembers source = do
       case lookupScope name values of
         Nothing -> Right (extendScope [entry] values)
         Just _ | alreadyImported -> Right values
-        _ -> Left (IdentifierStringOverlap name)
+        _ -> Left (OverlappingBindings name)
 
 -- Both evaluated scope access and resource preparation install opened
 -- members through this boundary. Imported binders retain their definition
--- scopes and presentation metadata; ordinary local values use evaluated
--- public members.
+-- scopes and presentation metadata; ordinary local values use the members
+-- already selected by the source value.
 openedScopeContributionBindings
   :: Scope
   -> (Expression, InterpretedValue)
@@ -4265,7 +4622,7 @@ openedScopeContributionBindings scope (operand, actual) =
             scope namespace identity internal exported
     _ -> do
       members <- scopeNamedMembers actual
-      traverse openedBinding (public members)
+      traverse openedBinding members
   where
     openedBinding (name, selected) = do
       payload <- accessValues selected (naturalValue 1)
@@ -4455,12 +4812,11 @@ moduleSyntaxRuleSets requested source = do
   (_, binders) <- loadedModuleBindersWithBase base source
   traverse rulesForBinder binders
   where
-    rulesForBinder binder = do
-      rules <- moduleSyntaxRulesFromValueIn
+    rulesForBinder binder =
+      (loadedModuleBinderName binder,) <$> moduleSyntaxRulesFromValueIn
         requested
         (loadedModuleBinderName binder)
         (loadedModuleBinderValue binder)
-      pure (loadedModuleBinderName binder, rules)
 
 moduleSyntaxRulesFromValueIn
   :: String
@@ -4482,18 +4838,15 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
         sourceTemplates <- traverse
           (traverseSyntaxTemplate parseScopedRuleExpression)
           templates
-        signature <- parseRuleExpression (functionSignatureSource function)
-        unscopedImplementation <- maybe
-          (pure (IdentifierReference (IdentifierString name)))
-          parseRuleExpression
-          ( functionBodySource <$> functionBody function
-              <|> functionSource function
-          )
-        let implementation = InModule scopeName unscopedImplementation
         pure
           [ SyntaxRule
-              name template signature False (Just scopeName) implementation
+              { syntaxName = name
+              , syntaxTemplate = template
+              , syntaxSemantics = SyntaxAdapter callable
+              }
           | template <- sourceTemplates
+          , let callable = InModule scopeName
+                  (IdentifierReference (IdentifierString name))
           ]
     parseScopedRuleExpression sourceText = do
       expressionValue <- parseRuleExpression sourceText
@@ -4512,15 +4865,15 @@ moduleExportsFromValue
 moduleExportsFromValue value =
   case namedBindings value of
     Right bindings -> Right bindings
-    Left _ -> invalid
+    Left failure@(ModuleEvaluationFailed reason) ->
+      case reason of
+        ImportedModuleRequiresNamedExports -> invalid
+        ModuleExportRequiresIdentifier -> invalid
+        _ -> Left failure
+    Left failure -> Left failure
   where
     invalid = Left (ModuleEvaluationFailed
       ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes)
-
-scopeDeclarationMembers :: Scope -> [ScopeMember]
-scopeDeclarationMembers scope = case lookupScope "_this" scope of
-  Just binding | Just members <- scopeMembersBinding binding -> members
-  _ -> []
 
 publicDomainValue
   :: InterpretedValue
@@ -4529,7 +4882,7 @@ publicDomainValue value = do
   members <- namedMembers value
   importDomainValue
     [ simpleIdentifierTypeValue name anyTypeValue
-    | (name, _) <- public members
+    | (name, _) <- members
     ]
 
 scopeNamedMembers
@@ -4561,8 +4914,7 @@ importNamedBindings value =
           count <- maybe invalid Right
             (naturalAtOrdinal
               (interpretedMapFinalOrderType (interpretedMap value)))
-          traverse memberAt
-            (if count == 0 then [] else [0 .. count - 1])
+          traverse memberAt (naturalsBelow count)
       catMaybes <$> traverse export members
     invalid = Left (ModuleEvaluationFailed
       ImportedModuleRequiresIdentifierBinderFederation)
@@ -4668,8 +5020,12 @@ closureResolver scope = resolver
     resolver = Resolver resolve moduleResolver scopeIndex contextualDepth
     scopeIndex expressionValue = do
       index <- either (const Nothing) Just (evalInScope scope [] expressionValue)
-      either (const Nothing) id
-        (selectedDeclarationName (scopeDeclarationMembers scope) index)
+      (_, position) <- interpretedExplicitOrdinal index
+      declarations <- lookupScope "_this" scope >>= scopeMembersBinding
+      view <- either (const Nothing) id
+        (scopeEntriesNamedView UnrestrictedReduction [] declarations)
+      member <- either (const Nothing) id (namedMapMemberAt view position)
+      pure (namedMemberName member)
     moduleResolver path = case
         [ imported
         | (_, ImportedBinding _ identity _ imported) <- scopeBindings scope

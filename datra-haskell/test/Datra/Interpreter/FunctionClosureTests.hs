@@ -104,10 +104,6 @@ functionClosureTests = testGroup "canonical function reconstruction"
           <> "yield make 7"
       )
       "9" "7"
-  , roundTrip "in input is captured by an escaping function"
-      "yield (7 in (Nat -> Nat do yield it + _it 1))" "9" "16"
-  , roundTrip "in inside a function preserves its local contextual depth"
-      "yield (Nat -> Nat do yield (2 in it + _it 1))" "9" "11"
   , roundTrip "outer this depth is captured by an escaping function"
       ( "make := (() -> Any do marker := 7; "
           <> "yield (() -> Int do yield (_this 1).marker))\n"
@@ -153,22 +149,13 @@ functionClosureTests = testGroup "canonical function reconstruction"
       ("yield ({a? : 'datra.Int; b? : 'datra.Int} -> "
         <> "'datra.Int 'datra.add)")
       "(2; 3)" "5"
-  , roundTripUsingStd "syntax function ordinary application"
-      "step := \"step %Nat next\" % ({value? : Int} -> Int) do yield value + 1\nyield step"
-      "4" "5"
-  , testCase "closed syntax function retains only its map signature" $ do
-      value <- requireProgram
-        "step := \"step %Nat next\" % ({value? : Int} -> Int) do yield value + 1\nyield step"
-      let text = renderInterpretedValue value
-      assertBool "consumed syntax annotation leaked into the closure"
-        (not (" % " `isInfixOf` text))
   , testCase "unused ambient bindings are absent" $ do
       value <- requireProgram
         "unused := 987654321\noffset := 4\nf := ({x? : Int} -> Int do yield x + offset)\nyield f"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "source-defined integer range dependency" ("'datra.from" `isInfixOf` text)
+      assertBool "source-defined integer range dependency" ("'datra.from_body" `isInfixOf` text)
       assertBool "obsolete primitive Int dependency"
         (not (":= 'datra.Int;" `isInfixOf` text))
       assertBool "dependency uses strict current-scope access"

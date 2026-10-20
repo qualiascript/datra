@@ -44,7 +44,6 @@ isOpaqueSymbolicSyntaxLiteral literal =
     reservedRuns = coreTokens <> compactPrefixSkips
     reservedPrefixes =
       [ source
-      | operator <-
-          [AST.SyntaxTypeOperator, AST.ConcatenationOperator]
+      | operator <- [AST.ConcatenationOperator]
       , Just source <- [AST.operatorSourceSymbol operator]
       ]

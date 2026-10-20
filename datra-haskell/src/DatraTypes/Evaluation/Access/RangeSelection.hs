@@ -181,6 +181,7 @@ semanticAccessSource semantics =
       rangeSource [naturalDescribedRange 0 NaturalRange.UpwardsTarget]
     IntegerRangeSemantics _ _ -> rangeSource []
     ValuedIntegerRangeSemantics _ _ -> rangeSource []
+    IntegerLimitRangeSemantics _ _ -> rangeSource []
     IntegerTypeSemantics -> rangeSource []
     EitherSemantics _ _ -> ordinarySource []
     SkipSemantics _ -> ordinarySource []

@@ -8,7 +8,7 @@ module FunctionClosure
   , canonicalDependencyNames
   ) where
 
-import BlockScope (bindingNames)
+import DatraLanguage.DependentDeclaration (bindingNames)
 import Data.List (nub, stripPrefix)
 import DatraLanguage.AST
 import DatraLanguage.Identifier (requiresShadowingConsistency)
@@ -174,10 +174,6 @@ rewrite mode depth reserved active resolver bound expression =
       pure (FunctionApplication
         (FunctionTypeExpression closedGenerics closedDomain closedCodomain)
         body)
-    In value body -> In
-      <$> recur value
-      <*> rewrite mode depth reserved active resolver
-        (contextualMarker "_it" : "_it" : bound) body
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
     OptionalType operand
@@ -186,9 +182,6 @@ rewrite mode depth reserved active resolver bound expression =
             (FunctionApplication
               (IdentifierReference (IdentifierString "Maybe"))
               operand)
-    SyntaxType _ signature -> recur signature
-    MapSpecification implementation (SyntaxType _ signature) ->
-      recur (MapSpecification implementation signature)
     _ -> traverseExpressionChildren recur expression
   where
     recur = rewrite mode depth reserved active resolver bound

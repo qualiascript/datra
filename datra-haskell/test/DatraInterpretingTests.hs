@@ -36,8 +36,6 @@ import DatraLanguage.AST.Syntax
   , (~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
-import DatraLanguage.SyntaxTemplate
-  ( FunctionSyntax (FunctionSyntax) )
 import DatraTypes qualified as Types
 import Interpreting
   ( ModuleSource (..)
@@ -59,7 +57,6 @@ import Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   , moduleExportNames
-  , moduleSyntaxRules
   , parseDatraSourceLocatedWithImportsAndStandardLibrary
   )
 import DatraLanguage.Diagnostics.Interpreter
@@ -97,12 +94,6 @@ import MapOperators.AccessOperator
   )
 import ModuleLoading (loadSourceImports)
 import Numeric.Natural (Natural)
-import SyntaxDefinitions
-  ( SyntaxHoleKind (..)
-  , SyntaxPiece (SyntaxHole, SyntaxLiteral)
-  , SyntaxRule (..)
-  , SyntaxTemplate (SyntaxTemplate)
-  )
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -127,6 +118,7 @@ testTree =
         , testCase "generic product ordinal indexing"
             testGenericProductOrdinalIndexing
         , testCase "string templates" testStringTemplates
+        , testCase "dependent declarations" testDependentDeclarations
         , testCase "lookup follows transfinite foliage traversal"
             testLookupFoliageTraversal
         , testCase "named field access" testNamedAccess
@@ -190,101 +182,10 @@ assert = assertBool
 
 testModuleSyntaxAlias :: IO ()
 testModuleSyntaxAlias = do
-  let expressionType = hostReference "Expr"
-      blockType = hostReference "Block"
-      beginValue = SyntaxType
-        (StringTemplate
-          [ StringTemplateLiteral "begin "
-          , StringTemplateInterpolation (identifierReference "_Block")
-          , StringTemplateLiteral " yield "
-          , StringTemplateInterpolation (identifierReference "_Expr")
-          ])
-        (FunctionType
-          (AtlasMap [blockType, expressionType]) expressionType)
-      binding name value = IdentifierOperation
+  let binding name value = IdentifierOperation
         (IdentifierString name) value (Just value)
       member name value = IdentifierOperation
         (IdentifierString name) value Nothing
-      moduleBody = Begin
-        [binding "begin" (identifierReference "begin")]
-        (contextualAccess (IdentifierString "_this"))
-      source = ModuleSource "alias-module.datra"
-        (Begin
-          [ binding "_Expr" expressionType
-          , binding "_Block" blockType
-          , binding "begin" beginValue
-          , binding "outerOnly" (natural 7)
-          ]
-          (member "AliasModule" moduleBody))
-        []
-  case moduleExportNames source of
-    Right names -> assert "only inner declarations are module members"
-      (names == ["begin"])
-    Left failure -> assertFailure
-      ("module export discovery failed: " <> show failure)
-  case moduleSyntaxRules "alias-module" source of
-    Right [rule] -> do
-      assert "the inner alias retains the outer function's syntax"
-        (syntaxName rule == "begin")
-      assert "the retained rule keeps its declared literal"
-        (syntaxTemplate rule == SyntaxTemplate
-          [ SyntaxLiteral "begin"
-          , SyntaxHole (BlockSyntaxHole
-              (InModule "alias-module" (identifierReference "_Block")))
-          , SyntaxLiteral "yield"
-          , SyntaxHole (ExpressionSyntaxHole
-              (InModule "alias-module" (identifierReference "_Expr")))
-          ])
-    Right rules -> assertFailure
-      ("expected one exported syntax rule, got: " <> show rules)
-    Left failure -> assertFailure
-      ("module syntax discovery failed: " <> show failure)
-  let shadowingSource = ModuleSource "shadowing-module.datra"
-        (Begin
-          [ binding "_Expr" expressionType
-          , binding "_Block" blockType
-          , binding "begin" beginValue
-          ]
-          (member "ShadowingModule" (Begin
-            [binding "begin" (natural 123)]
-            (contextualAccess (IdentifierString "_this")))))
-        []
-  case moduleSyntaxRules "shadowing-module" shadowingSource of
-    Right [] -> pure ()
-    Right rules -> assertFailure
-      ("a non-function shadow retained syntax rules: " <> show rules)
-    Left failure -> assertFailure
-      ("shadowing module syntax discovery failed: " <> show failure)
-  let preservingSource = ModuleSource "preserving-module.datra"
-        (Begin
-          [ binding "_Expr" expressionType
-          , binding "_Block" blockType
-          , binding "begin" beginValue
-          ]
-          (member "PreservingModule" (Begin
-            [ binding "_begin" (identifierReference "begin")
-            , binding "begin" (natural 123)
-            ]
-            (contextualAccess (IdentifierString "_this")))))
-        []
-  case moduleSyntaxRules "preserving-module" preservingSource of
-    Right [rule] -> assert
-      "an alias made before shadowing retains the original syntax rules"
-      (syntaxName rule == "_begin"
-        && syntaxTemplate rule == SyntaxTemplate
-          [ SyntaxLiteral "begin"
-          , SyntaxHole (BlockSyntaxHole
-              (InModule "preserving-module"
-                (identifierReference "_Block")))
-          , SyntaxLiteral "yield"
-          , SyntaxHole (ExpressionSyntaxHole
-              (InModule "preserving-module"
-                (identifierReference "_Expr")))
-          ])
-    Right rules -> assertFailure
-      ("expected only the preserved alias rule, got: " <> show rules)
-    Left failure -> assertFailure
-      ("syntax-preserving shadow failed: " <> show failure)
   let duplicateSource = ModuleSource "duplicate-module.datra"
         (Begin [] (member "DuplicateModule" (Begin
           [ binding "abc" (natural 123)
@@ -293,7 +194,7 @@ testModuleSyntaxAlias = do
           (contextualAccess (IdentifierString "_this")))))
         []
   case moduleExportNames duplicateSource of
-    Left (IdentifierStringOverlap "abc") -> pure ()
+    Left (OverlappingBindings "abc") -> pure ()
     result -> assertFailure
       ("same-block redeclaration was not rejected: " <> show result)
   let isolatedBody = Begin
@@ -321,11 +222,6 @@ testModuleSyntaxAlias = do
 
 identifierReference :: String -> Expression
 identifierReference = IdentifierReference . IdentifierString
-
-hostReference :: String -> Expression
-hostReference name = ScopeAccess
-  (identifierReference "'datra")
-  (identifierReference name)
 
 sourceNatType :: String
 sourceNatType = "Nat"
@@ -1146,7 +1042,7 @@ testCanonicalTypes = do
     , "Template"
     , "'datra.Expr"
     , "'datra.DependentIdentifier"
-    , "'datra.Declaration"
+    , "'datra.DependentDeclaration"
     , "'datra.Block"
     , "'datra.FunctionBody"
     , "(Nat; 'datra.Expr)"
@@ -1208,7 +1104,7 @@ testPrograms = do
 testBeginRejections :: IO ()
 testBeginRejections = do
   mapM_ (\source -> expectSourceRejection source source
-    (\case IdentifierStringOverlap "a" -> True; _ -> False))
+    (\case OverlappingBindings "a" -> True; _ -> False))
     [ "begin a := 1; a := 2 yield a"
     , "begin a := 1; let a := 2 yield a"
     , "begin a? := 1; a := 2 yield a"
@@ -1370,27 +1266,6 @@ testGenericProductOrdinalIndexing = do
 
 testStringTemplates :: IO ()
 testStringTemplates = do
-  case interpretExpressionReason
-      (SyntaxType (StringTemplate
-        [ StringTemplateLiteral "choose "
-        , StringTemplateInterpolation (identifierReference "Int")
-        , StringTemplateLiteral " mark"
-        ])
-        (FunctionType IntegerType IntegerType)) of
-    Right value -> do
-      assert "syntax annotations are erased from canonical function rendering"
-        (renderInterpretedValue value == "(Int -> Int)")
-      assert "evaluated function types retain their structured syntax attachment"
-        (case Types.interpretedFunction value >>= Types.functionSyntax of
-          Just (FunctionSyntax
-            [ SyntaxTemplate
-                [ SyntaxLiteral "choose"
-                , SyntaxHole (ValueSyntaxHole _)
-                , SyntaxLiteral "mark"
-                ]]) -> True
-          _ -> False)
-    Left failure -> assertFailure
-      ("syntax function type failed to evaluate: " <> show failure)
   expectSourceValue
       "Int template excludes Infinity"
       "\"Infinity\" of \"%Int\"" $ \value ->
@@ -1841,6 +1716,128 @@ testLookupFoliageTraversal =
       "omega-squared captures use Cantor-diagonal foliage order"
       "(\"cell0.0\"; \"cell0.1\"; \"cell1.0\"; \"cell0.2\"; \"cell1.1\"; \"cell2.0\")"
       (renderInterpretedValue value)
+
+testDependentDeclarations :: IO ()
+testDependentDeclarations = do
+  expectProgram
+    "dependent declaration binds captures as it"
+    (unlines
+      [ "\"pair %(_x : Int) with %(_y : Int)\" := it"
+      , "yield pair 1 with 2"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "let dependent declaration is visible recursively"
+    (unlines
+      [ "answer := pair 1 with 2"
+      , "let \"pair %(_x : Int) with %(_y : Int)\" := it"
+      , "yield answer"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "unused let dependent declaration does not force its implementation"
+    (unlines
+      [ "let \"unused %(_x : Int)\" := missing"
+      , "yield 7"
+      ])
+    "7"
+  expectFailure
+    "let dependent declaration does not capture later ordinary bindings"
+    "UnknownIdentifier \"later\""
+    (unlines
+      [ "let \"late %(_x : Int)\" := later"
+      , "later := 9"
+      , "yield late 1"
+      ])
+  expectProgram
+    "parenthesized declaration head evaluates its template binding"
+    (unlines
+      [ "pattern := \"pair %(_x : Int) with %(_y : Int)\""
+      , "(pattern) := it"
+      , "yield pair 1 with 2"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "concrete lookup reaches a dependent declaration"
+    (unlines
+      [ "\"pair %(_x : Int) with %(_y : Int)\" := it"
+      , "yield (~\"pair 1 with 2\")[0].value"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "val accepts an injective dependent declaration"
+    (unlines
+      [ "val \"pair %(_x : Int) with %(_y : Int)\" := it"
+      , "yield pair 1 with 2"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectFailure
+    "val rejects a many-to-one dependent declaration"
+    "NonInjectiveDependentDeclaration"
+    (unlines
+      [ "val \"pair %(_x : Int)\" := 1"
+      , "yield pair 2"
+      ])
+  expectFailure
+    "dependent declarations cannot be optional"
+    "OperationHasNoEffect"
+    (unlines
+      [ "\"pair %(_x : Int)\"? := it"
+      , "yield 1"
+      ])
+  expectFailure
+    "overlapping dependent declarations are rejected"
+    "OverlappingDependentDeclarations"
+    (unlines
+      [ "\"pair %(_x : Int)\" := it"
+      , "\"pair 1%(_x : Int)\" := it"
+      , "yield 1"
+      ])
+  expectProgram
+    "distinct dependent declaration languages coexist"
+    (unlines
+      [ "\"left %(_x : Int)\" := it"
+      , "\"right %(_x : Int)\" := it"
+      , "yield right 2"
+      ])
+    "{_x : Int := 2}"
+  expectProgram
+    "equal template shapes use capture federation disjointness"
+    (unlines
+      [ "\"value %(_x : Int)\" := 1"
+      , "\"value %(_x : Bool)\" := 2"
+      , "yield (value 3; value true)"
+      ])
+    "(1; 2)"
+  expectFailure
+    "ordinary declarations share dependent name-family admission"
+    "OverlappingDependentDeclarations"
+    (unlines
+      [ "abc := 1"
+      , "\"abc\" := 2"
+      , "yield abc"
+      ])
+  where
+    expectProgram label source expected =
+      case runProgram source of
+        Left failure -> assertFailure
+          (label <> ": unexpected failure: " <> show failure)
+        Right value -> assertEqual label expected
+          (renderInterpretedValue value)
+    expectFailure label expected source =
+      case runProgram source of
+        Left failure -> assert
+          (label <> ": " <> show failure)
+          (expected `contains` show failure)
+        Right value -> assertFailure
+          (label <> ": unexpectedly produced " <> renderInterpretedValue value)
+    contains needle haystack = any (needle `prefixOf`) (tails haystack)
+    prefixOf [] _ = True
+    prefixOf _ [] = False
+    prefixOf (left : lefts) (right : rights) =
+      left == right && prefixOf lefts rights
+    tails [] = [[]]
+    tails value@(_ : rest) = value : tails rest
 
 testRemainingLiterals :: IO ()
 testRemainingLiterals = do

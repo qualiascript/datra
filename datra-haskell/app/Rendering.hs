@@ -24,6 +24,7 @@ import DatraLanguage.AST
   )
 import DatraTypes
   ( CanonicalResult (..)
+  , IntegerLimit (..)
   , builtinMetaTypeCanonicalString
   , InterpretedValue
   , interpretedCanonicalResult
@@ -150,6 +151,9 @@ prettyNonKeywordCanonicalResult result =
     CanonicalIntegerRange origin target -> prettyIntegerRange origin target
     CanonicalValuedIntegerRange origin target ->
       prettyValuedIntegerRange origin target
+    CanonicalIntegerLimitRange origin target ->
+      rangeWord <+> prettyIntegerLimit origin
+        <+> toWord <+> prettyIntegerLimit target
     CanonicalIntegerType -> reservedSymbolDoc Reserved.IntegerTypeSymbol
     CanonicalEither left right -> prettyEither result left right
     CanonicalRangeConcatenation descriptions ->
@@ -501,6 +505,12 @@ prettyValuedIntegerRange origin target =
     DownwardsIntegerTarget ->
       fromWord <> " " <> pretty origin <> " " <> downwardsWord
     AllIntegersTarget -> reservedSymbolDoc Reserved.IntegerTypeSymbol
+
+prettyIntegerLimit :: IntegerLimit -> Doc annotation
+prettyIntegerLimit limit = case limit of
+  NegativeInfinity -> "$NegInf"
+  FiniteInteger value -> pretty value
+  PositiveInfinity -> "$PosInf"
 
 rangeWord, fromWord, toWord, upwardsWord, downwardsWord :: Doc annotation
 rangeWord = reservedSymbolDoc Reserved.RangeSymbol

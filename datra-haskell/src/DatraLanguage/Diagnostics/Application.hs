@@ -3,7 +3,6 @@
 module DatraLanguage.Diagnostics.Application
   ( ParseFailure (..)
   , ModuleLoadFailure (..)
-  , SyntaxExpansionFailure (..)
   , SyntaxTemplateAdmissibilityFailure (..)
   , CommandLineOptionFailure (..)
   ) where
@@ -18,10 +17,6 @@ data ModuleLoadFailure
   | CyclicModuleImport FilePath
   | ModuleReadFailed String FilePath String
   | ImportedModuleParseFailed FilePath ParseFailure
-  deriving (Eq, Show)
-
-data SyntaxExpansionFailure
-  = UnknownSyntaxControlAdapter String
   deriving (Eq, Show)
 
 data SyntaxTemplateAdmissibilityFailure

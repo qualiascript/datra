@@ -82,9 +82,7 @@ overloadFailureIsAmbiguous failure =
     _ -> False
 
 data FunctionFailure
-  = AstPatternRequiresFunctionSignature
-  | AstPatternRequiresFunctionImplementation
-  | HostSyntaxHookRequiresAstCaptures
+  = HostSyntaxHookRequiresAstCaptures
   | MissingNativeArgument String
   | AmbiguousFunctionSumApplication
   | AmbiguousFunctionArgumentBindings
@@ -132,7 +130,7 @@ data InterpretingError
   | OverloadError OverloadFailure
   | AssertionFailed
   | OperationHasNoEffect
-  | IdentifierStringOverlap String
+  | OverlappingBindings String
   | InconsistentShadowing String
   | LetBindingCannotShadowConsistentIdentifier String
   | UnknownIdentifier String
@@ -174,7 +172,6 @@ data InterpretingError
   | AtlasMapFederationOperationUndecidable AtlasMapFederationUncertainty
   | NonInjectiveStringInterpolation
   | NoCanonicalStringConversion
-  | InvalidSyntaxTemplateOperand
   | InvalidSyntaxTemplate
       String
       SyntaxTemplateAdmissibilityFailure

@@ -3,7 +3,6 @@ module DatraLanguage.Diagnostics.Locales.Romanian
   ( localizeAccessError
   , localizeParseFailure
   , localizeModuleLoadFailure
-  , localizeSyntaxExpansionFailure
   , localizeCommandLineOptionFailure
   , localizeInterpretingError
   , localizeSuperEllipsisRangeError
@@ -16,7 +15,6 @@ import DatraLanguage.Diagnostics.Application
   ( CommandLineOptionFailure (..)
   , ModuleLoadFailure (..)
   , ParseFailure (..)
-  , SyntaxExpansionFailure (..)
   , SyntaxTemplateAdmissibilityFailure (..)
   )
 import Evaluation.Error
@@ -81,15 +79,6 @@ localizeModuleLoadFailure failure =
       LocalizedMessage "modulul importat nu a putut fi analizat"
         ["modul: " <> path, parseFailureMessage parseFailure]
 
-localizeSyntaxExpansionFailure
-  :: SyntaxExpansionFailure
-  -> LocalizedMessage
-localizeSyntaxExpansionFailure failure =
-  case failure of
-    UnknownSyntaxControlAdapter name ->
-      LocalizedMessage "adaptorul de control sintactic nu este înregistrat"
-        ["adaptor: " <> name]
-
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
   -> LocalizedMessage
@@ -139,8 +128,9 @@ localizeInterpretingError reason =
     AssertionFailed -> LocalizedMessage "aserțiunea a eșuat" []
     OperationHasNoEffect ->
       LocalizedMessage "operația nu are efect" []
-    IdentifierStringOverlap name ->
-      LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
+    OverlappingBindings name ->
+      LocalizedMessage "legările se suprapun în același domeniu"
+        ["legare: " <> name]
     InconsistentShadowing name ->
       LocalizedMessage
         "ascunderea identificatorului nu este consecventă cu legarea existentă"
@@ -285,10 +275,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "valoarea nu are o conversie canonică în șir"
         ["sunt acceptate doar conversii în șir injective și reversibile"]
-    InvalidSyntaxTemplateOperand ->
-      LocalizedMessage
-        "% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
-        []
     InvalidSyntaxTemplate template failure ->
       LocalizedMessage
         (syntaxTemplateFailureSummary template failure)
@@ -348,10 +334,6 @@ syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =
   case failure of
-    AstPatternRequiresFunctionSignature ->
-      LocalizedMessage "un șablon AST necesită o semnătură de funcție" []
-    AstPatternRequiresFunctionImplementation ->
-      LocalizedMessage "un șablon AST necesită o implementare de funcție" []
     HostSyntaxHookRequiresAstCaptures ->
       LocalizedMessage "cârligul de sintaxă gazdă necesită capturi AST neevaluate" []
     MissingNativeArgument name ->

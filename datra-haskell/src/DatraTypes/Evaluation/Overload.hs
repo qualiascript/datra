@@ -43,6 +43,7 @@ import DatraLanguage.AST (GenericBinderId, GenericPolarity)
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
+  , naturalsBelow
   , omega
   , ordinalGT
   , ordinalGTE
@@ -1036,8 +1037,7 @@ foliageArgumentValuesCompleteWith complete family supplied = do
           monotonicFamily (Just candidateOrder) ordered traversal
           remaining exhausted
 
-    naturalPositions 0 = []
-    naturalPositions count = [0 .. count - 1]
+    naturalPositions = naturalsBelow
 
     decisionEither decision =
       case decision of
@@ -1296,7 +1296,7 @@ finiteMembers value = do
     (interpretedMapFinalOrderType (interpretedMap value))
   traverse
     (interpretedMapValueAt (interpretedMap value) . finiteOrdinal)
-    (if count == 0 then [] else [0 .. count - 1])
+    (naturalsBelow count)
 
 optionalNamedParts
   :: InterpretedValue

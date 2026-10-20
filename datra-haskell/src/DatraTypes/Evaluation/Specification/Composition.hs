@@ -26,9 +26,7 @@ import Evaluation.Identifier
   , privateSimpleIdentifier
   )
 import Evaluation.Numerical
-  ( IntegerLimit (..)
-  , complementedIntegerTypeIncludesInfinity
-  )
+  ( complementedIntegerTypeIncludesInfinity )
 import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
 import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation

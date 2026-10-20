@@ -3,6 +3,7 @@ module DatraLanguage.AST.Source (renderSourceExpression) where
 
 import Data.List (intercalate)
 import DatraLanguage.AST
+import DatraLanguage.AST.Operator qualified as Operator
 import DatraLanguage.NeutralLexer (isOpaqueSymbolicSyntaxLiteral)
 
 renderSourceExpression :: Expression -> String
@@ -68,8 +69,6 @@ source context expression =
     ImportValue paths body -> "import "
       <> intercalate "; " (map renderAsciiStringLiteral paths)
       <> " " <> source 0 body
-    SyntaxTypeValue templates signature -> wrapped 1
-      (source 2 templates <> " % " <> source 0 signature)
     FunctionTypeValue _ input output -> wrapped 11
       (source 12 input <> " -> " <> functionTypeOutput output)
     FunctionApplicationValue
@@ -111,7 +110,6 @@ source context expression =
       ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
-    InValue value body -> binary 0 "in" value body
     MaybeThenValue optional branch -> binary 1 "!?" optional branch
     EitherValue left right -> binary 3 "|" left right
     Or left right -> binary 4 "or" left right
@@ -168,6 +166,10 @@ source context expression =
     InclusiveValuedIntegerRangeUpwards start -> open "from" start "up"
     InclusiveValuedIntegerRangeDownwards start -> open "from" start "down"
     StringTemplateValue parts -> renderStringTemplate (source 0) (const Nothing) parts
+    GreedyStringTemplateValue operand ->
+      maybe "" id
+        (Operator.operatorSourceSymbol Operator.GreedyStringTemplateOperator)
+        <> source 9 operand
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom

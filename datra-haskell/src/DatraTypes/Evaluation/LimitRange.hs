@@ -2,6 +2,7 @@
 module Evaluation.LimitRange
   ( IntegerRangeKind (..)
   , integerLimitRangeValue
+  , integerLimitRangeIsSubfederationOf
   ) where
 
 import Evaluation.Either (makeEitherValue)
@@ -11,8 +12,7 @@ import Evaluation.Error
   , OperandSide (..)
   )
 import Evaluation.Numerical
-  ( IntegerLimit (..)
-  , makeIntegerLimit
+  ( makeIntegerLimit
   , requireIntegerLimit
   )
 import Evaluation.Map (concatenateValues)
@@ -37,15 +37,58 @@ integerLimitRangeValue
 integerLimitRangeValue kind startValue endpointValue = do
   start <- requireIntegerLimit LeftOperand startValue
   endpoint <- requireIntegerRangeEndpoint endpointValue
-  case start of
+  result <- case start of
     FiniteInteger finiteStart -> finiteStartRange kind finiteStart endpoint
     PositiveInfinity -> infiniteStartRange kind PositiveInfinity endpoint
     NegativeInfinity -> infiniteStartRange kind NegativeInfinity endpoint
+  pure (case (kind, endpoint) of
+    (IntegerRangeKind, FiniteEndpoint target) ->
+      withInterpretedSemantics
+        (IntegerLimitRangeSemantics start target)
+        result
+    _ -> result)
   where
     infiniteStartRange ValuedIntegerRangeKind _ _ =
       Left (IndeterminateInfinityOperation "from")
     infiniteStartRange IntegerRangeKind infinity target =
       unvaluedInfiniteStartRange infinity target
+
+integerLimitRangeIsSubfederationOf
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe Bool
+integerLimitRangeIsSubfederationOf source target = do
+  (sourceOrigin, sourceTarget) <- integerLimitRangeEndpoints source
+  (targetOrigin, targetTarget) <- integerLimitRangeEndpoints target
+  pure (directedSubrangeFits
+    targetOrigin targetTarget sourceOrigin sourceTarget)
+
+integerLimitRangeEndpoints
+  :: InterpretedValue
+  -> Maybe (IntegerLimit, IntegerLimit)
+integerLimitRangeEndpoints = fromSemantics . interpretedSemanticSemantics
+  where
+    fromSemantics semantics = case semantics of
+      IntegerLimitRangeSemantics origin target -> Just (origin, target)
+      AssignmentSemantics _ _ given -> fromSemantics given
+      SpecificationSemantics source _ -> fromSemantics source
+      _ -> Nothing
+
+directedSubrangeFits
+  :: IntegerLimit
+  -> IntegerLimit
+  -> IntegerLimit
+  -> IntegerLimit
+  -> Bool
+directedSubrangeFits outerOrigin outerTarget innerOrigin innerTarget
+  | outerOrigin <= outerTarget =
+      innerOrigin <= innerTarget
+        && outerOrigin <= innerOrigin
+        && innerTarget <= outerTarget
+  | otherwise =
+      innerOrigin >= innerTarget
+        && outerTarget <= innerTarget
+        && innerOrigin <= outerOrigin
 
 unvaluedInfiniteStartRange
   :: IntegerLimit

@@ -262,10 +262,11 @@ testOrdinalIndexedFamilyCapability = do
   let aboveOmega = Types.makeLazyMapValue
         (addOrdinals omega (finiteOrdinal 1))
         (const Nothing)
-  assert "an atomic ordered map above omega is not an indexed family"
+  assert "an atomic ordered map above omega preserves its ordinal index"
     (case Types.ordinalIndexedValueFamily aboveOmega of
-      Nothing -> True
-      Just _ -> False)
+      Nothing -> False
+      Just family -> Types.ordinalIndexedFamilyOrderType family
+        == addOrdinals omega (finiteOrdinal 1))
 
 testEvaluationBoundary :: IO ()
 testEvaluationBoundary = do
@@ -545,16 +546,6 @@ testDiagnostics = do
           [ "șablon: \"call ~\""
           , "șablonul complet trebuie să furnizeze operandul cerut de operator"
           ]
-    )
-  assert "invalid syntax-template operands have an explicit bilingual diagnostic"
-    ( localizeDiagnostic English Types.InvalidSyntaxTemplateOperand
-        == LocalizedMessage
-          "% expects a compile-time string or total map of strings"
-          []
-      && localizeDiagnostic Romanian Types.InvalidSyntaxTemplateOperand
-        == LocalizedMessage
-          "% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
-          []
     )
   assert "parser failures have exact bilingual localization"
     ( localizeDiagnostic English (ParseFailure "bad token")

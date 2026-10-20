@@ -9,7 +9,6 @@ module DatraLanguage.AST.Operator
 
 data Operator
   = FunctionTypeOperator
-  | SyntaxTypeOperator
   | ApplicationOperator
   | DoOperator
   | SequentialOperator
@@ -32,13 +31,13 @@ data Operator
   | BooleanNotOperator
   | CoalizationOperator
   | LookupOperator
+  | GreedyStringTemplateOperator
   | AssertOperator
   | BeginOperator
   | LetOperator
   | ValOperator
   | EitherOperator
   | OptionalOperator
-  | InOperator
   | MaybeThenOperator
   | MultiplicationOperator
   | ExponentiationOperator
@@ -56,7 +55,6 @@ data Operator
 -- | Canonical notation used when rendering an AST.
 operatorCanonicalSymbol :: Operator -> String
 operatorCanonicalSymbol FunctionTypeOperator = "->"
-operatorCanonicalSymbol SyntaxTypeOperator = "%"
 operatorCanonicalSymbol ApplicationOperator = "apply-func"
 operatorCanonicalSymbol DoOperator = "do"
 operatorCanonicalSymbol SequentialOperator = "<:>"
@@ -79,13 +77,13 @@ operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol CoalizationOperator = "><"
 operatorCanonicalSymbol LookupOperator = "~"
+operatorCanonicalSymbol GreedyStringTemplateOperator = "%"
 operatorCanonicalSymbol AssertOperator = "assert"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
 operatorCanonicalSymbol ValOperator = "val"
 operatorCanonicalSymbol EitherOperator = "|"
 operatorCanonicalSymbol OptionalOperator = "?"
-operatorCanonicalSymbol InOperator = "in"
 operatorCanonicalSymbol MaybeThenOperator = "maybe-then"
 operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
@@ -103,7 +101,6 @@ operatorCanonicalSymbol AssignmentOperator = ":="
 -- Sequential and expansion structure comes from map separators and nesting.
 operatorSourceSymbol :: Operator -> Maybe String
 operatorSourceSymbol FunctionTypeOperator = Just "->"
-operatorSourceSymbol SyntaxTypeOperator = Just "%"
 operatorSourceSymbol ApplicationOperator = Nothing
 operatorSourceSymbol DoOperator = Just "do"
 operatorSourceSymbol SequentialOperator = Nothing
@@ -126,13 +123,13 @@ operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol CoalizationOperator = Just "><"
 operatorSourceSymbol LookupOperator = Just "~"
+operatorSourceSymbol GreedyStringTemplateOperator = Just "%"
 operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"
 operatorSourceSymbol ValOperator = Just "val"
 operatorSourceSymbol EitherOperator = Just "|"
 operatorSourceSymbol OptionalOperator = Just "?"
-operatorSourceSymbol InOperator = Just "in"
 operatorSourceSymbol MaybeThenOperator = Just "!?"
 operatorSourceSymbol MultiplicationOperator = Just skipSourceSymbol
 operatorSourceSymbol ExponentiationOperator = Just "^"

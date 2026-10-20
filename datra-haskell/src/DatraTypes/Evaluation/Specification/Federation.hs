@@ -13,6 +13,7 @@ import AtlasMapFederationExpression
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
+  , naturalsBelow
   , ordinalLT
   )
 import Evaluation.Federation
@@ -166,8 +167,7 @@ integerMapFormSubrange value
         (interpretedMap value)
         (finiteOrdinal position)
         >>= interpretedInteger
-    finitePositions 0 = []
-    finitePositions cardinality = [0 .. cardinality - 1]
+    finitePositions = naturalsBelow
 
 integerSequenceSubrange
   :: [Integer]
@@ -226,8 +226,7 @@ mapSubrange value =
       (level, ordinalValue) <- interpretedExplicitOrdinal member
       if level == 1 then naturalAtOrdinal ordinalValue else Nothing
 
-    finitePositions 0 = []
-    finitePositions cardinality = [0 .. cardinality - 1]
+    finitePositions = naturalsBelow
 
 rangeSubrange
   :: EvaluatedRange

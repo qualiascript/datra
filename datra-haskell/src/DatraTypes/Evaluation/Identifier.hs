@@ -6,6 +6,7 @@ module Evaluation.Identifier
   , identifierNameFederationFor
   , evaluatedIdentifierType
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , privateSimpleIdentifier
   , privateIdentifierUnderlying
   , simpleIdentifierTypeValue
@@ -24,7 +25,6 @@ import AtlasMapFederationExpression
   )
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError)
-import Evaluation.Map (isEmptyMap)
 import Evaluation.Value
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Identifier (isPrivateIdentifier)
@@ -32,7 +32,7 @@ import DatraLanguage.Identifier (isPrivateIdentifier)
 -- | Compiler-owned metadata identifying an identifier whose declared name is
 -- its canonical presentation.
 canonicalValueMarker :: String
-canonicalValueMarker = "CanonicalValue"
+canonicalValueMarker = "val"
 
 evaluatedIdentifierType
   :: InterpretedValue
@@ -48,20 +48,11 @@ evaluatedIdentifierType value =
     _ -> Nothing
 
 simpleIdentifierName :: InterpretedValue -> Maybe String
-simpleIdentifierName value =
-  case evaluatedIdentifierType value of
-    Just identifier ->
-      case evaluatedIdentifierDependency identifier of
-        SimpleIdentifierDependency name -> Just name
-        DependentIdentifierDependency {} -> Nothing
-    Nothing -> semanticName (interpretedSemantics value)
-  where
-    semanticName semantics = case semantics of
-      PresentedSemantics _ _ underlying -> semanticName underlying
-      AssignmentSemantics name _ _ -> Just name
-      DependentIdentifierTypeSemantics
-          (SimpleIdentifierDependency name) _ _ _ -> Just name
-      _ -> Nothing
+simpleIdentifierName = interpretedSimpleIdentifierName
+
+identifierUnderlyingValue :: InterpretedValue -> Maybe InterpretedValue
+identifierUnderlyingValue value =
+  evaluatedIdentifierUnderlying <$> evaluatedIdentifierType value
 
 privateSimpleIdentifier :: EvaluatedDependentIdentifierType -> Bool
 privateSimpleIdentifier identifier =
@@ -140,16 +131,13 @@ simpleIdentifierTypeValue
   :: String
   -> InterpretedValue
   -> InterpretedValue
-simpleIdentifierTypeValue identifierString underlying
-  | isEmptyMap underlying =
-      makeAsciiString identifierString
-  | otherwise =
-      makeDependentIdentifierTypeValue
-        (SimpleIdentifierDependency identifierString)
-        Nothing
-        Nothing
-        True
-        underlying
+simpleIdentifierTypeValue identifierString underlying =
+  makeDependentIdentifierTypeValue
+    (SimpleIdentifierDependency identifierString)
+    Nothing
+    Nothing
+    True
+    underlying
 
 -- | An inferred assignment may bind a non-total value such as a type.  Its
 -- federation remains the dependent identifier family, while its canonical
@@ -178,14 +166,15 @@ inferredIdentifierAssignmentValue identifierString underlying =
 withTrailingIdentifierMarker :: String -> InterpretedValue -> InterpretedValue
 withTrailingIdentifierMarker marker value
   | hasTrailingIdentifierMarker marker value = value
-  | otherwise = value
+  | otherwise = marked
+  where
+    marked = value
       { interpretedMap = markedMap
       , interpretedTotalAtlasMap =
           case interpretedTotalAtlasMap value of
             Just _ -> Just (InterpretedTotalAtlasMap markedMap)
             Nothing -> Nothing
       }
-  where
     markerValue = makeAsciiString marker
     sourceMap = interpretedMap value
     markedMap = sourceMap
@@ -285,7 +274,7 @@ makeDependentIdentifierTypeValue
         [ interpretedSemantics identifierStringValue
         , interpretedSemantics underlying
         ]
-    value =
+    base =
       makeEvaluatedIdentifierValue
         canonicalType
         (DependentIdentifierTypeForm evaluated)
@@ -293,6 +282,7 @@ makeDependentIdentifierTypeValue
         isTotal
         valueMap
         semantics
+    value = base
     canonicalType = structuralDatraType
 
 -- | Totality is established by the caller from every component of the
