@@ -54,12 +54,34 @@ dependentDeclaration = declaration False False
 
     scopeTemplatePart _ literal@StringTemplateLiteral {} = literal
     scopeTemplatePart contextual
-        (StringTemplateInterpolation (SyntaxBoundary expressionValue)) =
-      StringTemplateInterpolation
-        (SyntaxBoundary (In contextual expressionValue))
-    scopeTemplatePart contextual
         (StringTemplateInterpolation expressionValue) =
-      StringTemplateInterpolation (In contextual expressionValue)
+      StringTemplateInterpolation
+        (scopeInterpolation contextual expressionValue)
+
+    scopeInterpolation contextual expressionValue = case expressionValue of
+      SyntaxBoundary inner ->
+        SyntaxBoundary (scopeInterpolation contextual inner)
+      GreedyStringTemplate operand ->
+        GreedyStringTemplate (scopeGreedy contextual operand)
+      capture -> In contextual capture
+
+    -- Contextual declaration syntax scopes each capture, not the template
+    -- combinators which arrange those captures. Preserving that structure is
+    -- what lets name lookup reject an impossible family before evaluating any
+    -- of its capture domains.
+    scopeGreedy contextual expressionValue = case expressionValue of
+      SyntaxBoundary inner ->
+        SyntaxBoundary (scopeGreedy contextual inner)
+      AtlasMap members -> AtlasMap (map (scopeGreedy contextual) members)
+      MapSequence members ->
+        MapSequence (map (scopeGreedy contextual) members)
+      EitherType left right -> EitherType
+        (scopeGreedy contextual left)
+        (scopeGreedy contextual right)
+      OptionalType operand ->
+        OptionalType (scopeGreedy contextual operand)
+      literal@AsciiStringLiteral {} -> literal
+      capture -> In contextual capture
 
 -- A syntax boundary on the sole interpolation marks an evaluated declaration
 -- head, whether it was written with parentheses or formed by a tighter

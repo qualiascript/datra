@@ -975,8 +975,7 @@ data Scope = Scope
 -- preceding ordinary declarations; every local let declaration is already
 -- present in that snapshot, but its implementation remains deferred.
 data ScopedDependentDeclaration = ScopedDependentDeclaration
-  { scopedDependentDeclarationPosition :: Int
-  , scopedDependentDeclarationScope :: Scope
+  { scopedDependentDeclarationScope :: Scope
   , scopedDependentDeclarationFamilyScope :: Scope
   , scopedDependentDeclarationValue :: DependentDeclaration
   }
@@ -2885,7 +2884,6 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
         where
           positionedScopeMembers =
             [ ScopedDependentDeclaration
-                position
                 (scopeAt position)
                 (familyScopeAt position)
                 declaration
