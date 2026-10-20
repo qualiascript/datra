@@ -1230,7 +1230,7 @@ eitherExpressionWithOperator eitherOperator operand =
 mapExpression :: Parser Expression
 mapExpression =
   makeExprParser
-    ( try evaluatedIdentifierOperation
+    ( try evaluatedTemplateFederationOperation
         <|> try identifierTemplateOperation
         <|> try identifierOperation
         <|> rangeExpression
@@ -1241,13 +1241,46 @@ mapExpression =
 -- literal identifier @abc@, while @(abc)@ evaluates @abc@ as the dependent
 -- name template. Reuse the dependent-identifier representation so the two
 -- directions remain one semantic pair rather than two parser-only forms.
-evaluatedIdentifierOperation :: Parser Expression
-evaluatedIdentifierOperation = do
-  evaluated <- try
-    ( parenthesizedExpression
-        <|> (SyntaxBoundary <$> greedyStringTemplateExpression)
-        <|> templateFederationBoundary
-    )
+evaluatedTemplateFederationOperation :: Parser Expression
+evaluatedTemplateFederationOperation = do
+  evaluated <- templateFederationBoundary
+  evaluatedIdentifierOperationFrom evaluated
+
+-- Parenthesized expressions and greedy templates are common ordinary terms.
+-- Parse them once, then consume a declaration suffix only when one is
+-- actually present. The former arrangement parsed the complete nested term
+-- speculatively as a declaration head and parsed it all over again after
+-- backtracking, which made nested Std expressions exponentially expensive.
+evaluatedIdentifierOperationOrExpression :: Parser Expression
+evaluatedIdentifierOperationOrExpression = do
+  (isParenthesized, evaluated) <- choice
+    [ (\value -> (True, value)) <$> parenthesizedExpression
+    , (\value -> (False, SyntaxBoundary value))
+        <$> greedyStringTemplateExpression
+    ]
+  reversed <- if isParenthesized
+    then optional (try (reverseSpecificationAfter evaluated))
+    else pure Nothing
+  case reversed of
+    Just specification -> pure specification
+    Nothing -> do
+      let headExpression = case evaluated of
+            SyntaxBoundary inner -> inner
+            inner -> inner
+      if validEvaluatedDeclarationHead headExpression
+        then maybe evaluated id <$>
+          optional (try (evaluatedIdentifierOperationFrom evaluated))
+        else pure evaluated
+
+reverseSpecificationAfter :: Expression -> Parser Expression
+reverseSpecificationAfter target = do
+  _ <- continuedSymbol reverseSpecificationSymbol
+  source <- parenthesizedExpression
+  _ <- notFollowedBy (try (continuedSymbol reverseSpecificationSymbol))
+  pure (MapSpecification source target)
+
+evaluatedIdentifierOperationFrom :: Expression -> Parser Expression
+evaluatedIdentifierOperationFrom evaluated = do
   let headExpression = case evaluated of
         SyntaxBoundary inner -> inner
         inner -> inner
@@ -1466,12 +1499,10 @@ term = do
     -- Horizontal whitespace has already been consumed by lexemes. A newline
     -- remains a block boundary; operator and syntax words cannot be arguments.
     applicationArgument _function = accessedTerm (choice
-      [ try evaluatedIdentifierOperation
+      [ evaluatedIdentifierOperationOrExpression
       , try identifierTemplateOperation
       , try identifierOperation
       , argumentMap
-      , greedyStringTemplateExpression
-      , parenthesizedExpression
       , lookupExpression
       , trailingApplicationSkip
       , prefixedApplicationArgument
@@ -1504,12 +1535,9 @@ termAtom =
   choice
     [ bareSkip
     , genericIntroduction
-    , try evaluatedIdentifierOperation
+    , evaluatedIdentifierOperationOrExpression
     , lookupExpression
     , argumentMap
-    , greedyStringTemplateExpression
-    , try parenthesizedReverseSpecification
-    , parenthesizedExpression
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
     , identifierReference
     ]
@@ -1587,18 +1615,6 @@ argumentMap = do
   pure (ArgumentMap members)
   where
     validDependentName _ = True
-
--- Explicitly parenthesizing both operands makes a reverse specification a
--- self-contained map operand. This lets @x, (target) <~ (source)@ retain the
--- specification in the second concatenation slot, while unparenthesized
--- reverse specification remains the outermost expression layer.
-parenthesizedReverseSpecification :: Parser Expression
-parenthesizedReverseSpecification = do
-  target <- parenthesizedExpression
-  _ <- continuedSymbol reverseSpecificationSymbol
-  source <- parenthesizedExpression
-  _ <- notFollowedBy (try (continuedSymbol reverseSpecificationSymbol))
-  pure (MapSpecification source target)
 
 rangeEndpointTerm :: Parser Expression
 rangeEndpointTerm = accessedTerm rangeEndpointAtom
