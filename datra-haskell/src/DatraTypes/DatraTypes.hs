@@ -53,6 +53,7 @@ module DatraTypes
   , InterpretedValue
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
+  , EvaluatedGreedyStringTemplate (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
@@ -224,8 +225,10 @@ module DatraTypes
   , identifierNameDisjointness
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedGreedyStringTemplate
   , interpretedNamedMapView
   , withStringTemplatePlan
+  , withGreedyStringTemplatePlan
   , interpretedDatraType
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
@@ -506,6 +509,7 @@ import Evaluation.Value
   , withNamedMapView
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
+  , EvaluatedGreedyStringTemplate (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
@@ -544,7 +548,9 @@ import Evaluation.Value
   , interpretedTypeIsTotal
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedGreedyStringTemplate
   , withStringTemplatePlan
+  , withGreedyStringTemplatePlan
   )
 import Numeric.Natural (Natural)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)

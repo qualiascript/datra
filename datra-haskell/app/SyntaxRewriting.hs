@@ -18,7 +18,7 @@ import DatraLanguage.DependentDeclaration
   , dependentDeclaration
   , dependentDeclarationNameExpression
   )
-import Data.List (nub, nubBy, sortBy)
+import Data.List (nub, nubBy)
 import Data.Maybe (maybeToList)
 import Data.Set qualified as Set
 import DatraLanguage.AST
@@ -31,7 +31,6 @@ import DatraTypes
   , booleanCondition
   , eitherValue
   , interpretedFunction
-  , interpretedFunctionBody
   , interpretedSemanticResult
   , subfederationValues
   )
@@ -43,7 +42,6 @@ import DatraLanguage.SyntaxTemplate
   )
 import SyntaxDefinitions
   ( SyntaxRule (..)
-  , SyntaxRuleSemantics (..)
   , DependentSyntaxRule (..)
   , DependentSyntaxInvocation (..)
   , contextualSyntaxRulesFor
@@ -58,9 +56,7 @@ import SyntaxTemplateMatching
   , matchSyntaxRulesWith
   )
 import SyntaxTemplateAdmissibility
-  ( syntaxTemplateRefines
-  , syntaxTemplatesOverlap
-  )
+  ( syntaxTemplatesOverlap )
 import SyntaxTemplateProjection
   ( applicationFrom
   , applicationFromMaybe
@@ -138,48 +134,6 @@ rewriteRuleName = syntaxName . rewriteRule
 
 rewriteRuleImplementation :: RewriteRule -> Maybe Expression
 rewriteRuleImplementation = syntaxRuleAdapter . rewriteRule
-
-orderRewriteRules :: [RewriteRule] -> [RewriteRule]
-orderRewriteRules = sortBy compareSpecificity
-  where
-    compareSpecificity left right
-      | ruleStrictlyRefines left right = LT
-      | ruleStrictlyRefines right left = GT
-      | otherwise = EQ
-
-ruleStrictlyRefines
-  :: RewriteRule
-  -> RewriteRule
-  -> Bool
-ruleStrictlyRefines source target =
-  ruleRefines source target
-    && not (ruleRefines target source)
-
-ruleRefines
-  :: RewriteRule
-  -> RewriteRule
-  -> Bool
-ruleRefines source target =
-  syntaxTemplateRefines
-    (holeRefines source target)
-    (syntaxTemplate (rewriteRule source))
-    (syntaxTemplate (rewriteRule target))
-  where
-    holeRefines sourceRule targetRule sourceHole targetHole =
-      case targetHole of
-        ExpressionSyntaxHole {} -> True
-        _ | sameHoleClass sourceHole targetHole ->
-              case (holeFamily sourceRule sourceHole,
-                    holeFamily targetRule targetHole) of
-                (Just sourceValue, Just targetValue) ->
-                  case subfederationValues sourceValue targetValue
-                      >>= booleanCondition of
-                    Right accepted -> accepted
-                    Left _ -> False
-                _ -> False
-          | otherwise -> False
-    holeFamily compiled kind = lookup kind
-      (zip (ruleHoleKinds compiled) (rewriteRuleHoleFamilies compiled)) >>= id
 
 ruleHoleKinds :: RewriteRule -> [SyntaxHoleKind Expression]
 ruleHoleKinds = foldr collect []
@@ -486,8 +440,6 @@ rewriteSequence capture initial rawEntries = do
 
         branchesCompatible previous current =
           not (rewriteRulesOverlap previous current)
-            || ruleStrictlyRefines previous current
-            || ruleStrictlyRefines current previous
 
         validateInjective environment (rule, dependent)
           | null captures = Right ()
@@ -1927,11 +1879,7 @@ compileScopedRewriteRule environment declarations rule = compiled
     specializedRule = specializeRule rule
     (specializedPieces, holeFamilies) = foldr classifyPiece ([], [])
       (syntaxTemplatePieces (syntaxTemplate rule))
-    compiled = compileRewriteRule
-      (specializeSemantics
-        (rewriteContext environment)
-        declarations
-        specializedRule)
+    compiled = compileRewriteRule specializedRule
     specializeRule original = original
       { syntaxTemplate = SyntaxTemplate specializedPieces }
     classifyPiece piece (pieces, families) = case piece of
@@ -1942,48 +1890,6 @@ compileScopedRewriteRule environment declarations rule = compiled
               rewriteClassifyHole environment declarations kind
         in (SyntaxHole specialized : pieces, family : families)
 
--- Decide the declaration's executable meaning once, in its lexical scope.
--- Inspecting an attached body evaluates only that body value, not the function
--- signature containing it, so syntax discovery cannot recursively rewrite the
--- signature domain. A raw FunctionBody remains a lookup value; an actual
--- function (such as 'datra.begin) is an adapter.
-specializeSemantics
-  :: SyntaxContext
-  -> [Expression]
-  -> SyntaxRule
-  -> SyntaxRule
-specializeSemantics _ _ rule = rule
-
-implementationIsAdapter
-  :: SyntaxContext
-  -> [Expression]
-  -> Expression
-  -> Bool
-implementationIsAdapter context declarations implementation =
-  classify implementation
-  where
-    evaluate = contextEvaluate context declarations
-
-    classify expressionValue = case expressionValue of
-      FunctionApplication signature body
-        | isFunctionBody body -> True
-        | canReceiveFunctionBody signature -> False
-        | otherwise -> evaluatesToFunction expressionValue
-      SyntaxBoundary inner -> classify inner
-      In input body ->
-        let nested = contextEnter context declarations (Just input)
-        in implementationIsAdapter nested [] body
-      _ -> evaluatesToFunction expressionValue
-
-    evaluatesToFunction expressionValue = case evaluate expressionValue of
-      Just value
-        | Nothing <- interpretedFunctionBody value
-        , Just _ <- interpretedFunction value -> True
-      _ -> False
-
-    isFunctionBody expressionValue = case evaluate expressionValue of
-      Just value | Just _ <- interpretedFunctionBody value -> True
-      _ -> False
 -- Resolve the explicitly parenthesized declaration head against declarations
 -- visible at this block position. Bare identifiers never take this path, so
 -- @abc := value@ continues to declare the literal name @abc@.
@@ -2020,7 +1926,7 @@ resolveDependentDeclarationHead environment expressionValue =
       resolvedParts (dependentDeclarationImplementation declaration)
     resolvedParts _ = Nothing
 
-    resolveGreedy expressionValue = case expressionValue of
+    resolveGreedy greedyPart = case greedyPart of
       SyntaxBoundary inner -> SyntaxBoundary (resolveGreedy inner)
       AtlasMap members -> AtlasMap (map resolveGreedy members)
       MapSequence members -> MapSequence (map resolveGreedy members)

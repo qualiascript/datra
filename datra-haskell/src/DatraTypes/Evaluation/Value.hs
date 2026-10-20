@@ -61,6 +61,7 @@ module Evaluation.Value
   , InterpretedTotalAtlasMap (..)
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
+  , EvaluatedGreedyStringTemplate (..)
   , EvaluatedAtlasMapFederationMember (..)
   , EvaluatedSpecification (..)
   , ValueForm (..)
@@ -136,9 +137,11 @@ module Evaluation.Value
   , withEvaluationSource
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedGreedyStringTemplate
   , interpretedNamedMapView
   , withNamedMapView
   , withStringTemplatePlan
+  , withGreedyStringTemplatePlan
   , interpretedExplicitOrdinal
   , interpretedSpecificationSourceValue
   , interpretedFederationSpecificationBranches
@@ -797,6 +800,10 @@ data EvaluatedStringTemplateSegment
       InterpretedValue
       InterpretedValue
 
+newtype EvaluatedGreedyStringTemplate = EvaluatedGreedyStringTemplate
+  { evaluatedGreedyStringTemplateOperand :: Expression
+  }
+
 -- | The partial inverse carried by a proven pointwise string conversion.
 data ToStringInverseDecision
   = ToStringInverseMatched [InterpretedValue]
@@ -844,6 +851,7 @@ data InterpretedValue = InterpretedValue
   , interpretedOrderedAtlasMapView
       :: Maybe (OrdinalOrderedValues InterpretedValue)
   , interpretedStringTemplate :: Maybe EvaluatedStringTemplate
+  , interpretedGreedyStringTemplate :: Maybe EvaluatedGreedyStringTemplate
   , interpretedNamedMapView :: Maybe NamedMapView
   }
 
@@ -897,6 +905,7 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
     , interpretedDependentSumView = Nothing
     , interpretedOrderedAtlasMapView = Nothing
     , interpretedStringTemplate = Nothing
+    , interpretedGreedyStringTemplate = Nothing
     , interpretedNamedMapView = Nothing
     }
 
@@ -909,6 +918,13 @@ withStringTemplatePlan
   -> InterpretedValue
 withStringTemplatePlan plan value =
   value { interpretedStringTemplate = Just plan }
+
+withGreedyStringTemplatePlan
+  :: EvaluatedGreedyStringTemplate
+  -> InterpretedValue
+  -> InterpretedValue
+withGreedyStringTemplatePlan plan value =
+  value { interpretedGreedyStringTemplate = Just plan }
 
 neverValue :: InterpretedValue
 neverValue =

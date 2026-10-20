@@ -123,8 +123,6 @@ import ScopeProtection
 import SyntaxDefinitions
   ( SyntaxRule (..)
   , SyntaxRuleSemantics (..)
-  , DependentSyntaxRule (..)
-  , DependentSyntaxInvocation (..)
   , declarationRules
   )
 import DatraLanguage.Diagnostics
@@ -1475,6 +1473,11 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     NothingLiteral -> Right nothingValue
     StringTemplate parts ->
       interpretStringTemplateWith protection interpret parts
+    greedy@(GreedyStringTemplate operand) -> do
+      rendered <- asciiStringValue (renderSourceExpression greedy)
+      Right (withGreedyStringTemplatePlan
+        (EvaluatedGreedyStringTemplate operand)
+        (templateValue rendered))
     IdentifierValueType -> Right identifierValueTypeValue
     AtlasMap expressions -> interpretContainer
       (interpretProtectedAtlasMap makeAtlasMap expressions)
@@ -2777,16 +2780,6 @@ childPresentationDependency enclosing entries = PresentationDependency
       Just (PresentationDependency identity) -> identity
       Nothing -> "<root>"
 
--- Source reconstruction needs definitions without forcing native implementations
--- while their signatures are themselves being reconstructed.
-declareScope
-  :: Scope
-  -> [Expression]
-  -> Either InterpretingError Scope
-declareScope enclosing entries = do
-  (rebuild, _, _, _) <- scopeBuilder enclosing entries
-  pure (rebuild [])
-
 -- Syntax classification evaluates annotations inside a provisional lexical
 -- scope while the enclosing block's declaration families are themselves being
 -- admitted. Revalidating those same families here recursively rebuilds the
@@ -3327,7 +3320,6 @@ data PreparedDependentDeclaration = PreparedDependentDeclaration
   { preparedDeclarationCaptures
       :: [(Maybe String, InterpretedValue, InterpretedValue)]
   , preparedDeclarationTemplate :: EvaluatedStringTemplate
-  , preparedDeclarationFamily :: Maybe InterpretedValue
   }
 
 prepareDependentDeclaration
@@ -3382,8 +3374,7 @@ prepareDependentDeclarationBranches reduction captured resolving =
       let segments = dependentTemplateSegments parts evaluatedCaptures
       pure (PreparedDependentDeclaration
         evaluatedCaptures
-        (EvaluatedStringTemplate segments)
-        Nothing)
+        (EvaluatedStringTemplate segments))
     evaluateCapture (name, expressionValue) = do
       schema <- evalInScopeWith reduction captured resolving expressionValue
       pure
@@ -3425,31 +3416,13 @@ selectPreparedBranch name prepared = do
   matches <- fmap concat (traverse match prepared)
   case matches of
     [] -> Right Nothing
-    _ -> case
-        [ candidate
-        | (index, candidate) <- indexed
-        , all (\(otherIndex, other) ->
-            index == otherIndex || strictlyBelow candidate other) indexed
-        ] of
-      [selected] -> Right (Just selected)
-      _ -> Left AmbiguousStringTemplate
-      where
-        indexed = zip [0 :: Int ..] matches
+    [selected] -> Right (Just selected)
+    _ -> Left AmbiguousStringTemplate
   where
     match branch = do
       decoded <- decodeCanonicalTemplate
         (preparedDeclarationTemplate branch) name
       pure (maybe [] (\values -> [(branch, values)]) decoded)
-    strictlyBelow (source, _) (target, _) =
-      case (preparedDeclarationFamily source, preparedDeclarationFamily target) of
-        (Just sourceFamily, Just targetFamily) ->
-          isSubfederation sourceFamily targetFamily
-            && not (isSubfederation targetFamily sourceFamily)
-        _ -> False
-    isSubfederation source target =
-      case subfederationValues source target >>= booleanCondition of
-        Right accepted -> accepted
-        Left _ -> False
 
 materializeDependentDeclaration
   :: ReductionContext
