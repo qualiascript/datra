@@ -1899,7 +1899,7 @@ literalBoundaryCandidate (SyntaxTemplate pieces) value =
 
 advanceScope :: RewriteEnvironment -> Expression -> RewriteEnvironment
 advanceScope environment entry = environment
-  { rewriteRules = orderRewriteRules (retained <> introduced)
+  { rewriteRules = retained <> introduced
   , rewriteDeclarations = retainedDeclarations <> [entry]
   }
   where
@@ -2028,10 +2028,9 @@ resolveDependentDeclarationHead environment expressionValue =
         EitherType (resolveGreedy left) (resolveGreedy right)
       OptionalType operand -> OptionalType (resolveGreedy operand)
       reference@(IdentifierReference (IdentifierString name)) ->
-        case rewriteEvaluate environment
-            (rewriteDeclarations environment) reference of
-          Nothing -> AsciiStringLiteral name
-          Just _ -> reference
+        if any (elem name . bindingNames) (rewriteDeclarations environment)
+          then reference
+          else AsciiStringLiteral name
       atom -> atom
 
     firstDeclaration _ [] = Nothing
