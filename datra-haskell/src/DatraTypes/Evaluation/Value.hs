@@ -18,6 +18,7 @@ module Evaluation.Value
   , canonicalStringImplementation
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
+  , SyntaxFunctionInsertion (..)
   , EvaluatedFunctionBody (..)
   , functionBodySource
   , EvaluatedFunction (..)
@@ -377,10 +378,15 @@ data EvaluatedFunctionInvocation = EvaluatedFunctionInvocation
   , functionInvocationContract :: Maybe InterpretedValue
   }
 
+data SyntaxFunctionInsertion = SyntaxFunctionInsertion
+  { applySyntaxFunction :: [Expression] -> Maybe Expression
+  , preimageSyntaxFunction :: Expression -> Maybe [Expression]
+  }
+
 data EvaluatedFunctionBody
   = EvaluatedSyntaxFunctionBody
       String
-      ([Expression] -> Maybe Expression)
+      SyntaxFunctionInsertion
   | EvaluatedRuntimeFunctionBody String EvaluatedFunction
 
 data EvaluatedFunction = EvaluatedFunction

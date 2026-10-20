@@ -63,52 +63,108 @@ datraHostValue = do
         number <- requireFiniteInteger LeftOperand value
         pure (integerValue (abs number))
     , ("ordinal", Right ordinalMembers)
-    , syntaxBody "let" $ \case
-        [entry] -> Just (Let (absorbAssignedConcatenation entry))
-        _ -> Nothing
-    , syntaxFunction "val" $ \case
-        [entry] -> Just (Val (absorbAssignedConcatenation entry))
-        _ -> Nothing
-    , syntaxBody "assert" $ \case
-        [condition] -> Just (Assert False condition)
-        [_, condition] -> Just (Assert True condition)
-        _ -> Nothing
-    , syntaxFunction "begin" $ \case
-        [entries, result] -> Just (Begin (blockEntries entries) result)
-        _ -> Nothing
-    , syntaxBody "do" $ \case
-        [entries, result] -> Just (FunctionBody (blockEntries entries) result)
-        _ -> Nothing
-    , syntaxBody "fun" $ \case
-        [entry] -> Just (Fun (absorbFunSequence entry))
-        _ -> Nothing
-    , syntaxBody "if" $ \case
-        [condition, yes, no] -> Just (Conditional condition yes no)
-        [condition, yes] -> Just (Conditional condition yes (AtlasMap []))
-        _ -> Nothing
-    , syntaxBody "import" $ \case
-        [paths, body@FunctionBody {}]
-          | Just requested <- importPaths paths
-          , not (null requested) -> Just (Import requested body)
-        _ -> Nothing
-    , syntaxBody "with" $ \case
-        [modules, FunctionBody bindings result] -> Just
-          (ScopeAccess
-            (ArgumentMap (withModuleOperands modules))
-            (Begin bindings result))
-        _ -> Nothing
-    , syntaxBody "of" $ \case
-        [source, target] -> Just (Subfederation source target)
-        _ -> Nothing
-    , syntaxBody "and" $ \case
-        [left, right] -> Just (BooleanAnd left right)
-        _ -> Nothing
-    , syntaxBody "or" $ \case
-        [left, right] -> Just (BooleanOr left right)
-        _ -> Nothing
-    , syntaxBody "not" $ \case
-        [value] -> Just (BooleanNot value)
-        _ -> Nothing
+    , syntaxBody "let" (SyntaxFunctionInsertion
+        (\case
+          [entry] -> Just (Let (absorbAssignedConcatenation entry))
+          _ -> Nothing)
+        (\case
+          Let entry -> Just [entry]
+          _ -> Nothing))
+    , syntaxFunction "val" (SyntaxFunctionInsertion
+        (\case
+          [entry] -> Just (Val (absorbAssignedConcatenation entry))
+          _ -> Nothing)
+        (\case
+          Val entry -> Just [entry]
+          _ -> Nothing))
+    , syntaxBody "assert" (SyntaxFunctionInsertion
+        (\case
+          [condition] -> Just (Assert False condition)
+          [_, condition] -> Just (Assert True condition)
+          _ -> Nothing)
+        (\case
+          Assert False condition -> Just [condition]
+          _ -> Nothing))
+    , syntaxFunction "begin" (SyntaxFunctionInsertion
+        (\case
+          [entries, result] -> Just (Begin (blockEntries entries) result)
+          _ -> Nothing)
+        (\case
+          Begin entries result -> Just [AtlasMap entries, result]
+          _ -> Nothing))
+    , syntaxBody "do" (SyntaxFunctionInsertion
+        (\case
+          [entries, result] -> Just
+            (FunctionBody (blockEntries entries) result)
+          _ -> Nothing)
+        (\case
+          FunctionBody entries result -> Just [AtlasMap entries, result]
+          _ -> Nothing))
+    , syntaxBody "fun" (SyntaxFunctionInsertion
+        (\case
+          [entry] -> Just (Fun (absorbFunSequence entry))
+          _ -> Nothing)
+        (\case
+          Fun entry -> Just [entry]
+          _ -> Nothing))
+    , syntaxBody "if" (SyntaxFunctionInsertion
+        (\case
+          [condition, yes, no] -> Just (Conditional condition yes no)
+          [condition, yes] -> Just
+            (Conditional condition yes (AtlasMap []))
+          _ -> Nothing)
+        (\case
+          Conditional condition yes no -> Just [condition, yes, no]
+          _ -> Nothing))
+    , syntaxBody "import" (SyntaxFunctionInsertion
+        (\case
+          [paths, body@FunctionBody {}]
+            | Just requested <- importPaths paths
+            , not (null requested) -> Just (Import requested body)
+          _ -> Nothing)
+        (\case
+          Import paths body -> Just
+            [AtlasMap (map AsciiStringLiteral paths), body]
+          _ -> Nothing))
+    , syntaxBody "with" (SyntaxFunctionInsertion
+        (\case
+          [modules, FunctionBody bindings result] -> Just
+            (ScopeAccess
+              (ArgumentMap (withModuleOperands modules))
+              (Begin bindings result))
+          _ -> Nothing)
+        (\case
+          ScopeAccess (ArgumentMap modules) (Begin bindings result) -> Just
+            [ArgumentMap modules, FunctionBody bindings result]
+          _ -> Nothing))
+    , syntaxBody "of" (SyntaxFunctionInsertion
+        (\case
+          [source, target] -> Just (Subfederation source target)
+          _ -> Nothing)
+        (\case
+          Subfederation source target -> Just [source, target]
+          _ -> Nothing))
+    , syntaxBody "and" (SyntaxFunctionInsertion
+        (\case
+          [left, right] -> Just (BooleanAnd left right)
+          _ -> Nothing)
+        (\case
+          BooleanAnd left right -> Just [left, right]
+          _ -> Nothing))
+    , syntaxBody "or" (SyntaxFunctionInsertion
+        (\case
+          [left, right] -> Just (BooleanOr left right)
+          _ -> Nothing)
+        (\case
+          BooleanOr left right -> Just [left, right]
+          _ -> Nothing))
+    , syntaxBody "not" (SyntaxFunctionInsertion
+        (\case
+          [value] -> Just (BooleanNot value)
+          _ -> Nothing)
+        (\case
+          BooleanNot value -> Just [value]
+          _ -> Nothing))
     ]
   where
     expressionType = syntaxCategoryTypeValue ExpressionAST
@@ -116,20 +172,20 @@ datraHostValue = do
     dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
-    syntaxBody name expand =
+    syntaxBody name insertion =
       (bodyName, Right (makeFunctionBodyValue
-        (EvaluatedSyntaxFunctionBody source expand)))
+        (EvaluatedSyntaxFunctionBody source insertion)))
       where
         bodyName = name <> "_body"
         source = "'datra." <> bodyName
-    syntaxFunction name expand =
+    syntaxFunction name insertion =
       (name, Right (makeFunctionValue (EvaluatedFunction
         anyTypeValue
         anyTypeValue
         Nothing
         Nothing
         (Just source)
-        (Just (EvaluatedSyntaxFunctionBody source expand))
+        (Just (EvaluatedSyntaxFunctionBody source insertion))
         "Any -> Any"
         Nothing
         Nothing

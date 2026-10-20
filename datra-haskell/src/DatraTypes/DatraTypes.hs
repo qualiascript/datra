@@ -8,6 +8,7 @@ module DatraTypes
   , DatraType
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
+  , SyntaxFunctionInsertion (..)
   , EvaluatedFunctionBody (..)
   , functionBodySource
   , EvaluatedFunction (..)
@@ -455,6 +456,7 @@ import Evaluation.Value
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , EvaluatedFunctionBody (..)
+  , SyntaxFunctionInsertion (..)
   , functionBodySource
   , EvaluatedFunctionInvocation (..)
   , ReductionContext (..)

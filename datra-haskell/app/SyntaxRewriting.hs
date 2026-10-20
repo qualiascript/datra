@@ -29,10 +29,12 @@ import Parsing (inferredFunction)
 import DatraTypes
   ( EvaluatedFunction (functionBody)
   , EvaluatedFunctionBody (EvaluatedSyntaxFunctionBody)
+  , SyntaxFunctionInsertion (..)
   , InterpretedValue
   , booleanCondition
   , eitherValue
   , interpretedFunction
+  , interpretedFunctionBody
   , interpretedSemanticResult
   , subfederationValues
   )
@@ -40,6 +42,7 @@ import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
+  , TemplateSelection (..)
   , syntaxHoleValue
   )
 import SyntaxDefinitions
@@ -50,14 +53,16 @@ import SyntaxDefinitions
   , contextualSyntaxRulesFor
   , declarationRuleFailures
   , declarationRules
+  , expandSyntax
   , normalizeSyntaxExpansion
   , syntaxDependentRule
   , syntaxRuleAdapter
   , syntaxTemplateLiteralPrefix
   )
 import SyntaxTemplateMatching
-  ( SyntaxTemplateMatchFailure (..)
-  , matchSyntaxRulesWith
+  ( SyntaxMatch (..)
+  , SyntaxTemplateMatchFailure (..)
+  , matchSyntaxRulesSelectionWith
   )
 import SyntaxTemplateAdmissibility
   ( syntaxTemplatesOverlap )
@@ -139,6 +144,43 @@ rewriteRuleName = syntaxName . rewriteRule
 
 rewriteRuleImplementation :: RewriteRule -> Maybe Expression
 rewriteRuleImplementation = syntaxRuleAdapter . rewriteRule
+
+syntaxFunctionInsertion
+  :: (Expression -> Maybe InterpretedValue)
+  -> Expression
+  -> Maybe SyntaxFunctionInsertion
+syntaxFunctionInsertion evaluate implementation = do
+  value <- evaluate implementation
+  body <- interpretedFunctionBody value
+    <|> (interpretedFunction value >>= functionBody)
+  case body of
+    EvaluatedSyntaxFunctionBody _ insertion -> Just insertion
+    _ -> Nothing
+
+expandSelectedSyntaxMatch
+  :: RewriteEnvironment
+  -> RewriteRule
+  -> SyntaxMatch
+  -> Either SyntaxRewriteFailure Expression
+expandSelectedSyntaxMatch environment rule matched = do
+  expanded <- case directExpansion of
+    Just value -> Right value
+    Nothing -> directSyntaxFunctionExpansion
+      environment (Just rule) fallback
+  pure (foldl FunctionApplication expanded
+    (syntaxMatchRemaining matched))
+  where
+    selection = syntaxMatchSelection matched
+    captures = templateSelectionCaptures selection
+    fallback = expandSyntax (syntaxMatchRule matched) selection
+    evaluate = case rewriteRuleEvaluation rule of
+      Just selected -> selected
+      Nothing -> rewriteEvaluate environment
+        (rewriteDeclarations environment)
+    directExpansion = do
+      implementation <- rewriteRuleImplementation rule
+      insertion <- syntaxFunctionInsertion evaluate implementation
+      applySyntaxFunction insertion captures
 
 ruleHoleKinds :: RewriteRule -> [SyntaxHoleKind Expression]
 ruleHoleKinds = foldr collect []
@@ -321,10 +363,10 @@ resolveImplicitBlock capture initial = go initial
               captureInScope previous kind captured =
                 capture (rewriteStrictCaptures nested)
                   (rewriteDeclarations nested) previous kind captured
-          case matchSyntaxRulesWith captureInScope
+          case matchSyntaxRulesSelectionWith captureInScope
               [rewriteRule rule] candidate of
             Right matched ->
-              directSyntaxFunctionExpansion nested (Just rule) matched >>= \case
+              expandSelectedSyntaxMatch nested rule matched >>= \case
                 Begin bindings finalResult
                   | null finalTrailing ->
                       Right (Just (if explicitBlockAtHead
@@ -449,8 +491,12 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
 
         validateInjective environment (rule, dependent)
           | null captures = Right ()
+          | Just insertion <- syntaxInsertion
+          , Just expanded <- applySyntaxFunction insertion captureMembers
+          , preimageSyntaxFunction insertion expanded
+              == Just captureMembers = Right ()
           | otherwise =
-              case (evaluate input, evaluate output) of
+              case (evaluate input, evaluateContextually implementation) of
                 (Just inputValue, Just outputValue)
                   | equivalentFederations inputValue outputValue -> Right ()
                 _ -> Left (NonInjectiveDependentDeclaration
@@ -458,15 +504,14 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
           where
             captures = dependentSyntaxCaptures dependent
             implementation = dependentSyntaxImplementation dependent
-            input = ArgumentMap (zipWith captureMember captures
-              (templateCaptureTypes rule))
+            captureMembers = zipWith captureMember captures
+              (templateCaptureTypes rule)
+            input = ArgumentMap captureMembers
             evaluate = rewriteEvaluate environment
               (rewriteDeclarations environment)
-            application = FunctionApplication implementation input
-            output = case directSyntaxFunctionExpansion
-                environment Nothing application of
-              Right expanded -> expanded
-              Left _ -> application
+            contextual = enterContext (Just input) environment
+            evaluateContextually = rewriteEvaluate contextual []
+            syntaxInsertion = syntaxFunctionInsertion evaluate implementation
 
         captureMember (Just (name, annotation)) _ =
           IdentifierOperation name annotation Nothing
@@ -967,7 +1012,8 @@ directSyntaxFunctionExpansion environment selectedRule application =
           syntaxFunction <- maybeToList (interpretedFunction value)
           body <- maybeToList (functionBody syntaxFunction)
           case body of
-            EvaluatedSyntaxFunctionBody _ expansion -> [(expansion, expected)]
+            EvaluatedSyntaxFunctionBody _ insertion ->
+              [(applySyntaxFunction insertion, expected)]
             _ -> []
         choose [] successes =
           case nub successes of
@@ -1250,11 +1296,10 @@ matchOrdinarySyntaxWithTail includeConcatenation
             Nothing -> firstRule (rule : earlier) remaining
     firstCandidate _ [] = Right Nothing
     firstCandidate rule (candidate : remaining) =
-      case matchSyntaxRulesWith captureInScope
+      case matchSyntaxRulesSelectionWith captureInScope
           [rewriteRule rule] candidate of
-        Right rewritten ->
-          Just <$> directSyntaxFunctionExpansion
-            environment (Just rule) rewritten
+        Right matched ->
+          Just <$> expandSelectedSyntaxMatch environment rule matched
         Left NoMatchingSyntaxTemplate -> firstCandidate rule remaining
     earlierPrefixPending = any (\earlierRule ->
       not (null (rewriteRuleLiteralPrefix earlierRule))
@@ -1353,9 +1398,11 @@ matchSequenceFunctionBody capture environment value trailing =
             findBody rule prefix (operands <> [current]) (Just next) rest
 
     matchCollected rule prefix operands body remaining =
-      case matchSyntaxRulesWith captureInScope
+      case matchSyntaxRulesSelectionWith captureInScope
           [rewriteRule rule] candidate of
-        Right expanded -> Right (Just (expanded, remaining))
+        Right matched -> do
+          expanded <- expandSelectedSyntaxMatch environment rule matched
+          Right (Just (expanded, remaining))
         Left NoMatchingSyntaxTemplate -> Right Nothing
       where
         candidate = applicationFrom
@@ -1482,13 +1529,13 @@ matchEmbeddedBlockWith capture environment =
                       capture (rewriteStrictCaptures environment)
                         (rewriteDeclarations environment)
                         previous kind captured
-                    match = matchSyntaxRulesWith captureInScope
+                    match = matchSyntaxRulesSelectionWith captureInScope
                       [rewriteRule rule]
                 case match candidate of
                   Left NoMatchingSyntaxTemplate -> Right Nothing
-                  Right expanded -> do
-                    direct <- directSyntaxFunctionExpansion
-                      environment (Just rule) expanded
+                  Right matched -> do
+                    direct <- expandSelectedSyntaxMatch
+                      environment rule matched
                     Right (Just
                       ( attachAdjacentBody before direct
                       , afterScoped
@@ -1506,24 +1553,22 @@ matchEmbeddedBlockWith capture environment =
                   captureInScope previous kind captured =
                     blockCapture (rewriteStrictCaptures nested)
                       (rewriteDeclarations nested) previous kind captured
-                  match = matchSyntaxRulesWith captureInScope
+                  match = matchSyntaxRulesSelectionWith captureInScope
                     [rewriteRule rule]
               case match (candidate result) of
                 Left NoMatchingSyntaxTemplate ->
                   case match (candidate (wrapResult rawResult)) of
                     Left NoMatchingSyntaxTemplate -> Right Nothing
-                    Right expanded -> do
-                      direct <- directSyntaxFunctionExpansion
-                        nested (Just rule) expanded
+                    Right matched -> do
+                      direct <- expandSelectedSyntaxMatch nested rule matched
                       (rewritten, fallbackRemaining) <-
                         rewriteWithTail True blockCapture nested direct afterBlock
                       Right (Just
                         ( attachAdjacentBody before rewritten
                         , fallbackRemaining
                         ))
-                Right expanded -> do
-                  direct <- directSyntaxFunctionExpansion
-                    nested (Just rule) expanded
+                Right matched -> do
+                  direct <- expandSelectedSyntaxMatch nested rule matched
                   Right (Just
                     (attachAdjacentBody before direct, remaining))
 
