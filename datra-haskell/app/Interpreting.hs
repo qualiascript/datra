@@ -2957,7 +2957,15 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
             if interpretedSemanticResult original
                 == interpretedSemanticResult replacement
               then Right ()
-              else Left (InconsistentShadowing name)
+            else Left (InconsistentShadowing name)
+  if any ((== "\"public\"")
+      . renderSourceExpression
+      . dependentDeclarationNameExpression
+      . snd) positionedMembers
+    then Left (UnknownIdentifier
+      ("PROBE_BLOCK " <> take 4000
+        (intercalate " || " (map show entries))))
+    else pure ()
   if validateFamilies
     then do
       mapM_ (checkLetShadow scopedEnclosing) eagerFamilies
@@ -3292,9 +3300,7 @@ prepareDependentDeclaration reduction captured resolving declaration =
   prepareDependentDeclarationBranches
     reduction captured resolving branches
   where
-    branches = maybe
-      [dependentDeclarationParts declaration]
-      id
+    branches = maybe [] id
       (dependentDeclarationTemplateBranches declaration)
 
 prepareDependentDeclarationForName
@@ -3309,9 +3315,7 @@ prepareDependentDeclarationForName reduction captured resolving declaration name
   prepareDependentDeclarationBranches reduction captured resolving
     (filter (`templateLiteralSkeletonMatches` name) branches)
   where
-    branches = maybe
-      [dependentDeclarationParts declaration]
-      id
+    branches = maybe [] id
       (dependentDeclarationTemplateBranches declaration)
 
 prepareDependentDeclarationBranches
@@ -3407,12 +3411,13 @@ materializeDependentDeclaration reduction captured resolving declaration
           | ((Just identifier, _, _), value) <- zip evaluatedCaptures values
           ]
         )
-  payload <- evaluateBindingDefinitionWith reduction
-    (extendScope bindings captured)
-    resolving
-    name
-    Nothing
-    (dependentDeclarationImplementation declaration)
+  payload <- case evaluateBindingDefinitionWith reduction
+      (extendScope bindings captured)
+      resolving
+      name
+      Nothing
+      (dependentDeclarationImplementation declaration) of
+    result -> result
   pure (namedDeclarationMember declaration name payload)
   where
     captureValue (Just captureName, schema, _) value =

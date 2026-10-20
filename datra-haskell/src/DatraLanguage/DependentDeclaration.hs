@@ -2,6 +2,7 @@
 -- evaluation, and AST-category capture.
 module DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
+  , DependentDeclarationHead (..)
   , dependentDeclaration
   , dependentDeclarationNameExpression
   , dependentDeclarationTemplateBranches
@@ -10,8 +11,13 @@ module DatraLanguage.DependentDeclaration
 
 import DatraLanguage.AST
 
+data DependentDeclarationHead
+  = StringTemplateDeclarationHead [StringTemplatePart Expression]
+  | EvaluatedDeclarationHead Expression
+  deriving (Eq, Show)
+
 data DependentDeclaration = DependentDeclaration
-  { dependentDeclarationParts :: [StringTemplatePart Expression]
+  { dependentDeclarationHead :: DependentDeclarationHead
   , dependentDeclarationIsLet :: Bool
   , dependentDeclarationIsCanonicalValue :: Bool
   , dependentDeclarationImplementation :: Expression
@@ -29,16 +35,17 @@ dependentDeclaration = declaration False False
     declaration strict canonical (In contextual value) = do
       declared <- declaration strict canonical value
       pure declared
-        { dependentDeclarationParts =
-            map (scopeTemplatePart contextual)
-              (dependentDeclarationParts declared)
+        { dependentDeclarationHead =
+            scopeDeclarationHead contextual
+              (dependentDeclarationHead declared)
         , dependentDeclarationImplementation = In contextual
             (dependentDeclarationImplementation declared)
         }
     declaration strict canonical
         (IdentifierOperation (IdentifierString name) annotation (Just given))
       | annotation == given = Just (makeDeclaration
-          [StringTemplateLiteral name] strict canonical given)
+          (StringTemplateDeclarationHead [StringTemplateLiteral name])
+          strict canonical given)
     declaration strict canonical optional
       | Just (named@IdentifierOperation {}, _) <-
           optionalIdentifierExpression optional =
@@ -46,11 +53,37 @@ dependentDeclaration = declaration False False
     declaration strict canonical
         (IdentifierTemplateOperation parts annotation (Just given))
       | annotation == given = Just (makeDeclaration
-          parts strict canonical given)
+          (classifyTemplateHead parts) strict canonical given)
     declaration _ _ _ = Nothing
 
-    makeDeclaration parts strict canonical implementation =
-      DependentDeclaration parts strict canonical implementation
+    makeDeclaration headValue strict canonical implementation =
+      DependentDeclaration headValue strict canonical implementation
+
+    -- The parser carries a first-class declaration head through the existing
+    -- identifier-template AST node as one explicitly bounded interpolation.
+    -- Decode that carrier exactly once. From here on, evaluated heads and
+    -- quoted string templates are distinct representations.
+    classifyTemplateHead parts = case parts of
+      [StringTemplateInterpolation expressionValue]
+        | Just evaluated <- boundedHead expressionValue ->
+            EvaluatedDeclarationHead evaluated
+      _ -> StringTemplateDeclarationHead parts
+
+    boundedHead (SyntaxBoundary expressionValue) =
+      Just (stripBoundaries expressionValue)
+    boundedHead _ = Nothing
+
+    stripBoundaries (SyntaxBoundary expressionValue) =
+      stripBoundaries expressionValue
+    stripBoundaries expressionValue = expressionValue
+
+    scopeDeclarationHead contextual headValue = case headValue of
+      StringTemplateDeclarationHead parts ->
+        StringTemplateDeclarationHead
+          (map (scopeTemplatePart contextual) parts)
+      EvaluatedDeclarationHead expressionValue ->
+        EvaluatedDeclarationHead
+          (scopeEvaluatedHead contextual expressionValue)
 
     scopeTemplatePart _ literal@StringTemplateLiteral {} = literal
     scopeTemplatePart contextual
@@ -61,8 +94,19 @@ dependentDeclaration = declaration False False
     scopeInterpolation contextual expressionValue = case expressionValue of
       SyntaxBoundary inner ->
         SyntaxBoundary (scopeInterpolation contextual inner)
+      _ -> scopeEvaluatedHead contextual expressionValue
+
+    scopeEvaluatedHead contextual expressionValue = case expressionValue of
+      SyntaxBoundary inner ->
+        SyntaxBoundary (scopeEvaluatedHead contextual inner)
       GreedyStringTemplate operand ->
         GreedyStringTemplate (scopeGreedy contextual operand)
+      EitherType left right -> EitherType
+        (scopeEvaluatedHead contextual left)
+        (scopeEvaluatedHead contextual right)
+      StringTemplate parts ->
+        StringTemplate (map (scopeTemplatePart contextual) parts)
+      literal@AsciiStringLiteral {} -> literal
       capture -> In contextual capture
 
     -- Contextual declaration syntax scopes each capture, not the template
@@ -89,10 +133,9 @@ dependentDeclaration = declaration False False
 -- templates retain their literal/interpolation structure.
 dependentDeclarationNameExpression :: DependentDeclaration -> Expression
 dependentDeclarationNameExpression declaration =
-  case dependentDeclarationParts declaration of
-    [StringTemplateInterpolation (SyntaxBoundary expressionValue)] ->
-      expressionValue
-    parts -> StringTemplate parts
+  case dependentDeclarationHead declaration of
+    StringTemplateDeclarationHead parts -> StringTemplate parts
+    EvaluatedDeclarationHead expressionValue -> expressionValue
 
 -- Explicit alternatives in an evaluated declaration head are still one
 -- declaration family.  Each leaf is a complete string template; consumers
@@ -102,13 +145,13 @@ dependentDeclarationTemplateBranches
   :: DependentDeclaration
   -> Maybe [[StringTemplatePart Expression]]
 dependentDeclarationTemplateBranches declaration =
-  case dependentDeclarationParts declaration of
-    [StringTemplateInterpolation
-        (SyntaxBoundary (GreedyStringTemplate operand))] ->
+  case dependentDeclarationHead declaration of
+    StringTemplateDeclarationHead parts ->
+      Just (expandOptionalInterpolations parts)
+    EvaluatedDeclarationHead (GreedyStringTemplate operand) ->
       Just (greedyBranches operand)
-    [StringTemplateInterpolation (SyntaxBoundary expressionValue)] ->
+    EvaluatedDeclarationHead expressionValue ->
       concatMap expandOptionalInterpolations <$> branches expressionValue
-    parts -> Just (expandOptionalInterpolations parts)
   where
     branches (SyntaxBoundary inner) = branches inner
     branches (EitherType left right) =

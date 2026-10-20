@@ -549,9 +549,25 @@ normalizeExpression
 normalizeExpression
     (IdentifierTemplateOperation parts typeAnnotation givenValue) =
   IdentifierTemplateOperation
-    (map normalizeStringTemplatePart parts)
+    (map normalizeDeclarationTemplatePart parts)
     (normalizeExpression typeAnnotation)
     (normalizeExpression <$> givenValue)
+
+-- A bounded interpolation in declaration-head position carries a first-class
+-- name expression. Keep that boundary until the declaration is classified;
+-- ordinary string-template normalization must not erase the distinction.
+normalizeDeclarationTemplatePart
+  :: StringTemplatePart Expression
+  -> StringTemplatePart Expression
+normalizeDeclarationTemplatePart (StringTemplateLiteral value) =
+  StringTemplateLiteral value
+normalizeDeclarationTemplatePart
+    (StringTemplateInterpolation (SyntaxBoundary expressionValue)) =
+  StringTemplateInterpolation
+    (SyntaxBoundary (normalizeExpression expressionValue))
+normalizeDeclarationTemplatePart
+    (StringTemplateInterpolation expressionValue) =
+  StringTemplateInterpolation (normalizeExpression expressionValue)
 
 normalizeStringTemplatePart
   :: StringTemplatePart Expression
