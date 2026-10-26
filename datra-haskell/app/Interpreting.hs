@@ -2799,8 +2799,14 @@ resolveIdentifierAccess reduction scope resolving name =
           (Right . namespaceMemberValue) member
   where
     namespaceMemberValue member =
-      maybe (namedMemberValue member) id
-        (identifierUnderlyingValue (namedMemberValue member))
+      case identifierUnderlyingValue selected of
+        Just underlying
+          | hasTrailingIdentifierMarker canonicalValueMarker selected ->
+              withCanonicalReference [] (namedMemberName member) underlying
+          | otherwise -> underlying
+        Nothing -> selected
+      where
+        selected = namedMemberValue member
     resolveScopeNamedMember = do
       named <- firstNamedMapLayer (scopeNamedMapLayers scope)
       case named of
@@ -3738,8 +3744,14 @@ materializeDependentDeclarationActive
   -> Either InterpretingError NamedMember
 materializeDependentDeclarationActive reduction captured resolving declaration
     evaluatedCaptures template name values = do
-  payload <- evaluateMaterializedDeclaration
-    reduction captured resolving implementation evaluatedCaptures values template
+  payload <- case evaluateMaterializedDeclaration
+      reduction captured resolving implementation evaluatedCaptures values template of
+    Left failure -> trace
+      ("materializing declaration " <> name
+        <> " with " <> show (map renderInterpretedValue values)
+        <> ": " <> show failure)
+      (Left failure)
+    Right value -> Right value
   pure (namedDeclarationMember declaration name payload)
   where
     implementation = dependentDeclarationImplementation declaration
@@ -4786,7 +4798,11 @@ applyFunction activation reduction callable input =
           )
     Right _ -> Left (FunctionEvaluationFailed
       HostSyntaxHookRequiresAstCaptures)
-    Left failure -> Left failure
+    Left failure -> trace
+      ("application failed: " <> renderInterpretedValue callable
+        <> " <- " <> renderInterpretedValue input
+        <> ": " <> show failure)
+      (Left failure)
   where
     preparations = [(function, prepare function)
       | function <- functionAlternatives callable]

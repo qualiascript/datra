@@ -4,6 +4,7 @@ module Evaluation.Identifier
   , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
   , identifierNameFederationFor
+  , identifierValueAtUnderlying
   , evaluatedIdentifierType
   , simpleIdentifierName
   , identifierUnderlyingValue
@@ -126,6 +127,32 @@ identifierNameFederationFor identifier supplied =
         (identifierDependencyStringFor
           (evaluatedIdentifierDependency identifier)
           (interpretedSemanticResult supplied)))
+
+-- | Select one underlying member of an identifier family without erasing
+-- the identifier that distinguishes that member. Canonical aliases are
+-- resolved before reaching this operation; values that still have an
+-- identifier form therefore denote identifier-family members themselves.
+identifierValueAtUnderlying
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe InterpretedValue
+identifierValueAtUnderlying family underlying = do
+  identifier <- evaluatedIdentifierType family
+  isCanonical <- case interpretedSemanticSemantics family of
+    DependentIdentifierTypeSemantics _ _ _ canonical -> Just canonical
+    _ -> Nothing
+  nameFederation <- case evaluatedIdentifierDependency identifier of
+    SimpleIdentifierDependency _ ->
+      Just (evaluatedIdentifierNameFederation identifier)
+    DependentIdentifierDependency {} ->
+      Just (either (const Nothing) Just
+        (identifierNameFederationFor identifier underlying))
+  pure (makeDependentIdentifierTypeValue
+    (evaluatedIdentifierDependency identifier)
+    nameFederation
+    (evaluatedIdentifierNameFamily identifier)
+    isCanonical
+    underlying)
 
 simpleIdentifierTypeValue
   :: String

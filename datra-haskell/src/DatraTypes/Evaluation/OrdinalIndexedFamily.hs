@@ -11,13 +11,19 @@ module Evaluation.OrdinalIndexedFamily
 
 import DatraOrdinal
   ( Ordinal
+  , addOrdinals
   , finiteOrdinal
   , multiplyOrdinals
   , ordinal
   , ordinalCoefficients
+  , ordinalLT
+  , subtractOrdinal
   )
 import Evaluation.Federation.Structure (sequenceOperands)
-import Evaluation.Identifier (identifierUnderlyingValue)
+import Evaluation.Identifier
+  ( identifierUnderlyingValue
+  , identifierValueAtUnderlying
+  )
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Value
 import Numeric.Natural (Natural)
@@ -35,11 +41,21 @@ ordinalIndexedValueFamily
   -> Maybe OrdinalIndexedFamily
 ordinalIndexedValueFamily value =
   case identifierUnderlyingValue value of
-    Just underlying -> ordinalIndexedValueFamily underlying
+    Just underlying -> do
+      family <- ordinalIndexedValueFamily underlying
+      pure family
+        { ordinalIndexedFamilyValueAt = \position -> do
+            selected <- ordinalIndexedFamilyValueAt family position
+            identifierValueAtUnderlying value selected
+        }
     Nothing -> case interpretedForm value of
       SequentialMapForm -> do
         members <- sequenceOperands value
         productFamily <$> traverse ordinalIndexedValueFamily members
+      EitherForm alternatives -> do
+        left <- ordinalIndexedValueFamily (evaluatedEitherLeft alternatives)
+        right <- ordinalIndexedValueFamily (evaluatedEitherRight alternatives)
+        pure (sumFamily left right)
       _ -> atomicFamily value
 
 -- | Form the lexicographic product without first erasing its components into
@@ -71,6 +87,24 @@ productFamily members = OrdinalIndexedFamily
     components = componentFamily members
     makeProductWitness [] = makeAtlasMap 0 []
     makeProductWitness values = makeAtlasMap 2 values
+
+sumFamily
+  :: OrdinalIndexedFamily
+  -> OrdinalIndexedFamily
+  -> OrdinalIndexedFamily
+sumFamily left right = OrdinalIndexedFamily
+  { ordinalIndexedFamilyOrderType =
+      addOrdinals leftOrder rightOrder
+  , ordinalIndexedFamilyValueAt = \position ->
+      if ordinalLT position leftOrder
+        then ordinalIndexedFamilyValueAt left position
+        else do
+          rightPosition <- subtractOrdinal leftOrder position
+          ordinalIndexedFamilyValueAt right rightPosition
+  }
+  where
+    leftOrder = ordinalIndexedFamilyOrderType left
+    rightOrder = ordinalIndexedFamilyOrderType right
 
 data ComponentFamily = ComponentFamily
   { componentFamilyOrderType :: Ordinal
