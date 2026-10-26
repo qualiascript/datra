@@ -219,7 +219,7 @@ expandSyntax
 expandSyntax rule selection =
   case syntaxSemantics rule of
     DependentSyntax dependent -> case dependentSyntaxInvocation dependent of
-      DependentSyntaxLookup parts -> dependentLookup parts captures
+      DependentSyntaxLookup parts -> selectedDependentLookup parts captures
     SyntaxAdapter adapter -> FunctionApplication adapter suppliedInput
     SyntaxApplication callable _ ->
       FunctionApplication callable suppliedInput
@@ -238,20 +238,40 @@ dependentLookup
   -> [Expression]
   -> Expression
 dependentLookup parts values =
+  lookupExpression (StringTemplate (substituteCaptures parts values))
+
+selectedDependentLookup
+  :: [StringTemplatePart Expression]
+  -> [Expression]
+  -> Expression
+selectedDependentLookup parts values =
+  lookupExpression (ArgumentMap
+    [ StringTemplate parts
+    , StringTemplate (substituteCaptures parts values)
+    ])
+
+lookupExpression :: Expression -> Expression
+lookupExpression operand =
   ScopeAccess
     (MapAccess
-      (Lookup (StringTemplate (substitute parts values)))
+      (Lookup operand)
       (EllipsisNatural 0))
     (IdentifierReference (IdentifierString "value"))
-  where
-    substitute [] _ = []
-    substitute (StringTemplateLiteral literal : remaining) arguments =
-      StringTemplateLiteral literal : substitute remaining arguments
-    substitute (StringTemplateInterpolation _ : remaining)
-        (argument : arguments) =
-      StringTemplateInterpolation argument : substitute remaining arguments
-    substitute (interpolation@StringTemplateInterpolation {} : remaining) [] =
-      interpolation : substitute remaining []
+
+substituteCaptures
+  :: [StringTemplatePart Expression]
+  -> [Expression]
+  -> [StringTemplatePart Expression]
+substituteCaptures [] _ = []
+substituteCaptures (StringTemplateLiteral literal : remaining) arguments =
+  StringTemplateLiteral literal : substituteCaptures remaining arguments
+substituteCaptures (StringTemplateInterpolation _ : remaining)
+    (argument : arguments) =
+  StringTemplateInterpolation argument :
+    substituteCaptures remaining arguments
+substituteCaptures
+    (interpolation@StringTemplateInterpolation {} : remaining) [] =
+  interpolation : substituteCaptures remaining []
 
 -- A named subexpression in a condition becomes a condition-local declaration
 -- when its name is used elsewhere in that condition or in either branch.

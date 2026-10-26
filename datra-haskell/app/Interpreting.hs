@@ -609,13 +609,10 @@ syntaxValidationDeclaration declaration = case declaration of
         Just implementation ->
           IdentifierOperation name implementation (Just implementation)
         Nothing -> original
-    recursiveSeed original@(IdentifierTemplateOperation
-        parts _ (Just definition)) =
-      case recursiveFunctionImplementation definition of
-        Just implementation ->
-          IdentifierTemplateOperation
-            parts implementation (Just implementation)
-        Nothing -> original
+    -- Dependent declarations reach the same recursive seed through their
+    -- selected member's deferred binding. Keep the full implementation here
+    -- so that binding can still identify its attached function body.
+    recursiveSeed original@IdentifierTemplateOperation {} = original
     recursiveSeed value = value
 
 interpretLocatedExpression
@@ -1753,6 +1750,11 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     Let _ -> Left LetOutsideBegin
     IdentifierReference (IdentifierString name) ->
       resolveIdentifierWith reduction scope resolving name
+    Lookup (ArgumentMap
+        [ StringTemplate template
+        , StringTemplate selected
+        ]) ->
+      evaluateSelectedLookup reduction scope resolving template selected
     Lookup operand -> do
       query <- interpret operand
       evaluateLookup reduction scope resolving query
@@ -2223,6 +2225,109 @@ validateGenericFunctionType evaluate generics domain codomain = do
 -- captured at the operator site. Name discovery is finite and does not force
 -- bindings; the checked lazy row accessor performs ordinary resolution only
 -- when a retained row is selected.
+evaluateSelectedLookup
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> [StringTemplatePart Expression]
+  -> [StringTemplatePart Expression]
+  -> Either InterpretingError InterpretedValue
+evaluateSelectedLookup reduction scope resolving template selected = do
+  query <- evalInScopeWith reduction scope resolving (StringTemplate selected)
+  key <- case interpretedSemanticResult query of
+    CanonicalAsciiString value -> Right value
+    _ -> Left (LookupRequiresString (interpretedValueKind query))
+  case selectedDependentDeclaration scope template selected of
+    Nothing -> evaluateLookup reduction scope resolving query
+    Just (scoped, captures) ->
+      Right (makeCheckedLazyMapValue (finiteOrdinal 1) $ \position ->
+        if position == finiteOrdinal 0
+          then Just <$> selectedLookupRow
+            reduction scope resolving scoped key template captures
+          else Right Nothing)
+
+selectedDependentDeclaration
+  :: Scope
+  -> [StringTemplatePart Expression]
+  -> [StringTemplatePart Expression]
+  -> Maybe
+      ( ScopedDependentDeclaration
+      , [(Expression, Expression)]
+      )
+selectedDependentDeclaration scope template selected =
+  firstLayer (scopeDependentDeclarationLayers scope)
+  where
+    firstLayer [] = Nothing
+    firstLayer (layer : remaining) = case matches layer of
+      [] -> firstLayer remaining
+      [match] -> Just match
+      _ -> Nothing
+    matches layer =
+      [ (scoped, captures)
+      | scoped <- layer
+      , let declaration = scopedDependentDeclarationValue scoped
+      , branch <- maybe [] id
+          (dependentDeclarationTemplateBranches declaration)
+      , branch == template
+      , Just captures <- [selectedTemplateCaptures branch selected]
+      ]
+
+selectedTemplateCaptures
+  :: [StringTemplatePart Expression]
+  -> [StringTemplatePart Expression]
+  -> Maybe [(Expression, Expression)]
+selectedTemplateCaptures [] [] = Just []
+selectedTemplateCaptures
+    (StringTemplateLiteral expected : template)
+    (StringTemplateLiteral actual : selected)
+  | expected == actual = selectedTemplateCaptures template selected
+selectedTemplateCaptures
+    (StringTemplateInterpolation schema : template)
+    (StringTemplateInterpolation actual : selected) =
+  ((schema, actual) :) <$> selectedTemplateCaptures template selected
+selectedTemplateCaptures _ _ = Nothing
+
+selectedLookupRow
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> ScopedDependentDeclaration
+  -> String
+  -> [StringTemplatePart Expression]
+  -> [(Expression, Expression)]
+  -> Either InterpretingError InterpretedValue
+selectedLookupRow reduction usageScope resolving scoped name template captures = do
+  member <- materializeDependentDeclarationWith
+    reduction captured captured resolving declaration
+    selectedTemplate name prepare
+  lookupRowForNamedMember name member
+  where
+    declaration = scopedDependentDeclarationValue scoped
+    captured = scopedDependentDeclarationScope scoped
+    familyCaptured = scopedDependentDeclarationFamilyScope scoped
+    selectedTemplate = EvaluatedStringTemplate
+      . dependentTemplateSegments template
+    evaluateCapture active (schemaExpression, actualExpression) = do
+      let (captureName, annotation) = captureExpression schemaExpression
+      schema <- evalInScopeWith reduction familyCaptured active annotation
+      actual <- evalInScopeWith reduction usageScope active actualExpression
+      value <- argumentSchemaValuesComplete
+        (argumentSchemaFromValue schema) actual
+      pure
+        ( captureName
+        , schema
+        , argumentSchemaPositionalDomain (argumentSchemaFromValue schema)
+        , value
+        )
+    prepare active = do
+      evaluated <- traverse (evaluateCapture active) captures
+      pure
+        ( [ (captureName, schema, bound)
+          | (captureName, schema, bound, _) <- evaluated
+          ]
+        , [value | (_, _, _, value) <- evaluated]
+        )
+
 evaluateLookup
   :: ReductionContext
   -> Scope
@@ -2306,8 +2411,25 @@ lookupRow
   -> String
   -> Either InterpretingError InterpretedValue
 lookupRow reduction scope resolving key = do
-  keyValue <- asciiStringValue key
   resolved <- resolveIdentifierAccess reduction scope resolving key
+  lookupRowWithValue key resolved
+
+lookupRowForNamedMember
+  :: String
+  -> NamedMember
+  -> Either InterpretingError InterpretedValue
+lookupRowForNamedMember key member =
+  lookupRowWithValue key (maybe named id underlying)
+  where
+    named = namedMemberValue member
+    underlying = identifierUnderlyingValue named
+
+lookupRowWithValue
+  :: String
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+lookupRowWithValue key resolved = do
+  keyValue <- asciiStringValue key
   pure (makeAtlasMapPreservingSingleton 2
     [ simpleIdentifierTypeValue "key" keyValue
     , simpleIdentifierTypeValue "value" resolved
@@ -2681,7 +2803,22 @@ evaluateBindingDefinitionWith
   -> Maybe Expression
   -> Expression
   -> Either InterpretingError InterpretedValue
-evaluateBindingDefinitionWith reduction captured resolving name annotation expressionValue
+evaluateBindingDefinitionWith reduction captured resolving name annotation expressionValue =
+  evaluateDeferredBindingWith
+    reduction captured resolving name expressionValue $ \activeResolving ->
+      evaluateBindingDefinitionActive reduction captured activeResolving
+        annotation expressionValue
+
+evaluateDeferredBindingWith
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> String
+  -> Expression
+  -> ([String] -> Either InterpretingError InterpretedValue)
+  -> Either InterpretingError InterpretedValue
+evaluateDeferredBindingWith reduction captured resolving name expressionValue
+    evaluate
   | resolutionKey `elem` resolving
   , Just implementation <- recursiveFunctionImplementation expressionValue = do
       seed <- evalInScopeWith reduction captured resolving implementation
@@ -2689,16 +2826,25 @@ evaluateBindingDefinitionWith reduction captured resolving name annotation expre
         Just (EvaluatedRuntimeFunctionBody _ function) ->
           makeFunctionValue function
         _ -> seed)
-  | otherwise = do
-      case annotation of
-        Nothing -> pure ()
-        Just typeExpression ->
-          () <$ evalInScopeWith reduction captured
-            (resolutionKey : resolving) typeExpression
-      resolveInferredEitherAlias annotation
-        <$> evaluateDefinition
+  | otherwise = evaluate (resolutionKey : resolving)
   where
     resolutionKey = bindingKey name expressionValue
+
+evaluateBindingDefinitionActive
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> Maybe Expression
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+evaluateBindingDefinitionActive reduction captured activeResolving
+    annotation expressionValue = do
+  case annotation of
+    Nothing -> pure ()
+    Just typeExpression ->
+      () <$ evalInScopeWith reduction captured activeResolving typeExpression
+  resolveInferredEitherAlias annotation <$> evaluateDefinition
+  where
     evaluateDefinition =
       case expressionValue of
         contextual
@@ -2706,14 +2852,14 @@ evaluateBindingDefinitionWith reduction captured resolving name annotation expre
           , Just declarations <-
               lookupScope "_this" captured >>= scopeMembersBinding ->
               scopeEntriesValue reduction
-                (resolutionKey : resolving) declarations
+                activeResolving declarations
         IdentifierReference (IdentifierString reference)
           | Just declarations <-
               lookupScope reference captured >>= scopeMembersBinding ->
               scopeEntriesValue reduction
-                (resolutionKey : resolving) declarations
+                activeResolving declarations
         _ -> evalInScopeWith reduction captured
-          (resolutionKey : resolving) expressionValue
+          activeResolving expressionValue
 
 resolveInferredEitherAlias
   :: Maybe Expression
@@ -3505,7 +3651,49 @@ materializeDependentDeclaration
   -> [InterpretedValue]
   -> Either InterpretingError NamedMember
 materializeDependentDeclaration reduction captured resolving declaration
-    evaluatedCaptures template name values = do
+    evaluatedCaptures template name values =
+  materializeDependentDeclarationWith
+    reduction captured captured resolving declaration
+    (const template) name
+    (const (Right (evaluatedCaptures, values)))
+
+materializeDependentDeclarationWith
+  :: ReductionContext
+  -> Scope
+  -> Scope
+  -> [String]
+  -> DependentDeclaration
+  -> ([(Maybe String, InterpretedValue, InterpretedValue)]
+      -> EvaluatedStringTemplate)
+  -> String
+  -> ([String] -> Either InterpretingError
+      ( [(Maybe String, InterpretedValue, InterpretedValue)]
+      , [InterpretedValue]
+      ))
+  -> Either InterpretingError NamedMember
+materializeDependentDeclarationWith reduction provisionalScope captured resolving
+    declaration makeTemplate name prepare = do
+  payload <- evaluateDeferredBindingWith
+    reduction provisionalScope resolving name implementation $ \active -> do
+      (evaluatedCaptures, values) <- prepare active
+      evaluateMaterializedDeclaration
+        reduction captured active implementation evaluatedCaptures values
+        (makeTemplate evaluatedCaptures)
+  pure (namedDeclarationMember declaration name payload)
+  where
+    implementation = dependentDeclarationImplementation declaration
+
+evaluateMaterializedDeclaration
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> Expression
+  -> [(Maybe String, InterpretedValue, InterpretedValue)]
+  -> [InterpretedValue]
+  -> EvaluatedStringTemplate
+  -> Either InterpretingError InterpretedValue
+evaluateMaterializedDeclaration reduction captured resolving implementation
+    evaluatedCaptures values template = do
   members <- sequence (zipWith captureValue evaluatedCaptures values)
   supplied <- makeArgumentMapPreservingSingleton members
   let bindings = constantContextualBindings "it" supplied <>
@@ -3514,14 +3702,12 @@ materializeDependentDeclaration reduction captured resolving declaration
           | ((Just identifier, _, _), value) <- zip evaluatedCaptures values
           ]
         )
-  payload <- evaluateBindingDefinitionWith reduction
+  payload <- evaluateBindingDefinitionActive reduction
       (extendScope bindings captured)
       resolving
-      name
       Nothing
-      (dependentDeclarationImplementation declaration)
-  pure (namedDeclarationMember declaration name
-    (attachDeclarationSyntax template payload))
+      implementation
+  pure (attachDeclarationSyntax template payload)
   where
     captureValue (Just captureName, schema, _) value =
       assignIdentifierValues captureName schema value
