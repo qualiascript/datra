@@ -358,8 +358,6 @@ localizeFunctionFailure failure =
       LocalizedMessage "function specification has no matching alternative" []
     AmbiguousFunctionSpecification ->
       LocalizedMessage "function specification is ambiguous" []
-    FunctionArgumentsRequireFinitePages ->
-      LocalizedMessage "function arguments require finitely many pages" []
     FunctionArgumentPageUnavailable position ->
       LocalizedMessage "function argument page is unavailable"
         ["position: " <> show position]

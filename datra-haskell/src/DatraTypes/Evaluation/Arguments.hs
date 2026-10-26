@@ -173,8 +173,10 @@ argumentRows value = case interpretedForm value of
   _ -> pure [[value]]
   where
     pages = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
-      Nothing -> Left (FunctionEvaluationFailed
-        FunctionArgumentsRequireFinitePages)
+      -- A transfinite map cannot be exhaustively reinterpreted as one row of
+      -- positional arguments. It remains one ordinary supplied value; the
+      -- selected function domain decides whether that value is admissible.
+      Nothing -> Right [value]
       Just count -> traverse (\position -> maybe
           (Left (FunctionEvaluationFailed
             (FunctionArgumentPageUnavailable position)))

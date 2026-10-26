@@ -359,8 +359,6 @@ localizeFunctionFailure failure =
       LocalizedMessage "specificația funcției nu are o alternativă corespunzătoare" []
     AmbiguousFunctionSpecification ->
       LocalizedMessage "specificația funcției este ambiguă" []
-    FunctionArgumentsRequireFinitePages ->
-      LocalizedMessage "argumentele funcției necesită un număr finit de pagini" []
     FunctionArgumentPageUnavailable position ->
       LocalizedMessage "pagina argumentului funcției nu este disponibilă"
         ["poziție: " <> show position]

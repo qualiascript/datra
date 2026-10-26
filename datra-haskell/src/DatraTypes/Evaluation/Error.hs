@@ -93,7 +93,6 @@ data FunctionFailure
   | EmptyFunctionSum
   | NoMatchingFunctionSpecificationAlternative
   | AmbiguousFunctionSpecification
-  | FunctionArgumentsRequireFinitePages
   | FunctionArgumentPageUnavailable Natural
   | ExpectedFunctionType
   deriving (Eq, Show)

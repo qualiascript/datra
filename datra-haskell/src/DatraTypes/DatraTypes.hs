@@ -621,6 +621,7 @@ listTypeValue :: String -> InterpretedValue -> InterpretedValue
 listTypeValue presentationSource elementType =
   withDependentSumStructure (ListDependentSum elementType) value
   where
+    elementSchema = argumentSchemaFromValue elementType
     value = withDependentSumAccess project
       (makeDependentSumValue presentationSource staticTarget validate)
     staticTarget = makeLazyMapValue omega (const (Just elementType))
@@ -635,12 +636,12 @@ listTypeValue presentationSource elementType =
         -- Atlas normalization erases a singleton sequence, so @T; ()@ is
         -- represented by the element itself.  This is the one-element fibre
         -- of the same recursive list, not a separate special case in source.
-        _ -> () <$ specifyValues source elementType
+        _ -> validateRecursiveElement elementSchema source
       pure source
     validateMembers source = do
       count <- maybe
         (Left (FunctionEvaluationFailed
-          FunctionArgumentsRequireFinitePages))
+          NoApplicableFunctionAlternative))
         Right
         (naturalAtOrdinal
           (interpretedMapFinalOrderType (interpretedMap source)))
@@ -652,7 +653,7 @@ listTypeValue presentationSource elementType =
         Right
         (interpretedMapValueAt
           (interpretedMap source) (finiteOrdinal position))
-      () <$ specifyValues member elementType
+      validateRecursiveElement elementSchema member
 
 -- | A semantic nonempty stream fixed point. Unlike a finite recursive list,
 -- a stream has exactly the natural positions and validates each element only
@@ -662,6 +663,7 @@ streamTypeValue :: String -> InterpretedValue -> InterpretedValue
 streamTypeValue presentationSource elementType =
   withDependentSumStructure (StreamDependentSum elementType) value
   where
+    elementSchema = argumentSchemaFromValue elementType
     value = withDependentSumAccess project
       (makeDependentSumValue presentationSource staticTarget validate)
     staticTarget = makeLazyMapValue omega (const (Just elementType))
@@ -679,10 +681,36 @@ streamTypeValue presentationSource elementType =
         sourceMap = interpretedMap source
         checkedMap = makeCheckedLazyMapValue omega $ \position -> do
           selected <- interpretedMapValueAtChecked sourceMap position
-          traverse (`specifyValues` elementType) selected
+          traverse
+            (\member -> member <$ validateRecursiveElement elementSchema member)
+            selected
         checkedView = case interpretedNamedMapView source of
           Just named -> withNamedMapView named checkedMap
           Nothing -> checkedMap
+
+-- | Recursive homogeneous collections retain each original value after type
+-- checking. Identifier values additionally have an ordinary structural map
+-- view containing their canonical name, payload, and transparent metadata;
+-- use that existing view for tuple-shaped element schemas without replacing
+-- the identifier value returned to Datra.
+validateRecursiveElement
+  :: ArgumentSchema
+  -> InterpretedValue
+  -> Either InterpretingError ()
+validateRecursiveElement schema source =
+  case argumentSchemaValuesComplete schema source of
+    Right _ -> Right ()
+    Left original
+      | interpretedValueKind source == DependentIdentifierTypeValueKind ->
+          () <$ argumentSchemaValuesComplete schema (structuralMapView source)
+      | otherwise -> Left original
+  where
+    structuralMapView value =
+      makeCheckedLazyMapValue orderType
+        (interpretedMapValueAtChecked sourceMap)
+      where
+        sourceMap = interpretedMap value
+        orderType = interpretedMapFinalOrderType sourceMap
 
 identifierValueTypeValue :: InterpretedValue
 identifierValueTypeValue = makeIdentifierValueType

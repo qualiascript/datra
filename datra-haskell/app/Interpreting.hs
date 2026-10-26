@@ -2163,12 +2163,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           then standardNothingValue
           else standardOptionalValue result >>= contextuallySpecify result
     unconsList value = do
-      count <- maybe
-        (Left (FunctionEvaluationFailed FunctionArgumentsRequireFinitePages))
-        Right
-        (naturalAtOrdinal
-          (interpretedMapFinalOrderType (interpretedMap value)))
-      if count == 0
+      let orderType = interpretedMapFinalOrderType (interpretedMap value)
+      if orderType == finiteOrdinal 0
         then standardNothingValue
         else do
           headValue <- accessValues value (naturalValue 0)
@@ -2536,7 +2532,8 @@ renderLookupTemplateKey template witness = do
         (Left AmbiguousStringTemplate)
         Right
         (naturalListAt index witnesses)
-      renderCanonicalCapture selected
+      maybe (Left AmbiguousStringTemplate) Right
+        (canonicalCaptureText selected)
 
 -- | Render the single declaration-family row used for syntax discovery and
 -- non-canonical collection traversal. Capture schemas describe the family;
@@ -2565,16 +2562,18 @@ captureWitnesses count witness =
         (interpretedMap witness)
         (finiteOrdinal (fromIntegral index)))
 
-renderCanonicalCapture
-  :: InterpretedValue
-  -> Either InterpretingError String
-renderCanonicalCapture value = do
-  rendered <- toStringValue canonicalStringCodec value
+-- Capture families are enumerated before their keys are rendered, so this
+-- conversion is only for one concrete witness. A non-concrete conversion is
+-- not an exceptional host state; it simply cannot name a declaration member.
+canonicalCaptureText :: InterpretedValue -> Maybe String
+canonicalCaptureText value = do
+  rendered <- either (const Nothing) Just
+    (toStringValue canonicalStringCodec value)
   case interpretedSemanticResult rendered of
-    CanonicalAsciiString text -> Right text
+    CanonicalAsciiString text -> Just text
     _ -> case asciiStringFromInterpretedMap (interpretedMap rendered) of
-      Just text | interpretedValueHasTotalMap rendered -> Right text
-      _ -> Left NoCanonicalStringConversion
+      Just text | interpretedValueHasTotalMap rendered -> Just text
+      _ -> Nothing
 
 -- | Canonical reverse matching mirrors function-domain preparation. Every
 -- decoded candidate is completed against its capture schema, identifiers are
@@ -2650,7 +2649,7 @@ preparedCaptureCandidatesWith interpret schema captured =
         [argumentSchemaValuesComplete
           (argumentSchemaFromValue schema)
           candidate]
-    , Right rendered <- [renderCanonicalCapture prepared]
+    , Just rendered <- [canonicalCaptureText prepared]
     , rendered == captured
     ]
 
