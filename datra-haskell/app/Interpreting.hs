@@ -3108,10 +3108,10 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
         , Just declaration <- [dependentDeclaration entry]
         ]
       finalPosition = length entries
+      -- Every declaration scope contributes its own contextual level.  An
+      -- inherited @_this@ is the next outer level, not evidence that this
+      -- block has already installed its local one.
       introduceThis = introducesThis
-        && case lookupScope "_this" scopedEnclosing >>= contextualBinding of
-          Just _ -> False
-          Nothing -> True
       buildFrame = (scopeAt finalPosition, positionedScopeMembers)
         where
           positionedScopeMembers =
