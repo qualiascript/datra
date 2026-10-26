@@ -12,7 +12,8 @@ module DatraLanguage.DependentDeclaration
 import DatraLanguage.AST
 
 data DependentDeclarationHead
-  = StringTemplateDeclarationHead [StringTemplatePart Expression]
+  = SimpleIdentifierDeclarationHead IdentifierString
+  | StringTemplateDeclarationHead [StringTemplatePart Expression]
   | EvaluatedDeclarationHead Expression
   deriving (Eq, Show)
 
@@ -37,7 +38,7 @@ dependentDeclaration = declaration False False
     declaration strict canonical
         (IdentifierOperation (IdentifierString name) annotation (Just given))
       | annotation == given = Just (makeDeclaration
-          (StringTemplateDeclarationHead [StringTemplateLiteral name])
+          (SimpleIdentifierDeclarationHead (IdentifierString name))
           strict canonical given)
     declaration strict canonical optional
       | Just (named@IdentifierOperation {}, _) <-
@@ -78,6 +79,8 @@ dependentDeclaration = declaration False False
 dependentDeclarationNameExpression :: DependentDeclaration -> Expression
 dependentDeclarationNameExpression declaration =
   case dependentDeclarationHead declaration of
+    SimpleIdentifierDeclarationHead (IdentifierString name) ->
+      IdentifierReference (IdentifierString name)
     StringTemplateDeclarationHead parts -> StringTemplate parts
     EvaluatedDeclarationHead expressionValue -> expressionValue
 
@@ -90,6 +93,8 @@ dependentDeclarationTemplateBranches
   -> Maybe [[StringTemplatePart Expression]]
 dependentDeclarationTemplateBranches declaration =
   case dependentDeclarationHead declaration of
+    SimpleIdentifierDeclarationHead (IdentifierString name) ->
+      Just [[StringTemplateLiteral name]]
     StringTemplateDeclarationHead parts ->
       Just (expandOptionalInterpolations parts)
     EvaluatedDeclarationHead (GreedyStringTemplate operand) ->

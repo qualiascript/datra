@@ -11,6 +11,7 @@ module SyntaxDefinitions
   , declarationRules, declarationRuleFailures
   , contextualSyntaxRulesFor
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
+  , syntaxApplicationImplementation
   , syntaxDependentRule, syntaxRuleAdapter
   , expandSyntax
   , declarationLiterals, absorbFunSequence
@@ -18,6 +19,7 @@ module SyntaxDefinitions
   ) where
 import DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
+  , DependentDeclarationHead (..)
   , dependentDeclaration
   , dependentDeclarationTemplateBranches
   )
@@ -43,6 +45,7 @@ data SyntaxRule = SyntaxRule
 
 data SyntaxRuleSemantics
   = SyntaxAdapter Expression
+  | SyntaxApplication Expression Expression
   | DependentSyntax DependentSyntaxRule
   deriving (Eq, Show)
 
@@ -60,13 +63,20 @@ data DependentSyntaxInvocation
 syntaxDependentRule :: SyntaxRule -> Maybe DependentSyntaxRule
 syntaxDependentRule rule = case syntaxSemantics rule of
   SyntaxAdapter {} -> Nothing
+  SyntaxApplication {} -> Nothing
   DependentSyntax dependent -> Just dependent
 
 syntaxRuleAdapter :: SyntaxRule -> Maybe Expression
 syntaxRuleAdapter rule = case syntaxSemantics rule of
   SyntaxAdapter adapter -> Just adapter
+  SyntaxApplication _ implementation -> Just implementation
   DependentSyntax dependent -> Just
     (dependentSyntaxImplementation dependent)
+
+syntaxApplicationImplementation :: SyntaxRule -> Maybe Expression
+syntaxApplicationImplementation rule = case syntaxSemantics rule of
+  SyntaxApplication _ implementation -> Just implementation
+  _ -> Nothing
 
 data SyntaxTemplateCompilationFailure
   = InadmissibleSyntaxTemplate
@@ -108,9 +118,30 @@ declarationRuleResults expressionValue =
 dependentDeclarationRuleResults
   :: DependentDeclaration
   -> [Either SyntaxTemplateCompilationFailure SyntaxRule]
-dependentDeclarationRuleResults declaration = map
-  (directTemplateRule declaration)
-  (dependentDeclarationSyntaxAlternatives declaration)
+dependentDeclarationRuleResults declaration =
+  applicationRules <> map
+    (directTemplateRule declaration)
+    (dependentDeclarationSyntaxAlternatives declaration)
+  where
+    applicationRules = case dependentDeclarationHead declaration of
+      SimpleIdentifierDeclarationHead name ->
+        [Right (simpleApplicationRule declaration name)]
+      _ -> []
+
+simpleApplicationRule
+  :: DependentDeclaration
+  -> IdentifierString
+  -> SyntaxRule
+simpleApplicationRule declaration (IdentifierString text) = SyntaxRule
+  { syntaxName = text
+  , syntaxTemplate = SyntaxTemplate
+      (syntaxTemplatePieces (syntaxTemplateFromPattern text) <>
+        [SyntaxHole (ExpressionSyntaxHole
+          (IdentifierReference (IdentifierString "_Expr")))])
+  , syntaxSemantics = SyntaxApplication
+      (dependentLookup [StringTemplateLiteral text] [])
+      (dependentDeclarationImplementation declaration)
+  }
 
 directTemplateRule
   :: DependentDeclaration
@@ -119,8 +150,9 @@ directTemplateRule
 directTemplateRule declaration parts = do
   (template, captures) <- compileDependentDeclarationTemplate parts
   pure SyntaxRule
-    { syntaxName = renderSourceExpression
-        (StringTemplate parts)
+    { syntaxName = case dependentDeclarationHead declaration of
+        SimpleIdentifierDeclarationHead (IdentifierString name) -> name
+        _ -> renderSourceExpression (StringTemplate parts)
     , syntaxTemplate = template
     , syntaxSemantics = DependentSyntax (DependentSyntaxRule
         captures
@@ -179,28 +211,37 @@ expandSyntax rule selection =
     DependentSyntax dependent -> case dependentSyntaxInvocation dependent of
       DependentSyntaxLookup parts -> dependentLookup parts captures
     SyntaxAdapter adapter -> FunctionApplication adapter suppliedInput
+    SyntaxApplication callable _ ->
+      FunctionApplication callable suppliedInput
   where
     captures = templateSelectionCaptures selection
     suppliedInput = case captures of
       [] -> AtlasMap []
       [value] -> value
       values -> AtlasMap values
-    dependentLookup parts values =
-      ScopeAccess
-        (MapAccess
-          (Lookup (StringTemplate (substitute parts values)))
-          (EllipsisNatural 0))
-        (IdentifierReference (IdentifierString "value"))
-    substitute [] _ = []
-    substitute (StringTemplateLiteral literal : parts) values =
-      StringTemplateLiteral literal : substitute parts values
-    substitute (StringTemplateInterpolation _ : parts) (value : values) =
-      StringTemplateInterpolation value : substitute parts values
-    substitute (interpolation@StringTemplateInterpolation {} : parts) [] =
-      interpolation : substitute parts []
     -- Function preparation overloads this supplied tail onto the declared
     -- domain. Empty, singleton, and multi-capture syntax therefore follows the
     -- same call path as an ordinary partial argument map.
+
+dependentLookup
+  :: [StringTemplatePart Expression]
+  -> [Expression]
+  -> Expression
+dependentLookup parts values =
+  ScopeAccess
+    (MapAccess
+      (Lookup (StringTemplate (substitute parts values)))
+      (EllipsisNatural 0))
+    (IdentifierReference (IdentifierString "value"))
+  where
+    substitute [] _ = []
+    substitute (StringTemplateLiteral literal : remaining) arguments =
+      StringTemplateLiteral literal : substitute remaining arguments
+    substitute (StringTemplateInterpolation _ : remaining)
+        (argument : arguments) =
+      StringTemplateInterpolation argument : substitute remaining arguments
+    substitute (interpolation@StringTemplateInterpolation {} : remaining) [] =
+      interpolation : substitute remaining []
 
 -- A named subexpression in a condition becomes a condition-local declaration
 -- when its name is used elsewhere in that condition or in either branch.

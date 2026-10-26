@@ -19,7 +19,7 @@ import DatraLanguage.DependentDeclaration
   , dependentDeclarationNameExpression
   )
 import Data.List (nub, nubBy)
-import Data.Maybe (maybeToList)
+import Data.Maybe (mapMaybe, maybeToList)
 import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
@@ -61,6 +61,7 @@ import SyntaxDefinitions
   , declarationRules
   , expandSyntax
   , normalizeSyntaxExpansion
+  , syntaxApplicationImplementation
   , syntaxDependentRule
   , syntaxRuleAdapter
   , syntaxTemplateLiteralPrefix
@@ -92,7 +93,6 @@ data SyntaxRewriteFailure
   | AmbiguousBareSkipApplication
   | OverlappingDependentDeclarations String String
   | NonInjectiveDependentDeclaration String
-  | NonEnumerableValDependentDeclaration String
   | InvalidSyntaxTemplate String SyntaxTemplateAdmissibilityFailure
   deriving (Eq, Show)
 
@@ -535,11 +535,12 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
           not (rewriteRulesOverlap previous current)
 
         validateValDeclaration environment pair@(compiled, _) = do
-          case sequence (rewriteRuleHoleFamilies compiled)
-              >>= ordinalIndexedProductFamily of
-            Just _ -> Right ()
-            Nothing -> Left (NonEnumerableValDependentDeclaration
-              (syntaxName (rewriteRule compiled)))
+          case sequence (rewriteRuleHoleFamilies compiled) of
+            Just families
+              | Nothing <- ordinalIndexedProductFamily families ->
+                  Left (NonInjectiveDependentDeclaration
+                    (syntaxName (rewriteRule compiled)))
+            _ -> Right ()
           validateInjective environment pair
 
         validateInjective environment (compiled, dependent)
@@ -1954,7 +1955,7 @@ compileScopedRewriteRules
   -> [Expression]
   -> [SyntaxRule]
   -> [RewriteRule]
-compileScopedRewriteRules environment declarations rules = map compile rules
+compileScopedRewriteRules environment declarations rules = mapMaybe compile rules
   where
     evaluate = rewriteEvaluate environment declarations
     kinds = nub
@@ -1967,10 +1968,13 @@ compileScopedRewriteRules environment declarations rules = map compile rules
     classify kind = case lookup kind classifications of
       Just classified -> classified
       Nothing -> (kind, Nothing)
-    compile rule = compiled
-      { rewriteRuleEvaluation = Just evaluate
-      , rewriteRuleHoleFamilies = holeFamilies
-      }
+    compile rule
+      | Just implementation <- syntaxApplicationImplementation rule
+      , Nothing <- syntaxFunctionInsertion evaluate implementation = Nothing
+      | otherwise = Just compiled
+          { rewriteRuleEvaluation = Just evaluate
+          , rewriteRuleHoleFamilies = holeFamilies
+          }
       where
         specializedRule = rule
           { syntaxTemplate = SyntaxTemplate specializedPieces }
