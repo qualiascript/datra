@@ -119,14 +119,12 @@ dependentDeclarationRuleResults
   :: DependentDeclaration
   -> [Either SyntaxTemplateCompilationFailure SyntaxRule]
 dependentDeclarationRuleResults declaration =
-  applicationRules <> map
-    (directTemplateRule declaration)
-    (dependentDeclarationSyntaxAlternatives declaration)
-  where
-    applicationRules = case dependentDeclarationHead declaration of
-      SimpleIdentifierDeclarationHead name ->
-        [Right (simpleApplicationRule declaration name)]
-      _ -> []
+  case dependentDeclarationHead declaration of
+    SimpleIdentifierDeclarationHead name ->
+      [Right (simpleApplicationRule declaration name)]
+    _ -> map
+      (directTemplateRule declaration)
+      (dependentDeclarationSyntaxAlternatives declaration)
 
 simpleApplicationRule
   :: DependentDeclaration
