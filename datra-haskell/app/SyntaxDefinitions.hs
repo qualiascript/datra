@@ -219,7 +219,7 @@ expandSyntax
 expandSyntax rule selection =
   case syntaxSemantics rule of
     DependentSyntax dependent -> case dependentSyntaxInvocation dependent of
-      DependentSyntaxLookup parts -> selectedDependentLookup parts captures
+      DependentSyntaxLookup parts -> dependentLookup parts captures
     SyntaxAdapter adapter -> FunctionApplication adapter suppliedInput
     SyntaxApplication callable _ ->
       FunctionApplication callable suppliedInput
@@ -239,16 +239,6 @@ dependentLookup
   -> Expression
 dependentLookup parts values =
   lookupExpression (StringTemplate (substituteCaptures parts values))
-
-selectedDependentLookup
-  :: [StringTemplatePart Expression]
-  -> [Expression]
-  -> Expression
-selectedDependentLookup parts values =
-  lookupExpression (ArgumentMap
-    [ StringTemplate parts
-    , StringTemplate (substituteCaptures parts values)
-    ])
 
 lookupExpression :: Expression -> Expression
 lookupExpression operand =
