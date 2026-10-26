@@ -145,8 +145,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "parametrul privat al funcției nu poate fi opțional"
         ["identificator: " <> name]
-    CyclicIdentifierReference names ->
-      LocalizedMessage "dependență ciclică între identificatori" ["identificatori: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let necesită un bloc begin" []
     ValOutsideBegin ->

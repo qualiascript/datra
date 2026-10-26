@@ -146,8 +146,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "private function parameter cannot be optional"
         ["identifier: " <> name]
-    CyclicIdentifierReference names ->
-      LocalizedMessage "cyclic identifier dependency" ["identifiers: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let requires an enclosing begin block" []
     ValOutsideBegin ->

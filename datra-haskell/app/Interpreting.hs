@@ -2682,19 +2682,13 @@ evaluateBindingDefinitionWith
   -> Expression
   -> Either InterpretingError InterpretedValue
 evaluateBindingDefinitionWith reduction captured resolving name annotation expressionValue
-  | resolutionKey `elem` resolving =
-      case recursiveFunctionImplementation expressionValue of
-        Just implementation -> do
-          seed <- evalInScopeWith reduction captured resolving implementation
-          pure (case interpretedFunctionBody seed of
-            Just (EvaluatedRuntimeFunctionBody _ function) ->
-              makeFunctionValue function
-            _ -> seed)
-        Nothing -> Left (CyclicIdentifierReference
-          (reverse
-            (name : map resolutionName
-              (takeWhile (/= resolutionKey) resolving))
-            <> [name]))
+  | resolutionKey `elem` resolving
+  , Just implementation <- recursiveFunctionImplementation expressionValue = do
+      seed <- evalInScopeWith reduction captured resolving implementation
+      pure (case interpretedFunctionBody seed of
+        Just (EvaluatedRuntimeFunctionBody _ function) ->
+          makeFunctionValue function
+        _ -> seed)
   | otherwise = do
       case annotation of
         Nothing -> pure ()
@@ -2705,7 +2699,6 @@ evaluateBindingDefinitionWith reduction captured resolving name annotation expre
         <$> evaluateDefinition
   where
     resolutionKey = bindingKey name expressionValue
-    resolutionName = takeWhile (/= ':')
     evaluateDefinition =
       case expressionValue of
         contextual

@@ -135,7 +135,6 @@ data InterpretingError
   | LetBindingCannotShadowConsistentIdentifier String
   | UnknownIdentifier String
   | PrivateParameterCannotBeOptional String
-  | CyclicIdentifierReference [String]
   | LetOutsideBegin
   | ValOutsideBegin
   | GenericIntroductionOutsideFunctionType String
