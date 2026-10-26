@@ -57,8 +57,8 @@
 
     let val List := &T? do yield fun () | (T; this)
     val InhabitedList := &T? do yield (T; List T)
-    val Just := &T? do yield Just : T
-    val Maybe := &T? do yield nothing | Just T
+    let val Just := &T? do yield Just : T
+    let val Maybe := &T? do yield nothing | Just T
     let val Str := >< (List Char)
     let val InhabitedStr := >< (InhabitedList Char)
     val Stream := &T? do yield fun T ; this

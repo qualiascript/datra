@@ -18,9 +18,8 @@ import DatraLanguage.DependentDeclaration
   , dependentDeclaration
   , dependentDeclarationNameExpression
   )
-import Data.List (isInfixOf, nub, nubBy)
+import Data.List (nub, nubBy)
 import Data.Maybe (mapMaybe, maybeToList)
-import Debug.Trace (trace)
 import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
@@ -434,26 +433,9 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
             validateDependentDeclarations rewritten
             Right (rewritten, tentativeEnvironment)
           else do
-            let relevant =
-                  [ renderSourceExpression entry
-                  | entry <- rewritten
-                  , "Nat" `elem` bindingNames entry
-                    || "Int" `elem` bindingNames entry
-                    || "from_body" `isInfixOf` renderSourceExpression entry
-                  ]
-            trace ("strict stable declarations:\n" <> unlines relevant) (pure ())
             (strictlyRewritten, strictEnvironment) <-
               strictPass rewritten 0 []
                 (recursiveRewriteEnvironment True initial rewritten) rawEntries
-            let strictRelevant =
-                  [ renderSourceExpression entry
-                  | entry <- strictlyRewritten
-                  , "Nat" `elem` bindingNames entry
-                    || "Int" `elem` bindingNames entry
-                    || "from_body" `isInfixOf` renderSourceExpression entry
-                  ]
-            trace ("strict final declarations:\n" <> unlines strictRelevant)
-              (pure ())
             validateDependentDeclarations strictlyRewritten
             Right (strictlyRewritten, strictEnvironment)
         else fixedPoint rewritten discovered
