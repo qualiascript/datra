@@ -349,21 +349,22 @@ specifiedValue
   -> EvaluatedAtlasMapFederationMember
   -> InterpretedValue
 specifiedValue sourceValue totalSource sourceCanonical target member =
-  makeInterpretedValue
-    (composedStructuralDatraType
-      (map interpretedDatraType [sourceValue, target]))
-    (SpecificationForm
-      EvaluatedSpecification
-        { evaluatedSpecificationSourceValue = sourceValue
-        , evaluatedSpecificationSource = totalSource
-        , evaluatedSpecificationTarget = target
-        , evaluatedSpecificationMember = member
-        })
-    NoInsertion
-    (interpretedTotalAtlasMapUnderlying totalSource)
-    (interpretedAtlasMapFederation target)
-    NonTotalInterpretedMap
-    (SpecificationSemantics sourceCanonical (interpretedSemantics target))
+  (makeInterpretedValue
+      (composedStructuralDatraType
+        (map interpretedDatraType [sourceValue, target]))
+      (SpecificationForm
+        EvaluatedSpecification
+          { evaluatedSpecificationSourceValue = sourceValue
+          , evaluatedSpecificationSource = totalSource
+          , evaluatedSpecificationTarget = target
+          , evaluatedSpecificationMember = member
+          })
+      NoInsertion
+      (interpretedTotalAtlasMapUnderlying totalSource)
+      (interpretedAtlasMapFederation target)
+      NonTotalInterpretedMap
+      (SpecificationSemantics sourceCanonical (interpretedSemantics target)))
+    { interpretedNamedMapView = interpretedNamedMapView sourceValue }
 
 originalSpecificationSourceSemantics :: InterpretedValue -> ValueSemantics
 originalSpecificationSourceSemantics value =

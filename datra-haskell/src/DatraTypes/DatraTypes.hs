@@ -69,6 +69,7 @@ module DatraTypes
   , InterpretedValueKind (..)
   , InterpretedMap
   , NamedMember (..)
+  , NamedMapOrdinalProjection (..)
   , NamedMapProjection (..)
   , NamedMapView (..)
   , namedMapView
@@ -76,6 +77,7 @@ module DatraTypes
   , namedMapMemberAt
   , namedMapMemberByName
   , namedMapContainsName
+  , namedMapDeclaredMembers
   , namedMapViewForValue
   , appendNamedMapViews
   , namedMapValue
@@ -502,6 +504,7 @@ import Evaluation.Value
   , InterpretedMap
   , InterpretedValue
   , NamedMember (..)
+  , NamedMapOrdinalProjection (..)
   , NamedMapProjection (..)
   , NamedMapView (..)
   , namedMapView
@@ -509,6 +512,7 @@ import Evaluation.Value
   , namedMapMemberAt
   , namedMapMemberByName
   , namedMapContainsName
+  , namedMapDeclaredMembers
   , namedMapViewForValue
   , appendNamedMapViews
   , namedMapValue

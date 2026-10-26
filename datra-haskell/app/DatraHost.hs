@@ -340,8 +340,8 @@ namedMembers
 namedMembers value =
   case namedMapViewForValue value of
     Just named -> do
-      positions <- maybe invalid Right
-        (finiteOrdinalPositions (namedMapOrderType named))
+      orderType <- namedMapOrderType named
+      positions <- maybe invalid Right (finiteOrdinalPositions orderType)
       members <- traverse
         (\position -> namedMapMemberAt named position >>= maybe invalid Right)
         positions

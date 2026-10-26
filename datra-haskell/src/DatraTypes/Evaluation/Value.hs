@@ -73,6 +73,7 @@ module Evaluation.Value
   , InterpretedMap (..)
   , interpretedMapCardinality
   , NamedMember (..)
+  , NamedMapOrdinalProjection (..)
   , NamedMapProjection (..)
   , NamedMapView (..)
   , namedMapView
@@ -80,6 +81,7 @@ module Evaluation.Value
   , namedMapMemberAt
   , namedMapMemberByName
   , namedMapContainsName
+  , namedMapDeclaredMembers
   , namedMapViewForValue
   , appendNamedMapViews
   , namedMapValue
@@ -195,6 +197,7 @@ import DatraOrdinal
   , finiteOrdinal
   , naturalAtOrdinal
   , naturalsBelow
+  , omega
   , ordinalLT
   , subtractOrdinal
   )
@@ -678,16 +681,29 @@ data NamedMember = NamedMember
 
 -- | A namespace-preserving view of an Atlas map. Ordinal access retains the
 -- map's own order; direct name lookup must decide absence without enumerating
--- that order. Public selection is producer-defined because filtering an
--- arbitrary transfinite order cannot be implemented by successor scanning.
-data NamedMapProjection = NamedMapProjection
-  { namedProjectionOrderType :: Ordinal
-  , namedProjectionMemberAt
+-- that order. The finite declaration manifest is metadata for syntax and
+-- module interfaces, not a substitute for enumerating the value namespace.
+data NamedMapOrdinalProjection = NamedMapOrdinalProjection
+  { namedOrdinalProjectionOrderType :: Ordinal
+  , namedOrdinalProjectionMemberAt
       :: Ordinal -> Either InterpretingError (Maybe NamedMember)
+  }
+
+-- | Direct name projection is available independently of ordinal traversal.
+-- Some namespaces, notably syntax-category declaration families, can decode a
+-- concrete name without possessing a canonical enumeration of every name.
+data NamedMapProjection = NamedMapProjection
+  { namedProjectionOrdinal
+      :: Either InterpretingError NamedMapOrdinalProjection
   , namedProjectionMemberByName
       :: String -> Either InterpretingError (Maybe NamedMember)
   , namedProjectionContainsName
       :: String -> Either InterpretingError Bool
+  -- The manifest may materialize representative declarations. Keep it
+  -- explicitly delayed so composing namespace views cannot evaluate those
+  -- declarations while the surrounding recursive scope is still forming.
+  , namedProjectionDeclaredMembers
+      :: () -> Either InterpretingError [NamedMember]
   }
 
 newtype NamedMapView = NamedMapView
@@ -726,16 +742,23 @@ namedMapView
   -> (String -> Either InterpretingError Bool)
   -> NamedMapView
 namedMapView orderType memberAt memberByName containsName =
-  NamedMapView (NamedMapProjection orderType memberAt memberByName containsName)
+  NamedMapView (NamedMapProjection
+    (Right (NamedMapOrdinalProjection orderType memberAt))
+    memberByName
+    containsName
+    (const (Right [])))
 
-namedMapOrderType :: NamedMapView -> Ordinal
-namedMapOrderType = namedProjectionOrderType . namedMapProjection
+namedMapOrderType :: NamedMapView -> Either InterpretingError Ordinal
+namedMapOrderType view = namedOrdinalProjectionOrderType
+  <$> namedProjectionOrdinal (namedMapProjection view)
 
 namedMapMemberAt
   :: NamedMapView
   -> Ordinal
   -> Either InterpretingError (Maybe NamedMember)
-namedMapMemberAt = namedProjectionMemberAt . namedMapProjection
+namedMapMemberAt view position = do
+  ordinalProjection <- namedProjectionOrdinal (namedMapProjection view)
+  namedOrdinalProjectionMemberAt ordinalProjection position
 
 namedMapMemberByName
   :: NamedMapView
@@ -749,16 +772,24 @@ namedMapContainsName
   -> Either InterpretingError Bool
 namedMapContainsName = namedProjectionContainsName . namedMapProjection
 
+namedMapDeclaredMembers
+  :: NamedMapView
+  -> Either InterpretingError [NamedMember]
+namedMapDeclaredMembers view =
+  namedProjectionDeclaredMembers (namedMapProjection view) ()
+
 namedMapViewForValue :: InterpretedValue -> Maybe NamedMapView
 namedMapViewForValue value =
   case interpretedSimpleIdentifierName value of
-    Just name -> Just (namedMapView
-      (finiteOrdinal 1)
-      (\position -> Right
-        (if position == finiteOrdinal 0 then Just member else Nothing))
+    Just name -> Just (NamedMapView (NamedMapProjection
+      (Right (NamedMapOrdinalProjection
+        (finiteOrdinal 1)
+        (\position -> Right
+          (if position == finiteOrdinal 0 then Just member else Nothing))))
       (\candidate -> Right
         (if candidate == name then Just member else Nothing))
-      (\candidate -> Right (candidate == name)))
+      (\candidate -> Right (candidate == name))
+      (const (Right [member]))))
       where
         member = NamedMember name value
     Nothing -> interpretedNamedMapView value
@@ -773,19 +804,31 @@ appendNamedMapProjections
   -> NamedMapProjection
   -> NamedMapProjection
 appendNamedMapProjections left right = NamedMapProjection
-  (addOrdinals leftOrder (namedProjectionOrderType right))
-  memberAt
+  (appendOrdinalProjections
+    <$> namedProjectionOrdinal left
+    <*> namedProjectionOrdinal right)
   memberByName
   (\name -> (||)
     <$> namedProjectionContainsName left name
     <*> namedProjectionContainsName right name)
+  (\() -> (<>)
+    <$> namedProjectionDeclaredMembers left ()
+    <*> namedProjectionDeclaredMembers right ())
   where
-    leftOrder = namedProjectionOrderType left
-    memberAt position
-      | position `ordinalLT` leftOrder = namedProjectionMemberAt left position
-      | otherwise = case subtractOrdinal leftOrder position of
-          Just relative -> namedProjectionMemberAt right relative
-          Nothing -> Right Nothing
+    appendOrdinalProjections leftOrdinal rightOrdinal =
+      NamedMapOrdinalProjection
+        (addOrdinals leftOrder
+          (namedOrdinalProjectionOrderType rightOrdinal))
+        memberAt
+      where
+        leftOrder = namedOrdinalProjectionOrderType leftOrdinal
+        memberAt position
+          | position `ordinalLT` leftOrder =
+              namedOrdinalProjectionMemberAt leftOrdinal position
+          | otherwise = case subtractOrdinal leftOrder position of
+              Just relative ->
+                namedOrdinalProjectionMemberAt rightOrdinal relative
+              Nothing -> Right Nothing
     memberByName name = do
       leftMember <- namedProjectionMemberByName left name
       rightMember <- namedProjectionMemberByName right name
@@ -800,8 +843,14 @@ appendNamedMapProjections left right = NamedMapProjection
 namedMapValue :: NamedMapView -> InterpretedValue
 namedMapValue view = withNamedMapView view
   (makeCheckedLazyMapValue
-    (namedMapOrderType view)
+    shellOrderType
     (fmap (fmap namedMemberValue) . namedMapMemberAt view))
+  where
+    -- The ordinary Atlas shell can only express a concrete order type.  An
+    -- unavailable canonical enumeration is represented as a potentially
+    -- countable shell whose checked member operation retains the capability
+    -- error.  All named operations continue to use the attached projection.
+    shellOrderType = either (const omega) id (namedMapOrderType view)
 
 -- | Compatibility name for the number of Atlas pages represented by a map.
 -- This is distinct from the final page's possibly-transfinite order type.
