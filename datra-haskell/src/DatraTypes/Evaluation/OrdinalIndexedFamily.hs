@@ -20,6 +20,7 @@ import DatraOrdinal
   , subtractOrdinal
   )
 import Evaluation.Federation.Structure (sequenceOperands)
+import Evaluation.Coalization (coalizeValue)
 import Evaluation.Identifier
   ( identifierUnderlyingValue
   , identifierValueAtUnderlying
@@ -49,6 +50,12 @@ ordinalIndexedValueFamily value =
             identifierValueAtUnderlying value selected
         }
     Nothing -> case interpretedForm value of
+      CoalizationForm operand -> do
+        family <- ordinalIndexedValueFamily operand
+        pure family
+          { ordinalIndexedFamilyValueAt =
+              fmap coalizeValue . ordinalIndexedFamilyValueAt family
+          }
       SequentialMapForm -> do
         members <- sequenceOperands value
         productFamily <$> traverse ordinalIndexedValueFamily members

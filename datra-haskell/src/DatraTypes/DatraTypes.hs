@@ -107,6 +107,7 @@ module DatraTypes
   , asciiStringValue
   , charTypeValue
   , listTypeValue
+  , streamTypeValue
   , identifierValueTypeValue
   , CanonicalStringCodec (..)
   , toStringValue
@@ -652,6 +653,36 @@ listTypeValue presentationSource elementType =
         (interpretedMapValueAt
           (interpretedMap source) (finiteOrdinal position))
       () <$ specifyValues member elementType
+
+-- | A semantic nonempty stream fixed point. Unlike a finite recursive list,
+-- a stream has exactly the natural positions and validates each element only
+-- when that position is demanded. This preserves type checking without
+-- attempting to traverse an infinite source during specification.
+streamTypeValue :: String -> InterpretedValue -> InterpretedValue
+streamTypeValue presentationSource elementType =
+  withDependentSumStructure (StreamDependentSum elementType) value
+  where
+    value = withDependentSumAccess project
+      (makeDependentSumValue presentationSource staticTarget validate)
+    staticTarget = makeLazyMapValue omega (const (Just elementType))
+    project insertion =
+      case interpretedValueKind insertion of
+        NaturalValueKind -> Right elementType
+        _ -> Right value
+    validate source
+      | interpretedValueKind source == MapValueKind
+      , interpretedMapFinalOrderType sourceMap == omega =
+          Right (withMapView checkedView source)
+      | otherwise =
+          Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
+      where
+        sourceMap = interpretedMap source
+        checkedMap = makeCheckedLazyMapValue omega $ \position -> do
+          selected <- interpretedMapValueAtChecked sourceMap position
+          traverse (`specifyValues` elementType) selected
+        checkedView = case interpretedNamedMapView source of
+          Just named -> withNamedMapView named checkedMap
+          Nothing -> checkedMap
 
 identifierValueTypeValue :: InterpretedValue
 identifierValueTypeValue = makeIdentifierValueType

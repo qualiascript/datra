@@ -92,6 +92,13 @@ decideValueSubfederation source target
   , ListDependentSum targetElement <-
       evaluatedDependentSumStructure targetDependent =
       decideValueSubfederation sourceElement targetElement
+  | Just sourceDependent <- dependentSumView source
+  , Just targetDependent <- dependentSumView target
+  , StreamDependentSum sourceElement <-
+      evaluatedDependentSumStructure sourceDependent
+  , StreamDependentSum targetElement <-
+      evaluatedDependentSumStructure targetDependent =
+      decideValueSubfederation sourceElement targetElement
   | Just dependent <- dependentSumView target =
       case evaluatedDependentSumSpecify dependent source of
         Right _ -> DecisionProved ()

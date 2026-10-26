@@ -1691,13 +1691,17 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     Coalization operand -> unary (Right . coalizeValue) operand
     Val _ -> Left ValOutsideBegin
     Fun operand ->
-      case recursiveListElement operand of
-        Just element -> do
+      case recursiveCollection operand of
+        Just collection -> do
+          let element = recursiveCollectionElement collection
           elementType <- interpret element
           runProtectedOperation protection [elementType] $ \actuals ->
             case actuals of
-              [actualElement] -> pure (listTypeValue
-                (renderSourceExpression expressionValue) actualElement)
+              [actualElement] -> pure
+                ((case collection of
+                    RecursiveList _ -> listTypeValue
+                    RecursiveStream _ -> streamTypeValue)
+                  (renderSourceExpression expressionValue) actualElement)
               _ -> Right neverValue
         Nothing -> recursive reduction
       where
@@ -4004,29 +4008,39 @@ ensureMapLevel expressionValue =
 -- The ordinary fixed-point spelling of homogeneous finite Atlas maps.  Both
 -- explicit concatenation and an explicitly grouped sequence denote the same
 -- functor; recognizing it here prevents construction from forcing its tail.
-recursiveListElement :: Expression -> Maybe Expression
-recursiveListElement expressionValue =
+data RecursiveCollection
+  = RecursiveList Expression
+  | RecursiveStream Expression
+
+recursiveCollectionElement :: RecursiveCollection -> Expression
+recursiveCollectionElement collection =
+  case collection of
+    RecursiveList element -> element
+    RecursiveStream element -> element
+
+recursiveCollection :: Expression -> Maybe RecursiveCollection
+recursiveCollection expressionValue =
   case expressionValue of
     EitherType (AtlasMap [])
         (MapConcatenation element self)
       | isSelf self ->
-      Just element
+      Just (RecursiveList element)
     EitherType (AtlasMap [])
         (MapSequence [element, self])
       | isSelf self ->
-      Just element
+      Just (RecursiveList element)
     EitherType (AtlasMap [])
         (AtlasMap [element, self])
       | isSelf self ->
-      Just element
+      Just (RecursiveList element)
     MapSequence
         [ EitherType (AtlasMap []) element
         , self
-        ] | isSelf self -> Just element
+        ] | isSelf self -> Just (RecursiveStream element)
     AtlasMap
         [ EitherType (AtlasMap []) element
         , self
-        ] | isSelf self -> Just element
+        ] | isSelf self -> Just (RecursiveStream element)
     _ -> Nothing
   where
     isSelf = isContextualAccessOf (IdentifierString "_this")

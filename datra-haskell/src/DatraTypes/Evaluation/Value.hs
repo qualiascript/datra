@@ -200,7 +200,9 @@ import DatraOrdinal
   , naturalsBelow
   , ordinalLT
   , subtractOrdinal
+  , omega
   )
+import FoliageMap (foliageMap, foliageMapPositionAt)
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
@@ -304,6 +306,7 @@ data DependentSumStructure
   = OrdinaryDependentSum
   | CharacterDependentSum
   | ListDependentSum InterpretedValue
+  | StreamDependentSum InterpretedValue
 
 -- | A dependent sum keeps its ordinary structural approximation for map
 -- operations and its exact left-to-right membership procedure for typing.
@@ -874,11 +877,37 @@ appendNamedMapProjections left right = NamedMapProjection
 -- ordinal demand delegates to the producer and retains its checked failure.
 namedMapValue :: NamedMapView -> Either InterpretingError InterpretedValue
 namedMapValue view = do
-  shellOrderType <- namedMapOrderType view
-  pure (withNamedMapView view
+  collection <- namedProjectionCollection (namedMapProjection view)
+  let normalizedCollection = foliageOrdinalProjection collection
+      normalizedView = NamedMapView ((namedMapProjection view)
+        { namedProjectionCollection = Right normalizedCollection })
+      shellOrderType = namedOrdinalProjectionOrderType normalizedCollection
+  pure (withNamedMapView normalizedView
     (makeCheckedLazyMapValue
       shellOrderType
-      (fmap (fmap namedMemberValue) . namedMapMemberAt view)))
+      (fmap (fmap namedMemberValue)
+        . namedOrdinalProjectionMemberAt normalizedCollection)))
+
+-- | Collections use natural positions even when their source namespace is a
+-- transfinite ordinal sum. The ordinal projection remains available for
+-- callers that need the source order; the ordinary Atlas shell follows the
+-- same fair foliage traversal used by generic map views.
+foliageOrdinalProjection
+  :: NamedMapOrdinalProjection
+  -> NamedMapOrdinalProjection
+foliageOrdinalProjection source =
+  case naturalAtOrdinal sourceOrder of
+    Just _ -> source
+    Nothing -> NamedMapOrdinalProjection omega memberAt
+  where
+    sourceOrder = namedOrdinalProjectionOrderType source
+    traversal = foliageMap sourceOrder
+    memberAt position = case naturalAtOrdinal position of
+      Nothing -> Right Nothing
+      Just rank -> case foliageMapPositionAt traversal rank of
+        Just sourcePosition ->
+          namedOrdinalProjectionMemberAt source sourcePosition
+        Nothing -> Right Nothing
 
 -- | Compatibility name for the number of Atlas pages represented by a map.
 -- This is distinct from the final page's possibly-transfinite order type.
