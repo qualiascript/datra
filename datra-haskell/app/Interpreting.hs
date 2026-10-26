@@ -1313,7 +1313,7 @@ scopeEntriesValue reduction resolving entries =
     named <- scopeEntriesNamedView reduction resolving entries
     case named of
       Nothing -> Right (makeAtlasMap 0 [])
-      Just view -> Right (namedMapValue view)
+      Just view -> namedMapValue view
 
 scopeEntriesNamedView
   :: ReductionContext
@@ -2362,6 +2362,18 @@ renderLookupTemplateKey template witness = do
         (naturalListAt index witnesses)
       renderCanonicalCapture selected
 
+-- | Render the single declaration-family row seen by ordinary collection
+-- traversal. Capture schemas are row data here, not witnesses selected from
+-- those schemas, so descriptor construction never asks a syntax category for
+-- an enumeration or a value-level canonical conversion.
+renderDeclarationDescriptorKey :: EvaluatedStringTemplate -> String
+renderDeclarationDescriptorKey = concatMap renderSegment
+  . evaluatedStringTemplateSegments
+  where
+    renderSegment (EvaluatedStringTemplateLiteral literal) = literal
+    renderSegment (EvaluatedStringTemplateCapture _ schema _) =
+      renderInterpretedValue schema
+
 captureWitnesses
   :: Int
   -> InterpretedValue
@@ -3187,10 +3199,25 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
     -- or manifest operation is requested; merely constructing @this@ is not
     -- such an operation.
     delayedProjection = NamedMapProjection
+      collectionProjection
       (preparedView >>= namedProjectionOrdinal . namedMapProjection)
       (\name -> preparedView >>= (`namedMapMemberByName` name))
       (\name -> preparedView >>= (`namedMapContainsName` name))
       (\() -> preparedView >>= namedMapDeclaredMembers)
+
+    collectionProjection = Right (NamedMapOrdinalProjection
+      (finiteOrdinal (fromIntegral (length declarationBranches)))
+      descriptorAt)
+
+    declarationBranches = maybe [] id
+      (dependentDeclarationTemplateBranches declaration)
+
+    descriptorAt position = case naturalAtOrdinal position of
+      Nothing -> Right Nothing
+      Just index -> do
+        view <- preparedView
+        collection <- namedProjectionCollection (namedMapProjection view)
+        namedOrdinalProjectionMemberAt collection (finiteOrdinal index)
 
     preparedView = do
       prepared <- prepareDependentDeclaration
@@ -3206,15 +3233,18 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
                 selected <- selectPreparedBranch decode name prepared
                 traverse (uncurry (materializeSelected name)) selected
               selectedAt position = do
-                member <- namedMapMemberAt (NamedMapView projection) position
+                ordinal <- namedProjectionOrdinal projection
+                member <- namedOrdinalProjectionMemberAt ordinal position
                 case member of
                   Nothing -> Right Nothing
                   Just candidate -> selectedMember (namedMemberName candidate)
-          pure (NamedMapView projection
-            { namedProjectionOrdinal =
+              selectedOrdinal =
                 (\ordinalProjection -> ordinalProjection
                   { namedOrdinalProjectionMemberAt = selectedAt
                   }) <$> namedProjectionOrdinal projection
+          pure (NamedMapView projection
+            { namedProjectionCollection = namedProjectionCollection projection
+            , namedProjectionOrdinal = selectedOrdinal
             , namedProjectionMemberByName = selectedMember
             , namedProjectionContainsName =
                 fmap (maybe False (const True))
@@ -3226,6 +3256,8 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
     branchView branch = do
       let evaluatedCaptures = preparedDeclarationCaptures branch
           template = preparedDeclarationTemplate branch
+          descriptorCaptures =
+            [schema | (_, schema, _) <- evaluatedCaptures]
           captureBounds = traverse
             (dependentDeclarationCaptureBound reduction familyCaptured resolving)
             [bound | (_, _, bound) <- evaluatedCaptures]
@@ -3242,12 +3274,24 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
                   (memberAt evaluatedCaptures template family traversal))
               Nothing -> Left (captureOrdinalCapabilityFailure
                 evaluatedCaptures bounds)
+          collection = Right (NamedMapOrdinalProjection
+            (finiteOrdinal 1)
+            (\position ->
+              if position == finiteOrdinal 0
+                then do
+                  members <- declaredMembers
+                    evaluatedCaptures template descriptorCaptures
+                  pure (case members of
+                    member : _ -> Just member
+                    [] -> Nothing)
+                else Right Nothing))
       pure (NamedMapView (NamedMapProjection
+        collection
         ordinalProjection
         (memberByName evaluatedCaptures template)
         (fmap (maybe False (const True)) . decode template)
-        (const (captureBounds >>=
-          declaredMembers evaluatedCaptures template))))
+        (const (declaredMembers
+          evaluatedCaptures template descriptorCaptures))))
 
     captureOrdinalCapabilityFailure evaluatedCaptures captureBounds =
       case
@@ -3274,14 +3318,12 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
       decoded <- decode template name
       traverse (materializeMember evaluatedCaptures template name) decoded
 
-    declaredMembers evaluatedCaptures template captureBounds = do
-      if null evaluatedCaptures
-        then Right []
-        else do
-          let witness = makeAtlasMap 2 captureBounds
-          values <- captureWitnesses (length evaluatedCaptures) witness
-          name <- renderLookupTemplateKey template witness
-          pure <$> materializeMember evaluatedCaptures template name values
+    declaredMembers evaluatedCaptures template descriptorCaptures =
+      pure <$> materializeMember
+        evaluatedCaptures
+        template
+        (renderDeclarationDescriptorKey template)
+        descriptorCaptures
 
     materializeSelected name branch values =
       materializeMember
@@ -4257,8 +4299,8 @@ genericFunctionMapView
             <> " named=" <> show (maybe False (const True)
               (namedMapViewForValue bound)))
           (namedMapViewForValue bound) of
-        Just sourceView -> pure (Just (namedMapValue
-          (mapNamedView selected binder remaining sourceView)))
+        Just sourceView -> Just <$> namedMapValue
+          (mapNamedView selected binder remaining sourceView)
         Nothing -> case ordinalIndexedValueFamily bound of
           Nothing -> pure Nothing
           Just family -> pure (Just (makeLazyMapValue
@@ -4272,6 +4314,8 @@ genericFunctionMapView
 
     mapNamedView selected binder remaining sourceView =
       NamedMapView (NamedMapProjection
+        (mapOrdinalProjection
+          <$> namedProjectionCollection sourceProjection)
         (mapOrdinalProjection
           <$> namedProjectionOrdinal sourceProjection)
         (mapMemberByName selected binder remaining sourceView)

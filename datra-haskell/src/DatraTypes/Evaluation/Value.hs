@@ -197,7 +197,6 @@ import DatraOrdinal
   , finiteOrdinal
   , naturalAtOrdinal
   , naturalsBelow
-  , omega
   , ordinalLT
   , subtractOrdinal
   )
@@ -693,7 +692,9 @@ data NamedMapOrdinalProjection = NamedMapOrdinalProjection
 -- Some namespaces, notably syntax-category declaration families, can decode a
 -- concrete name without possessing a canonical enumeration of every name.
 data NamedMapProjection = NamedMapProjection
-  { namedProjectionOrdinal
+  { namedProjectionCollection
+      :: Either InterpretingError NamedMapOrdinalProjection
+  , namedProjectionOrdinal
       :: Either InterpretingError NamedMapOrdinalProjection
   , namedProjectionMemberByName
       :: String -> Either InterpretingError (Maybe NamedMember)
@@ -743,21 +744,24 @@ namedMapView
   -> NamedMapView
 namedMapView orderType memberAt memberByName containsName =
   NamedMapView (NamedMapProjection
+    (Right ordinalProjection)
     (Right (NamedMapOrdinalProjection orderType memberAt))
     memberByName
     containsName
     (const (Right [])))
+  where
+    ordinalProjection = NamedMapOrdinalProjection orderType memberAt
 
 namedMapOrderType :: NamedMapView -> Either InterpretingError Ordinal
 namedMapOrderType view = namedOrdinalProjectionOrderType
-  <$> namedProjectionOrdinal (namedMapProjection view)
+  <$> namedProjectionCollection (namedMapProjection view)
 
 namedMapMemberAt
   :: NamedMapView
   -> Ordinal
   -> Either InterpretingError (Maybe NamedMember)
 namedMapMemberAt view position = do
-  ordinalProjection <- namedProjectionOrdinal (namedMapProjection view)
+  ordinalProjection <- namedProjectionCollection (namedMapProjection view)
   namedOrdinalProjectionMemberAt ordinalProjection position
 
 namedMapMemberByName
@@ -782,6 +786,7 @@ namedMapViewForValue :: InterpretedValue -> Maybe NamedMapView
 namedMapViewForValue value =
   case interpretedSimpleIdentifierName value of
     Just name -> Just (NamedMapView (NamedMapProjection
+      (Right singletonProjection)
       (Right (NamedMapOrdinalProjection
         (finiteOrdinal 1)
         (\position -> Right
@@ -792,6 +797,10 @@ namedMapViewForValue value =
       (const (Right [member]))))
       where
         member = NamedMember name value
+        singletonProjection = NamedMapOrdinalProjection
+          (finiteOrdinal 1)
+          (\position -> Right
+            (if position == finiteOrdinal 0 then Just member else Nothing))
     Nothing -> interpretedNamedMapView value
 
 appendNamedMapViews :: NamedMapView -> NamedMapView -> NamedMapView
@@ -804,6 +813,9 @@ appendNamedMapProjections
   -> NamedMapProjection
   -> NamedMapProjection
 appendNamedMapProjections left right = NamedMapProjection
+  (appendOrdinalProjections
+    <$> namedProjectionCollection left
+    <*> namedProjectionCollection right)
   (appendOrdinalProjections
     <$> namedProjectionOrdinal left
     <*> namedProjectionOrdinal right)
@@ -840,17 +852,13 @@ appendNamedMapProjections left right = NamedMapProjection
 
 -- | Materialize only the ordinary Atlas-map shell of a named namespace. Each
 -- ordinal demand delegates to the producer and retains its checked failure.
-namedMapValue :: NamedMapView -> InterpretedValue
-namedMapValue view = withNamedMapView view
-  (makeCheckedLazyMapValue
-    shellOrderType
-    (fmap (fmap namedMemberValue) . namedMapMemberAt view))
-  where
-    -- The ordinary Atlas shell can only express a concrete order type.  An
-    -- unavailable canonical enumeration is represented as a potentially
-    -- countable shell whose checked member operation retains the capability
-    -- error.  All named operations continue to use the attached projection.
-    shellOrderType = either (const omega) id (namedMapOrderType view)
+namedMapValue :: NamedMapView -> Either InterpretingError InterpretedValue
+namedMapValue view = do
+  shellOrderType <- namedMapOrderType view
+  pure (withNamedMapView view
+    (makeCheckedLazyMapValue
+      shellOrderType
+      (fmap (fmap namedMemberValue) . namedMapMemberAt view)))
 
 -- | Compatibility name for the number of Atlas pages represented by a map.
 -- This is distinct from the final page's possibly-transfinite order type.

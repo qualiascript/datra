@@ -61,6 +61,8 @@
     val Maybe := &T? do yield nothing | Just T
     let val Str := >< (List Char)
     let val InhabitedStr := >< (InhabitedList Char)
+    val Stream := &T? do yield fun T ; this
+    val Collection := &T? do yield (List T) | (Stream T)
 
     let val Nat := from 0 up
     let val NatLimit := from 0 to Infinity
@@ -71,10 +73,10 @@
       slots := (^_i :: Nat) do yield "arg%(_i)"? : T
     yield ((^n? :: Nat) do yield slots[0..n])
 
-    public := {_declarations : List (_name : InhabitedStr; Any; $val?)} do
+    public := {_declarations : Collection (_key : InhabitedStr; Any; $val?)} do
       yield (
         ((&_declaration :: _declarations) do
-          yield if _declaration._name[0] = "_" then () else _declaration),
+          yield if _declaration._key[0] = "_" then () else _declaration),
       )
 
   )
