@@ -3431,8 +3431,6 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
     branchView branch = do
       let evaluatedCaptures = preparedDeclarationCaptures branch
           template = preparedDeclarationTemplate branch
-          descriptorCaptures =
-            [schema | (_, schema, _) <- evaluatedCaptures]
           captureBounds = traverse
             (dependentDeclarationCaptureBound reduction familyCaptured resolving)
             [bound | (_, _, bound) <- evaluatedCaptures]
@@ -3457,8 +3455,7 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
                 (\position ->
                   if position == finiteOrdinal 0
                     then do
-                      members <- declaredMembers
-                        evaluatedCaptures template descriptorCaptures
+                      members <- declaredMembers template
                       pure (case members of
                         member : _ -> Just member
                         [] -> Nothing)
@@ -3468,8 +3465,7 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
         ordinalProjection
         (memberByName evaluatedCaptures template)
         (fmap (maybe False (const True)) . decode template)
-        (const (declaredMembers
-          evaluatedCaptures template descriptorCaptures))))
+        (const (declaredMembers template))))
 
     captureOrdinalCapabilityFailure evaluatedCaptures captureBounds =
       case
@@ -3496,12 +3492,18 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
       decoded <- decode template name
       traverse (materializeMember evaluatedCaptures template name) decoded
 
-    declaredMembers evaluatedCaptures template descriptorCaptures =
-      pure <$> materializeMember
-        evaluatedCaptures
-        template
-        (renderDeclarationDescriptorKey template)
-        descriptorCaptures
+    -- A declaration descriptor represents the callable family, not one
+    -- concrete member of that family.  Evaluate its implementation through
+    -- the ordinary deferred-binding path and retain the syntax template on
+    -- the resulting callable; capture schemas are metadata and must never be
+    -- supplied as pretend capture values.
+    declaredMembers template = do
+      let name = renderDeclarationDescriptorKey template
+          implementation = dependentDeclarationImplementation declaration
+      payload <- evaluateBindingDefinitionWith
+        reduction captured resolving name Nothing implementation
+      pure [namedDeclarationMember declaration name
+        (attachDeclarationSyntax template payload)]
 
     materializeSelected name branch values =
       materializeMember
