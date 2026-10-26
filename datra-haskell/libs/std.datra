@@ -73,7 +73,9 @@
       slots := (^_i :: Nat) do yield "arg%(_i)"? : T
     yield ((^n? :: Nat) do yield slots[0..n])
 
-    public := {_declarations : Collection {_key : InhabitedStr; _value : Any; $val?}} do
+    val _DeclarationEntry := {_key : InhabitedStr; _value : Any; $val?}
+
+    public := {_declarations : Collection _DeclarationEntry} do
       yield (
         ((&_declaration :: _declarations) do
           yield if _declaration._key[0] = "_" then () else _declaration),
