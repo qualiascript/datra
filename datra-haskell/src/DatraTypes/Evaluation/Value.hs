@@ -28,6 +28,7 @@ module Evaluation.Value
   , makeFunctionValue
   , makeFunctionBodyValue
   , interpretedFunctionBody
+  , interpretedRuntimeFunctionInsertion
   , syntaxCategoryTypeValue
   , functionAlternatives
   , isFunctionFamily
@@ -528,6 +529,25 @@ interpretedFunctionBody value = case interpretedForm value of
   SpecificationForm specification ->
     interpretedFunctionBody (evaluatedSpecificationSourceValue specification)
   _ -> Nothing
+
+-- | Recover the executable insertion evidence attached either directly to a
+-- function or through its runtime body. Typed wrappers deliberately keep the
+-- body separate from the signature, so consumers must inspect both layers.
+interpretedRuntimeFunctionInsertion
+  :: InterpretedValue
+  -> Maybe RuntimeFunctionInsertion
+interpretedRuntimeFunctionInsertion value =
+  case interpretedFunction value >>= functionInsertionFrom of
+    Just insertion -> Just insertion
+    Nothing -> interpretedFunctionBody value >>= bodyInsertion
+  where
+    bodyInsertion body = case body of
+      EvaluatedRuntimeFunctionBody _ function -> functionInsertionFrom function
+      EvaluatedSyntaxFunctionBody {} -> Nothing
+    functionInsertionFrom function =
+      case functionInsertion function of
+        Just insertion -> Just insertion
+        Nothing -> functionBody function >>= bodyInsertion
 
 interpretedFunction :: InterpretedValue -> Maybe EvaluatedFunction
 interpretedFunction value = case interpretedForm value of

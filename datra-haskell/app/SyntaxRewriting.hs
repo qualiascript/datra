@@ -18,8 +18,9 @@ import DatraLanguage.DependentDeclaration
   , dependentDeclaration
   , dependentDeclarationNameExpression
   )
-import Data.List (nub, nubBy)
+import Data.List (isInfixOf, nub, nubBy)
 import Data.Maybe (mapMaybe, maybeToList)
+import Debug.Trace (trace)
 import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
@@ -27,11 +28,9 @@ import DatraLanguage.Diagnostics.Application
   ( SyntaxTemplateAdmissibilityFailure )
 import Parsing (inferredFunction)
 import DatraTypes
-  ( EvaluatedFunction (functionBody, functionInsertion)
+  ( EvaluatedFunction (functionBody)
   , EvaluatedFunctionBody
-      ( EvaluatedRuntimeFunctionBody
-      , EvaluatedSyntaxFunctionBody
-      )
+      ( EvaluatedSyntaxFunctionBody )
   , RuntimeFunctionInsertion
   , SyntaxFunctionInsertion (..)
   , InterpretedValue
@@ -39,6 +38,7 @@ import DatraTypes
   , eitherValue
   , interpretedFunction
   , interpretedFunctionBody
+  , interpretedRuntimeFunctionInsertion
   , interpretedSemanticResult
   , makeArgumentMapPreservingSingleton
   , ordinalIndexedProductFamily
@@ -181,17 +181,7 @@ runtimeFunctionInsertion
 runtimeFunctionInsertion evaluate implementation = do
   value <- evaluate implementation <|>
     (attachedFunctionImplementation implementation >>= evaluate)
-  insertionFromValue value
-  where
-    insertionFromValue value =
-      (interpretedFunctionBody value >>= insertionFromBody)
-        <|> (interpretedFunction value >>= insertionFrom)
-    insertionFromBody body = case body of
-      EvaluatedRuntimeFunctionBody _ function -> insertionFrom function
-      _ -> Nothing
-    insertionFrom function = functionInsertion function <|> do
-      EvaluatedRuntimeFunctionBody _ body <- functionBody function
-      insertionFrom body
+  interpretedRuntimeFunctionInsertion value
 
 expandSelectedSyntaxMatch
   :: RewriteEnvironment
@@ -444,9 +434,26 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
             validateDependentDeclarations rewritten
             Right (rewritten, tentativeEnvironment)
           else do
+            let relevant =
+                  [ renderSourceExpression entry
+                  | entry <- rewritten
+                  , "Nat" `elem` bindingNames entry
+                    || "Int" `elem` bindingNames entry
+                    || "from_body" `isInfixOf` renderSourceExpression entry
+                  ]
+            trace ("strict stable declarations:\n" <> unlines relevant) (pure ())
             (strictlyRewritten, strictEnvironment) <-
               strictPass rewritten 0 []
                 (recursiveRewriteEnvironment True initial rewritten) rawEntries
+            let strictRelevant =
+                  [ renderSourceExpression entry
+                  | entry <- strictlyRewritten
+                  , "Nat" `elem` bindingNames entry
+                    || "Int" `elem` bindingNames entry
+                    || "from_body" `isInfixOf` renderSourceExpression entry
+                  ]
+            trace ("strict final declarations:\n" <> unlines strictRelevant)
+              (pure ())
             validateDependentDeclarations strictlyRewritten
             Right (strictlyRewritten, strictEnvironment)
         else fixedPoint rewritten discovered

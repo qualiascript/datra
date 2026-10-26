@@ -219,7 +219,7 @@ expandSyntax
 expandSyntax rule selection =
   case syntaxSemantics rule of
     DependentSyntax dependent -> case dependentSyntaxInvocation dependent of
-      DependentSyntaxLookup parts -> dependentLookup parts captures
+      DependentSyntaxLookup parts -> selectedDependentLookup parts captures
     SyntaxAdapter adapter -> FunctionApplication adapter suppliedInput
     SyntaxApplication callable _ ->
       FunctionApplication callable suppliedInput
@@ -239,6 +239,19 @@ dependentLookup
   -> Expression
 dependentLookup parts values =
   lookupExpression (StringTemplate (substituteCaptures parts values))
+
+-- Keep the selected branch and its source captures alongside the ordinary
+-- lookup query. Evaluation uses them only to preserve deferred fixed points;
+-- the lookup still resolves through the normal named-map interface.
+selectedDependentLookup
+  :: [StringTemplatePart Expression]
+  -> [Expression]
+  -> Expression
+selectedDependentLookup parts values =
+  lookupExpression (ArgumentMap
+    [ StringTemplate parts
+    , StringTemplate (substituteCaptures parts values)
+    ])
 
 lookupExpression :: Expression -> Expression
 lookupExpression operand =

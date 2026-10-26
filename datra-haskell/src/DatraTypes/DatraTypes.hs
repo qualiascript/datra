@@ -18,6 +18,7 @@ module DatraTypes
   , makeFunctionValue
   , makeFunctionBodyValue
   , interpretedFunctionBody
+  , interpretedRuntimeFunctionInsertion
   , makeDependentSumValue
   , dependentSumView
   , withDependentSumView
@@ -471,6 +472,7 @@ import Evaluation.Value
   , makeFunctionValue
   , makeFunctionBodyValue
   , interpretedFunctionBody
+  , interpretedRuntimeFunctionInsertion
   , makeDependentSumValue
   , dependentSumView
   , withDependentSumView
