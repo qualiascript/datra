@@ -202,7 +202,7 @@ expandSelectedSyntaxMatch environment rule matched = do
   expanded <- case directExpansion of
     Just value -> Right value
     Nothing -> directSyntaxFunctionExpansion
-      environment (Just rule) fallback
+      environment rule fallback
   pure (foldl FunctionApplication expanded
     (syntaxMatchRemaining matched))
   where
@@ -216,7 +216,13 @@ expandSelectedSyntaxMatch environment rule matched = do
     directExpansion = do
       implementation <- rewriteRuleImplementation rule
       insertion <- syntaxFunctionInsertion evaluate implementation
-      applySyntaxFunction insertion captures
+      applySyntaxFunction insertion (insertionCaptures rule captures)
+
+insertionCaptures :: RewriteRule -> [Expression] -> [Expression]
+insertionCaptures rule captures
+  | Just _ <- syntaxApplicationImplementation (rewriteRule rule) =
+      concatMap directSyntaxArguments captures
+  | otherwise = captures
 
 ruleHoleKinds :: RewriteRule -> [SyntaxHoleKind Expression]
 ruleHoleKinds = foldr collect []
@@ -681,8 +687,20 @@ rewriteAfterBlock
   -> Expression
   -> [Expression]
   -> Either SyntaxRewriteFailure (Expression, [Expression])
-rewriteAfterBlock allowNestedContinuation capture environment value trailing =
-  case value of
+rewriteAfterBlock allowNestedContinuation capture environment value trailing
+  | Just (source, body, arguments) <- scopedApplication value = do
+      let candidate = applicationFrom (body : arguments)
+      rewritten <- rewriteScopeAccess capture environment source
+        candidate
+      case rewritten of
+        ScopeAccess rewrittenSource rewrittenBody
+          | rewrittenBody /= candidate -> finish rewrittenBody trailing
+          | otherwise -> finish
+              (applicationFrom
+                (ScopeAccess rewrittenSource body : arguments))
+              trailing
+        _ -> finish rewritten trailing
+  | otherwise = case value of
     ScopeAccess source body -> do
       rewritten <- rewriteScopeAccess capture environment source body
       pure (rewritten, trailing)
@@ -984,18 +1002,12 @@ rewriteChildren capture environment value =
         Nothing -> traverseExpressionChildren
           (rewriteStandalone capture environment) value
     FunctionApplication _ Skip -> Left AmbiguousBareSkipApplication
-    FunctionApplication {} ->
-      case directSyntaxFunctionExpansion environment Nothing value of
-        Right expanded | isDirectBlockExpansion expanded ->
-          rewriteDirectControlExpansion capture environment expanded
-        _ -> do
-          embedded <- rewriteEmbeddedApplication capture environment value
-          case embedded of
-            Just rewritten -> pure rewritten
-            Nothing -> do
-              rewritten <- rewriteApplicationSpineChildren
-                (rewriteStandalone capture environment) value
-              directSyntaxFunctionApplication capture environment rewritten
+    FunctionApplication {} -> do
+      embedded <- rewriteEmbeddedApplication capture environment value
+      case embedded of
+        Just rewritten -> pure rewritten
+        Nothing -> rewriteApplicationSpineChildren
+          (rewriteStandalone capture environment) value
     _ -> traverseExpressionChildren
       (rewriteStandalone capture environment) value
 
@@ -1013,29 +1025,14 @@ rewriteApplicationSpineChildren rewrite value =
   where
     (function, arguments) = applicationSpine value
 
--- Syntax-backed declarations are ordinary functions whose function bodies
--- can expand AST captures before runtime evaluation.
-directSyntaxFunctionApplication
-  :: CaptureHole
-  -> RewriteEnvironment
-  -> Expression
-  -> Either SyntaxRewriteFailure Expression
-directSyntaxFunctionApplication capture environment application = do
-  expanded <- directSyntaxFunctionExpansion environment Nothing application
-  rewriteDirectControlExpansion capture environment expanded
-
 directSyntaxFunctionExpansion
   :: RewriteEnvironment
-  -> Maybe RewriteRule
+  -> RewriteRule
   -> Expression
   -> Either SyntaxRewriteFailure Expression
 directSyntaxFunctionExpansion environment selectedRule application =
   case syntaxApplicationSpine application of
-    (_, [IdentifierReference (IdentifierString literal)])
-      | Nothing <- selectedRule
-      , any (Set.member literal . rewriteRuleLiterals) (rewriteRules environment) ->
-          Right application
-    (function, [argument]) ->
+    (_, [argument]) ->
       choose adapters []
       where
         captures expected = case expected of
@@ -1043,23 +1040,14 @@ directSyntaxFunctionExpansion environment selectedRule application =
           Just 1 -> [argument]
           _ -> directSyntaxArguments argument
         adapters = do
-          (expressionValue, expected, evaluate) <- case selectedRule of
-            Just rule ->
-              [ (implementation, Just (captureCount rule), evaluateRule rule)
-              | implementation <- maybeToList
-                  (rewriteRuleImplementation rule)
-              ]
-            Nothing -> case declaredImplementations function of
-              []
-                | mayResolveSyntaxFunctionBody function -> [(function, Nothing, evaluateHere)]
-                | otherwise -> []
-              implementations ->
-                [ (implementation, Just (captureCount rule), evaluateRule rule)
-                | rule <- implementations
-                , implementation <- maybeToList
-                    (rewriteRuleImplementation rule)
-                ]
-          value <- maybeToList (evaluate expressionValue)
+          implementation <- maybeToList
+            (rewriteRuleImplementation selectedRule)
+          let expected
+                | Just _ <- syntaxApplicationImplementation
+                    (rewriteRule selectedRule) = Nothing
+                | otherwise = Just (captureCount selectedRule)
+              evaluate = evaluateRule selectedRule
+          value <- maybeToList (evaluate implementation)
           syntaxFunction <- maybeToList (interpretedFunction value)
           body <- maybeToList (functionBody syntaxFunction)
           case body of
@@ -1081,71 +1069,17 @@ directSyntaxFunctionExpansion environment selectedRule application =
     evaluateRule rule = case rewriteRuleEvaluation rule of
       Just evaluate -> evaluate
       Nothing -> evaluateHere
-    declaredImplementations function =
-      case directSyntaxFunctionName function of
-        Nothing -> []
-        Just (requestedModule, name) ->
-          [ rule
-          | rule <- availableRules requestedModule function
-          , rewriteRuleName rule == name
-          , name `notElem` rewriteRuleLiteralPrefix rule
-          ]
-    -- Tentative passes may reach a recursive let use before discovering its
-    -- declaration. Leaving that application unchanged defers the decision;
-    -- the fixed-point pass retries it after recursive declarations are in
-    -- scope. Known aliases are followed without interpreting ordinary callees.
-    mayResolveSyntaxFunctionBody = candidate Set.empty
-      where
-        candidate seen expressionValue = case expressionValue of
-          ScopeAccess {} -> True
-          InModule {} -> True
-          FunctionApplication (IdentifierReference (IdentifierString "_it")) _ -> True
-          SyntaxBoundary inner -> candidate seen inner
-          IdentifierReference (IdentifierString requested)
-            | requested `Set.member` seen -> False
-            | otherwise -> case declaredValue requested of
-                Just declared -> candidate
-                  (Set.insert requested seen) declared
-                Nothing -> False
-          MapSpecification source _ -> candidate seen source
-          ReverseMapSpecification _ source -> candidate seen source
-          EitherType left right -> both seen left right
-          Overload left right -> both seen left right
-          ReverseOverload left right -> both seen left right
-          SafeOverload left right -> both seen left right
-          ReverseSafeOverload left right -> both seen left right
-          _ -> False
-        both seen left right = candidate seen left || candidate seen right
-        declaredValue requested = firstDeclared
-          (reverse (rewriteDeclarations environment))
-          where
-            firstDeclared [] = Nothing
-            firstDeclared (entry : remaining) =
-              case dependentDeclaration entry of
-                Just declaration
-                  | requested `elem` bindingNames entry ->
-                      Just (dependentDeclarationImplementation declaration)
-                _ -> firstDeclared remaining
     captureCount rule = length
       [ ()
       | SyntaxHole _ <- syntaxTemplatePieces
           (syntaxTemplate (rewriteRule rule))
       ]
-    availableRules requestedModule function =
-      case requestedModule of
-        Nothing -> rewriteRules environment
-        Just namespace -> map compileRewriteRule (rewriteScopeRules environment
-          (rewriteDeclarations environment) (scopeSource namespace function))
-    scopeSource _ (ScopeAccess source _) = source
-    scopeSource namespace _ =
-      IdentifierReference (IdentifierString namespace)
-
 -- Inspect the adapter's AST constructor before rewriting a raw block. A
 -- function body already shadows the outer input while its declarations and
 -- yield expression are being collected, before the FunctionBody node exists.
 blockRewriteEnvironment :: RewriteEnvironment -> RewriteRule -> RewriteEnvironment
 blockRewriteEnvironment environment rule =
-  case directSyntaxFunctionExpansion environment (Just rule) probe of
+  case directSyntaxFunctionExpansion environment rule probe of
     Right FunctionBody {} -> withContextualSyntax ["this"]
       (enterContext Nothing environment)
     _ -> environment
@@ -1153,29 +1087,6 @@ blockRewriteEnvironment environment rule =
     probe = FunctionApplication
       (IdentifierReference (IdentifierString (rewriteRuleName rule)))
       (AtlasMap [AtlasMap [], AtlasMap []])
-
-isDirectControlExpansion :: Expression -> Bool
-isDirectControlExpansion expanded = case expanded of
-  Begin {} -> True
-  FunctionBody {} -> True
-  ScopeAccess {} -> True
-  _ -> False
-
-isDirectBlockExpansion :: Expression -> Bool
-isDirectBlockExpansion Begin {} = True
-isDirectBlockExpansion _ = False
-
-rewriteDirectControlExpansion
-  :: CaptureHole
-  -> RewriteEnvironment
-  -> Expression
-  -> Either SyntaxRewriteFailure Expression
-rewriteDirectControlExpansion capture environment expanded
-  | isDirectControlExpansion expanded = do
-      planned <- rewriteStandalone capture
-        (environment { rewriteStrictCaptures = False }) expanded
-      rewriteStandalone capture environment planned
-  | otherwise = Right expanded
 
 -- A contextual selector is itself a callable expression. Its depth argument
 -- belongs to the selector, not to the syntax function it returns.
@@ -1193,17 +1104,15 @@ directSyntaxArguments argument = case argument of
   SyntaxBoundary inner -> directSyntaxArguments inner
   _ -> [argument]
 
-directSyntaxFunctionName
+-- An application of a qualified member is parsed outside the access node.
+-- Move it into that node for syntax matching: the member is then an ordinary
+-- simple identifier under the rules exported by the selected module.
+scopedApplication
   :: Expression
-  -> Maybe (Maybe String, String)
-directSyntaxFunctionName function = case function of
-  IdentifierReference (IdentifierString name) -> Just (Nothing, name)
-  ScopeAccess
-      (IdentifierReference (IdentifierString namespace))
-      (IdentifierReference (IdentifierString name)) ->
-        Just (Just namespace, name)
-  InModule namespace (IdentifierReference (IdentifierString name)) ->
-    Just (Just namespace, name)
+  -> Maybe (Expression, Expression, [Expression])
+scopedApplication expressionValue = case applicationSpine expressionValue of
+  (ScopeAccess source body, arguments@(_ : _)) ->
+    Just (source, body, arguments)
   _ -> Nothing
 
 rewriteScopeAccess

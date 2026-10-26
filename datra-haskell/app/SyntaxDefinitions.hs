@@ -11,6 +11,7 @@ module SyntaxDefinitions
   , declarationRules, declarationRuleFailures
   , contextualSyntaxRulesFor
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
+  , syntaxApplicationRule
   , syntaxApplicationImplementation
   , syntaxDependentRule, syntaxRuleAdapter
   , expandSyntax
@@ -130,15 +131,26 @@ simpleApplicationRule
   :: DependentDeclaration
   -> IdentifierString
   -> SyntaxRule
-simpleApplicationRule declaration (IdentifierString text) = SyntaxRule
-  { syntaxName = text
+simpleApplicationRule declaration (IdentifierString text) =
+  syntaxApplicationRule
+    text
+    (syntaxTemplateFromPattern text)
+    (dependentLookup [StringTemplateLiteral text] [])
+    (dependentDeclarationImplementation declaration)
+
+syntaxApplicationRule
+  :: String
+  -> SyntaxTemplate Expression
+  -> Expression
+  -> Expression
+  -> SyntaxRule
+syntaxApplicationRule name template callable implementation = SyntaxRule
+  { syntaxName = name
   , syntaxTemplate = SyntaxTemplate
-      (syntaxTemplatePieces (syntaxTemplateFromPattern text) <>
+      (syntaxTemplatePieces template <>
         [SyntaxHole (ExpressionSyntaxHole
           (IdentifierReference (IdentifierString "_Expr")))])
-  , syntaxSemantics = SyntaxApplication
-      (dependentLookup [StringTemplateLiteral text] [])
-      (dependentDeclarationImplementation declaration)
+  , syntaxSemantics = SyntaxApplication callable implementation
   }
 
 directTemplateRule

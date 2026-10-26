@@ -126,6 +126,7 @@ import SyntaxDefinitions
   ( SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , declarationRules
+  , syntaxApplicationRule
   )
 import DatraLanguage.Diagnostics
   ( DatraError
@@ -783,7 +784,8 @@ standardLibraryParsingEnvironment
 standardLibraryParsingEnvironment visibility raw = case visibility of
   NoStandardLibrary -> do
     scope <- rootScopeWithDatra raw []
-    Right (scope, [], [])
+    hostRules <- datraHostSyntaxRules
+    Right (scope, [], hostRules)
   QualifiedStandardLibrary -> qualifiedStandardModuleBundle
   AllStandardLibrary -> defaultModuleBundle
 
@@ -829,14 +831,23 @@ standardModuleEnvironment allNames = do
         standardLibraryFileName namespace value
       pure (standardLibraryFileName, namespace, rules))
     imported
+  hostRules <- datraHostSyntaxRules
   if null imported
     then Left (ModuleEvaluationFailed
       (ModuleNotLoaded standardLibraryFileName))
     else pure
       ( scope
       , [rule | allNames, (_, _, rules) <- ruleSets, rule <- rules]
-      , ruleSets
+      , hostRules <> ruleSets
       )
+
+datraHostSyntaxRules
+  :: Either InterpretingError [(String, String, [SyntaxRule])]
+datraHostSyntaxRules = do
+  host <- datraHostValue
+  rules <- moduleSyntaxRulesFromValueIn
+    datraHostIdentifier datraHostIdentifier host
+  pure [(datraHostIdentifier, datraHostIdentifier, rules)]
 
 retainExportDefinition :: Binding -> Binding -> Binding
 retainExportDefinition evaluated source =
@@ -4984,14 +4995,15 @@ moduleSyntaxRulesFromValueIn
   -> InterpretedValue
   -> Either InterpretingError [SyntaxRule]
 moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
-  members <- case namedMapViewForValue moduleValue of
-    Just view -> map
-      (\member -> (namedMemberName member, namedMemberValue member))
-      <$> namedMapDeclaredMembers view
-    Nothing -> case namedMembers moduleValue of
-      Right named -> Right named
-      Left (ModuleEvaluationFailed ImportedModuleRequiresNamedExports) -> Right []
-      Left failure -> Left failure
+  members <- case namedMembers moduleValue of
+    Right named -> Right named
+    Left (ModuleEvaluationFailed ImportedModuleRequiresNamedExports) ->
+      case namedMapViewForValue moduleValue of
+        Just view -> map
+          (\member -> (namedMemberName member, namedMemberValue member))
+          <$> namedMapDeclaredMembers view
+        Nothing -> Right []
+    Left failure -> Left failure
   concat <$> traverse memberRules members
   where
     memberRules (name, memberValue) = concat <$>
@@ -5003,14 +5015,22 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
           (traverseSyntaxTemplate parseScopedRuleExpression)
           templates
         pure
-          [ SyntaxRule
-              { syntaxName = name
-              , syntaxTemplate = template
-              , syntaxSemantics = SyntaxAdapter callable
-              }
+          [ case template of
+              SyntaxTemplate [SyntaxLiteral _] ->
+                syntaxApplicationRule name template callable callable
+              _ -> SyntaxRule
+                { syntaxName = name
+                , syntaxTemplate = template
+                , syntaxSemantics = SyntaxAdapter callable
+                }
           | template <- sourceTemplates
-          , let callable = InModule scopeName
-                  (IdentifierReference (IdentifierString name))
+          , let member = IdentifierReference (IdentifierString name)
+                callable
+                  | scopeName == datraHostIdentifier = ScopeAccess
+                      (IdentifierReference
+                        (IdentifierString datraHostIdentifier))
+                      member
+                  | otherwise = InModule scopeName member
           ]
     parseScopedRuleExpression sourceText = do
       expressionValue <- parseRuleExpression sourceText

@@ -7,6 +7,8 @@ module DatraHost
   ) where
 
 import DatraLanguage.AST
+import DatraLanguage.SyntaxTemplate
+  ( FunctionSyntax (..), SyntaxPiece (..), SyntaxTemplate (..) )
 import DatraTypes
 import DatraOrdinal (finiteOrdinalPositions)
 import IntegerRange qualified
@@ -225,8 +227,8 @@ datraHostValue = do
       (name, Right (makeFunctionValue (EvaluatedFunction
         anyTypeValue
         anyTypeValue
-        Nothing
-        Nothing
+        (Just simpleSyntax)
+        (Just simpleSyntax)
         (Just source)
         (Just (EvaluatedSyntaxFunctionBody source insertion))
         "Any -> Any"
@@ -236,6 +238,9 @@ datraHostValue = do
         Nothing)))
       where
         source = "'datra." <> name
+        simpleSyntax :: FunctionSyntax value
+        simpleSyntax = FunctionSyntax
+          [SyntaxTemplate [SyntaxLiteral name]]
     nativeBody namespace name implementation =
       (name, runtimeBody source Nothing invoke)
       where
