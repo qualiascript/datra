@@ -41,6 +41,7 @@ import DatraTypes
   , interpretedFunctionBody
   , interpretedSemanticResult
   , makeArgumentMapPreservingSingleton
+  , ordinalIndexedProductFamily
   , simpleIdentifierTypeValue
   , subfederationValues
   )
@@ -91,6 +92,7 @@ data SyntaxRewriteFailure
   | AmbiguousBareSkipApplication
   | OverlappingDependentDeclarations String String
   | NonInjectiveDependentDeclaration String
+  | NonEnumerableValDependentDeclaration String
   | InvalidSyntaxTemplate String SyntaxTemplateAdmissibilityFailure
   deriving (Eq, Show)
 
@@ -489,7 +491,7 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
                 currentFamily)
               earlier
           if isValDependentDeclaration resolved
-            then mapM_ (validateInjective scoped)
+            then mapM_ (validateValDeclaration scoped)
               [ (compiled, dependent)
               | compiled <- currentFamily
               , Just dependent <-
@@ -531,6 +533,14 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
 
         branchesCompatible previous current =
           not (rewriteRulesOverlap previous current)
+
+        validateValDeclaration environment pair@(compiled, _) = do
+          case sequence (rewriteRuleHoleFamilies compiled)
+              >>= ordinalIndexedProductFamily of
+            Just _ -> Right ()
+            Nothing -> Left (NonEnumerableValDependentDeclaration
+              (syntaxName (rewriteRule compiled)))
+          validateInjective environment pair
 
         validateInjective environment (compiled, dependent)
           | null captures = Right ()

@@ -113,7 +113,7 @@ datraHostValue = do
         (\case
           Let entry -> Just [entry]
           _ -> Nothing))
-    , syntaxFunction "val" (SyntaxFunctionInsertion
+    , syntaxBody "val" (SyntaxFunctionInsertion
         (\case
           [entry] -> Just (Val (absorbAssignedConcatenation entry))
           _ -> Nothing)

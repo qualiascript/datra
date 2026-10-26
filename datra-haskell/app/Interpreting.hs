@@ -50,7 +50,6 @@ module Interpreting
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (nub, nubBy, intercalate, isPrefixOf, stripPrefix)
 import Data.Maybe (catMaybes)
-import Debug.Trace (trace)
 import DatraLanguage.DependentDeclaration
 import FunctionClosure
 import DatraHost
@@ -1735,12 +1734,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         Left failure -> Left failure
         Right callable -> do
           supplied <- interpret argument
-          trace
-            ("function app " <> renderSourceExpression function
-              <> " @ " <> renderSourceExpression argument
-              <> " suppliedNamed=" <> show (maybe False (const True)
-                (namedMapViewForValue supplied)))
-            (applyEvaluated callable supplied)
+          applyEvaluated callable supplied
     Begin bindings result ->
       evaluateBlockInScope True
         (Just (renderSourceExpression expressionValue))
@@ -2362,10 +2356,10 @@ renderLookupTemplateKey template witness = do
         (naturalListAt index witnesses)
       renderCanonicalCapture selected
 
--- | Render the single declaration-family row seen by ordinary collection
--- traversal. Capture schemas are row data here, not witnesses selected from
--- those schemas, so descriptor construction never asks a syntax category for
--- an enumeration or a value-level canonical conversion.
+-- | Render the single declaration-family row used for syntax discovery and
+-- non-canonical collection traversal. Capture schemas describe the family;
+-- concrete canonical declarations are produced separately from capture
+-- witnesses in foliage order.
 renderDeclarationDescriptorKey :: EvaluatedStringTemplate -> String
 renderDeclarationDescriptorKey = concatMap renderSegment
   . evaluatedStringTemplateSegments
@@ -2608,11 +2602,7 @@ resolveIdentifierAccess reduction scope resolving name =
       Just binding -> resolve binding
       Nothing -> do
         member <- resolveScopeNamedMember
-        maybe (trace
-          ("missing identifier " <> name
-            <> " resolving=" <> show resolving
-            <> " keys=" <> show (take 20 (scopeLookupKeys scope)))
-          (Left (UnknownIdentifier name)))
+        maybe (Left (UnknownIdentifier name))
           (Right . namespaceMemberValue) member
   where
     namespaceMemberValue member =
@@ -3205,19 +3195,8 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
       (\name -> preparedView >>= (`namedMapContainsName` name))
       (\() -> preparedView >>= namedMapDeclaredMembers)
 
-    collectionProjection = Right (NamedMapOrdinalProjection
-      (finiteOrdinal (fromIntegral (length declarationBranches)))
-      descriptorAt)
-
-    declarationBranches = maybe [] id
-      (dependentDeclarationTemplateBranches declaration)
-
-    descriptorAt position = case naturalAtOrdinal position of
-      Nothing -> Right Nothing
-      Just index -> do
-        view <- preparedView
-        collection <- namedProjectionCollection (namedMapProjection view)
-        namedOrdinalProjectionMemberAt collection (finiteOrdinal index)
+    collectionProjection =
+      preparedView >>= namedProjectionCollection . namedMapProjection
 
     preparedView = do
       prepared <- prepareDependentDeclaration
@@ -3274,17 +3253,20 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
                   (memberAt evaluatedCaptures template family traversal))
               Nothing -> Left (captureOrdinalCapabilityFailure
                 evaluatedCaptures bounds)
-          collection = Right (NamedMapOrdinalProjection
-            (finiteOrdinal 1)
-            (\position ->
-              if position == finiteOrdinal 0
-                then do
-                  members <- declaredMembers
-                    evaluatedCaptures template descriptorCaptures
-                  pure (case members of
-                    member : _ -> Just member
-                    [] -> Nothing)
-                else Right Nothing))
+          collection
+            | dependentDeclarationIsCanonicalValue declaration =
+                ordinalProjection
+            | otherwise = Right (NamedMapOrdinalProjection
+                (finiteOrdinal 1)
+                (\position ->
+                  if position == finiteOrdinal 0
+                    then do
+                      members <- declaredMembers
+                        evaluatedCaptures template descriptorCaptures
+                      pure (case members of
+                        member : _ -> Just member
+                        [] -> Nothing)
+                    else Right Nothing))
       pure (NamedMapView (NamedMapProjection
         collection
         ordinalProjection
@@ -3333,7 +3315,7 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
         values
 
     materializeMember evaluatedCaptures template name values =
-      trace ("materialize declaration " <> name) $ materializeDependentDeclaration
+      materializeDependentDeclaration
         reduction captured resolving declaration
         evaluatedCaptures template name values
 
@@ -3573,8 +3555,7 @@ namedDeclarationMember
   -> String
   -> InterpretedValue
   -> NamedMember
-namedDeclarationMember declaration name payload = NamedMember
-  name marked
+namedDeclarationMember declaration name payload = NamedMember name marked
   where
     named = simpleIdentifierTypeValue name payload
     marked
@@ -4037,24 +4018,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
         supplied <- if argumentSchemaHasInferredGenerics schema
           then argumentSchemaValidationArgument schema prepared
           else Right argument
-        let preparedCall = PreparedFunctionArgument supplied prepared imported
-            hasNamed value = maybe False (const True)
-              (namedMapViewForValue value)
-            debug = "_declarations prepare argument=" <> show (hasNamed argument)
-              <> " supplied=" <> show (hasNamed supplied)
-              <> " prepared=" <> show (hasNamed prepared)
-              <> " imports=" <> show
-                [(name, hasNamed value) | (name, value) <- imported]
-            genericParameterNames =
-              [ name
-              | binder <- generics
-              , let GenericIdentifier (IdentifierString name) _ =
-                      genericBinderIdentifier binder
-              ]
-        pure (trace
-          ("prepare names=" <> show names
-            <> " generics=" <> show genericParameterNames <> " " <> debug)
-          preparedCall)
+        pure (PreparedFunctionArgument supplied prepared imported)
       prepare = prepareWith []
       evaluatePreparedBodyWith bodyResult
           callerActivation invocationReduction preparedCall = do
@@ -4293,12 +4257,7 @@ genericFunctionMapView
             ]
       bound <- evalInScopeWith reduction
         (extendScope selectedScope captured) resolving boundExpression
-      case trace
-          ("generic bound " <> renderSourceExpression boundExpression
-            <> " " <> show (genericBinderId binder)
-            <> " named=" <> show (maybe False (const True)
-              (namedMapViewForValue bound)))
-          (namedMapViewForValue bound) of
+      case namedMapViewForValue bound of
         Just sourceView -> Just <$> namedMapValue
           (mapNamedView selected binder remaining sourceView)
         Nothing -> case ordinalIndexedValueFamily bound of
@@ -4347,7 +4306,7 @@ genericFunctionMapView
         members
 
     mapNamedMember selected binder remaining member = do
-      mapped <- trace ("mapping named declaration " <> namedMemberName member) $ build
+      mapped <- build
         ( (genericBinderId binder, namedMemberValue member)
         : selected
         )
@@ -4517,21 +4476,12 @@ applyFunction
   -> Either InterpretingError
       (InterpretedValue, Maybe InterpretedValue)
 applyFunction activation reduction callable input =
-  case trace
-      ("apply named=" <> show (maybe False (const True)
-        (namedMapViewForValue input))
-        <> " signatures=" <> show
-          [functionSignatureSource function | function <- functionAlternatives callable])
-      (selectFunctionCandidate preparations) of
+  case selectFunctionCandidate preparations of
     Right (function, preparedCall)
       | Just invoke <- attachedFunctionInvocation function -> do
         nextReduction <- consumeReduction reduction
         invocation <- invoke activation nextReduction preparedCall
-        let value = trace
-              ("invoked " <> functionSignatureSource function
-                <> " resultNamed=" <> show (maybe False (const True)
-                  (namedMapViewForValue (functionInvocationValue invocation))))
-              (functionInvocationValue invocation)
+        let value = functionInvocationValue invocation
         (result, contract) <- if attachedFunctionValidatesResult function
           then do
             checked <- contextuallySpecify value (functionCodomain function)
