@@ -994,7 +994,7 @@ foliageArgumentValuesCompleteWith
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 foliageArgumentValuesCompleteWith complete family supplied = do
-  ordered <- maybe undecidable Right (orderedAtlasMapView family)
+  ordered <- maybe undecidable Right (orderedAtlasMapView ordinalFamily)
   reservations <- decisionEither
     (ArgumentMap.argumentReservations
       selectFederationMember supplied [family])
@@ -1002,7 +1002,10 @@ foliageArgumentValuesCompleteWith complete family supplied = do
         ArgumentMap.positionalArgumentSource reservations supplied
   rows <- argumentRows supplied
   let orderType = ordinalOrderedValuesOrderType ordered
-      traversal = foliageMap orderType
+      traversal = maybe
+        (foliageMap orderType)
+        coalizedMapFoliageTraversal
+        coalizedView
       sourceFrontier = 1 + maximum (0 : map (fromIntegral . length) rows)
       ranks = case naturalAtOrdinal orderType of
         Just count -> naturalPositions count
@@ -1014,6 +1017,9 @@ foliageArgumentValuesCompleteWith complete family supplied = do
   search reservations positional suppliedOrder
     (ordinalLTE orderType omega) Nothing ordered traversal ranks exhausted
   where
+    coalizedView = interpretedCoalizedMapView family
+    ordinalFamily = maybe family coalizedMapOrdinalValue coalizedView
+
     search _ _ _ _ _ _ _ [] exhausted = exhausted
     search reservations positional suppliedOrder monotonicFamily previousOrder
         ordered traversal
@@ -1128,7 +1134,7 @@ overloadArgumentSchemaCompleteWithTrustedGenerics
             (map namedSlot completed <> projectedMembers)
       pure
         ( prepared
-        , [(name, value) | (Just name, value) <- completed]
+        , completedBindings genericSlots completed
         )
     Nothing -> case schema of
       ProjectedArgumentSchema _ -> do
@@ -1141,8 +1147,17 @@ overloadArgumentSchemaCompleteWithTrustedGenerics
         completed <- completeGenericSlots trustedInfer
           (genericEvidence slots provisional) slots provisional
         let prepared = bodyAggregate normalized (map namedSlot completed)
-        pure (prepared, [(name, value) | (Just name, value) <- completed])
+        pure (prepared, completedBindings slots completed)
   where
+    completedBindings slots completed =
+      [ (name, trustedBindingValue slot value)
+      | (slot, (Just name, value)) <- zip slots completed
+      ]
+    trustedBindingValue slot fallback =
+      case slotGenericBinder slot of
+        Just binder -> maybe fallback id
+          (lookup (genericArgumentBinderId binder) trusted)
+        Nothing -> fallback
     trustedValue slot =
       case slotGenericBinder slot of
         Just binder -> maybe (slotAnnotation slot) id

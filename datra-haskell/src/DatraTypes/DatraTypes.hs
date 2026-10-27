@@ -16,6 +16,7 @@ module DatraTypes
   , ReductionContext (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
+  , withFunctionSyntax
   , makeFunctionBodyValue
   , interpretedFunctionBody
   , interpretedRuntimeFunctionInsertion
@@ -26,7 +27,9 @@ module DatraTypes
   , orderedAtlasMapView
   , withOrderedAtlasMapView
   , withOrderedAtlasMapValues
-  , withMapView
+  , CoalizedMapView (..)
+  , withCoalizedMapView
+  , interpretedCoalizedMapView
   , OrdinalIndexedFamily (..)
   , ordinalIndexedValueFamily
   , ordinalIndexedProductFamily
@@ -82,7 +85,7 @@ module DatraTypes
   , namedMapDeclaredMembers
   , namedMapViewForValue
   , appendNamedMapViews
-  , namedMapValue
+  , coalizeNamedMapView
   , withNamedMapView
   , InterpretingError (..)
   , FunctionFailure (..)
@@ -475,6 +478,7 @@ import Evaluation.Value
   , DependentSumStructure (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
+  , withFunctionSyntax
   , makeFunctionBodyValue
   , interpretedFunctionBody
   , interpretedRuntimeFunctionInsertion
@@ -485,7 +489,9 @@ import Evaluation.Value
   , orderedAtlasMapView
   , withOrderedAtlasMapView
   , withOrderedAtlasMapValues
-  , withMapView
+  , CoalizedMapView (..)
+  , withCoalizedMapView
+  , interpretedCoalizedMapView
   , withDependentSumStructure
   , withDependentSumAccess
   , withDependentSumFamily
@@ -523,7 +529,7 @@ import Evaluation.Value
   , namedMapDeclaredMembers
   , namedMapViewForValue
   , appendNamedMapViews
-  , namedMapValue
+  , coalizeNamedMapView
   , withNamedMapView
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
@@ -574,7 +580,20 @@ import Evaluation.Value
   , withGreedyStringTemplatePlan
   )
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)
+import DatraOrdinal
+  ( addOrdinals
+  , finiteOrdinal
+  , naturalAtOrdinal
+  , naturalsBelow
+  , ordinalLT
+  , omega
+  )
+import MapOperators.OrderedAtlasMap
+  ( OrdinalOrderedValues (..)
+  , appendOrdinalOrderedValues
+  , emptyOrdinalOrderedValues
+  , singletonOrdinalOrderedValues
+  )
 
 import Data.Char (ord)
 import Data.List (find)
@@ -680,7 +699,7 @@ streamTypeValue presentationSource elementType =
     validate source
       | interpretedValueKind source == MapValueKind
       , interpretedMapFinalOrderType sourceMap == omega =
-          Right (withMapView checkedView source)
+          Right (withCoalizedMapView checkedView source)
       | otherwise =
           Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
       where
@@ -707,17 +726,47 @@ specifyDependentSumElement source target =
   if interpretedValueKind source == DependentIdentifierTypeValueKind
     then do
       sourceView <- structuralMapView source
-      prepared <- argumentSchemaValuesComplete
-        (argumentSchemaFromValue target) sourceView
+      let schema = argumentSchemaFromValue target
+      prepared <- argumentSchemaValuesComplete schema sourceView
       let evidenced = withSpecificationTargetEvidence target
             (withInterpretedSemantics
               (interpretedSemantics source)
               prepared)
-      pure (case interpretedNamedMapView source of
-        Just named -> withNamedMapView named evidenced
+      pure (case namedFields schema prepared of
+        Just fields -> withNamedMapView fields evidenced
         Nothing -> evidenced)
     else specifyValues source target
   where
+    namedFields schema value = do
+      let names = map fst (argumentSchemaBindings schema)
+          nameValues = foldl
+            appendOrdinalOrderedValues
+            emptyOrdinalOrderedValues
+            (map singletonOrdinalOrderedValues names)
+      if null names
+        then Nothing
+        else Just (viewFor nameValues (interpretedMap value))
+
+    viewFor names values = namedMapView orderType memberAt memberByName
+      (fmap (maybe False (const True)) . memberByName)
+      where
+        orderType = ordinalOrderedValuesOrderType names
+        memberAt position = case ordinalOrderedValueAt names position of
+          Nothing -> Right Nothing
+          Just name -> fmap
+            (fmap (NamedMember name . simpleIdentifierTypeValue name))
+            (interpretedMapValueAtChecked values position)
+        memberByName name = seek (finiteOrdinal 0)
+          where
+            seek position
+              | not (position `ordinalLT` orderType) = Right Nothing
+              | otherwise = do
+                  member <- memberAt position
+                  case member of
+                    Just selected | namedMemberName selected == name ->
+                      Right (Just selected)
+                    _ -> seek (addOrdinals position (finiteOrdinal 1))
+
     structuralMapView value = do
       count <- maybe
         (Left (FunctionEvaluationFailed NoApplicableFunctionAlternative))

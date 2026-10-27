@@ -1384,7 +1384,7 @@ scopeEntriesValue reduction resolving entries =
     named <- scopeEntriesNamedView reduction resolving entries
     case named of
       Nothing -> Right (makeAtlasMap 0 [])
-      Just view -> namedMapValue view
+      Just view -> coalizeNamedMapView view
 
 scopeEntriesNamedView
   :: ReductionContext
@@ -1699,8 +1699,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       checkedBinary exponentiateValues base exponentValue
     Subfederation source target ->
       checkedBinary subfederationValues source target
-    Equality left right ->
-      checkedBinary equalValues left right
+    Equality left right -> checkedBinary equalValues left right
     Inequality left right ->
       checkedBinary
         (\actualLeft actualRight ->
@@ -3337,8 +3336,8 @@ interpretStringTemplateWith protection interpret parts = do
         _ -> value
 
     templateSegments = snd . foldl appendPart (0, [])
-    appendPart (captureIndex, segments) (converted, captureSchema) =
-      case captureSchema of
+    appendPart (captureIndex, segments) (converted, maybeCaptureSchema) =
+      case maybeCaptureSchema of
         Nothing ->
           (captureIndex, appendLiteral (concreteString converted) segments)
         Just schema ->
@@ -3491,7 +3490,7 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
                 (\position ->
                   if position == finiteOrdinal 0
                     then do
-                      members <- declaredMembers template
+                      members <- declaredMembers branch
                       pure (case members of
                         member : _ -> Just member
                         [] -> Nothing)
@@ -3505,7 +3504,7 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
         selectedMember
         (fmap (maybe False (const True))
           . flip (selectPreparedDeclaration decode) [branch])
-        (const (declaredMembers template))))
+        (const (declaredMembers branch))))
 
     captureOrdinalCapabilityFailure evaluatedCaptures captureBounds =
       case
@@ -3535,20 +3534,22 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
     -- the ordinary deferred-binding path and retain the syntax template on
     -- the resulting callable; capture schemas are metadata and must never be
     -- supplied as pretend capture values.
-    descriptorMember template = do
+    descriptorMember branch = do
+      let template = preparedDeclarationTemplate branch
       let name = renderDeclarationDescriptorKey template
           implementation = dependentDeclarationImplementation declaration
       payload <- evaluateBindingDefinitionWith
         reduction captured resolving name Nothing implementation
       pure (namedDeclarationDescriptorMember declaration name
-        (attachDeclarationSyntax template payload))
+        (attachDeclarationSyntax
+          (preparedDeclarationSourceCaptures branch) template payload))
 
-    declaredMembers template = pure <$> descriptorMember template
+    declaredMembers branch = pure <$> descriptorMember branch
 
     materializeSelection name selected =
       case selected of
         PreparedDeclarationDescriptor branch ->
-          descriptorMember (preparedDeclarationTemplate branch)
+          descriptorMember branch
         PreparedDeclarationConcrete branch values ->
           materializeSelected name branch values
 
@@ -3657,7 +3658,8 @@ dependentDeclarationMemberByName reduction resolving scoped name = do
             reduction captured active Nothing implementation
           let template = preparedDeclarationTemplate branch
           pure (namedDeclarationDescriptorMember declaration name
-            (attachDeclarationSyntax template payload))
+            (attachDeclarationSyntax
+              (preparedDeclarationSourceCaptures branch) template payload))
         PreparedDeclarationConcrete branch decoded ->
           materializeDependentDeclarationActive
             reduction captured active declaration
@@ -3670,6 +3672,7 @@ data PreparedDependentDeclaration = PreparedDependentDeclaration
   { preparedDeclarationCaptures
       :: [EvaluatedDeclarationCapture]
   , preparedDeclarationTemplate :: EvaluatedStringTemplate
+  , preparedDeclarationSourceCaptures :: Maybe [Expression]
   }
 
 data EvaluatedDeclarationCapture = EvaluatedDeclarationCapture
@@ -3710,7 +3713,7 @@ prepareEvaluatedDeclarationTemplate template = do
   (captures, segments) <- foldM prepare ([], [])
     (evaluatedStringTemplateSegments template)
   pure (PreparedDependentDeclaration captures
-    (EvaluatedStringTemplate segments))
+    (EvaluatedStringTemplate segments) Nothing)
   where
     prepare (captures, segments) segment = case segment of
       EvaluatedStringTemplateLiteral literal ->
@@ -3749,7 +3752,8 @@ prepareDependentDeclarationBranches reduction captured resolving =
       let segments = dependentTemplateSegments parts evaluatedCaptures
       pure (PreparedDependentDeclaration
         evaluatedCaptures
-        (EvaluatedStringTemplate segments))
+        (EvaluatedStringTemplate segments)
+        (Just (map snd captureExpressions)))
     evaluateCapture (name, expressionValue) = do
       schema <- evalInScopeWith reduction captured resolving expressionValue
       pure (evaluatedDeclarationCapture name expressionValue schema)
@@ -3884,7 +3888,7 @@ evaluateMaterializedDeclaration reduction captured resolving implementation
       implementation
   payload <- applyDependentDeclarationImplementation
     supplied implementationValue
-  pure (attachDeclarationSyntax template payload)
+  pure (attachDeclarationSyntax Nothing template payload)
   where
     contextualCapture (capture, value) =
       case captureName of
@@ -3922,28 +3926,41 @@ applyDependentDeclarationImplementation supplied payload =
     Nothing -> Right payload
 
 attachDeclarationSyntax
-  :: EvaluatedStringTemplate
+  :: Maybe [Expression]
+  -> EvaluatedStringTemplate
   -> InterpretedValue
   -> InterpretedValue
-attachDeclarationSyntax template payload =
+attachDeclarationSyntax sourceCaptures template payload =
   case interpretedFunction payload of
     Nothing -> payload
-    Just function -> makeFunctionValue function
-      { functionSyntax = Just (FunctionSyntax [evaluatedTemplate])
-      , functionSyntaxSource = Just (FunctionSyntax [sourceTemplate])
-      }
+    Just _ -> withFunctionSyntax
+      (FunctionSyntax [evaluatedTemplate])
+      (FunctionSyntax [sourceTemplate])
+      payload
   where
     evaluatedTemplate = SyntaxTemplate
       (concatMap evaluatedPiece (evaluatedStringTemplateSegments template))
     sourceTemplate = SyntaxTemplate
-      (map sourcePiece (syntaxTemplatePieces evaluatedTemplate))
+      (sourcePieces sourceCaptures (syntaxTemplatePieces evaluatedTemplate))
     evaluatedPiece segment = case segment of
       EvaluatedStringTemplateLiteral literal ->
         map SyntaxLiteral (words literal)
       EvaluatedStringTemplateCapture _ schema _ ->
         [SyntaxHole
           (specializeSyntaxHoleKind schema (ValueSyntaxHole schema))]
-    sourcePiece piece = case piece of
+    sourcePieces Nothing pieces = map fallbackSourcePiece pieces
+    sourcePieces (Just captures) pieces = go captures pieces
+      where
+        go _ [] = []
+        go remaining (SyntaxLiteral literal : rest) =
+          SyntaxLiteral literal : go remaining rest
+        go (capture : remaining) (SyntaxHole kind : rest) =
+          SyntaxHole
+            (mapSyntaxHoleKind
+              (const (renderSourceExpression capture)) kind)
+            : go remaining rest
+        go [] (piece : rest) = fallbackSourcePiece piece : go [] rest
+    fallbackSourcePiece piece = case piece of
       SyntaxLiteral literal -> SyntaxLiteral literal
       SyntaxHole kind -> SyntaxHole
         (mapSyntaxHoleKind renderInterpretedValue kind)
@@ -4626,10 +4643,10 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
   let reservedFunction = maybe existentialFunction
         (`withDependentSumReservationTarget` existentialFunction)
         reservationTarget
-  mapView <- genericFunctionMapView
+  coalizedMapView <- genericFunctionCoalizedMapView
     captured resolving reduction generics prepareWith invoke
   let projectedFunction = maybe reservedFunction
-        (`withMapView` reservedFunction) mapView
+        (`withCoalizedMapView` reservedFunction) coalizedMapView
       protectedFunction = protectWithPoliciesOf
         (scopeActivation captured)
         (scopeProtectedValues captured)
@@ -4676,7 +4693,7 @@ splitExistentialRow binders = select [] binders
 -- selected witness fixes one telescope entry; another enumerable entry makes
 -- the next curried map. Naming optionality and privacy affect calls, not
 -- whether this map view exists.
-genericFunctionMapView
+genericFunctionCoalizedMapView
   :: Scope
   -> [String]
   -> ReductionContext
@@ -4689,7 +4706,7 @@ genericFunctionMapView
        -> PreparedFunctionArgument
        -> Either InterpretingError EvaluatedFunctionInvocation)
   -> Either InterpretingError (Maybe InterpretedValue)
-genericFunctionMapView
+genericFunctionCoalizedMapView
     captured resolving reduction generics prepare invoke =
   case generics of
     [] -> Right Nothing
@@ -4714,7 +4731,7 @@ genericFunctionMapView
       bound <- evalInScopeWith reduction
         (extendScope selectedScope captured) resolving boundExpression
       case namedMapViewForValue bound of
-        Just sourceView -> Just <$> namedMapValue
+        Just sourceView -> Just <$> coalizeNamedMapView
           (mapNamedView selected binder remaining bound sourceView)
         Nothing -> case ordinalIndexedValueFamily bound of
           Nothing -> pure Nothing
@@ -4772,10 +4789,16 @@ genericFunctionMapView
         : selected
         )
         remaining
-      case mapped >>= namedMapViewForValue of
-        Nothing -> Right Nothing
-        Just mappedView -> namedMapMemberByName
-          mappedView (namedMemberName member)
+      pure (mapped >>= mappedMember (namedMemberName member))
+
+    -- The source member's name indexes the mapped family; it is not also the
+    -- witness's structural field namespace. Preserve that outer index here
+    -- instead of overwriting @_key@ and @_value@ on a specified declaration
+    -- entry. An empty body contributes no member to the induced map.
+    mappedMember name mapped
+      | interpretedMapFinalOrderType (interpretedMap mapped)
+          == finiteOrdinal 0 = Nothing
+      | otherwise = Just (NamedMember name mapped)
 
 -- | Evaluate each upper bound in telescope order so a generic family can
 -- build structural metadata without inventing a concrete witness.  These

@@ -13,7 +13,7 @@ import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   , atlasMapFederationExpressionIsSingleton
   )
-import DatraOrdinal (finiteOrdinal)
+import DatraOrdinal (Ordinal, finiteOrdinal, ordinalLT, subtractOrdinal)
 import Evaluation.Error (InterpretingError)
 import Evaluation.Federation
   ( decideValueConcatenation
@@ -131,12 +131,31 @@ concatenateValuesWithEquivalenceView
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError (InterpretedValue, InterpretedValue)
-concatenateValuesWithEquivalenceView left right
+concatenateValuesWithEquivalenceView sourceLeft sourceRight = do
+  (result, equivalence) <- concatenateProjectedValues left right
+  pure (retainCoalizedView result, retainCoalizedView equivalence)
+  where
+    hasCoalizedOperand =
+      maybe False (const True) (interpretedCoalizedMapView sourceLeft)
+        || maybe False (const True) (interpretedCoalizedMapView sourceRight)
+    retainCoalizedView result
+      | hasCoalizedOperand = withCoalizedMapView result result
+      | otherwise = result
+    left = maybe sourceLeft coalizedMapOrdinalValue
+      (interpretedCoalizedMapView sourceLeft)
+    right = maybe sourceRight coalizedMapOrdinalValue
+      (interpretedCoalizedMapView sourceRight)
+
+concatenateProjectedValues
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError (InterpretedValue, InterpretedValue)
+concatenateProjectedValues left right
   | isEmptyMap left
   , hasConcreteSource right = Right (right, right)
   | isEmptyMap right
   , hasConcreteSource left = Right (left, left)
-concatenateValuesWithEquivalenceView left right = do
+concatenateProjectedValues left right = do
   requireFederationDecision
     (decideValueConcatenation left right)
   normalizedRanges <-
@@ -182,8 +201,13 @@ concatenateValuesWithEquivalenceView left right = do
           MapSemantics _ mapComponents ->
             MapSemantics cardinality mapComponents
           _ -> semantics
+      checkedSourceMaps = case normalizedRanges of
+        Just ranges -> map
+          (interpretedMap . interpretedRangeValue)
+          ranges
+        Nothing -> map interpretedMap [left, right]
       baseResultMap = InterpretedMap cardinality finalValues
-        (Right . ordinalOrderedValueAt finalValues)
+        (checkedMapValueAt checkedSourceMaps)
         components
       resultFederation valueMap
         | operandsAreTotal
@@ -263,6 +287,24 @@ concatenateValuesWithEquivalenceView left right = do
   where
     operandsAreTotal =
       hasConcreteSource left && hasConcreteSource right
+
+-- | Append checked ordinal callbacks with the same ordinal arithmetic used by
+-- 'appendOrdinalOrderedValues'. Keeping this separate from the unchecked
+-- structural view lets concatenation stay lazy without erasing a producer's
+-- failure.
+checkedMapValueAt
+  :: [InterpretedMap]
+  -> Ordinal
+  -> Either InterpretingError (Maybe InterpretedValue)
+checkedMapValueAt [] _ = Right Nothing
+checkedMapValueAt (valueMap : remaining) position
+  | position `ordinalLT` orderType =
+      interpretedMapValueAtChecked valueMap position
+  | otherwise = case subtractOrdinal orderType position of
+      Just relative -> checkedMapValueAt remaining relative
+      Nothing -> Right Nothing
+  where
+    orderType = interpretedMapFinalOrderType valueMap
 
 concatenateInsertionCapabilities
   :: InterpretedValue

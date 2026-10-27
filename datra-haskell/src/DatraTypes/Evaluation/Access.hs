@@ -551,6 +551,9 @@ namedAccessValue source name = do
     candidates value
       | SpecificationForm specification <- interpretedForm value =
           specificationCandidates specification
+      | Just named <- interpretedNamedMapView value =
+          maybe [] ((: []) . namedMemberValue)
+            <$> namedMapMemberByName named name
       | Just target <- interpretedSpecificationTargetEvidence value
       , ArgumentMapForm members _ <- interpretedForm target =
           argumentEvidenceCandidates value members

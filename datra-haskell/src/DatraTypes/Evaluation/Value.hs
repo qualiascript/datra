@@ -26,6 +26,7 @@ module Evaluation.Value
   , ReductionContext (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
+  , withFunctionSyntax
   , makeFunctionBodyValue
   , interpretedFunctionBody
   , interpretedRuntimeFunctionInsertion
@@ -85,7 +86,7 @@ module Evaluation.Value
   , namedMapDeclaredMembers
   , namedMapViewForValue
   , appendNamedMapViews
-  , namedMapValue
+  , coalizeNamedMapView
   , interpretedSimpleIdentifierName
   , ToStringInverseDecision (..)
   , ProvenInjectiveToString (..)
@@ -118,7 +119,9 @@ module Evaluation.Value
   , orderedAtlasMapView
   , withOrderedAtlasMapView
   , withOrderedAtlasMapValues
-  , withMapView
+  , CoalizedMapView (..)
+  , withCoalizedMapView
+  , interpretedCoalizedMapView
   , withDependentSumStructure
   , withDependentSumAccess
   , withDependentSumFamily
@@ -207,7 +210,7 @@ import DatraOrdinal
   , subtractOrdinal
   , omega
   )
-import FoliageMap (foliageMap, foliageMapPositionAt)
+import FoliageMap (FoliageMap, foliageMap, foliageMapPositionAt)
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
@@ -497,6 +500,24 @@ makeFunctionValue function = makeInterpretedValue functionDatraType
   where
     signature = functionSignatureSource function
     canonicalSource = maybe signature id (functionSource function)
+
+-- | Add a declaration's callable syntax without rebuilding the function.
+-- Reconstructing through 'makeFunctionValue' would discard auxiliary runtime
+-- capabilities such as dependent-sum, map, and specification evidence views.
+withFunctionSyntax
+  :: FunctionSyntax InterpretedValue
+  -> FunctionSyntax String
+  -> InterpretedValue
+  -> InterpretedValue
+withFunctionSyntax evaluated source value =
+  case interpretedForm value of
+    FunctionForm function -> value
+      { interpretedForm = FunctionForm function
+          { functionSyntax = Just evaluated
+          , functionSyntaxSource = Just source
+          }
+      }
+    _ -> value
 
 makeFunctionBodyValue :: EvaluatedFunctionBody -> InterpretedValue
 makeFunctionBodyValue body = case body of
@@ -812,24 +833,26 @@ namedMapDeclaredMembers view =
 
 namedMapViewForValue :: InterpretedValue -> Maybe NamedMapView
 namedMapViewForValue value =
-  case interpretedSimpleIdentifierName value of
-    Just name -> Just (NamedMapView (NamedMapProjection
-      (Right singletonProjection)
-      (Right (NamedMapOrdinalProjection
-        (finiteOrdinal 1)
-        (\position -> Right
-          (if position == finiteOrdinal 0 then Just member else Nothing))))
-      (\candidate -> Right
-        (if candidate == name then Just member else Nothing))
-      (\candidate -> Right (candidate == name))
-      (const (Right [member]))))
-      where
-        member = NamedMember name value
-        singletonProjection = NamedMapOrdinalProjection
+  case interpretedNamedMapView value of
+    Just view -> Just view
+    Nothing -> case interpretedSimpleIdentifierName value of
+      Just name -> Just (NamedMapView (NamedMapProjection
+        (Right singletonProjection)
+        (Right (NamedMapOrdinalProjection
           (finiteOrdinal 1)
           (\position -> Right
-            (if position == finiteOrdinal 0 then Just member else Nothing))
-    Nothing -> interpretedNamedMapView value
+            (if position == finiteOrdinal 0 then Just member else Nothing))))
+        (\candidate -> Right
+          (if candidate == name then Just member else Nothing))
+        (\candidate -> Right (candidate == name))
+        (const (Right [member]))))
+        where
+          member = NamedMember name value
+          singletonProjection = NamedMapOrdinalProjection
+            (finiteOrdinal 1)
+            (\position -> Right
+              (if position == finiteOrdinal 0 then Just member else Nothing))
+      Nothing -> Nothing
 
 appendNamedMapViews :: NamedMapView -> NamedMapView -> NamedMapView
 appendNamedMapViews left right = NamedMapView (appendNamedMapProjections
@@ -880,8 +903,8 @@ appendNamedMapProjections left right = NamedMapProjection
 
 -- | Materialize only the ordinary Atlas-map shell of a named namespace. Each
 -- ordinal demand delegates to the producer and retains its checked failure.
-namedMapValue :: NamedMapView -> Either InterpretingError InterpretedValue
-namedMapValue view = do
+coalizeNamedMapView :: NamedMapView -> Either InterpretingError InterpretedValue
+coalizeNamedMapView view = do
   collection <- namedProjectionCollection (namedMapProjection view)
   let normalizedCollection = foliageOrdinalProjection collection
       normalizedView = NamedMapView ((namedMapProjection view)
@@ -984,6 +1007,7 @@ data InterpretedValue = InterpretedValue
   , interpretedSpecificationTargetEvidence :: Maybe InterpretedValue
   , interpretedOrderedAtlasMapView
       :: Maybe (OrdinalOrderedValues InterpretedValue)
+  , interpretedCoalizedMapView :: Maybe CoalizedMapView
   , interpretedStringTemplate :: Maybe EvaluatedStringTemplate
   , interpretedGreedyStringTemplate :: Maybe EvaluatedGreedyStringTemplate
   , interpretedNamedMapView :: Maybe NamedMapView
@@ -1039,6 +1063,7 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
     , interpretedDependentSumView = Nothing
     , interpretedSpecificationTargetEvidence = Nothing
     , interpretedOrderedAtlasMapView = Nothing
+    , interpretedCoalizedMapView = Nothing
     , interpretedStringTemplate = Nothing
     , interpretedGreedyStringTemplate = Nothing
     , interpretedNamedMapView = Nothing
@@ -1281,17 +1306,29 @@ withOrderedAtlasMapValues
 withOrderedAtlasMapValues values value =
   value { interpretedOrderedAtlasMapView = Just values }
 
+-- | The single lazy map capability shared by product and sum generics.  The
+-- ordinal carrier is authoritative for access and concatenation; foliage is
+-- only its fair natural traversal, so it can never drift onto another family.
+data CoalizedMapView = CoalizedMapView
+  { coalizedMapOrdinalValue :: InterpretedValue
+  , coalizedMapFoliageTraversal :: FoliageMap
+  }
+
 -- | Retain a value's primary behavior while exposing another value through
--- ordinary Atlas access. Generic functions use this for the lazy map induced
--- by a valued-range prefix; calls and canonical rendering remain functional.
-withMapView :: InterpretedValue -> InterpretedValue -> InterpretedValue
-withMapView view value = value
+-- ordinary Atlas access. Generic functions of either polarity use the same
+-- coalized view: direct access keeps the source ordinal indexing, while
+-- consumers that enumerate use the attached foliage traversal.
+withCoalizedMapView :: InterpretedValue -> InterpretedValue -> InterpretedValue
+withCoalizedMapView view value = value
   { interpretedInsertionCapability = interpretedInsertionCapability view
   , interpretedMap = interpretedMap view
   , interpretedAtlasMapFederation = interpretedAtlasMapFederation view
   , interpretedTotalAtlasMap = interpretedTotalAtlasMap view
   , interpretedOrderedAtlasMapView = orderedAtlasMapView view
   , interpretedNamedMapView = interpretedNamedMapView view
+  , interpretedCoalizedMapView = Just (CoalizedMapView
+      view
+      (foliageMap (interpretedMapFinalOrderType (interpretedMap view))))
   }
 
 -- | Attach source-independent structure to a dependent sum.  Constructors
@@ -1426,7 +1463,41 @@ withEvaluationSource source value =
     }
 
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
-interpretedCanonicalResult = canonicalResult . interpretedSemantics
+interpretedCanonicalResult value =
+  case coalizedMapResult value of
+    Just result -> result
+    Nothing -> canonicalResult (interpretedSemantics value)
+
+-- | Canonical rendering is a consumer of a coalized map, not part of its
+-- construction. It follows the same foliage traversal for every ordinal
+-- order: finite foliage terminates, while transfinite foliage stays lazy and
+-- productive. Functions retain their callable presentation until
+-- concatenation produces a map value.
+coalizedMapResult :: InterpretedValue -> Maybe CanonicalResult
+coalizedMapResult value = do
+  guard (case interpretedForm value of
+    FunctionForm _ -> False
+    _ -> True)
+  coalized <- interpretedCoalizedMapView value
+  let valueMap = interpretedMap (coalizedMapOrdinalValue coalized)
+  pure (CanonicalMap
+    (interpretedMapCardinality valueMap)
+    (componentsAt coalized valueMap 0))
+
+componentsAt
+  :: CoalizedMapView
+  -> InterpretedMap
+  -> Natural
+  -> [CanonicalResult]
+componentsAt coalized valueMap rank =
+  case foliageMapPositionAt
+      (coalizedMapFoliageTraversal coalized) rank of
+    Nothing -> []
+    Just position ->
+      case interpretedMapValueAt valueMap position of
+        Nothing -> componentsAt coalized valueMap (rank + 1)
+        Just member -> interpretedCanonicalResult member
+          : componentsAt coalized valueMap (rank + 1)
 
 -- | Presentation-free identity for type checks and semantic comparisons.
 interpretedSemanticResult :: InterpretedValue -> CanonicalResult
