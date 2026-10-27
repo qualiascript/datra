@@ -80,12 +80,15 @@ module DatraTypes
   , namedMapView
   , namedMapOrderType
   , namedMapMemberAt
+  , namedMapOrdinalOrderType
+  , namedMapOrdinalMemberAt
   , namedMapMemberByName
   , namedMapContainsName
   , namedMapDeclaredMembers
   , namedMapViewForValue
   , appendNamedMapViews
   , coalizeNamedMapView
+  , coalizeNamedOrdinalMapView
   , withNamedMapView
   , InterpretingError (..)
   , FunctionFailure (..)
@@ -524,12 +527,15 @@ import Evaluation.Value
   , namedMapView
   , namedMapOrderType
   , namedMapMemberAt
+  , namedMapOrdinalOrderType
+  , namedMapOrdinalMemberAt
   , namedMapMemberByName
   , namedMapContainsName
   , namedMapDeclaredMembers
   , namedMapViewForValue
   , appendNamedMapViews
   , coalizeNamedMapView
+  , coalizeNamedOrdinalMapView
   , withNamedMapView
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
@@ -659,10 +665,12 @@ listTypeValue presentationSource elementType =
       case interpretedValueKind source of
         MapValueKind -> validateMembers source
         AsciiStringValueKind -> pure ()
-        -- Atlas normalization erases a singleton sequence, so @T; ()@ is
-        -- represented by the element itself.  This is the one-element fibre
-        -- of the same recursive list, not a separate special case in source.
-        _ -> () <$ specifyDependentSumElement source elementType
+        _ -> case interpretedCoalizedMapView source of
+          Just view -> validateMembers (coalizedMapOrdinalValue view)
+          -- Atlas normalization erases a singleton sequence, so @T; ()@ is
+          -- represented by the element itself.  This is the one-element fibre
+          -- of the same recursive list, not a separate special case in source.
+          Nothing -> () <$ specifyDependentSumElement source elementType
       pure source
     validateMembers source = do
       count <- maybe
@@ -697,19 +705,23 @@ streamTypeValue presentationSource elementType =
         NaturalValueKind -> Right elementType
         _ -> Right value
     validate source
-      | interpretedValueKind source == MapValueKind
+      | interpretedValueKind sourceView == MapValueKind
       , interpretedMapFinalOrderType sourceMap == omega =
           Right (withCoalizedMapView checkedView source)
       | otherwise =
           Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
       where
-        sourceMap = interpretedMap source
+        sourceView
+          | interpretedValueKind source == MapValueKind = source
+          | otherwise = maybe source coalizedMapOrdinalValue
+              (interpretedCoalizedMapView source)
+        sourceMap = interpretedMap sourceView
         checkedMap = makeCheckedLazyMapValue omega $ \position -> do
           selected <- interpretedMapValueAtChecked sourceMap position
           traverse
             (\member -> member <$ specifyDependentSumElement member elementType)
             selected
-        checkedView = case interpretedNamedMapView source of
+        checkedView = case interpretedNamedMapView sourceView of
           Just named -> withNamedMapView named checkedMap
           Nothing -> checkedMap
 
@@ -727,12 +739,9 @@ specifyDependentSumElement source target =
     then do
       sourceView <- structuralMapView source
       let schema = argumentSchemaFromValue target
-      prepared <- argumentSchemaValuesComplete schema sourceView
-      let evidenced = withSpecificationTargetEvidence target
-            (withInterpretedSemantics
-              (interpretedSemantics source)
-              prepared)
-      pure (case namedFields schema prepared of
+      _ <- argumentSchemaValuesComplete schema sourceView
+      let evidenced = withSpecificationTargetEvidence target source
+      pure (case namedFields schema sourceView of
         Just fields -> withNamedMapView fields evidenced
         Nothing -> evidenced)
     else specifyValues source target

@@ -81,12 +81,15 @@ module Evaluation.Value
   , namedMapView
   , namedMapOrderType
   , namedMapMemberAt
+  , namedMapOrdinalOrderType
+  , namedMapOrdinalMemberAt
   , namedMapMemberByName
   , namedMapContainsName
   , namedMapDeclaredMembers
   , namedMapViewForValue
   , appendNamedMapViews
   , coalizeNamedMapView
+  , coalizeNamedOrdinalMapView
   , interpretedSimpleIdentifierName
   , ToStringInverseDecision (..)
   , ProvenInjectiveToString (..)
@@ -813,6 +816,20 @@ namedMapMemberAt view position = do
   ordinalProjection <- namedProjectionCollection (namedMapProjection view)
   namedOrdinalProjectionMemberAt ordinalProjection position
 
+-- | Read the concrete ordinal namespace rather than the finite collection
+-- manifest. Positional scope and generic-map operations use this projection.
+namedMapOrdinalOrderType :: NamedMapView -> Either InterpretingError Ordinal
+namedMapOrdinalOrderType view = namedOrdinalProjectionOrderType
+  <$> namedProjectionOrdinal (namedMapProjection view)
+
+namedMapOrdinalMemberAt
+  :: NamedMapView
+  -> Ordinal
+  -> Either InterpretingError (Maybe NamedMember)
+namedMapOrdinalMemberAt view position = do
+  ordinalProjection <- namedProjectionOrdinal (namedMapProjection view)
+  namedOrdinalProjectionMemberAt ordinalProjection position
+
 namedMapMemberByName
   :: NamedMapView
   -> String
@@ -901,20 +918,35 @@ appendNamedMapProjections left right = NamedMapProjection
         (Just _, Just _) ->
           Left (NamedAccessFailed (NamedFieldAmbiguous name))
 
--- | Materialize only the ordinary Atlas-map shell of a named namespace. Each
--- ordinal demand delegates to the producer and retains its checked failure.
+-- | Materialize the collection projection of a named namespace as an
+-- ordinary Atlas-map shell. This projection is the finite declaration
+-- manifest when the concrete namespace itself cannot be enumerated.
 coalizeNamedMapView :: NamedMapView -> Either InterpretingError InterpretedValue
-coalizeNamedMapView view = do
-  collection <- namedProjectionCollection (namedMapProjection view)
-  let normalizedCollection = foliageOrdinalProjection collection
-      normalizedView = NamedMapView ((namedMapProjection view)
-        { namedProjectionCollection = Right normalizedCollection })
-      shellOrderType = namedOrdinalProjectionOrderType normalizedCollection
-  pure (withNamedMapView normalizedView
+coalizeNamedMapView = coalizeNamedProjection namedProjectionCollection
+
+-- | Materialize the concrete ordinal namespace. Generic map views use this
+-- projection whenever the declaration family has an ordinal carrier; the
+-- collection manifest remains independently attached for syntax and module
+-- discovery.
+coalizeNamedOrdinalMapView
+  :: NamedMapView
+  -> Either InterpretingError InterpretedValue
+coalizeNamedOrdinalMapView = coalizeNamedProjection namedProjectionOrdinal
+
+coalizeNamedProjection
+  :: (NamedMapProjection
+      -> Either InterpretingError NamedMapOrdinalProjection)
+  -> NamedMapView
+  -> Either InterpretingError InterpretedValue
+coalizeNamedProjection selectProjection view = do
+  source <- selectProjection (namedMapProjection view)
+  let normalized = foliageOrdinalProjection source
+      shellOrderType = namedOrdinalProjectionOrderType normalized
+  pure (withNamedMapView view
     (makeCheckedLazyMapValue
       shellOrderType
       (fmap (fmap namedMemberValue)
-        . namedOrdinalProjectionMemberAt normalizedCollection)))
+        . namedOrdinalProjectionMemberAt normalized)))
 
 -- | Collections use natural positions even when their source namespace is a
 -- transfinite ordinal sum. The ordinal projection remains available for

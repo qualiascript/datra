@@ -7,8 +7,7 @@
 module SyntaxRewriting
   ( SyntaxContext (..)
   , SyntaxRewriteFailure (..)
-  , rewriteExplicitSyntax
-  , rewriteImplicitSyntax
+  , rewriteResourceSyntax
   ) where
 
 import Control.Applicative ((<|>))
@@ -26,7 +25,7 @@ import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Diagnostics.Application
   ( SyntaxTemplateAdmissibilityFailure )
-import Parsing (inferredFunction)
+import Parsing (ResourceEnvelope (..), inferredFunction)
 import DatraTypes
   ( EvaluatedFunction (functionBody)
   , EvaluatedFunctionBody
@@ -311,32 +310,30 @@ rewriteEnvironment context rules declarations = RewriteEnvironment
   (contextEvaluate context) (contextEvaluateWithInput context)
   (contextApply context)
 
-rewriteExplicitSyntax
-  :: SyntaxContext
+rewriteResourceSyntax
+  :: ResourceEnvelope
+  -> SyntaxContext
   -> [SyntaxRule]
   -> [Expression]
   -> Expression
   -> Either SyntaxRewriteFailure Expression
-rewriteExplicitSyntax context rules declarations =
-  rewriteStandalone (contextCapture context)
-    (rewriteEnvironment context rules declarations)
-
-rewriteImplicitSyntax
-  :: SyntaxContext
-  -> [SyntaxRule]
-  -> [Expression]
-  -> [Expression]
-  -> Either SyntaxRewriteFailure Expression
-rewriteImplicitSyntax context rules declarations entries = do
-  let capture = contextCapture context
-      initial = rewriteEnvironment context rules declarations
-  -- Discover recursive declarations through the same block pass used by
-  -- explicit resources, but retain the raw syntax for the implicit delimiter
-  -- pass. In particular, operators surrounding @yield@ must be rewritten only
-  -- after that boundary has been identified.
-  (discovered, _) <- rewriteSequence capture initial entries
-  resolveImplicitBlock capture
-    (recursiveRewriteEnvironment True initial discovered) [] entries
+rewriteResourceSyntax envelope context rules declarations raw =
+  case (envelope, raw) of
+    (ExplicitMapEnvelope, expressionValue) ->
+      rewriteStandalone capture initial expressionValue
+    (ImplicitBlockEnvelope, Begin entries _) ->
+      rewriteImplicitResource entries
+    _ -> Left MissingImplicitBlockResult
+  where
+    capture = contextCapture context
+    initial = rewriteEnvironment context rules declarations
+    rewriteImplicitResource entries = do
+      -- Discover recursive declarations through the same block pass used by
+      -- explicit resources, but retain raw syntax until the implicit block
+      -- delimiter has been identified.
+      (discovered, _) <- rewriteSequence capture initial entries
+      resolveImplicitBlock capture
+        (recursiveRewriteEnvironment True initial discovered) [] entries
 
 -- Keep visible syntax rules, while moving the declarations they depend on into
 -- the evaluator's parent scope. RHS declarations belong to the new scope.

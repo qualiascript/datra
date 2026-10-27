@@ -115,9 +115,7 @@ import Parsing
   )
 import SyntaxRewriting
   ( SyntaxContext (..)
-  , SyntaxRewriteFailure (..)
-  , rewriteExplicitSyntax
-  , rewriteImplicitSyntax
+  , rewriteResourceSyntax
   )
 import Rendering (renderCanonicalResult, renderInterpretedValue)
 import GenericScopeProtection
@@ -244,16 +242,9 @@ rewriteParsedDatraSourceWithImports modules parsed = do
         ]
       availableModuleRules = baseModuleRules <> dependencyRules
       initialRules = standardRules
-      rewrite = case (envelope, raw) of
-        (ExplicitMapEnvelope, expressionValue) ->
-          rewriteExplicitSyntax
-            (syntaxContext base modules availableModuleRules)
-            initialRules [] expressionValue
-        (ImplicitBlockEnvelope, Begin entries _) ->
-          rewriteImplicitSyntax
-            (syntaxContext base modules availableModuleRules)
-            initialRules [] entries
-        _ -> Left MissingImplicitBlockResult
+      rewrite = rewriteResourceSyntax envelope
+        (syntaxContext base modules availableModuleRules)
+        initialRules [] raw
   expressionValue <- Bifunctor.first rewriteParseFailure rewrite
   pure (Located sourceSpan (resolveGenericFunctionTypes expressionValue))
   where
@@ -296,12 +287,8 @@ discoverImportInvocations base activeRules envelope raw = do
   let availableRules =
         [(namespace, namespace, rules) | (namespace, rules) <- baseModuleRules]
       context = syntaxContext base [] availableRules
-  rewritten <- Bifunctor.first (ParseFailure . show) $ case (envelope, raw) of
-    (ExplicitMapEnvelope, expressionValue) ->
-      rewriteExplicitSyntax context activeRules [] expressionValue
-    (ImplicitBlockEnvelope, Begin entries _) ->
-      rewriteImplicitSyntax context activeRules [] entries
-    _ -> Left MissingImplicitBlockResult
+  rewritten <- Bifunctor.first (ParseFailure . show) $
+    rewriteResourceSyntax envelope context activeRules [] raw
   pure (nub (importsInExpansion rewritten))
   where
     importsInExpansion expressionValue =
@@ -895,16 +882,7 @@ parsedDefaultModule = do
   hostRules <- datraHostSyntaxRules
   let
       context = syntaxContext emptyScope [] hostRules
-      rewritten = case (envelope, raw) of
-        (ExplicitMapEnvelope, expressionValue) ->
-          rewriteExplicitSyntax
-            context
-            [] [] expressionValue
-        (ImplicitBlockEnvelope, Begin entries _) ->
-          rewriteImplicitSyntax
-            context
-            [] [] entries
-        _ -> Left MissingImplicitBlockResult
+      rewritten = rewriteResourceSyntax envelope context [] [] raw
   rewrittenValue <- either
     (parseFailure . ParseFailure . show)
     Right
@@ -1384,7 +1362,12 @@ scopeEntriesValue reduction resolving entries =
     named <- scopeEntriesNamedView reduction resolving entries
     case named of
       Nothing -> Right (makeAtlasMap 0 [])
-      Just view -> coalizeNamedMapView view
+      Just view -> do
+        collection <- coalizeNamedMapView view
+        case coalizeNamedOrdinalMapView view of
+          Right ordinal -> Right (withCoalizedMapView ordinal collection)
+          Left LookupCaptureHasNoGenericMapView {} -> Right collection
+          Left failure -> Left failure
 
 scopeEntriesNamedView
   :: ReductionContext
@@ -3530,19 +3513,81 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
         Just <$> materializeMember evaluatedCaptures template name values
 
     -- A declaration descriptor represents the callable family, not one
-    -- concrete member of that family.  Evaluate its implementation through
-    -- the ordinary deferred-binding path and retain the syntax template on
-    -- the resulting callable; capture schemas are metadata and must never be
-    -- supplied as pretend capture values.
+    -- concrete member of that family. Its implementation is therefore
+    -- evaluated only when concrete capture values invoke the descriptor; in
+    -- particular, an @it@ implementation has no contextual argument while
+    -- the descriptor manifest itself is being discovered.
     descriptorMember branch = do
       let template = preparedDeclarationTemplate branch
       let name = renderDeclarationDescriptorKey template
-          implementation = dependentDeclarationImplementation declaration
-      payload <- evaluateBindingDefinitionWith
-        reduction captured resolving name Nothing implementation
+      payload <- declarationFamilyValue name branch
       pure (namedDeclarationDescriptorMember declaration name
         (attachDeclarationSyntax
           (preparedDeclarationSourceCaptures branch) template payload))
+
+    -- A declaration family with no name captures is the declaration value
+    -- itself. Introducing a synthetic unit-domain callable here would replace
+    -- the behavior of an ordinary callable declaration (for example @List@)
+    -- with the behavior of its descriptor wrapper.
+    declarationFamilyValue name branch
+      | null (preparedDeclarationCaptures branch) =
+          evaluateMaterializedDeclaration
+            reduction captured resolving
+            (dependentDeclarationImplementation declaration)
+            [] [] (preparedDeclarationTemplate branch)
+      | otherwise = declarationFamilyFunction name branch
+
+    declarationFamilyFunction name branch = do
+      let captures = preparedDeclarationCaptures branch
+          schema = orderedArgumentSchema 2 (map captureSlot captures)
+          template = preparedDeclarationTemplate branch
+          implementation = dependentDeclarationImplementation declaration
+          capabilityEnvelope = do
+            evaluated <- either (const Nothing) Just
+              (evaluateBindingDefinitionWith
+                reduction captured resolving name Nothing implementation)
+            interpretedFunction evaluated
+          prepare argument = do
+            (prepared, bindings) <-
+              overloadArgumentSchemaComplete schema argument
+            pure (PreparedFunctionArgument argument prepared bindings)
+          evaluatePrepared activeReduction prepared = do
+            values <- captureWitnesses
+              (length captures) (functionPreparedArgument prepared)
+            evaluateMaterializedDeclaration
+              activeReduction captured resolving
+              implementation
+              captures values template
+          invoke _ activeReduction prepared = do
+            payload <- evaluatePrepared activeReduction prepared
+            pure (EvaluatedFunctionInvocation payload Nothing)
+          insertion = RuntimeFunctionInsertion
+            { applyRuntimeFunction = \argument ->
+                prepare argument >>= evaluatePrepared UnrestrictedReduction
+            , preimageRuntimeFunction = const Nothing
+            }
+      domain <- argumentSchemaDomain schema
+      pure (makeFunctionValue
+            (EvaluatedFunction
+              domain
+              (maybe anyTypeValue functionCodomain capabilityEnvelope)
+              Nothing
+              Nothing
+              (capabilityEnvelope >>= functionSource)
+              (capabilityEnvelope >>= functionBody)
+              name
+              (Just prepare)
+              (Just invoke)
+              False
+              (Just insertion)))
+
+    captureSlot capture =
+      maybe
+        (argumentSlotSchema Nothing False schema Nothing)
+        (\name -> dependentArgumentSlotSchema name False schema)
+        (evaluatedDeclarationCaptureName capture)
+      where
+        schema = evaluatedDeclarationCaptureSchema capture
 
     declaredMembers branch = pure <$> descriptorMember branch
 
@@ -3886,8 +3931,9 @@ evaluateMaterializedDeclaration reduction captured resolving implementation
       resolving
       Nothing
       implementation
-  payload <- applyDependentDeclarationImplementation
-    supplied implementationValue
+  payload <- if null evaluatedCaptures
+    then Right implementationValue
+    else applyDependentDeclarationImplementation supplied implementationValue
   pure (attachDeclarationSyntax Nothing template payload)
   where
     contextualCapture (capture, value) =
@@ -4731,8 +4777,15 @@ genericFunctionCoalizedMapView
       bound <- evalInScopeWith reduction
         (extendScope selectedScope captured) resolving boundExpression
       case namedMapViewForValue bound of
-        Just sourceView -> Just <$> coalizeNamedMapView
-          (mapNamedView selected binder remaining bound sourceView)
+        Just sourceView -> do
+          let mappedView =
+                mapNamedView selected binder remaining bound sourceView
+          projected <- case coalizeNamedOrdinalMapView mappedView of
+            Right ordinalView -> Right ordinalView
+            Left LookupCaptureHasNoGenericMapView {} ->
+              coalizeNamedMapView mappedView
+            Left failure -> Left failure
+          pure (Just projected)
         Nothing -> case ordinalIndexedValueFamily bound of
           Nothing -> pure Nothing
           Just family -> pure (Just (makeLazyMapValue
@@ -4785,11 +4838,12 @@ genericFunctionCoalizedMapView
           (namedMemberValue member) elementType
         Nothing -> Right (namedMemberValue member)
       mapped <- build
-        ( (genericBinderId binder, witness)
-        : selected
-        )
-        remaining
-      pure (mapped >>= mappedMember (namedMemberName member))
+          ( (genericBinderId binder, witness)
+          : selected
+          )
+          remaining
+      let name = namedMemberName member
+      pure (mapped >>= mappedMember name)
 
     -- The source member's name indexes the mapped family; it is not also the
     -- witness's structural field namespace. Preserve that outer index here
@@ -5693,7 +5747,8 @@ closureResolver scope = resolver
         >>= contextualDeclarationMembers
       view <- either (const Nothing) id
         (scopeEntriesNamedView UnrestrictedReduction [] declarations)
-      member <- either (const Nothing) id (namedMapMemberAt view position)
+      member <- either (const Nothing) id
+        (namedMapOrdinalMemberAt view position)
       pure (namedMemberName member)
     moduleResolver path = case
         [ imported
