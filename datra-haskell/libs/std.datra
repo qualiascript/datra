@@ -61,7 +61,7 @@
     let val Maybe := &T? do yield nothing | Just T
     let val Str := >< (List Char)
     let val InhabitedStr := >< (InhabitedList Char)
-    val Stream := &T? do yield fun T ; this
+    val Stream := &T? do yield fun (T ; this)
     val Collection := &T? do yield (List T) | (Stream T)
 
     let val Nat := from 0 up
