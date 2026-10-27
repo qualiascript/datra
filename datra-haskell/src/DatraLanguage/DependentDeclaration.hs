@@ -5,6 +5,7 @@ module DatraLanguage.DependentDeclaration
   , DependentDeclarationHead (..)
   , dependentDeclaration
   , dependentDeclarationNameExpression
+  , dependentDeclarationNameFamilyExpression
   , dependentDeclarationTemplateBranches
   , bindingNames
   ) where
@@ -81,6 +82,21 @@ dependentDeclarationNameExpression declaration =
   case dependentDeclarationHead declaration of
     SimpleIdentifierDeclarationHead (IdentifierString name) ->
       IdentifierReference (IdentifierString name)
+    StringTemplateDeclarationHead parts -> StringTemplate parts
+    EvaluatedDeclarationHead expressionValue -> expressionValue
+
+-- The federation of names introduced by a declaration is not always the
+-- value of its written head. In particular, evaluating the written head of a
+-- simple declaration resolves that identifier's payload. Represent its name
+-- as the same singleton string-template family used by every other
+-- declaration so overlap validation can uniformly use federation operations.
+dependentDeclarationNameFamilyExpression
+  :: DependentDeclaration
+  -> Expression
+dependentDeclarationNameFamilyExpression declaration =
+  case dependentDeclarationHead declaration of
+    SimpleIdentifierDeclarationHead (IdentifierString name) ->
+      StringTemplate [StringTemplateLiteral name]
     StringTemplateDeclarationHead parts -> StringTemplate parts
     EvaluatedDeclarationHead expressionValue -> expressionValue
 

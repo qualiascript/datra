@@ -509,6 +509,23 @@ evaluateSyntaxValue base modules declarations expressionValue = do
       (map syntaxValidationDeclaration declarations))
   either (const Nothing) Just (evalInScope scope [] expressionValue)
 
+evaluateSyntaxValueWithInput
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> InterpretedValue
+  -> Expression
+  -> Maybe InterpretedValue
+evaluateSyntaxValueWithInput base modules declarations input expressionValue = do
+  let enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+  parent <- either (const Nothing) Just
+    (declareSyntaxScope enclosing
+      (map syntaxValidationDeclaration declarations))
+  let contextual = extendScope
+        (constantContextualBindings "it" input) parent
+  either (const Nothing) Just
+    (evalInScope contextual [] expressionValue)
+
 applySyntaxValue
   :: Scope
   -> [(String, ModuleSource)]
@@ -541,6 +558,7 @@ syntaxContext base modules availableRules = SyntaxContext
   (captureSyntaxHole base modules)
   (importedSyntaxRules base modules availableRules)
   (evaluateSyntaxValue base modules)
+  (evaluateSyntaxValueWithInput base modules)
   (applySyntaxValue base modules)
   enter
   where
@@ -1886,12 +1904,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                   let imported = case operand of
                         IdentifierReference (IdentifierString namespace) ->
                           case lookupScope namespace scope of
-                            Just (ImportedBinding _ identity _ internal) ->
-                              Just (identity, internal)
+                            Just (ImportedBinding dependency identity _ internal) ->
+                              Just (dependency, identity, internal)
                             _ -> Nothing
                         _ -> Nothing
                       exportedPayload = case imported of
-                        Just (_, internal) -> withoutCanonicalDependencies
+                        Just (_, _, internal) -> withoutCanonicalDependencies
                           [ dependency
                           | (_, LexicalScope dependency) <- scopeBindings internal
                           ]
@@ -1900,8 +1918,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                   if hasTrailingIdentifierMarker canonicalValueMarker selected
                     then do
                       let dependencies = case imported of
-                            Just (identity, _) ->
-                              [canonicalValuePresentationDependency identity]
+                            Just (dependency, _, _) -> [dependency]
                             Nothing -> maybe [] fst
                               (interpretedCanonicalPresentation actual)
                       pure (withCanonicalNamedAccess
@@ -2368,11 +2385,8 @@ selectedDependentDeclarationMember
     implementation = dependentDeclarationImplementation declaration
     materialize active = do
       evaluated <- traverse (evaluateCapture active) captures
-      let evaluatedCaptures =
-            [ (captureName, schema, bound)
-            | (captureName, schema, bound, _) <- evaluated
-            ]
-          values = [value | (_, _, _, value) <- evaluated]
+      let evaluatedCaptures = map fst evaluated
+          values = map snd evaluated
           selectedTemplate = EvaluatedStringTemplate
             (dependentTemplateSegments template evaluatedCaptures)
       materializeDependentDeclarationActive
@@ -2380,16 +2394,14 @@ selectedDependentDeclarationMember
         evaluatedCaptures selectedTemplate name values
     evaluateCapture active (schemaExpression, actualExpression) = do
       let (captureName, annotation) = captureExpression schemaExpression
-      schema <- evalInScopeWith reduction familyCaptured active annotation
+      evaluatedSchema <-
+        evalInScopeWith reduction familyCaptured active annotation
+      let capture = evaluatedDeclarationCapture
+            captureName annotation evaluatedSchema
       actual <- evalInScopeWith reduction usageScope active actualExpression
       value <- argumentSchemaValuesComplete
-        (argumentSchemaFromValue schema) actual
-      pure
-        ( captureName
-        , schema
-        , argumentSchemaPositionalDomain (argumentSchemaFromValue schema)
-        , value
-        )
+        (argumentSchemaFromValue evaluatedSchema) actual
+      pure (capture, value)
     seedMember seed = do
       values <- traverse
         (evalInScopeWith reduction usageScope resolving . snd)
@@ -3238,7 +3250,7 @@ validateDeclarationFamilies = go []
     go earlier (scoped : remaining) = do
       let declaration = scopedDependentDeclarationValue scoped
       family <- evalInScope (scopedDependentDeclarationFamilyScope scoped) []
-        (dependentDeclarationNameExpression declaration)
+        (dependentDeclarationNameFamilyExpression declaration)
       mapM_ (requireDistinct declaration family) earlier
       go ((declaration, family) : earlier) remaining
 
@@ -3314,7 +3326,15 @@ interpretStringTemplateWith protection interpret parts = do
             [actual] -> checkedString
               (toStringValue canonicalStringCodec actual)
             _ -> Right (neverValue, Nothing)
-      pure (converted, Just value)
+      pure (converted, Just (captureSchema expressionValue value))
+
+    captureSchema expressionValue value =
+      case captureExpression expressionValue of
+        (Just name, annotation)
+          | Just underlying <- identifierUnderlyingValue value ->
+              simpleIdentifierTypeValue name
+                (presentCaptureSchema annotation underlying)
+        _ -> value
 
     templateSegments = snd . foldl appendPart (0, [])
     appendPart (captureIndex, segments) (converted, captureSchema) =
@@ -3421,8 +3441,8 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
           let combined = foldl appendNamedMapViews first remaining
               projection = namedMapProjection combined
               selectedMember name = do
-                selected <- selectPreparedBranch decode name prepared
-                traverse (uncurry (materializeSelected name)) selected
+                selected <- selectPreparedDeclaration decode name prepared
+                traverse (materializeSelection name) selected
               selectedAt position = do
                 ordinal <- namedProjectionOrdinal projection
                 member <- namedOrdinalProjectionMemberAt ordinal position
@@ -3439,7 +3459,7 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
             , namedProjectionMemberByName = selectedMember
             , namedProjectionContainsName =
                 fmap (maybe False (const True))
-                  . selectPreparedBranchName decode prepared
+                  . flip (selectPreparedDeclaration decode) prepared
             })
 
     decode = decodeCanonicalTemplateWith
@@ -3449,7 +3469,7 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
           template = preparedDeclarationTemplate branch
           captureBounds = traverse
             (dependentDeclarationCaptureBound reduction familyCaptured resolving)
-            [bound | (_, _, bound) <- evaluatedCaptures]
+            (map evaluatedDeclarationCaptureBound evaluatedCaptures)
           ordinalProjection = do
             bounds <- captureBounds
             case ordinalIndexedProductFamily bounds of
@@ -3476,17 +3496,23 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
                         member : _ -> Just member
                         [] -> Nothing)
                     else Right Nothing))
+      let selectedMember name = do
+            selected <- selectPreparedDeclaration decode name [branch]
+            traverse (materializeSelection name) selected
       pure (NamedMapView (NamedMapProjection
         collection
         ordinalProjection
-        (memberByName evaluatedCaptures template)
-        (fmap (maybe False (const True)) . decode template)
+        selectedMember
+        (fmap (maybe False (const True))
+          . flip (selectPreparedDeclaration decode) [branch])
         (const (declaredMembers template))))
 
     captureOrdinalCapabilityFailure evaluatedCaptures captureBounds =
       case
           [ (index, schema)
-          | (index, (_, schema, bound)) <- zip [0 ..] evaluatedCaptures
+          | (index, capture) <- zip [0 ..] evaluatedCaptures
+          , let schema = evaluatedDeclarationCaptureSchema capture
+                bound = evaluatedDeclarationCaptureBound capture
           , Nothing <- [ordinalIndexedValueFamily bound]
           ] of
         (index, schema) : _ -> LookupCaptureHasNoGenericMapView
@@ -3504,22 +3530,27 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
         name <- renderLookupTemplateKey template witness
         Just <$> materializeMember evaluatedCaptures template name values
 
-    memberByName evaluatedCaptures template name = do
-      decoded <- decode template name
-      traverse (materializeMember evaluatedCaptures template name) decoded
-
     -- A declaration descriptor represents the callable family, not one
     -- concrete member of that family.  Evaluate its implementation through
     -- the ordinary deferred-binding path and retain the syntax template on
     -- the resulting callable; capture schemas are metadata and must never be
     -- supplied as pretend capture values.
-    declaredMembers template = do
+    descriptorMember template = do
       let name = renderDeclarationDescriptorKey template
           implementation = dependentDeclarationImplementation declaration
       payload <- evaluateBindingDefinitionWith
         reduction captured resolving name Nothing implementation
-      pure [namedDeclarationMember declaration name
-        (attachDeclarationSyntax template payload)]
+      pure (namedDeclarationDescriptorMember declaration name
+        (attachDeclarationSyntax template payload))
+
+    declaredMembers template = pure <$> descriptorMember template
+
+    materializeSelection name selected =
+      case selected of
+        PreparedDeclarationDescriptor branch ->
+          descriptorMember (preparedDeclarationTemplate branch)
+        PreparedDeclarationConcrete branch values ->
+          materializeSelected name branch values
 
     materializeSelected name branch values =
       materializeMember
@@ -3540,22 +3571,29 @@ dependentDeclarationContainsName
   -> String
   -> Either InterpretingError Bool
 dependentDeclarationContainsName reduction resolving scoped name = do
-  if null candidateBranches
+  if staticallyExcluded
     then Right False
     else evaluateDeferredBindingWith
       reduction captured resolving name implementation
         (const (Right True)) $ \active -> do
-        prepared <- prepareDependentDeclarationBranches
-          reduction familyCaptured active candidateBranches
+        prepared <- prepareCandidates active
         maybe False (const True) <$>
-          selectPreparedBranchName (decode active) prepared name
+          selectPreparedDeclaration (decode active) name prepared
   where
     captured = scopedDependentDeclarationScope scoped
     familyCaptured = scopedDependentDeclarationFamilyScope scoped
     declaration = scopedDependentDeclarationValue scoped
     implementation = dependentDeclarationImplementation declaration
-    candidateBranches = filter (`templateLiteralSkeletonMatches` name)
-      (maybe [] id (dependentDeclarationTemplateBranches declaration))
+    staticallyExcluded = case dependentDeclarationTemplateBranches declaration of
+      Just declared -> null (matching declared)
+      Nothing -> False
+    prepareCandidates active = case
+        dependentDeclarationTemplateBranches declaration of
+      Just declared -> prepareDependentDeclarationBranches
+        reduction familyCaptured active (matching declared)
+      Nothing -> prepareDependentDeclaration
+        reduction familyCaptured active declaration
+    matching = filter (`templateLiteralSkeletonMatches` name)
     decode active = decodeCanonicalTemplateWith
       (evalInScopeWith reduction familyCaptured active)
 
@@ -3586,38 +3624,66 @@ dependentDeclarationMemberByName
   -> String
   -> Either InterpretingError (Maybe NamedMember)
 dependentDeclarationMemberByName reduction resolving scoped name = do
-  if null candidateBranches
+  if staticallyExcluded
     then Right Nothing
     else evaluateDeferredBindingWith
       reduction captured resolving name implementation seedMember $ \active -> do
-        prepared <- prepareDependentDeclarationBranches
-          reduction familyCaptured active candidateBranches
-        selected <- selectPreparedBranch (decode active) name prepared
+        prepared <- prepareCandidates active
+        selected <- selectPreparedDeclaration (decode active) name prepared
         traverse (materialize active) selected
   where
     captured = scopedDependentDeclarationScope scoped
     familyCaptured = scopedDependentDeclarationFamilyScope scoped
     declaration = scopedDependentDeclarationValue scoped
     implementation = dependentDeclarationImplementation declaration
-    candidateBranches = filter (`templateLiteralSkeletonMatches` name)
-      (maybe [] id (dependentDeclarationTemplateBranches declaration))
+    staticallyExcluded = case dependentDeclarationTemplateBranches declaration of
+      Just declared -> null (matching declared)
+      Nothing -> False
+    prepareCandidates active = case
+        dependentDeclarationTemplateBranches declaration of
+      Just declared -> prepareDependentDeclarationBranches
+        reduction familyCaptured active (matching declared)
+      Nothing -> prepareDependentDeclaration
+        reduction familyCaptured active declaration
+    matching = filter (`templateLiteralSkeletonMatches` name)
     decode active = decodeCanonicalTemplateWith
       (evalInScopeWith reduction familyCaptured active)
     seedMember payload =
       Right (Just (namedDeclarationMember declaration name payload))
-    materialize active (branch, decoded) =
-      materializeDependentDeclarationActive
-        reduction captured active declaration
-        (preparedDeclarationCaptures branch)
-        (preparedDeclarationTemplate branch)
-        name
-        decoded
+    materialize active selected =
+      case selected of
+        PreparedDeclarationDescriptor branch -> do
+          payload <- evaluateBindingDefinitionActive
+            reduction captured active Nothing implementation
+          let template = preparedDeclarationTemplate branch
+          pure (namedDeclarationDescriptorMember declaration name
+            (attachDeclarationSyntax template payload))
+        PreparedDeclarationConcrete branch decoded ->
+          materializeDependentDeclarationActive
+            reduction captured active declaration
+            (preparedDeclarationCaptures branch)
+            (preparedDeclarationTemplate branch)
+            name
+            decoded
 
 data PreparedDependentDeclaration = PreparedDependentDeclaration
   { preparedDeclarationCaptures
-      :: [(Maybe String, InterpretedValue, InterpretedValue)]
+      :: [EvaluatedDeclarationCapture]
   , preparedDeclarationTemplate :: EvaluatedStringTemplate
   }
+
+data EvaluatedDeclarationCapture = EvaluatedDeclarationCapture
+  { evaluatedDeclarationCaptureName :: Maybe String
+  , evaluatedDeclarationCaptureSchema :: InterpretedValue
+  , evaluatedDeclarationCaptureBound :: InterpretedValue
+  , evaluatedDeclarationCapturePresentation :: InterpretedValue
+  }
+
+data PreparedDependentDeclarationSelection
+  = PreparedDeclarationDescriptor PreparedDependentDeclaration
+  | PreparedDeclarationConcrete
+      PreparedDependentDeclaration
+      [InterpretedValue]
 
 prepareDependentDeclaration
   :: ReductionContext
@@ -3627,11 +3693,42 @@ prepareDependentDeclaration
   -> Either InterpretingError
       [PreparedDependentDeclaration]
 prepareDependentDeclaration reduction captured resolving declaration =
-  prepareDependentDeclarationBranches
-    reduction captured resolving branches
+  case dependentDeclarationTemplateBranches declaration of
+    Just branches -> prepareDependentDeclarationBranches
+      reduction captured resolving branches
+    Nothing -> do
+      evaluated <- evalInScopeWith reduction captured resolving
+        (dependentDeclarationNameExpression declaration)
+      case interpretedStringTemplate evaluated of
+        Just template -> pure <$> prepareEvaluatedDeclarationTemplate template
+        Nothing -> Left AmbiguousStringTemplate
+
+prepareEvaluatedDeclarationTemplate
+  :: EvaluatedStringTemplate
+  -> Either InterpretingError PreparedDependentDeclaration
+prepareEvaluatedDeclarationTemplate template = do
+  (captures, segments) <- foldM prepare ([], [])
+    (evaluatedStringTemplateSegments template)
+  pure (PreparedDependentDeclaration captures
+    (EvaluatedStringTemplate segments))
   where
-    branches = maybe [] id
-      (dependentDeclarationTemplateBranches declaration)
+    prepare (captures, segments) segment = case segment of
+      EvaluatedStringTemplateLiteral literal ->
+        Right (captures, segments <> [EvaluatedStringTemplateLiteral literal])
+      EvaluatedStringTemplateCapture index schema _ -> do
+        let name = simpleIdentifierName schema
+            annotation = maybe schema id (identifierUnderlyingValue schema)
+            capture = EvaluatedDeclarationCapture
+              name
+              annotation
+              (argumentSchemaPositionalDomain
+                (argumentSchemaFromValue annotation))
+              annotation
+            normalized = EvaluatedStringTemplateCapture
+              index
+              annotation
+              (evaluatedDeclarationCaptureBound capture)
+        Right (captures <> [capture], segments <> [normalized])
 
 prepareDependentDeclarationBranches
   :: ReductionContext
@@ -3655,11 +3752,7 @@ prepareDependentDeclarationBranches reduction captured resolving =
         (EvaluatedStringTemplate segments))
     evaluateCapture (name, expressionValue) = do
       schema <- evalInScopeWith reduction captured resolving expressionValue
-      pure
-        ( name
-        , schema
-        , argumentSchemaPositionalDomain (argumentSchemaFromValue schema)
-        )
+      pure (evaluatedDeclarationCapture name expressionValue schema)
 
 -- Reject a branch by its literal skeleton before interpreting any capture
 -- annotations. Capture types may themselves require dependent-name lookup, so
@@ -3678,15 +3771,25 @@ templateLiteralSkeletonMatches = go
       any (\boundary -> go remaining (drop boundary text))
         [0 .. length text]
 
-selectPreparedBranchName
+selectPreparedDeclaration
   :: (EvaluatedStringTemplate
       -> String
       -> Either InterpretingError (Maybe [InterpretedValue]))
-  -> [PreparedDependentDeclaration]
   -> String
-  -> Either InterpretingError (Maybe PreparedDependentDeclaration)
-selectPreparedBranchName decode prepared name =
-  fmap (fmap fst) (selectPreparedBranch decode name prepared)
+  -> [PreparedDependentDeclaration]
+  -> Either InterpretingError
+      (Maybe PreparedDependentDeclarationSelection)
+selectPreparedDeclaration decode name prepared =
+  case
+      [ branch
+      | branch <- prepared
+      , renderDeclarationDescriptorKey
+          (preparedDeclarationTemplate branch) == name
+      ] of
+    [branch] -> Right (Just (PreparedDeclarationDescriptor branch))
+    _ : _ -> Left AmbiguousStringTemplate
+    [] -> fmap (fmap (uncurry PreparedDeclarationConcrete))
+      (selectPreparedBranch decode name prepared)
 
 selectPreparedBranch
   :: (EvaluatedStringTemplate
@@ -3712,7 +3815,7 @@ materializeDependentDeclaration
   -> Scope
   -> [String]
   -> DependentDeclaration
-  -> [(Maybe String, InterpretedValue, InterpretedValue)]
+  -> [EvaluatedDeclarationCapture]
   -> EvaluatedStringTemplate
   -> String
   -> [InterpretedValue]
@@ -3733,7 +3836,7 @@ materializeDependentDeclarationActive
   -> Scope
   -> [String]
   -> DependentDeclaration
-  -> [(Maybe String, InterpretedValue, InterpretedValue)]
+  -> [EvaluatedDeclarationCapture]
   -> EvaluatedStringTemplate
   -> String
   -> [InterpretedValue]
@@ -3751,7 +3854,7 @@ evaluateMaterializedDeclaration
   -> Scope
   -> [String]
   -> Expression
-  -> [(Maybe String, InterpretedValue, InterpretedValue)]
+  -> [EvaluatedDeclarationCapture]
   -> [InterpretedValue]
   -> EvaluatedStringTemplate
   -> Either InterpretingError InterpretedValue
@@ -3759,10 +3862,17 @@ evaluateMaterializedDeclaration reduction captured resolving implementation
     evaluatedCaptures values template = do
   input <- dependentDeclarationInput
     [ (captureName, Just schema, value)
-    | ((captureName, schema, _), value) <- zip evaluatedCaptures values
+    | (capture, value) <- zip evaluatedCaptures values
+    , let captureName = evaluatedDeclarationCaptureName capture
+          schema = evaluatedDeclarationCaptureSchema capture
     ]
   let supplied = functionPreparedArgument input
-      bindings = constantContextualBindings "it" supplied <>
+      contextualArgument = do
+        members <- traverse contextualCapture
+          (zip evaluatedCaptures values)
+        makeArgumentMapPreservingSingleton members
+      bindings =
+        contextualBindings "it" False (const contextualArgument) <>
         [ scopeBinding identifier (EvaluatedBinding value)
         | (identifier, value) <- functionPreparedBindings input
         ]
@@ -3775,19 +3885,29 @@ evaluateMaterializedDeclaration reduction captured resolving implementation
   payload <- applyDependentDeclarationImplementation
     supplied implementationValue
   pure (attachDeclarationSyntax template payload)
+  where
+    contextualCapture (capture, value) =
+      case captureName of
+        Just name -> assignIdentifierValues name presentation value
+        Nothing -> specifyValues value presentation
+      where
+        captureName = evaluatedDeclarationCaptureName capture
+        presentation = evaluatedDeclarationCapturePresentation capture
 
 dependentDeclarationInput
   :: [(Maybe String, Maybe InterpretedValue, InterpretedValue)]
   -> Either InterpretingError PreparedFunctionArgument
 dependentDeclarationInput captures = do
-  let domain = makeAtlasMap 2 (map captureDomain captures)
-      supplied = makeAtlasMap 2 (map captureValue captures)
-      schema = argumentSchemaFromValue domain
+  let supplied = makeAtlasMap 2 (map captureValue captures)
+      schema = orderedArgumentSchema 2 (map captureSchema captures)
   (prepared, bindings) <- overloadArgumentSchemaComplete schema supplied
   pure (PreparedFunctionArgument supplied prepared bindings)
   where
-    captureDomain (captureName, annotation, value) =
-      maybe domainValue (`simpleIdentifierTypeValue` domainValue) captureName
+    captureSchema (captureName, annotation, value) =
+      maybe
+        (argumentSlotSchema Nothing False domainValue Nothing)
+        (\name -> dependentArgumentSlotSchema name False domainValue)
+        captureName
       where
         domainValue = maybe value id annotation
     captureValue (_, _, value) = value
@@ -3833,7 +3953,15 @@ namedDeclarationMember
   -> String
   -> InterpretedValue
   -> NamedMember
-namedDeclarationMember declaration name payload = NamedMember name marked
+namedDeclarationMember _ name payload =
+  NamedMember name (simpleIdentifierTypeValue name payload)
+
+namedDeclarationDescriptorMember
+  :: DependentDeclaration
+  -> String
+  -> InterpretedValue
+  -> NamedMember
+namedDeclarationDescriptorMember declaration name payload = NamedMember name marked
   where
     named = simpleIdentifierTypeValue name payload
     marked
@@ -3848,6 +3976,30 @@ captureExpression
   (Just name, annotation)
 captureExpression expressionValue = (Nothing, expressionValue)
 
+-- Capture validation uses the evaluated type, while materialized declaration
+-- arguments retain a simple source-level type name for their assignment
+-- evidence. Local declaration scopes do not add the import presentation that
+-- an ordinary identifier lookup would otherwise contribute.
+presentCaptureSchema :: Expression -> InterpretedValue -> InterpretedValue
+presentCaptureSchema expressionValue schema =
+  case expressionValue of
+    SyntaxBoundary inner -> presentCaptureSchema inner schema
+    IdentifierReference (IdentifierString name) ->
+      withCanonicalReference [] name schema
+    _ -> schema
+
+evaluatedDeclarationCapture
+  :: Maybe String
+  -> Expression
+  -> InterpretedValue
+  -> EvaluatedDeclarationCapture
+evaluatedDeclarationCapture name annotation schema =
+  EvaluatedDeclarationCapture
+    name
+    schema
+    (argumentSchemaPositionalDomain (argumentSchemaFromValue schema))
+    (presentCaptureSchema annotation schema)
+
 appendLiteralSegment
   :: String
   -> [EvaluatedStringTemplateSegment]
@@ -3861,7 +4013,7 @@ appendLiteralSegment literal segments = case reverse segments of
 
 dependentTemplateSegments
   :: [StringTemplatePart Expression]
-  -> [(Maybe String, InterpretedValue, InterpretedValue)]
+  -> [EvaluatedDeclarationCapture]
   -> [EvaluatedStringTemplateSegment]
 dependentTemplateSegments = go 0 []
   where
@@ -3872,9 +4024,14 @@ dependentTemplateSegments = go 0 []
       go index (appendLiteralSegment literal segments) remaining captures
     go index segments
         (StringTemplateInterpolation _ : remaining)
-        ((_, schema, bound) : captures) =
+        (capture : captures) =
       go (index + 1)
-        (segments <> [EvaluatedStringTemplateCapture index schema bound])
+        (segments <>
+          [ EvaluatedStringTemplateCapture
+              index
+              (evaluatedDeclarationCaptureSchema capture)
+              (evaluatedDeclarationCaptureBound capture)
+          ])
         remaining captures
     go _ segments _ [] = segments
 
@@ -5089,7 +5246,7 @@ openedScopeContributionBindings scope (operand, actual) =
       traverse openedBinding members
   where
     openedBinding (name, selected) = do
-      payload <- accessValues selected (naturalValue 1)
+      payload <- moduleMemberPayload selected
       pure (scopeBinding name (EvaluatedBinding payload))
 
 moduleExportBindings
@@ -5104,7 +5261,7 @@ moduleExportBindings scope namespace identity internal exportedValues =
     [ scopeBinding name
         (case presentation of
           CanonicalValueImportPresentation -> NamedBinding
-            (canonicalValuePresentationDependency identity)
+            dependency
             (QualifiedBinding (namespace <> "." <> name) binding)
           TransparentImportPresentation -> QualifiedBinding
             (namespace <> "." <> name)
@@ -5288,19 +5445,13 @@ moduleSyntaxRulesFromValueIn
   -> InterpretedValue
   -> Either InterpretingError [SyntaxRule]
 moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
-  members <- case namedMembers moduleValue of
-    Right named -> Right named
-    Left (ModuleEvaluationFailed ImportedModuleRequiresNamedExports) ->
-      case namedMapViewForValue moduleValue of
-        Just view -> map
-          (\member -> (namedMemberName member, namedMemberValue member))
-          <$> namedMapDeclaredMembers view
-        Nothing -> Right []
-    Left failure -> Left failure
+  members <- moduleNamedMembers moduleValue
   concat <$> traverse memberRules members
   where
-    memberRules (name, memberValue) = concat <$>
+    memberRules (name, selected) = do
+      memberValue <- moduleMemberPayload selected
       traverse (functionRules name) (functionAlternatives memberValue)
+        >>= pure . concat
     functionRules name function = case functionSyntaxSource function of
       Nothing -> pure []
       Just (FunctionSyntax templates) -> do
@@ -5340,7 +5491,7 @@ moduleExportsFromValue
   :: InterpretedValue
   -> Either InterpretingError [ModuleExport]
 moduleExportsFromValue value =
-  case namedBindings value of
+  case moduleNamedMembers value >>= traverse namedBinding of
     Right bindings -> Right bindings
     Left failure@(ModuleEvaluationFailed reason) ->
       case reason of
@@ -5351,6 +5502,26 @@ moduleExportsFromValue value =
   where
     invalid = Left (ModuleEvaluationFailed
       ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes)
+
+-- Module consumers first use the collection projection when it is finite.
+-- A transfinite namespace still has a finite manifest of declaration-family
+-- descriptors, exposed by the same named-map view without enumerating its
+-- concrete member order. Syntax discovery and lexical opening must share this
+-- boundary so neither path materializes a Stream.
+moduleNamedMembers
+  :: InterpretedValue
+  -> Either InterpretingError [(String, InterpretedValue)]
+moduleNamedMembers value =
+  case namedMembers value of
+    Right members -> Right members
+    Left (ModuleEvaluationFailed ImportedModuleRequiresNamedExports) ->
+      case namedMapViewForValue value of
+        Just view -> map namedMemberPair <$> namedMapDeclaredMembers view
+        Nothing -> Right []
+    Left failure -> Left failure
+  where
+    namedMemberPair member =
+      (namedMemberName member, namedMemberValue member)
 
 publicDomainValue
   :: InterpretedValue
@@ -5366,11 +5537,6 @@ scopeNamedMembers
   :: InterpretedValue
   -> Either InterpretingError [(String, InterpretedValue)]
 scopeNamedMembers = namedMembers
-
-namedBindings
-  :: InterpretedValue
-  -> Either InterpretingError [ModuleExport]
-namedBindings value = namedMembers value >>= traverse namedBinding
 
 -- An imported file may yield a federation that mixes ordinary named binders
 -- with dependent identifier binders.  The dependent fibers remain in the
@@ -5408,7 +5574,7 @@ namedBinding
   :: (String, InterpretedValue)
   -> Either InterpretingError ModuleExport
 namedBinding (name, selected) = do
-  payload <- accessValues selected (naturalValue 1)
+  payload <- moduleMemberPayload selected
   pure (ModuleExport
     name
     (if hasTrailingIdentifierMarker canonicalValueMarker selected
@@ -5416,12 +5582,14 @@ namedBinding (name, selected) = do
       else TransparentImportPresentation)
     (EvaluatedBinding payload))
 
--- A canonical value name is owned by the exporting module, rather than by the lexical
--- scope that happened to import it. Keeping those dependencies distinct makes
--- the canonical spelling survive both explicit and implicit imports.
-canonicalValuePresentationDependency :: FilePath -> PresentationDependency
-canonicalValuePresentationDependency identity =
-  PresentationDependency ("canonical-value:" <> identity)
+-- A module member remains a named declaration descriptor in its enclosing
+-- federation. Consumers project its evaluated payload through the ordinary
+-- map-access operation, so opening a scope, importing a binding, and reading
+-- syntax metadata all observe the same already-evaluated declaration value.
+moduleMemberPayload
+  :: InterpretedValue
+  -> Either InterpretingError InterpretedValue
+moduleMemberPayload selected = accessValues selected (naturalValue 1)
 
 lookupModule :: Scope -> String -> Either InterpretingError ModuleSource
 lookupModule scope path

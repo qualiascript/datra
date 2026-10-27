@@ -16,6 +16,7 @@ import DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
   , bindingNames
   , dependentDeclaration
+  , dependentDeclarationNameFamilyExpression
   , dependentDeclarationNameExpression
   )
 import Data.List (nub, nubBy)
@@ -102,6 +103,11 @@ data SyntaxContext = SyntaxContext
   , contextCapture :: CaptureHole
   , contextScopeRules :: ScopeRules
   , contextEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
+  , contextEvaluateWithInput
+      :: [Expression]
+      -> InterpretedValue
+      -> Expression
+      -> Maybe InterpretedValue
   , contextApply
       :: [Expression]
       -> Expression
@@ -118,6 +124,11 @@ data RewriteEnvironment = RewriteEnvironment
   , rewriteClassifyHoles :: ClassifyHoles
   , rewriteScopeRules :: ScopeRules
   , rewriteEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
+  , rewriteEvaluateWithInput
+      :: [Expression]
+      -> InterpretedValue
+      -> Expression
+      -> Maybe InterpretedValue
   , rewriteApply
       :: [Expression]
       -> Expression
@@ -297,7 +308,8 @@ rewriteEnvironment
 rewriteEnvironment context rules declarations = RewriteEnvironment
   context (map compileRewriteRule rules) declarations True
   (contextClassify context) (contextScopeRules context)
-  (contextEvaluate context) (contextApply context)
+  (contextEvaluate context) (contextEvaluateWithInput context)
+  (contextApply context)
 
 rewriteExplicitSyntax
   :: SyntaxContext
@@ -335,6 +347,7 @@ enterContext value environment = withContextualSyntax ["it"] environment
   , rewriteClassifyHoles = contextClassify nested
   , rewriteScopeRules = contextScopeRules nested
   , rewriteEvaluate = contextEvaluate nested
+  , rewriteEvaluateWithInput = contextEvaluateWithInput nested
   , rewriteApply = contextApply nested
   }
   where
@@ -471,20 +484,23 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
               resolved = resolveDependentDeclarationHead scoped entry
               currentRules = declarationRules resolved
               currentDeclaration = dependentDeclaration resolved
+              currentNameFamily = currentDeclaration >>=
+                declarationNameFamily scoped
               currentFamily = compileScopedRewriteRules scoped
                 (rewriteDeclarations scoped) currentRules
-          case declarationRuleFailures resolved of
-            InadmissibleSyntaxTemplate rendered failure : _ ->
-              Left (InvalidSyntaxTemplate rendered failure)
-            [] -> Right ()
           case currentDeclaration of
             Nothing -> pure ()
             Just declaration -> mapM_
               (validateFamily
                 (declarationLabel declaration)
                 (greedyDeclaration declaration)
+                currentNameFamily
                 currentFamily)
               earlier
+          case declarationRuleFailures resolved of
+            InadmissibleSyntaxTemplate rendered failure : _ ->
+              Left (InvalidSyntaxTemplate rendered failure)
+            [] -> Right ()
           if isValDependentDeclaration resolved
             then mapM_ (validateValDeclaration scoped)
               [ (compiled, dependent)
@@ -500,6 +516,7 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
                 Just declaration -> earlier <>
                   [ ( declarationLabel declaration
                     , greedyDeclaration declaration
+                    , currentNameFamily
                     , currentFamily
                     )
                   ]
@@ -515,15 +532,31 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
           SyntaxBoundary (GreedyStringTemplate {}) -> True
           _ -> False
 
-        validateFamily currentLabel currentGreedy currentFamily
-            (previousLabel, previousGreedy, previousFamily) =
-          if currentGreedy || previousGreedy || and
+        declarationNameFamily environment declaration =
+          rewriteEvaluate environment
+            (rewriteDeclarations environment)
+            (dependentDeclarationNameFamilyExpression declaration)
+
+        validateFamily currentLabel currentGreedy currentNameFamily currentRules
+            ( previousLabel
+            , previousGreedy
+            , previousNameFamily
+            , previousRules
+            )
+          | currentGreedy || previousGreedy = Right ()
+          | Just current <- currentNameFamily
+          , Just previous <- previousNameFamily =
+              case eitherValue previous current of
+                Right _ -> Right ()
+                Left _ -> overlapFailure
+          | and
               [ branchesCompatible previous current
-              | previous <- previousFamily
-              , current <- currentFamily
-              ]
-            then Right ()
-            else Left (OverlappingDependentDeclarations
+              | previous <- previousRules
+              , current <- currentRules
+              ] = Right ()
+          | otherwise = overlapFailure
+          where
+            overlapFailure = Left (OverlappingDependentDeclarations
               previousLabel currentLabel)
 
         branchesCompatible previous current =
@@ -547,9 +580,11 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
               inputValue <- either (const Nothing) Just
                 (makeArgumentMapPreservingSingleton
                   (zipWith captureValue captures families))
-              outputValue <- rewriteApply environment
-                (rewriteDeclarations environment)
-                implementation inputValue
+              outputValue <- rewriteEvaluateWithInput environment
+                  (rewriteDeclarations environment) inputValue implementation <|>
+                rewriteApply environment
+                  (rewriteDeclarations environment)
+                  implementation inputValue
               pure (inputValue, outputValue) of
                 Just (inputValue, outputValue)
                   | equivalentFederations inputValue outputValue -> Right ()
@@ -734,13 +769,16 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing
                 remaining
     IdentifierTemplateOperation parts annotation given -> do
       let contextual = enterContext Nothing environment
+          bodyEnvironment = withContextualSyntax ["it"] environment
+          bodyCapture = contextCapture (rewriteContext bodyEnvironment)
       rewrittenParts <- traverse (rewriteTemplatePart contextual) parts
       let (rawAnnotation, rawGiven) =
             normalizeTrailingAssignment annotation given
       case rawGiven of
         Nothing -> do
           (rewrittenAnnotation, remaining) <-
-            rewriteDeclarationPart Nothing rawAnnotation
+            rewriteContextualDeclarationPart
+              bodyCapture bodyEnvironment rawAnnotation
           finish
             (IdentifierTemplateOperation
               rewrittenParts rewrittenAnnotation Nothing)
@@ -748,7 +786,8 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing
         Just original
           | original == rawAnnotation -> do
               (rewrittenValue, remaining) <-
-                rewriteDeclarationPart Nothing original
+                rewriteContextualDeclarationPart
+                  bodyCapture bodyEnvironment original
               finish
                 (IdentifierTemplateOperation rewrittenParts rewrittenValue
                   (Just rewrittenValue))
@@ -757,7 +796,8 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing
               rewrittenAnnotation <-
                 rewriteStandalone capture environment rawAnnotation
               (rewrittenValue, remaining) <-
-                rewriteDeclarationPart Nothing original
+                rewriteContextualDeclarationPart
+                  bodyCapture bodyEnvironment original
               finish
                 (IdentifierTemplateOperation rewrittenParts rewrittenAnnotation
                   (Just rewrittenValue))
@@ -861,6 +901,11 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing
       if allowNestedContinuation
         then rewriteWithTail True capture environment selected trailing
         else rewriteDeclaredValue declaredName selected
+    rewriteContextualDeclarationPart selectedCapture selectedEnvironment selected = do
+      (rewritten, remaining) <- rewriteDeclarationPart Nothing selected
+      contextualized <- rewriteStandalone
+        selectedCapture selectedEnvironment rewritten
+      pure (contextualized, remaining)
     rewriteDeclaredValue declaredName selected
       | canReceiveFunctionBody selected
           || ( not (directSelfAlias declaredName selected)

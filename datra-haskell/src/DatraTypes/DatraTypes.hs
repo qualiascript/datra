@@ -190,6 +190,7 @@ module DatraTypes
   , ArgumentSchema
   , argumentSchemaFromValue
   , argumentSlotSchema
+  , dependentArgumentSlotSchema
   , orderedArgumentSchema
   , unorderedArgumentSchema
   , concatenatedArgumentSchema
@@ -368,6 +369,7 @@ import Evaluation.Overload
   , suppliedArgumentValue
   , foliageArgumentValuesComplete
   , argumentSlotSchema
+  , dependentArgumentSlotSchema
   , concatenatedArgumentSchema
   , projectedArgumentSchema
   , orderedArgumentSchema
