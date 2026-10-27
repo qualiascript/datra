@@ -76,7 +76,11 @@ import Evaluation.Map
   , makeAtlasMap
   , makeAtlasMapPreservingSingleton
   )
-import Evaluation.Specification (assignIdentifierValues, specifyValues)
+import Evaluation.Specification
+  ( assignIdentifierValues
+  , contextuallySpecifyValues
+  , specifyValues
+  )
 import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision (Decision (..))
@@ -390,7 +394,9 @@ matchSlot targetNames slot input = do
     PrivatePositionalSlot ->
       case suppliedValue input of
         (Nothing, _) -> pure ()
-        (Just _, _) -> Nothing
+        (Just name, _)
+          | name `notElem` targetNames -> pure ()
+          | otherwise -> Nothing
     _ -> pure ()
   let (suppliedName, suppliedInput) =
         case slotName slot of
@@ -422,15 +428,21 @@ matchSlot targetNames slot input = do
       maybe [] (:[]) (positionalInput targetNames input)
     positionalFallback (Just _) = []
     matchInputValue inputValue =
-      case specifyValues inputValue (slotAnnotation slot) of
+      case specifySlot inputValue of
         Right prepared
-          | DependentSumForm _ <- interpretedForm (slotAnnotation slot) ->
+          | hasDependentArgumentFamily (slotAnnotation slot) ->
               Just prepared
           | DecisionProved () <-
               decideValueSubfederation inputValue (slotAnnotation slot) ->
               Just inputValue
           | otherwise -> Just prepared
         Left _ -> Nothing
+      where
+        specifySlot =
+          case slotRouting slot of
+            UnnamedSlot -> \value ->
+              contextuallySpecifyValues value (slotAnnotation slot)
+            _ -> \value -> specifyValues value (slotAnnotation slot)
 
 suppliedValue :: InterpretedValue -> (Maybe String, InterpretedValue)
 suppliedValue value =

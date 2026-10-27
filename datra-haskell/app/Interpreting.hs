@@ -139,7 +139,6 @@ import Numeric.Natural (Natural)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)
 import FoliageMap (foliageMap, foliageMapPositionAt)
 import System.FilePath (takeFileName)
-import Debug.Trace (trace)
 
 interpretExpression
   :: Expression
@@ -216,11 +215,21 @@ parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   -> Either ParseFailure (Located Expression)
 parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
     standardLibraryVisibility modules sourceName source = do
-  trace ("parse begin: " <> sourceName) (Right ())
-  parsed <- parseDatraSourceSyntax
-    standardLibraryVisibility sourceName source
-  rewritten <- rewriteParsedDatraSourceWithImports modules parsed
-  pure (trace ("parse rewritten: " <> sourceName) rewritten)
+  if standardLibraryVisibility == NoStandardLibrary
+      && null modules
+      && takeFileName sourceName == standardLibraryFileName
+      && source == requiredBundledLibrarySource standardLibraryFileName
+    then do
+      (_, Located sourceSpan _) <-
+        parseDatraRawLocatedWithSourceName sourceName source
+      expressionValue <- Bifunctor.first (ParseFailure . show)
+        parsedDefaultModule
+      pure (Located sourceSpan expressionValue)
+    else do
+      parsed <- parseDatraSourceSyntax
+        standardLibraryVisibility sourceName source
+      rewritten <- rewriteParsedDatraSourceWithImports modules parsed
+      pure rewritten
 
 rewriteParsedDatraSourceWithImports
   :: [(String, ModuleSource)]
@@ -816,13 +825,10 @@ standardModuleEnvironment
   -> Either InterpretingError
       (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
 standardModuleEnvironment allNames = do
-  trace "standard module: source" (Right ())
   source <- defaultModuleSource
   let base = rootScope source [("\0imports", ModuleCatalog
         [(standardLibraryFileName, source)])]
-  trace "standard module: import" (Right ())
   scope <- importLoadedModule base allNames source
-  trace "standard module: imported" (Right ())
   let imported =
         [ (namespace, value)
         | (namespace, ImportedBinding _ identity value _) <- scopeBindings scope
@@ -881,10 +887,11 @@ parsedDefaultModule = do
             context
             [] [] entries
         _ -> Left MissingImplicitBlockResult
-  resolveGenericFunctionTypes <$> either
+  rewrittenValue <- either
     (parseFailure . ParseFailure . show)
     Right
     rewritten
+  pure (resolveGenericFunctionTypes rewrittenValue)
   where
     parseFailure = Left . ModuleEvaluationFailed
       . StandardLibraryParseFailure standardLibraryFileName
@@ -1703,11 +1710,11 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           elementType <- interpret element
           runProtectedOperation protection [elementType] $ \actuals ->
             case actuals of
-              [actualElement] -> pure
-                ((case collection of
-                    RecursiveList _ -> listTypeValue
-                    RecursiveStream _ -> streamTypeValue)
-                  (renderSourceExpression expressionValue) actualElement)
+              [actualElement] -> pure $ case collection of
+                RecursiveList _ -> listTypeValue
+                  (renderSourceExpression expressionValue) actualElement
+                RecursiveStream _ -> streamTypeValue
+                  (renderSourceExpression expressionValue) actualElement
               _ -> Right neverValue
         Nothing -> recursive reduction
       where
@@ -4026,29 +4033,40 @@ recursiveCollectionElement collection =
 recursiveCollection :: Expression -> Maybe RecursiveCollection
 recursiveCollection expressionValue =
   case expressionValue of
-    EitherType (AtlasMap [])
-        (MapConcatenation element self)
-      | isSelf self ->
-      Just (RecursiveList element)
-    EitherType (AtlasMap [])
-        (MapSequence [element, self])
-      | isSelf self ->
-      Just (RecursiveList element)
-    EitherType (AtlasMap [])
-        (AtlasMap [element, self])
-      | isSelf self ->
-      Just (RecursiveList element)
-    MapSequence
-        [ EitherType (AtlasMap []) element
-        , self
-        ] | isSelf self -> Just (RecursiveStream element)
-    AtlasMap
-        [ EitherType (AtlasMap []) element
-        , self
-        ] | isSelf self -> Just (RecursiveStream element)
+    EitherType empty recursiveStep
+      | isEmptyMapExpression empty
+      , Just (element, self) <- twoCellMapExpression recursiveStep
+      , isSelf self -> Just (RecursiveList element)
+    recursiveStep
+      | Just (headExpression, self) <-
+          twoCellMapExpression recursiveStep
+      , isSelf self -> Just (RecursiveStream
+          (requiredStreamElement headExpression))
     _ -> Nothing
   where
     isSelf = isContextualAccessOf (IdentifierString "_this")
+    requiredStreamElement headExpression =
+      case headExpression of
+        EitherType empty element
+          | isEmptyMapExpression empty -> element
+        _ -> headExpression
+
+twoCellMapExpression :: Expression -> Maybe (Expression, Expression)
+twoCellMapExpression expressionValue =
+  case expressionValue of
+    MapConcatenation left right -> Just (left, right)
+    MapSequence [first, second] -> Just (first, second)
+    AtlasMap [first, second] -> Just (first, second)
+    SyntaxBoundary inner -> twoCellMapExpression inner
+    _ -> Nothing
+
+isEmptyMapExpression :: Expression -> Bool
+isEmptyMapExpression expressionValue =
+  case expressionValue of
+    AtlasMap [] -> True
+    MapSequence [] -> True
+    SyntaxBoundary inner -> isEmptyMapExpression inner
+    _ -> False
 
 -- Generic bounds form one ordered telescope. Static function signatures use
 -- each binder's upper bound, while invocation repeats the checks with the
@@ -4540,7 +4558,7 @@ genericFunctionMapView
         (extendScope selectedScope captured) resolving boundExpression
       case namedMapViewForValue bound of
         Just sourceView -> Just <$> namedMapValue
-          (mapNamedView selected binder remaining sourceView)
+          (mapNamedView selected binder remaining bound sourceView)
         Nothing -> case ordinalIndexedValueFamily bound of
           Nothing -> pure Nothing
           Just family -> pure (Just (makeLazyMapValue
@@ -4552,16 +4570,16 @@ genericFunctionMapView
                   ((genericBinderId binder, witness) : selected)
                   remaining))))
 
-    mapNamedView selected binder remaining sourceView =
+    mapNamedView selected binder remaining bound sourceView =
       NamedMapView (NamedMapProjection
         (mapOrdinalProjection
           <$> namedProjectionCollection sourceProjection)
         (mapOrdinalProjection
           <$> namedProjectionOrdinal sourceProjection)
-        (mapMemberByName selected binder remaining sourceView)
+        (mapMemberByName selected binder remaining bound sourceView)
         (fmap (maybe False (const True))
-          . mapMemberByName selected binder remaining sourceView)
-        (\() -> mapMaybeMembers selected binder remaining
+          . mapMemberByName selected binder remaining bound sourceView)
+        (\() -> mapMaybeMembers selected binder remaining bound
           =<< namedProjectionDeclaredMembers sourceProjection ()))
       where
         sourceProjection = namedMapProjection sourceView
@@ -4573,22 +4591,27 @@ genericFunctionMapView
             case sourceMember of
               Nothing -> Right Nothing
               Just member -> mapNamedMember
-                selected binder remaining member)
+                selected binder remaining bound member)
 
-    mapMemberByName selected binder remaining sourceView name = do
+    mapMemberByName selected binder remaining bound sourceView name = do
       sourceMember <- namedMapMemberByName sourceView name
       case sourceMember of
         Nothing -> Right Nothing
-        Just member -> mapNamedMember selected binder remaining member
+        Just member -> mapNamedMember
+          selected binder remaining bound member
 
-    mapMaybeMembers selected binder remaining members =
+    mapMaybeMembers selected binder remaining bound members =
       catMaybes <$> traverse
-        (mapNamedMember selected binder remaining)
+        (mapNamedMember selected binder remaining bound)
         members
 
-    mapNamedMember selected binder remaining member = do
+    mapNamedMember selected binder remaining bound member = do
+      witness <- case dependentSumElementType bound of
+        Just elementType -> specifyDependentSumElement
+          (namedMemberValue member) elementType
+        Nothing -> Right (namedMemberValue member)
       mapped <- build
-        ( (genericBinderId binder, namedMemberValue member)
+        ( (genericBinderId binder, witness)
         : selected
         )
         remaining
@@ -5109,17 +5132,11 @@ loadedModuleResultWithBase
   -> Either InterpretingError LoadedModuleResult
 loadedModuleResultWithBase base
     moduleSource@(ModuleSource path expression _) = do
-  trace ("loaded module base: " <> path) (Right ())
   prepared <- moduleBaseScope base moduleSource
-  trace ("loaded module prepare resource: " <> path) (Right ())
   (resourceBase, resource) <- prepareModuleResource prepared expression
-  trace ("loaded module resource block: " <> path) (Right ())
   (resourceBindings, resultExpression) <- resourceBlock resource
-  trace ("loaded module import scope: " <> path) (Right ())
   outer <- importScopeWithoutContextualThis resourceBase [] resourceBindings
-  trace ("loaded module eval result: " <> path) (Right ())
   result <- evalInScope outer [] resultExpression
-  trace ("loaded module evaluated: " <> path) (Right ())
   exported <- case importNamedBindings result of
     Right bindings@(_ : _) -> Right bindings
     _ | interpretedValueKind result == DependentIdentifierTypeValueKind ->

@@ -110,7 +110,11 @@ module Evaluation.Value
   , makeSingletonInterpretedValue
   , makeDependentSumValue
   , dependentSumView
+  , dependentSumElementType
+  , finiteDependentSumElementType
+  , finiteDependentSumView
   , withDependentSumView
+  , withSpecificationTargetEvidence
   , orderedAtlasMapView
   , withOrderedAtlasMapView
   , withOrderedAtlasMapValues
@@ -151,6 +155,7 @@ module Evaluation.Value
   , withGreedyStringTemplatePlan
   , interpretedExplicitOrdinal
   , interpretedSpecificationSourceValue
+  , interpretedSpecificationTargetEvidence
   , interpretedFederationSpecificationBranches
   , interpretedFederationSpecificationSourceValue
   , interpretedInteger
@@ -976,6 +981,7 @@ data InterpretedValue = InterpretedValue
   , interpretedEvaluationSource :: Maybe String
   , interpretedScopeProtection :: Maybe ScopeProtection
   , interpretedDependentSumView :: Maybe EvaluatedDependentSum
+  , interpretedSpecificationTargetEvidence :: Maybe InterpretedValue
   , interpretedOrderedAtlasMapView
       :: Maybe (OrdinalOrderedValues InterpretedValue)
   , interpretedStringTemplate :: Maybe EvaluatedStringTemplate
@@ -1031,6 +1037,7 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
     , interpretedEvaluationSource = Nothing
     , interpretedScopeProtection = Nothing
     , interpretedDependentSumView = Nothing
+    , interpretedSpecificationTargetEvidence = Nothing
     , interpretedOrderedAtlasMapView = Nothing
     , interpretedStringTemplate = Nothing
     , interpretedGreedyStringTemplate = Nothing
@@ -1129,6 +1136,117 @@ dependentSumView value =
   case interpretedForm value of
     DependentSumForm dependent -> Just dependent
     _ -> interpretedDependentSumView value
+
+-- | Recover the common member type of a homogeneous dependent-sum family.
+-- This is deliberately phrased in terms of the semantic dependent-sum
+-- capability: callers do not need to know whether the family came from a
+-- finite list, an omega stream, or a disjoint union of the two.
+dependentSumElementType :: InterpretedValue -> Maybe InterpretedValue
+dependentSumElementType value =
+  case interpretedSpecificationTargetEvidence value
+      >>= dependentSumElementType of
+    Just elementType -> Just elementType
+    Nothing ->
+      case evaluatedDependentSumStructure <$> dependentSumView value of
+        Just (ListDependentSum elementType) -> Just elementType
+        Just (StreamDependentSum elementType) -> Just elementType
+        _ -> case interpretedForm value of
+          EitherForm alternatives -> commonElementType
+            (dependentSumElementType (evaluatedEitherLeft alternatives))
+            (dependentSumElementType (evaluatedEitherRight alternatives))
+          SpecificationForm specification ->
+            dependentSumElementType (evaluatedSpecificationTarget specification)
+          AssignmentForm specification ->
+            dependentSumElementType (evaluatedSpecificationTarget specification)
+          FederationSpecificationForm _ _ branches ->
+            commonElementTypes (map dependentSumElementType branches)
+          _ -> Nothing
+  where
+    commonElementType (Just left) (Just right)
+      | interpretedSemanticResult left == interpretedSemanticResult right =
+          Just left
+    commonElementType _ _ = Nothing
+    commonElementTypes [] = Nothing
+    commonElementTypes (first : remaining) =
+      foldl commonElementType first remaining
+
+-- | Recover the member type of a finite recursive collection. Besides the
+-- empty-or-step fixed point itself, a finite homogeneous prefix followed by
+-- the same collection is another presentation of that family (for example
+-- @T; List T@). This observes evaluated map structure, not parser encodings.
+finiteDependentSumElementType :: InterpretedValue -> Maybe InterpretedValue
+finiteDependentSumElementType = fmap snd . finiteDependentSumView
+
+-- | The guaranteed finite prefix length and homogeneous member type of a
+-- recursive finite collection.
+finiteDependentSumView
+  :: InterpretedValue
+  -> Maybe (Natural, InterpretedValue)
+finiteDependentSumView value =
+  case interpretedSpecificationTargetEvidence value
+      >>= finiteDependentSumView of
+    Just description -> Just description
+    Nothing ->
+      case evaluatedDependentSumStructure <$> dependentSumView value of
+        Just (ListDependentSum elementType) -> Just (0, elementType)
+        _ -> case interpretedForm value of
+          EitherForm alternatives -> commonElementType
+            (finiteDependentSumView
+              (evaluatedEitherLeft alternatives))
+            (finiteDependentSumView
+              (evaluatedEitherRight alternatives))
+          SpecificationForm specification ->
+            finiteDependentSumView
+              (evaluatedSpecificationTarget specification)
+          AssignmentForm specification ->
+            finiteDependentSumView
+              (evaluatedSpecificationTarget specification)
+          FederationSpecificationForm _ _ branches ->
+            commonElementTypes
+              (map finiteDependentSumView branches)
+          ConcatenatedMapForm left right -> do
+            (minimumLength, elementType) <- finiteDependentSumView right
+            guard (sameElementType elementType left)
+            Just (minimumLength + 1, elementType)
+          SequentialMapForm -> finitePrefixElementType value
+          MapForm -> finitePrefixElementType value
+          _ -> Nothing
+  where
+    commonElementType
+        (Just (leftMinimum, left))
+        (Just (rightMinimum, right))
+      | sameElementType left right =
+          Just (min leftMinimum rightMinimum, left)
+    commonElementType _ _ = Nothing
+    commonElementTypes [] = Nothing
+    commonElementTypes (first : remaining) =
+      foldl commonElementType first remaining
+    finitePrefixElementType sequenceValue = do
+      count <- naturalAtOrdinal
+        (interpretedMapFinalOrderType (interpretedMap sequenceValue))
+      guard (count >= 2)
+      members <- traverse
+        (interpretedMapValueAt (interpretedMap sequenceValue) . finiteOrdinal)
+        (naturalsBelow count)
+      (prefix, tailValue) <- splitLast members
+      (minimumLength, elementType) <- finiteDependentSumView tailValue
+      guard (all (sameElementType elementType) prefix)
+      Just (minimumLength + fromIntegral (length prefix), elementType)
+    splitLast [] = Nothing
+    splitLast members = Just (init members, last members)
+    sameElementType left right =
+      interpretedSemanticResult left == interpretedSemanticResult right
+
+-- | Retain the target established by successful specification without
+-- replacing the source's runtime representation. Evaluation paths that need
+-- type-directed structure can recover the proof instead of re-validating or
+-- guessing it from the erased source value.
+withSpecificationTargetEvidence
+  :: InterpretedValue
+  -> InterpretedValue
+  -> InterpretedValue
+withSpecificationTargetEvidence target value = value
+  { interpretedSpecificationTargetEvidence = Just target }
 
 -- | Attach the dependent-sum capability of the first value to the second
 -- without replacing the second value's primary form.

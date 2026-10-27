@@ -21,6 +21,7 @@ module DatraTypes
   , interpretedRuntimeFunctionInsertion
   , makeDependentSumValue
   , dependentSumView
+  , dependentSumElementType
   , withDependentSumView
   , orderedAtlasMapView
   , withOrderedAtlasMapView
@@ -227,6 +228,7 @@ module DatraTypes
   , accessValues
   , validateFunctionInput
   , specifyValues
+  , specifyDependentSumElement
   , contextuallySpecifyValues
   , IdentifierNameDisjointness (..)
   , identifierNameDisjointness
@@ -476,6 +478,7 @@ import Evaluation.Value
   , interpretedRuntimeFunctionInsertion
   , makeDependentSumValue
   , dependentSumView
+  , dependentSumElementType
   , withDependentSumView
   , orderedAtlasMapView
   , withOrderedAtlasMapView
@@ -535,6 +538,9 @@ import Evaluation.Value
   , interpretedSemanticResult
   , interpretedCanonicalPresentation
   , interpretedNamedMapView
+  , withInterpretedSemantics
+  , interpretedSemantics
+  , withSpecificationTargetEvidence
   , withCanonicalReference
   , withCanonicalNamedAccess
   , withCanonicalApplication
@@ -621,7 +627,6 @@ listTypeValue :: String -> InterpretedValue -> InterpretedValue
 listTypeValue presentationSource elementType =
   withDependentSumStructure (ListDependentSum elementType) value
   where
-    elementSchema = argumentSchemaFromValue elementType
     value = withDependentSumAccess project
       (makeDependentSumValue presentationSource staticTarget validate)
     staticTarget = makeLazyMapValue omega (const (Just elementType))
@@ -636,7 +641,7 @@ listTypeValue presentationSource elementType =
         -- Atlas normalization erases a singleton sequence, so @T; ()@ is
         -- represented by the element itself.  This is the one-element fibre
         -- of the same recursive list, not a separate special case in source.
-        _ -> validateRecursiveElement elementSchema source
+        _ -> () <$ specifyDependentSumElement source elementType
       pure source
     validateMembers source = do
       count <- maybe
@@ -653,7 +658,7 @@ listTypeValue presentationSource elementType =
         Right
         (interpretedMapValueAt
           (interpretedMap source) (finiteOrdinal position))
-      validateRecursiveElement elementSchema member
+      () <$ specifyDependentSumElement member elementType
 
 -- | A semantic nonempty stream fixed point. Unlike a finite recursive list,
 -- a stream has exactly the natural positions and validates each element only
@@ -663,7 +668,6 @@ streamTypeValue :: String -> InterpretedValue -> InterpretedValue
 streamTypeValue presentationSource elementType =
   withDependentSumStructure (StreamDependentSum elementType) value
   where
-    elementSchema = argumentSchemaFromValue elementType
     value = withDependentSumAccess project
       (makeDependentSumValue presentationSource staticTarget validate)
     staticTarget = makeLazyMapValue omega (const (Just elementType))
@@ -682,7 +686,7 @@ streamTypeValue presentationSource elementType =
         checkedMap = makeCheckedLazyMapValue omega $ \position -> do
           selected <- interpretedMapValueAtChecked sourceMap position
           traverse
-            (\member -> member <$ validateRecursiveElement elementSchema member)
+            (\member -> member <$ specifyDependentSumElement member elementType)
             selected
         checkedView = case interpretedNamedMapView source of
           Just named -> withNamedMapView named checkedMap
@@ -693,24 +697,41 @@ streamTypeValue presentationSource elementType =
 -- view containing their canonical name, payload, and transparent metadata;
 -- use that existing view for tuple-shaped element schemas without replacing
 -- the identifier value returned to Datra.
-validateRecursiveElement
-  :: ArgumentSchema
+specifyDependentSumElement
+  :: InterpretedValue
   -> InterpretedValue
-  -> Either InterpretingError ()
-validateRecursiveElement schema source =
-  case argumentSchemaValuesComplete schema source of
-    Right _ -> Right ()
-    Left original
-      | interpretedValueKind source == DependentIdentifierTypeValueKind ->
-          () <$ argumentSchemaValuesComplete schema (structuralMapView source)
-      | otherwise -> Left original
+  -> Either InterpretingError InterpretedValue
+specifyDependentSumElement source target =
+  if interpretedValueKind source == DependentIdentifierTypeValueKind
+    then do
+      sourceView <- structuralMapView source
+      prepared <- argumentSchemaValuesComplete
+        (argumentSchemaFromValue target) sourceView
+      let evidenced = withSpecificationTargetEvidence target
+            (withInterpretedSemantics
+              (interpretedSemantics source)
+              prepared)
+      pure (case interpretedNamedMapView source of
+        Just named -> withNamedMapView named evidenced
+        Nothing -> evidenced)
+    else specifyValues source target
   where
-    structuralMapView value =
-      makeCheckedLazyMapValue orderType
-        (interpretedMapValueAtChecked sourceMap)
+    structuralMapView value = do
+      count <- maybe
+        (Left (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        Right
+        (naturalAtOrdinal orderType)
+      members <- traverse memberAt (naturalsBelow count)
+      pure (makeAtlasMap 2 members)
       where
         sourceMap = interpretedMap value
         orderType = interpretedMapFinalOrderType sourceMap
+        memberAt position = maybe
+          (Left (FunctionEvaluationFailed
+            (FunctionArgumentPageUnavailable position)))
+          Right
+          =<< interpretedMapValueAtChecked sourceMap
+            (finiteOrdinal position)
 
 identifierValueTypeValue :: InterpretedValue
 identifierValueTypeValue = makeIdentifierValueType

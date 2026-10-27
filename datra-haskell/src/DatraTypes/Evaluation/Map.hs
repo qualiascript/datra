@@ -239,12 +239,23 @@ concatenateValuesWithEquivalenceView left right = do
           (resultFederation baseResultMap)
           resultSemantics
       finish result valueMap =
-        withOrderedAtlasMapView
+        preserveNamedMapView (withOrderedAtlasMapView
           (case (interpretedForm left, interpretedForm right) of
           (AsciiStringForm _, AsciiStringForm _) ->
             maybe result makeAsciiString
               (asciiStringFromInterpretedMap valueMap)
-          _ -> result)
+          _ -> result))
+      preserveNamedMapView result =
+        maybe result (`withNamedMapView` result) concatenatedNamedMapView
+      concatenatedNamedMapView =
+        case (namedMapViewForValue left, namedMapViewForValue right) of
+          (Just leftView, Just rightView) ->
+            Just (appendNamedMapViews leftView rightView)
+          (Just leftView, Nothing)
+            | isEmptyMap right -> Just leftView
+          (Nothing, Just rightView)
+            | isEmptyMap left -> Just rightView
+          _ -> Nothing
   pure
     ( finish ordinaryResult resultMap
     , finish equivalenceResult baseResultMap

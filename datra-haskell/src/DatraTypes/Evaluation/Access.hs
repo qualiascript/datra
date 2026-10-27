@@ -29,7 +29,10 @@ import Evaluation.Coalization
   , coalizeValue
   , valueIsCoalition
   )
-import Evaluation.Access.Specification (accessSpecification)
+import Evaluation.Access.Specification
+  ( accessSpecification
+  , specificationTargetPresentation
+  )
 import Evaluation.Access.Identifier (accessDependentIdentifierType)
 import Evaluation.Identifier (simpleIdentifierName)
 import Evaluation.Map
@@ -546,6 +549,11 @@ namedAccessValue source name = do
     _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
   where
     candidates value
+      | SpecificationForm specification <- interpretedForm value =
+          specificationCandidates specification
+      | Just target <- interpretedSpecificationTargetEvidence value
+      , ArgumentMapForm members _ <- interpretedForm target =
+          argumentEvidenceCandidates value members
       | Just named <- namedMapViewForValue value =
           maybe [] ((: []) . namedMemberValue)
             <$> namedMapMemberByName named name
@@ -565,19 +573,52 @@ namedAccessValue source name = do
           FederationSpecificationForm _ _ branches -> do
             values <- traverse (`namedAccessValue` name) branches
             (:[]) <$> makeDistinctUnion values
-          SpecificationForm specification -> do
-            let original = evaluatedSpecificationSourceValue specification
-                target = evaluatedSpecificationTarget specification
-            originalField <- namedAccessValue original name
-            targetFields <- candidates target
-            case targetFields of
-              [] -> pure [originalField]
-              [targetField] -> (:[]) <$> specifyValues originalField targetField
-              _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
           ConcatenatedMapForm left right -> (<>) <$> candidates left <*> candidates right
           SequentialMapForm -> pages value
           MapForm -> pages value
           _ -> Right []
+    specificationCandidates specification = do
+      projected <- positionalSpecificationCandidates specification
+      case projected of
+        [] -> do
+          let original = evaluatedSpecificationSourceValue specification
+              target = evaluatedSpecificationTarget specification
+          originalField <- namedAccessValue original name
+          targetFields <- candidates target
+          case targetFields of
+            [] -> pure [originalField]
+            [targetField] -> (:[]) <$> specifyValues originalField targetField
+            _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
+        _ -> Right projected
+    positionalSpecificationCandidates specification =
+      case naturalAtOrdinal (interpretedMapFinalOrderType targetMap) of
+        Nothing -> Right []
+        Just count -> concat <$> traverse project (naturalsBelow count)
+      where
+        target = specificationTargetPresentation
+          (evaluatedSpecificationTarget specification)
+          (evaluatedSpecificationMember specification)
+        targetMap = interpretedMap target
+        project index = case interpretedMapValueAt targetMap (finiteOrdinal index) of
+          Nothing -> Left (NamedAccessFailed NamedFieldMapNotInspectable)
+          Just targetField -> do
+            matches <- candidates targetField
+            if null matches
+              then Right []
+              else (:[]) <$> accessSpecification
+                accessValues specification
+                (makeExplicit ComputedOrigin (finiteOrdinal index))
+    argumentEvidenceCandidates value targetMembers =
+      concat <$> traverse project (zip [0 ..] targetMembers)
+      where
+        sourceMap = interpretedMap value
+        project (index, targetField) = do
+          matches <- candidates targetField
+          if null matches
+            then Right []
+            else case interpretedMapValueAt sourceMap (finiteOrdinal index) of
+              Nothing -> Right []
+              Just sourceField -> Right [sourceField]
     pages value = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
       Just count -> concat <$> traverse (\index -> case interpretedMapValueAt (interpretedMap value) (finiteOrdinal index) of
           Nothing -> Left (NamedAccessFailed NamedFieldMapNotInspectable)

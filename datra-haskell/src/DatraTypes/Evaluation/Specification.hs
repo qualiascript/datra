@@ -39,7 +39,15 @@ specifyValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-specifyValues source target
+specifyValues source target =
+  withSpecificationTargetEvidence target
+    <$> specifyValuesWithoutEvidence source target
+
+specifyValuesWithoutEvidence
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+specifyValuesWithoutEvidence source target
   | NeverForm <- interpretedForm source
   , NeverForm <- interpretedForm target = Right neverValue
   | NeverForm <- interpretedForm source = Left

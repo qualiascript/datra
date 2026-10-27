@@ -207,13 +207,16 @@ withTrailingIdentifierMarker marker value
     markedMap = sourceMap
       { interpretedMapPageCardinality =
           interpretedMapPageCardinality sourceMap + 1
-      , interpretedMapFinalValues = appendOrdinalOrderedValues
-          (interpretedMapFinalValues sourceMap)
-          (singletonOrdinalOrderedValues markerValue)
+      , interpretedMapFinalValues = markedFinalValues
+      , interpretedMapCheckedValueAt =
+          Right . ordinalOrderedValueAt markedFinalValues
       , interpretedMapComponents =
           interpretedMapComponents sourceMap
             <> [interpretedSemantics markerValue]
       }
+    markedFinalValues = appendOrdinalOrderedValues
+      (interpretedMapFinalValues sourceMap)
+      (singletonOrdinalOrderedValues markerValue)
 
 hasTrailingIdentifierMarker :: String -> InterpretedValue -> Bool
 hasTrailingIdentifierMarker marker value =
