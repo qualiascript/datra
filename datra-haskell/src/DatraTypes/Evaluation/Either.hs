@@ -13,7 +13,7 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   )
-import DatraOrdinal (Ordinal, finiteOrdinal)
+import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal, omega)
 import Evaluation.Coalization (valueIsCoalition)
 import Evaluation.Error
   ( InterpretingError (EitherAlternativesNotDistinct) )
@@ -72,6 +72,9 @@ alternativesArePairwiseDistinct (member : remaining) =
 
 alternativesAreDistinct :: InterpretedValue -> InterpretedValue -> Bool
 alternativesAreDistinct left right
+  | Just leftLengths <- memberMapLengthDomain left
+  , Just rightLengths <- memberMapLengthDomain right
+  , mapLengthDomainsAreDisjoint leftLengths rightLengths = True
   | Just leftFunction <- interpretedFunction left
   , Just rightFunction <- interpretedFunction right
   , Just leftSyntax <- functionSyntax leftFunction
@@ -158,6 +161,40 @@ alternativesAreDistinct left right
   | isNumericalRange left
   , valueProducesStrings right = True
   | otherwise = rangeAlternativesAreDistinct left right
+
+-- Map families with disjoint possible final-page lengths cannot share a
+-- member. This is the ordinary structural map-length separation lifted to
+-- dependent sums whose validators constrain member length.
+data MemberMapLengthDomain
+  = ExactMemberMapLength Ordinal
+  | FiniteMemberMapLength
+
+memberMapLengthDomain
+  :: InterpretedValue
+  -> Maybe MemberMapLengthDomain
+memberMapLengthDomain value =
+  case evaluatedDependentSumStructure <$> dependentSumView value of
+    Just (ListDependentSum _) -> Just FiniteMemberMapLength
+    Just (StreamDependentSum _) -> Just (ExactMemberMapLength omega)
+    _
+      | interpretedValueHasTotalMap value ->
+          Just (ExactMemberMapLength
+            (interpretedMapFinalOrderType (interpretedMap value)))
+      | otherwise -> Nothing
+
+mapLengthDomainsAreDisjoint
+  :: MemberMapLengthDomain
+  -> MemberMapLengthDomain
+  -> Bool
+mapLengthDomainsAreDisjoint left right =
+  case (left, right) of
+    (ExactMemberMapLength leftOrder, ExactMemberMapLength rightOrder) ->
+      leftOrder /= rightOrder
+    (FiniteMemberMapLength, ExactMemberMapLength rightOrder) ->
+      naturalAtOrdinal rightOrder == Nothing
+    (ExactMemberMapLength leftOrder, FiniteMemberMapLength) ->
+      naturalAtOrdinal leftOrder == Nothing
+    (FiniteMemberMapLength, FiniteMemberMapLength) -> False
 
 -- Compare the evaluated string languages, rather than the source templates
 -- which produced them. Prefixes prove separation across different template

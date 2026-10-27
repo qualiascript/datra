@@ -139,6 +139,7 @@ import Numeric.Natural (Natural)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)
 import FoliageMap (foliageMap, foliageMapPositionAt)
 import System.FilePath (takeFileName)
+import Debug.Trace (trace)
 
 interpretExpression
   :: Expression
@@ -215,9 +216,11 @@ parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   -> Either ParseFailure (Located Expression)
 parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
     standardLibraryVisibility modules sourceName source = do
+  trace ("parse begin: " <> sourceName) (Right ())
   parsed <- parseDatraSourceSyntax
     standardLibraryVisibility sourceName source
-  rewriteParsedDatraSourceWithImports modules parsed
+  rewritten <- rewriteParsedDatraSourceWithImports modules parsed
+  pure (trace ("parse rewritten: " <> sourceName) rewritten)
 
 rewriteParsedDatraSourceWithImports
   :: [(String, ModuleSource)]
@@ -813,10 +816,13 @@ standardModuleEnvironment
   -> Either InterpretingError
       (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
 standardModuleEnvironment allNames = do
+  trace "standard module: source" (Right ())
   source <- defaultModuleSource
   let base = rootScope source [("\0imports", ModuleCatalog
         [(standardLibraryFileName, source)])]
+  trace "standard module: import" (Right ())
   scope <- importLoadedModule base allNames source
+  trace "standard module: imported" (Right ())
   let imported =
         [ (namespace, value)
         | (namespace, ImportedBinding _ identity value _) <- scopeBindings scope
@@ -5103,11 +5109,17 @@ loadedModuleResultWithBase
   -> Either InterpretingError LoadedModuleResult
 loadedModuleResultWithBase base
     moduleSource@(ModuleSource path expression _) = do
+  trace ("loaded module base: " <> path) (Right ())
   prepared <- moduleBaseScope base moduleSource
+  trace ("loaded module prepare resource: " <> path) (Right ())
   (resourceBase, resource) <- prepareModuleResource prepared expression
+  trace ("loaded module resource block: " <> path) (Right ())
   (resourceBindings, resultExpression) <- resourceBlock resource
+  trace ("loaded module import scope: " <> path) (Right ())
   outer <- importScopeWithoutContextualThis resourceBase [] resourceBindings
+  trace ("loaded module eval result: " <> path) (Right ())
   result <- evalInScope outer [] resultExpression
+  trace ("loaded module evaluated: " <> path) (Right ())
   exported <- case importNamedBindings result of
     Right bindings@(_ : _) -> Right bindings
     _ | interpretedValueKind result == DependentIdentifierTypeValueKind ->

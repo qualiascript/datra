@@ -158,6 +158,8 @@ testTree =
         , testCase "diagnostics" testDiagnostics
         , testCase "generic identifier disjointness"
             testGenericIdentifierDisjointness
+        , testCase "collection length disjointness"
+            testCollectionLengthDisjointness
         , testCase "evaluation boundary" testEvaluationBoundary
         , testCase "map length" testMapLength
         , testCase "ASCII map" testAsciiMap
@@ -605,6 +607,16 @@ testGenericIdentifierDisjointness = do
   assert "an open family without an all-fibre name proof stays undecidable"
     (Types.identifierNameDisjointness "T" opaque
       == Types.IdentifierNameDisjointnessUndecidable)
+
+testCollectionLengthDisjointness :: IO ()
+testCollectionLengthDisjointness = do
+  let elementType = Types.anyTypeValue
+      listType = Types.listTypeValue "List Any" elementType
+      streamType = Types.streamTypeValue "Stream Any" elementType
+  assert "finite lists and omega-length streams are disjoint map families"
+    (case Types.eitherValue listType streamType of
+      Right _ -> True
+      Left _ -> False)
 
 assert :: String -> Bool -> IO ()
 assert = assertBool

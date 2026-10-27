@@ -938,6 +938,15 @@ containsFunctionImplementation (SyntaxBoundary inner) =
   containsFunctionImplementation inner
 containsFunctionImplementation _ = False
 
+containsRuntimeFunctionBody :: Expression -> Bool
+containsRuntimeFunctionBody
+    (FunctionApplication _ FunctionBody {}) = True
+containsRuntimeFunctionBody (Fun signature) =
+  containsRuntimeFunctionBody signature
+containsRuntimeFunctionBody (SyntaxBoundary inner) =
+  containsRuntimeFunctionBody inner
+containsRuntimeFunctionBody _ = False
+
 rewriteChildren
   :: CaptureHole
   -> RewriteEnvironment
@@ -1867,6 +1876,8 @@ compileScopedRewriteRules environment declarations rules = mapMaybe compile rule
       Just classified -> classified
       Nothing -> (kind, Nothing)
     compile rule
+      | Just implementation <- syntaxApplicationImplementation rule
+      , containsRuntimeFunctionBody implementation = Nothing
       | Just implementation <- syntaxApplicationImplementation rule
       , Nothing <- syntaxFunctionInsertion evaluate implementation = Nothing
       | otherwise = Just compiled
