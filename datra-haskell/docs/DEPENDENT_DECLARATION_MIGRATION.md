@@ -1,327 +1,287 @@
-# Dependent-declaration migration: remaining work
+# Dependent-declaration migration: PR finish handoff
 
-## Stopping point
+## Current snapshot
 
-This document describes the current state of the `dependent-declarations`
-branch at commit `f605564` plus the working-tree standard-library change to
-`public`.
+- Repository: `datra-haskell`
+- Branch: `dependent-declarations`
+- Commit: `b8b856c` (`origin/dependent-declarations`)
+- The worktree was clean before this document was replaced.
+- The remaining completion gate is the dependent interpreter slice. Do not
+  broaden the implementation until the failures below are understood through
+  their existing generic abstractions.
 
-The standard library currently defines `public` with an argument-map-shaped
-declaration row:
-
-```datra
-public := {_declarations : Collection
-    {_key : InhabitedStr; _value : Any; $val?}} do
-  yield (
-    ((&_declaration :: _declarations) do
-      yield if _declaration._key[0] = "_" then () else _declaration),
-  )
-```
-
-`libs/std.datra` is user-owned during this work. Do not edit it, including for
-temporary diagnostics or experiments.
-
-The directly verified boundary is:
-
-- evaluating `libs/std.datra` with `NoStandardLibrary` succeeds; this includes
-  the outer application of `public this`;
-- loading `libs/numbers.datra` with the qualified standard library still
-  fails at its `public this` application;
-- the focused test takes about 11 seconds and fails with:
-
-  ```text
-  libs/numbers.datra: unexpected parse failure:
-  FunctionEvaluationFailed NoApplicableFunctionAlternative
-  ```
-
-Run the focused check with:
+Run the gate with:
 
 ```sh
-timeout 40s cabal test datra-parsing-test -f-liquid \
-  --test-options='-p bundled'
+timeout 180s cabal test datra-interpreting-test -f-liquid \
+  --test-option=-p --test-option=dependent
 ```
 
-The current failure is therefore not a failure to parse or bootstrap `Std`.
-It is a failure to admit the `Numbers` namespace as the argument of the
-already-defined `public` function.
-
-## Settled semantics
-
-These are language requirements and should not be weakened to make the tests
-pass.
-
-### One declaration abstraction
-
-Every declaration is a `DependentDeclaration`. Simple names, evaluated heads,
-quoted templates, and greedy templates use the same scope, lookup, overlap,
-deferred-evaluation, named-map, and export machinery.
-
-A simple declaration is the singleton case of the same family abstraction.
-Do not restore a parallel table or evaluation path for ordinary identifiers.
-
-### `let`
-
-`let` only changes availability. A let declaration is visible throughout its
-containing block, including before its source position. Its right-hand side is
-still evaluated through the ordinary deferred-binding abstraction.
-
-This applies equally to singleton and templated dependent declarations. Do not
-introduce cycle rejection: a program such as the following is valid and may
-diverge when forced.
-
-```datra
-begin
-  let a := b
-  let b := a
-yield a
-```
-
-### `val`
-
-`val` marks a declaration family as canonically presentable. It must be
-accepted only when every greedy-template capture family participates in the
-same ordinal/foliage mapping abstraction used by generic lazy map views.
-
-Consequently, a capture such as `_Expr` cannot make a declaration `val`: there
-is no enumeration of all expressions. A capture such as `Int` may be valid
-because `Int` already has an ordered foliage view.
-
-The standard-library form is a regular function whose body performs the AST
-insertion:
-
-```datra
-let val := (_DependentDeclaration -> _DependentDeclaration) 'datra.val_body
-```
-
-A failed `val` declaration must report the ordinary declaration-cannot-be-val
-error. Do not add errors specialized to particular capture types.
-
-### `public`
-
-`public` remains ordinary Datra code. Host code supplies namespace and
-declaration abstractions, but it does not implement visibility filtering.
-
-The function is transparent: returned rows remain the original declaration
-descriptors, including their named-family and syntax behavior. Validating a
-row may inspect its structural map view, but must not replace the row with an
-ordinary Atlas-map shell.
-
-The `$val?` field records whether a declaration is transparently treated as a
-canonical value. Keep that marker until the representation is deliberately
-redesigned; do not infer it again from rendered syntax.
-
-### Collections
-
-The standard library defines:
-
-```datra
-val Stream := &T? do yield fun T ; this
-val Collection := &T? do yield (List T) | (Stream T)
-```
-
-`List T` is finite. `Stream T` has natural order type and validates members
-lazily. A namespace can select either branch according to the order supplied
-by its named-map/foliage projection.
-
-Do not weaken the public boundary to `Any`, and do not materialize a namespace
-as a finite host list. In particular, a syntax family with an `_Expr` capture
-is represented by one declaration descriptor; it does not require enumerating
-expressions. Canonical `val` families are the ones whose concrete members may
-be traversed through their capture foliage maps.
-
-### Simple function application
-
-Function-application syntax applies only to simple identifiers, is greedy,
-and participates in the ordinary syntax-rewrite federation. Collisions with
-more complex syntax rules must therefore be detected by the same generic
-overlap mechanism.
-
-Host names such as `'datra.begin` are simple identifiers with module scope.
-They must not require a separate eager-import or bootstrap application path.
-
-## Implemented work
-
-The branch now contains the following relevant pieces.
-
-- Declaration scopes expose lazy `NamedMapView` projections. Direct name
-  lookup and ordinal traversal share that representation.
-- Non-`val` templated declarations contribute one descriptor row; their
-  captures are metadata on the attached syntax callable rather than pretend
-  concrete values.
-- Canonical declaration families traverse capture products with the shared
-  ordinal-indexed foliage machinery.
-- `let` declarations use the existing deferred-binding evaluation path and
-  are made visible ahead of their source position.
-- Nested blocks install their own `this` level instead of suppressing it when
-  an outer `this` exists. `it` and `this` use the ordinary contextual binding
-  machinery.
-- Imported declarations retain their loaded binder scope rather than
-  reconstructing a module resource during invocation.
-- `List` and `Stream` have distinct dependent-sum structures. Stream member
-  validation is lazy, and transfinite values are no longer rejected merely
-  because function argument pagination cannot enumerate them.
-- Named namespace collection projections normalize transfinite source order
-  through the common foliage traversal.
-- Canonical template captures are rendered through the normal string
-  conversion operation. The obsolete `renderCanonicalCapture` path and its
-  `NoCanonicalStringConversion` error have been removed.
-- `FunctionArgumentsRequireFinitePages` has been removed. Infinite maps remain
-  one supplied argument until the selected domain decides how to consume
-  them.
-- The artificial cyclic-identifier error has been removed; recursive
-  evaluation is allowed to diverge naturally.
-- Temporary traces and special-case diagnostics are not part of the current
-  implementation.
-
-## Current failure
-
-`Numbers` contains two ordinary, non-`val` declarations, `max` and `min`, and
-then evaluates:
-
-```datra
-yield public this
-```
-
-The application still fails. The current generic error does not establish
-whether the rejection occurs during `Collection` alternative selection,
-list-member validation, function argument preparation, or evaluation of the
-`public` body. Do not encode one of those possibilities as the diagnosis until
-the actual failing operation has been identified.
-
-The current host representation is produced by
-`namedDeclarationMember`/`simpleIdentifierTypeValue`:
+Latest result:
 
 ```text
-canonical key, payload [, raw $val marker]
+18 of 27 passed
+9 of 27 failed
+test time: 4.07s
+whole command: 8.00s
+peak RSS: 510848 KB
 ```
 
-The shorter unmarked representation is not by itself a mismatch. In the
-language, an optional argument and a `Maybe` argument coincide here:
-`Maybe T` lowers through `nothing`, `nothing` lowers to `Nothing : ()`, and
-that admits `()`. Therefore `$val?` can complete the omitted marker position.
-Do not change the descriptor representation merely because an unmarked row
-has one fewer materialized position.
+The build also reports one warning:
 
-`validateRecursiveElement` currently tries ordinary argument-schema
-completion and, for identifier descriptors, retries against the descriptor's
-structural map view. That preserves the returned descriptor. Whether this
-operation is actually where `Numbers` fails remains to be established.
+```text
+app/Interpreting.hs:3340:53: -Wname-shadowing
+appendPart ... (converted, captureSchema)
+```
 
-## Remaining implementation work
+Rename that local binding during final cleanup.
 
-### 1. Locate the failing generic operation
+## Remaining failures
 
-Add narrow host-side regression coverage around the current public row type:
+### 1. Closed function reconstruction depends on `Std`
+
+Test:
+
+```text
+canonical function reconstruction
+  three dependency levels reconstruct independently
+```
+
+Location: `test/Datra/Interpreter/FunctionClosureTests.hs`.
+
+Program under test:
 
 ```datra
-{_key : InhabitedStr; _value : Any; $val?}
+base := 2
+step := base + 1
+next := step + 1
+yield ({n? : Int} -> Int do yield n + next)
 ```
 
-Distinguish, without changing `libs/std.datra`, among:
+The original function is evaluated and rendered, the rendered expression is
+parsed with the production parser, and the call is then evaluated through
+`interpretClosedExpression`. That evaluator intentionally creates only a
+Datra host root; it imports neither `Std` nor other modules.
 
-- selection of the `List` or `Stream` alternative in `Collection`;
-- matching one declaration descriptor against the row type;
-- completion of the omitted `$val?` position through the ordinary
-  `Maybe`/`nothing` path;
-- preparation of the `_declarations` function argument;
-- iteration and filtering inside the Datra-defined `public` body; and
-- validation of the function result.
+Current failure:
 
-Use the same semantic operations exercised by Datra evaluation. A direct test
-of an internal optional constructor is not equivalent when it bypasses the
-standard-library `Maybe`/`nothing` lowering. Do not add a permanent trace,
-hardcoded signature, declaration name, or special diagnostic to expose the
-failure.
+```text
+ModuleEvaluationFailed (ModuleNotLoaded "Std")
+```
 
-### 2. Keep validation and presentation separate
+First inspect the rendered `text` in `roundTripWith`/`assertClosedCall` and
+locate the retained `InModule "Std"` or equivalent dependency. Follow it
+through:
 
-Collection checking may validate the descriptor's structural view, but the
-selected collection member must remain the original descriptor value.
+- `closureResolver` and its `resolveDependencyModule` branch in
+  `app/Interpreting.hs`;
+- `valueExpression`, `closedSourceExpression`, and `defaultDefinitionScope`;
+- `closeFunction`/`inlineDependencies` in `app/FunctionClosure.hs`.
 
-Do not:
+The fix must make the rendered closure contain every dependency needed by its
+body without requiring an ambient module. Do not make
+`interpretClosedExpression` import `Std`; that would invalidate the property
+this test is proving.
 
-- project every named member permanently into an ordinary map;
-- erase syntax attached to a declaration-family descriptor;
-- reconstruct `_key`, `_value`, `it`, or `this` through bespoke host records;
-- introduce a special `public` evaluator;
-- weaken the element type to `Any`.
-
-### 3. Re-run the stopping test and inspect the next real failure
-
-After fixing the identified operation, run:
+Focused check:
 
 ```sh
-timeout 40s cabal test datra-parsing-test -f-liquid \
-  --test-options='-p bundled'
+cabal test datra-interpreting-test -f-liquid \
+  --test-option=-p \
+  '--test-option=/canonical function reconstruction/&&/three dependency/'
 ```
 
-The immediate milestone is for both bundled module-shape checks (`Std` and
-`Numbers`) to pass. Record the runtime and investigate any material increase;
-the current failing run is approximately 11 seconds.
+### 2. Rewritten imported modules fail body validation
 
-Then run focused public/import tests, especially:
+Five tests fail with exactly:
 
-- filtering of private declarations;
-- transparent import of ordinary declarations;
-- canonical presentation of `val` declarations;
-- simple and templated dependent-declaration exports;
-- nested-module `this` behavior;
-- finite `List` and infinite `Stream` collection selection.
+```text
+ModuleEvaluationFailure OperationHasNoEffect
+```
 
-Finally run the complete test suite and `git diff --check`.
+Tests:
 
-### 4. Review error cleanup
+- `declared name is independent of filename`
+- `exported dependent declaration supports lookup`
+- `scope-protected dependent declaration supports lookup`
+- `import accepts a dependent identifier federation`
+- `import accepts mixed simple and dependent binders`
 
-Keep failures expressed through existing generic operations. Do not restore:
+Locations:
 
-- `CyclicIdentifierReference`;
-- `ProductiveRecursiveReduction` as a workaround for ordinary deferred
-  bindings;
-- `NoCanonicalStringConversion`;
-- `FunctionArgumentsRequireFinitePages`;
-- errors hardcoded to a concrete declaration name, capture type, or function
-  signature.
+- tests: `test/Datra/Interpreter/ModuleTests.hs`
+- fixtures:
+  - `test/fixtures/modules/different_filename.datra`
+  - `test/fixtures/modules/dependent_declarations.datra`
+  - `test/fixtures/modules/dependent_export.datra`
+  - `test/fixtures/modules/mixed_export.datra`
 
-Any failed `val` foliage traversal should surface through the same generic
-declaration-validity error as every other declaration that cannot be `val`.
+`OperationHasNoEffect` has one production site:
+`validateFunctionBodyParts` in `app/Interpreting.hs`. Therefore these failures
+occur while validating a rewritten `FunctionBody` or `Begin` entry, before
+the intended module projection completes. Inspect the `ModuleSource` values
+returned by `loadSourceImports` and identify the exact pre-yield entry which
+no longer satisfies one of the validator's accepted categories:
 
-## Useful code locations
+- `dependentDeclaration part`;
+- `Let`;
+- `Val`; or
+- an active assertion.
 
-- `app/Interpreting.hs`
-  - recursive `List`/`Stream` recognition;
-  - declaration named views and descriptor materialization;
-  - contextual `it`/`this` bindings;
-  - module export/import presentation.
-- `src/DatraTypes/DatraTypes.hs`
-  - `listTypeValue`, `streamTypeValue`, and recursive element validation.
-- `src/DatraTypes/Evaluation/Identifier.hs`
-  - simple identifier map shape and canonical-value marker handling.
-- `src/DatraTypes/Evaluation/Value.hs`
-  - named-map projections and foliage-normalized collection shells.
-- `src/DatraTypes/Evaluation/Overload.hs`
-  - evaluated argument schemas, optional slots, and row completion.
-- `src/DatraTypes/Evaluation/Arguments.hs`
-  - finite/transfinite argument presentation.
-- `src/DatraTypes/Evaluation/OrdinalIndexedFamily.hs`
-  - the shared ordered-family abstraction used by generics and canonical
-    declaration captures.
-- `src/DatraTypes/Evaluation/Specification/Subfederation.hs`
-  - collection dependent-sum inclusion.
-- `test/DatraParsingTests.hs`
-  - bundled `Std`/`Numbers` module-shape check.
+Fix the producer/validator representation mismatch. Do not suppress
+`OperationHasNoEffect` globally and do not exempt these fixtures by name.
 
-## Completion criteria
+Relevant module architecture:
 
-The migration is complete when:
+- `ModuleLoading` parses and rewrites each `ModuleSource` once and caches it by
+  path.
+- `loadedModuleResultWithBase` evaluates one module instance and produces
+  `LoadedModuleBinder` values carrying both the evaluated value and its
+  definition `Scope`.
+- `ImportedBinding` retains that scope. `lookupModuleDefinitionScope` must
+  prefer it; qualified `.`/`InModule` evaluation must not evaluate the module
+  again in the caller's local scope.
+- Module members remain declaration descriptors. Consumers obtain the payload
+  through `moduleMemberPayload`, which uses ordinary map access at ordinal
+  `1`.
+- `moduleNamedMembers` uses the normal finite collection projection and falls
+  back to the declared-family manifest for transfinite named maps. It must not
+  enumerate a `Stream`.
+- `public` is ordinary Datra code. Host code must not replace its descriptors
+  with ad-hoc records or implement visibility filtering itself.
 
-1. `Std` and `Numbers` load through the same dependent-declaration pipeline;
-2. `public` remains ordinary Datra and returns transparent descriptor values;
-3. declaration rows satisfy the typed `_key`, `_value`, and `$val?` contract;
-4. finite and infinite namespaces use `List` and `Stream` without eager
-   materialization;
-5. `let`, `val`, simple application, imports, and nested contextual scopes use
-   their shared abstractions without identifier-specific shortcuts;
-6. the focused and full test suites pass without a material performance
-   regression; and
-7. no temporary traces, hardcoded diagnostics, or standard-library probe edits
-   remain.
+Useful focused checks:
+
+```sh
+cabal test datra-interpreting-test -f-liquid \
+  --test-option=-p --test-option=modules
+```
+
+For a smaller first probe:
+
+```sh
+cabal test datra-interpreting-test -f-liquid \
+  --test-option=-p '--test-option=/modules/&&/declared name/'
+```
+
+### 3. Generic dependent sums have three evidence/dispatch regressions
+
+Locations: the `generic sums` group in
+`test/Datra/Interpreter/StandardLibraryTests.hs`.
+
+#### Named optional generic witness
+
+Program:
+
+```datra
+Pair := (^T? :: Any) -> Any do yield (value? : T)
+yield {T : Nat; value : 5} of Pair
+```
+
+Expected `true`; currently returns `false`. The positional equivalent passes,
+as does rejection of a value outside the selected fibre. This narrows the
+problem to preservation/routing of the explicit `T` name, not the basic
+dependent-sum validator.
+
+Trace the value through these generic paths:
+
+- `argumentRows` in `src/DatraTypes/Evaluation/Arguments.hs`;
+- `splitExistentialRow` and `validatePackageRow` in `app/Interpreting.hs`;
+- `suppliedArgumentValue` in
+  `src/DatraTypes/Evaluation/Overload.hs`;
+- argument-map identifier matching in
+  `src/DatraTypes/Evaluation/Specification/ArgumentMap.hs`.
+
+`splitExistentialRow` must reuse the same name-erasure/routing evidence as
+ordinary function application. Do not add a `Pair`, `T`, or two-slot special
+case.
+
+#### Forward and reverse specification
+
+Programs:
+
+```datra
+Pair := (^T? :: Any) -> Any do yield (value? : T)
+yield ({T : Nat; value : 5} ~> Pair) of Pair
+```
+
+```datra
+Pair := (^T? :: Any) -> Any do yield (value? : T)
+yield (Pair <~ {T : Nat; value : 5}) of Pair
+```
+
+Both should return `true`; both currently fail with:
+
+```text
+FunctionEvaluationFailed ExpectedFunctionValue
+```
+
+That error is constructed only by
+`Evaluation.TypeFamily.Function.specifyFunction`. Inspect why a package value
+carrying successful specification evidence is dispatched as a function
+specification merely because `Pair` has both a function representation and a
+dependent-sum view.
+
+Relevant generic architecture:
+
+- A generic-sum function keeps its ordinary function representation and gains
+  an auxiliary `EvaluatedDependentSum` capability through
+  `withDependentSumView`.
+- Successful `specifyValues` keeps the source's runtime representation and
+  attaches the proven target through `withSpecificationTargetEvidence`.
+- `specifyValues` and `decideValueSubfederation` must choose between the
+  function and dependent-sum capabilities from the actual source/target
+  operation, rather than from a concrete parser shape.
+- Forward and reverse syntax lower to the same `MapSpecification` evaluation;
+  fix their shared semantic dispatch instead of treating them separately.
+
+Focused check:
+
+```sh
+cabal test datra-interpreting-test -f-liquid \
+  --test-option=-p '--test-option=/generic sums/'
+```
+
+## Invariants to preserve while fixing the failures
+
+- All declarations use `DependentDeclaration`; simple identifiers are the
+  singleton case, not a parallel binding implementation.
+- Declaration overlap is decided through evaluated federation machinery
+  (`eitherValue`), including string-template name families. Do not add lexical
+  prefix, numeric, or parser-encoding overlap special cases.
+- Validation evidence required by later evaluation must travel with the value;
+  do not validate through a projected shell and then discard the proof.
+- `it` and `this` use ordinary contextual-binding flows. Do not introduce a
+  declaration-only evaluator for either name.
+- `List T` is finite and `Stream T` has order type omega. Their separation is
+  the generic map-length rule in `Evaluation.Either`, not recognition of a
+  concrete recursive AST shape. The standard-library stream definition is:
+
+  ```datra
+  val Stream := &T? do yield fun (T ; this)
+  ```
+
+- Do not edit `libs/std.datra` to work around these failures.
+
+## Completion sequence
+
+1. Make the five module tests pass and run the whole `modules` group to catch
+   projection/re-evaluation regressions.
+2. Make the closed reconstruction test pass without giving the closed
+   evaluator an implicit module environment.
+3. Make all three generic-sum tests pass through shared argument/specification
+   machinery.
+4. Run the complete dependent slice until it reports `27 of 27 passed`.
+5. Run:
+
+   ```sh
+   timeout 90s cabal test datra-parsing-test -f-liquid \
+     --test-option=-p --test-option=bundled
+   cabal build all -f-liquid
+   git diff --check
+   rg -n 'Debug\.Trace|traceM|traceShow|traceShowId|\btrace\s*\(' \
+     --glob '*.hs' .
+   ```
+
+6. Remove dead diagnostic helpers and any temporary instrumentation before
+   committing. The final build should be warning-free.
