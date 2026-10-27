@@ -146,6 +146,8 @@ data RewriteRule = RewriteRule
   , rewriteRuleContinuations :: [(String, [String])]
   , rewriteRuleEvaluation :: Maybe (Expression -> Maybe InterpretedValue)
   , rewriteRuleHoleFamilies :: [Maybe InterpretedValue]
+  , rewriteRuleSyntaxInsertion :: Maybe SyntaxFunctionInsertion
+  , rewriteRuleRuntimeInsertion :: Maybe RuntimeFunctionInsertion
   }
 
 compileRewriteRule :: SyntaxRule -> RewriteRule
@@ -161,6 +163,8 @@ compileRewriteRule rule = RewriteRule
   , rewriteRuleEvaluation = Nothing
   , rewriteRuleHoleFamilies =
       [ Nothing | SyntaxHole _ <- pieces ]
+  , rewriteRuleSyntaxInsertion = Nothing
+  , rewriteRuleRuntimeInsertion = Nothing
   }
   where
     pieces = syntaxTemplatePieces (syntaxTemplate rule)
@@ -177,20 +181,17 @@ syntaxFunctionInsertion
   -> Maybe SyntaxFunctionInsertion
 syntaxFunctionInsertion evaluate implementation = do
   value <- evaluate implementation
+  syntaxFunctionInsertionFromValue value
+
+syntaxFunctionInsertionFromValue
+  :: InterpretedValue
+  -> Maybe SyntaxFunctionInsertion
+syntaxFunctionInsertionFromValue value = do
   body <- interpretedFunctionBody value
     <|> (interpretedFunction value >>= functionBody)
   case body of
     EvaluatedSyntaxFunctionBody _ insertion -> Just insertion
     _ -> Nothing
-
-runtimeFunctionInsertion
-  :: (Expression -> Maybe InterpretedValue)
-  -> Expression
-  -> Maybe RuntimeFunctionInsertion
-runtimeFunctionInsertion evaluate implementation = do
-  value <- evaluate implementation <|>
-    (attachedFunctionImplementation implementation >>= evaluate)
-  interpretedRuntimeFunctionInsertion value
 
 expandSelectedSyntaxMatch
   :: RewriteEnvironment
@@ -214,7 +215,9 @@ expandSelectedSyntaxMatch environment rule matched = do
         (rewriteDeclarations environment)
     directExpansion = do
       implementation <- rewriteRuleImplementation rule
-      insertion <- syntaxFunctionInsertion evaluate implementation
+      insertion <- case rewriteRuleEvaluation rule of
+        Just _ -> rewriteRuleSyntaxInsertion rule
+        Nothing -> syntaxFunctionInsertion evaluate implementation
       applySyntaxFunction insertion (insertionCaptures rule captures)
 
 insertionCaptures :: RewriteRule -> [Expression] -> [Expression]
@@ -434,19 +437,22 @@ rewriteSequence
 rewriteSequence capture initial rawEntries = fixedPoint [] []
   where
     fixedPoint stable recursiveDeclarations = do
+      let recursive = recursiveRewriteEnvironment False initial stable
       (rewritten, tentativeEnvironment) <-
-        pass [] (recursiveRewriteEnvironment False initial stable) rawEntries
+        pass [] recursive rawEntries
       let discovered = filter isLetDeclarationExpression rewritten
       if discovered == recursiveDeclarations
         then if not (rewriteStrictCaptures initial)
           then do
-            validateDependentDeclarations rewritten
+            validateDependentDeclarations
+              (recursive { rewriteStrictCaptures = True }) rewritten
             Right (rewritten, tentativeEnvironment)
           else do
             (strictlyRewritten, strictEnvironment) <-
               strictPass rewritten 0 []
-                (recursiveRewriteEnvironment True initial rewritten) rawEntries
-            validateDependentDeclarations strictlyRewritten
+                (recursive { rewriteStrictCaptures = True }) rawEntries
+            validateDependentDeclarations
+              (recursive { rewriteStrictCaptures = True }) strictlyRewritten
             Right (strictlyRewritten, strictEnvironment)
         else fixedPoint rewritten discovered
 
@@ -469,8 +475,8 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
           strictPass stableEntries (position + 1)
             (rewrittenEntry : reversed) next trailing
 
-    validateDependentDeclarations entries =
-      go 0 [] (recursiveRewriteEnvironment True initial entries) entries
+    validateDependentDeclarations recursive entries =
+      go 0 [] recursive entries
       where
         go _ _ _ [] = Right ()
         go position earlier environment (entry : remaining) = do
@@ -541,16 +547,16 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
             , previousRules
             )
           | currentGreedy || previousGreedy = Right ()
-          | Just current <- currentNameFamily
-          , Just previous <- previousNameFamily =
-              case eitherValue previous current of
-                Right _ -> Right ()
-                Left _ -> overlapFailure
           | and
               [ branchesCompatible previous current
               | previous <- previousRules
               , current <- currentRules
               ] = Right ()
+          | Just current <- currentNameFamily
+          , Just previous <- previousNameFamily =
+              case eitherValue previous current of
+                Right _ -> Right ()
+                Left _ -> overlapFailure
           | otherwise = overlapFailure
           where
             overlapFailure = Left (OverlappingDependentDeclarations
@@ -591,10 +597,8 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
             rule = rewriteRule compiled
             captures = dependentSyntaxCaptures dependent
             implementation = dependentSyntaxImplementation dependent
-            evaluate = rewriteEvaluate environment
-              (rewriteDeclarations environment)
-            syntaxInsertion = syntaxFunctionInsertion evaluate implementation
-            runtimeInsertion = runtimeFunctionInsertion evaluate implementation
+            syntaxInsertion = rewriteRuleSyntaxInsertion compiled
+            runtimeInsertion = rewriteRuleRuntimeInsertion compiled
 
         captureValue (Just (IdentifierString name, _)) value =
           simpleIdentifierTypeValue name value
@@ -1086,14 +1090,12 @@ directSyntaxFunctionExpansion environment selectedRule application =
                 | Just _ <- syntaxApplicationImplementation
                     (rewriteRule selectedRule) = Nothing
                 | otherwise = Just (captureCount selectedRule)
-              evaluate = evaluateRule selectedRule
-          value <- maybeToList (evaluate implementation)
-          syntaxFunction <- maybeToList (interpretedFunction value)
-          body <- maybeToList (functionBody syntaxFunction)
-          case body of
-            EvaluatedSyntaxFunctionBody _ insertion ->
-              [(applySyntaxFunction insertion, expected)]
-            _ -> []
+              insertion = case rewriteRuleEvaluation selectedRule of
+                Just _ -> rewriteRuleSyntaxInsertion selectedRule
+                Nothing -> syntaxFunctionInsertion
+                  (evaluateRule selectedRule) implementation
+          selected <- maybeToList insertion
+          pure (applySyntaxFunction selected, expected)
         choose [] successes =
           case nub successes of
             [expanded] -> Right expanded
@@ -1918,10 +1920,10 @@ compileScopedRewriteRules environment declarations rules = mapMaybe compile rule
       Just classified -> classified
       Nothing -> (kind, Nothing)
     compile rule
-      | Just implementation <- syntaxApplicationImplementation rule
-      , containsRuntimeFunctionBody implementation = Nothing
-      | Just implementation <- syntaxApplicationImplementation rule
-      , Nothing <- syntaxFunctionInsertion evaluate implementation = Nothing
+      | Just applicationImplementation <- syntaxApplicationImplementation rule
+      , containsRuntimeFunctionBody applicationImplementation = Nothing
+      | Just _ <- syntaxApplicationImplementation rule
+      , Nothing <- rewriteRuleSyntaxInsertion compiled = Nothing
       | otherwise = Just compiled
           { rewriteRuleEvaluation = Just evaluate
           , rewriteRuleHoleFamilies = holeFamilies
@@ -1931,7 +1933,20 @@ compileScopedRewriteRules environment declarations rules = mapMaybe compile rule
           { syntaxTemplate = SyntaxTemplate specializedPieces }
         (specializedPieces, holeFamilies) = foldr classifyPiece ([], [])
           (syntaxTemplatePieces (syntaxTemplate rule))
-        compiled = compileRewriteRule specializedRule
+        compiled = (compileRewriteRule specializedRule)
+          { rewriteRuleSyntaxInsertion = syntaxInsertion
+          , rewriteRuleRuntimeInsertion = runtimeInsertion
+          }
+        implementation = syntaxRuleAdapter specializedRule
+        evaluatedImplementation = implementation >>= evaluate
+        syntaxInsertion = evaluatedImplementation >>=
+          syntaxFunctionInsertionFromValue
+        runtimeInsertion = do
+          value <- evaluatedImplementation <|> do
+            selected <- implementation
+            attached <- attachedFunctionImplementation selected
+            evaluate attached
+          interpretedRuntimeFunctionInsertion value
         classifyPiece piece (pieces, families) = case piece of
           SyntaxLiteral literal ->
             (SyntaxLiteral literal : pieces, families)

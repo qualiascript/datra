@@ -48,7 +48,8 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (nub, nubBy, intercalate, isPrefixOf, stripPrefix)
+import Data.List (nub, nubBy, intercalate, isPrefixOf, partition, stripPrefix)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes)
 import DatraLanguage.DependentDeclaration
 import FunctionClosure
@@ -1013,7 +1014,7 @@ data ScopeHandoff = ScopeHandoff
 -- is the generic exit path for values which leave this activation.
 data Scope = Scope
   { scopeBindings :: ScopeBindings
-  , scopeDependentDeclarationLayers :: [[ScopedDependentDeclaration]]
+  , scopeDependentDeclarationLayers :: [DependentDeclarationLayer]
   , scopeNamedMapLayers :: [NamedMapView]
   , scopeActivation :: ScopeActivation
   , scopeHandoff :: Maybe ScopeHandoff
@@ -1027,7 +1028,88 @@ data ScopedDependentDeclaration = ScopedDependentDeclaration
   { scopedDependentDeclarationScope :: Scope
   , scopedDependentDeclarationFamilyScope :: Scope
   , scopedDependentDeclarationValue :: DependentDeclaration
+  , scopedDependentDeclarationBranches
+      :: Maybe [[StringTemplatePart Expression]]
+  , scopedDependentDeclarationRetainedMember
+      :: Maybe (String, InterpretedValue)
   }
+
+-- Compile the common, statically named declarations once when a scope is
+-- assembled. Identifier lookup used to re-expand every declaration template
+-- for every queried name, making a block with n ordinary declarations require
+-- quadratic template work while its definitions were evaluated.
+data DependentDeclarationLayer = DependentDeclarationLayer
+  { dependentDeclarationLayerMembers :: [ScopedDependentDeclaration]
+  , dependentDeclarationLayerPrefixes :: DependentDeclarationTrie
+  , dependentDeclarationLayerFallback :: [ScopedDependentDeclaration]
+  }
+
+data DependentDeclarationTrie = DependentDeclarationTrie
+  [ScopedDependentDeclaration]
+  (Map.Map Char DependentDeclarationTrie)
+
+emptyDependentDeclarationTrie :: DependentDeclarationTrie
+emptyDependentDeclarationTrie = DependentDeclarationTrie [] Map.empty
+
+insertDependentDeclarationPrefix
+  :: String
+  -> ScopedDependentDeclaration
+  -> DependentDeclarationTrie
+  -> DependentDeclarationTrie
+insertDependentDeclarationPrefix [] scoped (DependentDeclarationTrie here next) =
+  DependentDeclarationTrie (scoped : here) next
+insertDependentDeclarationPrefix (character : remaining) scoped
+    (DependentDeclarationTrie here next) =
+  DependentDeclarationTrie here (Map.alter insert character next)
+  where
+    insert = Just . insertDependentDeclarationPrefix remaining scoped
+      . maybe emptyDependentDeclarationTrie id
+
+dependentDeclarationsWithMatchingPrefix
+  :: String
+  -> DependentDeclarationTrie
+  -> [ScopedDependentDeclaration]
+dependentDeclarationsWithMatchingPrefix name = go name
+  where
+    go remaining (DependentDeclarationTrie here next) = here <>
+      case remaining of
+        [] -> []
+        character : rest -> maybe [] (go rest) (Map.lookup character next)
+
+dependentDeclarationLayer
+  :: [ScopedDependentDeclaration]
+  -> DependentDeclarationLayer
+dependentDeclarationLayer declarations = DependentDeclarationLayer
+  declarations prefixTrie fallback
+  where
+    (prefixTrie, fallback) = foldr classify
+      (emptyDependentDeclarationTrie, []) declarations
+    classify scoped accumulated
+      | Just prefix <- commonPrefix scoped =
+          (insertDependentDeclarationPrefix prefix scoped (fst accumulated),
+            snd accumulated)
+      | otherwise = (fst accumulated, scoped : snd accumulated)
+    commonPrefix scoped = do
+      branches <- scopedDependentDeclarationBranches scoped
+      prefixes <- traverse leadingLiteral branches
+      let prefix = longestCommonPrefix prefixes
+      if null prefix then Nothing else Just prefix
+    leadingLiteral (StringTemplateLiteral literal : _) = Just literal
+    leadingLiteral _ = Nothing
+    longestCommonPrefix [] = []
+    longestCommonPrefix (first : remaining) = foldl sharedPrefix first remaining
+    sharedPrefix (left : leftRest) (right : rightRest)
+      | left == right = left : sharedPrefix leftRest rightRest
+    sharedPrefix _ _ = []
+
+dependentDeclarationCandidates
+  :: String
+  -> DependentDeclarationLayer
+  -> [ScopedDependentDeclaration]
+dependentDeclarationCandidates name layer =
+  dependentDeclarationsWithMatchingPrefix name
+      (dependentDeclarationLayerPrefixes layer)
+    <> dependentDeclarationLayerFallback layer
 
 data Binding
   = DeferredBinding Scope (Maybe Expression) Expression
@@ -1374,13 +1456,34 @@ scopeEntriesNamedView
   -> [String]
   -> [ScopedDependentDeclaration]
   -> Either InterpretingError (Maybe NamedMapView)
-scopeEntriesNamedView reduction resolving =
-  foldM appendEntry Nothing
+scopeEntriesNamedView reduction resolving entries = do
+  combined <- foldM appendEntry Nothing entries
+  pure (indexedView <$> combined)
   where
     appendEntry accumulated entry = do
       next <- entryView entry
       pure (Just (maybe next (`appendNamedMapViews` next) accumulated))
     entryView = dependentDeclarationNamedView reduction resolving
+    layer = dependentDeclarationLayer entries
+    indexedView combined = NamedMapView projection
+      { namedProjectionMemberByName = memberByName
+      , namedProjectionContainsName = containsName
+      }
+      where
+        projection = namedMapProjection combined
+    memberByName name = do
+      members <- catMaybes <$> traverse
+        (\declaration -> dependentDeclarationMemberByName
+          reduction resolving declaration name)
+        (dependentDeclarationCandidates name layer)
+      case members of
+        [] -> Right Nothing
+        [member] -> Right (Just member)
+        _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
+    containsName name = anyMRight
+      (\declaration -> dependentDeclarationContainsName
+        reduction resolving declaration name)
+      (dependentDeclarationCandidates name layer)
 
 contextualThisAvailable :: Scope -> Bool
 contextualThisAvailable scope = case lookupScope "_this" scope of
@@ -2324,10 +2427,9 @@ selectedDependentDeclaration scope template selected =
       _ -> Nothing
     matches layer =
       [ (scoped, captures)
-      | scoped <- layer
-      , let declaration = scopedDependentDeclarationValue scoped
+      | scoped <- dependentDeclarationLayerMembers layer
       , branch <- maybe [] id
-          (dependentDeclarationTemplateBranches declaration)
+          (scopedDependentDeclarationBranches scoped)
       , branch == template
       , Just captures <- [selectedTemplateCaptures branch selected]
       ]
@@ -2726,11 +2828,11 @@ scopeNameExists reduction scope resolving name
       found <- namedMapContainsName view name
       if found then Right True else namedLayerContains outer
     declarationLayerContains [] = Right False
-    declarationLayerContains (declarations : outer) = do
+    declarationLayerContains (layer : outer) = do
       found <- anyMRight
         (\declaration -> dependentDeclarationContainsName
           reduction resolving declaration name)
-        declarations
+        (dependentDeclarationCandidates name layer)
       if found then Right True else declarationLayerContains outer
 
 queryableBinding :: Binding -> Bool
@@ -2813,11 +2915,11 @@ resolveIdentifierAccess reduction scope resolving name =
       member <- namedMapMemberByName view name
       maybe (firstNamedMapLayer outer) (Right . Just) member
     firstDeclarationLayer [] = Right Nothing
-    firstDeclarationLayer (declarations : outer) = do
+    firstDeclarationLayer (layer : outer) = do
       members <- catMaybes <$> traverse
         (\declaration -> dependentDeclarationMemberByName
           reduction resolving declaration name)
-        declarations
+        (dependentDeclarationCandidates name layer)
       case members of
         [] -> firstDeclarationLayer outer
         [member] -> Right (Just member)
@@ -2971,7 +3073,7 @@ importScopeWithin = importScopeUsing scopeBuilderWithin
 
 importScopeUsing
   :: (Scope -> [Expression] -> Either InterpretingError
-      ( Scope
+      ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
@@ -2981,12 +3083,55 @@ importScopeUsing
   -> [Expression]
   -> Either InterpretingError Scope
 importScopeUsing build enclosing resolving entries = do
-  (imported, _, eagerEntries, validateConsistency) <-
+  (rebuild, eagerFamilies, eagerEntries, validateConsistency) <-
     build enclosing entries
+  let forced =
+        [ (name, scoped)
+        | scoped <- eagerFamilies
+        , Just name <- [dependentDeclarationSingletonName scoped]
+        , not (productiveRecursiveDeclaration name scoped)
+        ]
+      (seeded, ordinary) = partition
+        (dependentDeclarationHasRecursiveSeed . snd) forced
+      retainLet retained (name, _) = do
+        value <- resolveIdentifier (rebuild retained) resolving name
+        pure ((name, value) : retained)
+  retained <- foldM retainLet [] (seeded <> ordinary)
+  let imported = rebuild retained
   validateConsistency resolving imported
   -- Anonymous let entries still have eager evaluation semantics.
   mapM_ (evalInScope imported resolving) eagerEntries
   pure imported
+
+dependentDeclarationSingletonName
+  :: ScopedDependentDeclaration
+  -> Maybe String
+dependentDeclarationSingletonName scoped =
+  case scopedDependentDeclarationBranches scoped of
+    Just [[StringTemplateLiteral name]] -> Just name
+    _ -> Nothing
+
+dependentDeclarationHasRecursiveSeed
+  :: ScopedDependentDeclaration
+  -> Bool
+dependentDeclarationHasRecursiveSeed scoped =
+  case recursiveFunctionImplementation
+      (dependentDeclarationImplementation
+        (scopedDependentDeclarationValue scoped)) of
+    Just _ -> True
+    Nothing -> False
+
+productiveRecursiveDeclaration
+  :: String
+  -> ScopedDependentDeclaration
+  -> Bool
+productiveRecursiveDeclaration name scoped =
+  case recursivePrefixFor
+      (== IdentifierReference (IdentifierString name))
+      (dependentDeclarationImplementation
+        (scopedDependentDeclarationValue scoped)) of
+    Just _ -> True
+    Nothing -> False
 
 scopePresentationDependency :: Scope -> Maybe PresentationDependency
 scopePresentationDependency scope =
@@ -3020,9 +3165,9 @@ declareSyntaxScope
   -> [Expression]
   -> Either InterpretingError Scope
 declareSyntaxScope enclosing entries = do
-  (scope, _, _, _) <- scopeBuilderWithContextualThisAndValidation
+  (rebuild, _, _, _) <- scopeBuilderWithContextualThisAndValidation
     False True enclosing entries
-  pure scope
+  pure (rebuild [])
 
 -- Rebuild a declaration scope from its finite source declarations whenever an
 -- eager let becomes available.  Recursive lets make their captured scopes
@@ -3033,7 +3178,7 @@ scopeBuilder
   :: Scope
   -> [Expression]
   -> Either InterpretingError
-      ( Scope
+      ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
@@ -3044,7 +3189,7 @@ scopeBuilderWithoutContextualThis
   :: Scope
   -> [Expression]
   -> Either InterpretingError
-      ( Scope
+      ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
@@ -3056,7 +3201,7 @@ scopeBuilderWithContextualThis
   -> Scope
   -> [Expression]
   -> Either InterpretingError
-      ( Scope
+      ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
@@ -3070,7 +3215,7 @@ scopeBuilderWithContextualThisAndValidation
   -> Scope
   -> [Expression]
   -> Either InterpretingError
-      ( Scope
+      ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
@@ -3088,7 +3233,7 @@ scopeBuilderWithin
   :: Scope
   -> [Expression]
   -> Either InterpretingError
-      ( Scope
+      ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
@@ -3105,7 +3250,7 @@ scopeBuilderActivated
   -> Scope
   -> [Expression]
   -> Either InterpretingError
-      ( Scope
+      ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
@@ -3122,15 +3267,27 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
       -- inherited @_this@ is the next outer level, not evidence that this
       -- block has already installed its local one.
       introduceThis = introducesThis
-      buildFrame = (scopeAt finalPosition, positionedScopeMembers)
+      buildFrame retained =
+        (scopeAt finalPosition, positionedScopeMembers)
         where
           positionedScopeMembers =
-            [ ScopedDependentDeclaration
-                (scopeAt position)
-                (familyScopeAt position)
-                declaration
+            [ makeScoped position declaration
             | (position, declaration) <- positionedMembers
             ]
+
+          makeScoped position declaration =
+            ScopedDependentDeclaration captured familyCaptured declaration
+              branches retainedMember
+            where
+              captured = scopeAt position
+              familyCaptured = familyScopeAt position
+              branches = dependentDeclarationTemplateBranches declaration
+              retainedMember = do
+                name <- case branches of
+                  Just [[StringTemplateLiteral singleton]] -> Just singleton
+                  _ -> Nothing
+                value <- lookup name retained
+                pure (name, value)
 
           scopeAt position = scopeAtWith position
           familyScopeAt position = scopeAtWith position
@@ -3146,7 +3303,8 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
               dependent = visible
               namedScope = scopedEnclosing
                 { scopeDependentDeclarationLayers =
-                    [dependent | not (null dependent)]
+                    [dependentDeclarationLayer dependent
+                      | not (null dependent)]
                       <> scopeDependentDeclarationLayers scopedEnclosing
                 }
               bindings = [ scopeBinding "_this"
@@ -3155,8 +3313,8 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
                    ]
                 <> scopeBindings scopedEnclosing
 
-      builtScope = fst buildFrame
-      scopedMembers = snd buildFrame
+      rebuild = fst . buildFrame
+      scopedMembers = snd (buildFrame [])
       eagerFamilies =
         [ scoped
         | scoped <- scopedMembers
@@ -3205,7 +3363,7 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
       validateDeclarationFamilies scopedMembers
     else Right ()
   pure
-    ( builtScope
+    ( rebuild
     , eagerFamilies
     , eagerEntries
     , validateConsistency
@@ -3617,7 +3775,9 @@ dependentDeclarationContainsName
   -> String
   -> Either InterpretingError Bool
 dependentDeclarationContainsName reduction resolving scoped name = do
-  if staticallyExcluded
+  if retainedName == Just name
+    then Right True
+    else if staticallyExcluded
     then Right False
     else evaluateDeferredBindingWith
       reduction captured resolving name implementation
@@ -3630,11 +3790,12 @@ dependentDeclarationContainsName reduction resolving scoped name = do
     familyCaptured = scopedDependentDeclarationFamilyScope scoped
     declaration = scopedDependentDeclarationValue scoped
     implementation = dependentDeclarationImplementation declaration
-    staticallyExcluded = case dependentDeclarationTemplateBranches declaration of
+    retainedName = fst <$> scopedDependentDeclarationRetainedMember scoped
+    staticallyExcluded = case scopedDependentDeclarationBranches scoped of
       Just declared -> null (matching declared)
       Nothing -> False
     prepareCandidates active = case
-        dependentDeclarationTemplateBranches declaration of
+        scopedDependentDeclarationBranches scoped of
       Just declared -> prepareDependentDeclarationBranches
         reduction familyCaptured active (matching declared)
       Nothing -> prepareDependentDeclaration
@@ -3670,7 +3831,11 @@ dependentDeclarationMemberByName
   -> String
   -> Either InterpretingError (Maybe NamedMember)
 dependentDeclarationMemberByName reduction resolving scoped name = do
-  if staticallyExcluded
+  if reduction == UnrestrictedReduction
+      && retainedName == Just name
+    then Right (namedDeclarationDescriptorMember declaration name . snd
+      <$> scopedDependentDeclarationRetainedMember scoped)
+    else if staticallyExcluded
     then Right Nothing
     else evaluateDeferredBindingWith
       reduction captured resolving name implementation seedMember $ \active -> do
@@ -3682,11 +3847,12 @@ dependentDeclarationMemberByName reduction resolving scoped name = do
     familyCaptured = scopedDependentDeclarationFamilyScope scoped
     declaration = scopedDependentDeclarationValue scoped
     implementation = dependentDeclarationImplementation declaration
-    staticallyExcluded = case dependentDeclarationTemplateBranches declaration of
+    retainedName = fst <$> scopedDependentDeclarationRetainedMember scoped
+    staticallyExcluded = case scopedDependentDeclarationBranches scoped of
       Just declared -> null (matching declared)
       Nothing -> False
     prepareCandidates active = case
-        dependentDeclarationTemplateBranches declaration of
+        scopedDependentDeclarationBranches scoped of
       Just declared -> prepareDependentDeclarationBranches
         reduction familyCaptured active (matching declared)
       Nothing -> prepareDependentDeclaration
