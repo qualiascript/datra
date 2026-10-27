@@ -17,8 +17,10 @@ import DatraLanguage.DependentDeclaration
   , dependentDeclaration
   , dependentDeclarationNameFamilyExpression
   , dependentDeclarationNameExpression
+  , dependentDeclarationTemplateBranches
   )
 import Data.List (nub, nubBy)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe, maybeToList)
 import Data.Set qualified as Set
 import DatraLanguage.AST
@@ -476,10 +478,11 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
             (rewrittenEntry : reversed) next trailing
 
     validateDependentDeclarations recursive entries =
-      go 0 [] recursive entries
+      go 0 Map.empty [] recursive entries
       where
-        go _ _ _ [] = Right ()
-        go position earlier environment (entry : remaining) = do
+        go _ _ _ _ [] = Right ()
+        go position exactEarlier dynamicEarlier environment
+            (entry : remaining) = do
           let scoped = environment
                 { rewriteDeclarations =
                     scopedBlockDeclarations initial position entries
@@ -487,10 +490,23 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
               resolved = resolveDependentDeclarationHead scoped entry
               currentRules = declarationRules resolved
               currentDeclaration = dependentDeclaration resolved
+              currentExactNames = currentDeclaration >>=
+                exactDeclarationNames
               currentNameFamily = currentDeclaration >>=
                 declarationNameFamily scoped
-              currentFamily = compileScopedRewriteRules scoped
-                (rewriteDeclarations scoped) currentRules
+              (next, compiledFamily) = advanceScopeResolved
+                scoped entry resolved
+              currentFamily = case currentExactNames of
+                Just _ -> map compileRewriteRule currentRules
+                Nothing -> compiledFamily
+              exactCandidates = nubBy samePosition
+                [ previous
+                | name <- maybe [] id currentExactNames
+                , Just previous <- [Map.lookup name exactEarlier]
+                ]
+              earlier = dynamicEarlier <> case currentExactNames of
+                Just _ -> exactCandidates
+                Nothing -> nubBy samePosition (Map.elems exactEarlier)
           case currentDeclaration of
             Nothing -> pure ()
             Just declaration -> mapM_
@@ -505,6 +521,7 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
               Left (InvalidSyntaxTemplate rendered failure)
             [] -> Right ()
           if isValDependentDeclaration resolved
+              && currentExactNames == Nothing
             then mapM_ (validateValDeclaration scoped)
               [ (compiled, dependent)
               | compiled <- currentFamily
@@ -514,17 +531,31 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
                   [dependentSyntaxInvocation dependent]
               ]
             else Right ()
-          let retained = case currentDeclaration of
-                Nothing -> earlier
-                Just declaration -> earlier <>
-                  [ ( declarationLabel declaration
-                    , greedyDeclaration declaration
-                    , currentNameFamily
-                    , currentFamily
-                    )
-                  ]
-          go (position + 1) retained
-            (advanceScope scoped entry) remaining
+          let retained = do
+                declaration <- currentDeclaration
+                pure
+                  ( position
+                  , declarationLabel declaration
+                  , greedyDeclaration declaration
+                  , currentNameFamily
+                  , currentFamily
+                  )
+              nextExact = case (currentExactNames, retained) of
+                (Just names, Just value) -> foldr
+                  (\name -> Map.insert name value) exactEarlier names
+                _ -> exactEarlier
+              nextDynamic = case (currentExactNames, retained) of
+                (Nothing, Just value) -> dynamicEarlier <> [value]
+                _ -> dynamicEarlier
+          go (position + 1) nextExact nextDynamic next remaining
+
+        samePosition (left, _, _, _, _) (right, _, _, _, _) = left == right
+
+        exactDeclarationNames declaration = do
+          branches <- dependentDeclarationTemplateBranches declaration
+          traverse exactBranch branches
+        exactBranch [StringTemplateLiteral name] = Just name
+        exactBranch _ = Nothing
 
         declarationLabel = renderSourceExpression
           . dependentDeclarationNameExpression
@@ -541,7 +572,8 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
             (dependentDeclarationNameFamilyExpression declaration)
 
         validateFamily currentLabel currentGreedy currentNameFamily currentRules
-            ( previousLabel
+            ( _
+            , previousLabel
             , previousGreedy
             , previousNameFamily
             , previousRules
@@ -1887,16 +1919,25 @@ literalBoundaryCandidate (SyntaxTemplate pieces) value =
     continue _ _ _ = Nothing
 
 advanceScope :: RewriteEnvironment -> Expression -> RewriteEnvironment
-advanceScope environment entry = environment
-  { rewriteRules = retained <> introduced
-  , rewriteDeclarations = retainedDeclarations <> [entry]
-  }
+advanceScope environment entry = fst (advanceScopeResolved
+  environment entry (resolveDependentDeclarationHead environment entry))
+
+advanceScopeResolved
+  :: RewriteEnvironment
+  -> Expression
+  -> Expression
+  -> (RewriteEnvironment, [RewriteRule])
+advanceScopeResolved environment entry resolved = (next, introduced)
   where
+    next = environment
+      { rewriteRules = retained <> introduced
+      , rewriteDeclarations = retainedDeclarations <> [entry]
+      }
     names = bindingNames entry
     retained = filter ((`notElem` names) . rewriteRuleName)
       (rewriteRules environment)
     introduced = compileScopedRewriteRules environment retainedDeclarations
-      (declarationRules (resolveDependentDeclarationHead environment entry))
+      (declarationRules resolved)
     retainedDeclarations = filter
       (null . filter (`elem` names) . bindingNames)
       (rewriteDeclarations environment)
