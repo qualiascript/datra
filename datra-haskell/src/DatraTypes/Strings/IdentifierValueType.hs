@@ -22,12 +22,12 @@ identifierValue value
   | otherwise = Nothing
 
 -- | A simple identifier is a nonempty string over the identifier alphabet
--- containing at least one non-digit. No character has a positional role.
+-- whose first character is not a digit.
 isIdentifierValue :: String -> Bool
 isIdentifierValue [] = False
-isIdentifierValue value =
-  all isIdentifierValueCharacter value
-    && any (not . isAsciiDigit) value
+isIdentifierValue value@(first : _) =
+  not (isAsciiDigit first)
+    && all isIdentifierValueCharacter value
 
 -- | Every character which can occur somewhere in an identifier value. This
 -- language fact lets template concatenation prove that delimiters such as a

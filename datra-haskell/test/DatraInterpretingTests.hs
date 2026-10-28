@@ -1305,11 +1305,13 @@ testStringTemplates = do
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
       _ -> False)
-  expectSourceValue
-      "IdenStr accepts a digit-leading alphanumeric value"
-      "\"345abc\" ~> \"%IdenStr\"" $ \value ->
-    assert "a digit-leading nonnumeric compact string matches IdenStr"
-      (interpretedValueKind value == SpecificationValueKind)
+  expectSourceRejection
+    "IdenStr rejects a digit-leading alphanumeric string"
+    "\"345abc\" ~> \"%IdenStr\""
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
   expectSourceRejection
     "IdenStr rejects an entirely numeric string"
     "\"12\" ~> \"%IdenStr\""

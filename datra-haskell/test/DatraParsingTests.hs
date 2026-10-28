@@ -1604,8 +1604,7 @@ regressionTests = do
     "'_value" (ref "'_value")
   assertParsed "leading apostrophes are unrestricted"
     "''value" (ref "''value")
-  assertParsed "an identifier may start with a digit"
-    "345abc" (ref "345abc")
+  assertRejected "an identifier cannot start with a digit" "345abc"
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"
@@ -1613,10 +1612,9 @@ regressionTests = do
   assertRejected
     "compact strings cannot be entirely numeric"
     "$12"
-  assertAstOutput
-    "compact strings consume a digit-leading alphanumeric token whole"
+  assertRejected
+    "compact strings cannot start with a digit"
     "$345abc"
-    (AsciiStringLiteral "345abc")
   assertAstOutput
     "IdentifierString accepts all canonical continuation characters"
     "$A_0'z"

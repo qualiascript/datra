@@ -1918,7 +1918,8 @@ ellipsisNatural :: Parser Expression
 ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
 
 -- | The compact identifier spelling. Consume the whole identifier-character
--- run before validation so @$345abc@ is one token rather than two expressions.
+-- run before validation so an invalid digit-leading spelling is not split into
+-- multiple expressions.
 identifierString :: Parser String
 identifierString = lexeme identifierStringToken
 
