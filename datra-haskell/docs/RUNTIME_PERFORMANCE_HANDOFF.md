@@ -15,17 +15,17 @@ The regression is improved but not fixed:
 | `master` baseline | 1.42 s | 5,984,472,304 B |
 | branch before this investigation | 19.32 s | 54,839,044,008 B |
 | committed optimization `133a15e` | about 11.7 s | about 34-51 GB depending on profiling build |
-| current working tree, including the uncommitted exact-family validator index | 10.77 s | 30,428,141,688 B |
+| committed exact-family validator index (`8258a30`) | 10.36 s locally | 30,428,141,688 B in the prior run |
+| current working tree, with compiled-let family reuse | 7.81 s | 25,300,965,600 B |
 
-The current working tree is therefore still approximately 7.6 times slower
-and allocates 5.1 times as much as `master`. Do not treat the current result as
+The current working tree is therefore still approximately 5.5 times slower
+and allocates 4.2 times as much as `master`. Do not treat the current result as
 complete.
 
 Commit `133a15e` (`improve runtime speed`) contains the runtime declaration
 index, seeded eager-let retention, recursive-environment reuse, and syntax-rule
-capability caching described below. At the time of writing there is also an
-uncommitted change in `app/SyntaxRewriting.hs` that restores the literal-name
-validator fast path and shares compilation between validation and scope
+capability caching described below. Commit `8258a30` contains the literal-name
+validator fast path and shared compilation between validation and scope
 advancement. Preserve that change unless a replacement measures better.
 
 ## Exact focused test used throughout
@@ -69,8 +69,8 @@ cabal test datra-interpreting-test \
 ```
 
 Use the time printed beside the Tasty case, not the outer `/usr/bin/time`
-duration when a rebuild occurs. The latest run printed `OK (10.77s)` and
-allocated `30,428,141,688 bytes`.
+duration when a rebuild occurs. The latest cache-only run printed `OK (7.81s)`
+and allocated `25,300,965,600 bytes`.
 
 For a fair baseline, create an isolated `master` worktree, build it with the
 same GHC and `-O1` profile, and run the same command there. The earlier baseline
@@ -209,7 +209,7 @@ priority.
 
 ### 6. Literal-name validation is indexed again
 
-The current uncommitted `SyntaxRewriting.hs` change recognizes declaration
+The `SyntaxRewriting.hs` change in `8258a30` recognizes declaration
 families whose every branch is one `StringTemplateLiteral`. Validation stores
 those families in `Map String ...`, compares a new exact family only with an
 existing declaration at the same name and with genuinely dynamic families,
@@ -221,10 +221,32 @@ in isolation (about 11.76 s to 10.42 s). It was briefly removed to keep logic
 uniform, then restored because the measured benefit is material. This is a
 validation index, not the removed runtime singleton named-view implementation.
 
-The same uncommitted change adds `advanceScopeResolved`, which returns both the
+The same change adds `advanceScopeResolved`, which returns both the
 next environment and the newly compiled family. Dynamic validation can then
 validate the exact compiled object that scope advancement retains instead of
 resolving and compiling the declaration twice.
+
+### 7. Compiled recursive-let families are retained after discovery
+
+The current working tree makes `recursiveRewriteEnvironment` return both the
+recursive environment and a `Map Int [RewriteRule]` keyed by stable rewritten
+block position. Each let family is compiled with its source-position
+`scopedBlockDeclarations` snapshot. The strict pass promotes that cached family
+with ordinary shadowing behavior, and validation consumes the same compiled
+object instead of resolving and compiling the let again.
+
+This reduced the focused local run from 10.36 seconds to 7.81 seconds and heap
+allocation from 30.43 GB to 25.30 GB. The standalone test `recursive let
+aliases to syntax bodies are discovered` passes.
+
+The post-change focused profile (`/tmp/datra-let-cache-focused.prof`) reports
+36.12 seconds of profiled mutator work and 36.85 GB of allocation excluding
+profiling overhead. In its hot recursive-discovery subtree,
+`recursiveRewriteEnvironment -> advanceScopeResolved ->
+compileScopedRewriteRules` still owns 44.7% of time and 35.5% of allocation.
+Eager adapter evaluation owns 32.1% of time and 25.8% of allocation, while
+hole classification owns another 12.2% and 9.2%. These are inherited
+percentages and overlap with the parent compilation total.
 
 ## Experiments that did not solve the regression
 
@@ -244,39 +266,38 @@ resolving and compiling the declaration twice.
   lookup into two implementations. The current trie represents exact and
   templated prefixes uniformly and should remain the runtime structure unless
   a new benchmark proves otherwise.
+- Caching every family produced by the strict pass for validation made no
+  measurable improvement: allocation moved from 25,300,965,696 bytes to
+  25,303,238,848 bytes and timing remained within noise. Laziness was already
+  avoiding most of that apparent recompilation, so the experiment was reverted.
+- Removing eager application-adapter admission without changing the matcher
+  regressed the focused run to 9.52 seconds because unusable rules remained in
+  every matcher scan.
+- Retaining deferred-validity rules and checking them at matcher boundaries
+  also regressed, to 8.66 seconds and 25.52 GB. The additional scans and
+  predicates cost more than the avoided probes.
+- An ordered first-literal `Map` index combined with deferred validity was
+  semantically correct for the focused test but regressed it to 8.89 seconds.
+  Rebuilding indexes during scope advancement and merging ordered candidate
+  buckets outweighed the savings at the current rule count. It was reverted.
 
 ## Remaining work, in priority order
 
-### 1. Cache compiled let families after seed discovery
+### 1. Avoid eager adapter admission without retaining invalid rules
 
-This is the most direct next change and matches the intended semantics: a let
-family is special only while its recursive seed is being discovered. Once the
-fixed point stabilizes, that compiled family should become the regular family
-used by the strict pass, validation, and subsequent scope advancement.
+Compiled-let reuse is complete, but the first compilation of each recursive
+let still evaluates simple-declaration implementations to decide whether they
+produce a `SyntaxFunctionInsertion`. Most standard-library recursive lets are
+ordinary types or values, so this is expensive negative discovery.
 
-Recommended design:
-
-1. Make recursive seed discovery return both its `RewriteEnvironment` and a
-   cache of compiled declaration families.
-2. Key the cache by stable source position/declaration identity, not merely by
-   name. Name-only keys mishandle shadowing and duplicate-name diagnostics.
-3. Compile each let with the `scopedBlockDeclarations` snapshot for its actual
-   source position. This preserves the existing rule that every let is visible
-   recursively while ordinary declarations remain source ordered.
-4. During the strict pass, when that source declaration is encountered, promote
-   the cached seed family into the ordinary environment. Do not call
-   `resolveDependentDeclarationHead`, `rewriteClassifyHoles`, or evaluate its
-   adapter again.
-5. Pass the same cached family to validation.
-
-Be careful with continuations that consume trailing raw entries. If source
-positions are not stable through rewriting, attach an explicit identity during
-the discovery traversal rather than using expression equality or declaration
-name.
-
-The profile's eager implementation evaluation count and the difference from
-`master` strongly suggest this will remove a large fraction of the remaining
-work.
+Do not repeat the reverted list-level deferred-validity or rebuilt `Map` index
+experiments above. A successful design likely needs a persistent ordered index
+maintained incrementally as rules are shadowed and introduced, with structural
+candidate records that do not force adapter evaluation. Empty-prefix/hole-first
+rules need an ordered fallback, and invalid rules must still shadow earlier
+rules without participating in matching. Measure index maintenance separately
+from candidate matching before integrating it with every block/continuation
+query.
 
 ### 2. Fuse strict rewriting and validation
 
@@ -450,16 +471,16 @@ dependentDeclarationCandidates
   must still fall back to the federation check where required.
 - Do not disable validation to obtain benchmark numbers.
 
-## Warning cleanup still required
+## Warning cleanup completed in the current working tree
 
-The profiling build exposed two pre-existing redundant-import warnings that the
-task explicitly asks to fix:
+The profiling build exposed two pre-existing redundant-import warnings. The
+current working tree fixes both:
 
-1. Remove `import Numeric.Natural (Natural)` from
+1. Removed `import Numeric.Natural (Natural)` from
    `src/DatraTypes/Evaluation/Specification/String.hs`.
-2. Remove `withInterpretedSemantics` and `interpretedSemantics` from the
-   `Evaluation.Value` import list in `src/DatraTypes/DatraTypes.hs` if a normal
-   build confirms they remain unused.
+2. Removed `withInterpretedSemantics` and `interpretedSemantics` from the
+   `Evaluation.Value` import list in `src/DatraTypes/DatraTypes.hs`; a normal
+   build confirmed they were unused.
 
 After the runtime changes, run at least:
 
@@ -470,6 +491,13 @@ cabal build test:datra-interpreting-test
 and confirm no warnings originate from the touched modules. Do not run the full
 suite repeatedly; repository guidance permits it at most once, and unrelated
 failures are explicitly out of scope.
+
+The focused `dependent declarations` Tasty case still reaches a known baseline
+failure: its overlap assertion expects `OverlappingDependentDeclarations`, but
+the current branch reports `InvalidSyntaxTemplate "pair 1 %Int"
+SyntaxTemplateProjectionOrderMismatch`. Assertions earlier in that case pass.
+Do not attribute this existing mismatch to the compiled-let cache without a
+clean baseline comparison.
 
 ## Suggested completion checklist
 

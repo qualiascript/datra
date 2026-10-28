@@ -337,8 +337,10 @@ rewriteResourceSyntax envelope context rules declarations raw =
       -- explicit resources, but retain raw syntax until the implicit block
       -- delimiter has been identified.
       (discovered, _) <- rewriteSequence capture initial entries
+      let (recursive, _) =
+            recursiveRewriteEnvironment True initial discovered
       resolveImplicitBlock capture
-        (recursiveRewriteEnvironment True initial discovered) [] entries
+        recursive [] entries
 
 -- Keep visible syntax rules, while moving the declarations they depend on into
 -- the evaluator's parent scope. RHS declarations belong to the new scope.
@@ -439,7 +441,8 @@ rewriteSequence
 rewriteSequence capture initial rawEntries = fixedPoint [] []
   where
     fixedPoint stable recursiveDeclarations = do
-      let recursive = recursiveRewriteEnvironment False initial stable
+      let (recursive, compiledLets) =
+            recursiveRewriteEnvironment False initial stable
       (rewritten, tentativeEnvironment) <-
         pass [] recursive rawEntries
       let discovered = filter isLetDeclarationExpression rewritten
@@ -447,14 +450,15 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
         then if not (rewriteStrictCaptures initial)
           then do
             validateDependentDeclarations
-              (recursive { rewriteStrictCaptures = True }) rewritten
+              (recursive { rewriteStrictCaptures = True }) compiledLets rewritten
             Right (rewritten, tentativeEnvironment)
           else do
             (strictlyRewritten, strictEnvironment) <-
-              strictPass rewritten 0 []
+              strictPass compiledLets rewritten 0 []
                 (recursive { rewriteStrictCaptures = True }) rawEntries
             validateDependentDeclarations
-              (recursive { rewriteStrictCaptures = True }) strictlyRewritten
+              (recursive { rewriteStrictCaptures = True })
+              compiledLets strictlyRewritten
             Right (strictlyRewritten, strictEnvironment)
         else fixedPoint rewritten discovered
 
@@ -463,9 +467,9 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
         -- their source positions when their lexical scopes are assembled.
         -- Moving them in front of preceding ordinary declarations makes a
         -- recursive target such as Int lose access to an earlier Maybe.
-        strictPass _ _ reversed environment [] =
+        strictPass _ _ _ reversed environment [] =
           Right (reverse reversed, environment)
-        strictPass stableEntries position reversed environment
+        strictPass compiledLets stableEntries position reversed environment
             (entry : remaining) = do
           let scoped = environment
                 { rewriteDeclarations =
@@ -473,11 +477,15 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
                 }
           (rewrittenEntry, trailing) <-
             rewriteWithTail False capture scoped entry remaining
-          let next = advanceScope scoped rewrittenEntry
-          strictPass stableEntries (position + 1)
+          let next = case Map.lookup position compiledLets of
+                Just compiled
+                  | isLetDeclarationExpression rewrittenEntry ->
+                      advanceScopeCompiled scoped rewrittenEntry compiled
+                _ -> advanceScope scoped rewrittenEntry
+          strictPass compiledLets stableEntries (position + 1)
             (rewrittenEntry : reversed) next trailing
 
-    validateDependentDeclarations recursive entries =
+    validateDependentDeclarations recursive compiledLets entries =
       go 0 Map.empty [] recursive entries
       where
         go _ _ _ _ [] = Right ()
@@ -494,8 +502,11 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
                 exactDeclarationNames
               currentNameFamily = currentDeclaration >>=
                 declarationNameFamily scoped
-              (next, compiledFamily) = advanceScopeResolved
-                scoped entry resolved
+              (next, compiledFamily) = case Map.lookup position compiledLets of
+                Just compiled
+                  | isLetDeclarationExpression entry ->
+                      (advanceScopeCompiled scoped entry compiled, compiled)
+                _ -> advanceScopeResolved scoped entry resolved
               currentFamily = case currentExactNames of
                 Just _ -> map compileRewriteRule currentRules
                 Nothing -> compiledFamily
@@ -681,22 +692,30 @@ recursiveRewriteEnvironment
   :: Bool
   -> RewriteEnvironment
   -> [Expression]
-  -> RewriteEnvironment
+  -> (RewriteEnvironment, Map.Map Int [RewriteRule])
 recursiveRewriteEnvironment strict initial entries =
-  (foldl introduceRecursive initial
-    [ (position, declaration)
-    | (position, declaration) <- zip [0 :: Int ..] entries
-    , isLetDeclarationExpression declaration
-    ])
+  ( recursive
       { rewriteDeclarations = rewriteDeclarations initial
       , rewriteStrictCaptures = strict
       }
+  , compiledLets
+  )
   where
-    introduceRecursive environment (position, declaration) =
-      let visible = scopedBlockDeclarations initial position entries
-      in advanceScope
-          (environment { rewriteDeclarations = visible })
-          declaration
+    (recursive, compiledLets) = foldl introduceRecursive
+      (initial, Map.empty)
+      [ (position, declaration)
+      | (position, declaration) <- zip [0 :: Int ..] entries
+      , isLetDeclarationExpression declaration
+      ]
+    introduceRecursive (environment, compiled) (position, declaration) =
+      (next, Map.insert position introduced compiled)
+      where
+        scoped = environment
+          { rewriteDeclarations =
+              scopedBlockDeclarations initial position entries
+          }
+        resolved = resolveDependentDeclarationHead scoped declaration
+        (next, introduced) = advanceScopeResolved scoped declaration resolved
 
 rewriteStandalone
   :: CaptureHole
@@ -1929,15 +1948,27 @@ advanceScopeResolved
   -> (RewriteEnvironment, [RewriteRule])
 advanceScopeResolved environment entry resolved = (next, introduced)
   where
-    next = environment
-      { rewriteRules = retained <> introduced
-      , rewriteDeclarations = retainedDeclarations <> [entry]
-      }
+    introduced = compileScopedRewriteRules environment retainedDeclarations
+      (declarationRules resolved)
+    retainedDeclarations = filter
+      (null . filter (`elem` names) . bindingNames)
+      (rewriteDeclarations environment)
+    names = bindingNames entry
+    next = advanceScopeCompiled environment entry introduced
+
+advanceScopeCompiled
+  :: RewriteEnvironment
+  -> Expression
+  -> [RewriteRule]
+  -> RewriteEnvironment
+advanceScopeCompiled environment entry introduced = environment
+  { rewriteRules = retained <> introduced
+  , rewriteDeclarations = retainedDeclarations <> [entry]
+  }
+  where
     names = bindingNames entry
     retained = filter ((`notElem` names) . rewriteRuleName)
       (rewriteRules environment)
-    introduced = compileScopedRewriteRules environment retainedDeclarations
-      (declarationRules resolved)
     retainedDeclarations = filter
       (null . filter (`elem` names) . bindingNames)
       (rewriteDeclarations environment)

@@ -15,7 +15,6 @@ import Evaluation.Specification.Decision
   )
 import Evaluation.Value
 import IdentifierValueType (isIdentifierValue)
-import Numeric.Natural (Natural)
 
 -- | Whether a value denotes only strings.  Most cases are visible directly
 -- in the federation expression.  A source-defined string type additionally

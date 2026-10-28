@@ -552,8 +552,6 @@ import Evaluation.Value
   , interpretedSemanticResult
   , interpretedCanonicalPresentation
   , interpretedNamedMapView
-  , withInterpretedSemantics
-  , interpretedSemantics
   , withSpecificationTargetEvidence
   , withCanonicalReference
   , withCanonicalNamedAccess
