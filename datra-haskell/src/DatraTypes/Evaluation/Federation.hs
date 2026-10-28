@@ -92,8 +92,8 @@ decideFederationConcatenation
 -- dependent name family is not nominal: different expressions may still
 -- produce a common name, so differing family keys alone prove no separation.
 decideFederationConcatenation
-    (PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation left))
-    (PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation right))
+    (PrimitiveAtlasMapFederation (DependentArgumentTypeAtlasMapFederation left))
+    (PrimitiveAtlasMapFederation (DependentArgumentTypeAtlasMapFederation right))
   | SimpleIdentifierDependency leftName <- evaluatedIdentifierDependency left
   , SimpleIdentifierDependency rightName <- evaluatedIdentifierDependency right
   , leftName /= rightName = AtlasMapFederationProved ()
@@ -241,8 +241,8 @@ decidePrimitiveSubfederation
       AtlasMapFederationProved ()
   | otherwise = missingMember
 decidePrimitiveSubfederation
-    (DependentIdentifierTypeAtlasMapFederation _)
-    (DependentIdentifierTypeAtlasMapFederation _) =
+    (DependentArgumentTypeAtlasMapFederation _)
+    (DependentArgumentTypeAtlasMapFederation _) =
   AtlasMapFederationUndecidable
     (NoAtlasMapFederationDecisionProcedure
       AtlasMapFederationSubfederation)

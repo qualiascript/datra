@@ -1,7 +1,7 @@
 (datra.begin (()
   Std := datra.begin ((
     _Expr := datra.Expr
-    _DependentIdentifier := datra.DependentIdentifier
+    _DependentArgument := datra.DependentArgument
     _DependentDeclaration := datra.DependentDeclaration
     _Block := datra.Block
     _FunctionBody := datra.FunctionBody

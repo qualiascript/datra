@@ -297,7 +297,7 @@ discoverImportInvocations base activeRules envelope raw = do
 scopeSyntaxNamespaces :: Expression -> [String]
 scopeSyntaxNamespaces source = case source of
   IdentifierReference (IdentifierString selected) -> [selected]
-  ArgumentMap modules -> concatMap scopeSyntaxNamespaces modules
+  ArgumentativeMap modules -> concatMap scopeSyntaxNamespaces modules
   _ -> []
 
 scopeSyntaxRules
@@ -404,7 +404,7 @@ captureSyntaxHole base modules strict declarations previous kind captured =
     DeclarationSyntaxHole {}
       | dependentDeclarationCandidate captured -> Just captured
       | otherwise -> Nothing
-    DependentIdentifierSyntaxHole {} -> dependentIdentifierCapture captured
+    DependentArgumentSyntaxHole {} -> dependentArgumentCapture captured
     ValueSyntaxHole target ->
       literalCapture target captured
         <|> if strict then valueEvaluationCapture target else tentativeCapture
@@ -420,13 +420,13 @@ captureSyntaxHole base modules strict declarations previous kind captured =
         | name `notElem` concatMap bindingNames declarations ->
             Just (AsciiStringLiteral name)
       _ -> Just captured
-    dependentIdentifierCapture value = case value of
+    dependentArgumentCapture value = case value of
       IdentifierReference {} -> Just value
       AsciiStringLiteral {} -> Just value
       StringTemplate {} -> Just value
       IdentifierOperation _ _ Nothing -> Just value
       IdentifierTemplateOperation _ _ Nothing -> Just value
-      OptionalType inner -> OptionalType <$> dependentIdentifierCapture inner
+      OptionalType inner -> OptionalType <$> dependentArgumentCapture inner
       _ -> Nothing
     valueEvaluationCapture targetExpression =
       captureInScopes selectValue targetExpression
@@ -566,7 +566,7 @@ binderDeclarations
   :: [(SyntaxHoleKind Expression, Expression)]
   -> [Expression]
 binderDeclarations
-    ((DependentIdentifierSyntaxHole {}, binder) : (_, bound) : remaining) =
+    ((DependentArgumentSyntaxHole {}, binder) : (_, bound) : remaining) =
   maybe id (:) (binderDeclaration binder bound)
     (binderDeclarations remaining)
 binderDeclarations (_ : remaining) = binderDeclarations remaining
@@ -988,8 +988,8 @@ canonicalExpressionCandidates expressionValue
           AtlasMap <$> traverse canonicalExpressionCandidates members
         MapSequence members ->
           MapSequence <$> traverse canonicalExpressionCandidates members
-        ArgumentMap members ->
-          ArgumentMap <$> traverse canonicalExpressionCandidates members
+        ArgumentativeMap members ->
+          ArgumentativeMap <$> traverse canonicalExpressionCandidates members
         MapExpansion left right ->
           MapExpansion
             <$> canonicalExpressionCandidates left
@@ -1720,9 +1720,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       (interpretProtectedAtlasMap makeAtlasMap expressions)
       (AtlasMap expressions)
       expressions
-    ArgumentMap expressions -> interpretContainer
-      (interpretProtectedValues expressions makeArgumentMapPreservingSingleton)
-      (ArgumentMap expressions)
+    ArgumentativeMap expressions -> interpretContainer
+      (interpretProtectedValues expressions makeArgumentativeMapPreservingSingleton)
+      (ArgumentativeMap expressions)
       expressions
     MapSequence expressions -> interpretContainer
       (interpretProtectedAtlasMap makeAtlasMap expressions)
@@ -1936,7 +1936,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     Let _ -> Left OperationHasNoEffect
     IdentifierReference (IdentifierString name) ->
       resolveIdentifierWith reduction scope resolving name
-    Lookup (ArgumentMap
+    Lookup (ArgumentativeMap
         [ StringTemplate template
         , StringTemplate selected
         ]) ->
@@ -2089,7 +2089,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           interpretIdentifierOperation
             identifierString typeAnnotationExpression maybeGivenValueExpression
         _ ->
-          let target = dependentIdentifierTemplateTypeValue
+          let target = dependentArgumentTemplateTypeValue
                 familyKey identifier nameFamily typeAnnotation
           in case maybeGivenValueExpression of
             Nothing -> Right target
@@ -2105,7 +2105,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                       assignIdentifierValues
                         identifierString typeAnnotation given
                 _ ->
-                  let source = dependentIdentifierTemplateTypeValue
+                  let source = dependentArgumentTemplateTypeValue
                         familyKey givenIdentifier nameFamily given
                   in specifyValues source target
 
@@ -4127,7 +4127,7 @@ evaluateMaterializedDeclaration reduction captured resolving implementation
       contextualArgument = do
         members <- traverse contextualCapture
           (zip evaluatedCaptures values)
-        makeArgumentMapPreservingSingleton members
+        makeArgumentativeMapPreservingSingleton members
       bindings =
         contextualBindings "it" False (const contextualArgument) <>
         [ scopeBinding identifier (EvaluatedBinding value)
@@ -4553,7 +4553,7 @@ substituteDependent substitutions expressionValue =
 domainEntries :: Expression -> [Expression]
 domainEntries expressionValue =
   case expressionValue of
-    ArgumentMap entries -> entries
+    ArgumentativeMap entries -> entries
     AtlasMap entries -> entries
     MapSequence entries -> entries
     MapConcatenation left right -> domainEntries left <> domainEntries right
@@ -5385,7 +5385,7 @@ contextualSpecificationValue value =
 
 withModuleScopeOperands :: Expression -> Maybe [Expression]
 withModuleScopeOperands expressionValue = case expressionValue of
-  ArgumentMap modules
+  ArgumentativeMap modules
     | not (null modules)
     , all (null . bindingNames) modules -> Just modules
   _ -> Nothing
@@ -5612,7 +5612,7 @@ loadedModuleResultWithBase base
   result <- evalInScope outer [] resultExpression
   exported <- case importNamedBindings result of
     Right bindings@(_ : _) -> Right bindings
-    _ | interpretedValueKind result == DependentIdentifierTypeValueKind ->
+    _ | interpretedValueKind result == DependentArgumentTypeValueKind ->
       Right []
     Right [] -> Left (ModuleEvaluationFailed
       ImportedModuleRequiresIdentifierBinderFederation)
@@ -5661,7 +5661,7 @@ namedBinderValueExpression selected expressionValue = case expressionValue of
           | value == annotation -> value
           | otherwise -> MapSpecification value annotation)
   AtlasMap members -> firstJust members
-  ArgumentMap members -> firstJust members
+  ArgumentativeMap members -> firstJust members
   MapSequence members -> firstJust members
   MapConcatenation left right ->
     namedBinderValueExpression selected left
@@ -5858,7 +5858,7 @@ scopeNamedMembers
 scopeNamedMembers = namedMembers
 
 -- An imported file may yield a federation that mixes ordinary named binders
--- with dependent identifier binders.  The dependent fibers remain in the
+-- with dependent argument binders.  The dependent fibers remain in the
 -- complete federation used as the synthesized function domain; this view is
 -- only for installing the ordinary names as qualified lexical bindings.
 importNamedBindings
@@ -5870,7 +5870,7 @@ importNamedBindings value =
     Left _ -> mixedBindings
   where
     mixedBindings = do
-      members <- case argumentMapMembers value of
+      members <- case argumentativeMapMembers value of
         Just arguments -> Right arguments
         Nothing -> do
           count <- maybe invalid Right
@@ -5885,7 +5885,7 @@ importNamedBindings value =
     export member = case simpleIdentifierName member of
       Just name -> Just <$> namedBinding (name, member)
       Nothing
-        | interpretedValueKind member == DependentIdentifierTypeValueKind ->
+        | interpretedValueKind member == DependentArgumentTypeValueKind ->
             Right Nothing
         | otherwise -> invalid
 

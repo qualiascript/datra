@@ -172,7 +172,7 @@ localizeInterpretingError reason =
         ["identifier: " <> name]
     GenericIdentifierDisjointnessUndecidable name ->
       LocalizedMessage
-        "generic identifier cannot be proven disjoint from a dependent identifier"
+        "generic identifier cannot be proven disjoint from a dependent argument"
         ["identifier: " <> name]
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
@@ -448,7 +448,7 @@ valueKind FormulationValueKind = "super-ellipsis formulation"
 valueKind RangeValueKind = "range"
 valueKind RangeConcatenationValueKind = "range concatenation"
 valueKind AsciiStringValueKind = "ASCII string"
-valueKind DependentIdentifierTypeValueKind = "identifier type"
+valueKind DependentArgumentTypeValueKind = "dependent argument type"
 valueKind MapValueKind = "map"
 valueKind SpecificationValueKind = "specification morphism"
 

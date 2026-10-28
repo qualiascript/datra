@@ -49,7 +49,7 @@ data Operator
   | ReverseOverloadOperator
   | SafeOverloadOperator
   | ReverseSafeOverloadOperator
-  | DependentIdentifierTypeOperator
+  | DependentArgumentTypeOperator
   | AssignmentOperator
   deriving (Bounded, Enum, Eq, Show)
 
@@ -96,7 +96,7 @@ operatorCanonicalSymbol OverloadOperator = "<<"
 operatorCanonicalSymbol ReverseOverloadOperator = ">>"
 operatorCanonicalSymbol SafeOverloadOperator = "<<<"
 operatorCanonicalSymbol ReverseSafeOverloadOperator = ">>>"
-operatorCanonicalSymbol DependentIdentifierTypeOperator = ":"
+operatorCanonicalSymbol DependentArgumentTypeOperator = ":"
 operatorCanonicalSymbol AssignmentOperator = ":="
 
 -- | Concrete source spelling, when an operator is represented by one token.
@@ -143,7 +143,7 @@ operatorSourceSymbol OverloadOperator = Just "<<"
 operatorSourceSymbol ReverseOverloadOperator = Just ">>"
 operatorSourceSymbol SafeOverloadOperator = Just "<<<"
 operatorSourceSymbol ReverseSafeOverloadOperator = Just ">>>"
-operatorSourceSymbol DependentIdentifierTypeOperator = Just ":"
+operatorSourceSymbol DependentArgumentTypeOperator = Just ":"
 operatorSourceSymbol AssignmentOperator = Just ":="
 
 ellipsisSymbol :: String

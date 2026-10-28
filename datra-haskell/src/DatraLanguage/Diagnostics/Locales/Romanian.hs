@@ -171,7 +171,7 @@ localizeInterpretingError reason =
         ["identificator: " <> name]
     GenericIdentifierDisjointnessUndecidable name ->
       LocalizedMessage
-        "nu se poate demonstra că identificatorul generic este disjunct de un identificator dependent"
+        "nu se poate demonstra că identificatorul generic este disjunct de un argument dependent"
         ["identificator: " <> name]
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
@@ -452,7 +452,7 @@ valueKind FormulationValueKind = "formulare cu super-elipsă"
 valueKind RangeValueKind = "interval"
 valueKind RangeConcatenationValueKind = "concatenare de intervale"
 valueKind AsciiStringValueKind = "șir ASCII"
-valueKind DependentIdentifierTypeValueKind = "tip identificator"
+valueKind DependentArgumentTypeValueKind = "tip argument dependent"
 valueKind MapValueKind = "hartă"
 valueKind SpecificationValueKind = "morfism de specificare"
 

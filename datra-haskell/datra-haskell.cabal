@@ -96,7 +96,7 @@ library
         ValuedIntegerRange
         IntegerType
         IdentifierValueType
-        DependentIdentifierType
+        DependentArgumentType
         SimpleIdentifierType
         AtlasMapFederation
         AtlasMapFederationExpression
@@ -239,7 +239,7 @@ library
         Evaluation.Range
         Evaluation.ResultContract
         Evaluation.Specification
-        Evaluation.Specification.ArgumentMap
+        Evaluation.Specification.ArgumentativeMap
         Evaluation.Specification.Composition
         Evaluation.Specification.Decision
         Evaluation.Specification.Federation

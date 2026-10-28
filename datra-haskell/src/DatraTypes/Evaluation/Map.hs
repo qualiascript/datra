@@ -349,7 +349,7 @@ preservesConcatenationBoundary :: InterpretedValue -> Bool
 preservesConcatenationBoundary value =
   case interpretedForm value of
     EitherForm _ -> True
-    DependentIdentifierTypeForm _ -> True
+    DependentArgumentTypeForm _ -> True
     IdentifierValueTypeForm -> True
     ToStringForm -> True
     TemplateForm _ -> True

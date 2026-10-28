@@ -70,11 +70,11 @@ decideStructuralSubfederation decideSubfederation source target
   | Nothing <- evaluatedIdentifierType source
   , Just targetUnderlying <- privateIdentifierUnderlying target =
       decideSubfederation source targetUnderlying
-  | ArgumentMapForm _ underlying <- interpretedForm target =
+  | ArgumentativeMapForm _ underlying <- interpretedForm target =
       if argumentSourceHasConcreteMembers source
         then mapDecision (const ()) (selectFederationMember source target)
         else decideSubfederation source underlying
-  | ArgumentMapForm _ underlying <- interpretedForm source =
+  | ArgumentativeMapForm _ underlying <- interpretedForm source =
       decideSubfederation underlying target
   | FederationSpecificationForm _ previousTarget _ <- interpretedForm source =
       decideSubfederation previousTarget target
@@ -122,9 +122,9 @@ decideNonEitherSubfederation decideSubfederation source target =
     _ ->
       case (sourceFederation, targetFederation) of
         ( PrimitiveAtlasMapFederation
-            (DependentIdentifierTypeAtlasMapFederation sourceIdentifier)
+            (DependentArgumentTypeAtlasMapFederation sourceIdentifier)
           , PrimitiveAtlasMapFederation
-            (DependentIdentifierTypeAtlasMapFederation targetIdentifier)
+            (DependentArgumentTypeAtlasMapFederation targetIdentifier)
           ) ->
             decideIdentifierSubfederation
               decideSubfederation sourceIdentifier targetIdentifier
@@ -207,8 +207,8 @@ decideAnyEitherAlternative decideSubfederation source target =
 
 decideIdentifierSubfederation
   :: SubfederationDecider
-  -> EvaluatedDependentIdentifierType
-  -> EvaluatedDependentIdentifierType
+  -> EvaluatedDependentArgumentType
+  -> EvaluatedDependentArgumentType
   -> Decision ()
 decideIdentifierSubfederation decideSubfederation source target
   | identifierDependenciesCompatible

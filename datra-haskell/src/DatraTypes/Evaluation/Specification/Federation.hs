@@ -89,7 +89,7 @@ selectAtomicFederationMember source target =
             >>= selectValuedIntegerRangeMember targetRange))
     PrimitiveAtlasMapFederation IdentifierValueTypeAtlasMapFederation ->
       Nothing
-    PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation _) ->
+    PrimitiveAtlasMapFederation (DependentArgumentTypeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation
         (IdentifierStringProjectionAtlasMapFederation _) ->

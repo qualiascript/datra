@@ -8,7 +8,7 @@ import Evaluation.Error (InterpretingError (..))
 import Evaluation.Value
 
 -- | Remove one identifier wrapped around the complete value. This does not
--- erase identifiers nested inside an argument map.
+-- erase identifiers nested inside an argumentative map.
 stripOuterIdentifierValue
   :: InterpretedValue -> Either InterpretingError InterpretedValue
 stripOuterIdentifierValue value = case interpretedForm value of
@@ -18,7 +18,7 @@ stripOuterIdentifierValue value = case interpretedForm value of
   SpecificationForm specification
     | isIdentifier (evaluatedSpecificationTarget specification) ->
         Right (evaluatedSpecificationSourceValue specification)
-  DependentIdentifierTypeForm identifier ->
+  DependentArgumentTypeForm identifier ->
     Right (evaluatedIdentifierUnderlying identifier)
   _ -> Left (ExpectedTotalAtlasMap (interpretedValueKind value))
 
@@ -29,5 +29,5 @@ stripOuterIdentifierType = stripOuterIdentifierValue
 
 isIdentifier :: InterpretedValue -> Bool
 isIdentifier value = case interpretedForm value of
-  DependentIdentifierTypeForm _ -> True
+  DependentArgumentTypeForm _ -> True
   _ -> False

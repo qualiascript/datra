@@ -27,7 +27,7 @@ import Evaluation.Identifier
   )
 import Evaluation.Numerical
   ( complementedIntegerTypeIncludesInfinity )
-import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
+import Evaluation.Specification.ArgumentativeMap qualified as ArgumentativeMap
 import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation
   ( selectAtomicFederationMember
@@ -59,10 +59,10 @@ selectFederationMember source target
       selectFederationMember sourceOperand targetOperand
   | CoalizationForm targetOperand <- interpretedForm target =
       selectCoalizationMember source targetOperand
-  | ArgumentMapForm members underlying <- interpretedForm target =
-      ArgumentMap.selectArgumentMapMember
+  | ArgumentativeMapForm members underlying <- interpretedForm target =
+      ArgumentativeMap.selectArgumentativeMapMember
         selectFederationMember source members underlying
-  | ArgumentMapForm _ underlying <- interpretedForm source =
+  | ArgumentativeMapForm _ underlying <- interpretedForm source =
       selectFederationMember underlying target
   | Just decision <- selectPrivateIdentifierMember source target = decision
   | AssignmentForm assignment <- interpretedForm source =
@@ -143,7 +143,7 @@ selectIdentifierMember source target =
     _ -> selectDirectIdentifierMember source target
 
 -- A private regular-map name may be omitted, but a supplied name remains
--- structural and must match. Argument maps handle relabeling before reaching
+-- structural and must match. Argumentative maps handle relabeling before reaching
 -- this rule.
 selectPrivateIdentifierMember
   :: InterpretedValue
@@ -159,7 +159,7 @@ selectPrivateIdentifierMember source target =
     (Nothing, Just targetIdentifier)
       | privateSimpleIdentifier targetIdentifier ->
           Just (mapDecision
-            (EvaluatedDependentIdentifierTypeMember Nothing)
+            (EvaluatedDependentArgumentTypeMember Nothing)
             (selectFederationMember source
               (evaluatedIdentifierUnderlying targetIdentifier)))
     (Just sourceIdentifier, Nothing)
@@ -179,8 +179,8 @@ selectDirectIdentifierMember source target =
     _ -> Nothing
 
 selectMatchingIdentifierMember
-  :: EvaluatedDependentIdentifierType
-  -> EvaluatedDependentIdentifierType
+  :: EvaluatedDependentArgumentType
+  -> EvaluatedDependentArgumentType
   -> Decision EvaluatedAtlasMapFederationMember
 selectMatchingIdentifierMember sourceIdentifier targetIdentifier =
   case ( evaluatedIdentifierNameFamily sourceIdentifier
@@ -191,7 +191,7 @@ selectMatchingIdentifierMember sourceIdentifier targetIdentifier =
         then DecisionRefuted
         else
           mapDecision
-            (EvaluatedDependentIdentifierTypeMember Nothing)
+            (EvaluatedDependentArgumentTypeMember Nothing)
             (selectFederationMember sourceUnderlying targetUnderlying)
     _ ->
       case selectFederationMember sourceUnderlying targetUnderlying of
@@ -202,7 +202,7 @@ selectMatchingIdentifierMember sourceIdentifier targetIdentifier =
             (Right sourceName, Right targetName) ->
               mapDecision
                 (\nameMember ->
-                  EvaluatedDependentIdentifierTypeMember
+                  EvaluatedDependentArgumentTypeMember
                     (Just nameMember) underlyingMember)
                 (selectFederationMember sourceName targetName)
             _ -> DecisionUndecidable

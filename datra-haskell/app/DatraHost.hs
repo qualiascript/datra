@@ -82,7 +82,7 @@ datraHostValue = do
     , ("Char", Right character)
     , ("IdenStr", Right identifierValueTypeValue)
     , ("Expr", Right expressionType)
-    , ("DependentIdentifier", Right dependentIdentifierType)
+    , ("DependentArgument", Right dependentArgumentType)
     , ("DependentDeclaration", Right dependentDeclarationType)
     , ("Block", Right blockType)
     , ("FunctionBody", Right functionBodyType)
@@ -182,12 +182,12 @@ datraHostValue = do
         (\case
           [modules, FunctionBody bindings result] -> Just
             (ScopeAccess
-              (ArgumentMap (withModuleOperands modules))
+              (ArgumentativeMap (withModuleOperands modules))
               (Begin bindings result))
           _ -> Nothing)
         (\case
-          ScopeAccess (ArgumentMap modules) (Begin bindings result) -> Just
-            [ArgumentMap modules, FunctionBody bindings result]
+          ScopeAccess (ArgumentativeMap modules) (Begin bindings result) -> Just
+            [ArgumentativeMap modules, FunctionBody bindings result]
           _ -> Nothing))
     , syntaxBody "of" (SyntaxFunctionInsertion
         (\case
@@ -220,7 +220,7 @@ datraHostValue = do
     ]
   where
     expressionType = syntaxCategoryTypeValue ExpressionAST
-    dependentIdentifierType = syntaxCategoryTypeValue DependentIdentifierAST
+    dependentArgumentType = syntaxCategoryTypeValue DependentArgumentAST
     dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
@@ -288,12 +288,12 @@ datraHostValue = do
         DirectionRangeEndpoint direction -> either (const Nothing) Just
           (asciiStringValue direction)
       either (const Nothing) Just
-        (makeArgumentMapPreservingSingleton
+        (makeArgumentativeMapPreservingSingleton
           [integerValue origin, endpointValue])
     integerLimitRangePreimage value = case interpretedSemanticResult value of
       CanonicalIntegerLimitRange origin target ->
         either (const Nothing) Just
-          (makeArgumentMapPreservingSingleton
+          (makeArgumentativeMapPreservingSingleton
             [makeIntegerLimit origin, makeIntegerLimit target])
       _ -> Nothing
     lookupArgument name values = maybe
@@ -361,7 +361,7 @@ namedMembers value =
         [ (namedMemberName member, namedMemberValue member)
         | member <- members
         ]
-    Nothing -> case argumentMapMembers value of
+    Nothing -> case argumentativeMapMembers value of
       Just members
         | Right named <- traverse field members -> Right named
       _ -> projectedMembers

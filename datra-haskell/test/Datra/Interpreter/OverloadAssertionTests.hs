@@ -61,7 +61,7 @@ overloadTests =
     , programCase "skip advances one positional overload slot"
         "yield {x? : Nat; y? : Nat} << (*; 3)"
         "{x? : Nat; y? : Nat := 3}"
-    , programCase "skip composes through argument-map overload input"
+    , programCase "skip composes through argumentative-map overload input"
         "yield {x? : Nat; y? : Nat} << {*; 3}"
         "{x? : Nat; y? : Nat := 3}"
     , programFailureCase "transfinite ordinal is not a skip"
@@ -129,7 +129,7 @@ defaultedFunctionTests =
           , "yield my_pow (*; 3)"
           ])
         "8"
-    , programCase "positional-only my_pow accepts a skip in an argument map"
+    , programCase "positional-only my_pow accepts a skip in an argumentative map"
         (unlines
           [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)"
           , "yield my_pow {*; 3}"

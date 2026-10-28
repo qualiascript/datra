@@ -312,19 +312,19 @@ scopeTests =
         , programFailureCase "ordinary map member cannot see a later sibling"
             "yield (a : b, b : Nat)"
             (SourceEvaluationFailure (UnknownIdentifier "b"))
-        , programFailureCase "argument-map member cannot see itself"
+        , programFailureCase "argumentative-map member cannot see itself"
             "yield {a : a}"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
-        , programFailureCase "argument-map member cannot see an earlier sibling"
+        , programFailureCase "argumentative-map member cannot see an earlier sibling"
             "yield {a : Nat; b : a}"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
-        , programFailureCase "argument-map member cannot see a later sibling"
+        , programFailureCase "argumentative-map member cannot see a later sibling"
             "yield {a : b; b : Nat}"
             (SourceEvaluationFailure (UnknownIdentifier "b"))
         , expressionFailureCase "ordinary map members do not escape into a block"
             "begin (a : 1, b : 2) yield a"
             (SourceEvaluationFailure OperationHasNoEffect)
-        , expressionFailureCase "argument-map members do not escape into a block"
+        , expressionFailureCase "argumentative-map members do not escape into a block"
             "begin {a : 1; b : 2} yield a"
             (SourceEvaluationFailure OperationHasNoEffect)
         , expressionFailureCase "specified map members do not become block declarations"

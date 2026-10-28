@@ -1,7 +1,7 @@
 -- | Evaluated dependent and constant identifier types.
 module Evaluation.Identifier
-  ( dependentIdentifierTypeValue
-  , dependentIdentifierTemplateTypeValue
+  ( dependentArgumentTypeValue
+  , dependentArgumentTemplateTypeValue
   , identifierTemplateTypeValue
   , identifierNameFederationFor
   , identifierValueAtUnderlying
@@ -43,10 +43,10 @@ definitionMarker = "def"
 
 evaluatedIdentifierType
   :: InterpretedValue
-  -> Maybe EvaluatedDependentIdentifierType
+  -> Maybe EvaluatedDependentArgumentType
 evaluatedIdentifierType value =
   case interpretedForm value of
-    DependentIdentifierTypeForm identifier -> Just identifier
+    DependentArgumentTypeForm identifier -> Just identifier
     IdentifierStringProjectionForm identifier -> Just identifier
     AssignmentForm specification ->
       evaluatedIdentifierType (evaluatedSpecificationTarget specification)
@@ -61,11 +61,11 @@ identifierUnderlyingValue :: InterpretedValue -> Maybe InterpretedValue
 identifierUnderlyingValue value =
   evaluatedIdentifierUnderlying <$> evaluatedIdentifierType value
 
-privateSimpleIdentifier :: EvaluatedDependentIdentifierType -> Bool
+privateSimpleIdentifier :: EvaluatedDependentArgumentType -> Bool
 privateSimpleIdentifier identifier =
   case evaluatedIdentifierDependency identifier of
     SimpleIdentifierDependency name -> isPrivateIdentifier name
-    DependentIdentifierDependency {} -> False
+    DependentArgumentDependency {} -> False
 
 privateIdentifierUnderlying :: InterpretedValue -> Maybe InterpretedValue
 privateIdentifierUnderlying value = do
@@ -74,14 +74,14 @@ privateIdentifierUnderlying value = do
     then Just (evaluatedIdentifierUnderlying identifier)
     else Nothing
 
-dependentIdentifierTypeValue
+dependentArgumentTypeValue
   :: String
   -> (CanonicalResult -> String)
   -> InterpretedValue
   -> InterpretedValue
-dependentIdentifierTypeValue familyKey identifierStringFor =
-  makeDependentIdentifierTypeValue
-    (DependentIdentifierDependency familyKey identifierStringFor)
+dependentArgumentTypeValue familyKey identifierStringFor =
+  makeDependentArgumentTypeValue
+    (DependentArgumentDependency familyKey identifierStringFor)
     Nothing
     Nothing
     False
@@ -90,15 +90,15 @@ dependentIdentifierTypeValue familyKey identifierStringFor =
 -- specification as contextual @it@.  The already-instantiated federation is
 -- retained for ordinary map access; the family evaluator is retained for
 -- matching against narrower supplied specifications.
-dependentIdentifierTemplateTypeValue
+dependentArgumentTemplateTypeValue
   :: String
   -> InterpretedValue
   -> (InterpretedValue -> Either InterpretingError InterpretedValue)
   -> InterpretedValue
   -> InterpretedValue
-dependentIdentifierTemplateTypeValue familyKey nameFederation nameFamily =
-  makeDependentIdentifierTypeValue
-    (DependentIdentifierDependency familyKey (const familyKey))
+dependentArgumentTemplateTypeValue familyKey nameFederation nameFamily =
+  makeDependentArgumentTypeValue
+    (DependentArgumentDependency familyKey (const familyKey))
     (Just nameFederation)
     (Just nameFamily)
     True
@@ -112,17 +112,17 @@ identifierTemplateTypeValue
   -> InterpretedValue
   -> InterpretedValue
 identifierTemplateTypeValue familyKey nameFederation =
-  makeDependentIdentifierTypeValue
-    (DependentIdentifierDependency familyKey (const familyKey))
+  makeDependentArgumentTypeValue
+    (DependentArgumentDependency familyKey (const familyKey))
     (Just nameFederation)
     (Just (const (Right nameFederation)))
     True
 
 -- | Instantiate an identifier's name federation at the supplied
--- specification.  Constant identifiers and host-defined dependent identifiers
+-- specification.  Constant identifiers and host-defined dependent arguments
 -- use the same interface as source-level string-expression families.
 identifierNameFederationFor
-  :: EvaluatedDependentIdentifierType
+  :: EvaluatedDependentArgumentType
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 identifierNameFederationFor identifier supplied =
@@ -145,15 +145,15 @@ identifierValueAtUnderlying
 identifierValueAtUnderlying family underlying = do
   identifier <- evaluatedIdentifierType family
   isCanonical <- case interpretedSemanticSemantics family of
-    DependentIdentifierTypeSemantics _ _ _ canonical -> Just canonical
+    DependentArgumentTypeSemantics _ _ _ canonical -> Just canonical
     _ -> Nothing
   nameFederation <- case evaluatedIdentifierDependency identifier of
     SimpleIdentifierDependency _ ->
       Just (evaluatedIdentifierNameFederation identifier)
-    DependentIdentifierDependency {} ->
+    DependentArgumentDependency {} ->
       Just (either (const Nothing) Just
         (identifierNameFederationFor identifier underlying))
-  pure (makeDependentIdentifierTypeValue
+  pure (makeDependentArgumentTypeValue
     (evaluatedIdentifierDependency identifier)
     nameFederation
     (evaluatedIdentifierNameFamily identifier)
@@ -165,7 +165,7 @@ simpleIdentifierTypeValue
   -> InterpretedValue
   -> InterpretedValue
 simpleIdentifierTypeValue identifierString underlying =
-  makeDependentIdentifierTypeValue
+  makeDependentArgumentTypeValue
     (SimpleIdentifierDependency identifierString)
     Nothing
     Nothing
@@ -173,14 +173,14 @@ simpleIdentifierTypeValue identifierString underlying =
     underlying
 
 -- | An inferred assignment may bind a non-total value such as a type.  Its
--- federation remains the dependent identifier family, while its canonical
+-- federation remains the dependent argument family, while its canonical
 -- presentation records that the value was explicitly supplied.
 inferredIdentifierAssignmentValue
   :: String
   -> InterpretedValue
   -> InterpretedValue
 inferredIdentifierAssignmentValue identifierString underlying =
-  (makeDependentIdentifierTypeValue
+  (makeDependentArgumentTypeValue
       (SimpleIdentifierDependency identifierString)
       Nothing
       Nothing
@@ -239,7 +239,7 @@ hasTrailingIdentifierMarker marker value =
     valueMap = interpretedMap value
 
 identifierStringProjectionValue
-  :: EvaluatedDependentIdentifierType
+  :: EvaluatedDependentArgumentType
   -> InterpretedValue
 identifierStringProjectionValue evaluated = value
   where
@@ -269,17 +269,17 @@ identifierStringProjectionValue evaluated = value
         resultMap
         semantics
 
-makeDependentIdentifierTypeValue
+makeDependentArgumentTypeValue
   :: IdentifierDependency
   -> Maybe InterpretedValue
   -> Maybe (InterpretedValue -> Either InterpretingError InterpretedValue)
   -> Bool
   -> InterpretedValue
   -> InterpretedValue
-makeDependentIdentifierTypeValue
+makeDependentArgumentTypeValue
     dependency nameFederation nameFamily isCanonical underlying = value
   where
-    evaluated = EvaluatedDependentIdentifierType
+    evaluated = EvaluatedDependentArgumentType
       dependency underlying nameFederation nameFamily
     underlyingResult = interpretedSemanticResult underlying
     isTotal = interpretedValueHasTotalMap underlying
@@ -297,7 +297,7 @@ makeDependentIdentifierTypeValue
         (singletonOrdinalOrderedValues identifierStringValue)
         (singletonOrdinalOrderedValues underlying)
     semantics =
-      DependentIdentifierTypeSemantics
+      DependentArgumentTypeSemantics
         dependency
         (interpretedSemantics underlying)
         isTotal
@@ -313,8 +313,8 @@ makeDependentIdentifierTypeValue
     base =
       makeEvaluatedIdentifierValue
         canonicalType
-        (DependentIdentifierTypeForm evaluated)
-        (DependentIdentifierTypeAtlasMapFederation evaluated)
+        (DependentArgumentTypeForm evaluated)
+        (DependentArgumentTypeAtlasMapFederation evaluated)
         isTotal
         valueMap
         semantics

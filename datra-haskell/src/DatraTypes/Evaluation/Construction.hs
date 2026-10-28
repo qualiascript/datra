@@ -188,7 +188,7 @@ makeNothing = value
   where
     unitSemantics = MapSemantics 0 []
     semantics =
-      DependentIdentifierTypeSemantics
+      DependentArgumentTypeSemantics
         (SimpleIdentifierDependency "Nothing")
         unitSemantics
         True

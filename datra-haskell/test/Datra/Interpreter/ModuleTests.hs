@@ -240,7 +240,7 @@ moduleTests =
             <> "Ordinals.gt(3; 2); Ordinals.gte(3; 3))"
         )
         "(true; true; true; true)"
-    , moduleCase origin "ordinal operations accept x and y argument maps"
+    , moduleCase origin "ordinal operations accept x and y argumentative maps"
         "import \"ordinals\" do yield Ordinals.sum(y : 3; x : 2)"
         "5"
     , moduleCase origin "OrdValue contains naturals and transfinite ordinals"
@@ -313,7 +313,7 @@ moduleTests =
     , moduleCase origin "qualified import accepts a non-total binder value"
         "import \"non_total_value\" do yield Numbers = Nat"
         "true"
-    , moduleCase origin "import accepts a dependent identifier federation"
+    , moduleCase origin "import accepts a dependent argument federation"
         ( "import \"dependent_export\" do\n"
             <> "yield it = (\"Number%(it)\" : Nat)"
         )

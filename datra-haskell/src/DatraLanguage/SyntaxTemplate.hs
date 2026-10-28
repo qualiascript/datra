@@ -20,7 +20,7 @@ data SyntaxHoleKind value
   | BlockSyntaxHole value
   | FunctionBodySyntaxHole value
   | DeclarationSyntaxHole value
-  | DependentIdentifierSyntaxHole value
+  | DependentArgumentSyntaxHole value
   | ValueSyntaxHole value
   deriving (Eq, Show)
 
@@ -29,7 +29,7 @@ syntaxHoleValue (ExpressionSyntaxHole value) = value
 syntaxHoleValue (BlockSyntaxHole value) = value
 syntaxHoleValue (FunctionBodySyntaxHole value) = value
 syntaxHoleValue (DeclarationSyntaxHole value) = value
-syntaxHoleValue (DependentIdentifierSyntaxHole value) = value
+syntaxHoleValue (DependentArgumentSyntaxHole value) = value
 syntaxHoleValue (ValueSyntaxHole value) = value
 
 mapSyntaxHoleKind
@@ -41,8 +41,8 @@ mapSyntaxHoleKind transform kind = case kind of
   BlockSyntaxHole value -> BlockSyntaxHole (transform value)
   FunctionBodySyntaxHole value -> FunctionBodySyntaxHole (transform value)
   DeclarationSyntaxHole value -> DeclarationSyntaxHole (transform value)
-  DependentIdentifierSyntaxHole value ->
-    DependentIdentifierSyntaxHole (transform value)
+  DependentArgumentSyntaxHole value ->
+    DependentArgumentSyntaxHole (transform value)
   ValueSyntaxHole value -> ValueSyntaxHole (transform value)
 
 data SyntaxPiece value
@@ -94,8 +94,8 @@ traverseSyntaxTemplate transform (SyntaxTemplate pieces) =
       SyntaxHole . FunctionBodySyntaxHole <$> transform value
     traversePiece (SyntaxHole (DeclarationSyntaxHole value)) =
       SyntaxHole . DeclarationSyntaxHole <$> transform value
-    traversePiece (SyntaxHole (DependentIdentifierSyntaxHole value)) =
-      SyntaxHole . DependentIdentifierSyntaxHole <$> transform value
+    traversePiece (SyntaxHole (DependentArgumentSyntaxHole value)) =
+      SyntaxHole . DependentArgumentSyntaxHole <$> transform value
     traversePiece (SyntaxHole (ValueSyntaxHole value)) =
       SyntaxHole . ValueSyntaxHole <$> transform value
 
@@ -109,6 +109,6 @@ renderSyntaxTemplate renderValue (SyntaxTemplate pieces) =
     renderPiece (SyntaxHole FunctionBodySyntaxHole {}) = "%_FunctionBody"
     renderPiece (SyntaxHole DeclarationSyntaxHole {}) =
       "%_DependentDeclaration"
-    renderPiece (SyntaxHole DependentIdentifierSyntaxHole {}) =
-      "%_DependentIdentifier"
+    renderPiece (SyntaxHole DependentArgumentSyntaxHole {}) =
+      "%_DependentArgument"
     renderPiece (SyntaxHole (ValueSyntaxHole value)) = '%' : renderValue value

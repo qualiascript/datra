@@ -59,7 +59,7 @@ module Evaluation.Value
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
-  , EvaluatedDependentIdentifierType (..)
+  , EvaluatedDependentArgumentType (..)
   , DependentSumStructure (..)
   , EvaluatedDependentSum (..)
   , InterpretedTotalAtlasMap (..)
@@ -301,7 +301,7 @@ data EvaluatedEither = EvaluatedEither
   , evaluatedEitherRight :: InterpretedValue
   }
 
-data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
+data EvaluatedDependentArgumentType = EvaluatedDependentArgumentType
   { evaluatedIdentifierDependency :: IdentifierDependency
   , evaluatedIdentifierUnderlying :: InterpretedValue
   , evaluatedIdentifierNameFederation :: Maybe InterpretedValue
@@ -355,10 +355,10 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedEitherMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
-  | EvaluatedArgumentMapMember
+  | EvaluatedArgumentativeMapMember
       InterpretedValue
       EvaluatedAtlasMapFederationMember
-  | EvaluatedDependentIdentifierTypeMember
+  | EvaluatedDependentArgumentTypeMember
       (Maybe EvaluatedAtlasMapFederationMember)
       EvaluatedAtlasMapFederationMember
   | EvaluatedDependentSumMember InterpretedValue
@@ -482,8 +482,8 @@ functionSyntaxEquivalent left right =
         (DeclarationSyntaxHole leftValue)
         (DeclarationSyntaxHole rightValue) = equivalent leftValue rightValue
     holeEquivalent
-        (DependentIdentifierSyntaxHole leftValue)
-        (DependentIdentifierSyntaxHole rightValue) =
+        (DependentArgumentSyntaxHole leftValue)
+        (DependentArgumentSyntaxHole rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
         (ValueSyntaxHole leftValue) (ValueSyntaxHole rightValue) =
@@ -554,7 +554,7 @@ interpretedFunctionBody value = case interpretedForm value of
       source = case functionSource function of
         Just implementationSource -> implementationSource
         Nothing -> functionSignatureSource function
-  DependentIdentifierTypeForm identifier ->
+  DependentArgumentTypeForm identifier ->
     interpretedFunctionBody (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification ->
     interpretedFunctionBody (evaluatedSpecificationSourceValue specification)
@@ -588,7 +588,7 @@ interpretedFunction value = case interpretedForm value of
 
 callableFunction :: InterpretedValue -> Maybe EvaluatedFunction
 callableFunction value = case interpretedForm value of
-  DependentIdentifierTypeForm identifier -> callableFunction (evaluatedIdentifierUnderlying identifier)
+  DependentArgumentTypeForm identifier -> callableFunction (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification -> callableFunction (evaluatedSpecificationSourceValue specification)
   SpecificationForm specification -> callableFunction (evaluatedSpecificationSourceValue specification)
   _ -> interpretedFunction value
@@ -599,7 +599,7 @@ functionSignature value = (\function -> (functionDomain function, functionCodoma
 functionAlternatives :: InterpretedValue -> [EvaluatedFunction]
 functionAlternatives value = case interpretedForm value of
   EitherForm alternatives -> functionAlternatives (evaluatedEitherLeft alternatives) <> functionAlternatives (evaluatedEitherRight alternatives)
-  DependentIdentifierTypeForm identifier -> functionAlternatives (evaluatedIdentifierUnderlying identifier)
+  DependentArgumentTypeForm identifier -> functionAlternatives (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification -> functionAlternatives (evaluatedSpecificationSourceValue specification)
   SpecificationForm specification -> functionAlternatives (evaluatedSpecificationSourceValue specification)
   FunctionForm function -> [function]
@@ -614,7 +614,7 @@ isFunctionFamily value =
     EitherForm alternatives ->
       isFunctionFamily (evaluatedEitherLeft alternatives)
         && isFunctionFamily (evaluatedEitherRight alternatives)
-    DependentIdentifierTypeForm identifier ->
+    DependentArgumentTypeForm identifier ->
       isFunctionFamily (evaluatedIdentifierUnderlying identifier)
     AssignmentForm specification ->
       isFunctionFamily (evaluatedSpecificationSourceValue specification)
@@ -631,7 +631,7 @@ builtinMetaTypeName (ASTMetaType category) = case category of
   BlockAST -> "Block"
   FunctionBodyAST -> "FunctionBody"
   DeclarationAST -> "DependentDeclaration"
-  DependentIdentifierAST -> "DependentIdentifier"
+  DependentArgumentAST -> "DependentArgument"
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
 builtinMetaTypeName NatValRangeMetaType = "NatValRange"
@@ -645,7 +645,7 @@ builtinMetaTypeCanonicalString (ASTMetaType category) = case category of
   BlockAST -> "datra.Block"
   FunctionBodyAST -> "datra.FunctionBody"
   DeclarationAST -> "datra.DependentDeclaration"
-  DependentIdentifierAST -> "datra.DependentIdentifier"
+  DependentArgumentAST -> "datra.DependentArgument"
 builtinMetaTypeCanonicalString SyntaxTemplateMetaType =
   "datra.SyntaxTemplate"
 builtinMetaTypeCanonicalString kind = builtinMetaTypeName kind
@@ -687,7 +687,7 @@ data ValueForm
   | IntegerRangeForm EvaluatedIntegerRange
   | ValuedIntegerRangeForm EvaluatedValuedIntegerRange
   | EitherForm EvaluatedEither
-  | ArgumentMapForm [InterpretedValue] InterpretedValue
+  | ArgumentativeMapForm [InterpretedValue] InterpretedValue
   | SkipForm InterpretedValue
   | FederationSpecificationForm
       InterpretedValue InterpretedValue [InterpretedValue]
@@ -700,8 +700,8 @@ data ValueForm
   | TemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
-  | DependentIdentifierTypeForm EvaluatedDependentIdentifierType
-  | IdentifierStringProjectionForm EvaluatedDependentIdentifierType
+  | DependentArgumentTypeForm EvaluatedDependentArgumentType
+  | IdentifierStringProjectionForm EvaluatedDependentArgumentType
   | DependentSumForm EvaluatedDependentSum
   | CoalizationForm InterpretedValue
   | SequentialMapForm
@@ -769,7 +769,7 @@ newtype NamedMapView = NamedMapView
 interpretedSimpleIdentifierName :: InterpretedValue -> Maybe String
 interpretedSimpleIdentifierName value =
   case interpretedForm value of
-    DependentIdentifierTypeForm identifier -> dependencyName identifier
+    DependentArgumentTypeForm identifier -> dependencyName identifier
     IdentifierStringProjectionForm identifier -> dependencyName identifier
     AssignmentForm specification ->
       interpretedSimpleIdentifierName (evaluatedSpecificationTarget specification)
@@ -780,11 +780,11 @@ interpretedSimpleIdentifierName value =
     dependencyName identifier =
       case evaluatedIdentifierDependency identifier of
         SimpleIdentifierDependency name -> Just name
-        DependentIdentifierDependency {} -> Nothing
+        DependentArgumentDependency {} -> Nothing
     semanticName semantics = case semantics of
       PresentedSemantics _ _ underlying -> semanticName underlying
       AssignmentSemantics name _ _ -> Just name
-      DependentIdentifierTypeSemantics
+      DependentArgumentTypeSemantics
           (SimpleIdentifierDependency name) _ _ _ -> Just name
       _ -> Nothing
 
@@ -1013,8 +1013,8 @@ data InterpretedAtlasMapFederationPrimitive
   | IntegerRangeAtlasMapFederation EvaluatedIntegerRange
   | ValuedIntegerRangeAtlasMapFederation EvaluatedValuedIntegerRange
   | EitherAtlasMapFederation EvaluatedEither
-  | DependentIdentifierTypeAtlasMapFederation EvaluatedDependentIdentifierType
-  | IdentifierStringProjectionAtlasMapFederation EvaluatedDependentIdentifierType
+  | DependentArgumentTypeAtlasMapFederation EvaluatedDependentArgumentType
+  | IdentifierStringProjectionAtlasMapFederation EvaluatedDependentArgumentType
   | IdentifierValueTypeAtlasMapFederation
   | ToStringAtlasMapFederation
       InterpretedValue
@@ -1628,7 +1628,7 @@ interpretedValueKind value =
     IntegerRangeForm _ -> RangeValueKind
     ValuedIntegerRangeForm _ -> RangeValueKind
     EitherForm _ -> EitherValueKind
-    ArgumentMapForm _ _ -> MapValueKind
+    ArgumentativeMapForm _ _ -> MapValueKind
     SkipForm _ -> FormulationValueKind
     FederationSpecificationForm _ _ _ -> SpecificationValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
@@ -1638,8 +1638,8 @@ interpretedValueKind value =
     TemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
-    DependentIdentifierTypeForm _ -> DependentIdentifierTypeValueKind
-    IdentifierStringProjectionForm _ -> DependentIdentifierTypeValueKind
+    DependentArgumentTypeForm _ -> DependentArgumentTypeValueKind
+    IdentifierStringProjectionForm _ -> DependentArgumentTypeValueKind
     DependentSumForm _ -> MapValueKind
     CoalizationForm _ -> MapValueKind
     SequentialMapForm -> MapValueKind

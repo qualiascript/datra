@@ -320,7 +320,7 @@ integerLimitSemantics semantics =
     absentComplement (PresentedSemantics _ _ value) = absentComplement value
     absentComplement (MapSemantics 0 []) = True
     absentComplement
-        (DependentIdentifierTypeSemantics
+        (DependentArgumentTypeSemantics
           (SimpleIdentifierDependency "Nothing")
           (MapSemantics 0 [])
           True
@@ -329,7 +329,7 @@ integerLimitSemantics semantics =
 
     presentComplement (PresentedSemantics _ _ value) = presentComplement value
     presentComplement
-        (DependentIdentifierTypeSemantics
+        (DependentArgumentTypeSemantics
           (SimpleIdentifierDependency "Just")
           (AsciiStringSemantics "Complement")
           _
@@ -370,7 +370,7 @@ numericalSpecification
   -> Maybe (ValueSemantics, ValueSemantics)
 numericalSpecification semantics =
   case semanticValueSemantics semantics of
-    DependentIdentifierTypeSemantics _ underlying True _ ->
+    DependentArgumentTypeSemantics _ underlying True _ ->
       Just (underlying, underlying)
     AssignmentSemantics _ target source -> Just (source, target)
     SpecificationSemantics source target -> Just (source, target)
@@ -398,7 +398,7 @@ isValuedNumericalTarget semantics
     ValuedIntegerRangeSemantics _ _ -> True
     IntegerTypeSemantics -> True
     MapSemantics 0 [] -> True
-    DependentIdentifierTypeSemantics _ underlying True _ ->
+    DependentArgumentTypeSemantics _ underlying True _ ->
       isValuedNumericalTarget underlying
     AssignmentSemantics _ target _ -> isValuedNumericalTarget target
     SpecificationSemantics _ target -> isValuedNumericalTarget target
@@ -467,7 +467,7 @@ optionalComplement semantics =
     isAbsent (PresentedSemantics _ _ value) = isAbsent value
     isAbsent (MapSemantics 0 []) = True
     isAbsent
-        (DependentIdentifierTypeSemantics
+        (DependentArgumentTypeSemantics
           (SimpleIdentifierDependency "Nothing")
           (MapSemantics 0 [])
           True
@@ -476,7 +476,7 @@ optionalComplement semantics =
 
     isComplement (PresentedSemantics _ _ value) = isComplement value
     isComplement
-        (DependentIdentifierTypeSemantics
+        (DependentArgumentTypeSemantics
           (SimpleIdentifierDependency "Just")
           (AsciiStringSemantics "Complement")
           _

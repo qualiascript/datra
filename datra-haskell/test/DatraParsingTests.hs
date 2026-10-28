@@ -104,12 +104,26 @@ testTree =
     , testCase "generic source parsing" testGenericSourceParsing
     , testCase "dependent declaration precedence"
         testDependentDeclarationPrecedence
+    , testCase "dependent arguments and argumentative maps"
+        testRenamedArgumentConcepts
     , testCase "syntax regressions" regressionTests
     , testGroup "properties"
         [ testProperty "rendered ASTs parse canonically" propAstRoundTrip
         , testProperty "natural maps parse in order" propNaturalMapParsing
         ]
     ]
+
+testRenamedArgumentConcepts :: IO ()
+testRenamedArgumentConcepts = do
+  assertParsed "dependent argument source form"
+    "value : Int"
+    (AST.dependentArgumentType "value" (ref "Int"))
+  assertParsed "argumentative map source form"
+    "{value : Int; 2}"
+    (ArgumentativeMap
+      [ AST.dependentArgumentType "value" (ref "Int")
+      , natural 2
+      ])
 
 testGenericAstRepresentation :: IO ()
 testGenericAstRepresentation = do
@@ -170,7 +184,7 @@ testGenericSourceParsing = do
     "{value? : &T? :: Any} -> T"
   case parsed of
     FunctionTypeExpression [binder]
-        (ArgumentMap
+        (ArgumentativeMap
           [OptionalType
             (IdentifierOperation (IdentifierString "value") declaration Nothing)])
         reference -> do
@@ -279,7 +293,7 @@ testGenericSourceParsing = do
             )
         prepared -> fail ("unexpected prepared mixed domain: " <> show prepared)
       case prepareFunctionDomainExpression binders domain of
-        ArgumentMap
+        ArgumentativeMap
             ( IdentifierOperation (IdentifierString "S") _ Nothing
             : IdentifierOperation (IdentifierString "T") _ Nothing
             : IdentifierOperation (IdentifierString "U") _ Nothing
@@ -320,7 +334,7 @@ testGenericSourceParsing = do
     "{T? : Any; marker? : &T} -> (T : Any)"
   case collision of
     FunctionTypeExpression [_]
-        domain@(ArgumentMap
+        domain@(ArgumentativeMap
           [ OptionalType (IdentifierOperation domainName _ Nothing)
           , OptionalType (IdentifierOperation _ _ Nothing)
           ])
@@ -387,13 +401,13 @@ testBraceSeparatorSemantics :: IO ()
 testBraceSeparatorSemantics = do
   assertAstOutput "comma concatenates inside braces"
     "{1, 2}"
-    (ArgumentMap [MapConcatenation (natural 1) (natural 2)])
-  assertAstOutput "semicolon sequences argument-map members"
+    (ArgumentativeMap [MapConcatenation (natural 1) (natural 2)])
+  assertAstOutput "semicolon sequences argumentative-map members"
     "{1; 2}"
-    (ArgumentMap [natural 1, natural 2])
-  assertParsed "postfix comma remains inside argument-map syntax"
+    (ArgumentativeMap [natural 1, natural 2])
+  assertParsed "postfix comma remains inside argumentative-map syntax"
     "{Args Int,}"
-    (ArgumentMap
+    (ArgumentativeMap
       [MapConcatenation
         (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap [])])
   assertParsed "postfix comma is the same operator in parentheses"
@@ -487,7 +501,7 @@ regressionTests = do
         , BlockSyntaxHole (ref "_Block")
         , FunctionBodySyntaxHole (ref "_FunctionBody")
         , DeclarationSyntaxHole (ref "_DependentDeclaration")
-        , DependentIdentifierSyntaxHole (ref "_DependentIdentifier")
+        , DependentArgumentSyntaxHole (ref "_DependentArgument")
         , ValueSyntaxHole (ref "Int")
         ]
   assert "admissibility covers every typed hole kind"
@@ -708,12 +722,12 @@ regressionTests = do
   assertAstOutput "skip composes in an ordered map"
     "(*, 3)"
     (MapConcatenation Skip (natural 3))
-  assertAstOutput "skip composes in an argument map"
+  assertAstOutput "skip composes in an argumentative map"
     "{*; 3}"
-    (ArgumentMap [Skip, natural 3])
-  assertAstOutput "comma concatenates inside an argument map"
+    (ArgumentativeMap [Skip, natural 3])
+  assertAstOutput "comma concatenates inside an argumentative map"
     "{*, 3}"
-    (ArgumentMap [MapConcatenation Skip (natural 3)])
+    (ArgumentativeMap [MapConcatenation Skip (natural 3)])
   assertAstOutput "rank-zero formulation remains an ordinary value"
     "((...) ^ 0, 3)"
     (MapConcatenation
@@ -742,37 +756,37 @@ regressionTests = do
             (FunctionApplication (ref "public") (ref "_this"))))
     ]
   assertAstOutput "eval is available as an ordinary user identifier"
-    "eval : Nat" (AST.dependentIdentifierType "eval" (ref "Nat"))
+    "eval : Nat" (AST.dependentArgumentType "eval" (ref "Nat"))
   assertAstOutput "eval identifier respects identifier boundaries"
-    "evaluate : Nat" (AST.dependentIdentifierType "evaluate" (ref "Nat"))
-  assertAstOutput "argument map uses existing map arity"
+    "evaluate : Nat" (AST.dependentArgumentType "evaluate" (ref "Nat"))
+  assertAstOutput "argumentative map uses existing map arity"
     "{b := 8; 2}"
-    (ArgumentMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
-  assertAstOutput "empty argument map" "{}" (ArgumentMap [])
+    (ArgumentativeMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
+  assertAstOutput "empty argumentative map" "{}" (ArgumentativeMap [])
   assertAstOutput "comma retains ordinary concatenation in braces"
     "{b := 8, 2}"
-    (ArgumentMap
+    (ArgumentativeMap
       [MapConcatenation
         (AST.assignment "b" (natural 8) (natural 8))
         (natural 2)])
   assertAstOutput "parenthesized concatenation remains one argument"
     "{(1, 2); 3}"
-    (ArgumentMap [MapConcatenation (natural 1) (natural 2), natural 3])
+    (ArgumentativeMap [MapConcatenation (natural 1) (natural 2), natural 3])
   assertAstOutput "a trailing comma remains map concatenation"
     "{1, 2,}"
-    (ArgumentMap
+    (ArgumentativeMap
       [MapConcatenation
         (MapConcatenation (natural 1) (natural 2)) (AtlasMap [])])
   assertAstOutput "a unary trailing comma splices an argument federation"
     "{Args Int,}"
-    (ArgumentMap
+    (ArgumentativeMap
       [MapConcatenation
         (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap [])])
   variadic <- parseGenericSource
     "{Args (&_T :: IntLimit),} -> _T?"
   case variadic of
     FunctionTypeExpression [binder]
-        (ArgumentMap [MapConcatenation
+        (ArgumentativeMap [MapConcatenation
           (FunctionApplication (IdentifierReference (IdentifierString "Args"))
             declaration)
           (AtlasMap [])])
@@ -790,19 +804,19 @@ regressionTests = do
           (expectedDeclaration, expectedReference)
           (actualDeclaration, reference)
     other -> fail ("unexpected generic variadic domain: " <> show other)
-  assertAstOutput "unary argument map" "{2}" (ArgumentMap [natural 2])
-  assertAstOutput "argument map supports newline separators"
-    "{1\n2}" (ArgumentMap [natural 1, natural 2])
-  assertParsed "argument map AST round trip"
+  assertAstOutput "unary argumentative map" "{2}" (ArgumentativeMap [natural 2])
+  assertAstOutput "argumentative map supports newline separators"
+    "{1\n2}" (ArgumentativeMap [natural 1, natural 2])
+  assertParsed "argumentative map AST round trip"
     "{a? : Nat; b? : Str}"
-    (ArgumentMap
-      [ OptionalType (AST.dependentIdentifierType "a" (ref "Nat"))
-      , OptionalType (AST.dependentIdentifierType "b" (ref "Str"))
+    (ArgumentativeMap
+      [ OptionalType (AST.dependentArgumentType "a" (ref "Nat"))
+      , OptionalType (AST.dependentArgumentType "b" (ref "Str"))
       ])
   assertRejected "private argument names cannot be optional"
     "{_x? : Nat; y : Nat}"
   let block = Begin
-        [AST.dependentIdentifierType "a" (Multiplication (natural 2) (natural 3)), AST.dependentIdentifierType "b" (natural 5)]
+        [AST.dependentArgumentType "a" (Multiplication (natural 2) (natural 3)), AST.dependentArgumentType "b" (natural 5)]
         (Addition (IdentifierReference (IdentifierString "a")) (IdentifierReference (IdentifierString "b")))
   assertParsed "begin newline bindings" "begin\n a : 2 * 3\n b : 5\nyield a + b" block
   let assignedBlock = Begin
@@ -830,7 +844,7 @@ regressionTests = do
       ])
   assertAstOutput "module remains an ordinary identifier"
     "module : Nat"
-    (AST.dependentIdentifierType "module" (ref "Nat"))
+    (AST.dependentArgumentType "module" (ref "Nat"))
   assertParsed "declared import lowers paths and its function body structurally"
     "import \"library_one\" do yield 7"
     (Import ["library_one"] (FunctionBody [] (natural 7)))
@@ -844,7 +858,7 @@ regressionTests = do
     (Begin [Let (AST.assignment "x" (natural 10) (natural 10))]
       (IdentifierReference (IdentifierString "x")))
   assertParsed "references are parsed independently of lexical lookup" "(begin x : 1 yield x), x"
-    (MapConcatenation (Begin [AST.dependentIdentifierType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
+    (MapConcatenation (Begin [AST.dependentArgumentType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
       (IdentifierReference (IdentifierString "x")))
   assertParsed "let accepts an assigned declaration" "let x := 1"
     (Let (AST.assignment "x" (natural 1) (natural 1)))
@@ -859,7 +873,7 @@ regressionTests = do
     "begin x : 1"
     (FunctionApplication
       (ref "begin")
-      (AST.dependentIdentifierType "x" (natural 1)))
+      (AST.dependentArgumentType "x" (natural 1)))
   assert "an incomplete do form is not expanded to a function body"
     (case parseSource
         "(f := ({n? : Nat} -> () do assert n of Nat)\n)" of
@@ -871,8 +885,8 @@ regressionTests = do
       Left _ -> False)
   let identityBody = FunctionBody [] (ref "value")
       optionalInput =
-        ArgumentMap
-          [OptionalType (AST.dependentIdentifierType "value" (ref "Any"))]
+        ArgumentativeMap
+          [OptionalType (AST.dependentArgumentType "value" (ref "Any"))]
       arrowBody input output = FunctionApplication
         (FunctionType input output)
         identityBody
@@ -953,11 +967,11 @@ regressionTests = do
       Fun captured : _ -> captured == ref "Infinity"
       _ -> False
     _ -> False
-  assert "an identifier capture is in scope for later typed captures" $ case
+  assert "a dependent argument capture is in scope for later typed captures" $ case
       parseSource (unlines
-        [ "(_DependentIdentifier := datra.DependentIdentifier"
+        [ "(_DependentArgument := datra.DependentArgument"
         , "_Expr := datra.Expr"
-        , "\"gate %_DependentIdentifier bound %_Expr body %Int\" :="
+        , "\"gate %_DependentArgument bound %_Expr body %Int\" :="
             <> " ((Any; Any; Int) -> Int) datra.test.gate"
         , "gate x bound Int body x)"
         ]) of
@@ -965,33 +979,33 @@ regressionTests = do
       rewritten == FunctionApplication (ref "gate")
         (AtlasMap [ref "x", ref "Int", ref "x"])
     _ -> False
-  let dependentIdentifierTemplate = StringTemplate
+  let dependentArgumentTemplate = StringTemplate
         [ StringTemplateLiteral "abc"
         , StringTemplateInterpolation
             (ref "it")
         ]
-  assert "an identifier capture does not introduce contextual it" $ case
+  assert "a dependent argument capture does not introduce contextual it" $ case
       parseSource (unlines
-        [ "(_DependentIdentifier := datra.DependentIdentifier"
-        , "\"capture %_DependentIdentifier\" := (Any -> Any) datra.fun_body"
+        [ "(_DependentArgument := datra.DependentArgument"
+        , "\"capture %_DependentArgument\" := (Any -> Any) datra.fun_body"
         , "capture \"abc%(it)\")"
         ]) of
     Right (AtlasMap [_, _, Fun captured]) ->
-      captured == dependentIdentifierTemplate
+      captured == dependentArgumentTemplate
     _ -> False
-  assert "an optional identifier capture does not introduce contextual it" $
+  assert "an optional dependent argument capture does not introduce contextual it" $
     case parseSource (unlines
-      [ "(_DependentIdentifier := datra.DependentIdentifier"
-      , "\"capture %_DependentIdentifier\" := (Any -> Any) datra.fun_body"
+      [ "(_DependentArgument := datra.DependentArgument"
+      , "\"capture %_DependentArgument\" := (Any -> Any) datra.fun_body"
       , "capture \"abc%(it)\"?)"
       ]) of
       Right (AtlasMap [_, _, Fun captured]) ->
-        captured == OptionalType dependentIdentifierTemplate
+        captured == OptionalType dependentArgumentTemplate
       _ -> False
   case parseSource (unlines
-      [ "(_DependentIdentifier := datra.DependentIdentifier"
+      [ "(_DependentArgument := datra.DependentArgument"
       , "_DependentDeclaration := datra.DependentDeclaration"
-      , "\"captureId %_DependentIdentifier\" := (Any -> Any) datra.fun_body"
+      , "\"captureId %_DependentArgument\" := (Any -> Any) datra.fun_body"
       , "\"captureDeclaration %_DependentDeclaration\" := (Any -> Any) datra.fun_body"
       , "captureId x"
       , "captureId (x : Int)"
@@ -1004,16 +1018,16 @@ regressionTests = do
           , unmatched, annotated
           ])
         | identifier == ref "x"
-          && dependent == AST.dependentIdentifierType "x" (ref "Int")
+          && dependent == AST.dependentArgumentType "x" (ref "Int")
           && declaration == AST.assignment "x" (natural 1) (natural 1)
           && unmatched == FunctionApplication
             (ref "captureDeclaration")
-            (AST.dependentIdentifierType "x" (ref "Int"))
+            (AST.dependentArgumentType "x" (ref "Int"))
           && annotated == FunctionApplication
             (ref "captureDeclaration")
             (AST.assignment "x" (ref "Int") (natural 1)) -> pure ()
       actual -> assertFailure
-        ("identifier expressions and declarations use distinct captures: "
+        ("dependent argument expressions and declarations use distinct captures: "
           <> show actual)
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
@@ -1023,7 +1037,7 @@ regressionTests = do
   assertRejected "previous external symbol is rejected" "!~\"datra.Int\""
   assertRejected "legacy external symbol is rejected" "!^\"datra.Int\""
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
-    (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
+    (name <> " : Nat") (AST.dependentArgumentType name (ref "Nat")))
     ["Nat", "Int", "Str", "IdenStr", "Bool", "true", "false", "nothing"]
   assertLocatedParse
   assertResourceEnvelopes
@@ -1086,11 +1100,11 @@ regressionTests = do
     (foldl FunctionApplication (IdentifierReference (IdentifierString "within"))
       [natural 2, IdentifierReference (IdentifierString "to"), natural 5])
   assertParsed "the range library binding is an ordinary name" "range : Nat"
-    (AST.dependentIdentifierType "range" (ref "Nat"))
+    (AST.dependentArgumentType "range" (ref "Nat"))
   assertAstOutput
     "the former valued-range prefix is available as an identifier"
     "within : Nat"
-    (AST.dependentIdentifierType "within" (ref "Nat"))
+    (AST.dependentArgumentType "within" (ref "Nat"))
   assertAstOutput
     "Nat library reference"
     "Nat"
@@ -1209,31 +1223,31 @@ regressionTests = do
     "optional identifier slot"
     "a? : Nat"
     (OptionalType
-      (AST.dependentIdentifierType "a" (ref "Nat")))
+      (AST.dependentArgumentType "a" (ref "Nat")))
   assertParsed "ordinary library names can name fields" "Str : Nat"
-    (AST.dependentIdentifierType "Str" (ref "Nat"))
+    (AST.dependentArgumentType "Str" (ref "Nat"))
   assertAstOutput
     "reserved names can be full-string identifier expressions"
     "\"Str\" : Nat"
-    (AST.dependentIdentifierType "Str" (ref "Nat"))
+    (AST.dependentArgumentType "Str" (ref "Nat"))
   assertAstOutput
     "contextual range words remain bare identifier expressions"
     "to : Nat"
-    (AST.dependentIdentifierType "to" (ref "Nat"))
+    (AST.dependentArgumentType "to" (ref "Nat"))
   assertAstOutput
     "contextual range directions remain bare identifier expressions"
     "(up : Nat; down : Nat)"
-    (AST.dependentIdentifierType "up" (ref "Nat")
-      <:> AST.dependentIdentifierType "down" (ref "Nat"))
+    (AST.dependentArgumentType "up" (ref "Nat")
+      <:> AST.dependentArgumentType "down" (ref "Nat"))
   assertAstOutput
     "uppercase built-in names remain bare identifier expressions"
     "False : Nat"
-    (AST.dependentIdentifierType "False" (ref "Nat"))
+    (AST.dependentArgumentType "False" (ref "Nat"))
   assertAstOutput
     "full-string identifier expressions compose with optional syntax"
     "\"Abc\"? : Nat"
     (OptionalType
-      (AST.dependentIdentifierType "Abc" (ref "Nat")))
+      (AST.dependentArgumentType "Abc" (ref "Nat")))
   assertAstOutput
     "optional assigned identifier slot"
     "a? : Nat := 5"
@@ -1242,9 +1256,9 @@ regressionTests = do
   let optionalIntegerSlots =
         MapConcatenation
           (OptionalType
-            (AST.dependentIdentifierType "a" (ref "Int")))
+            (AST.dependentArgumentType "a" (ref "Int")))
           (OptionalType
-            (AST.dependentIdentifierType "b" (ref "Int")))
+            (AST.dependentArgumentType "b" (ref "Int")))
       integerPair = MapConcatenation (natural 12) (natural 23)
   assertAstOutput
     "optional identifier slots are concatenation operands"
@@ -1275,16 +1289,16 @@ regressionTests = do
         (AST.assignment "b" (natural 5) (natural 5)))
       (MapConcatenation
         (OptionalType
-          (AST.dependentIdentifierType "a" (ref "Int")))
+          (AST.dependentArgumentType "a" (ref "Int")))
         (OptionalType
-          (AST.dependentIdentifierType "b" (fromTo 3 8)))))
+          (AST.dependentArgumentType "b" (fromTo 3 8)))))
   let optionalAssigned identifierString value =
         OptionalType
           (AST.assignment
             identifierString (ref "Int") (natural value))
       optionalIdentifier identifierString =
         OptionalType
-          (AST.dependentIdentifierType identifierString (ref "Int"))
+          (AST.dependentArgumentType identifierString (ref "Int"))
   assertAstOutput
     "parenthesized reverse specification stays in its concatenation slot"
     "a? : Int := 12, (b? : Int) <~ (b? : Int := 23)"
@@ -1337,7 +1351,7 @@ regressionTests = do
     (AST.conditional
       (FunctionApplication
         (ref "valid")
-        (AST.dependentIdentifierType "parsed"
+        (AST.dependentArgumentType "parsed"
           (FunctionApplication (ref "parse") (ref "input"))))
       (ref "accepted")
       (ref "fallback"))
@@ -1415,13 +1429,13 @@ regressionTests = do
   assertAstOutput
     "simple identifier type"
     "x : Nat"
-    (AST.dependentIdentifierType "x" (ref "Nat"))
+    (AST.dependentArgumentType "x" (ref "Nat"))
   assertAstOutput
     "unit identifier equals its identifier string"
     "$Value = (Value : ())"
     (AST.equal
       (AST.asciiString "Value")
-      (AST.dependentIdentifierType "Value" AST.emptyMap))
+      (AST.dependentArgumentType "Value" AST.emptyMap))
   assertAstOutput
     "full identifier assignment"
     "x : Nat := 5"
@@ -1430,13 +1444,13 @@ regressionTests = do
     "assignment specified into its identifier target"
     "(a : Nat := 5) ~> (a : Nat)"
     ( AST.assignment "a" (ref "Nat") (natural 5)
-        ~> AST.dependentIdentifierType "a" (ref "Nat")
+        ~> AST.dependentArgumentType "a" (ref "Nat")
     )
   assertAstOutput
     "reverse specification between different identifier strings"
     "(a : Nat) <~ (b := 10)"
     ( AST.assignment "b" (natural 10) (natural 10)
-        ~> AST.dependentIdentifierType "a" (ref "Nat")
+        ~> AST.dependentArgumentType "a" (ref "Nat")
     )
   assertAstOutput
     "reverse assignment chain widens nested annotations"
@@ -1447,7 +1461,7 @@ regressionTests = do
     ( AST.assignment "d" (natural 28) (natural 28)
         ~> AST.assignment "d" (fromTo 25 35) (natural 28)
         ~> AST.assignment "d" (fromTo 20 40) (natural 28)
-        ~> AST.dependentIdentifierType "d" (fromTo 0 100)
+        ~> AST.dependentArgumentType "d" (fromTo 0 100)
     )
   assertAstOutput
     "reverse assignment chain accepts unparenthesized multiline operands"
@@ -1463,7 +1477,7 @@ regressionTests = do
           "d"
           (rangeTo 12 85)
           (natural 23 <..> natural 66)
-        ~> AST.dependentIdentifierType "d" (rangeTo 10 100)
+        ~> AST.dependentArgumentType "d" (rangeTo 10 100)
     )
   assertAstOutput
     "reverse assignment chain retains an incompatible intermediate annotation"
@@ -1471,8 +1485,8 @@ regressionTests = do
         <> "(x : from 5 to 20) <~ (x := 8)"
     )
     ( AST.assignment "x" (natural 8) (natural 8)
-        ~> AST.dependentIdentifierType "x" (fromTo 5 20)
-        ~> AST.dependentIdentifierType "x" (fromTo 1 10)
+        ~> AST.dependentArgumentType "x" (fromTo 5 20)
+        ~> AST.dependentArgumentType "x" (fromTo 1 10)
     )
   assertAstOutput
     "binary identifier assignment"
@@ -1493,11 +1507,11 @@ regressionTests = do
   assertAstOutput
     "accessing an identifier operation requires grouping"
     "(x : Nat) @ 0"
-    (AST.dependentIdentifierType "x" (ref "Nat") <@> natural 0)
+    (AST.dependentArgumentType "x" (ref "Nat") <@> natural 0)
   assertAstOutput
     "bracket access uses the identifier map view"
     "(x : Nat)[0]"
-    (AST.dependentIdentifierType "x" (ref "Nat") <@> natural 0)
+    (AST.dependentArgumentType "x" (ref "Nat") <@> natural 0)
   assertAstOutput
     "bracket access uses the assignment specification view"
     "(x : Nat := 5)[1]"
@@ -1505,27 +1519,27 @@ regressionTests = do
   assertAstOutput
     "unparenthesized access belongs to the identifier type operand"
     "x : Nat @ 0"
-    (AST.dependentIdentifierType "x" (ref "Nat" <@> natural 0))
+    (AST.dependentArgumentType "x" (ref "Nat" <@> natural 0))
   assertAstOutput
     "identifier arithmetic operands compose without grouping"
     "x : 5 + y : 10 = 15"
     (AST.equal
       ((AST.+)
-        (AST.dependentIdentifierType "x" (natural 5))
-        (AST.dependentIdentifierType "y" (natural 10)))
+        (AST.dependentArgumentType "x" (natural 5))
+        (AST.dependentArgumentType "y" (natural 10)))
       (natural 15))
   assertAstOutput
     "transfinite identifier arithmetic preserves precedence"
     "x : ...^2 + y : 1 = ...^2 + 1"
     (AST.equal
       ((AST.+)
-        (AST.dependentIdentifierType "x" ((AST.^) (...) (natural 2)))
-        (AST.dependentIdentifierType "y" (natural 1)))
+        (AST.dependentArgumentType "x" ((AST.^) (...) (natural 2)))
+        (AST.dependentArgumentType "y" (natural 1)))
       ((AST.+) ((AST.^) (...) (natural 2)) (natural 1)))
   assertAstOutput
     "identifier strings share canonical continuation characters"
     "A_0'z : Nat"
-    (AST.dependentIdentifierType "A_0'z" (ref "Nat"))
+    (AST.dependentArgumentType "A_0'z" (ref "Nat"))
   assertRejected
     "identifier operations reject expression left sides"
     "(2 + 2) : Nat := 4"
@@ -1537,7 +1551,7 @@ regressionTests = do
       (natural 123)
       (Just (natural 123)))
   assertAstOutput
-    "parenthesized names evaluate dependent identifier templates"
+    "parenthesized names evaluate dependent argument templates"
     "(abc) : Nat"
     (IdentifierTemplateOperation
       [StringTemplateInterpolation (ref "abc")]
@@ -2289,7 +2303,7 @@ genExpression =
     , genRangeExpression
     ]
     [ AtlasMap <$> Gen.list (Range.linear 0 6) genExpression
-    , ArgumentMap <$> Gen.list (Range.linear 0 6) genExpression
+    , ArgumentativeMap <$> Gen.list (Range.linear 0 6) genExpression
     , pure Skip
     , MapSequence <$> Gen.list (Range.linear 0 6) genExpression
     , Gen.subterm2 genExpression genExpression FunctionType
@@ -2434,14 +2448,14 @@ assertResourceEnvelopes = do
     , ( "yield 5 >> {a? : Nat := 3}"
       , Begin []
           (Overload
-            (ArgumentMap
+            (ArgumentativeMap
               [OptionalType (AST.assignment "a" (ref "Nat") (natural 3))])
             (natural 5))
       )
     , ( "yield \"a\" >>> {x? : Nat := 2; Str}"
       , Begin []
           (SafeOverload
-            (ArgumentMap
+            (ArgumentativeMap
               [ OptionalType
                   (AST.assignment "x" (ref "Nat") (natural 2))
               , ref "Str"

@@ -69,7 +69,7 @@ specifyValuesWithoutIdentity specify decideSubfederation source target =
           })
     Nothing ->
       case interpretedForm source of
-        ArgumentMapForm _ underlying ->
+        ArgumentativeMapForm _ underlying ->
           specifyFamily specify source (argumentAlternatives underlying) target
         EitherForm _
           | Nothing <- concreteOptionalAssignmentSource source ->
@@ -104,7 +104,7 @@ concatenatedSourcePresentations
   -> Either InterpretingError (Maybe [InterpretedValue])
 concatenatedSourcePresentations value =
   case interpretedForm value of
-    ArgumentMapForm _ underlying ->
+    ArgumentativeMapForm _ underlying ->
       Right (Just (argumentAlternatives underlying))
     EitherForm _
       | Nothing <- concreteOptionalAssignmentSource value ->
@@ -161,7 +161,7 @@ simpleIdentifierStringFromSemantics (PresentedSemantics _ _ semantics) =
   simpleIdentifierStringFromSemantics semantics
 simpleIdentifierStringFromSemantics semantics =
   case semantics of
-    DependentIdentifierTypeSemantics
+    DependentArgumentTypeSemantics
         (SimpleIdentifierDependency identifierString) _ _ _ ->
           Just identifierString
     AssignmentSemantics identifierString _ _ -> Just identifierString
@@ -254,7 +254,7 @@ specifyTotalAtlasMap source target = do
   case selectFederationMember selectionSource target of
     DecisionProved member -> do
       let selectedSource = case member of
-            EvaluatedArgumentMapMember prepared _ -> prepared
+            EvaluatedArgumentativeMapMember prepared _ -> prepared
             _ -> selectionSource
       selectedTotal <- maybe
         (Left (ExpectedTotalAtlasMap
@@ -371,7 +371,7 @@ originalSpecificationSourceSemantics value =
   case interpretedSemanticSemantics value of
     SpecificationSemantics source _ -> source
     AssignmentSemantics identifierString _ givenValueSemantics ->
-      DependentIdentifierTypeSemantics
+      DependentArgumentTypeSemantics
         (SimpleIdentifierDependency identifierString)
         givenValueSemantics
         True

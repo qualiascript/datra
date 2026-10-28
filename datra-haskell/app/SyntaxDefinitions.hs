@@ -231,7 +231,7 @@ expandSyntax rule selection =
       values -> AtlasMap values
     -- Function preparation overloads this supplied tail onto the declared
     -- domain. Empty, singleton, and multi-capture syntax therefore follows the
-    -- same call path as an ordinary partial argument map.
+    -- same call path as an ordinary partial argumentative map.
 
 dependentLookup
   :: [StringTemplatePart Expression]
@@ -248,7 +248,7 @@ selectedDependentLookup
   -> [Expression]
   -> Expression
 selectedDependentLookup parts values =
-  lookupExpression (ArgumentMap
+  lookupExpression (ArgumentativeMap
     [ StringTemplate parts
     , StringTemplate (substituteCaptures parts values)
     ])

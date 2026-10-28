@@ -41,7 +41,7 @@ import DatraTypes
   , interpretedFunctionBody
   , interpretedRuntimeFunctionInsertion
   , interpretedSemanticResult
-  , makeArgumentMapPreservingSingleton
+  , makeArgumentativeMapPreservingSingleton
   , ordinalIndexedProductFamily
   , simpleIdentifierTypeValue
   , subfederationValues
@@ -272,8 +272,8 @@ sameHoleClass ExpressionSyntaxHole {} ExpressionSyntaxHole {} = True
 sameHoleClass BlockSyntaxHole {} BlockSyntaxHole {} = True
 sameHoleClass FunctionBodySyntaxHole {} FunctionBodySyntaxHole {} = True
 sameHoleClass DeclarationSyntaxHole {} DeclarationSyntaxHole {} = True
-sameHoleClass DependentIdentifierSyntaxHole {}
-    DependentIdentifierSyntaxHole {} = True
+sameHoleClass DependentArgumentSyntaxHole {}
+    DependentArgumentSyntaxHole {} = True
 sameHoleClass ValueSyntaxHole {} ValueSyntaxHole {} = True
 sameHoleClass _ _ = False
 
@@ -629,7 +629,7 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
           | otherwise = case do
               families <- traverse id (rewriteRuleHoleFamilies compiled)
               inputValue <- either (const Nothing) Just
-                (makeArgumentMapPreservingSingleton
+                (makeArgumentativeMapPreservingSingleton
                   (zipWith captureValue captures families))
               outputValue <- rewriteEvaluateWithInput environment
                   (rewriteDeclarations environment) inputValue implementation <|>
@@ -924,10 +924,10 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing
         [] -> AtlasMap []
         [expressionValue] -> expressionValue
         expressions -> AtlasMap expressions) trailing
-    ArgumentMap entries -> do
+    ArgumentativeMap entries -> do
       rewritten <- traverse (rewriteStandalone capture environment) entries
       if all validArgumentMember rewritten
-        then finish (ArgumentMap rewritten) trailing
+        then finish (ArgumentativeMap rewritten) trailing
         else Left InvalidPrivateOptionalArgumentName
     Begin bindings result -> do
       let contextual = withContextualSyntax ["this"] environment
@@ -1198,7 +1198,7 @@ syntaxApplicationSpine value = applicationSpine value
 directSyntaxArguments :: Expression -> [Expression]
 directSyntaxArguments argument = case argument of
   AtlasMap members -> members
-  ArgumentMap members -> members
+  ArgumentativeMap members -> members
   MapSequence members -> members
   SyntaxBoundary inner -> directSyntaxArguments inner
   _ -> [argument]

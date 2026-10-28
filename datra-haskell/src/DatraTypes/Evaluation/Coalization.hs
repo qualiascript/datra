@@ -67,7 +67,7 @@ federationIsCoalition federation =
     PrimitiveAtlasMapFederation
         (ValuedIntegerRangeAtlasMapFederation _) -> True
     PrimitiveAtlasMapFederation
-        (DependentIdentifierTypeAtlasMapFederation _) -> True
+        (DependentArgumentTypeAtlasMapFederation _) -> True
     PrimitiveAtlasMapFederation
         (EitherAtlasMapFederation alternatives) ->
       federationIsCoalition

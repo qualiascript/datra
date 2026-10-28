@@ -85,10 +85,10 @@ standardLibraryTests =
             "yield Block" (SourceEvaluationFailure (UnknownIdentifier "Block"))
         , programFailureCase "Pages is private to the library"
             "yield Pages" (SourceEvaluationFailure (UnknownIdentifier "Pages"))
-        , programFailureCase "DependentIdentifier is private to the library"
-            "yield DependentIdentifier"
+        , programFailureCase "DependentArgument is private to the library"
+            "yield DependentArgument"
             (SourceEvaluationFailure
-              (UnknownIdentifier "DependentIdentifier"))
+              (UnknownIdentifier "DependentArgument"))
         , programFailureCase "DependentDeclaration is private to the library"
             "yield DependentDeclaration"
             (SourceEvaluationFailure
@@ -442,7 +442,7 @@ standardLibraryTests =
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
             , "datra.Expr of Any"
-            , "datra.DependentIdentifier of Any"
+            , "datra.DependentArgument of Any"
             , "datra.DependentDeclaration of Any"
             , "datra.Block of Any"
             , "datra.FunctionBody of Any"
@@ -536,13 +536,13 @@ standardLibraryTests =
             ("(\"()\"; \"arg0 : 1\"; "
               <> "\"(arg0 : 1; arg1 : 2; arg2 : 3)\"; "
               <> "\"(arg0 : 4; arg1 : 10)\")")
-        , programCase "only argument maps erase unmatched identifiers"
+        , programCase "only argumentative maps erase unmatched identifiers"
             ( "assert not ((arg0 : 1; arg1 : 2) of List Int)\n"
                 <> "assert ((arg0 : 1; arg1 : 2) of {List Int,})\n"
                 <> "yield ()"
             )
             "()"
-        , programCase "Args convert to lists through argument map matching"
+        , programCase "Args convert to lists through argumentative map matching"
             ( "ArgsIntMap := {Args Int,}\n"
                 <> "ListInt := List Int\n"
                 <> "display := ArgsIntMap -> \"%ListInt\" do\n"
@@ -588,7 +588,7 @@ standardLibraryTests =
                 <> "yield (Nat; 5) of Pair"
             )
             "true"
-        , programCase "optional binder accepts named dependent identifiers"
+        , programCase "optional binder accepts named dependent arguments"
             ( "Pair := (^T? :: Any) -> Any do yield (value? : T)\n"
                 <> "yield {T : Nat; value : 5} of Pair"
             )

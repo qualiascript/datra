@@ -3,7 +3,7 @@
 -- | Symbolic Haskell constructors for Datra ASTs.
 module DatraLanguage.AST.Syntax
   ( natural
-  , dependentIdentifierType
+  , dependentArgumentType
   , assignment
   , asciiString
   , nothing
@@ -65,8 +65,8 @@ import Prelude hiding (and, not, or, (+), (-), (*), (^))
 natural :: Natural -> Expression
 natural = EllipsisNatural
 
-dependentIdentifierType :: String -> Expression -> Expression
-dependentIdentifierType identifierString typeAnnotation =
+dependentArgumentType :: String -> Expression -> Expression
+dependentArgumentType identifierString typeAnnotation =
   IdentifierOperation
     (IdentifierString identifierString)
     typeAnnotation

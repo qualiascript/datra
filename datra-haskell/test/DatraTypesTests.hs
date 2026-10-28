@@ -523,12 +523,12 @@ testDiagnostics = do
       && localizeDiagnostic English
           (Types.GenericIdentifierDisjointnessUndecidable "T")
       == LocalizedMessage
-          "generic identifier cannot be proven disjoint from a dependent identifier"
+          "generic identifier cannot be proven disjoint from a dependent argument"
           ["identifier: T"]
       && localizeDiagnostic Romanian
           (Types.GenericIdentifierDisjointnessUndecidable "T")
       == LocalizedMessage
-          "nu se poate demonstra că identificatorul generic este disjunct de un identificator dependent"
+          "nu se poate demonstra că identificatorul generic este disjunct de un argument dependent"
           ["identificator: T"]
     )
   assert "inadmissible syntax templates have an explicit bilingual diagnostic"
@@ -584,16 +584,16 @@ testGenericIdentifierDisjointness = do
     (Types.asciiStringValue "U")
   names <- expectRight "construct identifier-name federation"
     (Types.eitherValue first second)
-  naturalType <- expectRight "construct dependent identifier bound"
+  naturalType <- expectRight "construct dependent argument bound"
     Types.naturalTypeValue
   let family = Types.identifierTemplateTypeValue
         "generic-disjointness-test" names naturalType
-      opaque = Types.dependentIdentifierTypeValue
+      opaque = Types.dependentArgumentTypeValue
         "opaque-generic-disjointness-test" (const "T") naturalType
       namedAny = Types.simpleIdentifierTypeValue "T" Types.anyTypeValue
-  assert "a named Any remains a dependent identifier type"
+  assert "a named Any remains a dependent argument type"
     (Types.interpretedValueKind namedAny
-      == Types.DependentIdentifierTypeValueKind)
+      == Types.DependentArgumentTypeValueKind)
   assert "a named Any remains distinct from its unnamed bound"
     (case Types.eitherValue namedAny Types.anyTypeValue of
       Right _ -> True
@@ -646,7 +646,7 @@ testArgumentSchemas = do
             (Just "exponent") True naturalType Nothing
         ]
   skipped <- expectRight "construct skipped arguments"
-    (Types.makeArgumentMap [Types.skipValue, exponentValue])
+    (Types.makeArgumentativeMap [Types.skipValue, exponentValue])
   completed <- expectRight "complete skipped default"
     (Types.argumentSchemaValuesComplete positionalSchema skipped)
   assert "a skip consumes its slot and retains that slot's default"
@@ -672,7 +672,7 @@ testArgumentSchemas = do
 
   text <- expectRight "construct ASCII string" (Types.asciiStringValue "value")
   reordered <- expectRight "construct uniquely reorderable arguments"
-    (Types.makeArgumentMap [text, Types.naturalValue 7])
+    (Types.makeArgumentativeMap [text, Types.naturalValue 7])
   characterType <- expectRight "construct Char" Types.charTypeValue
   let stringType = Types.coalizeValue
         (Types.listTypeValue "List Char" characterType)
@@ -683,7 +683,7 @@ testArgumentSchemas = do
         ]
   (_, reorderedBindings) <- expectRight "uniquely reorder arguments"
     (Types.overloadArgumentSchemaComplete reorderSchema reordered)
-  assert "an argument map uses its sole type-correct reordering"
+  assert "an argumentative map uses its sole type-correct reordering"
     (map (\(name, value) -> (name, Types.interpretedCanonicalResult value))
         reorderedBindings
       == [ ("x", Types.interpretedCanonicalResult (Types.naturalValue 7))

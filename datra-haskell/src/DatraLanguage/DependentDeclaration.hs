@@ -34,7 +34,7 @@ data DependentDeclaration = DependentDeclaration
   }
 
 -- A declaration is an inferred assignment in block position. Identifier
--- annotations and dependent identifiers remain expressions until an explicit
+-- annotations and dependent arguments remain expressions until an explicit
 -- assignment gives them a value.
 dependentDeclaration :: Expression -> Maybe DependentDeclaration
 dependentDeclaration = declaration False False False
@@ -236,7 +236,7 @@ dependentDeclarationTemplateBranches declaration =
     join prefix suffix =
       prefix <> [StringTemplateLiteral " "] <> suffix
 
--- Lexical binders include dependent identifiers and parameters, not only
+-- Lexical binders include dependent arguments and parameters, not only
 -- executable declarations. Keep name extraction independent of declaration
 -- recognition so those concepts cannot silently widen one another.
 bindingNames :: Expression -> [String]

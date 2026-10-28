@@ -92,7 +92,7 @@ data GenericReferenceRole
   deriving (Eq, Ord, Show)
 
 -- | Raw generic syntax before its nearest function type has collected it.
--- Generic identifiers are deliberately simple: dependent identifier
+-- Generic identifiers are deliberately simple: dependent argument
 -- expressions cannot inhabit this representation. The parser supplies @Any@
 -- as the bound when the @::@ clause is omitted.
 data GenericIntroduction expression = GenericIntroduction
@@ -142,7 +142,7 @@ data Expression
   | GreedyStringTemplate Expression
   | IdentifierValueType
   | AtlasMap [Expression]
-  | ArgumentMap [Expression]
+  | ArgumentativeMap [Expression]
   | MapSequence [Expression]
   -- | A transient raw-parser boundary. Declarative syntax rewriting removes
   -- it before the public/post-matching AST is exposed.
@@ -417,8 +417,8 @@ normalizeExpression (GreedyStringTemplate operand) =
 normalizeExpression IdentifierValueType = IdentifierValueType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
-normalizeExpression (ArgumentMap expressions) =
-  ArgumentMap (map normalizeExpression expressions)
+normalizeExpression (ArgumentativeMap expressions) =
+  ArgumentativeMap (map normalizeExpression expressions)
 normalizeExpression (MapSequence expressions) =
   normalizeSequence MapSequence expressions
 normalizeExpression (SyntaxBoundary expressionValue) =
@@ -642,7 +642,7 @@ lower IdentifierValueType = IdentifierValueTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
-lower (ArgumentMap expressions) = Arguments (map lower expressions)
+lower (ArgumentativeMap expressions) = Arguments (map lower expressions)
 lower (MapSequence expressions) = Sequential (map lower expressions)
 lower (SyntaxBoundary expressionValue) = lower expressionValue
 lower (MapExpansion left right) = Expansion (lower left) (lower right)
@@ -969,7 +969,7 @@ prettyOperator
   case givenValue of
     Nothing ->
       prettyForm
-        (operatorCanonicalSymbol DependentIdentifierTypeOperator)
+        (operatorCanonicalSymbol DependentArgumentTypeOperator)
         [pretty (renderIdentifierString identifierString), prettyOperator typeAnnotation]
     Just givenValueExpression ->
       prettyForm
@@ -985,7 +985,7 @@ prettyOperator
     (IdentifierTemplateOperationValue parts typeAnnotation givenValue) =
   prettyForm
     (case givenValue of
-      Nothing -> operatorCanonicalSymbol DependentIdentifierTypeOperator
+      Nothing -> operatorCanonicalSymbol DependentArgumentTypeOperator
       Just _ -> operatorCanonicalSymbol AssignmentOperator)
     ( pretty (renderStringTemplate renderOperatorExpression (const Nothing) parts)
       : prettyOperator typeAnnotation
@@ -1167,7 +1167,7 @@ isAsciiLetter character =
 traverseExpressionChildren :: Applicative f => (Expression -> f Expression) -> Expression -> f Expression
 traverseExpressionChildren visit expression = case expression of
   AtlasMap xs -> AtlasMap <$> traverse visit xs
-  ArgumentMap xs -> ArgumentMap <$> traverse visit xs
+  ArgumentativeMap xs -> ArgumentativeMap <$> traverse visit xs
   MapSequence xs -> MapSequence <$> traverse visit xs
   SyntaxBoundary x -> SyntaxBoundary <$> visit x
   Def x -> Def <$> visit x

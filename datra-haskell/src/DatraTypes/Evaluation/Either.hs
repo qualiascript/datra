@@ -103,25 +103,25 @@ alternativesAreDistinct left right
       alternativesAreDistinct
         left
         (evaluatedSpecificationTarget rightSpecification)
-  | DependentIdentifierTypeForm leftIdentifier <- interpretedForm left
-  , DependentIdentifierTypeForm rightIdentifier <- interpretedForm right =
+  | DependentArgumentTypeForm leftIdentifier <- interpretedForm left
+  , DependentArgumentTypeForm rightIdentifier <- interpretedForm right =
       identifierAlternativesAreDistinct leftIdentifier rightIdentifier
-  | DependentIdentifierTypeForm _ <- interpretedForm left = True
-  | DependentIdentifierTypeForm _ <- interpretedForm right = True
+  | DependentArgumentTypeForm _ <- interpretedForm left = True
+  | DependentArgumentTypeForm _ <- interpretedForm right = True
   | Just leftSlots <- structuralSlotOrdinal left
   , Just rightSlots <- structuralSlotOrdinal right
   , leftSlots /= rightSlots = True
-  | ArgumentMapForm leftMembers _ <- interpretedForm left
-  , ArgumentMapForm rightMembers _ <- interpretedForm right =
+  | ArgumentativeMapForm leftMembers _ <- interpretedForm left
+  , ArgumentativeMapForm rightMembers _ <- interpretedForm right =
       length leftMembers /= length rightMembers
         || or (zipWith alternativesAreDistinct leftMembers rightMembers)
-  | ArgumentMapForm _ _ <- interpretedForm left
+  | ArgumentativeMapForm _ _ <- interpretedForm left
   , BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm right = True
   | BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm left
-  , ArgumentMapForm _ _ <- interpretedForm right = True
-  | ArgumentMapForm _ underlying <- interpretedForm left =
+  , ArgumentativeMapForm _ _ <- interpretedForm right = True
+  | ArgumentativeMapForm _ underlying <- interpretedForm left =
       alternativesAreDistinct underlying right
-  | ArgumentMapForm _ underlying <- interpretedForm right =
+  | ArgumentativeMapForm _ underlying <- interpretedForm right =
       alternativesAreDistinct left underlying
   | BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm left
   , ValuedNaturalRangeForm _ <- interpretedForm right = True
@@ -351,7 +351,7 @@ structuralSlotOrdinal value
         (interpretedMapPageCardinality (interpretedMap value)))
       ExpansionMapForm _ _ -> Just (finiteOrdinal
         (interpretedMapPageCardinality (interpretedMap value)))
-      ArgumentMapForm members _ ->
+      ArgumentativeMapForm members _ ->
         Just (finiteOrdinal (fromIntegral (length members)))
       _ -> Just (finiteOrdinal 1)
 
@@ -367,8 +367,8 @@ isNumericalRange value =
     _ -> False
 
 identifierAlternativesAreDistinct
-  :: EvaluatedDependentIdentifierType
-  -> EvaluatedDependentIdentifierType
+  :: EvaluatedDependentArgumentType
+  -> EvaluatedDependentArgumentType
   -> Bool
 identifierAlternativesAreDistinct left right
   | SimpleIdentifierDependency leftName <- evaluatedIdentifierDependency left

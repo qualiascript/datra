@@ -41,7 +41,7 @@ compileParametersWithGenerics generics evaluate written static =
   compileWith False written static
   where
     inferenceBoundary = case written of
-      ArgumentMap _ -> True
+      ArgumentativeMap _ -> True
       _ -> False
     compileWith allowPrivateOptional writtenValue staticValue =
       case staticValue of
@@ -79,10 +79,10 @@ compileParametersWithGenerics generics evaluate written static =
               orderedArgumentSchema 2
                 <$> traverse (uncurry (compileWith True))
                   (zip writtenMembers staticMembers)
-        ArgumentMap staticMembers
-          | ArgumentMap writtenMembers <- writtenValue
+        ArgumentativeMap staticMembers
+          | ArgumentativeMap writtenMembers <- writtenValue
           , length writtenMembers == length staticMembers -> do
-              traverse_ validateArgumentMapName writtenMembers
+              traverse_ validateArgumentativeMapName writtenMembers
               unorderedArgumentSchema
                 <$> traverse (uncurry (compileWith False))
                   (zip writtenMembers staticMembers)
@@ -121,7 +121,7 @@ compileParametersWithGenerics generics evaluate written static =
       | optional && not allowPrivate && isPrivateIdentifier name =
           Left (PrivateParameterCannotBeOptional name)
       | otherwise = Right ()
-    validateArgumentMapName member =
+    validateArgumentativeMapName member =
       case member of
         optional
           | Just (IdentifierOperation (IdentifierString name) _ _, _) <-

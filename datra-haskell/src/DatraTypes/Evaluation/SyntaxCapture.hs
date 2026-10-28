@@ -64,17 +64,17 @@ captureAtomicSyntaxExpression target captured =
         _ -> Nothing
     BuiltinMetaTypeForm (ASTMetaType DeclarationAST)
       | dependentDeclarationCandidate captured -> Just captured
-    BuiltinMetaTypeForm (ASTMetaType DependentIdentifierAST) ->
-      dependentIdentifier captured
+    BuiltinMetaTypeForm (ASTMetaType DependentArgumentAST) ->
+      dependentArgument captured
     _ -> Nothing
   where
-    dependentIdentifier value = case value of
+    dependentArgument value = case value of
       IdentifierReference {} -> Just value
       AsciiStringLiteral {} -> Just value
       StringTemplate {} -> Just value
       IdentifierOperation _ _ Nothing -> Just value
       IdentifierTemplateOperation _ _ Nothing -> Just value
-      OptionalType inner -> OptionalType <$> dependentIdentifier inner
+      OptionalType inner -> OptionalType <$> dependentArgument inner
       _ -> Nothing
 
 captureSyntaxList
@@ -142,9 +142,9 @@ specializeSyntaxHoleKind target hole =
     FunctionBodySyntaxHole value
   (BuiltinMetaTypeForm (ASTMetaType DeclarationAST), ValueSyntaxHole value) ->
     DeclarationSyntaxHole value
-  ( BuiltinMetaTypeForm (ASTMetaType DependentIdentifierAST)
+  ( BuiltinMetaTypeForm (ASTMetaType DependentArgumentAST)
     , ValueSyntaxHole value
-    ) -> DependentIdentifierSyntaxHole value
+    ) -> DependentArgumentSyntaxHole value
   (_, ValueSyntaxHole value)
     | Just _ <- syntaxListElement normalized -> ExpressionSyntaxHole value
   _ -> hole

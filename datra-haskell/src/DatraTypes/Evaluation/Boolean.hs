@@ -30,7 +30,7 @@ makeBoolean flag = value
   where
     underlying = makeNatural (booleanNatural flag)
     semantics =
-      DependentIdentifierTypeSemantics
+      DependentArgumentTypeSemantics
         (SimpleIdentifierDependency
           (case flag of
             DatraFalse -> "False"
@@ -154,7 +154,7 @@ booleanFromSemantics (PresentedSemantics _ _ semantics) =
   booleanFromSemantics semantics
 booleanFromSemantics semantics =
   case semantics of
-    DependentIdentifierTypeSemantics
+    DependentArgumentTypeSemantics
         (SimpleIdentifierDependency identifierString)
         underlying
         True

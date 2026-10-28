@@ -55,9 +55,9 @@ The following completed interpreter example cases passed:
 - literals and arithmetic;
 - slot ordinal distinctness;
 - dependent declarations;
-- argument maps;
-- argument maps in concatenation;
-- argument maps in string templates;
+- argumentative maps;
+- argumentative maps in concatenation;
+- argumentative maps in string templates;
 - internal typed decoding;
 - begin/yield scope and provenance;
 - implicit programs;

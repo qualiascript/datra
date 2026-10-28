@@ -300,7 +300,7 @@ functionTests =
               , "yield eliminate {T : Nat; marker : 3; value : 5}"
               ])
             "(\"5\"; true)"
-        , programCase "a closed argument-map codomain eliminates recursively"
+        , programCase "a closed argumentative-map codomain eliminates recursively"
             (unlines
               [ "eliminate := ({marker? : ^T; value? : T} -> {text? : Str; valid? : Bool} do"
               , "  pair := (T -> {text? : Str; valid? : Bool} do"
@@ -503,7 +503,7 @@ functionTests =
               , "assert not ((_y : 5) of (_x : Int))"
               ])
             "()"
-        , programCase "private argument-map names may be changed"
+        , programCase "private argumentative-map names may be changed"
             (unlines
               [ "assert 5 of {_x : Int}"
               , "assert (_x : 5) of {_x : Int}"
@@ -587,19 +587,19 @@ functionTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase
-            "singleton argument-map private parameter is positional"
+            "singleton argumentative-map private parameter is positional"
             ( "f := ({_x:Int} -> Int do yield _x+1)\n"
                 <> "yield f 2"
             )
             "3"
         , programFailureCase
-            "singleton argument-map private parameter rejects its written name"
+            "singleton argumentative-map private parameter rejects its written name"
             ( "f := ({_x:Int} -> Int do yield ~\"_x\"+1)\n"
                 <> "yield f (_x:2)"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-        , programCase "private argument-map parameters preserve written order"
+        , programCase "private argumentative-map parameters preserve written order"
             ( "sum := ({_x:Int;_y:Int} -> Int do "
                 <> "yield _x+_y)\nyield sum (1;2)"
             )
@@ -659,7 +659,7 @@ functionTests =
                 <> "yield identity (Nat; 5)"
             )
             "5"
-        , programCase "optional binder accepts named dependent identifiers"
+        , programCase "optional binder accepts named dependent arguments"
             ( "identity := ({value? : &T? :: Any} -> T do yield value)\n"
                 <> "yield identity {T : Nat; value : 5}"
             )
@@ -742,7 +742,7 @@ argumentSchemaMatrixTests =
             "names select an otherwise ambiguous reorder"
             "{x : Int; y : Int}" "x * 10 + y" "(y : 3, x : 2)" "23"
         , ArgumentSchemaCase
-            "concatenated ordered and argument-map segments compose"
+            "concatenated ordered and argumentative-map segments compose"
             "x : Int, {y? : Int; z? : Int}"
             "x * 100 + y * 10 + z" "(x : 2, z : 4, 3)" "234"
         , ArgumentSchemaCase

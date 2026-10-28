@@ -42,18 +42,18 @@ accessSpecification access specification insertion = do
           insertion
       contextuallySpecifyValues sourceFiber targetFiber
 
--- An argument-map specification records which ordered target alternative
+-- An argumentative-map specification records which ordered target alternative
 -- matched this source. Fiber access follows that alternative, retaining the
--- source order instead of indexing the argument map's written target order.
+-- source order instead of indexing the argumentative map's written target order.
 specificationTargetPresentation
   :: InterpretedValue
   -> EvaluatedAtlasMapFederationMember
   -> InterpretedValue
 specificationTargetPresentation target member =
   case (interpretedForm target, member) of
-    (ArgumentMapForm _ underlying, EvaluatedArgumentMapMember _ selected) ->
+    (ArgumentativeMapForm _ underlying, EvaluatedArgumentativeMapMember _ selected) ->
       selectedAlternative underlying selected
-    (ArgumentMapForm _ underlying, _) -> selectedAlternative underlying member
+    (ArgumentativeMapForm _ underlying, _) -> selectedAlternative underlying member
     _ -> target
   where
     selectedAlternative value witness =

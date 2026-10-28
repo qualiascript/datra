@@ -55,7 +55,7 @@ import DatraLanguage.AST
       , StringTemplate
       , GreedyStringTemplate
       , AtlasMap
-      , ArgumentMap
+      , ArgumentativeMap
       , Skip
       , EllipsisLiteral
       , EllipsisNatural
@@ -207,7 +207,7 @@ data FunctionTypeIdentifier
 
 -- | Container behavior retained while generic binders become real leading
 -- domain members. Both parenthesized Atlas maps and semicolon map sequences
--- use the ordered path; argument maps retain their name-matching boundary.
+-- use the ordered path; argumentative maps retain their name-matching boundary.
 data PreparedFunctionDomainKind
   = PreparedOrderedFunctionDomain
   | PreparedArgumentFunctionDomain
@@ -530,7 +530,7 @@ functionTypeIdentifiers expressionValue =
     OptionalType value -> functionTypeIdentifiers value
     EitherType left right -> both left right
     AtlasMap entries -> entriesOf entries
-    ArgumentMap entries -> entriesOf entries
+    ArgumentativeMap entries -> entriesOf entries
     MapSequence entries -> entriesOf entries
     MapConcatenation left right -> both left right
     MapSpecification _ target -> functionTypeIdentifiers target
@@ -563,7 +563,7 @@ prepareFunctionDomain generics domain =
         SyntaxBoundary value -> layout value
         AtlasMap entries -> (PreparedOrderedFunctionDomain, entries)
         MapSequence entries -> (PreparedOrderedFunctionDomain, entries)
-        ArgumentMap entries -> (PreparedArgumentFunctionDomain, entries)
+        ArgumentativeMap entries -> (PreparedArgumentFunctionDomain, entries)
         GenericReferenceExpression reference
           | genericReferenceRole reference == GenericDeclarationReference
           , any ((== genericReferenceBinderId reference) . genericBinderId)
@@ -583,7 +583,7 @@ prepareFunctionDomainExpression generics domain =
     PreparedFunctionDomain kind members ->
       container kind (map lowerMember members)
   where
-    container PreparedArgumentFunctionDomain = ArgumentMap
+    container PreparedArgumentFunctionDomain = ArgumentativeMap
     container PreparedOrderedFunctionDomain = AtlasMap
     container PreparedScalarFunctionDomain = AtlasMap
     lowerMember member =
@@ -770,13 +770,13 @@ astForm =
       , astBinary AST.ApplicationOperator FunctionApplication
       , astBlock "do" FunctionBody
       , astSequence
-      , ArgumentMap <$> (astSymbol "{}" *> many astExpression)
+      , ArgumentativeMap <$> (astSymbol "{}" *> many astExpression)
       , astBinary AST.ConcatenationOperator MapConcatenation
       , astNaturalRangeExpression
       , try (astIdentifierTemplateOperation AST.AssignmentOperator (Just ()))
-      , try (astIdentifierTemplateOperation AST.DependentIdentifierTypeOperator Nothing)
+      , try (astIdentifierTemplateOperation AST.DependentArgumentTypeOperator Nothing)
       , astIdentifierOperation AST.AssignmentOperator (Just ())
-      , astIdentifierOperation AST.DependentIdentifierTypeOperator Nothing
+      , astIdentifierOperation AST.DependentArgumentTypeOperator Nothing
       , astBinary AST.ExpansionOperator MapExpansion
       , astBinary AST.RangeOperator SuperEllipsisRange
       , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
@@ -1218,7 +1218,7 @@ mapExpression =
 
 -- Parentheses around a declaration head are semantic: a bare @abc@ names the
 -- literal identifier @abc@, while @(abc)@ evaluates @abc@ as the dependent
--- name template. Reuse the dependent-identifier representation so the two
+-- name template. Reuse the dependent-argument representation so the two
 -- directions remain one semantic pair rather than two parser-only forms.
 evaluatedTemplateFederationOperation :: Parser Expression
 evaluatedTemplateFederationOperation = do
@@ -1279,7 +1279,7 @@ evaluatedIdentifierOperationFrom evaluated = do
           (IdentifierTemplateOperation
             parts typeAnnotation (Just givenValue)))
     , do
-        _ <- continuedOperator AST.DependentIdentifierTypeOperator
+        _ <- continuedOperator AST.DependentArgumentTypeOperator
         typeAnnotation <- identifierValueExpression
         givenValue <- optional (assignedValueFor typeAnnotation)
         pure (optionalIdentifier isOptional
@@ -1327,7 +1327,7 @@ identifierTemplateOperation = do
               parts typeAnnotation (Just givenValue)
         pure (optionalIdentifier isOptional operation)
     , do
-        _ <- continuedOperator AST.DependentIdentifierTypeOperator
+        _ <- continuedOperator AST.DependentArgumentTypeOperator
         typeAnnotation <- identifierValueExpression
         givenValue <- optional (assignedValueFor typeAnnotation)
         let operation = IdentifierTemplateOperation parts typeAnnotation givenValue
@@ -1361,7 +1361,7 @@ identifierOperation = do
                 (Just givenValue)
         pure (optionalIdentifier isOptional operation)
     , do
-        _ <- continuedOperator AST.DependentIdentifierTypeOperator
+        _ <- continuedOperator AST.DependentArgumentTypeOperator
         operationIdentifierString <-
           IdentifierString
             <$> pure (case identifierSpelling of BareIdentifier name -> name; FullStringIdentifier name -> name)
@@ -1481,7 +1481,7 @@ term = do
       [ evaluatedIdentifierOperationOrExpression
       , try identifierTemplateOperation
       , try identifierOperation
-      , argumentMap
+      , argumentativeMap
       , lookupExpression
       , trailingApplicationSkip
       , prefixedApplicationArgument
@@ -1516,7 +1516,7 @@ termAtom =
     , genericIntroduction
     , evaluatedIdentifierOperationOrExpression
     , lookupExpression
-    , argumentMap
+    , argumentativeMap
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
     , identifierReference
     ]
@@ -1582,16 +1582,16 @@ identifierReference = try $ do
   name <- validateIdentifierSpelling (BareIdentifier first)
   pure (IdentifierReference (IdentifierString name))
 
--- Argument maps use the same expression operators and sequence separators as
+-- Argumentative maps use the same expression operators and sequence separators as
 -- parenthesized maps: comma concatenates within one expression, while a
--- semicolon or newline starts the next argument-map member.
-argumentMap :: Parser Expression
-argumentMap = do
+-- semicolon or newline starts the next argumentative-map member.
+argumentativeMap :: Parser Expression
+argumentativeMap = do
   members <- between (symbol "{" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol "}")
     elements
   guard (all validDependentName members)
-  pure (ArgumentMap members)
+  pure (ArgumentativeMap members)
   where
     validDependentName _ = True
 
@@ -1648,7 +1648,7 @@ lookupExpression = do
   where
     lookupOperand = choice
       [ lookupExpression
-      , argumentMap
+      , argumentativeMap
       , greedyStringTemplateExpression
       , parenthesizedExpression
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
@@ -1710,7 +1710,7 @@ greedyStringTemplateExpression = do
   _ <- operatorToken AST.GreedyStringTemplateOperator
   GreedyStringTemplate <$> choice
     [ greedyStringTemplateExpression
-    , argumentMap
+    , argumentativeMap
     , parenthesizedExpression
     , lookupExpression
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
@@ -1797,7 +1797,7 @@ identifierOperationStart = do
   _ <- optional (operatorToken AST.OptionalOperator)
   void
     (operatorToken AST.AssignmentOperator
-      <|> operatorToken AST.DependentIdentifierTypeOperator)
+      <|> operatorToken AST.DependentArgumentTypeOperator)
 
 -- Concatenation binds after ranges. Access and forward specification share a
 -- left-associative level so their written order determines composition:

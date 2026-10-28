@@ -183,16 +183,16 @@ prettyNonKeywordCanonicalResult result =
     CanonicalDependentSum source -> pretty source
     CanonicalSimpleIdentifierType identifierString typeAnnotation ->
       pretty (renderIdentifierString identifierString)
-        <+> prettySourceSymbol DependentIdentifierTypeOperator
+        <+> prettySourceSymbol DependentArgumentTypeOperator
         <+> prettyCanonicalResult typeAnnotation
-    CanonicalDependentIdentifierType familyKey typeAnnotation ->
+    CanonicalDependentArgumentType familyKey typeAnnotation ->
       pretty familyKey
-        <+> prettySourceSymbol DependentIdentifierTypeOperator
+        <+> prettySourceSymbol DependentArgumentTypeOperator
         <+> prettyCanonicalResult typeAnnotation
     CanonicalIdentifierStringProjection familyKey typeAnnotation ->
       parens
         (pretty familyKey
-          <+> prettySourceSymbol DependentIdentifierTypeOperator
+          <+> prettySourceSymbol DependentArgumentTypeOperator
           <+> prettyCanonicalResult typeAnnotation)
         <+> prettySourceSymbol AccessOperator
         <+> "0"
@@ -204,7 +204,7 @@ prettyNonKeywordCanonicalResult result =
         <> prettyCoalizationOperand operand
     CanonicalMap cardinality components ->
       prettyMap cardinality components
-    CanonicalArgumentMap _ components ->
+    CanonicalArgumentativeMap _ components ->
       "{" <> concatWith (\left right -> left <> "; " <> right)
         (map prettyArgumentMember components) <> "}"
     CanonicalSpecification source target ->
@@ -253,7 +253,7 @@ prettyCanonicalApplicationArgument argument =
     CanonicalIdentifierValueType -> prettyCanonicalResult argument
     CanonicalDependentSum {} -> prettyCanonicalResult argument
     CanonicalAsciiString {} -> prettyCanonicalResult argument
-    CanonicalArgumentMap {} -> prettyCanonicalResult argument
+    CanonicalArgumentativeMap {} -> prettyCanonicalResult argument
     _ -> parens (prettyCanonicalResult argument)
 
 prettyConcatenationMember :: CanonicalResult -> Doc annotation
@@ -373,7 +373,7 @@ optionalIdentifierParts left right =
           Just
             (pretty (renderIdentifierString identifierString)
               <> prettySourceSymbol OptionalOperator
-              <+> prettySourceSymbol DependentIdentifierTypeOperator
+              <+> prettySourceSymbol DependentArgumentTypeOperator
               <+> prettyCanonicalResult typeAnnotation)
     CanonicalAssignment identifierString typeAnnotation givenValue
       | typeAnnotation == right ->
@@ -382,10 +382,10 @@ optionalIdentifierParts left right =
               <> prettySourceSymbol OptionalOperator
               <+> if typeAnnotation == givenValue
                 then
-                  prettySourceSymbol DependentIdentifierTypeOperator
+                  prettySourceSymbol DependentArgumentTypeOperator
                     <+> prettyCanonicalResult givenValue
                 else
-                  prettySourceSymbol DependentIdentifierTypeOperator
+                  prettySourceSymbol DependentArgumentTypeOperator
                     <+> prettyCanonicalResult typeAnnotation
                     <+> prettySourceSymbol AssignmentOperator
                     <+> prettyCanonicalResult givenValue)
@@ -444,11 +444,11 @@ prettyAssignment identifierString typeAnnotation givenValue =
   if typeAnnotation == givenValue
     then
       pretty (renderIdentifierString identifierString)
-        <+> prettySourceSymbol DependentIdentifierTypeOperator
+        <+> prettySourceSymbol DependentArgumentTypeOperator
         <+> prettyCanonicalResult givenValue
     else
       pretty (renderIdentifierString identifierString)
-        <+> prettySourceSymbol DependentIdentifierTypeOperator
+        <+> prettySourceSymbol DependentArgumentTypeOperator
         <+> prettyCanonicalResult typeAnnotation
         <+> prettySourceSymbol AssignmentOperator
         <+> prettyCanonicalResult givenValue
@@ -550,7 +550,7 @@ coalizationOperandNeedsParens operand =
     CanonicalTemplate {} -> True
     CanonicalDependentSum {} -> True
     CanonicalSimpleIdentifierType {} -> True
-    CanonicalDependentIdentifierType {} -> True
+    CanonicalDependentArgumentType {} -> True
     CanonicalIdentifierStringProjection {} -> True
     CanonicalAssignment {} -> True
     CanonicalSpecification {} -> True

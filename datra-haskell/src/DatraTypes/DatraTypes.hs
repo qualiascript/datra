@@ -168,8 +168,8 @@ module DatraTypes
   , integerLimitRangeValue
   , integerLimitRangeIsSubfederationOf
   , integerTypeValue
-  , dependentIdentifierTypeValue
-  , dependentIdentifierTemplateTypeValue
+  , dependentArgumentTypeValue
+  , dependentArgumentTemplateTypeValue
   , identifierTemplateTypeValue
   , simpleIdentifierName
   , identifierUnderlyingValue
@@ -183,9 +183,9 @@ module DatraTypes
   , makeAtlasMap
   , makeAtlasMapPreservingSingleton
   , isEmptyMap
-  , makeArgumentMap
-  , makeArgumentMapPreservingSingleton
-  , argumentMapMembers
+  , makeArgumentativeMap
+  , makeArgumentativeMapPreservingSingleton
+  , argumentativeMapMembers
   , argumentRows
   , overloadArgumentRows
   , functionArgumentValue
@@ -326,12 +326,12 @@ import Evaluation.FunctionArguments
   , selectFunctionCandidate
   )
 import Evaluation.Arguments
-  ( argumentMapMembers
+  ( argumentativeMapMembers
   , argumentPresentations
   , argumentRows
   , functionArgumentValue
-  , makeArgumentMap
-  , makeArgumentMapPreservingSingleton
+  , makeArgumentativeMap
+  , makeArgumentativeMapPreservingSingleton
   , overloadArgumentRows
   )
 import Evaluation.Optional
@@ -439,8 +439,8 @@ import Evaluation.LimitRange
   )
 import Evaluation.Length (mapLengthValue)
 import Evaluation.Identifier
-  ( dependentIdentifierTypeValue
-  , dependentIdentifierTemplateTypeValue
+  ( dependentArgumentTypeValue
+  , dependentArgumentTemplateTypeValue
   , identifierTemplateTypeValue
   , canonicalValueMarker
   , definitionMarker
@@ -735,7 +735,7 @@ specifyDependentSumElement
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyDependentSumElement source target =
-  if interpretedValueKind source == DependentIdentifierTypeValueKind
+  if interpretedValueKind source == DependentArgumentTypeValueKind
     then do
       sourceView <- structuralMapView source
       let schema = argumentSchemaFromValue target

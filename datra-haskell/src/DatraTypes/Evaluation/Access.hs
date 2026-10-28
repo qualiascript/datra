@@ -33,7 +33,7 @@ import Evaluation.Access.Specification
   ( accessSpecification
   , specificationTargetPresentation
   )
-import Evaluation.Access.Identifier (accessDependentIdentifierType)
+import Evaluation.Access.Identifier (accessDependentArgumentType)
 import Evaluation.Identifier (simpleIdentifierName)
 import Evaluation.Map
   ( concatenateValues
@@ -58,7 +58,7 @@ import Evaluation.Range qualified as RangeEvaluation
 import Evaluation.Value
 import Evaluation.Arguments
   ( argumentAlternatives
-  , makeArgumentMap
+  , makeArgumentativeMap
   , makeDistinctUnion
   )
 import Evaluation.Specification (specifyValues)
@@ -107,8 +107,8 @@ accessUncoerced mapValue insertionValue =
         concatenateValues selectedLeft selectedRight
       RangeConcatenationForm ranges _ ->
         accessRangeConcatenation mapValue insertionValue ranges
-      ArgumentMapForm members _ ->
-        traverse (accessValues mapValue) members >>= makeArgumentMap
+      ArgumentativeMapForm members _ ->
+        traverse (accessValues mapValue) members >>= makeArgumentativeMap
       _ -> accessSingleValue mapValue insertionValue
 
 isWholeSourceSelector :: InterpretedValue -> Bool
@@ -197,7 +197,7 @@ accessSingleValue mapValue insertionValue =
           Left failure : _ -> Left failure
           _ -> accessFederationValues mapValue insertionValue
         values -> makeDistinctUnion values
-    ArgumentMapForm _ underlying ->
+    ArgumentativeMapForm _ underlying ->
       traverse (`accessValues` insertionValue) (argumentAlternatives underlying)
         >>= makeDistinctUnion
     FederationSpecificationForm _ _ branches -> do
@@ -209,8 +209,8 @@ accessSingleValue mapValue insertionValue =
       accessSpecification accessValues specification insertionValue
     AssignmentForm specification ->
       accessSpecification accessValues specification insertionValue
-    DependentIdentifierTypeForm identifier ->
-      accessDependentIdentifierType mapValue identifier insertionValue
+    DependentArgumentTypeForm identifier ->
+      accessDependentArgumentType mapValue identifier insertionValue
     _ -> accessFederationValues mapValue insertionValue
   where
     emptyMapValue value =
@@ -538,7 +538,7 @@ accessMap sourceMap insertion
             (naturalsBelow cardinality)
 
 -- | Select a named page without discarding its identifier or specification.
--- Inspect argument-map slots directly: permutation expansion is unnecessary
+-- Inspect argumentative-map slots directly: permutation expansion is unnecessary
 -- when selection is by name, and optional names retain their named branch.
 namedAccessValue :: InterpretedValue -> String -> Either InterpretingError InterpretedValue
 namedAccessValue source name = do
@@ -555,7 +555,7 @@ namedAccessValue source name = do
           maybe [] ((: []) . namedMemberValue)
             <$> namedMapMemberByName named name
       | Just target <- interpretedSpecificationTargetEvidence value
-      , ArgumentMapForm members _ <- interpretedForm target =
+      , ArgumentativeMapForm members _ <- interpretedForm target =
           argumentEvidenceCandidates value members
       | Just named <- namedMapViewForValue value =
           maybe [] ((: []) . namedMemberValue)
@@ -564,9 +564,9 @@ namedAccessValue source name = do
           Right [value | actual == name]
       | matchesName (interpretedSemanticResult value) = Right [value]
       | otherwise = case interpretedForm value of
-          DependentIdentifierTypeForm _ -> Right []
+          DependentArgumentTypeForm _ -> Right []
           AssignmentForm _ -> Right []
-          ArgumentMapForm members _ -> concat <$> traverse candidates members
+          ArgumentativeMapForm members _ -> concat <$> traverse candidates members
           EitherForm alternatives -> do
             values <- concat <$> traverse candidates
               [evaluatedEitherLeft alternatives, evaluatedEitherRight alternatives]
