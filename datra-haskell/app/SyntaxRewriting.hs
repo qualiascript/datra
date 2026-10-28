@@ -590,7 +590,9 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
             , previousRules
             )
           | currentGreedy || previousGreedy = Right ()
-          | and
+          | not (null previousRules)
+          , not (null currentRules)
+          , and
               [ branchesCompatible previous current
               | previous <- previousRules
               , current <- currentRules

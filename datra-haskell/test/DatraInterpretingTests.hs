@@ -1786,6 +1786,13 @@ testDependentDeclarations = do
       , "yield 1"
       ])
   expectFailure
+    "an unprojectable dependent declaration is rejected on its own"
+    "SyntaxTemplateProjectionOrderMismatch"
+    (unlines
+      [ "\"pair 1%(_x : Int)\" := it"
+      , "yield 1"
+      ])
+  expectFailure
     "overlapping dependent declarations are rejected"
     "OverlappingDependentDeclarations"
     (unlines
