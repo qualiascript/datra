@@ -20,24 +20,55 @@ standardLibraryTests =
     [ testGroup "canonical value declarations"
         [ programCase "val retains its named member"
             "begin val x := 7; yield this" "x : 7"
-        , programCase "val stores the canonical-value marker on its identifier"
-            "begin val x := 7; yield this[0][2]" "$val"
+        , programCase "def stores the definition marker on its identifier"
+            "begin def x := 7; yield this[0][2]" "$def"
+        , programCase "val does not imply definition protection"
+            "val x := 7\nyield begin x := 8; yield x" "8"
+        , programCase "def does not imply canonical presentation"
+            "def x := 7\nyield x" "7"
+        , programCase "def values participate in specification"
+            "def x := 7\nyield x ~> Int" "7 ~> Int"
+        , programCase "def values participate in subfederation checks"
+            "def x := 7\nyield x of Int" "true"
         , programCase "let composes outside val"
             "begin a := x + 1; let val x := 10; yield a" "11"
+        , programCase "the full declaration modifier form is accepted"
+            "begin a := x + 1; let def val x := 10; yield a" "11"
         , programCase "val composes with optional names"
             "begin val x? := 7; yield x + 0" "7"
+        , programCase "def composes with optional names"
+            "begin def x? := 7; yield x + 0" "7"
         , programFailureCase "val rejects an annotated assignment"
             "begin val x : Nat := 7; yield x"
             (SourceEvaluationFailure OperationHasNoEffect)
         , programFailureCase "val syntax rejects a non-declaration"
             "yield val (1; 2)"
             (SourceEvaluationFailure (UnknownIdentifier "val"))
-        , programFailureCase "val rejects an inner let"
+        , programFailureCase "modifier order errors share one diagnostic"
             "begin val let x := 7; yield x"
-            (SourceEvaluationFailure ValOutsideBegin)
-        , programFailureCase "val rejects a duplicate marker"
+            (SourceEvaluationFailure
+              (InvalidDependentDeclarationModifiers "val let" "let val"))
+        , programFailureCase "duplicate modifiers share the same diagnostic"
             "begin val val x := 7; yield x"
-            (SourceEvaluationFailure ValOutsideBegin)
+            (SourceEvaluationFailure
+              (InvalidDependentDeclarationModifiers "val val" "val"))
+        , programFailureCase "def before let reports the canonical correction"
+            "begin def let x := 7; yield x"
+            (SourceEvaluationFailure
+              (InvalidDependentDeclarationModifiers "def let" "let def"))
+        , programFailureCase "val before def reports the canonical correction"
+            "begin val def x := 7; yield x"
+            (SourceEvaluationFailure
+              (InvalidDependentDeclarationModifiers "val def" "def val"))
+        , programFailureCase "late def reports the full canonical correction"
+            "begin let val def x := 7; yield x"
+            (SourceEvaluationFailure
+              (InvalidDependentDeclarationModifiers
+                "let val def" "let def val"))
+        , programFailureCase "duplicate def uses the unified diagnostic"
+            "begin def def x := 7; yield x"
+            (SourceEvaluationFailure
+              (InvalidDependentDeclarationModifiers "def def" "def"))
         ]
     , testGroup "private syntax categories"
         [ programFailureCase "AST is no longer implicitly imported"
@@ -69,7 +100,7 @@ standardLibraryTests =
             "yield _SyntaxTemplate"
             (SourceEvaluationFailure (UnknownIdentifier "_SyntaxTemplate"))
         , programCase "SyntaxTemplate retains its host-map canonical spelling"
-            "yield 'datra.SyntaxTemplate" "'datra.SyntaxTemplate"
+            "yield datra.SyntaxTemplate" "datra.SyntaxTemplate"
         ]
     , testGroup "final-page length"
         [ programCase "finite lengths use the final page"
@@ -88,13 +119,13 @@ standardLibraryTests =
             "5"
         , programCase "recursive let aliases to syntax bodies are discovered"
             ( "answer := choose (false; 1; 2)\n"
-                <> "let choose := 'datra.if_body\n"
+                <> "let choose := datra.if_body\n"
                 <> "yield answer"
             )
             "2"
         , programCase "direct begin rewrites its result in the block scope"
             ( "yield 'begin ((\n"
-                <> "  \"apply %_Expr\" := (_Expr -> _Expr) 'datra.fun_body\n"
+                <> "  \"apply %_Expr\" := (_Expr -> _Expr) datra.fun_body\n"
                 <> "); apply 7)"
             )
             "7"
@@ -189,7 +220,7 @@ standardLibraryTests =
               )
             , ("yield 'from (2;5)", "from 2 to 5")
             , ("yield 'from (2;$up)", "from 2 up")
-            , ( "body := 'datra.add\n"
+            , ( "body := datra.add\n"
                   <> "f := ({a? : Int; b? : Int} -> Int) body\n"
                   <> "yield f (b:5;6)"
               , "11"
@@ -410,12 +441,12 @@ standardLibraryTests =
             , "(Nat; Str) of Any"
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
-            , "'datra.Expr of Any"
-            , "'datra.DependentIdentifier of Any"
-            , "'datra.DependentDeclaration of Any"
-            , "'datra.Block of Any"
-            , "'datra.FunctionBody of Any"
-            , "(Nat; 'datra.Expr) of Any"
+            , "datra.Expr of Any"
+            , "datra.DependentIdentifier of Any"
+            , "datra.DependentDeclaration of Any"
+            , "datra.Block of Any"
+            , "datra.FunctionBody of Any"
+            , "(Nat; datra.Expr) of Any"
             , "(5 ~> Any) = 5"
             , "(value : Any := 5) of (value : Any)"
             , "$Nothing = (Nothing : ())"
@@ -436,7 +467,7 @@ standardLibraryTests =
             , "(from 2 to 5 ~> NatValRange) of IntValRange"
             , "(from (-5) to Infinity ~> IntValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"
-            , "not ('datra.Block of 'datra.Expr)"
+            , "not (datra.Block of datra.Expr)"
             , "\"%Any\" of Template"
             , "\"%Int %IdenStr\" of Template"
             , "(\"%Int %IdenStr\" ~> Template) of Template"

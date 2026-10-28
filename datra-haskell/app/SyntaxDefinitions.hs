@@ -386,6 +386,7 @@ declarationLiterals :: [Expression] -> String -> [String]
 declarationLiterals declarations typeName = concatMap declaration declarations
   where
     declaration (Let value) = declaration value
+    declaration (Def value) = declaration value
     declaration (Val value) = declaration value
     declaration (IdentifierOperation (IdentifierString name) annotation given)
       | name == typeName = literals (maybe annotation id given)

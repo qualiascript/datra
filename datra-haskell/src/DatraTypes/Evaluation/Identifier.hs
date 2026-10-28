@@ -14,6 +14,7 @@ module Evaluation.Identifier
   , inferredIdentifierAssignmentValue
   , identifierStringProjectionValue
   , canonicalValueMarker
+  , definitionMarker
   , withTrailingIdentifierMarker
   , hasTrailingIdentifierMarker
   ) where
@@ -34,6 +35,11 @@ import DatraLanguage.Identifier (isPrivateIdentifier)
 -- its canonical presentation.
 canonicalValueMarker :: String
 canonicalValueMarker = "val"
+
+-- | Compiler-owned metadata identifying a declaration whose binding cannot
+-- be replaced inconsistently by an overlapping declaration.
+definitionMarker :: String
+definitionMarker = "def"
 
 evaluatedIdentifierType
   :: InterpretedValue

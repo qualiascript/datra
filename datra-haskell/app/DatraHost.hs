@@ -16,7 +16,7 @@ import NaturalRange qualified
 import SyntaxDefinitions (absorbFunSequence)
 
 datraHostIdentifier :: String
-datraHostIdentifier = "'datra"
+datraHostIdentifier = "datra"
 
 data RuntimeRangeEndpoint
   = FiniteRangeEndpoint IntegerLimit
@@ -64,7 +64,7 @@ datraHostValue = do
     [ ordinalBinaryBody "sum" ordinalSumValues
     , ordinalBinaryBody "prod" ordinalProductValues
     , ordinalBinaryBody "minus" ordinalMinusValues
-    , nativeBody "'datra.ordinal" "exp" $ \arguments -> do
+    , nativeBody "datra.ordinal" "exp" $ \arguments -> do
         ordinalValue <- lookupArgument "x" arguments
         power <- lookupArgument "power" arguments
         ordinalExponentValues ordinalValue power
@@ -99,11 +99,11 @@ datraHostValue = do
     , suppliedInsertionBody "range_body" (RuntimeFunctionInsertion
         (nativeBoundedRange IntegerRangeKind)
         integerLimitRangePreimage)
-    , nativeBody "'datra" "add" $ \arguments -> do
+    , nativeBody "datra" "add" $ \arguments -> do
         a <- lookupArgument "a" arguments
         b <- lookupArgument "b" arguments
         addValues a b
-    , nativeBody "'datra" "abs" $ \arguments -> do
+    , nativeBody "datra" "abs" $ \arguments -> do
         value <- lookupArgument "value" arguments
         number <- requireFiniteInteger LeftOperand value
         pure (integerValue (abs number))
@@ -114,6 +114,13 @@ datraHostValue = do
           _ -> Nothing)
         (\case
           Let entry -> Just [entry]
+          _ -> Nothing))
+    , syntaxBody "def" (SyntaxFunctionInsertion
+        (\case
+          [entry] -> Just (Def (absorbAssignedConcatenation entry))
+          _ -> Nothing)
+        (\case
+          Def entry -> Just [entry]
           _ -> Nothing))
     , syntaxBody "val" (SyntaxFunctionInsertion
         (\case
@@ -222,7 +229,7 @@ datraHostValue = do
         (EvaluatedSyntaxFunctionBody source insertion)))
       where
         bodyName = name <> "_body"
-        source = "'datra." <> bodyName
+        source = "datra." <> bodyName
     syntaxFunction name insertion =
       (name, Right (makeFunctionValue (EvaluatedFunction
         anyTypeValue
@@ -237,7 +244,7 @@ datraHostValue = do
         True
         Nothing)))
       where
-        source = "'datra." <> name
+        source = "datra." <> name
         simpleSyntax :: FunctionSyntax value
         simpleSyntax = FunctionSyntax
           [SyntaxTemplate [SyntaxLiteral name]]
@@ -256,7 +263,7 @@ datraHostValue = do
     suppliedFunctionBody name implementation insertion =
       (name, runtimeBody source insertion invoke)
       where
-        source = "'datra." <> name
+        source = "datra." <> name
         invoke _ _ preparedCall = do
           result <- implementation (functionSuppliedArgument preparedCall)
           pure (EvaluatedFunctionInvocation result Nothing)
@@ -294,7 +301,7 @@ datraHostValue = do
       Right
       (lookup name values)
     ordinalBinaryBody name operation = nativeBody
-      "'datra.ordinal" name $ \arguments -> do
+      "datra.ordinal" name $ \arguments -> do
         left <- lookupArgument "x" arguments
         right <- lookupArgument "y" arguments
         operation left right

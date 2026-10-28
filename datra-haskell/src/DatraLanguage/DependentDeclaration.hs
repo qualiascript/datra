@@ -4,6 +4,8 @@ module DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
   , DependentDeclarationHead (..)
   , dependentDeclaration
+  , dependentDeclarationCandidate
+  , invalidDependentDeclarationModifiers
   , dependentDeclarationNameExpression
   , dependentDeclarationNameFamilyExpression
   , dependentDeclarationTemplateBranches
@@ -11,6 +13,11 @@ module DatraLanguage.DependentDeclaration
   ) where
 
 import DatraLanguage.AST
+import DatraLanguage.AST.Operator
+  ( Operator (DefOperator, LetOperator, ValOperator)
+  , operatorCanonicalSymbol
+  )
+import Data.List (nub, sort)
 
 data DependentDeclarationHead
   = SimpleIdentifierDeclarationHead IdentifierString
@@ -21,6 +28,7 @@ data DependentDeclarationHead
 data DependentDeclaration = DependentDeclaration
   { dependentDeclarationHead :: DependentDeclarationHead
   , dependentDeclarationIsLet :: Bool
+  , dependentDeclarationIsDefinition :: Bool
   , dependentDeclarationIsCanonicalValue :: Bool
   , dependentDeclarationImplementation :: Expression
   }
@@ -29,30 +37,40 @@ data DependentDeclaration = DependentDeclaration
 -- annotations and dependent identifiers remain expressions until an explicit
 -- assignment gives them a value.
 dependentDeclaration :: Expression -> Maybe DependentDeclaration
-dependentDeclaration = declaration False False
+dependentDeclaration = declaration False False False
   where
-    declaration _ True (Let _) = Nothing
-    declaration _ canonical (Let value) = declaration True canonical value
-    declaration strict _ (Val value) = declaration strict True value
-    declaration strict canonical (SyntaxBoundary value) =
-      declaration strict canonical value
-    declaration strict canonical
+    declaration _ definition canonical (Let _)
+      | definition || canonical = Nothing
+    declaration _ definition canonical (Let value) =
+      declaration True definition canonical value
+    declaration _ _ canonical (Def _)
+      | canonical = Nothing
+    declaration strict False canonical (Def value) =
+      declaration strict True canonical value
+    declaration _ True _ (Def _) = Nothing
+    declaration strict definition False (Val value) =
+      declaration strict definition True value
+    declaration _ _ True (Val _) = Nothing
+    declaration strict definition canonical (SyntaxBoundary value) =
+      declaration strict definition canonical value
+    declaration strict definition canonical
         (IdentifierOperation (IdentifierString name) annotation (Just given))
       | annotation == given = Just (makeDeclaration
           (SimpleIdentifierDeclarationHead (IdentifierString name))
-          strict canonical given)
-    declaration strict canonical optional
+          strict definition canonical given)
+    declaration strict definition canonical optional
       | Just (named@IdentifierOperation {}, _) <-
           optionalIdentifierExpression optional =
-          declaration strict canonical named
-    declaration strict canonical
+          declaration strict definition canonical named
+    declaration strict definition canonical
         (IdentifierTemplateOperation parts annotation (Just given))
       | annotation == given = Just (makeDeclaration
-          (classifyTemplateHead parts) strict canonical given)
-    declaration _ _ _ = Nothing
+          (classifyTemplateHead parts) strict definition canonical given)
+    declaration _ _ _ _ = Nothing
 
-    makeDeclaration headValue strict canonical implementation =
-      DependentDeclaration headValue strict canonical implementation
+    makeDeclaration headValue strict definition canonical implementation =
+      DependentDeclaration
+        headValue strict definition canonical implementation
 
     -- The parser carries a first-class declaration head through the existing
     -- identifier-template AST node as one explicitly bounded interpolation.
@@ -71,6 +89,53 @@ dependentDeclaration = declaration False False
     stripBoundaries (SyntaxBoundary expressionValue) =
       stripBoundaries expressionValue
     stripBoundaries expressionValue = expressionValue
+
+-- Declaration modifiers are an ordered, duplicate-free subset of
+-- @let def val@. Return both the written sequence and its unique canonical
+-- ordering so every invalid combination can share one actionable diagnostic.
+invalidDependentDeclarationModifiers
+  :: Expression
+  -> Maybe ([String], [String])
+invalidDependentDeclarationModifiers expressionValue =
+  case collect [] expressionValue of
+    ([], _) -> Nothing
+    (written, base)
+      | written /= canonical
+      , Just _ <- dependentDeclaration base -> Just
+          (map modifierName written, map modifierName canonical)
+      | otherwise -> Nothing
+      where
+        canonical = nub (sort written)
+  where
+    collect modifiers (SyntaxBoundary inner) = collect modifiers inner
+    collect modifiers (Let inner) = collect (modifiers <> [ModifierLet]) inner
+    collect modifiers (Def inner) = collect (modifiers <> [ModifierDef]) inner
+    collect modifiers (Val inner) = collect (modifiers <> [ModifierVal]) inner
+    collect modifiers base = (modifiers, base)
+
+    modifierName = operatorCanonicalSymbol . modifierOperator
+    modifierOperator ModifierLet = LetOperator
+    modifierOperator ModifierDef = DefOperator
+    modifierOperator ModifierVal = ValOperator
+
+-- Syntax matching admits a declaration-shaped modifier chain before semantic
+-- ordering is checked, so malformed chains remain intact for the single
+-- modifier diagnostic instead of degrading into an unrelated application.
+dependentDeclarationCandidate :: Expression -> Bool
+dependentDeclarationCandidate expressionValue =
+  maybe False (const True) (dependentDeclaration (stripModifiers expressionValue))
+  where
+    stripModifiers (SyntaxBoundary inner) = stripModifiers inner
+    stripModifiers (Let inner) = stripModifiers inner
+    stripModifiers (Def inner) = stripModifiers inner
+    stripModifiers (Val inner) = stripModifiers inner
+    stripModifiers base = base
+
+data DeclarationModifier
+  = ModifierLet
+  | ModifierDef
+  | ModifierVal
+  deriving (Eq, Ord)
 
 
 -- A syntax boundary on the sole interpolation marks an evaluated declaration
@@ -180,5 +245,6 @@ bindingNames expressionValue = case expressionValue of
   IdentifierTemplateOperation [StringTemplateLiteral name] _ _ -> [name]
   OptionalType inner -> bindingNames inner
   Let inner -> bindingNames inner
+  Def inner -> bindingNames inner
   Val inner -> bindingNames inner
   _ -> []

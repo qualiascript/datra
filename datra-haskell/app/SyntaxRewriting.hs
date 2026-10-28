@@ -26,7 +26,7 @@ import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Diagnostics.Application
-  ( SyntaxTemplateAdmissibilityFailure )
+  ( SyntaxTemplateAdmissibilityFailure (..) )
 import Parsing (ResourceEnvelope (..), inferredFunction)
 import DatraTypes
   ( EvaluatedFunction (functionBody)
@@ -528,6 +528,9 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
                 currentFamily)
               earlier
           case declarationRuleFailures resolved of
+            InadmissibleSyntaxTemplate rendered
+                SyntaxTemplateProjectionLoss : _ ->
+              Left (OverlappingDependentDeclarations rendered rendered)
             InadmissibleSyntaxTemplate rendered failure : _ ->
               Left (InvalidSyntaxTemplate rendered failure)
             [] -> Right ()
@@ -666,6 +669,7 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
     isValDependentDeclaration expressionValue = case expressionValue of
       Val value -> maybe False (const True) (dependentDeclaration value)
       Let value -> isValDependentDeclaration value
+      Def value -> isValDependentDeclaration value
       _ -> False
 
 isLetDeclarationExpression :: Expression -> Bool
@@ -1910,6 +1914,9 @@ splitAtLiteral literal value =
       Let inner -> do
         (before, suffix) <- splitAtLiteral literal inner
         pure (Let <$> before, suffix)
+      Def inner -> do
+        (before, suffix) <- splitAtLiteral literal inner
+        pure (Def <$> before, suffix)
       _ -> Nothing
 
 literalBoundaryCandidate
@@ -2038,6 +2045,7 @@ resolveDependentDeclarationHead
 resolveDependentDeclarationHead environment expressionValue =
   case expressionValue of
     Let value -> Let (resolveDependentDeclarationHead environment value)
+    Def value -> Def (resolveDependentDeclarationHead environment value)
     Val value -> Val (resolveDependentDeclarationHead environment value)
     IdentifierTemplateOperation
         [StringTemplateInterpolation headExpression]

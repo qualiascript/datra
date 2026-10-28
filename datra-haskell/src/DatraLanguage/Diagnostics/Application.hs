@@ -23,7 +23,6 @@ data SyntaxTemplateAdmissibilityFailure
   = NeutralSyntaxTemplateParseFailure
   | IncompleteCoreSyntaxOperator String
   | SyntaxTemplateProjectionLoss
-  | SyntaxTemplateProjectionOrderMismatch
   | UnstableSyntaxTemplateProjection
   deriving (Eq, Show)
 

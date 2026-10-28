@@ -641,13 +641,13 @@ builtinMetaTypeName SyntaxTemplateMetaType = "_SyntaxTemplate"
 
 builtinMetaTypeCanonicalString :: BuiltinMetaType -> String
 builtinMetaTypeCanonicalString (ASTMetaType category) = case category of
-  ExpressionAST -> "'datra.Expr"
-  BlockAST -> "'datra.Block"
-  FunctionBodyAST -> "'datra.FunctionBody"
-  DeclarationAST -> "'datra.DependentDeclaration"
-  DependentIdentifierAST -> "'datra.DependentIdentifier"
+  ExpressionAST -> "datra.Expr"
+  BlockAST -> "datra.Block"
+  FunctionBodyAST -> "datra.FunctionBody"
+  DeclarationAST -> "datra.DependentDeclaration"
+  DependentIdentifierAST -> "datra.DependentIdentifier"
 builtinMetaTypeCanonicalString SyntaxTemplateMetaType =
-  "'datra.SyntaxTemplate"
+  "datra.SyntaxTemplate"
 builtinMetaTypeCanonicalString kind = builtinMetaTypeName kind
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue

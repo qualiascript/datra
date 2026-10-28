@@ -44,7 +44,7 @@ scopeTests =
             "(30; 20)"
         , programCase "this has the exact available valued-natural domain"
             "yield begin marker := 1; yield _this"
-            "(from 0 to 0 -> 'datra.Any)"
+            "(from 0 to 0 -> datra.Any)"
         , programCase "it skips scopes which introduce no it binding"
             ( "outer := (Nat -> Nat do\n"
                 <> " inner := (Nat -> Nat do "
@@ -59,7 +59,7 @@ scopeTests =
                 <> " yield inner 9)\n"
                 <> "yield outer 7"
             )
-            "(from 0 to 1 -> 'datra.Any)"
+            "(from 0 to 1 -> datra.Any)"
         , programCase "closure-local _inner_this cannot collide with source"
             ( "yield begin _inner_this := 23; value := 4; "
                 <> "yield this.value"
@@ -156,39 +156,36 @@ scopeTests =
         , programFailureCase "implicit resources have no private this"
             "value := 4\nyield (_this 0).value"
             (SourceEvaluationFailure (UnknownIdentifier "_this"))
-        , programFailureCase "apostrophe names require shadowing consistency"
-            "'locked := 1\nyield begin 'locked := 2; yield 'locked"
-            (SourceEvaluationFailure (InconsistentShadowing "'locked"))
+        , programFailureCase "def declarations require override consistency"
+            "def locked := 1\nyield begin locked := 2; yield locked"
+            (SourceEvaluationFailure (InconsistentShadowing "locked"))
         , programCase "an equal value is a consistent fixed point"
-            "'locked := 1\nyield begin 'locked := 1; yield 'locked"
+            "def locked := 1\nyield begin locked := 1; yield locked"
             "1"
         , programFailureCase
             "let cannot shadow a consistent binding even with an equal value"
-            "'locked := 1\nyield begin let 'locked := 1; yield 'locked"
+            "def locked := 1\nyield begin let locked := 1; yield locked"
             (SourceEvaluationFailure
-              (LetBindingCannotShadowConsistentIdentifier "'locked"))
+              (LetBindingCannotShadowConsistentIdentifier "locked"))
         , programCase
-            "a new scope-protected let does not shadow itself"
-            "yield begin let 'locked := 1; yield 'locked"
+            "a new def let does not shadow itself"
+            "yield begin let def locked := 1; yield locked"
             "1"
         , programCase "a reducing expression may establish a fixed point"
             ( "identity := ({x?:Int} -> Int do yield x)\n"
-                <> "'locked := 1\n"
-                <> "yield begin 'locked := identity 'locked; yield 'locked"
+                <> "def locked := 1\n"
+                <> "yield begin locked := identity locked; yield locked"
             )
             "1"
         , programFailureCase "divergence cannot establish a fixed point"
             ( "let loop := ({x?:Int} -> Int do yield loop x)\n"
-                <> "'locked := 1\n"
-                <> "yield begin 'locked := loop 'locked; yield 'locked"
+                <> "def locked := 1\n"
+                <> "yield begin locked := loop locked; yield locked"
             )
-            (SourceEvaluationFailure (InconsistentShadowing "'locked"))
-        , programFailureCase "quoted apostrophe names require consistency"
-            ( "\"''not compact\" := 1\n"
-                <> "yield begin \"''not compact\" := 2; yield \"''not compact\""
-            )
-            (SourceEvaluationFailure
-              (InconsistentShadowing "''not compact"))
+            (SourceEvaluationFailure (InconsistentShadowing "locked"))
+        , programCase "apostrophe names no longer imply override protection"
+            "'locked := 1\nyield begin 'locked := 2; yield 'locked"
+            "2"
         , expressionFailureCase "explicit begin cannot see later declarations"
             "begin a := b; b := 1 yield a"
             (SourceEvaluationFailure (UnknownIdentifier "b"))
@@ -232,11 +229,11 @@ scopeTests =
             "source := (_hidden:5;a:8)\nyield source._hidden"
             (SourceEvaluationFailure (UnknownIdentifier "_hidden"))
         , programFailureCase
-            "a non-identical apostrophe member cannot shadow the parent"
-            "'locked := 1\nsource := ('locked:2)\nyield source.'locked"
-            (SourceEvaluationFailure (InconsistentShadowing "'locked"))
-        , programCase "an identical apostrophe member may be opened"
-            "'locked := 1\nsource := ('locked:1)\nyield source.'locked"
+            "a non-identical opened member cannot shadow a def"
+            "def locked := 1\nsource := (locked:2)\nyield source.locked"
+            (SourceEvaluationFailure (InconsistentShadowing "locked"))
+        , programCase "an identical member may be opened over a def"
+            "def locked := 1\nsource := (locked:1)\nyield source.locked"
             "1"
         ]
     , testGroup "let block declarations"
@@ -266,12 +263,12 @@ scopeTests =
         , programCase "explicit private it accepts literal zero"
             "f := (Nat -> Nat do yield _it 0)\nyield f 7"
             "7"
-        , programFailureCase
-            "apostrophe domain binding is consistent within the body"
+        , programCase
+            "apostrophe domain bindings no longer imply override protection"
             ( "f := ({'x:Int} -> Int do 'x := 2; yield 'x)\n"
                 <> "yield f ('x:1)"
             )
-            (SourceEvaluationFailure (InconsistentShadowing "'x"))
+            "2"
         , programCase
             "apostrophe domain binding permits an equal body rebinding"
             ( "f := ({'x:Int} -> Int do 'x := 'x; yield 'x)\n"

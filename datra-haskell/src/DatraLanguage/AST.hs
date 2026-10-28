@@ -184,6 +184,7 @@ data Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
   | Coalization Expression
+  | Def Expression
   | Val Expression
   | Assert Bool Expression
   | Fun Expression
@@ -358,6 +359,7 @@ data OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
   | CoalizationValue OperatorExpression
+  | DefValue OperatorExpression
   | ValValue OperatorExpression
   | AssertValue Bool OperatorExpression
   | FunValue OperatorExpression
@@ -493,6 +495,8 @@ normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
 normalizeExpression (Coalization operand) =
   Coalization (normalizeExpression operand)
+normalizeExpression (Def declaration) =
+  Def (normalizeExpression declaration)
 normalizeExpression (Val declaration) =
   Val (normalizeExpression declaration)
 normalizeExpression (Assert hard condition) =
@@ -687,6 +691,7 @@ lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
+lower (Def declaration) = DefValue (lower declaration)
 lower (Val declaration) = ValValue (lower declaration)
 lower (Assert hard condition) = AssertValue hard (lower condition)
 lower (Fun operand) = FunValue (lower operand)
@@ -894,6 +899,8 @@ prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
 prettyOperator (CoalizationValue operand) =
   prettyUnary CoalizationOperator operand
+prettyOperator (DefValue declaration) =
+  prettyUnary DefOperator declaration
 prettyOperator (ValValue declaration) =
   prettyUnary ValOperator declaration
 prettyOperator (AssertValue hard condition) =
@@ -1163,6 +1170,7 @@ traverseExpressionChildren visit expression = case expression of
   ArgumentMap xs -> ArgumentMap <$> traverse visit xs
   MapSequence xs -> MapSequence <$> traverse visit xs
   SyntaxBoundary x -> SyntaxBoundary <$> visit x
+  Def x -> Def <$> visit x
   Val x -> Val <$> visit x
   Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x

@@ -84,6 +84,7 @@ source context expression =
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
+    DefValue declaration -> wrapped 0 ("def " <> source 0 declaration)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
       | isOpaqueSymbolicSyntaxLiteral name -> name

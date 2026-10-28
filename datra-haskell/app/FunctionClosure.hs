@@ -11,7 +11,6 @@ module FunctionClosure
 import DatraLanguage.DependentDeclaration (bindingNames)
 import Data.List (nub, stripPrefix)
 import DatraLanguage.AST
-import DatraLanguage.Identifier (requiresShadowingConsistency)
 import Control.Monad.Trans.State.Strict (State, get, put, runState)
 import Numeric.Natural (Natural)
 
@@ -29,6 +28,7 @@ data Resolver = Resolver
   , resolveDependencyModule :: String -> Maybe Resolver
   , resolveScopeIndex :: Expression -> Maybe String
   , resolveContextualDepth :: String -> Natural -> Maybe Dependency
+  , resolveDefinitionReference :: [String] -> Bool
   }
 
 data DependencyMode = BindDependencies | InlineDependencies deriving (Eq)
@@ -139,7 +139,10 @@ rewrite mode depth reserved active resolver bound expression
       collectDependency mode depth reserved active dependency
 rewrite _ _ _ _ _ _ expression
   | Just path <- referencePath expression
-  , referencePathRequiresShadowingConsistency path = pure expression
+  , referencePathIsInternalContext path = pure expression
+rewrite _ _ _ _ resolver _ expression
+  | Just path <- referencePath expression
+  , resolveDefinitionReference resolver path = pure expression
 
 rewrite mode depth reserved active resolver bound expression =
   case expression of
@@ -281,15 +284,11 @@ referencePath
   (<> [name]) <$> referencePath source
 referencePath _ = Nothing
 
--- A reference rooted in a shadowing-consistent binding is one stable lexical
--- path. If the complete path cannot be captured, never reinterpret its root as
--- a separate dependency. The sentinel is the exact internal expansion of a
--- lookup rooted at the contextual @_this@ binding.
-referencePathRequiresShadowingConsistency :: [String] -> Bool
-referencePathRequiresShadowingConsistency ("\0this" : _) = True
-referencePathRequiresShadowingConsistency (name : _) =
-  requiresShadowingConsistency name
-referencePathRequiresShadowingConsistency [] = False
+-- The sentinel is the exact internal expansion of a lookup rooted at the
+-- contextual @_this@ binding; it is never an ambient dependency.
+referencePathIsInternalContext :: [String] -> Bool
+referencePathIsInternalContext ("\0this" : _) = True
+referencePathIsInternalContext _ = False
 
 assigned :: IdentifierString -> Expression -> Expression
 assigned name expression = IdentifierOperation name expression (Just expression)
@@ -341,6 +340,7 @@ nameText (IdentifierString text) = text
 
 entryName :: Expression -> [IdentifierString]
 entryName (Let value) = entryName value
+entryName (Def value) = entryName value
 entryName (Val value) = entryName value
 entryName (IdentifierOperation name _ _) = [name]
 entryName _ = []

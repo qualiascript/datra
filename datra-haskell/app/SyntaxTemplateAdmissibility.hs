@@ -10,7 +10,6 @@ module SyntaxTemplateAdmissibility
 import DatraLanguage.AST
   ( Expression (..)
   , StringTemplatePart (..)
-  , expressionChildren
   , normalizeExpression
   )
 import DatraLanguage.AST.Source (renderSourceExpression)
@@ -29,9 +28,8 @@ import Parsing
   )
 import SyntaxTemplateProjection (projectSyntaxTemplate)
 
-data Witness = Witness
+newtype Witness = Witness
   { witnessSource :: String
-  , witnessMarker :: Expression
   }
 
 validateSyntaxTemplate
@@ -62,7 +60,6 @@ validateSyntaxTemplateWith render template =
     validateWitness witnesses = do
       expected <- traverse expectedWitness witnesses
       let source = render witnesses
-          markers = map witnessMarker witnesses
           capture _ value
             | normalizeExpression value `elem` expected =
                 Just (normalizeExpression value)
@@ -74,11 +71,8 @@ validateSyntaxTemplateWith render template =
       recovered <- case projectSyntaxTemplate capture template parsed of
         Just captures
           | map normalizeExpression captures == expected -> Right expected
-          | otherwise -> Left SyntaxTemplateProjectionOrderMismatch
-        Nothing
-          | markerOrder markers parsed == markers ->
-              Left SyntaxTemplateProjectionLoss
-          | otherwise -> Left SyntaxTemplateProjectionOrderMismatch
+          | otherwise -> Left SyntaxTemplateProjectionLoss
+        Nothing -> Left SyntaxTemplateProjectionLoss
       let canonical = renderSourceExpression parsed
       reparsed <- either
         (const (Left UnstableSyntaxTemplateProjection))
@@ -239,11 +233,10 @@ templateWitnesses template = atomic : variants
       , let embeddedSource
               | needsGrouping = groupedSource source
               | otherwise = source
-            witness = Witness embeddedSource marker
+            witness = Witness embeddedSource
       ]
 
-    atomicWitness _ marker _ = Witness
-      (renderSourceExpression marker) marker
+    atomicWitness _ marker _ = Witness (renderSourceExpression marker)
     groupedSource source = case parseNeutralPhrase source of
       Right expressionValue -> renderSourceExpression
         (MapSequence [expressionValue])
@@ -276,17 +269,6 @@ renderWitness (SyntaxTemplate pieces) witnesses =
     go (SyntaxHole {} : remaining) (witness : available) =
       witnessSource witness : go remaining available
     go (SyntaxHole {} : _) [] = []
-
-markerOrder :: [Expression] -> Expression -> [Expression]
-markerOrder markers = collect
-  where
-    collect expressionValue = current
-      <> concatMap collect (expressionChildren expressionValue)
-      where
-        normalized = normalizeExpression expressionValue
-        current
-          | normalized `elem` markers = [normalized]
-          | otherwise = []
 
 traverse_ :: (value -> Either failure ()) -> [value] -> Either failure ()
 traverse_ _ [] = Right ()

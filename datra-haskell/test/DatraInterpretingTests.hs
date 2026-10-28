@@ -1040,17 +1040,17 @@ testCanonicalTypes = do
     , "Nat -> Nat"
     , "Nat | (Nat -> Nat)"
     , "Template"
-    , "'datra.Expr"
-    , "'datra.DependentIdentifier"
-    , "'datra.DependentDeclaration"
-    , "'datra.Block"
-    , "'datra.FunctionBody"
-    , "(Nat; 'datra.Expr)"
+    , "datra.Expr"
+    , "datra.DependentIdentifier"
+    , "datra.DependentDeclaration"
+    , "datra.Block"
+    , "datra.FunctionBody"
+    , "(Nat; datra.Expr)"
     , "NatRange"
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
-    , "'datra.SyntaxTemplate"
+    , "datra.SyntaxTemplate"
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
     case Types.toStringValue canonicalStringCodec value of
@@ -1786,8 +1786,8 @@ testDependentDeclarations = do
       , "yield 1"
       ])
   expectFailure
-    "an unprojectable dependent declaration is rejected on its own"
-    "SyntaxTemplateProjectionOrderMismatch"
+    "an unprojectable dependent declaration is reported as overlap"
+    "OverlappingDependentDeclarations"
     (unlines
       [ "\"pair 1%(_x : Int)\" := it"
       , "yield 1"

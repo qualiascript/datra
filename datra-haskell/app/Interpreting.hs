@@ -58,8 +58,6 @@ import DatraHost
   , datraHostValue
   , namedMembers
   )
-import DatraLanguage.Identifier
-  ( requiresShadowingConsistency )
 import IdentifierValueType (isIdentifierValue)
 import RuntimeModules
   ( EvaluationMode (..)
@@ -404,7 +402,7 @@ captureSyntaxHole base modules strict declarations previous kind captured =
       FunctionBody {} -> Just captured
       _ -> Nothing
     DeclarationSyntaxHole {}
-      | Just _ <- dependentDeclaration captured -> Just captured
+      | dependentDeclarationCandidate captured -> Just captured
       | otherwise -> Nothing
     DependentIdentifierSyntaxHole {} -> dependentIdentifierCapture captured
     ValueSyntaxHole target ->
@@ -621,6 +619,7 @@ syntaxValidationDeclaration declaration = case declaration of
   Let value -> Let (recursiveSeed value)
   _ -> declaration
   where
+    recursiveSeed (Def value) = Def (recursiveSeed value)
     recursiveSeed (Val value) = Val (recursiveSeed value)
     recursiveSeed original@(IdentifierOperation name _ (Just definition)) =
       case recursiveFunctionImplementation definition of
@@ -743,6 +742,10 @@ interpretWithImportsInModeAndStandardLibraryVisibility
 -- scope semantics as function bodies.
 validateFunctionBodyParts :: Expression -> Either InterpretingError ()
 validateFunctionBodyParts expressionValue = do
+  case invalidDependentDeclarationModifiers expressionValue of
+    Just (written, correct) -> Left (InvalidDependentDeclarationModifiers
+      (unwords written) (unwords correct))
+    Nothing -> Right ()
   case expressionValue of
     FunctionBody parts _ -> mapM_ validatePart parts
     Begin parts _ -> mapM_ validatePart parts
@@ -752,6 +755,7 @@ validateFunctionBodyParts expressionValue = do
     validatePart part
       | Just _ <- dependentDeclaration part = Right ()
     validatePart Let {} = Right ()
+    validatePart Def {} = Right ()
     validatePart Val {} = Right ()
     validatePart part
       | containsActiveAssertion part = Right ()
@@ -1145,8 +1149,8 @@ rootScopeWithDatra
 rootScopeWithDatra salt bindings = do
   host <- datraHostValue
   pure (rootScope salt
-    ( (datraHostIdentifier, EvaluatedBinding
-        (withCanonicalReference [] datraHostIdentifier host))
+    ( (datraHostIdentifier, ShadowingConsistentBinding (EvaluatedBinding
+        (withCanonicalReference [] datraHostIdentifier host)))
     : bindings
     ))
 
@@ -1240,6 +1244,7 @@ data ModuleExport = ModuleExport String ImportPresentation Binding
 data LoadedModuleBinder = LoadedModuleBinder
   { loadedModuleBinderName :: String
   , loadedModuleBinderPresentation :: ImportPresentation
+  , loadedModuleBinderIsDefinition :: Bool
   , loadedModuleBinderValue :: InterpretedValue
   , loadedModuleBinderScope :: Scope
   }
@@ -1254,12 +1259,7 @@ moduleExportName :: ModuleExport -> String
 moduleExportName (ModuleExport name _ _) = name
 
 scopeBinding :: String -> Binding -> (String, Binding)
-scopeBinding name binding =
-  ( name
-  , if requiresShadowingConsistency name
-      then ShadowingConsistentBinding binding
-      else binding
-  )
+scopeBinding name binding = (name, binding)
 
 bindingHasUnrestrictedShadowing :: Binding -> Bool
 bindingHasUnrestrictedShadowing binding =
@@ -1268,6 +1268,26 @@ bindingHasUnrestrictedShadowing binding =
     NamedBinding _ target -> bindingHasUnrestrictedShadowing target
     QualifiedBinding _ target -> bindingHasUnrestrictedShadowing target
     _ -> True
+
+definitionBinding :: Bool -> Binding -> Binding
+definitionBinding True = ShadowingConsistentBinding
+definitionBinding False = id
+
+scopeNameIsDefinition :: Scope -> String -> Bool
+scopeNameIsDefinition scope name =
+  maybe False (not . bindingHasUnrestrictedShadowing) (lookupScope name scope)
+    || any protectedDeclaration
+      [ scoped
+      | layer <- scopeDependentDeclarationLayers scope
+      , scoped <- dependentDeclarationCandidates name layer
+      ]
+  where
+    protectedDeclaration scoped =
+      dependentDeclarationIsDefinition
+          (scopedDependentDeclarationValue scoped)
+        && either (const False) id
+          (dependentDeclarationContainsName
+            UnrestrictedReduction [] scoped name)
 
 contextualBinding
   :: Binding
@@ -1373,7 +1393,7 @@ contextualFunction surface levels@(_ : _) = do
     signatureSource = renderSourceExpression
       (FunctionType domainExpression
         (ScopeAccess
-          (IdentifierReference (IdentifierString "'datra"))
+          (IdentifierReference (IdentifierString "datra"))
           (IdentifierReference (IdentifierString "Any"))))
     innerMap = ContextualMap ("_inner_" <> surface) levels
 
@@ -1805,7 +1825,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       checkedBinary booleanOrValues left right
     BooleanNot operand -> checkedUnary booleanNotValue operand
     Coalization operand -> unary (Right . coalizeValue) operand
-    Val _ -> Left ValOutsideBegin
+    Def _ -> Left OperationHasNoEffect
+    Val _ -> Left OperationHasNoEffect
     Fun operand ->
       case recursiveCollection operand of
         Just collection -> do
@@ -1912,7 +1933,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       evaluateBlockInScope True
         (Just (renderSourceExpression expressionValue))
         reduction scope resolving bindings result
-    Let _ -> Left LetOutsideBegin
+    Let _ -> Left OperationHasNoEffect
     IdentifierReference (IdentifierString name) ->
       resolveIdentifierWith reduction scope resolving name
     Lookup (ArgumentMap
@@ -2199,8 +2220,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       result <- operation
       pure (result, Just result)
     validateOpenedBinding _ (name, selected) =
-      case lookupScope name scope of
-        Just existing | not (bindingHasUnrestrictedShadowing existing) -> do
+      if scopeNameIsDefinition scope name
+        then do
           let bounded = ShadowingConsistencyReduction
                 name shadowingConsistencyFuel
           original <- resolveIdentifierWith bounded scope resolving name
@@ -2209,7 +2230,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               == interpretedSemanticResult replacement
             then Right ()
             else Left (InconsistentShadowing name)
-        _ -> Right ()
+        else Right ()
     enterOpenedScope salt actual contributions selectedBody = do
       validateShortScopeMember actual selectedBody
       namedLayer <- case namedMapViewForValue actual of
@@ -3044,6 +3065,7 @@ recursiveFunctionImplementation expressionValue =
     _ -> case expressionValue of
       Begin _ result -> recursiveFunctionImplementation result
       Let value -> recursiveFunctionImplementation value
+      Def value -> recursiveFunctionImplementation value
       Val value -> recursiveFunctionImplementation value
       EitherType left right ->
         case recursiveFunctionImplementation left of
@@ -3322,10 +3344,19 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
             (scopedDependentDeclarationValue scoped)
         ]
       consistencyCandidates =
-        [ name
-        | (name, binding) <- scopeBindings scopedEnclosing
-        , not (bindingHasUnrestrictedShadowing binding)
-        ]
+        nub
+          ( [ name
+            | (name, binding) <- scopeBindings scopedEnclosing
+            , not (bindingHasUnrestrictedShadowing binding)
+            ]
+          <> [ name
+             | layer <- scopeDependentDeclarationLayers scopedEnclosing
+             , scoped <- dependentDeclarationLayerMembers layer
+             , dependentDeclarationIsDefinition
+                 (scopedDependentDeclarationValue scoped)
+             , Just name <- [dependentDeclarationSingletonName scoped]
+             ]
+          )
       validateConsistency resolving imported = do
         consistencyNames <- filterMRight
           (overlapsDeclarations resolving) consistencyCandidates
@@ -3357,10 +3388,9 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
                 == interpretedSemanticResult replacement
               then Right ()
             else Left (InconsistentShadowing name)
+  mapM_ (checkLetShadow scopedEnclosing) eagerFamilies
   if validateFamilies
-    then do
-      mapM_ (checkLetShadow scopedEnclosing) eagerFamilies
-      validateDeclarationFamilies scopedMembers
+    then validateDeclarationFamilies scopedMembers
     else Right ()
   pure
     ( rebuild
@@ -3370,16 +3400,27 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
     )
   where
     checkLetShadow enclosing scoped = mapM_ check
-      (scopeBindings enclosing)
+      protectedNames
       where
-        check (name, binding)
-          | bindingHasUnrestrictedShadowing binding = Right ()
-          | otherwise = do
-              overlaps <- dependentDeclarationContainsName
-                UnrestrictedReduction [] scoped name
-              if overlaps
-                then Left (LetBindingCannotShadowConsistentIdentifier name)
-                else Right ()
+        protectedNames = nub
+          ( [ name
+            | (name, binding) <- scopeBindings enclosing
+            , not (bindingHasUnrestrictedShadowing binding)
+            ]
+          <> [ name
+             | layer <- scopeDependentDeclarationLayers enclosing
+             , declaration <- dependentDeclarationLayerMembers layer
+             , dependentDeclarationIsDefinition
+                 (scopedDependentDeclarationValue declaration)
+             , Just name <- [dependentDeclarationSingletonName declaration]
+             ]
+          )
+        check name = do
+          overlaps <- dependentDeclarationContainsName
+            UnrestrictedReduction [] scoped name
+          if overlaps
+            then Left (LetBindingCannotShadowConsistentIdentifier name)
+            else Right ()
 
 validateDeclarationFamilies
   :: [ScopedDependentDeclaration]
@@ -3421,6 +3462,7 @@ bindingImports strict expressionValue =
     Just declaration -> ([declaration], [])
     _ -> case expressionValue of
       Let value -> bindingImports True value
+      Def _ -> ([], [expressionValue])
       Val _ -> ([], [expressionValue])
       Assert {} -> ([], [expressionValue])
       _ -> ([], [expressionValue | strict])
@@ -4182,8 +4224,15 @@ namedDeclarationMember
   -> String
   -> InterpretedValue
   -> NamedMember
-namedDeclarationMember _ name payload =
-  NamedMember name (simpleIdentifierTypeValue name payload)
+namedDeclarationMember declaration name payload =
+  NamedMember name marked
+  where
+    named = simpleIdentifierTypeValue name payload
+    -- Definition protection belongs on the concrete member used by lookup.
+    -- Canonical-value metadata intentionally remains descriptor-only: putting
+    -- $val here would replace the member's payload presentation with its
+    -- canonical declaration name.
+    marked = markDefinitionEntry declaration named
 
 namedDeclarationDescriptorMember
   :: DependentDeclaration
@@ -4193,10 +4242,28 @@ namedDeclarationDescriptorMember
 namedDeclarationDescriptorMember declaration name payload = NamedMember name marked
   where
     named = simpleIdentifierTypeValue name payload
-    marked
+    marked = markDeclarationEntry declaration named
+
+markDeclarationEntry
+  :: DependentDeclaration
+  -> InterpretedValue
+  -> InterpretedValue
+markDeclarationEntry declaration =
+  markDefinitionEntry declaration . markCanonical
+  where
+    markCanonical value
       | dependentDeclarationIsCanonicalValue declaration =
-          withTrailingIdentifierMarker canonicalValueMarker named
-      | otherwise = named
+          withTrailingIdentifierMarker canonicalValueMarker value
+      | otherwise = value
+
+markDefinitionEntry
+  :: DependentDeclaration
+  -> InterpretedValue
+  -> InterpretedValue
+markDefinitionEntry declaration value
+  | dependentDeclarationIsDefinition declaration =
+      withTrailingIdentifierMarker definitionMarker value
+  | otherwise = value
 
 captureExpression :: Expression -> (Maybe String, Expression)
 captureExpression (SyntaxBoundary inner) = captureExpression inner
@@ -5417,8 +5484,10 @@ importArgumentBinding
 importArgumentBinding dependency supplied (identity, binder) = do
   let name = loadedModuleBinderName binder
   value <- maybe (Left (UnknownIdentifier name)) Right (lookup name supplied)
-  pure (scopeBinding name (ImportedBinding
-    dependency identity value (loadedModuleBinderScope binder)))
+  pure (scopeBinding name (definitionBinding
+    (loadedModuleBinderIsDefinition binder)
+    (ImportedBinding
+      dependency identity value (loadedModuleBinderScope binder))))
 
 
 importLoadedModule
@@ -5444,10 +5513,12 @@ importLoadedModule scope openMembers source = do
         _ -> False
     insertBinder dependency identity values binder =
       let name = loadedModuleBinderName binder
-          entry = scopeBinding name (ImportedBinding
-            dependency identity
-            (loadedModuleBinderValue binder)
-            (loadedModuleBinderScope binder))
+          entry = scopeBinding name (definitionBinding
+            (loadedModuleBinderIsDefinition binder)
+            (ImportedBinding
+              dependency identity
+              (loadedModuleBinderValue binder)
+              (loadedModuleBinderScope binder)))
       in case lookupScope name values of
         Nothing -> Right (extendScope [entry] values)
         Just (ImportedBinding _ previous _ _) | previous == identity ->
@@ -5490,7 +5561,9 @@ openedScopeContributionBindings scope (operand, actual) =
   where
     openedBinding (name, selected) = do
       payload <- moduleMemberPayload selected
-      pure (scopeBinding name (EvaluatedBinding payload))
+      pure (scopeBinding name (definitionBinding
+        (hasTrailingIdentifierMarker definitionMarker selected)
+        (EvaluatedBinding payload)))
 
 moduleExportBindings
   :: Scope
@@ -5554,14 +5627,17 @@ loadedModuleResultWithBase base
   where
     loadedBinder outer resultExpression
         (ModuleExport name presentation binding) = do
-      value <- case binding of
-        EvaluatedBinding evaluated -> Right evaluated
+      (isDefinition, value) <- case binding of
+        EvaluatedBinding evaluated -> Right (False, evaluated)
+        ShadowingConsistentBinding (EvaluatedBinding evaluated) ->
+          Right (True, evaluated)
         _ -> Left (ModuleEvaluationFailed
           ImportedModuleRequiresIdentifierBinderFederation)
       internal <- moduleBinderScope outer resultExpression name
       pure LoadedModuleBinder
         { loadedModuleBinderName = name
         , loadedModuleBinderPresentation = presentation
+        , loadedModuleBinderIsDefinition = isDefinition
         , loadedModuleBinderValue = handoffScopeValue outer value
         , loadedModuleBinderScope = internal
         }
@@ -5618,8 +5694,8 @@ moduleBaseScope base
     (True, _) -> do
       host <- datraHostValue
       Right (extendScope
-        [ (datraHostIdentifier, EvaluatedBinding
-            (withCanonicalReference [] datraHostIdentifier host))
+        [ (datraHostIdentifier, ShadowingConsistentBinding (EvaluatedBinding
+            (withCanonicalReference [] datraHostIdentifier host)))
         ] seeded)
     _ -> Right seeded
 
@@ -5823,7 +5899,9 @@ namedBinding (name, selected) = do
     (if hasTrailingIdentifierMarker canonicalValueMarker selected
       then CanonicalValueImportPresentation
       else TransparentImportPresentation)
-    (EvaluatedBinding payload))
+    (definitionBinding
+      (hasTrailingIdentifierMarker definitionMarker selected)
+      (EvaluatedBinding payload)))
 
 -- A module member remains a named declaration descriptor in its enclosing
 -- federation. Consumers project its evaluated payload through the ordinary
@@ -5905,7 +5983,25 @@ bindingKey name expressionValue = name <> ":" <> show expressionValue
 closureResolver :: Scope -> Resolver
 closureResolver scope = resolver
   where
-    resolver = Resolver resolve moduleResolver scopeIndex contextualDepth
+    resolver = Resolver
+      resolve moduleResolver scopeIndex contextualDepth definitionReference
+    definitionReference [] = False
+    definitionReference ("\0this" : _) = True
+    definitionReference (name : _) =
+      maybe False (not . bindingHasUnrestrictedShadowing)
+          (lookupScope name scope)
+        || any protectedDeclaration
+          [ scoped
+          | layer <- scopeDependentDeclarationLayers scope
+          , scoped <- dependentDeclarationCandidates name layer
+          ]
+      where
+        protectedDeclaration scoped =
+          dependentDeclarationIsDefinition
+              (scopedDependentDeclarationValue scoped)
+            && either (const False) id
+              (dependentDeclarationContainsName
+                UnrestrictedReduction [] scoped name)
     scopeIndex expressionValue = do
       index <- either (const Nothing) Just (evalInScope scope [] expressionValue)
       (_, position) <- interpretedExplicitOrdinal index
@@ -5991,6 +6087,7 @@ emptyResolver = Resolver
   (const Nothing)
   (const Nothing)
   (\_ _ -> Nothing)
+  (const False)
 
 -- Render/parse remains the bridge from evaluated values to the shared AST.
 -- Resolve library spellings from the library source, using the same lexical

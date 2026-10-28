@@ -145,10 +145,12 @@ localizeInterpretingError reason =
       LocalizedMessage
         "parametrul privat al funcției nu poate fi opțional"
         ["identificator: " <> name]
-    LetOutsideBegin ->
-      LocalizedMessage "let necesită un bloc begin" []
-    ValOutsideBegin ->
-      LocalizedMessage "val necesită o declarație de identificator într-un bloc" []
+    InvalidDependentDeclarationModifiers written correct ->
+      LocalizedMessage
+        "modificatorii declarației trebuie să apară cel mult o dată în ordinea let def val"
+        [ "modificatori scriși: " <> written
+        , "modificatori corecți: " <> correct
+        ]
     GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
         "introducerea generică necesită un tip de funcție exterior"
@@ -312,8 +314,6 @@ syntaxTemplateFailureSummary _ (IncompleteCoreSyntaxOperator operator) =
   "șablonul sintactic se termină cu operatorul nucleu incomplet " <> operator
 syntaxTemplateFailureSummary _ SyntaxTemplateProjectionLoss =
   "șablonul sintactic pierde un literal sau un gol în timpul potrivirii"
-syntaxTemplateFailureSummary _ SyntaxTemplateProjectionOrderMismatch =
-  "șablonul sintactic reordonează sau duplică un literal sau un gol"
 syntaxTemplateFailureSummary _ UnstableSyntaxTemplateProjection =
   "șablonul sintactic se schimbă după afișare și reanalizare"
 
@@ -324,8 +324,6 @@ syntaxTemplateFailureDetail (IncompleteCoreSyntaxOperator _) =
   "șablonul complet trebuie să furnizeze operandul cerut de operator"
 syntaxTemplateFailureDetail SyntaxTemplateProjectionLoss =
   "potrivitorul nu poate recupera fiecare limită din arborele sintactic neutru"
-syntaxTemplateFailureDetail SyntaxTemplateProjectionOrderMismatch =
-  "potrivitorul trebuie să recupereze fiecare gol exact o dată și în ordinea sursei"
 syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
   "forma neutră recuperată trebuie să rămână stabilă după o conversie canonică"
 

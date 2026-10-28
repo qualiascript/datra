@@ -430,22 +430,14 @@ testDependentDeclarationPrecedence =
 
 regressionTests :: IO ()
 regressionTests = do
-  assert "private identifiers have no public shadowing-consistency policy"
-    ( Identifier.identifierPolicy "_private"
-        == Identifier.PrivateIdentifier
-    )
-  assert "apostrophe identifiers require shadowing consistency"
-    ( Identifier.identifierPolicy "'fixed"
-        == Identifier.PublicIdentifier Identifier.ConsistentShadowing
-    )
-  assert "quoted private names use the same policy as compact names"
-    ( Identifier.identifierPolicy "_ private"
-        == Identifier.PrivateIdentifier
-    )
-  assert "quoted apostrophe names require shadowing consistency"
-    ( Identifier.identifierPolicy "''not compact"
-        == Identifier.PublicIdentifier Identifier.ConsistentShadowing
-    )
+  assert "compact underscore identifiers are private"
+    (Identifier.isPrivateIdentifier "_private")
+  assert "apostrophe identifiers are ordinary public identifiers"
+    (not (Identifier.isPrivateIdentifier "'fixed"))
+  assert "quoted private names use the same privacy rule as compact names"
+    (Identifier.isPrivateIdentifier "_ private")
+  assert "quoted apostrophe names are ordinary public identifiers"
+    (not (Identifier.isPrivateIdentifier "''not compact"))
   assertParsed "an explicit resource does not introduce surface this"
     "this" (ref "this")
   assertParsed "an explicit resource does not introduce surface it"
@@ -892,10 +884,10 @@ regressionTests = do
     "{value? : Any} do yield value"
     (appliedBody optionalInput)
   assertParsed "a host function body infers Any after a non-function type"
-    "Nat 'datra.fun_body"
+    "Nat datra.fun_body"
     (FunctionApplication (ref "Nat") (datraRef ["fun_body"]))
   assertParsed "a leading host member remains a standalone value"
-    "'datra.Any"
+    "datra.Any"
     (datraRef ["Any"])
   assertParsed "a parenthesized type retains its signature boundary"
     "(Nat) do yield value"
@@ -943,7 +935,7 @@ regressionTests = do
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "\"take %_Expr\" := (Int -> Int) 'datra.fun_body"
+        , "\"take %_Expr\" := (Int -> Int) datra.fun_body"
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -952,9 +944,9 @@ regressionTests = do
     _ -> False
   assert "AST capture behavior follows the interpolated value's type" $ case
       parseSource (unlines
-        [ "(Capture := 'datra.Expr"
+        [ "(Capture := datra.Expr"
         , "CaptureAlias := Capture"
-        , "\"take %CaptureAlias\" := (Any -> Any) 'datra.fun_body"
+        , "\"take %CaptureAlias\" := (Any -> Any) datra.fun_body"
         , "take Infinity)"
         ]) of
     Right (AtlasMap values) -> case reverse values of
@@ -963,10 +955,10 @@ regressionTests = do
     _ -> False
   assert "an identifier capture is in scope for later typed captures" $ case
       parseSource (unlines
-        [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-        , "_Expr := 'datra.Expr"
+        [ "(_DependentIdentifier := datra.DependentIdentifier"
+        , "_Expr := datra.Expr"
         , "\"gate %_DependentIdentifier bound %_Expr body %Int\" :="
-            <> " ((Any; Any; Int) -> Int) 'datra.test.gate"
+            <> " ((Any; Any; Int) -> Int) datra.test.gate"
         , "gate x bound Int body x)"
         ]) of
     Right (AtlasMap [_, _, _, rewritten]) ->
@@ -980,8 +972,8 @@ regressionTests = do
         ]
   assert "an identifier capture does not introduce contextual it" $ case
       parseSource (unlines
-        [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-        , "\"capture %_DependentIdentifier\" := (Any -> Any) 'datra.fun_body"
+        [ "(_DependentIdentifier := datra.DependentIdentifier"
+        , "\"capture %_DependentIdentifier\" := (Any -> Any) datra.fun_body"
         , "capture \"abc%(it)\")"
         ]) of
     Right (AtlasMap [_, _, Fun captured]) ->
@@ -989,18 +981,18 @@ regressionTests = do
     _ -> False
   assert "an optional identifier capture does not introduce contextual it" $
     case parseSource (unlines
-      [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-      , "\"capture %_DependentIdentifier\" := (Any -> Any) 'datra.fun_body"
+      [ "(_DependentIdentifier := datra.DependentIdentifier"
+      , "\"capture %_DependentIdentifier\" := (Any -> Any) datra.fun_body"
       , "capture \"abc%(it)\"?)"
       ]) of
       Right (AtlasMap [_, _, Fun captured]) ->
         captured == OptionalType dependentIdentifierTemplate
       _ -> False
   case parseSource (unlines
-      [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-      , "_DependentDeclaration := 'datra.DependentDeclaration"
-      , "\"captureId %_DependentIdentifier\" := (Any -> Any) 'datra.fun_body"
-      , "\"captureDeclaration %_DependentDeclaration\" := (Any -> Any) 'datra.fun_body"
+      [ "(_DependentIdentifier := datra.DependentIdentifier"
+      , "_DependentDeclaration := datra.DependentDeclaration"
+      , "\"captureId %_DependentIdentifier\" := (Any -> Any) datra.fun_body"
+      , "\"captureDeclaration %_DependentDeclaration\" := (Any -> Any) datra.fun_body"
       , "captureId x"
       , "captureId (x : Int)"
       , "captureDeclaration x := 1"
@@ -2646,7 +2638,7 @@ ref :: String -> Expression
 ref = IdentifierReference . IdentifierString
 
 datraRef :: [String] -> Expression
-datraRef = foldl ScopeAccess (ref "'datra") . map ref
+datraRef = foldl ScopeAccess (ref "datra") . map ref
 
 integer :: Integer -> Expression
 integer value

@@ -117,6 +117,7 @@ import DatraLanguage.AST
       , FunctionBody
       , FunctionApplication
       , Let
+      , Def
       , Val
       , IdentifierReference
       , Lookup
@@ -797,6 +798,7 @@ astForm =
       , astUnary AST.CoalizationOperator Coalization
       , astBlock "begin" Begin
       , astUnary AST.LetOperator Let
+      , astUnary AST.DefOperator Def
       , astUnary AST.ValOperator Val
       , IdentifierReference . IdentifierString <$>
           (astSymbol "ref" *> astString)
@@ -1124,7 +1126,7 @@ inferredFunctionSignature signature =
   case appliedFunctionType signature of
     Just functionType -> functionType
     Nothing -> FunctionType signature (ScopeAccess
-      (IdentifierReference (IdentifierString "'datra"))
+      (IdentifierReference (IdentifierString "datra"))
       (IdentifierReference (IdentifierString "Any")))
   where
     appliedFunctionType functionType@FunctionTypeExpression {} =

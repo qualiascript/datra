@@ -75,10 +75,10 @@ The following completed interpreter example cases passed:
 - typed rejections; and
 - located rejection.
 
-The `dependent declarations` case includes the overlap-diagnostic regression:
-an invalid declaration alone reports `SyntaxTemplateProjectionOrderMismatch`,
-while the same declaration overlapping an earlier family reports
-`OverlappingDependentDeclarations`.
+The `dependent declarations` case includes the overlap-diagnostic regressions:
+both an unprojectable declaration on its own and one overlapping an earlier
+family report `OverlappingDependentDeclarations`. The obsolete
+`SyntaxTemplateProjectionOrderMismatch` diagnostic has been removed.
 
 ### Canonical function reconstruction
 
@@ -201,4 +201,3 @@ They were not rerun as part of this test report.
   semantically correct for the focused case but regressed it to 8.89 seconds;
   rebuilding indexes and merging ordered candidate buckets cost more than the
   candidate filtering saved.
-

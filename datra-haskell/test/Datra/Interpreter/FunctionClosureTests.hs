@@ -146,8 +146,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "4" "5"
   , mutualRecursiveDefinitions
   , roundTrip "registered native function"
-      ("yield ({a? : 'datra.Int; b? : 'datra.Int} -> "
-        <> "'datra.Int 'datra.add)")
+      ("yield ({a? : datra.Int; b? : datra.Int} -> "
+        <> "datra.Int datra.add)")
       "(2; 3)" "5"
   , testCase "unused ambient bindings are absent" $ do
       value <- requireProgram
@@ -155,9 +155,9 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "source-defined integer range dependency" ("'datra.from_body" `isInfixOf` text)
+      assertBool "source-defined integer range dependency" ("datra.from_body" `isInfixOf` text)
       assertBool "obsolete primitive Int dependency"
-        (not (":= 'datra.Int;" `isInfixOf` text))
+        (not (":= datra.Int;" `isInfixOf` text))
       assertBool "dependency uses strict current-scope access"
         ("this.\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do

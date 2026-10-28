@@ -35,6 +35,7 @@ data Operator
   | AssertOperator
   | BeginOperator
   | LetOperator
+  | DefOperator
   | ValOperator
   | EitherOperator
   | OptionalOperator
@@ -81,6 +82,7 @@ operatorCanonicalSymbol GreedyStringTemplateOperator = "%"
 operatorCanonicalSymbol AssertOperator = "assert"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
+operatorCanonicalSymbol DefOperator = "def"
 operatorCanonicalSymbol ValOperator = "val"
 operatorCanonicalSymbol EitherOperator = "|"
 operatorCanonicalSymbol OptionalOperator = "?"
@@ -127,6 +129,7 @@ operatorSourceSymbol GreedyStringTemplateOperator = Just "%"
 operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"
+operatorSourceSymbol DefOperator = Just "def"
 operatorSourceSymbol ValOperator = Just "val"
 operatorSourceSymbol EitherOperator = Just "|"
 operatorSourceSymbol OptionalOperator = Just "?"

@@ -20,7 +20,7 @@ import DatraLanguage.AST
       , SyntaxBoundary
       )
   )
-import DatraLanguage.DependentDeclaration (dependentDeclaration)
+import DatraLanguage.DependentDeclaration (dependentDeclarationCandidate)
 import DatraLanguage.SyntaxTemplate (SyntaxHoleKind (..))
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.IdentifierErasure (stripOuterIdentifierType)
@@ -63,7 +63,7 @@ captureAtomicSyntaxExpression target captured =
         FunctionBody {} -> Just captured
         _ -> Nothing
     BuiltinMetaTypeForm (ASTMetaType DeclarationAST)
-      | Just _ <- dependentDeclaration captured -> Just captured
+      | dependentDeclarationCandidate captured -> Just captured
     BuiltinMetaTypeForm (ASTMetaType DependentIdentifierAST) ->
       dependentIdentifier captured
     _ -> Nothing

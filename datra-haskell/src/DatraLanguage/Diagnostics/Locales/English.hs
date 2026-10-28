@@ -146,10 +146,12 @@ localizeInterpretingError reason =
       LocalizedMessage
         "private function parameter cannot be optional"
         ["identifier: " <> name]
-    LetOutsideBegin ->
-      LocalizedMessage "let requires an enclosing begin block" []
-    ValOutsideBegin ->
-      LocalizedMessage "val requires an identifier declaration in a block" []
+    InvalidDependentDeclarationModifiers written correct ->
+      LocalizedMessage
+        "declaration modifiers must occur at most once in let def val order"
+        [ "written modifiers: " <> written
+        , "correct modifiers: " <> correct
+        ]
     GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
         "generic introduction requires an enclosing function type"
@@ -311,8 +313,6 @@ syntaxTemplateFailureSummary _ (IncompleteCoreSyntaxOperator operator) =
   "syntax pattern ends with the incomplete core operator " <> operator
 syntaxTemplateFailureSummary _ SyntaxTemplateProjectionLoss =
   "syntax pattern loses a literal or hole during matching"
-syntaxTemplateFailureSummary _ SyntaxTemplateProjectionOrderMismatch =
-  "syntax pattern reorders or duplicates a literal or hole"
 syntaxTemplateFailureSummary _ UnstableSyntaxTemplateProjection =
   "syntax pattern changes when rendered and parsed again"
 
@@ -323,8 +323,6 @@ syntaxTemplateFailureDetail (IncompleteCoreSyntaxOperator _) =
   "the complete pattern must supply the operator's required operand"
 syntaxTemplateFailureDetail SyntaxTemplateProjectionLoss =
   "the matcher cannot recover every pattern boundary from the neutral AST"
-syntaxTemplateFailureDetail SyntaxTemplateProjectionOrderMismatch =
-  "the matcher must recover each hole exactly once and in source order"
 syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
   "the recovered neutral form must survive a canonical round trip"
 

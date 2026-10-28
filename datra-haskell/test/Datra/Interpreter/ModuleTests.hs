@@ -120,7 +120,7 @@ moduleTests =
     , moduleCase origin "scope-protected dependent declaration supports lookup"
         ( "import \"dependent_declarations\" do\n"
             <> "yield DependentDeclarations."
-            <> "(~\"'protected 3\")[0].value"
+            <> "(~\"protected 3\")[0].value"
         )
         "{_x : Int := 3}"
     , moduleFailureCase origin "private dependent declaration is not exported"
