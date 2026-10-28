@@ -2,15 +2,19 @@
 
 ## Scope
 
-This report contains only results observed against the current working tree.
-It intentionally does not retain counts or failure lists from earlier runs,
-because the AST, block model, declaration modifiers, assertion feature, and
-test programs have changed since those runs.
+This report contains only results observed during the current verification
+pass. It distinguishes baseline results from checks rerun after the latest
+repair. It intentionally does not retain counts or failure lists from older
+verification passes, because the AST, block model, declaration modifiers,
+assertion feature, and test programs have changed since those runs.
 
 The complete suite was not run to completion. Per the decision to avoid the
 known hanging path, verification focused on the dependent-declaration
 acceptance tests, the new `def` regressions, a current core-suite run, and a
-small number of directly relevant integration checks.
+small number of directly relevant integration checks. The callable-payload
+repair described below was made after the 19-test acceptance run and the core
+suite run, so those two runs are retained as baseline results rather than
+claimed as post-repair verification.
 
 ## Passing checks
 
@@ -71,7 +75,40 @@ The focused `recursive defaults, overloads, typing, and total blocks`
 integration regression passed after its assertion-only checks were migrated to
 named Boolean declarations and one yielded Boolean tuple.
 
-### Removal and stale-symbol scans
+## Callable dependent-declaration repair
+
+Concrete dependent declarations now invoke ordinary callable payloads through
+the interpreter's normal `applyFunction` path. Runtime-insertion payloads still
+use their existing direct insertion path, and non-callable payloads remain
+unchanged. A single captured value is supplied as that positional value rather
+than as a singleton atlas map; named contextual bindings are still constructed
+from the validated dependent-declaration input.
+
+The migrated integration type check now inspects the declaration descriptor
+explicitly:
+
+```datra
+successorTypeCheck :=
+  ((~"successor Nat next")[0].value) of ({value? : Nat} -> Int)
+```
+
+The bare `successor` check was invalid because the declaration introduces the
+dependent name family, not a standalone `successor` identifier.
+
+Two focused regression cases were added:
+
+- `dependent captures call ordinary functions through subfederation`, which
+  expects `successor 4 next` to produce `5` when `%Nat` feeds an optional
+  `Int` parameter; and
+- `dependent declaration descriptors expose their functions`, which expects
+  the descriptor lookup above to retain the callable and satisfy the narrowed
+  function type.
+
+The current tree builds successfully with these changes. Neither new test is
+claimed as passing because both encounter the downstream `from` failure below
+before an assertion result is produced.
+
+## Removal and stale-symbol scans
 
 Current source scans found no remaining language-level `assert` in `.datra`
 files or embedded Datra program strings. Haskell's ordinary test assertion
@@ -88,19 +125,24 @@ The same scans found no remaining active implementation or test uses of:
 - the obsolete block-position modifier errors; or
 - the superseded declaration and map terminology.
 
-## Current failure and interrupted check
+## Current failures and interrupted check
 
-### Custom syntax integration failure
+### Newly exposed `from` failure
 
 The focused `standard-library syntax and string-template decoding` integration
-regression currently fails with:
+regression no longer reports `UnknownIdentifier "successor"`. It now advances
+farther and fails with:
 
 ```text
-SourceEvaluationFailure (UnknownIdentifier "successor")
+SourceParseFailure (ParseFailure {parseFailureMessage =
+  "UnknownIdentifier \"from\""})
 ```
 
-This is a custom syntax declaration/lookup failure, not a failure in the
-dependent-declaration or `def` acceptance set.
+The same failure was observed in focused runs of both newly added regression
+tests. It was also reproduced by the pre-existing `value holes evaluate
+expressions before selection` test, showing that the blocker is not specific
+to either new test body. Per the decision to stop at the next issue, its cause
+was not investigated and no repair was attempted.
 
 ### Current hanging path
 
@@ -111,8 +153,9 @@ It was interrupted. No pass/fail claim is made for that check.
 ### Not run
 
 The full interpreter suite and the parsing, types, and CLI suites were not run
-to completion in this verification pass. This report therefore makes no
-current pass/fail claim about them.
+to completion in this verification pass. The 19 selected acceptance tests and
+the core suite were not rerun after the callable-payload repair. This report
+therefore makes no post-repair pass/fail claim about those suites.
 
 ## Runtime-performance approaches that did not work
 

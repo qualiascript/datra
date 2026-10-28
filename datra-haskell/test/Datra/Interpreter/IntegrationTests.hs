@@ -51,7 +51,7 @@ templateBackedProgram = unlines
   [ "\"successor %Nat next\" := ({value? : Int} -> Int) do"
   , "  yield value + 1"
   , "successorResultCheck := successor 4 next = 5"
-  , "successorTypeCheck := successor of ({value? : Nat} -> Int)"
+  , "successorTypeCheck := ((~\"successor Nat next\")[0].value) of ({value? : Nat} -> Int)"
   , "fromCheck := (\"from 2 to 5\" ~> \"from %Int to %Int\")[1] of Int"
   , "toCheck := (\"from 2 to 5\" ~> \"from %Int to %Int\")[2] of Int"
   , "yield (successorResultCheck; successorTypeCheck; fromCheck; toCheck)"

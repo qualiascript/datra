@@ -45,6 +45,7 @@ module DatraTypes
   , captureSyntaxExpression
   , specializeSyntaxHoleKind
   , functionAlternatives
+  , isFunctionFamily
   , templateTypeValue
   , syntaxTemplateTypeValue
   , anyTypeValue
@@ -507,6 +508,7 @@ import Evaluation.Value
   , makeCheckedLazyMapValue
   , syntaxCategoryTypeValue
   , functionAlternatives
+  , isFunctionFamily
   , templateTypeValue
   , syntaxTemplateTypeValue
   , anyTypeValue

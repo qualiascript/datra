@@ -2451,13 +2451,17 @@ selectedDependentDeclarationMember
       values <- traverse
         (evalInScopeWith reduction usageScope resolving . snd)
         captures
-      input <- dependentDeclarationInput
+      _ <- dependentDeclarationInput
         [ (captureName, Nothing, value)
         | ((schemaExpression, _), value) <- zip captures values
         , let captureName = fst (captureExpression schemaExpression)
         ]
+      supplied <- makeArgumentativeMap values
       payload <- applyDependentDeclarationImplementation
-        (functionPreparedArgument input) seed
+        (scopeActivation usageScope)
+        reduction
+        supplied
+        seed
       pure (namedDeclarationMember declaration name payload)
 
 evaluateLookup
@@ -4013,8 +4017,8 @@ evaluateMaterializedDeclaration reduction captured resolving implementation
     , let captureName = evaluatedDeclarationCaptureName capture
           schema = evaluatedDeclarationCaptureSchema capture
     ]
-  let supplied = functionPreparedArgument input
-      contextualArgument = do
+  supplied <- makeArgumentativeMap values
+  let contextualArgument = do
         members <- traverse contextualCapture
           (zip evaluatedCaptures values)
         makeArgumentativeMapPreservingSingleton members
@@ -4031,7 +4035,11 @@ evaluateMaterializedDeclaration reduction captured resolving implementation
       implementation
   payload <- if null evaluatedCaptures
     then Right implementationValue
-    else applyDependentDeclarationImplementation supplied implementationValue
+    else applyDependentDeclarationImplementation
+      (scopeActivation implementationScope)
+      reduction
+      supplied
+      implementationValue
   pure (attachDeclarationSyntax Nothing template payload)
   where
     contextualCapture (capture, value) =
@@ -4061,13 +4069,18 @@ dependentDeclarationInput captures = do
     captureValue (_, _, value) = value
 
 applyDependentDeclarationImplementation
-  :: InterpretedValue
+  :: ScopeActivation
+  -> ReductionContext
+  -> InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-applyDependentDeclarationImplementation supplied payload =
+applyDependentDeclarationImplementation activation reduction supplied payload =
   case interpretedRuntimeFunctionInsertion payload of
     Just insertion -> applyRuntimeFunction insertion supplied
-    Nothing -> Right payload
+    Nothing
+      | isFunctionFamily payload ->
+          fst <$> applyFunction activation reduction payload supplied
+      | otherwise -> Right payload
 
 attachDeclarationSyntax
   :: Maybe [Expression]

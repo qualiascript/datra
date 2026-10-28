@@ -767,6 +767,19 @@ declaredPatternTests =
             <> "yield double (2 + 2)"
         )
         "8"
+    , programCase "dependent captures call ordinary functions through subfederation"
+        ( "\"successor %Nat next\" := ({value?:Int} -> Int)"
+            <> " do yield value + 1\n"
+            <> "yield successor 4 next"
+        )
+        "5"
+    , programCase "dependent declaration descriptors expose their functions"
+        ( "\"successor %Nat next\" := ({value?:Int} -> Int)"
+            <> " do yield value + 1\n"
+            <> "yield ((~\"successor Nat next\")[0].value)"
+            <> " of ({value?:Nat} -> Int)"
+        )
+        "true"
     , programCase "syntax pattern call"
         (declaration <> "yield step (1+1) next") "3"
     , programCase "an application spine is one syntax boundary"
