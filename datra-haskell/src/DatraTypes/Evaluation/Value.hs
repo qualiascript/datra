@@ -18,6 +18,7 @@ module Evaluation.Value
   , canonicalStringImplementation
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
+  , SyntaxFunctionExpansion (..)
   , SyntaxFunctionInsertion (..)
   , RuntimeFunctionInsertion (..)
   , EvaluatedFunctionBody (..)
@@ -398,8 +399,17 @@ data EvaluatedFunctionInvocation = EvaluatedFunctionInvocation
   , functionInvocationContract :: Maybe InterpretedValue
   }
 
+-- | A syntax hook can return a semantic expression immediately or hand a raw
+-- declaration block back to the syntax rewriter. Raw blocks remain an
+-- application-layer phase value and never enter the language AST.
+data SyntaxFunctionExpansion
+  = SyntaxExpression Expression
+  | SyntaxBegin [Expression] Expression
+  | SyntaxFunctionBody [Expression] Expression
+  deriving (Eq, Show)
+
 data SyntaxFunctionInsertion = SyntaxFunctionInsertion
-  { applySyntaxFunction :: [Expression] -> Maybe Expression
+  { applySyntaxFunction :: [Expression] -> Maybe SyntaxFunctionExpansion
   , preimageSyntaxFunction :: Expression -> Maybe [Expression]
   }
 

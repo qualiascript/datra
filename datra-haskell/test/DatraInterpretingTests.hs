@@ -9,7 +9,7 @@ import Datra.Interpreter.FunctionTests (functionTests)
 import Datra.Interpreter.DatraTypeLawTests (datraTypeLawTests)
 import Datra.Interpreter.IntegrationTests (integrationTests)
 import Datra.Interpreter.ModuleTests (moduleTests)
-import Datra.Interpreter.OverloadAssertionTests (overloadAssertionTests)
+import Datra.Interpreter.OverloadTests (overloadTests)
 import Datra.Interpreter.ScopeTests (scopeTests)
 import Datra.Interpreter.StandardLibraryTests (standardLibraryTests)
 import Datra.TestSupport
@@ -17,7 +17,9 @@ import Datra.TestSupport
   , runProgram
   )
 import DatraLanguage.AST
-  ( Expression (..)
+  ( DependentDeclaration (..)
+  , DependentDeclarationHead (..)
+  , Expression (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
   , pattern FunctionType
@@ -155,7 +157,7 @@ testTree =
     , integrationTests
     , scopeTests
     , moduleTests
-    , overloadAssertionTests
+        , overloadTests
     , standardLibraryTests
     , testGroup "properties"
         [ testProperty "natural addition agrees with Haskell" propNaturalAddition
@@ -182,8 +184,9 @@ assert = assertBool
 
 testModuleSyntaxAlias :: IO ()
 testModuleSyntaxAlias = do
-  let binding name value = IdentifierOperation
-        (IdentifierString name) value (Just value)
+  let binding name value = DependentDeclaration
+        (SimpleIdentifierDeclarationHead (IdentifierString name))
+        False False False value
       member name value = IdentifierOperation
         (IdentifierString name) value Nothing
   let duplicateSource = ModuleSource "duplicate-module.datra"
@@ -1780,7 +1783,7 @@ testDependentDeclarations = do
       ])
   expectFailure
     "dependent declarations cannot be optional"
-    "OperationHasNoEffect"
+    "operation has no effect inside block"
     (unlines
       [ "\"pair %(_x : Int)\"? := it"
       , "yield 1"

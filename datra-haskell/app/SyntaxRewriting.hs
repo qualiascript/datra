@@ -7,14 +7,15 @@
 module SyntaxRewriting
   ( SyntaxContext (..)
   , SyntaxRewriteFailure (..)
+  , renderSyntaxRewriteFailure
   , rewriteResourceSyntax
   ) where
 
 import Control.Applicative ((<|>))
 import DatraLanguage.DependentDeclaration
-  ( DependentDeclaration (..)
-  , bindingNames
+  ( bindingNames
   , dependentDeclaration
+  , invalidDependentDeclarationModifiers
   , dependentDeclarationNameFamilyExpression
   , dependentDeclarationNameExpression
   , dependentDeclarationTemplateBranches
@@ -33,6 +34,7 @@ import DatraTypes
   , EvaluatedFunctionBody
       ( EvaluatedSyntaxFunctionBody )
   , RuntimeFunctionInsertion
+  , SyntaxFunctionExpansion (..)
   , SyntaxFunctionInsertion (..)
   , InterpretedValue
   , booleanCondition
@@ -94,8 +96,19 @@ data SyntaxRewriteFailure
   | AmbiguousBareSkipApplication
   | OverlappingDependentDeclarations String String
   | NonInjectiveDependentDeclaration String
+  | InvalidDeclarationModifiers [String] [String]
+  | ExpectedDependentDeclaration Expression
   | InvalidSyntaxTemplate String SyntaxTemplateAdmissibilityFailure
   deriving (Eq, Show)
+
+renderSyntaxRewriteFailure :: SyntaxRewriteFailure -> String
+renderSyntaxRewriteFailure failure = case failure of
+  ExpectedDependentDeclaration _ ->
+    "operation has no effect inside block"
+  InvalidDeclarationModifiers written correct ->
+    "invalid declaration modifiers: " <> unwords written
+      <> "\ncorrect form: " <> unwords correct
+  _ -> show failure
 
 -- Evaluation callbacks share a lexical scope. Entering a contextual expression
 -- creates a child scope for every callback, including typed hole validation.
@@ -202,7 +215,7 @@ expandSelectedSyntaxMatch
   -> Either SyntaxRewriteFailure Expression
 expandSelectedSyntaxMatch environment rule matched = do
   expanded <- case directExpansion of
-    Just value -> Right value
+    Just value -> resolveSyntaxFunctionExpansion environment value
     Nothing -> directSyntaxFunctionExpansion
       environment rule fallback
   pure (foldl FunctionApplication expanded
@@ -227,6 +240,29 @@ insertionCaptures rule captures
   | Just _ <- syntaxApplicationImplementation (rewriteRule rule) =
       concatMap directSyntaxArguments captures
   | otherwise = captures
+
+resolveSyntaxFunctionExpansion
+  :: RewriteEnvironment
+  -> SyntaxFunctionExpansion
+  -> Either SyntaxRewriteFailure Expression
+resolveSyntaxFunctionExpansion _ (SyntaxExpression expressionValue) =
+  Right expressionValue
+resolveSyntaxFunctionExpansion environment (SyntaxBegin entries result) = do
+  let contextual = withContextualSyntax ["this"] environment
+      capture = contextCapture (rewriteContext contextual)
+  (rewrittenEntries, nested) <- rewriteSequence capture contextual entries
+  declarations <- lowerBlockDeclarations rewrittenEntries
+  rewrittenResult <- rewriteStandalone capture nested result
+  Right (Begin declarations rewrittenResult)
+resolveSyntaxFunctionExpansion environment
+    (SyntaxFunctionBody entries result) = do
+  let contextual = withContextualSyntax ["this"]
+        (enterContext Nothing environment)
+      capture = contextCapture (rewriteContext contextual)
+  (rewrittenEntries, nested) <- rewriteSequence capture contextual entries
+  declarations <- lowerBlockDeclarations rewrittenEntries
+  rewrittenResult <- rewriteStandalone capture nested result
+  Right (FunctionBody declarations rewrittenResult)
 
 ruleHoleKinds :: RewriteRule -> [SyntaxHoleKind Expression]
 ruleHoleKinds = foldr collect []
@@ -326,7 +362,7 @@ rewriteResourceSyntax envelope context rules declarations raw =
   case (envelope, raw) of
     (ExplicitMapEnvelope, expressionValue) ->
       rewriteStandalone capture initial expressionValue
-    (ImplicitBlockEnvelope, Begin entries _) ->
+    (ImplicitBlockEnvelope, AtlasMap entries) ->
       rewriteImplicitResource entries
     _ -> Left MissingImplicitBlockResult
   where
@@ -375,7 +411,9 @@ resolveImplicitBlock capture initial = go initial
               [scoped@ScopeAccess {}] -> Right scoped
               [imported@Import {}] -> Right imported
               [block@Begin {}] -> Right (Begin [] block)
-              _ -> Right (Begin rewrittenPrefix (AtlasMap []))
+              _ -> Begin
+                <$> lowerBlockDeclarations rewrittenPrefix
+                <*> pure (AtlasMap [])
             entry : rest -> do
               (rewritten, trailing) <-
                 rewriteWithTail False capture environment entry rest
@@ -418,9 +456,12 @@ resolveImplicitBlock capture initial = go initial
             Right matched ->
               expandSelectedSyntaxMatch nested rule matched >>= \case
                 Begin bindings finalResult
-                  | null finalTrailing ->
+                  | null finalTrailing -> do
+                      prefixDeclarations <-
+                        lowerBlockDeclarations rewrittenPrefix
                       Right (Just (if explicitBlockAtHead
-                        then Begin rewrittenPrefix (Begin bindings finalResult)
+                        then Begin prefixDeclarations
+                          (Begin bindings finalResult)
                         else Begin bindings finalResult))
                 _ -> Right Nothing
             Left NoMatchingSyntaxTemplate -> Right Nothing
@@ -932,17 +973,22 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing
     Begin bindings result -> do
       let contextual = withContextualSyntax ["this"] environment
       (rewrittenBindings, nested) <-
-        rewriteSequence capture contextual bindings
+        rewriteSequence capture contextual
+          (map DeclarationExpression bindings)
       rewrittenResult <- rewriteStandalone capture nested result
-      pure (Begin rewrittenBindings rewrittenResult, trailing)
+      declarations <- lowerBlockDeclarations rewrittenBindings
+      pure (Begin declarations rewrittenResult, trailing)
     FunctionBody bindings result -> do
       let contextual = withContextualSyntax ["this"]
             (enterContext Nothing environment)
           nestedCapture = contextCapture (rewriteContext contextual)
       (rewrittenBindings, nested) <-
-        rewriteSequence nestedCapture contextual bindings
+        rewriteSequence nestedCapture contextual
+          (map DeclarationExpression bindings)
       rewrittenResult <- rewriteStandalone nestedCapture nested result
-      pure (FunctionBody rewrittenBindings rewrittenResult, trailing)
+      declarations <- lowerBlockDeclarations rewrittenBindings
+      pure
+        (FunctionBody declarations rewrittenResult, trailing)
     _ -> finish value trailing
   where
     rewriteTemplatePart contextual part = case part of
@@ -1155,7 +1201,8 @@ directSyntaxFunctionExpansion environment selectedRule application =
           pure (applySyntaxFunction selected, expected)
         choose [] successes =
           case nub successes of
-            [expanded] -> Right expanded
+            [expanded] ->
+              resolveSyntaxFunctionExpansion environment expanded
             [] -> Right application
             _ -> Right application
         choose ((adapter, expected) : remaining) successes =
@@ -1240,8 +1287,22 @@ rewriteScopeAccess capture environment source body = do
   pure (ScopeAccess rewrittenSource rewrittenBody)
 
 singleScopedExpression :: Expression -> Expression
-singleScopedExpression (Begin [entry] (AtlasMap [])) = entry
+singleScopedExpression (Begin [entry] (AtlasMap [])) =
+  DeclarationExpression entry
 singleScopedExpression expressionValue = expressionValue
+
+lowerBlockDeclarations
+  :: [Expression]
+  -> Either SyntaxRewriteFailure [DependentDeclaration Expression]
+lowerBlockDeclarations = traverse lower
+  where
+    lower expressionValue = maybe
+      (case invalidDependentDeclarationModifiers expressionValue of
+        Just (written, correct) ->
+          Left (InvalidDeclarationModifiers written correct)
+        Nothing -> Left (ExpectedDependentDeclaration expressionValue))
+      Right
+      (dependentDeclaration expressionValue)
 
 scopeBodyEntries :: Expression -> [Expression]
 scopeBodyEntries (SyntaxBoundary body) = scopeBodyEntries body

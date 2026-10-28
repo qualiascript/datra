@@ -215,7 +215,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
       reconstructed <- requireExpression text
       assertEqual "canonical text is idempotent"
         text (renderInterpretedValue reconstructed)
-  , programCase "function types belong to Any" "assert (Nat -> Nat) of Any" "()"
+  , programCase "function types belong to Any"
+      "yield (Nat -> Nat) of Any" "true"
   , programCase "functions can annotate named parameters"
       "apply := ({callback? : (Nat -> Nat); value? : Nat} -> Nat do yield callback value)\nyield apply (({n? : Nat} -> Nat do yield n + 1), 4)"
       "5"

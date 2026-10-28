@@ -6,6 +6,11 @@
     _Block := datra.Block
     _FunctionBody := datra.FunctionBody
 
+    %($let; _DependentDeclaration) :=
+      (_DependentDeclaration -> _DependentDeclaration) datra.let_body
+    let def := (_DependentDeclaration -> _DependentDeclaration) datra.def_body
+    let val := (_DependentDeclaration -> _DependentDeclaration) datra.val_body
+
     def val datra := datra
 
     val Any := datra.Any
@@ -28,7 +33,6 @@
     val NatValRange := datra.NatValRange
     val IntValRange := datra.IntValRange
 
-    %($assert; $hard?; _Expr) := (_Expr; $hard? -> _Expr) datra.assert_body
     %($begin; _Block; $yield; _Expr) := datra.begin
     %($fun; _Expr) := (_Expr -> _Expr) datra.fun_body
     %($if; _Expr; $then; _Expr; ($else; _Expr)?) :=
@@ -36,10 +40,6 @@
     %($import; (List Str); _FunctionBody) :=
       (List Str; _FunctionBody -> _Expr) datra.import_body
     %($len; _Expr) := (Any -> NatLimit) datra.len_body
-    %($let; _DependentDeclaration) :=
-      (_DependentDeclaration -> _DependentDeclaration) datra.let_body
-    let def := (_DependentDeclaration -> _DependentDeclaration) datra.def_body
-    let val := (_DependentDeclaration -> _DependentDeclaration) datra.val_body
     %($with; (List _Expr); _FunctionBody) :=
       (List _Expr; _FunctionBody -> _Expr) datra.with_body
 

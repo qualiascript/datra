@@ -108,58 +108,53 @@ datraHostValue = do
         number <- requireFiniteInteger LeftOperand value
         pure (integerValue (abs number))
     , ("ordinal", Right ordinalMembers)
-    , syntaxBody "let" (SyntaxFunctionInsertion
+    , syntaxBody "let" (expressionSyntaxInsertion
         (\case
           [entry] -> Just (Let (absorbAssignedConcatenation entry))
           _ -> Nothing)
         (\case
           Let entry -> Just [entry]
           _ -> Nothing))
-    , syntaxBody "def" (SyntaxFunctionInsertion
+    , syntaxBody "def" (expressionSyntaxInsertion
         (\case
           [entry] -> Just (Def (absorbAssignedConcatenation entry))
           _ -> Nothing)
         (\case
           Def entry -> Just [entry]
           _ -> Nothing))
-    , syntaxBody "val" (SyntaxFunctionInsertion
+    , syntaxBody "val" (expressionSyntaxInsertion
         (\case
           [entry] -> Just (Val (absorbAssignedConcatenation entry))
           _ -> Nothing)
         (\case
           Val entry -> Just [entry]
           _ -> Nothing))
-    , syntaxBody "assert" (SyntaxFunctionInsertion
-        (\case
-          [condition] -> Just (Assert False condition)
-          [_, condition] -> Just (Assert True condition)
-          _ -> Nothing)
-        (\case
-          Assert False condition -> Just [condition]
-          _ -> Nothing))
     , syntaxFunction "begin" (SyntaxFunctionInsertion
         (\case
-          [entries, result] -> Just (Begin (blockEntries entries) result)
+          [entries, result] -> Just
+            (SyntaxBegin (blockExpressions entries) result)
           _ -> Nothing)
         (\case
-          Begin entries result -> Just [AtlasMap entries, result]
+          Begin entries result -> Just
+            [AtlasMap (map DeclarationExpression entries), result]
           _ -> Nothing))
     , syntaxBody "do" (SyntaxFunctionInsertion
         (\case
           [entries, result] -> Just
-            (FunctionBody (blockEntries entries) result)
+            (SyntaxFunctionBody (blockExpressions entries) result)
           _ -> Nothing)
         (\case
-          FunctionBody entries result -> Just [AtlasMap entries, result]
+          FunctionBody entries result -> Just
+            [AtlasMap (map DeclarationExpression entries), result]
           _ -> Nothing))
-    , syntaxBody "fun" (SyntaxFunctionInsertion
+    , syntaxBody "fun" (expressionSyntaxInsertion
         (\case
           [entry] -> Just (Fun (absorbFunSequence entry))
           _ -> Nothing)
         (\case
           Fun entry -> Just [entry]
           _ -> Nothing))
-    , syntaxBody "if" (SyntaxFunctionInsertion
+    , syntaxBody "if" (expressionSyntaxInsertion
         (\case
           [condition, yes, no] -> Just (Conditional condition yes no)
           [condition, yes] -> Just
@@ -168,7 +163,7 @@ datraHostValue = do
         (\case
           Conditional condition yes no -> Just [condition, yes, no]
           _ -> Nothing))
-    , syntaxBody "import" (SyntaxFunctionInsertion
+    , syntaxBody "import" (expressionSyntaxInsertion
         (\case
           [paths, body@FunctionBody {}]
             | Just requested <- importPaths paths
@@ -178,7 +173,7 @@ datraHostValue = do
           Import paths body -> Just
             [AtlasMap (map AsciiStringLiteral paths), body]
           _ -> Nothing))
-    , syntaxBody "with" (SyntaxFunctionInsertion
+    , syntaxBody "with" (expressionSyntaxInsertion
         (\case
           [modules, FunctionBody bindings result] -> Just
             (ScopeAccess
@@ -189,28 +184,28 @@ datraHostValue = do
           ScopeAccess (ArgumentativeMap modules) (Begin bindings result) -> Just
             [ArgumentativeMap modules, FunctionBody bindings result]
           _ -> Nothing))
-    , syntaxBody "of" (SyntaxFunctionInsertion
+    , syntaxBody "of" (expressionSyntaxInsertion
         (\case
           [source, target] -> Just (Subfederation source target)
           _ -> Nothing)
         (\case
           Subfederation source target -> Just [source, target]
           _ -> Nothing))
-    , syntaxBody "and" (SyntaxFunctionInsertion
+    , syntaxBody "and" (expressionSyntaxInsertion
         (\case
           [left, right] -> Just (BooleanAnd left right)
           _ -> Nothing)
         (\case
           BooleanAnd left right -> Just [left, right]
           _ -> Nothing))
-    , syntaxBody "or" (SyntaxFunctionInsertion
+    , syntaxBody "or" (expressionSyntaxInsertion
         (\case
           [left, right] -> Just (BooleanOr left right)
           _ -> Nothing)
         (\case
           BooleanOr left right -> Just [left, right]
           _ -> Nothing))
-    , syntaxBody "not" (SyntaxFunctionInsertion
+    , syntaxBody "not" (expressionSyntaxInsertion
         (\case
           [value] -> Just (BooleanNot value)
           _ -> Nothing)
@@ -219,6 +214,9 @@ datraHostValue = do
           _ -> Nothing))
     ]
   where
+    expressionSyntaxInsertion apply preimage = SyntaxFunctionInsertion
+      (fmap SyntaxExpression . apply)
+      preimage
     expressionType = syntaxCategoryTypeValue ExpressionAST
     dependentArgumentType = syntaxCategoryTypeValue DependentArgumentAST
     dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
@@ -308,9 +306,9 @@ datraHostValue = do
     ordinalComparisonBody name operation =
       ordinalBinaryBody name $ \left right ->
         booleanValue <$> operation left right
-    blockEntries (AtlasMap entries) = entries
-    blockEntries (SyntaxBoundary inner) = blockEntries inner
-    blockEntries value = [value]
+    blockExpressions (AtlasMap entries) = entries
+    blockExpressions (SyntaxBoundary inner) = blockExpressions inner
+    blockExpressions value = [value]
     importPaths value = case value of
       AsciiStringLiteral path -> Just [path]
       AtlasMap paths -> concat <$> traverse importPaths paths

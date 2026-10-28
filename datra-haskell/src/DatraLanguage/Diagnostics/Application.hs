@@ -28,5 +28,4 @@ data SyntaxTemplateAdmissibilityFailure
 
 data CommandLineOptionFailure
   = UnsupportedDiagnosticLocale String
-  | UnsupportedEvaluationMode String
   deriving (Eq, Show)

@@ -1,24 +1,42 @@
 -- | Close a function over exactly the identifier definitions it references.
 -- Dependency blocks are executable Datra, not snapshots of an ambient scope.
 module FunctionClosure
-  ( Dependency (..)
+  ( DependencyKey (..)
+  , DependencyAddress (..)
+  , Dependency (..)
   , Resolver (..)
   , closeFunction
   , inlineDependencies
-  , canonicalDependencyNames
   ) where
 
-import DatraLanguage.DependentDeclaration (bindingNames)
-import Data.List (nub, stripPrefix)
+import DatraLanguage.DependentDeclaration
+  ( bindingNames
+  , dependentDeclarationWithImplementation
+  , prependDependentDeclarationName
+  )
+import Data.List (nub)
 import DatraLanguage.AST
 import Control.Monad.Trans.State.Strict (State, get, put, runState)
 import Numeric.Natural (Natural)
 
 -- Keys identify bindings during this traversal only; they never enter source.
 -- The resolver belongs to the definition's original environment.
+newtype DependencyAddress = DependencyAddress
+  { dependencyAddressSegments :: [IdentifierString]
+  }
+  deriving (Eq, Show)
+
+data DependencyKey
+  = BindingDependency String Expression
+  | SelectedDependency [IdentifierString] Expression
+  | ContextualDependency String Natural Expression
+  | ModuleDependency FilePath DependencyKey
+  deriving (Eq, Show)
+
 data Dependency = Dependency
-  { dependencyKey :: String
-  , dependencyName :: String
+  { dependencyKey :: DependencyKey
+  , dependencyAddress :: DependencyAddress
+  , dependencyDeclaration :: Maybe (DependentDeclaration Expression)
   , dependencyExpression :: Expression
   , dependencyResolver :: Resolver
   }
@@ -33,10 +51,22 @@ data Resolver = Resolver
 
 data DependencyMode = BindDependencies | InlineDependencies deriving (Eq)
 
-type References = [(String, IdentifierString)]
-type Collected = [(String, IdentifierString, Expression)]
+type References = [(DependencyKey, Expression)]
+type Collected =
+  [ ( DependencyKey
+    , DependencyAddress
+    , Maybe (DependentDeclaration Expression)
+    , Expression
+    )
+  ]
 
-closeFunction :: Resolver -> Maybe String -> Bool -> Bool -> Expression -> Expression
+closeFunction
+  :: Resolver
+  -> Maybe DependencyKey
+  -> Bool
+  -> Bool
+  -> Expression
+  -> Expression
 closeFunction resolver self explicitSelf selfIncludesDependencies expression =
   close BindDependencies 0 [] [] resolver self
     explicitSelf selfIncludesDependencies expression
@@ -50,7 +80,7 @@ inlineDependencies resolver expression =
   close InlineDependencies 0 [] [] resolver Nothing False False expression
 
 close :: DependencyMode -> Int -> References -> [String] -> Resolver
-  -> Maybe String -> Bool -> Bool -> Expression -> Expression
+  -> Maybe DependencyKey -> Bool -> Bool -> Expression -> Expression
 close mode depth ancestors occupied resolver self
     explicitSelf selfIncludesDependencies original =
   case mode of
@@ -70,7 +100,8 @@ close mode depth ancestors occupied resolver self
     expression = original
     reserved = occupied <> declaredNames expression
     root@(IdentifierString rootText) = fresh (functionName depth) reserved
-    active = maybe ancestors (\key -> (key, root) : ancestors) self
+    active = maybe ancestors
+      (\key -> (key, IdentifierReference root) : ancestors) self
     initiallyBound
       | explicitSelf = [fixedThisMarker, contextualMarker "_this", "_this"]
       | otherwise = []
@@ -78,12 +109,10 @@ close mode depth ancestors occupied resolver self
       (rewrite mode depth (rootText : reserved) active resolver
         initiallyBound expression)
       []
-    definitions =
-      [ Let (assigned name value)
-      | (_, name, value) <- collected
-      ]
+    definitions = dependencyDefinitions collected
     recursiveInBody = root `elem` referenceNames rewritten
-    recursiveInDefinitions = root `elem` concatMap referenceNames definitions
+    recursiveInDefinitions =
+      root `elem` concatMap declarationReferenceNames definitions
     recursive = recursiveInBody || recursiveInDefinitions
     selfBound = explicitSelf || recursive
     selfRewritten
@@ -92,7 +121,9 @@ close mode depth ancestors occupied resolver self
       | otherwise = rewritten
     selfDefinitions
       | recursive = map
-          (replaceReference root (contextualAccess (IdentifierString "_this")))
+          (mapDependentDeclaration
+            (replaceReference root
+              (contextualAccess (IdentifierString "_this"))))
           definitions
       | otherwise = definitions
 
@@ -105,11 +136,10 @@ rewrite mode depth reserved active resolver bound
       -- Pure captured selectors have a fixed result. Retain the calculation's
       -- dependencies as well as the selected declaration, without rebuilding
       -- unrelated entries of the original scope map.
-      selector <- rewrite mode depth reserved active resolver bound index
+      _ <- rewrite mode depth reserved active resolver bound index
       value <- rewrite mode depth reserved active resolver bound
         (IdentifierReference (IdentifierString name))
-      pure (Begin [Let selector]
-        (IdentifierOperation (IdentifierString name) value Nothing))
+      pure (IdentifierOperation (IdentifierString name) value Nothing)
 rewrite mode depth reserved active resolver bound expression
   | FunctionApplication
       (IdentifierReference (IdentifierString name))
@@ -189,7 +219,7 @@ rewrite mode depth reserved active resolver bound expression =
   where
     recur = rewrite mode depth reserved active resolver bound
     block constructor entries result = do
-      let names = concatMap bindingNames entries
+      let names = concatMap declarationBindingNames entries
           -- Source validity and declaration ordering have already been checked
           -- by the evaluator. Every block also binds its declaration map as
           -- @_this@ unless an explicit fixed point already occupies that name;
@@ -202,7 +232,9 @@ rewrite mode depth reserved active resolver bound expression =
           inside = rewrite mode depth reserved active
             resolver { resolveScopeIndex = const Nothing }
             contextualBound
-      constructor <$> traverse inside entries <*> inside result
+      constructor
+        <$> traverse (traverseDependentDeclaration inside) entries
+        <*> inside result
 
 collectDependency
   :: DependencyMode
@@ -213,37 +245,110 @@ collectDependency
   -> State Collected Expression
 collectDependency mode depth reserved active dependency =
   case lookup (dependencyKey dependency) active of
-    Just name -> pure (IdentifierReference name)
+    Just reference -> pure reference
     Nothing -> do
       collected <- get
-      case [ (name, value)
-           | (key, name, value) <- collected
+      case [ ()
+           | (key, _, _, _) <- collected
            , key == dependencyKey dependency
            ] of
-        (name, _) : _ -> pure (IdentifierReference name)
+        _ : _ -> pure (dependencyReference (dependencyAddress dependency))
         [] -> do
-          let name = fresh
-                ("___" <> dependencyName dependency)
-                (reserved <> [text | (_, IdentifierString text, _) <- collected])
-              occupied = reserved
-                <> [text | (_, IdentifierString text, _) <- collected]
-                <> [nameText name]
+          let address = dependencyAddress dependency
               key = dependencyKey dependency
+              reference = dependencyReference address
+              pending =
+                ( key
+                , address
+                , dependencyDeclaration dependency
+                , dependencyExpression dependency
+                )
+              occupied = reserved
+                <> dependencyGeneratedRoots (collected <> [pending])
           put (collected <>
-            [(key, name, dependencyExpression dependency)])
+            [pending])
           value <- rewrite mode (depth + 1) occupied
-            ((key, name) : active)
+            ((key, reference) : active)
             (dependencyResolver dependency)
             []
             (dependencyExpression dependency)
           transitive <- get
           put
-            [ if existingKey == key && existingName == name
-                then (existingKey, existingName, value)
+            [ if existingKey == key
+                then (existingKey, existingAddress, declaration, value)
                 else entry
-            | entry@(existingKey, existingName, _) <- transitive
+            | entry@(existingKey, existingAddress, declaration, _) <- transitive
             ]
-          pure (IdentifierReference name)
+          pure reference
+
+dependencyReference :: DependencyAddress -> Expression
+dependencyReference (DependencyAddress []) =
+  IdentifierReference (IdentifierString "_")
+dependencyReference (DependencyAddress (root : fields)) =
+  foldl ScopeAccess
+    (IdentifierReference (prependIdentifier root))
+    (map IdentifierReference fields)
+
+prependIdentifier :: IdentifierString -> IdentifierString
+prependIdentifier (IdentifierString name) = IdentifierString ('_' : name)
+
+dependencyGeneratedRoots :: Collected -> [String]
+dependencyGeneratedRoots collected = nub
+  [ name
+  | (_, DependencyAddress (root : _), _, _) <- collected
+  , let IdentifierString name = prependIdentifier root
+  ]
+
+-- Captured declarations are grouped by their structural origin. Only the
+-- declaration entering the closure gets translated by the injective @_@
+-- prefix; members retain their names inside a recreated scope.
+dependencyDefinitions :: Collected -> [DependentDeclaration Expression]
+dependencyDefinitions = scopeDefinitions True
+
+scopeDefinitions :: Bool -> Collected -> [DependentDeclaration Expression]
+scopeDefinitions prefixHere collected =
+  directDefinitions <> map childDefinition childNames
+  where
+    directDefinitions =
+      [ capturedDeclaration prefixHere name declaration value
+      | (_, DependencyAddress [name], declaration, value) <- collected
+      ]
+    childNames = nub
+      [ name
+      | (_, DependencyAddress (name : _ : _), _, _) <- collected
+      ]
+    childDefinition name = DependentDeclaration
+      (SimpleIdentifierDeclarationHead renderedName)
+      True False False childScope
+      where
+        renderedName = if prefixHere then prependIdentifier name else name
+        childScope = Begin
+          (scopeDefinitions False
+            [ (key, DependencyAddress remaining, declaration, value)
+            | (key, DependencyAddress (first : remaining), declaration, value)
+                <- collected
+            , first == name
+            ])
+          (contextualAccess (IdentifierString "_this"))
+
+capturedDeclaration
+  :: Bool
+  -> IdentifierString
+  -> Maybe (DependentDeclaration Expression)
+  -> Expression
+  -> DependentDeclaration Expression
+capturedDeclaration prefixHere name maybeDeclaration value =
+  translated
+  where
+    declaration = case maybeDeclaration of
+      Just original -> dependentDeclarationWithImplementation value original
+      Nothing -> DependentDeclaration
+        (SimpleIdentifierDeclarationHead name)
+        True False False value
+    eager = declaration { dependentDeclarationIsLet = True }
+    translated
+      | prefixHere = prependDependentDeclarationName "_" eager
+      | otherwise = eager
 
 contextualMarker :: String -> String
 contextualMarker = ("\0context:" <>)
@@ -260,7 +365,10 @@ contextualBoundDepth name =
 -- type family while keeping the recursive lexical scope executable.  The
 -- leading value keeps the sequence explicit through source normalization;
 -- semicolon sequencing preserves a map-valued result as one member.
-transparentDependencyBlock :: [Expression] -> Expression -> Expression
+transparentDependencyBlock
+  :: [DependentDeclaration Expression]
+  -> Expression
+  -> Expression
 transparentDependencyBlock definitions result =
   MapAccess
     (Begin definitions (MapSequence [EllipsisNatural 0, result]))
@@ -290,9 +398,6 @@ referencePathIsInternalContext :: [String] -> Bool
 referencePathIsInternalContext ("\0this" : _) = True
 referencePathIsInternalContext _ = False
 
-assigned :: IdentifierString -> Expression -> Expression
-assigned name expression = IdentifierOperation name expression (Just expression)
-
 -- Generated roots use the same quoted namespace as their dependencies.
 functionName :: Int -> String
 functionName depth = replicate (depth + 2) '_' <> "fun"
@@ -319,31 +424,28 @@ referenceNames :: Expression -> [IdentifierString]
 referenceNames (IdentifierReference name) = [name]
 referenceNames value = concatMap referenceNames (expressionChildren value)
 
--- Decode only a complete reconstruction block, never an arbitrary user name.
--- Removing exactly the scope prefix plus the user marker preserves all original
--- leading underscores, including names which resemble generated identifiers.
-canonicalDependencyNames :: [Expression] -> Expression -> [(String, String)]
-canonicalDependencyNames entries result
-  | isClosedFunctionResult result =
-    [(text, original) | entry <- entries, IdentifierString text <- entryName entry
-      , Just original <- [stripPrefix "___" text]]
-  | otherwise = []
+declarationReferenceNames
+  :: DependentDeclaration Expression
+  -> [IdentifierString]
+declarationReferenceNames declaration =
+  headReferences (dependentDeclarationHead declaration)
+    <> referenceNames (dependentDeclarationImplementation declaration)
   where
-    isClosedFunctionResult (Fun value) = isFunction value
-    isClosedFunctionResult value = isFunction value
-    isFunction
-      (FunctionApplication (FunctionTypeExpression {}) (FunctionBody {})) = True
-    isFunction _ = False
+    headReferences headValue = case headValue of
+      SimpleIdentifierDeclarationHead {} -> []
+      StringTemplateDeclarationHead parts -> concatMap partReferences parts
+      EvaluatedDeclarationHead expressionValue -> referenceNames expressionValue
+    partReferences part = case part of
+      StringTemplateLiteral {} -> []
+      StringTemplateInterpolation expressionValue ->
+        referenceNames expressionValue
 
-nameText :: IdentifierString -> String
-nameText (IdentifierString text) = text
-
-entryName :: Expression -> [IdentifierString]
-entryName (Let value) = entryName value
-entryName (Def value) = entryName value
-entryName (Val value) = entryName value
-entryName (IdentifierOperation name _ _) = [name]
-entryName _ = []
+declarationBindingNames :: DependentDeclaration Expression -> [String]
+declarationBindingNames declaration =
+  case dependentDeclarationHead declaration of
+    SimpleIdentifierDeclarationHead (IdentifierString name) -> [name]
+    StringTemplateDeclarationHead [StringTemplateLiteral name] -> [name]
+    _ -> []
 
 replaceReference :: IdentifierString -> Expression -> Expression -> Expression
 replaceReference target replacement expression =

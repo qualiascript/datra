@@ -6,7 +6,6 @@
 -- operations and all type errors are provided by 'DatraTypes'.
 module Interpreting
   ( ModuleSource (..)
-  , EvaluationMode (..)
   , moduleExportNames
   , moduleSyntaxRules
   , importInvocation
@@ -18,11 +17,11 @@ module Interpreting
   , parseDatraSourceLocatedWithImportsAndStandardLibrary
   , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   , interpretLocatedWithImports
-  , interpretLocatedWithImportsInMode
-  , interpretLocatedWithImportsInModeAndStandardLibrary
-  , interpretLocatedWithImportsInModeAndStandardLibraryVisibility
+  , interpretLocatedWithImportsAndStandardLibrary
+  , interpretLocatedWithImportsAndStandardLibraryVisibility
   , interpretWithImports
-  , interpretWithImportsInMode
+  , interpretWithImportsAndStandardLibrary
+  , interpretWithImportsAndStandardLibraryVisibility
   , InterpretedValue
   , CanonicalResult (..)
   , InterpretedValueKind (..)
@@ -48,7 +47,7 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (nub, nubBy, intercalate, isPrefixOf, partition, stripPrefix)
+import Data.List (nub, nubBy, isPrefixOf, partition, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes)
 import DatraLanguage.DependentDeclaration
@@ -59,12 +58,6 @@ import DatraHost
   , namedMembers
   )
 import IdentifierValueType (isIdentifierValue)
-import RuntimeModules
-  ( EvaluationMode (..)
-  , ModuleSource (..)
-  , expressionForMode
-  , modulesForMode
-  )
 import LibraryFiles
   ( standardLibraryFileName
   , requiredBundledLibrarySource
@@ -90,6 +83,7 @@ import DatraLanguage.AST
   , isContextualAccessOf
   , expressionChildren
   , mapExpressionChildren
+  , mapDependentDeclaration
   )
 import DatraLanguage.SyntaxTemplate
   ( FunctionSyntax (FunctionSyntax)
@@ -114,6 +108,7 @@ import Parsing
   )
 import SyntaxRewriting
   ( SyntaxContext (..)
+  , renderSyntaxRewriteFailure
   , rewriteResourceSyntax
   )
 import Rendering (renderCanonicalResult, renderInterpretedValue)
@@ -136,6 +131,9 @@ import Numeric.Natural (Natural)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)
 import FoliageMap (foliageMap, foliageMapPositionAt)
 import System.FilePath (takeFileName)
+
+data ModuleSource
+  = ModuleSource FilePath Expression [(String, ModuleSource)]
 
 interpretExpression
   :: Expression
@@ -252,7 +250,7 @@ rewriteParsedDatraSourceWithImports modules parsed = do
     base = parsedBaseScope parsed
     standardRules = parsedStandardRules parsed
     baseModuleRules = parsedBaseModuleRules parsed
-    rewriteParseFailure = ParseFailure . show
+    rewriteParseFailure = ParseFailure . renderSyntaxRewriteFailure
 
 importedSyntaxRules
   :: Scope
@@ -286,7 +284,8 @@ discoverImportInvocations base activeRules envelope raw = do
   let availableRules =
         [(namespace, namespace, rules) | (namespace, rules) <- baseModuleRules]
       context = syntaxContext base [] availableRules
-  rewritten <- Bifunctor.first (ParseFailure . show) $
+  rewritten <- Bifunctor.first
+    (ParseFailure . renderSyntaxRewriteFailure) $
     rewriteResourceSyntax envelope context activeRules [] raw
   pure (nub (importsInExpansion rewritten))
   where
@@ -641,39 +640,27 @@ interpretLocatedExpression (Located sourceSpan expressionValue) =
 
 interpretLocatedWithImports :: [(String, ModuleSource)] -> Located Expression -> Either (DatraError InterpretingError) InterpretedValue
 interpretLocatedWithImports =
-  interpretLocatedWithImportsInMode DevelopmentMode
+  interpretLocatedWithImportsAndStandardLibrary True
 
-interpretLocatedWithImportsInMode
-  :: EvaluationMode
-  -> [(String, ModuleSource)]
-  -> Located Expression
-  -> Either (DatraError InterpretingError) InterpretedValue
-interpretLocatedWithImportsInMode mode modules (Located sourceSpan expression) =
-  interpretLocatedWithImportsInModeAndStandardLibrary
-    True mode modules (Located sourceSpan expression)
-
-interpretLocatedWithImportsInModeAndStandardLibrary
+interpretLocatedWithImportsAndStandardLibrary
   :: Bool
-  -> EvaluationMode
   -> [(String, ModuleSource)]
   -> Located Expression
   -> Either (DatraError InterpretingError) InterpretedValue
-interpretLocatedWithImportsInModeAndStandardLibrary
-    includeStandardLibrary =
-  interpretLocatedWithImportsInModeAndStandardLibraryVisibility
+interpretLocatedWithImportsAndStandardLibrary includeStandardLibrary =
+  interpretLocatedWithImportsAndStandardLibraryVisibility
     (if includeStandardLibrary then AllStandardLibrary else NoStandardLibrary)
 
-interpretLocatedWithImportsInModeAndStandardLibraryVisibility
+interpretLocatedWithImportsAndStandardLibraryVisibility
   :: StandardLibraryVisibility
-  -> EvaluationMode
   -> [(String, ModuleSource)]
   -> Located Expression
   -> Either (DatraError InterpretingError) InterpretedValue
-interpretLocatedWithImportsInModeAndStandardLibraryVisibility
-    visibility mode modules (Located sourceSpan expression) =
+interpretLocatedWithImportsAndStandardLibraryVisibility
+    visibility modules (Located sourceSpan expression) =
   Bifunctor.first (atSourceSpan sourceSpan)
-    (interpretWithImportsInModeAndStandardLibraryVisibility
-      visibility mode modules expression)
+    (interpretWithImportsAndStandardLibraryVisibility
+      visibility modules expression)
 
 interpretExpressionReason
   :: Expression
@@ -698,77 +685,38 @@ interpretWithImports modules expression = do
     (extendScope [("\0imports", ModuleCatalog modules)] scope)
     [] expression
 
-interpretWithImportsInMode
-  :: EvaluationMode
-  -> [(String, ModuleSource)]
-  -> Expression
-  -> Either InterpretingError InterpretedValue
-interpretWithImportsInMode mode modules expression =
-  interpretWithImportsInModeAndStandardLibrary True mode modules expression
-
-interpretWithImportsInModeAndStandardLibrary
+interpretWithImportsAndStandardLibrary
   :: Bool
-  -> EvaluationMode
   -> [(String, ModuleSource)]
   -> Expression
   -> Either InterpretingError InterpretedValue
-interpretWithImportsInModeAndStandardLibrary
+interpretWithImportsAndStandardLibrary
     includeStandardLibrary =
-  interpretWithImportsInModeAndStandardLibraryVisibility
+  interpretWithImportsAndStandardLibraryVisibility
     (if includeStandardLibrary then AllStandardLibrary else NoStandardLibrary)
 
-interpretWithImportsInModeAndStandardLibraryVisibility
+interpretWithImportsAndStandardLibraryVisibility
   :: StandardLibraryVisibility
-  -> EvaluationMode
   -> [(String, ModuleSource)]
   -> Expression
   -> Either InterpretingError InterpretedValue
-interpretWithImportsInModeAndStandardLibraryVisibility
-    visibility mode modules expression = do
+interpretWithImportsAndStandardLibraryVisibility
+    visibility modules expression = do
   validateEvaluationSources modules expression
   (base, _) <- standardLibraryEnvironment visibility expression
   evalResourceInScopeWith UnrestrictedReduction
     (extendScope
-      [("\0imports", ModuleCatalog (modulesForMode mode modules))]
+      [("\0imports", ModuleCatalog modules)]
       base)
     []
-    (expressionForMode mode expression)
+    expression
 
--- Validate the written tree before evaluation-mode lowering can erase soft
--- assertions. A pre-yield part is meaningful precisely when it introduces a
--- declaration, requests eager evaluation with let, or performs an assertion;
--- every other value would be computed and discarded. The same rule applies
--- to explicit begin blocks because they use the same block-part syntax and
--- scope semantics as function bodies.
 validateFunctionBodyParts :: Expression -> Either InterpretingError ()
 validateFunctionBodyParts expressionValue = do
   case invalidDependentDeclarationModifiers expressionValue of
     Just (written, correct) -> Left (InvalidDependentDeclarationModifiers
       (unwords written) (unwords correct))
     Nothing -> Right ()
-  case expressionValue of
-    FunctionBody parts _ -> mapM_ validatePart parts
-    Begin parts _ -> mapM_ validatePart parts
-    _ -> Right ()
-  mapM_ validateFunctionBodyParts (expressionChildren expressionValue)
-  where
-    validatePart part
-      | Just _ <- dependentDeclaration part = Right ()
-    validatePart Let {} = Right ()
-    validatePart Def {} = Right ()
-    validatePart Val {} = Right ()
-    validatePart part
-      | containsActiveAssertion part = Right ()
-    validatePart _ = Left OperationHasNoEffect
-
-    -- Declarative syntax can leave an assertion beneath an application or
-    -- another strict operator. It still runs when that body part is evaluated.
-    -- A nested function body is a closure boundary: its assertions do not run
-    -- merely because the enclosing operation is evaluated.
-    containsActiveAssertion value = case value of
-      Assert {} -> True
-      FunctionBody {} -> False
-      _ -> any containsActiveAssertion (expressionChildren value)
 
 validateEvaluationSources
   :: [(String, ModuleSource)]
@@ -889,7 +837,7 @@ parsedDefaultModule = do
       context = syntaxContext emptyScope [] hostRules
       rewritten = rewriteResourceSyntax envelope context [] [] raw
   rewrittenValue <- either
-    (parseFailure . ParseFailure . show)
+    (parseFailure . ParseFailure . renderSyntaxRewriteFailure)
     Right
     rewritten
   pure (resolveGenericFunctionTypes rewrittenValue)
@@ -1002,6 +950,11 @@ canonicalExpressionCandidates expressionValue
 
 type Interpreter = Expression -> Either InterpretingError InterpretedValue
 
+data ResolutionKey = ResolutionKey String Expression
+  deriving (Eq)
+
+type ResolutionStack = [ResolutionKey]
+
 shadowingConsistencyFuel :: Int
 shadowingConsistencyFuel = 64
 
@@ -1031,7 +984,7 @@ data Scope = Scope
 data ScopedDependentDeclaration = ScopedDependentDeclaration
   { scopedDependentDeclarationScope :: Scope
   , scopedDependentDeclarationFamilyScope :: Scope
-  , scopedDependentDeclarationValue :: DependentDeclaration
+  , scopedDependentDeclarationValue :: DependentDeclaration Expression
   , scopedDependentDeclarationBranches
       :: Maybe [[StringTemplatePart Expression]]
   , scopedDependentDeclarationRetainedMember
@@ -1120,17 +1073,16 @@ data Binding
   | EvaluatedBinding InterpretedValue
   | ContextualBinding String Bool
       (Maybe [ScopedDependentDeclaration])
-      ([String]
+      (ResolutionStack
         -> ReductionContext
         -> Either InterpretingError InterpretedValue)
   | ShadowingConsistentBinding Binding
   | NamedBinding PresentationDependency Binding
-  | QualifiedBinding String Binding
+  | QualifiedBinding DependencyAddress Binding
   | RetainedBinding Scope (Maybe Expression) Expression InterpretedValue
   | ImportedBinding
       PresentationDependency FilePath InterpretedValue Scope
   | ModuleCatalog [(String, ModuleSource)]
-  | CanonicalNames [(String, String)]
   | LexicalScope PresentationDependency
 
 rootScope :: salt -> ScopeBindings -> Scope
@@ -1293,7 +1245,7 @@ contextualBinding
   :: Binding
   -> Maybe
       ( Bool
-      , [String]
+      , ResolutionStack
           -> ReductionContext
           -> Either InterpretingError InterpretedValue
       )
@@ -1333,7 +1285,7 @@ data ContextualMap = ContextualMap String [ContextualLevel]
 -- same-kind boundary, so declarations belonging to that outer scope remain
 -- visible. Scopes which introduce no binding of this kind add no hole.
 contextualLevels
-  :: [String]
+  :: ResolutionStack
   -> String
   -> Scope
   -> [ContextualLevel]
@@ -1456,7 +1408,7 @@ declarationContextualBinding surface declarations =
 
 scopeEntriesValue
   :: ReductionContext
-  -> [String]
+  -> ResolutionStack
   -> [ScopedDependentDeclaration]
   -> Either InterpretingError InterpretedValue
 scopeEntriesValue reduction resolving entries =
@@ -1473,7 +1425,7 @@ scopeEntriesValue reduction resolving entries =
 
 scopeEntriesNamedView
   :: ReductionContext
-  -> [String]
+  -> ResolutionStack
   -> [ScopedDependentDeclaration]
   -> Either InterpretingError (Maybe NamedMapView)
 scopeEntriesNamedView reduction resolving entries = do
@@ -1560,7 +1512,7 @@ recursivePrefixFor isSelf expression = case expression of
 
 accessRepeatedPrefix
   :: Scope
-  -> [String]
+  -> ResolutionStack
   -> RecursivePrefix
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
@@ -1607,10 +1559,10 @@ selectionMaximum insertion = do
       (_, ordinal) <- interpretedExplicitOrdinal value
       naturalAtOrdinal ordinal
 
-evalInScope :: Scope -> [String] -> Interpreter
+evalInScope :: Scope -> ResolutionStack -> Interpreter
 evalInScope = evalInScopeWith UnrestrictedReduction
 
-evalInScopeWith :: ReductionContext -> Scope -> [String] -> Interpreter
+evalInScopeWith :: ReductionContext -> Scope -> ResolutionStack -> Interpreter
 evalInScopeWith reduction scope resolving =
   interpretNormalizedExpressionWith reduction scope resolving
     . normalizeExpression
@@ -1623,7 +1575,7 @@ evalInScopeWith reduction scope resolving =
 evalResourceInScopeWith
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> Interpreter
 evalResourceInScopeWith reduction scope resolving expressionValue =
   case normalizeExpression expressionValue of
@@ -1638,7 +1590,7 @@ evalInContinuationScopeWith
   -> ReductionContext
   -> ScopeBindings
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> Interpreter
 evalInContinuationScopeWith salt reduction bindings parent resolving expressionValue = do
   let child = enterScope salt bindings genericContinuationHandoff parent
@@ -1650,7 +1602,7 @@ evalInLexicalContinuationScopeWith
   -> ReductionContext
   -> Scope
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> Interpreter
 evalInLexicalContinuationScopeWith
     salt reduction lexical parent resolving expressionValue = do
@@ -1664,7 +1616,7 @@ evalResourceInContinuationScopeWith
   -> ReductionContext
   -> ScopeBindings
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> Interpreter
 evalResourceInContinuationScopeWith
     salt reduction bindings parent resolving expressionValue = do
@@ -1677,19 +1629,16 @@ evaluateBlockInScope
   -> Maybe String
   -> ReductionContext
   -> Scope
-  -> [String]
-  -> [Expression]
+  -> ResolutionStack
+  -> [DependentDeclaration Expression]
   -> Expression
   -> Either InterpretingError InterpretedValue
 evaluateBlockInScope introducesThis source reduction scope resolving
     bindings result = do
-  let origins = canonicalDependencyNames bindings result
-      reconstructionScope = if null origins then scope
-        else extendScope [("\0canonical", CanonicalNames origins)] scope
   imported <- (if introducesThis
       then importScope
       else importScopeWithoutContextualThis)
-    reconstructionScope resolving bindings
+    scope resolving bindings
   value <- evalInScopeWith reduction imported resolving result
   let handed = handoffScopeValue imported value
   pure (withEvaluationSource source
@@ -1699,7 +1648,7 @@ evaluateBlockInScope introducesThis source reduction scope resolving
 interpretNormalizedExpressionWith
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> Interpreter
 interpretNormalizedExpressionWith reduction scope resolving expressionValue =
   case expressionValue of
@@ -1933,6 +1882,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       evaluateBlockInScope True
         (Just (renderSourceExpression expressionValue))
         reduction scope resolving bindings result
+    DeclarationExpression _ -> Left OperationHasNoEffect
     Let _ -> Left OperationHasNoEffect
     IdentifierReference (IdentifierString name) ->
       resolveIdentifierWith reduction scope resolving name
@@ -1944,16 +1894,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     Lookup operand -> do
       query <- interpret operand
       evaluateLookup reduction scope resolving query
-    Assert _ condition -> do
-      conditionValue <- interpret condition
-      runProtectedOperation protection [conditionValue] $ \actuals ->
-        case actuals of
-          [actualCondition] -> do
-            accepted <- booleanCondition actualCondition
-            if accepted
-              then Right (makeAtlasMap 0 [])
-              else Left AssertionFailed
-          _ -> Right neverValue
     MapConcatenation left right
       | AtlasMap [] <- right ->
           case left of
@@ -2404,7 +2344,7 @@ validateGenericFunctionType evaluate generics domain codomain = do
 evaluateSelectedLookup
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> [StringTemplatePart Expression]
   -> [StringTemplatePart Expression]
   -> Either InterpretingError InterpretedValue
@@ -2473,7 +2413,7 @@ selectedTemplateCaptures _ _ = Nothing
 selectedDependentDeclarationMember
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> ScopedDependentDeclaration
   -> String
   -> [StringTemplatePart Expression]
@@ -2523,7 +2463,7 @@ selectedDependentDeclarationMember
 evaluateLookup
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 evaluateLookup reduction scope resolving query =
@@ -2546,7 +2486,7 @@ evaluateLookup reduction scope resolving query =
 lookupResult
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> [String]
   -> Either InterpretingError InterpretedValue
 lookupResult reduction scope resolving keys =
@@ -2565,7 +2505,7 @@ lookupResult reduction scope resolving keys =
 lookupTemplateResult
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> EvaluatedStringTemplate
   -> OrdinalIndexedFamily
   -> [String]
@@ -2599,7 +2539,7 @@ lookupTemplateResult reduction scope resolving template family keys =
 lookupRow
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> String
   -> Either InterpretingError InterpretedValue
 lookupRow reduction scope resolving key = do
@@ -2808,7 +2748,7 @@ filterMRight predicate = foldM retain []
       pure (if accepted then retained <> [value] else retained)
 
 scopeLookupKeys :: Scope -> [String]
-scopeLookupKeys scope = nub (direct <> aliases)
+scopeLookupKeys scope = nub direct
   where
     direct =
       [ name
@@ -2818,23 +2758,15 @@ scopeLookupKeys scope = nub (direct <> aliases)
           _ -> True
       , queryableBinding binding
       ]
-    aliases =
-      [ original
-      | (_, CanonicalNames names) <- scopeBindings scope
-      , (_, original) <- names
-      , scopeKeyExists scope original
-      ]
 
 scopeKeyExists :: Scope -> String -> Bool
 scopeKeyExists scope name =
-  case canonicalScopeAlias scope name of
-    Just generated -> maybe False queryableBinding (lookupScope generated scope)
-    Nothing -> maybe False queryableBinding (lookupScope name scope)
+  maybe False queryableBinding (lookupScope name scope)
 
 scopeNameExists
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> String
   -> Either InterpretingError Bool
 scopeNameExists reduction scope resolving name
@@ -2862,39 +2794,18 @@ queryableBinding binding =
     ShadowingConsistentBinding target -> queryableBinding target
     NamedBinding _ target -> queryableBinding target
     QualifiedBinding _ target -> queryableBinding target
-    CanonicalNames {} -> False
     ModuleCatalog {} -> False
     LexicalScope {} -> False
     _ -> True
 
-canonicalScopeAlias :: Scope -> String -> Maybe String
-canonicalScopeAlias scope name =
-  unique exactAliases `orElse` unique qualifiedAliases
-  where
-    aliases = concat
-      [names | (_, CanonicalNames names) <- scopeBindings scope]
-    exactAliases =
-      [generated | (generated, original) <- aliases, original == name]
-    qualifiedAliases =
-      [ generated
-      | (generated, original) <- aliases
-      , reverse (takeWhile (/= '.') (reverse original)) == name
-      ]
-    unique values = case nub values of
-      [value] -> Just value
-      _ -> Nothing
-    orElse value fallback = case value of
-      Just _ -> value
-      Nothing -> fallback
-
 resolveIdentifier
-  :: Scope -> [String] -> String -> Either InterpretingError InterpretedValue
+  :: Scope -> ResolutionStack -> String -> Either InterpretingError InterpretedValue
 resolveIdentifier = resolveIdentifierWith UnrestrictedReduction
 
 resolveIdentifierWith
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> String
   -> Either InterpretingError InterpretedValue
 resolveIdentifierWith = resolveIdentifierAccess
@@ -2902,19 +2813,16 @@ resolveIdentifierWith = resolveIdentifierAccess
 resolveIdentifierAccess
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> String
   -> Either InterpretingError InterpretedValue
 resolveIdentifierAccess reduction scope resolving name =
-  case canonicalScopeAlias scope name of
-    Just generated -> resolveIdentifierAccess
-      reduction scope resolving generated
-    Nothing -> case lookupScope name scope of
-      Just binding -> resolve binding
-      Nothing -> do
-        member <- resolveScopeNamedMember
-        maybe (Left (UnknownIdentifier name))
-          (Right . namespaceMemberValue) member
+  case lookupScope name scope of
+    Just binding -> resolve binding
+    Nothing -> do
+      member <- resolveScopeNamedMember
+      maybe (Left (UnknownIdentifier name))
+        (Right . namespaceMemberValue) member
   where
     namespaceMemberValue member =
       case identifierUnderlyingValue selected of
@@ -2963,7 +2871,6 @@ resolveIdentifierAccess reduction scope resolving name =
         (resolveInferredEitherAlias annotation value))
     resolve (ImportedBinding dependency _ value _) =
       Right (withCanonicalReference [dependency] name value)
-    resolve CanonicalNames {} = Left (UnknownIdentifier name)
     resolve ModuleCatalog {} = Left (UnknownIdentifier name)
     resolve LexicalScope {} = Left (UnknownIdentifier name)
     resolve (DeferredBinding captured annotation expressionValue) =
@@ -2979,7 +2886,7 @@ resolveIdentifierAccess reduction scope resolving name =
 evaluateBindingDefinitionWith
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> String
   -> Maybe Expression
   -> Expression
@@ -2993,11 +2900,11 @@ evaluateBindingDefinitionWith reduction captured resolving name annotation expre
 evaluateDeferredBindingWith
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> String
   -> Expression
   -> (InterpretedValue -> Either InterpretingError result)
-  -> ([String] -> Either InterpretingError result)
+  -> (ResolutionStack -> Either InterpretingError result)
   -> Either InterpretingError result
 evaluateDeferredBindingWith reduction captured resolving name expressionValue
     seedResult evaluate
@@ -3010,12 +2917,12 @@ evaluateDeferredBindingWith reduction captured resolving name expressionValue
         _ -> seed)
   | otherwise = evaluate (resolutionKey : resolving)
   where
-    resolutionKey = bindingKey name expressionValue
+    resolutionKey = ResolutionKey name expressionValue
 
 evaluateBindingDefinitionActive
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> Maybe Expression
   -> Expression
   -> Either InterpretingError InterpretedValue
@@ -3081,31 +2988,40 @@ recursiveFunctionImplementation expressionValue =
 -- only earlier ordinary definitions, while every let definition is predeclared
 -- throughout the block. Lets are forced before yield and their results replace
 -- the deferred definitions. Names are checked before evaluating any binding.
-importScope :: Scope -> [String] -> [Expression] -> Either InterpretingError Scope
+importScope
+  :: Scope
+  -> ResolutionStack
+  -> [DependentDeclaration Expression]
+  -> Either InterpretingError Scope
 importScope = importScopeUsing scopeBuilder
 
 importScopeWithoutContextualThis
-  :: Scope -> [String] -> [Expression] -> Either InterpretingError Scope
+  :: Scope
+  -> ResolutionStack
+  -> [DependentDeclaration Expression]
+  -> Either InterpretingError Scope
 importScopeWithoutContextualThis =
   importScopeUsing scopeBuilderWithoutContextualThis
 
 importScopeWithin
-  :: Scope -> [String] -> [Expression] -> Either InterpretingError Scope
+  :: Scope
+  -> ResolutionStack
+  -> [DependentDeclaration Expression]
+  -> Either InterpretingError Scope
 importScopeWithin = importScopeUsing scopeBuilderWithin
 
 importScopeUsing
-  :: (Scope -> [Expression] -> Either InterpretingError
+  :: (Scope -> [DependentDeclaration Expression] -> Either InterpretingError
       ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
-      , [Expression]
-      , [String] -> Scope -> Either InterpretingError ()
+      , ResolutionStack -> Scope -> Either InterpretingError ()
       ))
   -> Scope
-  -> [String]
-  -> [Expression]
+  -> ResolutionStack
+  -> [DependentDeclaration Expression]
   -> Either InterpretingError Scope
 importScopeUsing build enclosing resolving entries = do
-  (rebuild, eagerFamilies, eagerEntries, validateConsistency) <-
+  (rebuild, eagerFamilies, validateConsistency) <-
     build enclosing entries
   let forced =
         [ (name, scoped)
@@ -3121,8 +3037,6 @@ importScopeUsing build enclosing resolving entries = do
   retained <- foldM retainLet [] (seeded <> ordinary)
   let imported = rebuild retained
   validateConsistency resolving imported
-  -- Anonymous let entries still have eager evaluation semantics.
-  mapM_ (evalInScope imported resolving) eagerEntries
   pure imported
 
 dependentDeclarationSingletonName
@@ -3169,7 +3083,7 @@ scopePresentationDependencies = maybe [] pure . scopePresentationDependency
 
 childPresentationDependency
   :: Scope
-  -> [Expression]
+  -> [DependentDeclaration Expression]
   -> PresentationDependency
 childPresentationDependency enclosing entries = PresentationDependency
   (parent <> "/" <> show entries)
@@ -3187,9 +3101,15 @@ declareSyntaxScope
   -> [Expression]
   -> Either InterpretingError Scope
 declareSyntaxScope enclosing entries = do
-  (rebuild, _, _, _) <- scopeBuilderWithContextualThisAndValidation
-    False True enclosing entries
+  declarations <- traverse requireDeclaration entries
+  (rebuild, _, _) <- scopeBuilderWithContextualThisAndValidation
+    False True enclosing declarations
   pure (rebuild [])
+  where
+    requireDeclaration expressionValue = maybe
+      (Left OperationHasNoEffect)
+      Right
+      (dependentDeclaration expressionValue)
 
 -- Rebuild a declaration scope from its finite source declarations whenever an
 -- eager let becomes available.  Recursive lets make their captured scopes
@@ -3198,35 +3118,32 @@ declareSyntaxScope enclosing entries = do
 -- values into every lexical snapshot without traversing it.
 scopeBuilder
   :: Scope
-  -> [Expression]
+  -> [DependentDeclaration Expression]
   -> Either InterpretingError
       ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
-      , [Expression]
-      , [String] -> Scope -> Either InterpretingError ()
+      , ResolutionStack -> Scope -> Either InterpretingError ()
       )
 scopeBuilder = scopeBuilderWithContextualThis True
 
 scopeBuilderWithoutContextualThis
   :: Scope
-  -> [Expression]
+  -> [DependentDeclaration Expression]
   -> Either InterpretingError
       ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
-      , [Expression]
-      , [String] -> Scope -> Either InterpretingError ()
+      , ResolutionStack -> Scope -> Either InterpretingError ()
       )
 scopeBuilderWithoutContextualThis = scopeBuilderWithContextualThis False
 
 scopeBuilderWithContextualThis
   :: Bool
   -> Scope
-  -> [Expression]
+  -> [DependentDeclaration Expression]
   -> Either InterpretingError
       ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
-      , [Expression]
-      , [String] -> Scope -> Either InterpretingError ()
+      , ResolutionStack -> Scope -> Either InterpretingError ()
       )
 scopeBuilderWithContextualThis =
   scopeBuilderWithContextualThisAndValidation False
@@ -3235,12 +3152,11 @@ scopeBuilderWithContextualThisAndValidation
   :: Bool
   -> Bool
   -> Scope
-  -> [Expression]
+  -> [DependentDeclaration Expression]
   -> Either InterpretingError
       ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
-      , [Expression]
-      , [String] -> Scope -> Either InterpretingError ()
+      , ResolutionStack -> Scope -> Either InterpretingError ()
       )
 scopeBuilderWithContextualThisAndValidation
     validateFamilies introducesThis enclosing entries = do
@@ -3253,12 +3169,11 @@ scopeBuilderWithContextualThisAndValidation
 
 scopeBuilderWithin
   :: Scope
-  -> [Expression]
+  -> [DependentDeclaration Expression]
   -> Either InterpretingError
       ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
-      , [Expression]
-      , [String] -> Scope -> Either InterpretingError ()
+      , ResolutionStack -> Scope -> Either InterpretingError ()
       )
 scopeBuilderWithin enclosing entries =
   let dependency = childPresentationDependency enclosing entries
@@ -3270,20 +3185,14 @@ scopeBuilderActivated
   :: Bool
   -> Bool
   -> Scope
-  -> [Expression]
+  -> [DependentDeclaration Expression]
   -> Either InterpretingError
       ( [(String, InterpretedValue)] -> Scope
       , [ScopedDependentDeclaration]
-      , [Expression]
-      , [String] -> Scope -> Either InterpretingError ()
+      , ResolutionStack -> Scope -> Either InterpretingError ()
       )
 scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = do
-  let (_, eagerEntries) = foldMap (bindingImports False) entries
-      positionedMembers =
-        [ (position, declaration)
-        | (position, entry) <- zip [0 :: Int ..] entries
-        , Just declaration <- [dependentDeclaration entry]
-        ]
+  let positionedMembers = zip [0 :: Int ..] entries
       finalPosition = length entries
       -- Every declaration scope contributes its own contextual level.  An
       -- inherited @_this@ is the next outer level, not evidence that this
@@ -3395,7 +3304,6 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
   pure
     ( rebuild
     , eagerFamilies
-    , eagerEntries
     , validateConsistency
     )
   where
@@ -3448,24 +3356,6 @@ importInvocation expressionValue =
   case expressionValue of
     Import paths _ -> Just paths
     _ -> Nothing
-
--- Only declaration-shaped block entries create lexical bindings. Maps and map
--- operators remain values: identifier-shaped members inside them neither enter
--- the surrounding scope nor become visible to sibling members.
-bindingImports
-  :: Bool
-  -> Expression
-  -> ([DependentDeclaration], [Expression])
-bindingImports strict expressionValue =
-  case dependentDeclaration
-      (if strict then Let expressionValue else expressionValue) of
-    Just declaration -> ([declaration], [])
-    _ -> case expressionValue of
-      Let value -> bindingImports True value
-      Def _ -> ([], [expressionValue])
-      Val _ -> ([], [expressionValue])
-      Assert {} -> ([], [expressionValue])
-      _ -> ([], [expressionValue | strict])
 
 interpretStringTemplateWith
   :: ScopeActivation
@@ -3577,7 +3467,7 @@ interpretStringTemplateWith protection interpret parts = do
 
 dependentDeclarationNamedView
   :: ReductionContext
-  -> [String]
+  -> ResolutionStack
   -> ScopedDependentDeclaration
   -> Either InterpretingError NamedMapView
 dependentDeclarationNamedView reduction resolving scoped =
@@ -3592,8 +3482,8 @@ dynamicDependentDeclarationNamedView
   :: ReductionContext
   -> Scope
   -> Scope
-  -> [String]
-  -> DependentDeclaration
+  -> ResolutionStack
+  -> DependentDeclaration Expression
   -> Either InterpretingError NamedMapView
 dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
     declaration = Right (NamedMapView delayedProjection)
@@ -3812,7 +3702,7 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
 
 dependentDeclarationContainsName
   :: ReductionContext
-  -> [String]
+  -> ResolutionStack
   -> ScopedDependentDeclaration
   -> String
   -> Either InterpretingError Bool
@@ -3849,7 +3739,7 @@ dependentDeclarationContainsName reduction resolving scoped name = do
 dependentDeclarationCaptureBound
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 dependentDeclarationCaptureBound reduction captured resolving bound
@@ -3868,7 +3758,7 @@ dependentDeclarationCaptureBound reduction captured resolving bound
 
 dependentDeclarationMemberByName
   :: ReductionContext
-  -> [String]
+  -> ResolutionStack
   -> ScopedDependentDeclaration
   -> String
   -> Either InterpretingError (Maybe NamedMember)
@@ -3944,8 +3834,8 @@ data PreparedDependentDeclarationSelection
 prepareDependentDeclaration
   :: ReductionContext
   -> Scope
-  -> [String]
-  -> DependentDeclaration
+  -> ResolutionStack
+  -> DependentDeclaration Expression
   -> Either InterpretingError
       [PreparedDependentDeclaration]
 prepareDependentDeclaration reduction captured resolving declaration =
@@ -3989,7 +3879,7 @@ prepareEvaluatedDeclarationTemplate template = do
 prepareDependentDeclarationBranches
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> [[StringTemplatePart Expression]]
   -> Either InterpretingError
       [PreparedDependentDeclaration]
@@ -4070,8 +3960,8 @@ selectPreparedBranch decode name prepared = do
 materializeDependentDeclaration
   :: ReductionContext
   -> Scope
-  -> [String]
-  -> DependentDeclaration
+  -> ResolutionStack
+  -> DependentDeclaration Expression
   -> [EvaluatedDeclarationCapture]
   -> EvaluatedStringTemplate
   -> String
@@ -4091,8 +3981,8 @@ materializeDependentDeclaration reduction captured resolving declaration
 materializeDependentDeclarationActive
   :: ReductionContext
   -> Scope
-  -> [String]
-  -> DependentDeclaration
+  -> ResolutionStack
+  -> DependentDeclaration Expression
   -> [EvaluatedDeclarationCapture]
   -> EvaluatedStringTemplate
   -> String
@@ -4109,7 +3999,7 @@ materializeDependentDeclarationActive reduction captured resolving declaration
 evaluateMaterializedDeclaration
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> Expression
   -> [EvaluatedDeclarationCapture]
   -> [InterpretedValue]
@@ -4220,7 +4110,7 @@ attachDeclarationSyntax sourceCaptures template payload =
         (mapSyntaxHoleKind renderInterpretedValue kind)
 
 namedDeclarationMember
-  :: DependentDeclaration
+  :: DependentDeclaration Expression
   -> String
   -> InterpretedValue
   -> NamedMember
@@ -4235,7 +4125,7 @@ namedDeclarationMember declaration name payload =
     marked = markDefinitionEntry declaration named
 
 namedDeclarationDescriptorMember
-  :: DependentDeclaration
+  :: DependentDeclaration Expression
   -> String
   -> InterpretedValue
   -> NamedMember
@@ -4245,7 +4135,7 @@ namedDeclarationDescriptorMember declaration name payload = NamedMember name mar
     marked = markDeclarationEntry declaration named
 
 markDeclarationEntry
-  :: DependentDeclaration
+  :: DependentDeclaration Expression
   -> InterpretedValue
   -> InterpretedValue
 markDeclarationEntry declaration =
@@ -4257,7 +4147,7 @@ markDeclarationEntry declaration =
       | otherwise = value
 
 markDefinitionEntry
-  :: DependentDeclaration
+  :: DependentDeclaration Expression
   -> InterpretedValue
   -> InterpretedValue
 markDefinitionEntry declaration value
@@ -4565,7 +4455,7 @@ domainEntries expressionValue =
 validateGenericArgumentsExcept
   :: [String]
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> [GenericBinder Expression]
   -> Expression
   -> [(String, InterpretedValue)]
@@ -4621,7 +4511,7 @@ validateGenericArgumentsExcept
 
 inferGenericArgument
   :: Scope
-  -> [String]
+  -> ResolutionStack
   -> [GenericBinder Expression]
   -> GenericArgumentBinder
   -> InterpretedValue
@@ -4676,9 +4566,10 @@ inferGenericArgument captured resolving generics binder _ evidence prior = do
           else eitherValue left right
 
 
-createFunction :: ReductionContext -> Scope -> [String]
+createFunction :: ReductionContext -> Scope -> ResolutionStack
   -> Expression -> Expression -> Expression
-  -> [Expression] -> Expression -> Either InterpretingError InterpretedValue
+  -> [DependentDeclaration Expression] -> Expression
+  -> Either InterpretingError InterpretedValue
 createFunction reduction captured resolving
     signature writtenDomainExpression writtenOutput bindings result =
   createFunctionWithGenerics reduction captured resolving
@@ -4687,11 +4578,11 @@ createFunction reduction captured resolving
 createFunctionWithGenerics
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> Expression
   -> Expression
   -> Expression
-  -> [Expression]
+  -> [DependentDeclaration Expression]
   -> Expression
   -> [GenericBinder Expression]
   -> Either InterpretingError InterpretedValue
@@ -4705,11 +4596,11 @@ createFunctionWithEvaluatedTypes
   :: Maybe (InterpretedValue, InterpretedValue)
   -> ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> Expression
   -> Expression
   -> Expression
-  -> [Expression]
+  -> [DependentDeclaration Expression]
   -> Expression
   -> [GenericBinder Expression]
   -> Either InterpretingError InterpretedValue
@@ -4719,7 +4610,8 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
   let (domainExpression, substitutions) =
         staticGenericDomain generics writtenDomainExpression
       specifiedOutput = substituteDependent substitutions writtenOutput
-      preparedBindings = map (prepareGenericExpression generics) bindings
+      preparedBindings = map
+        (mapDependentDeclaration (prepareGenericExpression generics)) bindings
       preparedResult = prepareGenericExpression generics result
   schema <- case evaluatedTypes of
     Just (input, _) -> pure (argumentSchemaFromValue input)
@@ -4853,7 +4745,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
         Nothing -> FunctionApplication signature
           (FunctionBody bindings result)
       signatureText = renderSourceExpression definition
-      self = case [bindingKey name expressionValue
+      self = case [BindingDependency name expressionValue
                   | (name, binding) <- scopeBindings captured
                   , Just (_, _, expressionValue) <- [bindingDefinition binding]
                   , expressionValue == definition] of
@@ -4974,7 +4866,7 @@ splitExistentialRow binders = select [] binders
 -- whether this map view exists.
 genericFunctionCoalizedMapView
   :: Scope
-  -> [String]
+  -> ResolutionStack
   -> ReductionContext
   -> [GenericBinder Expression]
   -> ( [(GenericBinderId, InterpretedValue)]
@@ -5093,7 +4985,7 @@ genericFunctionCoalizedMapView
 -- validate concrete witnesses through the regular argument path.
 genericUpperBoundWitnesses
   :: Scope
-  -> [String]
+  -> ResolutionStack
   -> ReductionContext
   -> [GenericBinder Expression]
   -> Either InterpretingError [(GenericBinderId, InterpretedValue)]
@@ -5152,7 +5044,7 @@ genericFamilyEnvelope generics expressionValue =
 prepareProtectedDomain
   :: Scope
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> [GenericBinder Expression]
   -> Expression
   -> [(String, InterpretedValue)]
@@ -5393,7 +5285,7 @@ withModuleScopeOperands expressionValue = case expressionValue of
 evaluateImport
   :: ReductionContext
   -> Scope
-  -> [String]
+  -> ResolutionStack
   -> Expression
   -> [String]
   -> Expression
@@ -5578,9 +5470,11 @@ moduleExportBindings scope namespace identity internal exportedValues =
         (case presentation of
           CanonicalValueImportPresentation -> NamedBinding
             dependency
-            (QualifiedBinding (namespace <> "." <> name) binding)
+            (QualifiedBinding (DependencyAddress
+              [IdentifierString namespace, IdentifierString name]) binding)
           TransparentImportPresentation -> QualifiedBinding
-            (namespace <> "." <> name)
+            (DependencyAddress
+              [IdentifierString namespace, IdentifierString name])
             (NamedBinding dependency binding))
     | ModuleExport name presentation evaluated <- exportedValues
     , let binding = maybe evaluated (retainExportDefinition evaluated)
@@ -5961,7 +5855,8 @@ moduleScopeWithBase base
 
 resourceBlock
   :: Expression
-  -> Either InterpretingError ([Expression], Expression)
+  -> Either InterpretingError
+      ([DependentDeclaration Expression], Expression)
 resourceBlock (Begin bindings result) = Right (bindings, result)
 resourceBlock _ = Left (ModuleEvaluationFailed ImportedModuleRequiresBlock)
 
@@ -5976,9 +5871,6 @@ bindingDefinition (DeferredBinding lexical annotation expressionValue) =
 bindingDefinition (RetainedBinding lexical annotation expressionValue _) =
   Just (lexical, annotation, expressionValue)
 bindingDefinition _ = Nothing
-
-bindingKey :: String -> Expression -> String
-bindingKey name expressionValue = name <> ":" <> show expressionValue
 
 closureResolver :: Scope -> Resolver
 closureResolver scope = resolver
@@ -6027,11 +5919,14 @@ closureResolver scope = resolver
             (EllipsisNatural depth)
       value <- either (const Nothing) Just (evalInScope scope [] selected)
       expressionValue <- either (const Nothing) Just (valueExpression value)
-      pure (Dependency
-        (name <> ":" <> show depth <> ":" <> show expressionValue)
-        (dropWhile (== '_') name <> "_" <> show depth)
-        expressionValue
-        emptyResolver)
+      pure Dependency
+        { dependencyKey = ContextualDependency name depth expressionValue
+        , dependencyAddress = DependencyAddress
+            [IdentifierString (dropWhile (== '_') name <> "_" <> show depth)]
+        , dependencyDeclaration = Nothing
+        , dependencyExpression = expressionValue
+        , dependencyResolver = emptyResolver
+        }
     resolve [] = Nothing
     -- FunctionClosure tags the exact strict-reference expansion so it remains
     -- distinguishable from an ordinary @_this.name@ access. Both select the
@@ -6043,8 +5938,11 @@ closureResolver scope = resolver
       | Just (ImportedBinding _ identity _ imported) <- lookupScope name scope
       , Just dependency <- resolveDependency (closureResolver imported) fields =
           Just dependency
-            { dependencyKey = identity <> ":" <> dependencyKey dependency
-            , dependencyName = originName name <> "." <> dependencyName dependency
+            { dependencyKey = ModuleDependency identity
+                (dependencyKey dependency)
+            , dependencyAddress = prependDependencyAddress
+                (originAddress name)
+                (dependencyAddress dependency)
             , dependencyExpression = normalizeExpression
                 (dependencyExpression dependency)
             }
@@ -6052,8 +5950,13 @@ closureResolver scope = resolver
       binding <- lookupScope name scope
       case (fields, bindingDefinition binding) of
         ([], Just (lexical, _, expressionValue)) ->
-          Just (Dependency (bindingKey name expressionValue)
-            (originName name) expressionValue (closureResolver lexical))
+          Just Dependency
+            { dependencyKey = BindingDependency name expressionValue
+            , dependencyAddress = originAddress name
+            , dependencyDeclaration = Nothing
+            , dependencyExpression = expressionValue
+            , dependencyResolver = closureResolver lexical
+            }
         _ -> do
           value <- either (const Nothing) Just
             (resolveIdentifier scope [] name)
@@ -6064,23 +5967,32 @@ closureResolver scope = resolver
             else do
               expressionValue <- either (const Nothing) Just
                 (valueExpression selected)
-              pure (Dependency
-                (intercalate "." (name : fields) <> ":" <> show expressionValue)
-                (intercalate "." (originName name : fields))
-                expressionValue emptyResolver)
-    originName name
-      | Just original <- lookup name
-          (concat
-            [names | (_, CanonicalNames names) <- scopeBindings scope]) = original
+              pure Dependency
+                { dependencyKey = SelectedDependency
+                    (map IdentifierString (name : fields)) expressionValue
+                , dependencyAddress = appendDependencyAddress
+                    (originAddress name)
+                    (map IdentifierString fields)
+                , dependencyDeclaration = Nothing
+                , dependencyExpression = expressionValue
+                , dependencyResolver = emptyResolver
+                }
+    originAddress name
       | Just binding <- lookupScope name scope
       , Just origin <- qualifiedBindingOrigin binding = origin
-      | otherwise = name
+      | otherwise = DependencyAddress [IdentifierString name]
     qualifiedBindingOrigin (QualifiedBinding origin _) = Just origin
     qualifiedBindingOrigin (NamedBinding _ target) =
       qualifiedBindingOrigin target
     qualifiedBindingOrigin (ShadowingConsistentBinding target) =
       qualifiedBindingOrigin target
     qualifiedBindingOrigin _ = Nothing
+
+    prependDependencyAddress
+        (DependencyAddress prefix)
+        (DependencyAddress suffix) = DependencyAddress (prefix <> suffix)
+    appendDependencyAddress
+        (DependencyAddress prefix) suffix = DependencyAddress (prefix <> suffix)
 emptyResolver :: Resolver
 emptyResolver = Resolver
   (const Nothing)

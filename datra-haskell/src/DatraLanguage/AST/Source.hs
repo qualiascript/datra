@@ -81,6 +81,8 @@ source context expression =
       | isDefaultContextualArgument argument -> "it"
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
+    DeclarationValue declaration ->
+      sourceDeclaration declaration
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
@@ -107,8 +109,6 @@ source context expression =
     Specify left right -> binary 1 "~>" left right
     OverloadValue left right -> binary 1 "<<" left right
     SafeOverloadValue left right -> binary 1 "<<<" left right
-    AssertValue hard condition -> wrapped 0
-      ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
     MaybeThenValue optional branch -> binary 1 "!?" optional branch
@@ -224,7 +224,23 @@ source context expression =
     assignedValue value@EitherValue {} = source 3 value
     assignedValue value = source 7 value
     block keyword bindings result = keyword <> " "
-      <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
+      <> intercalate "; "
+        (map sourceDeclaration bindings <> ["yield " <> source 0 result])
+    sourceDeclaration declaration =
+        modifier "let " (dependentDeclarationIsLet declaration)
+          <> modifier "def " (dependentDeclarationIsDefinition declaration)
+          <> modifier "val "
+            (dependentDeclarationIsCanonicalValue declaration)
+          <> declarationHead (dependentDeclarationHead declaration)
+          <> " := "
+          <> assignedValue (dependentDeclarationImplementation declaration)
+    declarationHead headValue = case headValue of
+      SimpleIdentifierDeclarationHead (IdentifierString name) ->
+        renderIdentifierString name
+      StringTemplateDeclarationHead parts ->
+        renderStringTemplate (source 0) (const Nothing) parts
+      EvaluatedDeclarationHead expressionValue -> source 0 expressionValue
+    modifier written present = if present then written else ""
     argumentMembers = intercalate "; " . map (source 0)
 
 scopeBody :: OperatorExpression -> String

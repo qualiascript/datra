@@ -32,7 +32,6 @@ data Operator
   | CoalizationOperator
   | LookupOperator
   | GreedyStringTemplateOperator
-  | AssertOperator
   | BeginOperator
   | LetOperator
   | DefOperator
@@ -79,7 +78,6 @@ operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol CoalizationOperator = "><"
 operatorCanonicalSymbol LookupOperator = "~"
 operatorCanonicalSymbol GreedyStringTemplateOperator = "%"
-operatorCanonicalSymbol AssertOperator = "assert"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
 operatorCanonicalSymbol DefOperator = "def"
@@ -126,7 +124,6 @@ operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol CoalizationOperator = Just "><"
 operatorSourceSymbol LookupOperator = Just "~"
 operatorSourceSymbol GreedyStringTemplateOperator = Just "%"
-operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"
 operatorSourceSymbol DefOperator = Just "def"

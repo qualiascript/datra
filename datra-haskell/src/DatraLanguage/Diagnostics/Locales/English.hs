@@ -93,11 +93,6 @@ localizeCommandLineOptionFailure failure =
         [ "given locale: " <> value
         , "expected english, en, romana, romanian, or ro"
         ]
-    UnsupportedEvaluationMode value ->
-      LocalizedMessage "evaluation mode is not supported"
-        [ "given mode: " <> value
-        , "expected dev, development, prod, or production"
-        ]
 
 localizeAccessError :: AccessError -> LocalizedMessage
 localizeAccessError reason =
@@ -127,7 +122,6 @@ localizeInterpretingError reason =
         ["expected type: " <> name]
     OverloadError failure ->
       LocalizedMessage "overloading failed" [overloadFailure failure]
-    AssertionFailed -> LocalizedMessage "assertion failed" []
     OperationHasNoEffect ->
       LocalizedMessage "operation has no effect" []
     OverlappingBindings name ->

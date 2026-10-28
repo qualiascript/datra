@@ -106,7 +106,6 @@ import DatraLanguage.AST
       , BooleanOr
       , BooleanNot
       , Coalization
-      , Assert
       , Begin
       , Fun
       , GenericIntroductionExpression
@@ -130,7 +129,9 @@ import DatraLanguage.AST
   , expressionChildren
   , mapExpressionChildren
   , traverseExpressionChildren
+  , DependentDeclaration
   )
+import DatraLanguage.DependentDeclaration (dependentDeclaration)
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST.Reserved.Bootstrap
@@ -141,7 +142,6 @@ import DatraLanguage.Identifier
   , isPrivateIdentifier
   , isAsciiCharacter
   , isIdentifierCharacter
-  , isLeadingIdentifierCharacter
   )
 import DatraLanguage.NeutralLexer
   ( isOpaqueSymbolicSyntaxLiteral
@@ -760,8 +760,6 @@ astForm =
       [ InModule <$> (astSymbol "in-module" *> astString) <*> astExpression
       , astImport
       , astUnary AST.GreedyStringTemplateOperator GreedyStringTemplate
-      , Assert True <$> (astSymbol "assert-hard" *> astExpression)
-      , astUnary AST.AssertOperator (Assert False)
       , astUnaryForm "fun" Fun
       , astGenericIntroduction
       , astGenericReference
@@ -941,12 +939,18 @@ astConditional = do
   alternative <- astExpression
   pure (Conditional condition consequent alternative)
 
-astBlock :: Text -> ([Expression] -> Expression -> Expression) -> Parser Expression
+astBlock
+  :: Text
+  -> ([DependentDeclaration Expression] -> Expression -> Expression)
+  -> Parser Expression
 astBlock blockKeyword construct = do
   _ <- astSymbol blockKeyword
   bindings <- between (astSymbol "(") (astSymbol ")")
     (astSymbol "bindings" *> many astExpression)
-  construct bindings <$> astExpression
+  declarations <- traverse
+    (maybe empty pure . dependentDeclaration)
+    bindings
+  construct declarations <$> astExpression
 
 astSequence :: Parser Expression
 astSequence = do
@@ -1044,7 +1048,8 @@ rawResourceWithEnvelope = do
       (,) ExplicitMapEnvelope <$> parenthesizedExpression
     implicitResource = do
       entries <- elements
-      pure (ImplicitBlockEnvelope, Begin entries (AtlasMap []))
+      pure (ImplicitBlockEnvelope,
+        AtlasMap entries)
 
 -- Parse the parenthesized expression itself in lookahead so the closing
 -- parenthesis must enclose the whole resource. This distinguishes an explicit
@@ -1209,12 +1214,35 @@ eitherExpressionWithOperator eitherOperator operand =
 mapExpression :: Parser Expression
 mapExpression =
   makeExprParser
-    ( try evaluatedTemplateFederationOperation
+    ( try templateConcatenationOrOperation
+        <|> try evaluatedTemplateFederationOperation
         <|> try identifierTemplateOperation
         <|> try identifierOperation
         <|> rangeExpression
     )
     mapOperatorTable
+
+-- String and greedy-template concatenations are parsed once as an ordinary
+-- comma expression. If a declaration suffix follows the completed family it
+-- is attached there; otherwise the already-built concatenation is returned.
+-- Only the initial single operand is reconsidered when no comma follows.
+templateConcatenationOrOperation :: Parser Expression
+templateConcatenationOrOperation = do
+  first <- templateConcatenationOperand
+  _ <- infixComma
+  second <- templateConcatenationOperand
+  value <- continue second
+  let concatenated = MapConcatenation first value
+      evaluated = SyntaxBoundary concatenated
+  maybe concatenated id <$>
+    optional (try (evaluatedIdentifierOperationFrom evaluated))
+  where
+    templateConcatenationOperand =
+      try greedyStringTemplateExpression <|> stringExpression
+    continue left = do
+      remaining <- optional (try
+        (infixComma *> templateConcatenationOperand >>= continue))
+      pure (maybe left (MapConcatenation left) remaining)
 
 -- Parentheses around a declaration head are semantic: a bare @abc@ names the
 -- literal identifier @abc@, while @(abc)@ evaluates @abc@ as the dependent
@@ -1304,11 +1332,24 @@ validEvaluatedDeclarationHead expressionValue =
     AsciiStringLiteral {} -> True
     StringTemplate {} -> True
     GreedyStringTemplate {} -> True
+    MapConcatenation left right ->
+      validConcatenatedDeclarationHead left
+        && validConcatenatedDeclarationHead right
     EitherType left right ->
       validEvaluatedDeclarationHead left
         && validEvaluatedDeclarationHead right
     SyntaxBoundary inner -> validEvaluatedDeclarationHead inner
     _ -> False
+  where
+    validConcatenatedDeclarationHead value = case value of
+      AsciiStringLiteral {} -> True
+      StringTemplate {} -> True
+      GreedyStringTemplate {} -> True
+      MapConcatenation left right ->
+        validConcatenatedDeclarationHead left
+          && validConcatenatedDeclarationHead right
+      SyntaxBoundary inner -> validConcatenatedDeclarationHead inner
+      _ -> False
 
 identifierTemplateOperation :: Parser Expression
 identifierTemplateOperation = do
@@ -1908,7 +1949,7 @@ validateIdentifierSpelling = maybe empty pure . identifierSpellingValue
 
 bareIdentifierToken :: Parser String
 bareIdentifierToken = do
-  first <- satisfy isLeadingIdentifierCharacter
+  first <- satisfy isIdentifierCharacter
   rest <- many (satisfy isIdentifierCharacter)
   let value = first : rest
   if isIdentifierValue value then pure value else empty

@@ -11,6 +11,10 @@ module DatraLanguage.AST
   , GenericBinder (..)
   , GenericReference (..)
   , StringTemplatePart (..)
+  , DependentDeclarationHead (..)
+  , DependentDeclaration (..)
+  , traverseDependentDeclaration
+  , mapDependentDeclaration
   , Expression (..)
   , pattern FunctionType
   , pattern GenericFunctionType
@@ -44,7 +48,7 @@ import DatraLanguage.AST.Operator
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.Diagnostics (SourceSpan)
-import IdentifierValueType (isIdentifierValue)
+import IdentifierValueType (isIdentifierValue, isIdentifierValueCharacter)
 import Numeric.Natural (Natural)
 import Numeric (showHex)
 import Prettyprinter
@@ -130,6 +134,54 @@ data StringTemplatePart expression
   | StringTemplateInterpolation expression
   deriving (Eq, Ord, Show)
 
+-- | A declaration is semantic block structure, not an expression which must
+-- later be recognized by inspecting modifier and assignment nodes.
+data DependentDeclarationHead expression
+  = SimpleIdentifierDeclarationHead IdentifierString
+  | StringTemplateDeclarationHead [StringTemplatePart expression]
+  | EvaluatedDeclarationHead expression
+  deriving (Eq, Ord, Show)
+
+data DependentDeclaration expression = DependentDeclaration
+  { dependentDeclarationHead :: DependentDeclarationHead expression
+  , dependentDeclarationIsLet :: Bool
+  , dependentDeclarationIsDefinition :: Bool
+  , dependentDeclarationIsCanonicalValue :: Bool
+  , dependentDeclarationImplementation :: expression
+  }
+  deriving (Eq, Ord, Show)
+
+traverseDependentDeclaration
+  :: Applicative f
+  => (left -> f right)
+  -> DependentDeclaration left
+  -> f (DependentDeclaration right)
+traverseDependentDeclaration visit declaration = DependentDeclaration
+  <$> traverseHead (dependentDeclarationHead declaration)
+  <*> pure (dependentDeclarationIsLet declaration)
+  <*> pure (dependentDeclarationIsDefinition declaration)
+  <*> pure (dependentDeclarationIsCanonicalValue declaration)
+  <*> visit (dependentDeclarationImplementation declaration)
+  where
+    traverseHead headValue = case headValue of
+      SimpleIdentifierDeclarationHead name ->
+        pure (SimpleIdentifierDeclarationHead name)
+      StringTemplateDeclarationHead parts ->
+        StringTemplateDeclarationHead <$> traverse traversePart parts
+      EvaluatedDeclarationHead expressionValue ->
+        EvaluatedDeclarationHead <$> visit expressionValue
+    traversePart part = case part of
+      StringTemplateLiteral literal -> pure (StringTemplateLiteral literal)
+      StringTemplateInterpolation expressionValue ->
+        StringTemplateInterpolation <$> visit expressionValue
+
+mapDependentDeclaration
+  :: (left -> right)
+  -> DependentDeclaration left
+  -> DependentDeclaration right
+mapDependentDeclaration transform =
+  runIdentity . traverseDependentDeclaration (pure . transform)
+
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
 -- later by the type checker and interpreter, not while constructing the AST.
 data Expression
@@ -186,16 +238,16 @@ data Expression
   | Coalization Expression
   | Def Expression
   | Val Expression
-  | Assert Bool Expression
   | Fun Expression
   | GenericIntroductionExpression (GenericIntroduction Expression)
   | GenericReferenceExpression GenericReference
   | InModule String Expression
   | Import [String] Expression
   | FunctionTypeExpression [GenericBinder Expression] Expression Expression
-  | FunctionBody [Expression] Expression
+  | FunctionBody [DependentDeclaration Expression] Expression
   | FunctionApplication Expression Expression
-  | Begin [Expression] Expression
+  | DeclarationExpression (DependentDeclaration Expression)
+  | Begin [DependentDeclaration Expression] Expression
   | Let Expression
   | IdentifierReference IdentifierString
   | Lookup Expression
@@ -281,7 +333,8 @@ yieldedIdentifier _ = Nothing
 -- requirement of the general import contract.
 namedBeginBlock
   :: Expression
-  -> Maybe (IdentifierString, [Expression], Expression)
+  -> Maybe
+      (IdentifierString, [DependentDeclaration Expression], Expression)
 namedBeginBlock expressionValue = do
   (name, annotation, given) <- yieldedIdentifier expressionValue
   let value = maybe annotation id given
@@ -361,7 +414,6 @@ data OperatorExpression
   | CoalizationValue OperatorExpression
   | DefValue OperatorExpression
   | ValValue OperatorExpression
-  | AssertValue Bool OperatorExpression
   | FunValue OperatorExpression
   | GenericIntroductionValue
       (GenericIntroduction OperatorExpression)
@@ -372,9 +424,14 @@ data OperatorExpression
       [GenericBinder OperatorExpression]
       OperatorExpression
       OperatorExpression
-  | FunctionBodyValue [OperatorExpression] OperatorExpression
+  | FunctionBodyValue
+      [DependentDeclaration OperatorExpression]
+      OperatorExpression
   | FunctionApplicationValue OperatorExpression OperatorExpression
-  | BeginValue [OperatorExpression] OperatorExpression
+  | DeclarationValue (DependentDeclaration OperatorExpression)
+  | BeginValue
+      [DependentDeclaration OperatorExpression]
+      OperatorExpression
   | LetValue OperatorExpression
   | IdentifierReferenceValue IdentifierString
   | LookupValue OperatorExpression
@@ -499,8 +556,6 @@ normalizeExpression (Def declaration) =
   Def (normalizeExpression declaration)
 normalizeExpression (Val declaration) =
   Val (normalizeExpression declaration)
-normalizeExpression (Assert hard condition) =
-  Assert hard (normalizeExpression condition)
 normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
 normalizeExpression (GenericIntroductionExpression introduction) =
   GenericIntroductionExpression
@@ -523,10 +578,17 @@ normalizeExpression (FunctionTypeExpression generics input output) =
     ]
     (normalizeExpression input)
     (normalizeExpression output)
-normalizeExpression (FunctionBody bindings result) = FunctionBody (map normalizeExpression bindings) (normalizeExpression result)
+normalizeExpression (FunctionBody bindings result) =
+  FunctionBody
+    (map (mapDependentDeclaration normalizeExpression) bindings)
+    (normalizeExpression result)
 normalizeExpression (FunctionApplication function input) = FunctionApplication (normalizeExpression function) (normalizeExpression input)
+normalizeExpression (DeclarationExpression declaration) =
+  DeclarationExpression (mapDependentDeclaration normalizeExpression declaration)
 normalizeExpression (Begin bindings result) =
-  Begin (map normalizeExpression bindings) (normalizeExpression result)
+  Begin
+    (map (mapDependentDeclaration normalizeExpression) bindings)
+    (normalizeExpression result)
 normalizeExpression (Let binding) = Let (normalizeExpression binding)
 normalizeExpression (IdentifierReference name) = IdentifierReference name
 normalizeExpression (Lookup operand) = Lookup (normalizeExpression operand)
@@ -693,7 +755,6 @@ lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
 lower (Def declaration) = DefValue (lower declaration)
 lower (Val declaration) = ValValue (lower declaration)
-lower (Assert hard condition) = AssertValue hard (lower condition)
 lower (Fun operand) = FunValue (lower operand)
 lower (GenericIntroductionExpression introduction) =
   GenericIntroductionValue
@@ -714,9 +775,13 @@ lower (FunctionTypeExpression generics input output) =
     ]
     (lower input)
     (lower output)
-lower (FunctionBody bindings result) = FunctionBodyValue (map lower bindings) (lower result)
+lower (FunctionBody bindings result) = FunctionBodyValue
+  (map (mapDependentDeclaration lower) bindings) (lower result)
 lower (FunctionApplication function input) = FunctionApplicationValue (lower function) (lower input)
-lower (Begin bindings result) = BeginValue (map lower bindings) (lower result)
+lower (DeclarationExpression declaration) =
+  DeclarationValue (mapDependentDeclaration lower declaration)
+lower (Begin bindings result) = BeginValue
+  (map (mapDependentDeclaration lower) bindings) (lower result)
 lower (Let binding) = LetValue (lower binding)
 lower (IdentifierReference name) = IdentifierReferenceValue name
 lower (Lookup operand) = LookupValue (lower operand)
@@ -903,9 +968,6 @@ prettyOperator (DefValue declaration) =
   prettyUnary DefOperator declaration
 prettyOperator (ValValue declaration) =
   prettyUnary ValOperator declaration
-prettyOperator (AssertValue hard condition) =
-  prettyForm (if hard then "assert-hard" else "assert")
-    [prettyOperator condition]
 prettyOperator (FunValue operand) = prettyForm "fun" [prettyOperator operand]
 prettyOperator (GenericIntroductionValue introduction) =
   prettyForm "generic-introduction"
@@ -935,11 +997,16 @@ prettyOperator (FunctionTypeValue generics input output) =
     , prettyOperator input
     , prettyOperator output
     ]
-prettyOperator (FunctionBodyValue bindings result) = prettyForm "do" [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
+prettyOperator (FunctionBodyValue bindings result) = prettyForm "do"
+  [ prettyForm "bindings" (map prettyDeclaration bindings)
+  , prettyOperator result
+  ]
 prettyOperator (FunctionApplicationValue function input) = prettyBinary ApplicationOperator function input
+prettyOperator (DeclarationValue declaration) =
+  prettyDeclaration declaration
 prettyOperator (BeginValue bindings result) =
   prettyForm "begin"
-    [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
+    [prettyForm "bindings" (map prettyDeclaration bindings), prettyOperator result]
 prettyOperator (LetValue binding) = prettyUnary LetOperator binding
 prettyOperator (IdentifierReferenceValue (IdentifierString name)) =
   prettyForm "ref" [pretty (renderAsciiStringLiteral name)]
@@ -991,6 +1058,35 @@ prettyOperator
       : prettyOperator typeAnnotation
       : maybe [] ((: []) . prettyOperator) givenValue
     )
+
+prettyDeclaration
+  :: DependentDeclaration OperatorExpression
+  -> Doc annotation
+prettyDeclaration declaration =
+  applyLet (applyDefinition (applyCanonical base))
+  where
+      implementation = dependentDeclarationImplementation declaration
+      base = case dependentDeclarationHead declaration of
+        SimpleIdentifierDeclarationHead name -> prettyOperator
+          (IdentifierOperationValue name implementation (Just implementation))
+        StringTemplateDeclarationHead parts -> prettyOperator
+          (IdentifierTemplateOperationValue
+            parts implementation (Just implementation))
+        EvaluatedDeclarationHead expressionValue -> prettyForm
+          (operatorCanonicalSymbol AssignmentOperator)
+          [prettyOperator expressionValue, prettyOperator implementation]
+      applyCanonical
+        | dependentDeclarationIsCanonicalValue declaration =
+            prettyFormFor ValOperator . pure
+        | otherwise = id
+      applyDefinition
+        | dependentDeclarationIsDefinition declaration =
+            prettyFormFor DefOperator . pure
+        | otherwise = id
+      applyLet
+        | dependentDeclarationIsLet declaration =
+            prettyFormFor LetOperator . pure
+        | otherwise = id
 
 prettyUnary
   :: Operator
@@ -1064,9 +1160,8 @@ renderAsciiStringLiteral value = renderStandardStringLiteral value
 
 -- | Render a canonical identifier expression with its compact bare spelling.
 renderIdentifierString :: String -> String
-renderIdentifierString value@(first : _)
-  | isLeadingCanonicalCharacter first
-      && isIdentifierValue value = value
+renderIdentifierString value
+  | isIdentifierValue value = value
 renderIdentifierString value = renderStandardStringLiteral value
 
 renderStandardStringLiteral :: String -> String
@@ -1128,7 +1223,7 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
 
     compactInterpolationBoundary [] = True
     compactInterpolationBoundary (character : _) =
-      not (isCanonicalCharacter character)
+      not (isIdentifierValueCharacter character)
 
 compactOperatorStringInterpolation
   :: OperatorExpression
@@ -1146,21 +1241,6 @@ compactOperatorStringInterpolation expressionValue =
     _ -> Nothing
   where
     reserved = Just . Reserved.reservedSymbolIdentifierString
-
-isLeadingCanonicalCharacter :: Char -> Bool
-isLeadingCanonicalCharacter character =
-  isAsciiLetter character || character == '_' || character == '\''
-
-isCanonicalCharacter :: Char -> Bool
-isCanonicalCharacter character =
-  isLeadingCanonicalCharacter character
-    || ('0' <= character && character <= '9')
-    || character == '\''
-
-isAsciiLetter :: Char -> Bool
-isAsciiLetter character =
-  ('a' <= character && character <= 'z')
-    || ('A' <= character && character <= 'Z')
 
 -- | One shared traversal of immediate AST children, preserving identifiers and
 -- literal metadata. Analyses and source migrations compose it recursively.
@@ -1195,7 +1275,6 @@ traverseExpressionChildren visit expression = case expression of
   GreaterThanOrEqual a b -> GreaterThanOrEqual <$> visit a <*> visit b
   BooleanAnd a b -> BooleanAnd <$> visit a <*> visit b
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
-  Assert hard x -> Assert hard <$> visit x
   Fun x -> Fun <$> visit x
   GenericIntroductionExpression introduction ->
     (\bound -> GenericIntroductionExpression
@@ -1211,6 +1290,8 @@ traverseExpressionChildren visit expression = case expression of
       <*> visit domain
       <*> visit codomain
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
+  DeclarationExpression declaration ->
+    DeclarationExpression <$> traverseDependentDeclaration visit declaration
   Lookup operand -> Lookup <$> visit operand
   Multiplication a b -> Multiplication <$> visit a <*> visit b
   Exponentiation a b -> Exponentiation <$> visit a <*> visit b
@@ -1224,8 +1305,11 @@ traverseExpressionChildren visit expression = case expression of
     ReverseMapSpecification <$> visit a <*> visit b
   ReverseOverload a b -> ReverseOverload <$> visit a <*> visit b
   ReverseSafeOverload a b -> ReverseSafeOverload <$> visit a <*> visit b
-  Begin xs y -> Begin <$> traverse visit xs <*> visit y
-  FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y
+  Begin xs y ->
+    Begin <$> traverse (traverseDependentDeclaration visit) xs <*> visit y
+  FunctionBody xs y -> FunctionBody
+    <$> traverse (traverseDependentDeclaration visit) xs
+    <*> visit y
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
   Import paths body -> Import paths <$> visit body

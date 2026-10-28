@@ -89,11 +89,6 @@ localizeCommandLineOptionFailure failure =
         [ "limbă furnizată: " <> value
         , "se așteaptă english, en, romana, romanian sau ro"
         ]
-    UnsupportedEvaluationMode value ->
-      LocalizedMessage "modul de evaluare nu este acceptat"
-        [ "mod furnizat: " <> value
-        , "se așteaptă dev, development, prod sau production"
-        ]
 
 localizeAccessError :: AccessError -> LocalizedMessage
 localizeAccessError reason =
@@ -125,7 +120,6 @@ localizeInterpretingError reason =
         ["tip așteptat: " <> name]
     OverloadError failure ->
       LocalizedMessage "supraîncărcarea a eșuat" [overloadFailure failure]
-    AssertionFailed -> LocalizedMessage "aserțiunea a eșuat" []
     OperationHasNoEffect ->
       LocalizedMessage "operația nu are efect" []
     OverlappingBindings name ->

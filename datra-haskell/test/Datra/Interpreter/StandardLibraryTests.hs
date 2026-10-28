@@ -40,35 +40,37 @@ standardLibraryTests =
             "begin def x? := 7; yield x + 0" "7"
         , programFailureCase "val rejects an annotated assignment"
             "begin val x : Nat := 7; yield x"
-            (SourceEvaluationFailure OperationHasNoEffect)
+            (SourceParseFailure
+              (ParseFailure "operation has no effect inside block"))
         , programFailureCase "val syntax rejects a non-declaration"
             "yield val (1; 2)"
-            (SourceEvaluationFailure (UnknownIdentifier "val"))
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "modifier order errors share one diagnostic"
             "begin val let x := 7; yield x"
-            (SourceEvaluationFailure
-              (InvalidDependentDeclarationModifiers "val let" "let val"))
+            (SourceParseFailure (ParseFailure
+              "invalid declaration modifiers: val let\ncorrect form: let val"))
         , programFailureCase "duplicate modifiers share the same diagnostic"
             "begin val val x := 7; yield x"
-            (SourceEvaluationFailure
-              (InvalidDependentDeclarationModifiers "val val" "val"))
+            (SourceParseFailure (ParseFailure
+              "invalid declaration modifiers: val val\ncorrect form: val"))
         , programFailureCase "def before let reports the canonical correction"
             "begin def let x := 7; yield x"
-            (SourceEvaluationFailure
-              (InvalidDependentDeclarationModifiers "def let" "let def"))
+            (SourceParseFailure (ParseFailure
+              "invalid declaration modifiers: def let\ncorrect form: let def"))
         , programFailureCase "val before def reports the canonical correction"
             "begin val def x := 7; yield x"
-            (SourceEvaluationFailure
-              (InvalidDependentDeclarationModifiers "val def" "def val"))
+            (SourceParseFailure (ParseFailure
+              "invalid declaration modifiers: val def\ncorrect form: def val"))
         , programFailureCase "late def reports the full canonical correction"
             "begin let val def x := 7; yield x"
-            (SourceEvaluationFailure
-              (InvalidDependentDeclarationModifiers
-                "let val def" "let def val"))
+            (SourceParseFailure (ParseFailure
+              ("invalid declaration modifiers: let val def"
+                <> "\ncorrect form: let def val")))
         , programFailureCase "duplicate def uses the unified diagnostic"
             "begin def def x := 7; yield x"
-            (SourceEvaluationFailure
-              (InvalidDependentDeclarationModifiers "def def" "def"))
+            (SourceParseFailure (ParseFailure
+              "invalid declaration modifiers: def def\ncorrect form: def"))
         ]
     , testGroup "private syntax categories"
         [ programFailureCase "AST is no longer implicitly imported"
@@ -167,9 +169,9 @@ standardLibraryTests =
               <> "if n = 0 then 1 else n * this (n - 1)\n"
               <> "let boundFactorial := ({n? : Int} -> Int do yield "
               <> "if n = 0 then 1 else n * boundFactorial (n - 1))\n"
-              <> "assert inlineFactorial 6 = boundFactorial 6\n"
-              <> "yield inlineFactorial 6")
-            "720"
+              <> "yield (inlineFactorial 6 = boundFactorial 6; "
+              <> "inlineFactorial 6)")
+            "(true; 720)"
         , programCase "finite access lazily unfolds recursive data"
             ("name := fun (\"hi:\", this)\n"
               <> "k := 1\n"
@@ -529,33 +531,30 @@ standardLibraryTests =
                 <> "  slots := (^_i :: Nat) -> Any do yield \"arg%(_i)\"? : T\n"
                 <> "yield ((^n? :: Nat) -> Any do yield slots[0..n])\n"
                 <> "display := {MyArgs Int,} -> Str do yield \"%(it)\"\n"
-                <> "assert ((arg2 : 10, 4) of {MyArgs Int,}) = false\n"
-                <> "yield (display(); display(1); display(1; 2; 3); "
+                <> "yield (((arg2 : 10, 4) of {MyArgs Int,}) = false; "
+                <> "display(); display(1); display(1; 2; 3); "
                 <> "display(arg1 : 10, 4))"
             )
-            ("(\"()\"; \"arg0 : 1\"; "
+            ("(true; \"()\"; \"arg0 : 1\"; "
               <> "\"(arg0 : 1; arg1 : 2; arg2 : 3)\"; "
               <> "\"(arg0 : 4; arg1 : 10)\")")
         , programCase "only argumentative maps erase unmatched identifiers"
-            ( "assert not ((arg0 : 1; arg1 : 2) of List Int)\n"
-                <> "assert ((arg0 : 1; arg1 : 2) of {List Int,})\n"
-                <> "yield ()"
+            ( "yield (not ((arg0 : 1; arg1 : 2) of List Int); "
+                <> "((arg0 : 1; arg1 : 2) of {List Int,}))"
             )
-            "()"
+            "(true; true)"
         , programCase "Args convert to lists through argumentative map matching"
             ( "ArgsIntMap := {Args Int,}\n"
                 <> "ListInt := List Int\n"
                 <> "display := ArgsIntMap -> \"%ListInt\" do\n"
                 <> "  toList := ArgsIntMap -> {ListInt,} do yield it\n"
                 <> "  yield \"%(toList it)\"\n"
-                <> "assert display() = \"()\"\n"
-                <> "assert display(1) = \"1\"\n"
-                <> "assert display(1; 2; 3) = \"(1; 2; 3)\"\n"
-                <> "assert display(arg1 : 10, 4) = \"(4; 10)\"\n"
-                <> "assert ((arg2 : 10, 4) of ArgsIntMap) = false\n"
-                <> "yield ()"
+                <> "yield (display() = \"()\"; display(1) = \"1\";\n"
+                <> "  display(1; 2; 3) = \"(1; 2; 3)\";\n"
+                <> "  display(arg1 : 10, 4) = \"(4; 10)\";\n"
+                <> "  ((arg2 : 10, 4) of ArgsIntMap) = false)"
             )
-            "()"
+            "(true; true; true; true; true)"
         ]
     , testGroup "generic family projection"
         [ programCase "generic sums build indexed families"

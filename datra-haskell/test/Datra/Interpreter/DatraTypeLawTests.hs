@@ -93,11 +93,11 @@ datraTypeExampleTests example =
   testGroup (exampleName example)
     [ programCase "reflexive subfederation and self-specification"
         (unlines
-          [ "assert (" <> source <> ") of (" <> source <> ")"
-          , "assert ((" <> source <> ") ~> (" <> source
-              <> ")) of (" <> source <> ")"
+          [ "yield ((" <> source <> ") of (" <> source <> ");"
+          , "  ((" <> source <> ") ~> (" <> source
+              <> ")) of (" <> source <> "))"
           ])
-        "()"
+        "(true; true)"
     , testCase "string capability" $ do
         value <- requireExpression source
         assertStringCapability value

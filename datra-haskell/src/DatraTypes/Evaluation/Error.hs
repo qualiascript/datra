@@ -127,7 +127,6 @@ data InterpretingError
   | ModuleEvaluationFailed ModuleEvaluationFailure
   | ExpectedBuiltinType String
   | OverloadError OverloadFailure
-  | AssertionFailed
   | OperationHasNoEffect
   | OverlappingBindings String
   | InconsistentShadowing String

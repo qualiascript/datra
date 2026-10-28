@@ -80,8 +80,7 @@ import DatraLanguage.Diagnostics
   , atSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
-  ( CommandLineOptionFailure (UnsupportedEvaluationMode)
-  , ModuleLoadFailure (CyclicModuleImport)
+  ( ModuleLoadFailure (CyclicModuleImport)
   , ParseFailure (ParseFailure)
   , SyntaxTemplateAdmissibilityFailure (..)
   )
@@ -560,20 +559,6 @@ testDiagnostics = do
         == LocalizedMessage "cyclic module import" ["module: cycle.datra"]
       && localizeDiagnostic Romanian (CyclicModuleImport "cycle.datra")
         == LocalizedMessage "import ciclic de modul" ["modul: cycle.datra"]
-    )
-  assert "CLI-option failures have exact bilingual localization"
-    ( localizeDiagnostic English (UnsupportedEvaluationMode "fast")
-        == LocalizedMessage
-          "evaluation mode is not supported"
-          [ "given mode: fast"
-          , "expected dev, development, prod, or production"
-          ]
-      && localizeDiagnostic Romanian (UnsupportedEvaluationMode "fast")
-        == LocalizedMessage
-          "modul de evaluare nu este acceptat"
-          [ "mod furnizat: fast"
-          , "se așteaptă dev, development, prod sau production"
-          ]
     )
 
 testGenericIdentifierDisjointness :: IO ()

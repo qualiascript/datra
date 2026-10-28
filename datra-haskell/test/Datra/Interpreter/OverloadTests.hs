@@ -1,5 +1,5 @@
-module Datra.Interpreter.OverloadAssertionTests
-  ( overloadAssertionTests
+module Datra.Interpreter.OverloadTests
+  ( overloadTests
   ) where
 
 import Datra.TestSupport
@@ -8,21 +8,18 @@ import DatraTypes
   , InterpretingError (..)
   , OverloadFailure (..)
   )
-import Interpreting
-  ( EvaluationMode (DevelopmentMode, ProductionMode) )
 import Test.Tasty (TestTree, testGroup)
-
-overloadAssertionTests :: TestTree
-overloadAssertionTests =
-  testGroup "overloading and assertions"
-    [ overloadTests
-    , defaultedFunctionTests
-    , assertionTests
-    , functionBodySpellingTests
-    ]
 
 overloadTests :: TestTree
 overloadTests =
+  testGroup "overloading"
+    [ overloadOperatorTests
+    , defaultedFunctionTests
+    , functionBodySpellingTests
+    ]
+
+overloadOperatorTests :: TestTree
+overloadOperatorTests =
   testGroup "overload operators"
     [ programCase "left overload replaces a default"
         "yield {a? : Nat := 3} << 5"
@@ -92,37 +89,39 @@ overloadTests =
         "{x? : Nat := 2; y? : Nat := 3}"
     , programCase "skip specifications match only skip positions"
         (unlines
-          [ "assert (*; 3) of (*; Nat)"
-          , "assert {*; 3} of {*; Nat}"
-          , "assert ((*; 3) ~> (*; Nat)) of (*; Nat)"
-          , "assert ({*; 3} ~> {*; Nat}) of {*; Nat}"
-          , "assert not ((...; 3) of (*; Nat))"
-          , "assert not ((*; 3) of (...; Nat))"
+          [ "yield ("
+          , "  ((*; 3) of (*; Nat));"
+          , "  ({*; 3} of {*; Nat});"
+          , "  (((*; 3) ~> (*; Nat)) of (*; Nat));"
+          , "  (({*; 3} ~> {*; Nat}) of {*; Nat});"
+          , "  not ((...; 3) of (*; Nat));"
+          , "  not ((*; 3) of (...; Nat)))"
           ])
-        "()"
+        "(true; true; true; true; true; true)"
     , programCase "skip coerces to one in numerical operators"
         (unlines
-          [ "assert (*) + 2 = 3"
-          , "assert 4 - * = 3"
-          , "assert (*) * 7 = 7"
-          , "assert 7 * (*) = 7"
-          , "assert (*) * (*) = 1"
-          , "assert 2 ^ * = 2"
-          , "assert -* = -1"
-          , "assert +* = 1"
+          [ "yield ("
+          , "  (*) + 2 = 3;"
+          , "  4 - * = 3;"
+          , "  (*) * 7 = 7;"
+          , "  7 * (*) = 7;"
+          , "  (*) * (*) = 1;"
+          , "  2 ^ * = 2;"
+          , "  -* = -1;"
+          , "  +* = 1)"
           ])
-        "()"
+        "(true; true; true; true; true; true; true; true)"
     ]
 
 defaultedFunctionTests :: TestTree
 defaultedFunctionTests =
   testGroup "defaulted function arguments"
-    [ programCase "unparenthesized my_pow can assert a skipped default"
+    [ programCase "unparenthesized my_pow can check a skipped default"
         (unlines
           [ "my_pow := {base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent"
-          , "assert my_pow (*; 3) = 8"
+          , "yield my_pow (*; 3) = 8"
           ])
-        "()"
+        "true"
     , programCase "positional-only my_pow skips its defaulted first argument"
         (unlines
           [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)"
@@ -192,41 +191,13 @@ defaultedFunctionTests =
           , "yield f ()"
           ])
         "6"
-    , programCase "defaulted recursive function assertions"
+    , programCase "defaulted recursive function checks"
         (unlines
           [ "let factorial := ({n? : Int := 5} -> Int do"
           , "  yield if n = 0 then 1 else n * factorial (n - 1))"
-          , "assert factorial () = 120"
-          , "assert factorial 6 = 720"
+          , "yield (factorial () = 120; factorial 6 = 720)"
           ])
-        "()"
-    ]
-
-assertionTests :: TestTree
-assertionTests =
-  testGroup "assert"
-    [ programCase "true assertion and implicit unit yield"
-        "assert 2 + 3 = 5"
-        "()"
-    , programFailureCase "false assertion fails in development"
-        "assert false"
-        (SourceEvaluationFailure AssertionFailed)
-    , programCaseInMode ProductionMode
-        "soft assertion is omitted in production"
-        "assert false"
-        "()"
-    , programCaseInMode ProductionMode
-        "omitted production assertion does not evaluate its condition"
-        "assert missing"
-        "()"
-    , programFailureCaseInMode ProductionMode
-        "hard assertion remains active in production"
-        "assert hard false"
-        (SourceEvaluationFailure AssertionFailed)
-    , programCaseInMode DevelopmentMode
-        "hard assertion succeeds in development"
-        "assert hard 5 of Nat"
-        "()"
+        "(true; true)"
     ]
 
 functionBodySpellingTests :: TestTree
@@ -249,9 +220,9 @@ functionBodySpellingTests =
           , "yield f 4"
           ])
         "5"
-    , programCase "assertion-only function has an explicit unit yield"
-        "f := ({n? : Nat} -> () do assert n of Nat; yield ())\nyield f 4"
-        "()"
+    , programCase "function body can yield a Boolean check"
+        "f := ({n? : Nat} -> Bool do yield n of Nat)\nyield f 4"
+        "true"
     , programFailureCase "an unyielded begin operation has no effect"
         "yield begin\n  2 + 3\nyield nothing"
         (SourceEvaluationFailure OperationHasNoEffect)

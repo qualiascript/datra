@@ -3,7 +3,6 @@ module DatraLanguage.Identifier
   ( IdentifierSpelling (..)
   , identifierSpellingValue
   , isPrivateIdentifier
-  , isLeadingIdentifierCharacter
   , isIdentifierCharacter
   , isAsciiCharacter
   ) where
@@ -24,14 +23,11 @@ isPrivateIdentifier :: String -> Bool
 isPrivateIdentifier ('_' : _) = True
 isPrivateIdentifier _ = False
 
-isLeadingIdentifierCharacter :: Char -> Bool
-isLeadingIdentifierCharacter character =
-  isAsciiLetter character || character == '_' || character == '\''
-
 isIdentifierCharacter :: Char -> Bool
 isIdentifierCharacter character =
-  isLeadingIdentifierCharacter character
+  isAsciiLetter character
     || isAsciiDigit character
+    || character == '_'
     || character == '\''
 
 isAsciiLetter :: Char -> Bool

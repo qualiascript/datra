@@ -6,6 +6,8 @@ module DatraParsingTests (main) where
 import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
+  , DependentDeclaration (..)
+  , DependentDeclarationHead (..)
   , GenericBinder (..)
   , GenericBinderId (..)
   , GenericIdentifier (..)
@@ -23,6 +25,7 @@ import DatraLanguage.AST
   , renderExpression
   , toOperatorExpression
   )
+import DatraLanguage.DependentDeclaration (dependentDeclaration)
 import DatraLanguage.AST.Syntax
   ( natural
   , (...)
@@ -416,31 +419,47 @@ testBraceSeparatorSemantics = do
       (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap []))
 
 testDependentDeclarationPrecedence :: IO ()
-testDependentDeclarationPrecedence =
-  case parseNeutralPhrase source of
-    Left failure -> assertFailure (parseFailureMessage failure)
-    Right actual -> assertEqual
-      "template federation binds before dependent declaration assignment"
-      expected
-      actual
+testDependentDeclarationPrecedence = do
+  assertNeutral
+    "template federation binds before dependent declaration assignment"
+    source
+    expected
+  assertNeutral
+    "string and greedy-template concatenation is one declaration head"
+    "\"_\",%($hello; Int) := body"
+    (IdentifierTemplateOperation
+      [StringTemplateInterpolation
+        (SyntaxBoundary
+          (MapConcatenation
+            (AST.asciiString "_")
+            (SyntaxBoundary
+              (GreedyStringTemplate
+                (SyntaxBoundary
+                  (AtlasMap [AST.asciiString "hello", ref "Int"]))))))]
+      (ref "body")
+      (Just (ref "body")))
   where
-    source = "\"assert %_Expr\" | \"assert %($hard) %_Expr\" := body"
+    source = "\"verify %_Expr\" | \"verify %($hard) %_Expr\" := body"
     expected = IdentifierTemplateOperation
       [StringTemplateInterpolation
         (SyntaxBoundary
           (EitherType
             (StringTemplate
-              [ StringTemplateLiteral "assert "
+              [ StringTemplateLiteral "verify "
               , StringTemplateInterpolation (ref "_Expr")
               ])
             (StringTemplate
-              [ StringTemplateLiteral "assert "
+              [ StringTemplateLiteral "verify "
               , StringTemplateInterpolation (AST.asciiString "hard")
               , StringTemplateLiteral " "
               , StringTemplateInterpolation (ref "_Expr")
               ])))]
       (ref "body")
       (Just (ref "body"))
+    assertNeutral label input wanted =
+      case parseNeutralPhrase input of
+        Left failure -> assertFailure (parseFailureMessage failure)
+        Right actual -> assertEqual label wanted actual
 
 regressionTests :: IO ()
 regressionTests = do
@@ -535,9 +554,6 @@ regressionTests = do
         Right _ -> True
         Left _ -> False)
       (neutralExpressionWitnessSources "_witness" "_operand"))
-  assertParsed "compact signed skips remain numerical operands"
-    "assert -* = +*"
-    (Assert False (Equality (Minus Skip) (Plus Skip)))
   let zeroCaptureSyntax = SyntaxRule
         { syntaxName = "answer"
         , syntaxTemplate = SyntaxTemplate []
@@ -682,15 +698,6 @@ regressionTests = do
   assertAstOutput "reverse safe overload reverses operands"
     "a >>> b"
     (SafeOverload (ref "b") (ref "a"))
-  assertAstOutput "assert captures a complete Boolean expression"
-    "assert f 5 = 120"
-    (Assert False
-      (Equality
-        (FunctionApplication (ref "f") (natural 5))
-        (natural 120)))
-  assertAstOutput "hard assert"
-    "assert hard false"
-    (Assert True (ref "false"))
   assertAstOutput "fun expands to an inline fixed point"
     "fun 5"
     (Fun (natural 5))
@@ -738,7 +745,6 @@ regressionTests = do
     , InModule "std" (ref "_this")
     , ScopeAccess (ref "_this") (ref "abc")
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
-    , Assert True (BooleanLiteral True)
     , Overload (natural 1) (natural 2)
     , Coalization (AtlasMap [natural 1, natural 2])
     , datraRef ["add"]
@@ -749,10 +755,10 @@ regressionTests = do
     , Begin []
         (AST.assignment "Example"
           (Begin
-            [AST.assignment "x" (natural 1) (natural 1)]
+            [declarationEntry (AST.assignment "x" (natural 1) (natural 1))]
             (FunctionApplication (ref "public") (ref "_this")))
           (Begin
-            [AST.assignment "x" (natural 1) (natural 1)]
+            [declarationEntry (AST.assignment "x" (natural 1) (natural 1))]
             (FunctionApplication (ref "public") (ref "_this"))))
     ]
   assertAstOutput "eval is available as an ordinary user identifier"
@@ -816,12 +822,15 @@ regressionTests = do
   assertRejected "private argument names cannot be optional"
     "{_x? : Nat; y : Nat}"
   let block = Begin
-        [AST.dependentArgumentType "a" (Multiplication (natural 2) (natural 3)), AST.dependentArgumentType "b" (natural 5)]
+        [ declarationEntry (AST.dependentArgumentType "a"
+            (Multiplication (natural 2) (natural 3)))
+        , declarationEntry (AST.dependentArgumentType "b" (natural 5))
+        ]
         (Addition (IdentifierReference (IdentifierString "a")) (IdentifierReference (IdentifierString "b")))
   assertParsed "begin newline bindings" "begin\n a : 2 * 3\n b : 5\nyield a + b" block
   let assignedBlock = Begin
-        [ AST.assignment "a" (natural 2) (natural 2)
-        , AST.assignment "b" (natural 3) (natural 3)
+        [ declarationEntry (AST.assignment "a" (natural 2) (natural 2))
+        , declarationEntry (AST.assignment "b" (natural 3) (natural 3))
         ]
         (Addition (ref "a") (ref "b"))
   assertParsed "assignment infers a grouped begin block"
@@ -855,10 +864,13 @@ regressionTests = do
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
     "begin let x := 10 yield x"
-    (Begin [Let (AST.assignment "x" (natural 10) (natural 10))]
+    (Begin [declarationEntry (Let
+        (AST.assignment "x" (natural 10) (natural 10)))]
       (IdentifierReference (IdentifierString "x")))
   assertParsed "references are parsed independently of lexical lookup" "(begin x : 1 yield x), x"
-    (MapConcatenation (Begin [AST.dependentArgumentType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
+    (MapConcatenation (Begin
+        [declarationEntry (AST.dependentArgumentType "x" (natural 1))]
+        (IdentifierReference (IdentifierString "x")))
       (IdentifierReference (IdentifierString "x")))
   assertParsed "let accepts an assigned declaration" "let x := 1"
     (Let (AST.assignment "x" (natural 1) (natural 1)))
@@ -876,7 +888,7 @@ regressionTests = do
       (AST.dependentArgumentType "x" (natural 1)))
   assert "an incomplete do form is not expanded to a function body"
     (case parseSource
-        "(f := ({n? : Nat} -> () do assert n of Nat)\n)" of
+        "(f := ({n? : Nat} -> () do verify n of Nat)\n)" of
       Right actual -> not (containsFunctionBody actual)
       Left _ -> False)
   assert "a newline after a signature does not create a function body"
@@ -1329,7 +1341,7 @@ regressionTests = do
     ("if candidate >= (next : compute input) "
       <> "then candidate else next")
     (Begin
-      [nextDeclaration]
+      [declarationEntry nextDeclaration]
       (AST.conditional
         (AST.greaterOrEqual (ref "candidate") (ref "next"))
         (ref "candidate")
@@ -1338,8 +1350,9 @@ regressionTests = do
     "condition-local declarations are not comparison-specific"
     "if valid (parsed : parse input) then parsed else fallback"
     (Begin
-      [ let parsed = FunctionApplication (ref "parse") (ref "input")
-        in AST.assignment "parsed" parsed parsed
+      [ declarationEntry
+          (let parsed = FunctionApplication (ref "parse") (ref "input")
+          in AST.assignment "parsed" parsed parsed)
       ]
       (AST.conditional
         (FunctionApplication (ref "valid") (ref "parsed"))
@@ -1579,12 +1592,20 @@ regressionTests = do
     "my__pow" (IdentifierReference (IdentifierString "my__pow"))
   assertParsed "bare identifiers allow a trailing underscore"
     "my_pow_" (IdentifierReference (IdentifierString "my_pow_"))
-  assertRejected "a bare underscore requires an alphanumeric second character" "_"
-  assertRejected "a leading underscore cannot be followed by underscore" "__value"
-  assertRejected "a leading underscore cannot be followed by apostrophe" "_'value"
-  assertRejected "a bare apostrophe requires an alphanumeric second character" "'"
-  assertRejected "a leading apostrophe cannot be followed by underscore" "'_value"
-  assertRejected "a leading apostrophe cannot be followed by apostrophe" "''value"
+  assertParsed "a bare underscore is an identifier"
+    "_" (ref "_")
+  assertParsed "leading underscores are unrestricted"
+    "__value" (ref "__value")
+  assertParsed "underscore-apostrophe order is unrestricted"
+    "_'value" (ref "_'value")
+  assertParsed "a bare apostrophe is an identifier"
+    "'" (ref "'")
+  assertParsed "apostrophe-underscore order is unrestricted"
+    "'_value" (ref "'_value")
+  assertParsed "leading apostrophes are unrestricted"
+    "''value" (ref "''value")
+  assertParsed "an identifier may start with a digit"
+    "345abc" (ref "345abc")
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"
@@ -1616,12 +1637,14 @@ regressionTests = do
     "compact strings allow a trailing underscore"
     "$abc_"
     (AST.asciiString "abc_")
-  assertRejected
-    "compact strings reject doubled leading underscores"
+  assertAstOutput
+    "compact strings allow doubled leading underscores"
     "$__abc"
-  assertRejected
-    "a lone compact underscore lacks an alphanumeric second character"
+    (AST.asciiString "__abc")
+  assertAstOutput
+    "a lone compact underscore is an identifier string"
     "$_"
+    (AST.asciiString "_")
   assertAstOutput
     "standard strings may contain a trailing underscore"
     "\"abc_\""
@@ -2312,8 +2335,10 @@ genExpression =
     , Gen.subterm genExpression
         (Import ["std", "path/library_two"])
     , Gen.subterm genExpression (InModule "std")
-    , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
-    , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
+    , Gen.subterm2 genExpression genExpression
+        (\binding result -> FunctionBody [generatedDeclaration binding] result)
+    , Gen.subterm2 genExpression genExpression
+        (\binding result -> Begin [generatedDeclaration binding] result)
     , Gen.subterm genExpression Let
     , Gen.subterm genExpression (StringTemplate . (:[]) . StringTemplateInterpolation)
     , Gen.subterm2 genExpression genExpression MapExpansion
@@ -2444,7 +2469,9 @@ assertResourceEnvelopes = do
         assert ("program AST: " <> source) (actual == expected)
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
       Left message -> fail (parseFailureMessage message))
-    [ ("a := 6\nyield a", Begin [AST.assignment "a" (natural 6) (natural 6)] (IdentifierReference (IdentifierString "a")))
+    [ ("a := 6\nyield a", Begin
+        [declarationEntry (AST.assignment "a" (natural 6) (natural 6))]
+        (IdentifierReference (IdentifierString "a")))
     , ( "yield 5 >> {a? : Nat := 3}"
       , Begin []
           (Overload
@@ -2465,7 +2492,9 @@ assertResourceEnvelopes = do
     , ( "yield Nat <~ (fun 5)"
       , Begin [] (MapSpecification (Fun (natural 5)) (ref "Nat"))
       )
-    , ("a := 6", Begin [AST.assignment "a" (natural 6) (natural 6)] (AtlasMap []))
+    , ("a := 6", Begin
+        [declarationEntry (AST.assignment "a" (natural 6) (natural 6))]
+        (AtlasMap []))
     , ("", Begin [] (AtlasMap []))
     ]
   where
@@ -2650,6 +2679,17 @@ containsFunctionBody value = any containsFunctionBody (expressionChildren value)
 -- of the parser's syntax expansion so they can catch changes in that expansion.
 ref :: String -> Expression
 ref = IdentifierReference . IdentifierString
+
+declarationEntry :: Expression -> DependentDeclaration Expression
+declarationEntry expressionValue =
+  case dependentDeclaration expressionValue of
+    Just declaration -> declaration
+    Nothing -> error "test expression is not a dependent declaration"
+
+generatedDeclaration :: Expression -> DependentDeclaration Expression
+generatedDeclaration = DependentDeclaration
+  (SimpleIdentifierDeclarationHead (IdentifierString "generated"))
+  False False False
 
 datraRef :: [String] -> Expression
 datraRef = foldl ScopeAccess (ref "datra") . map ref

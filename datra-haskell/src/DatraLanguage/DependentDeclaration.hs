@@ -8,6 +8,8 @@ module DatraLanguage.DependentDeclaration
   , invalidDependentDeclarationModifiers
   , dependentDeclarationNameExpression
   , dependentDeclarationNameFamilyExpression
+  , prependDependentDeclarationName
+  , dependentDeclarationWithImplementation
   , dependentDeclarationTemplateBranches
   , bindingNames
   ) where
@@ -18,27 +20,15 @@ import DatraLanguage.AST.Operator
   , operatorCanonicalSymbol
   )
 import Data.List (nub, sort)
-
-data DependentDeclarationHead
-  = SimpleIdentifierDeclarationHead IdentifierString
-  | StringTemplateDeclarationHead [StringTemplatePart Expression]
-  | EvaluatedDeclarationHead Expression
-  deriving (Eq, Show)
-
-data DependentDeclaration = DependentDeclaration
-  { dependentDeclarationHead :: DependentDeclarationHead
-  , dependentDeclarationIsLet :: Bool
-  , dependentDeclarationIsDefinition :: Bool
-  , dependentDeclarationIsCanonicalValue :: Bool
-  , dependentDeclarationImplementation :: Expression
-  }
+import Data.Maybe (listToMaybe, mapMaybe)
 
 -- A declaration is an inferred assignment in block position. Identifier
 -- annotations and dependent arguments remain expressions until an explicit
 -- assignment gives them a value.
-dependentDeclaration :: Expression -> Maybe DependentDeclaration
+dependentDeclaration :: Expression -> Maybe (DependentDeclaration Expression)
 dependentDeclaration = declaration False False False
   where
+    declaration _ _ _ (DeclarationExpression semantic) = Just semantic
     declaration _ definition canonical (Let _)
       | definition || canonical = Nothing
     declaration _ definition canonical (Let value) =
@@ -97,16 +87,22 @@ invalidDependentDeclarationModifiers
   :: Expression
   -> Maybe ([String], [String])
 invalidDependentDeclarationModifiers expressionValue =
-  case collect [] expressionValue of
-    ([], _) -> Nothing
-    (written, base)
-      | written /= canonical
-      , Just _ <- dependentDeclaration base -> Just
-          (map modifierName written, map modifierName canonical)
-      | otherwise -> Nothing
-      where
-        canonical = nub (sort written)
+  case current expressionValue of
+    Just failure -> Just failure
+    Nothing -> listToMaybe
+      (mapMaybe invalidDependentDeclarationModifiers
+        (expressionChildren expressionValue))
   where
+    current selected = case collect [] selected of
+      ([], _) -> Nothing
+      (written, base)
+        | written /= canonical
+        , Just _ <- dependentDeclaration base -> Just
+            (map modifierName written, map modifierName canonical)
+        | otherwise -> Nothing
+        where
+          canonical = nub (sort written)
+
     collect modifiers (SyntaxBoundary inner) = collect modifiers inner
     collect modifiers (Let inner) = collect (modifiers <> [ModifierLet]) inner
     collect modifiers (Def inner) = collect (modifiers <> [ModifierDef]) inner
@@ -142,7 +138,9 @@ data DeclarationModifier
 -- head, whether it was written with parentheses or formed by a tighter
 -- operator such as an explicit template federation.  Ordinary quoted
 -- templates retain their literal/interpolation structure.
-dependentDeclarationNameExpression :: DependentDeclaration -> Expression
+dependentDeclarationNameExpression
+  :: DependentDeclaration Expression
+  -> Expression
 dependentDeclarationNameExpression declaration =
   case dependentDeclarationHead declaration of
     SimpleIdentifierDeclarationHead (IdentifierString name) ->
@@ -156,7 +154,7 @@ dependentDeclarationNameExpression declaration =
 -- as the same singleton string-template family used by every other
 -- declaration so overlap validation can uniformly use federation operations.
 dependentDeclarationNameFamilyExpression
-  :: DependentDeclaration
+  :: DependentDeclaration Expression
   -> Expression
 dependentDeclarationNameFamilyExpression declaration =
   case dependentDeclarationHead declaration of
@@ -165,12 +163,51 @@ dependentDeclarationNameFamilyExpression declaration =
     StringTemplateDeclarationHead parts -> StringTemplate parts
     EvaluatedDeclarationHead expressionValue -> expressionValue
 
+-- | Translate a declaration's complete name family by one literal prefix.
+-- This is one operation for every dependent declaration: the cases below
+-- only preserve the most precise AST encoding available for the translated
+-- family.  In particular, prefixing is injective regardless of whether the
+-- original family was a singleton identifier or a dependent template.
+prependDependentDeclarationName
+  :: String
+  -> DependentDeclaration Expression
+  -> DependentDeclaration Expression
+prependDependentDeclarationName prefix declaration = declaration
+  { dependentDeclarationHead = prependHead
+      (dependentDeclarationHead declaration)
+  }
+  where
+    prependHead (SimpleIdentifierDeclarationHead (IdentifierString name)) =
+      SimpleIdentifierDeclarationHead (IdentifierString (prefix <> name))
+    prependHead headValue = EvaluatedDeclarationHead
+      (MapConcatenation
+        (AsciiStringLiteral prefix)
+        (headExpression headValue))
+
+    headExpression (SimpleIdentifierDeclarationHead (IdentifierString name)) =
+      StringTemplate [StringTemplateLiteral name]
+    headExpression (StringTemplateDeclarationHead parts) = StringTemplate parts
+    headExpression (EvaluatedDeclarationHead expressionValue) =
+      greedyName expressionValue
+
+    greedyName value@AsciiStringLiteral {} = value
+    greedyName value@StringTemplate {} = value
+    greedyName value@GreedyStringTemplate {} = value
+    greedyName value = GreedyStringTemplate value
+
+dependentDeclarationWithImplementation
+  :: Expression
+  -> DependentDeclaration Expression
+  -> DependentDeclaration Expression
+dependentDeclarationWithImplementation implementation declaration = declaration
+  { dependentDeclarationImplementation = implementation }
+
 -- Explicit alternatives in an evaluated declaration head are still one
 -- declaration family.  Each leaf is a complete string template; consumers
 -- that operate on syntax structure use these branches while consumers that
 -- need the written family expression use 'dependentDeclarationNameExpression'.
 dependentDeclarationTemplateBranches
-  :: DependentDeclaration
+  :: DependentDeclaration Expression
   -> Maybe [[StringTemplatePart Expression]]
 dependentDeclarationTemplateBranches declaration =
   case dependentDeclarationHead declaration of
@@ -241,6 +278,10 @@ dependentDeclarationTemplateBranches declaration =
 -- recognition so those concepts cannot silently widen one another.
 bindingNames :: Expression -> [String]
 bindingNames expressionValue = case expressionValue of
+  DeclarationExpression declaration -> case dependentDeclarationHead declaration of
+    SimpleIdentifierDeclarationHead (IdentifierString name) -> [name]
+    StringTemplateDeclarationHead [StringTemplateLiteral name] -> [name]
+    _ -> []
   IdentifierOperation (IdentifierString name) _ _ -> [name]
   IdentifierTemplateOperation [StringTemplateLiteral name] _ _ -> [name]
   OptionalType inner -> bindingNames inner

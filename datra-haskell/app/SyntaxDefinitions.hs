@@ -19,9 +19,7 @@ module SyntaxDefinitions
   , normalizeSyntaxExpansion
   ) where
 import DatraLanguage.DependentDeclaration
-  ( DependentDeclaration (..)
-  , DependentDeclarationHead (..)
-  , dependentDeclaration
+  ( dependentDeclaration
   , dependentDeclarationTemplateBranches
   )
 import DatraLanguage.AST
@@ -117,7 +115,7 @@ declarationRuleResults expressionValue =
       (dependentDeclarationRuleResults declaration)
 
 dependentDeclarationRuleResults
-  :: DependentDeclaration
+  :: DependentDeclaration Expression
   -> [Either SyntaxTemplateCompilationFailure SyntaxRule]
 dependentDeclarationRuleResults declaration =
   case dependentDeclarationHead declaration of
@@ -128,7 +126,7 @@ dependentDeclarationRuleResults declaration =
       (dependentDeclarationSyntaxAlternatives declaration)
 
 simpleApplicationRule
-  :: DependentDeclaration
+  :: DependentDeclaration Expression
   -> IdentifierString
   -> SyntaxRule
 simpleApplicationRule declaration (IdentifierString text) =
@@ -154,7 +152,7 @@ syntaxApplicationRule name template callable implementation = SyntaxRule
   }
 
 directTemplateRule
-  :: DependentDeclaration
+  :: DependentDeclaration Expression
   -> [StringTemplatePart Expression]
   -> Either SyntaxTemplateCompilationFailure SyntaxRule
 directTemplateRule declaration parts = do
@@ -171,7 +169,7 @@ directTemplateRule declaration parts = do
     }
 
 dependentDeclarationSyntaxAlternatives
-  :: DependentDeclaration
+  :: DependentDeclaration Expression
   -> [[StringTemplatePart Expression]]
 dependentDeclarationSyntaxAlternatives declaration =
   maybe [] id (dependentDeclarationTemplateBranches declaration)
@@ -321,7 +319,9 @@ lowerConditionAtom condition yes no =
     selected = selectedConditionBindings condition yes no
     selectedNames = map fst selected
     declarations =
-      [ IdentifierOperation name value (Just value)
+      [ DependentDeclaration
+          (SimpleIdentifierDeclarationHead name)
+          False False False value
       | (name, original) <- selected
       , let value = rewrite original
       ]
