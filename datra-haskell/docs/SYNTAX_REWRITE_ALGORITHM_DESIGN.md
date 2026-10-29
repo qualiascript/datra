@@ -2,741 +2,734 @@
 
 ## Purpose
 
-This document specifies a replacement for the current syntax-rewrite
-algorithm. The replacement must preserve Datra's declaration, scope, overload,
-generic, recursion, and protection semantics while making rewrite progress
-explicit, dependency-driven, and measurable.
+This document specifies a replacement for the current syntax-rewrite execution
+model.
 
-The design starts from the unmodified current implementation. It does not
-depend on any in-progress `SyntaxRewriting` changes.
+The replacement is an internal refactor of syntax rewriting. It replaces
+whole-sequence fixed-point passes and strict raw replay with an explicit stack
+of rewrite nodes, candidate choice points, and rewrite-result dependencies.
+
+The replacement does not introduce a new name resolver, evaluator, scope
+model, executable AST, or runtime dependency system. Datra declarations,
+function parameters, generics, `Args`, `this`, `it`, dependent declarations,
+and protected values keep their current meanings and implementations.
 
 ## Scope
 
 The replacement owns:
 
-- discovery and selection of dependent syntax declarations;
-- capture validation;
-- expansion of selected syntax;
-- declaration discovery inside expanded syntax;
-- ordering and retrying rewrites whose inputs are not yet available;
-- compile-time recursion between declarations and rewrites;
-- activation-deferred validation or selection that depends on a function
-  activation;
-- diagnostics and instrumentation for rewrite progress.
+- allocation and ordering of internal rewrite nodes;
+- structural syntax-candidate enumeration;
+- greedy candidate selection and parent-level backtracking;
+- dependencies between rewrite nodes;
+- matching finalized child result types against syntax-hole types;
+- retention of rejected candidate attempts;
+- expansion of accepted candidates;
+- declaration discovery inside rewritten results;
+- ordering and resumption of nodes whose inputs are not finalized;
+- finalization from stored rewrite results rather than raw source;
+- syntax-rewrite diagnostics when candidates were rejected by typing.
 
 It does not change:
 
-- Datra surface syntax;
-- declaration precedence or argumentative-map ordering semantics;
-- the single dependent-declaration scope model;
-- generic `^`-binder protection and escape rules;
-- runtime overload semantics;
-- the meaning of `this`, `it`, `_this`, or `_it`;
-- parser ownership of neutral AST boundaries.
+- the Datra AST;
+- parser ownership of neutral syntax boundaries;
+- declaration lookup, precedence, shadowing, or scope semantics;
+- dependent-declaration representation or evaluation;
+- function activation or parameter binding;
+- generic-binder allocation or protection;
+- `Args`, `this`, `it`, `_this`, or `_it`;
+- syntax-function or runtime-function insertion semantics;
+- runtime overload behavior;
+- module projection;
+- public source rendering.
 
-## Problems in the current model
+`SyntaxRewriting` remains the public integration boundary. The implementation
+may be divided into internal `SyntaxRewriting.*` modules.
 
-### Correctness
+## Problems in the current execution model
 
-#### Stable rewrite shape is not authoritative
+### Stable rewrite results are discarded
 
-`rewriteSequence` discovers declarations by repeatedly rewriting a raw block
-until its recursive declarations stabilize. The final strict phase then uses
-the stable expressions to construct scopes but rewrites the raw entries again.
+`rewriteSequence` repeatedly rewrites a raw block until its recursive
+declarations stabilize. It then constructs scopes from the stable expressions
+but performs a strict pass over the original raw entries.
 
-The second expansion can produce a different result from the expansion that
-established the fixed point. A successful selection can therefore disappear
-after declaration discovery has already relied on it.
+The second rewrite can produce a different result from the rewrite that
+established the stable block. A syntax form selected during the tentative pass
+can disappear when strict replay tries to evaluate a capture whose type can be
+established structurally but whose ordinary value is not available while the
+function body is being rewritten.
 
-#### Missing values are treated as failed matches
-
-Capture callbacks return `Maybe Expression`. This collapses materially
-different outcomes:
-
-- the captured value is valid;
-- the value is invalid for the requested hole;
-- evaluation is blocked on a declaration which is still being assembled;
-- evaluation depends on a function parameter or generic value which exists
-  only during invocation;
-- evaluation failed for an unrelated semantic reason.
-
-Once these outcomes become `Nothing`, the matcher can only report that no
-template matched. The resulting diagnostic is often a broad
-`NoApplicableFunctionAlternative` or an unresolved syntax literal rather than
-the actual dependency or validation failure.
-
-#### Function-local captures are validated in the wrong phase
-
-A function body is rewritten before its parameters have runtime values. Syntax
-selection may still be structurally determined, but a typed capture can depend
-on an ordinary parameter, a generic binder, `Args`, `it`, or another
-activation-local value.
-
-For example:
+The `public` failure is an example:
 
 ```datra
-public := {_declarations : Collection _DeclarationEntry} do
-  yield (
-    ((&_declaration :: _declarations) do
-      yield if _declaration._key[0] = "_" then () else _declaration),
-  )
+if _declaration.key[0] = "" then () else _declaration
 ```
 
-The `if` shape and its three source captures are available while rewriting the
-function definition. The Bool value of the first capture is available only
-when `_declaration` is bound. Treating the unavailable value as a rejected Bool
-capture loses a valid selection.
+The `if` syntax is found during the tentative pass. Strict raw replay later
+tries to obtain the value of the condition before `_declaration` has an
+invocation value and discards the established rewrite.
 
-#### Selection provenance is discarded
+The rewrite decision does not require that value. The inner `=` candidate has
+return type `Bool`, and the `if` condition hole expects `Bool`.
 
-After matching, the current executable AST does not retain a first-class record
-of:
+### Whole-sequence fixed points repeat unrelated work
 
-- which rule was selected;
-- which template branch matched;
-- the source expression for each capture;
-- which captures were validated;
-- which captures still require a value;
-- the declaration scope and rule-set version used for selection.
+When one rewritten entry reveals a declaration, every raw entry is rewritten
+again. Nested sequences multiply this work. Entries whose candidates, child
+results, and syntax scope have not changed still repeat matching, capture
+checks, expansion, and traversal.
 
-Later phases consequently reconstruct the selection from raw syntax or from a
-string-key lookup. Reconstruction is not equivalent when captures are
-non-canonical values, are lazy, or depend on runtime scope.
+### Greedy matching crosses node boundaries
 
-#### Dependencies are implicit and name-based at failure time
+Syntax matching is greedy, but its choice points are nested. A candidate for a
+parent node may require child nodes to establish the result types of captured
+expressions.
 
-The evaluator reports an unavailable identifier only after attempting concrete
-evaluation. The rewrite engine has no semantic edge from the blocked rewrite
-to the declaration or binder occurrence that would satisfy it.
+If every candidate for a required child is rejected, the failure rejects the
+active parent candidate. Matching then tries the parent's next candidate. If
+the parent also exhausts its candidates, failure continues to the next active
+parent choice point.
 
-Names alone are insufficient because nested functions, shadowing, modules, and
-recursive scopes may contain several distinct occurrences with the same
-spelling. A dependency must target an occurrence identity in a particular
-scope.
+This backtracking is currently implicit in recursive matcher control flow. The
+replacement must represent it explicitly.
 
-#### Recursion is handled by localized exceptions
+### Candidate rejection information is lost
 
-Recursive `let` declarations require provisional scope and seed behavior.
-Without a general dependency model, individual rewrite paths retain tentative
-results or special-case cycles. These exceptions do not establish a common
-rule for:
+When candidate matching ultimately fails, a user can receive an unknown
+identifier even though several syntax candidates were considered and rejected
+for specific typing reasons.
 
-- legal seeded cycles;
-- illegal cycles;
-- changes to a recursive declaration's shape;
-- invalidation of expressions which depend on that shape.
+The replacement must retain every candidate rejected by a type mismatch. If
+rewriting fails and any such rejection exists for the failed search, the
+diagnostic reports the attempted candidates and their rejection reasons.
+Unknown identifier is used only when no candidate was rejected by typing.
 
-#### Candidate ordering can become incorrect when validation is deferred
-
-Datra rule order and longest-match behavior are semantic. If the first
-structural candidate has a capture whose value is unavailable, it cannot be
-silently rejected in favor of a later candidate. It also cannot be accepted as
-valid without retaining its validation obligation.
-
-A deferred selection must preserve the complete ordered candidate decision,
-not just one optimistic expansion.
-
-#### Diagnostics lose the causal failure
-
-Because blocking, rejection, and no-match share the same path, the user sees
-the last generic failure rather than:
-
-- the syntax site being rewritten;
-- the candidate rule;
-- the capture which failed;
-- the missing declaration or activation;
-- a dependency cycle;
-- a non-convergent rewrite.
-
-### Execution speed
-
-#### Whole-block fixed-point passes repeat unchanged work
-
-When one declaration changes, every entry in the block is rewritten again.
-Entries whose source, declaration scope, and selected rule are unchanged still
-repeat projection, rule filtering, matching, capture evaluation, expansion,
-and child traversal.
-
-#### The strict pass repeats selection and expansion
-
-After the tentative fixed point, the strict pass begins from raw syntax. This
-duplicates the expensive part of rewriting even when strict validation would
-confirm the existing selection.
-
-#### Nested sequences multiply retries
-
-`rewriteSequence` is used by blocks, function bodies, maps, and syntax
-expansions. A retry in an outer sequence can rebuild inner sequences which have
-already stabilized, multiplying work with nesting depth.
-
-#### Capture evaluation is repeated without dependency changes
-
-An unavailable capture can be evaluated many times even though none of the
-declarations or runtime values it depends on have changed. The implementation
-has no dependency generation with which to suppress an identical retry.
-
-#### Rule projection and expression facts are recomputed
-
-Candidate projections, literal facts, rendered source forms, and template
-classification are derived repeatedly for the same expression and rule set.
-Some projection paths enumerate many equivalent candidates, making global
-rescans disproportionately expensive.
-
-#### There is no useful work accounting
-
-Wall time alone cannot distinguish necessary evaluation from retries. The
-current model does not expose stable counters for node attempts, candidate
-matches, capture evaluations, invalidations, or dependency wakeups.
-
-## Required properties of the replacement
+## Required properties
 
 The replacement must satisfy these invariants:
 
-1. A selected syntax shape is never discarded merely because one of its value
-   validations is not ready.
-2. A deferred validation is never treated as accepted.
-3. A rejected closed capture cannot survive through a tentative expansion.
-4. Syntax precedence, rule order, longest-match behavior, and argumentative-map
-   permutations are unchanged.
-5. Dependencies refer to semantic occurrences, not identifier strings.
-6. A node is retried only after one of its dependency generations changes or
-   its containing scope is invalidated.
-7. Compile-time cycles are either resolved through an explicitly legal seed or
-   rejected with a cycle diagnostic.
-8. Runtime dependencies remain owned by their function or contextual
-   activation and cannot escape its protection boundary.
-9. Finalization never performs an unrecorded second selection from raw syntax.
-10. Rewriting the same source and dependency graph is deterministic.
+1. A candidate is accepted as soon as all of its required child results prove
+   that it applies.
+2. An accepted candidate is expanded exactly once and its node is finalized.
+3. A finalized node is never returned to candidate selection.
+4. A blocked candidate is not skipped in favor of a later candidate.
+5. A rejected candidate advances to the next candidate in greedy order.
+6. Exhausting a required child's candidates rejects the active parent
+   candidate.
+7. Exhausting a parent's candidates propagates failure to the next active
+   parent choice point.
+8. Candidate order preserves declaration order, longest-match behavior,
+   template-branch order, and argumentative-map alternatives.
+9. Expansion is the final, non-failing materialization of an accepted
+   selection.
+10. Finalization consumes stored rewrite results and never rematches raw
+    syntax.
+11. Declarations are published only from finalized results.
+12. Rewriting the same source and scope is deterministic.
+13. Typing rejections take diagnostic precedence over an unknown-identifier
+    fallback.
+14. Existing Datra scope, declaration, generic, protection, and runtime
+    semantics remain unchanged.
 
-## Proposed architecture
-
-The algorithm consists of a ready stack, a rewrite-node table, and a dependency
-graph.
+## Proposed module structure
 
 ```text
-neutral AST
-    |
-    v
-node indexing -----> semantic occurrence identities
-    |
-    v
-ready stack <------ reverse dependency wakeups
-    |
-    v
-rewrite attempts --> node state + stable selection/expansion
-    |
-    +-------------> compile-time dependency graph
-    |
-    +-------------> activation-deferred plans
-    |
-    v
-final executable AST
+SyntaxRewriting
+  public entrypoints and integration
+
+SyntaxRewriting.Types
+  nodes, results, candidates, dependencies, and stack tasks
+
+SyntaxRewriting.Candidates
+  structural enumeration, type checks, and rejection records
+
+SyntaxRewriting.Stack
+  work stack, greedy choice points, and failure propagation
+
+SyntaxRewriting.Dependencies
+  node-result edges and reverse wakeups
+
+SyntaxRewriting.Sequence
+  block scheduling and declaration publication
+
+SyntaxRewriting.Expansion
+  final materialization of accepted candidates
+
+SyntaxRewriting.Diagnostics
+  ordered candidate-rejection reporting
 ```
 
-The stack determines deterministic local execution order. The graph determines
-which nodes need to run again.
+The exact file split may change during extraction. Candidate enumeration,
+stack execution, dependency wakeups, sequence scheduling, expansion, and
+diagnostic selection should remain separate responsibilities.
 
-## Semantic identities
+## Rewrite nodes and results
 
-The neutral scoped AST must assign identities before rewrite evaluation:
-
-```haskell
-newtype RewriteNodeId = RewriteNodeId Natural
-newtype DeclarationOccurrenceId = DeclarationOccurrenceId Natural
-newtype ParameterOccurrenceId = ParameterOccurrenceId Natural
-```
-
-Existing `GenericBinderId` remains the identity for generic binders.
-Contextual dependencies use a role plus the owning activation identity rather
-than a spelling such as `_it`.
-
-Identities are stable for the lifetime of one rewrite operation. They are not
-serialized and do not change Datra's public AST equality.
-
-## Rewrite nodes
-
-A node is the smallest source boundary which can be independently retried.
-Block entries are always nodes. Nested syntax boundaries become nodes when
-their selection or validation can block independently.
+A rewrite node is an internal wrapper around an existing `Expression`. It is
+not an AST constructor.
 
 Conceptually:
 
 ```haskell
+newtype RewriteNodeId = RewriteNodeId Int
+
 data RewriteNode = RewriteNode
   { rewriteNodeId :: RewriteNodeId
   , rewriteNodeSource :: Expression
-  , rewriteNodePosition :: SourcePosition
-  , rewriteNodeScope :: ScopeSnapshotId
-  , rewriteNodeRuleSetGeneration :: Generation
-  , rewriteNodeSelection :: Maybe SelectionRecord
-  , rewriteNodeExpansion :: Maybe Expression
-  , rewriteNodeObligations :: [ValidationObligation]
+  , rewriteNodeEnvironment :: RewriteEnvironment
+  , rewriteNodeCandidates :: [StructuralCandidate]
+  , rewriteNodeAttempts :: [CandidateAttempt]
+  , rewriteNodeCandidateCursor :: Int
+  , rewriteNodeParent :: Maybe CandidateContinuation
   , rewriteNodeState :: RewriteNodeState
-  , rewriteNodeAttemptGeneration :: Generation
   }
 
 data RewriteNodeState
-  = Pending
-  | Queued
-  | Active
-  | Blocked (Set DependencyKey)
-  | Expanded
-  | ActivationDeferred ActivationOwner
-  | Rejected RewriteFailure
+  = NodePending
+  | NodeActive
+  | NodeWaiting (Set RewriteDependency)
+  | NodeFinalized RewriteResult
 ```
 
-`SelectionRecord` contains the selected rule identity, template branch,
-candidate boundary, ordered captures, and the rule-set generation. Expansion
-uses this record directly; it does not rematch `rewriteNodeSource`.
+The states mean:
 
-## Dependency keys
+- `NodePending`: the node exists and has not begun its current work;
+- `NodeActive`: the node is testing candidates in greedy order;
+- `NodeWaiting`: the current candidate cannot be decided until dependencies
+  finalize;
+- `NodeFinalized`: the node has its stable result and will never be matched
+  again.
+
+Rewriting failure is a result of the scheduler, not a persistent node state:
 
 ```haskell
-data DependencyKey
-  = DeclarationShape DeclarationOccurrenceId
-  | DeclarationValue DeclarationOccurrenceId
-  | ParameterValue ParameterOccurrenceId
-  | GenericValue GenericBinderId
-  | ContextualValue ActivationOwner ContextualRole
-  | RewriteResult RewriteNodeId
-  | ModuleProjection ModuleOccurrenceId
+runRewrite
+  :: RewriteEnvironment
+  -> Expression
+  -> Either RewriteFailure RewriteResult
 ```
 
-Each key has a generation. Resolving or changing a key increments its
-generation and enqueues its reverse dependants. Re-registering the same value
-at the same generation does nothing.
+When a non-root node exhausts its candidates, failure propagates to its active
+parent continuation. When a root node exhausts its candidates, the whole
+rewrite fails.
 
-The graph stores both directions:
+### Finalized rewrite results
 
-```text
-node -> dependencies
-dependency -> dependent nodes
-```
-
-This supports targeted wakeups and transitive invalidation.
-
-## Structured capture results
-
-Capture validation must not return `Maybe`.
+A finalized node publishes both its rewritten expression and the result type
+established by its selected candidate:
 
 ```haskell
-data CaptureResult
-  = CaptureAccepted Expression
-  | CaptureRejected CaptureFailure
-  | CaptureBlocked
-      { captureSource :: Expression
-      , captureDependencies :: Set DependencyKey
-      }
-```
-
-`CaptureRejected` means the required values were available and did not satisfy
-the hole. `CaptureBlocked` means the validation result is unknown because named
-semantic dependencies are unavailable. Other evaluation failures remain
-failures; they are not converted to dependencies unless the evaluator can
-identify an exact satisfier.
-
-## Candidate selection
-
-Selection has two stages.
-
-### Structural candidate enumeration
-
-The matcher applies literal prefixes, syntax boundaries, longest-match rules,
-and hole categories without evaluating value holes. It returns candidates in
-the exact semantic order in which they must be considered.
-
-```haskell
-data SelectionCandidate = SelectionCandidate
-  { candidateRule :: SyntaxRuleId
-  , candidateBranch :: TemplateBranchId
-  , candidateCaptures :: [CapturedSource]
-  , candidateRemaining :: [Expression]
+data RewriteResult = RewriteResult
+  { rewriteResultExpression :: Expression
+  , rewriteResultType :: Maybe InterpretedValue
+  , rewriteResultSelection :: Maybe SelectedCandidate
   }
 ```
 
-### Candidate validation
+`rewriteResultType` is the existing Datra value/federation used to classify the
+candidate's return type. It is not the runtime value of
+`rewriteResultExpression`.
 
-Candidates are validated in order:
+Syntax-selected nodes publish the selected rule's return type. Ordinary nodes
+which do not establish a syntax result may publish no type. Parent candidates
+only depend on a child type when a hole requires one.
 
-- the first fully accepted candidate is selected;
-- a rejected candidate is removed;
-- a blocked candidate prevents selection of later candidates unless the
-  language can prove that every possible resolution produces the same
-  selection and expansion;
-- when selection is blocked, the ordered candidate list becomes part of the
-  node's activation-deferred decision rather than being recomputed.
+## Structural candidates
 
-This preserves rule order when a value-dependent capture is unavailable.
+Structural enumeration produces every candidate in the exact order required
+by current syntax semantics:
 
-## Ready-stack algorithm
+1. rules in declaration order;
+2. longest applicable expression prefix first;
+3. longest capture first within a hole;
+4. existing template-branch order;
+5. existing argumentative-map and projection alternatives.
 
-### Initialization
+Conceptually:
 
-1. Build the initial scope snapshots and semantic occurrence identities.
-2. Create nodes for source-order block entries.
-3. Push them in reverse source order so the first source entry is processed
-   first.
+```haskell
+data StructuralCandidate = StructuralCandidate
+  { structuralCandidateRule :: RewriteRule
+  , structuralCandidateBranch :: Int
+  , structuralCandidateCapturedSource :: [Expression]
+  , structuralCandidateRemaining :: [Expression]
+  }
+```
+
+Enumeration records source captures but does not evaluate their runtime
+values. This is a refactor of `SyntaxTemplateMatching`, not a new matching
+language.
+
+The ordered list is also the complete backtracking order. The next choice may
+be another rule, template branch, projection, argumentative-map alternative,
+or shorter greedy capture.
+
+## Candidate attempts
+
+```haskell
+data CandidateAttempt
+  = CandidateAccepted SelectedCandidate
+  | CandidateBlocked StructuralCandidate (Set RewriteDependency)
+  | CandidateRejected CandidateRejection
+```
+
+### Accepted
+
+Every literal, category, and typed-hole requirement has been established. The
+selection is complete and expansion happens immediately.
+
+### Blocked
+
+The candidate could apply, but one or more required rewrite results are not
+finalized. The node records dependencies and waits. Later candidates are not
+tried while an earlier candidate is blocked.
+
+When all dependencies finalize, the same candidate resumes.
+
+### Rejected
+
+Available results establish that the candidate cannot apply. The rejection is
+retained and the candidate cursor advances.
+
+A typing rejection records at least:
+
+```haskell
+data CandidateRejection = CandidateRejection
+  { candidateRejectionRule :: RewriteRule
+  , candidateRejectionBranch :: Int
+  , candidateRejectionCaptureIndex :: Int
+  , candidateRejectionSource :: Expression
+  , candidateRejectionExpected :: InterpretedValue
+  , candidateRejectionActual :: InterpretedValue
+  , candidateRejectionChildren :: [CandidateRejection]
+  }
+```
+
+The child list preserves nested rejection paths when exhausting a child
+rejects an active parent candidate. The final representation may store stable
+rule labels rather than the complete `RewriteRule`, but it must preserve every
+attempted candidate and reason in semantic order.
+
+Structural non-candidates are not typing rejections. A candidate which is
+blocked is not recorded as rejected unless its finalized dependencies later
+prove a mismatch.
+
+## Typed-hole checks
+
+A typed hole is checked against the finalized return type of its child node.
+
+If the child is not finalized, the parent candidate becomes blocked on that
+node. If the child is finalized, the check is:
+
+```text
+child candidate return type ⊆ expected hole type
+```
+
+The implementation uses Datra's existing subfederation relation. It does not
+evaluate the child's runtime expression.
+
+For example:
+
+```datra
+if _declaration.key[0] = "" then () else _declaration
+```
+
+The outer `if` candidate expects `Bool` for its condition hole. Its condition
+node selects `=`, whose return type is always `Bool`:
+
+```text
+actual return type:  Bool
+expected hole type: Bool
+Bool ⊆ Bool
+```
+
+The condition is accepted without obtaining a runtime value for
+`_declaration`. The outer `if` candidate can then be accepted and finalized.
+
+This rule applies generally. A child result may be more specific than the hole
+type as long as its return federation is a subfederation of the expected one.
+
+## Rewrite dependencies
+
+Dependencies describe rewrite ordering, not Datra identifier or runtime-value
+dependencies.
+
+```haskell
+data RewriteDependency
+  = RewriteNodeResult RewriteNodeId
+  | SequenceDeclarations SequenceId
+```
+
+### Node-result dependency
+
+`RewriteNodeResult child` means that the active candidate requires the child's
+finalized result, usually to check a typed hole.
+
+The dependency graph stores reverse edges so finalizing a child wakes only the
+parents which require it.
+
+### Sequence-declaration dependency
+
+`SequenceDeclarations sequence` means that a node cannot determine its syntax
+candidates until declaration discovery in the containing sequence makes
+further progress or completes.
+
+When a finalized node publishes a new declaration or syntax rule, dependants
+of that sequence-declaration work are resumed. Implementations may later
+replace this coarse edge with exact declaration or rule edges as an
+optimization. This does not change matching behavior.
+
+There is no general semantic dependency graph and no name-based deferred
+binding mechanism.
+
+## Greedy choice points and backtracking
+
+Every active node is a greedy choice point. Its candidate cursor identifies
+the current candidate in the already-ordered list.
+
+Trying a candidate may activate child nodes. The parent candidate remains
+active while those children run.
+
+Child completion has three outcomes:
+
+- a compatible finalized result allows the parent candidate to continue;
+- an unresolved child blocks the parent on `RewriteNodeResult child`;
+- exhaustion of the child's candidates rejects the active parent candidate.
+
+Rejection advances the parent's cursor. If the parent exhausts its candidates,
+failure propagates to the candidate which activated that parent.
+
+```text
+parent candidate 1
+  -> required child exhausts its candidates
+  -> record rejection of parent candidate 1
+  -> try parent candidate 2
+
+parent candidates exhausted
+  -> reject the candidate which activated that parent
+  -> resume the next choice at the next active parent
+```
+
+Blocked and rejected are deliberately different:
+
+```text
+blocked  -> preserve the current candidate and wait
+rejected -> record the reason and try the next candidate
+accepted -> expand and finalize
+```
+
+Child results are immutable once finalized and may be reused by later parent
+candidates.
+
+## Rewrite stack
+
+The scheduler is an explicit LIFO stack:
+
+```haskell
+data RewriteTask
+  = EnterNode RewriteNodeId
+  | TryCandidate RewriteNodeId Int
+  | ResumeCandidate RewriteNodeId Int
+  | PropagateFailure RewriteNodeId [CandidateRejection]
+  | EnterSequence SequenceId
+  | ResumeSequence SequenceId RewriteNodeId
+  | FinalizeSequence SequenceId
+```
+
+The stack order is deterministic:
+
+- sequence entries are initially pushed in reverse source order;
+- the first source entry therefore runs first;
+- child work is pushed before its parent continuation;
+- dependencies wake parents in source-node order;
+- candidate cursors always advance through the stored semantic order.
 
 ### Attempting a node
 
-For each popped node:
+When a node is entered:
 
-1. Verify that its scope and dependency generations still match its cached
-   selection and expansion.
-2. Enumerate structural candidates if no valid selection record exists.
-3. Validate candidates and captures.
-4. If a required dependency is unavailable, register edges and mark the node
-   `Blocked`.
-5. If a candidate is accepted, store its `SelectionRecord` and expand from that
-   record.
-6. Discover declarations and independently retryable children in the expansion.
-7. Publish changed declaration shapes and rewrite results, incrementing only
-   the affected generations.
-8. Push newly ready child nodes before continuing with siblings.
-9. Mark the node `Expanded` when all compile-time obligations are satisfied or
-   explicitly deferred to an activation.
+1. Mark it active.
+2. Enumerate structural candidates if they are not already stored.
+3. Try the candidate at the current cursor.
+4. Schedule any child nodes required to establish its captures.
+5. If a required result is unavailable, record dependencies and wait.
+6. When dependencies finalize, resume the same candidate.
+7. Reject and record the candidate if a literal, category, or typed-hole check
+   fails.
+8. Advance the cursor after rejection.
+9. Propagate failure to the active parent if all candidates are exhausted.
+10. Accept the candidate once all checks succeed.
+11. Expand it and finalize the node.
 
-The attempt clears obsolete dependency edges before registering its current
-ones.
+An ordinary expression which does not require a syntax selection is rebuilt
+from finalized children according to the existing rewriter behavior. Its lack
+of a syntax candidate is not itself a failure unless an active parent requires
+that node to establish a matching result.
 
-### Wakeup
+## Expansion
 
-When a dependency generation changes, visit its reverse edges. Enqueue a
-dependent node only when it is not already queued and at least one recorded
-generation is stale.
+Expansion is the last operation for an accepted candidate. It consumes the
+stored selection and finalized child results and produces the stable
+`Expression` stored in `NodeFinalized`.
 
-### Quiescence
+Expansion cannot reject the candidate or return to matching. All work needed
+to decide the candidate must already have completed.
 
-An empty ready stack means no node can currently make progress. It does not by
-itself mean rewriting succeeded.
+If syntax insertion introduces nested expressions that require rewriting,
+those expressions are allocated as dependencies during candidate preparation
+and finalized before acceptance. Final expansion only assembles their stored
+results.
 
-At quiescence:
+An expansion failure after acceptance would be an implementation invariant
+violation, not a reason to try another syntax candidate.
 
-1. If there are no blocked compile-time nodes, finalize.
-2. Move activation-dependent nodes into their owning activation-deferred
-   plans.
-3. Compute strongly connected components of the remaining compile-time graph.
-4. Process legal recursive components from their declared seeds.
-5. Reject unseeded cycles.
-6. Reject blocked acyclic components whose dependencies have no producer.
-7. If processing a component publishes a new generation, resume the ready
-   stack.
+## Sequence scheduling
 
-Rewriting is complete only when the stack is empty and every node is expanded,
-activation-deferred, or rejected.
-
-## Recursive components
-
-A recursive component is legal only when its declarations provide the same
-semantic seed required by ordinary recursive evaluation. Syntax rewriting does
-not invent a seed.
-
-Within a legal component:
-
-1. install the seed declarations;
-2. enqueue component nodes in deterministic source order;
-3. publish declaration-shape generations after each structural change;
-4. stop when every node's structural fingerprint and dependencies are stable;
-5. report `NonConvergentRewrite` if the component revisits a prior graph state
-   without stabilizing or exceeds a defensible safety limit.
-
-Only dependants of the changed component are invalidated.
-
-## Activation-deferred rewrite plans
-
-An activation-deferred plan is necessary when candidate selection, capture
-validation, or expansion genuinely requires a function-local value.
+A sequence frame owns the ordered nodes for one block-like scope:
 
 ```haskell
-data ActivationDeferredRewritePlan = ActivationDeferredRewritePlan
-  { activationDeferredOwner :: ActivationOwner
-  , activationDeferredNodes :: [ActivationDeferredRewriteNode]
-  , activationDeferredDependencies :: Set ActivationDependency
+data SequenceFrame = SequenceFrame
+  { sequenceNodes :: [RewriteNodeId]
+  , sequenceEnvironment :: RewriteEnvironment
+  , sequenceWaitingNodes :: [RewriteNodeId]
+  , sequenceResults :: Map RewriteNodeId RewriteResult
   }
 ```
 
-The plan retains ordered candidates and source captures. It does not contain a
-raw block to run through the global rewriter again.
+Initialization:
 
-At function invocation:
+1. Create one node for each raw entry.
+2. Build the same provisional recursive environment used by the current
+   implementation.
+3. Push entries in reverse source order.
 
-1. install ordinary arguments, generic values, `Args`, and contextual values in
-   the ordinary runtime scope;
-2. satisfy the deferred dependency keys from that activation;
-3. validate the recorded candidates and captures in semantic order;
-4. execute the recorded syntax insertion or selected dependent-declaration
-   insertion with the prepared argument;
-5. evaluate the resulting expression;
-6. discard the plan's activation state when the function returns.
+When a node finalizes with a declaration:
 
-If structural expansion does not depend on runtime values, it should be done at
-compile time and only its validation guard should be activation-deferred. Full
-runtime selection is reserved for nodes whose applicable candidate or
-expansion really depends on activation values.
+1. Publish it through the existing scope helpers.
+2. Resume nodes waiting on `SequenceDeclarations` for that sequence.
+3. Leave all unrelated finalized nodes unchanged.
 
-Values produced by activation-deferred rewrites remain subject to the existing
-protection and handoff rules. The scheduler does not provide a route for a
-protected generic value to escape.
+When declaration discovery completes, remaining sequence-declaration
+dependants receive the completed declaration environment. If they still
+exhaust their candidates, ordinary parent backtracking or root failure
+applies.
+
+Recursive `let` declarations continue to use the existing provisional-scope
+and seed behavior. The scheduler does not add another recursion model.
+
+A nested sequence is processed before its parent candidate resumes. Its
+finalized results may establish the parent candidate; exhausting a required
+nested match rejects the active parent candidate.
+
+## Failure diagnostics
+
+Candidate typing rejections are accumulated for the currently failing search
+tree. Rejections from unrelated nodes which later succeeded do not affect an
+error.
+
+The rewrite failure decision is:
+
+```text
+failed search has one or more typing rejections
+    -> report every attempted candidate and its rejection reason
+
+failed search has no typing rejections
+    -> report unknown identifier through the existing fallback
+```
+
+Conceptually:
+
+```haskell
+data RewriteFailure
+  = RejectedSyntaxCandidates
+      { rejectedSyntaxSource :: Expression
+      , rejectedSyntaxAttempts :: [CandidateRejection]
+      }
+  | UnknownSyntaxIdentifier Expression
+  | ExistingSyntaxRewriteFailure SyntaxRewriteFailure
+```
+
+The diagnostic preserves semantic attempt order. Each attempted candidate
+reports:
+
+- the rule and template branch;
+- the captured source involved;
+- the expected hole type;
+- the actual finalized child return type;
+- nested child rejection reasons, when applicable.
+
+For example, an `if` candidate whose condition finalizes to `Int` reports that
+candidate and the failed `Int ⊆ Bool` check. It must not fall through to an
+unknown identifier for `if`.
+
+Existing specific rewrite failures, such as invalid declaration modifiers or
+overlapping declarations, remain specific failures. Candidate-rejection
+precedence applies to the generic unknown-identifier fallback; it does not
+erase a different causal error.
 
 ## Finalization
 
-Finalization traverses node results, not raw source. It verifies:
+Rewriting succeeds when every required node is `NodeFinalized` and the work
+stack is empty.
 
-- every emitted expression comes from an expanded node;
-- every closed capture has an accepted validation;
-- every remaining validation belongs to an explicit activation-deferred plan;
-- every selected rule still belongs to the recorded rule-set generation;
-- declaration positions and shadowing relationships are consistent;
-- no compile-time dependency edge remains unresolved;
-- no surface syntax literal remains merely because a blocked match was treated
-  as no match.
+Finalization assembles stored results and verifies:
 
-There is no final strict expansion pass. Strictness is represented by completed
-validation obligations.
+- every emitted expression comes from a finalized node;
+- every syntax-selected node retains its selected candidate;
+- every required child result was finalized before parent acceptance;
+- every published declaration comes from a finalized result;
+- no blocked dependency or active choice point remains;
+- no raw-source rematching occurs.
 
-## Invalidation and caching
+Finalization does not:
 
-A node cache key contains:
-
-- source-expression fingerprint;
-- scope snapshot identity;
-- rule-set generation;
-- generations of registered dependencies.
-
-Cached expression facts, projection candidates, and structural candidate lists
-may be reused while this key is unchanged. Evaluated capture values may be
-reused only when all of their dependency generations are unchanged.
-
-Invalidation removes the node's expansion and downstream declaration-shape
-publications, but retains its immutable source and identity. Reverse graph
-edges identify the minimal transitive set to enqueue.
-
-Source rendering is for diagnostics only and must not be used as a cache,
-dependency, or binder identity.
+- perform a strict whole-block pass;
+- evaluate function-local runtime values;
+- resolve identifiers through a new mechanism;
+- reconstruct selections from source;
+- modify the Datra AST.
 
 ## Determinism
 
 Determinism is enforced by:
 
 - source-order node allocation;
-- LIFO child-before-sibling execution;
-- declaration-order rule candidates;
-- existing longest-capture ordering;
-- sorted dependency wakeups by `RewriteNodeId`;
-- stable SCC traversal order;
-- generation increments only for structural changes.
+- LIFO child-before-parent execution;
+- existing rule and template-branch ordering;
+- existing longest-prefix and longest-capture ordering;
+- deterministic argumentative-map alternatives;
+- source-order dependency wakeups;
+- ordered candidate-rejection accumulation.
 
-Diagnostic output and graph dumps must use the same ordering.
-
-## Diagnostics
-
-New failures should retain causal information:
-
-```haskell
-data RewriteFailure
-  = NoStructuralSyntaxCandidate Expression
-  | CaptureValidationFailed SyntaxRuleId Int CaptureFailure
-  | UnresolvedRewriteDependency RewriteNodeId DependencyKey
-  | RewriteDependencyCycle [RewriteNodeId]
-  | NonConvergentRewrite [RewriteNodeId]
-  | ActivationDeferredRewriteEscaped ActivationOwner RewriteNodeId
-```
-
-User-facing diagnostics should include the source site, selected template when
-known, capture position, and missing semantic occurrence. Broad function
-alternative errors may still be correct for ordinary runtime overload failure,
-but must not hide a rewrite dependency.
-
-## Integration boundaries
-
-### Parser and neutral AST
-
-The parser continues to produce neutral syntax boundaries. A scoping pass adds
-ephemeral ordinary declaration and parameter occurrence identities alongside
-existing generic identities.
-
-### Syntax template matching
-
-Matching becomes a pure structural candidate enumerator. It must not call the
-concrete evaluator or erase blocked capture results.
-
-### Syntax rewriting
-
-The replacement module owns nodes, the stack, dependency graph, selection
-records, expansion, invalidation, and finalization.
-
-### Interpreter
-
-The interpreter exposes dependency-aware evaluation for rewrite validation:
-
-```haskell
-data RewriteEvaluation value
-  = RewriteKnown value
-  | RewriteBlocked (Set DependencyKey)
-  | RewriteFailed InterpretingError
-```
-
-It also executes activation-deferred plans inside their owning activation and
-continues to use `PreparedFunctionArgument` for already-selected runtime
-insertions.
-
-### Scope
-
-There remains one dependent-declaration environment. Scope snapshots and
-dependency identities index that environment; they do not create a parallel
-name resolver.
-
-## Observability
-
-The replacement must expose debug counters without requiring ad hoc traces:
-
-- nodes allocated;
-- node attempts;
-- successful selections;
-- structural candidates considered;
-- capture validations attempted, accepted, rejected, and blocked;
-- dependency edges added and removed;
-- wakeups and duplicate wakeups suppressed;
-- invalidated nodes;
-- recursive components and iterations;
-- activation-deferred nodes created and executed;
-- projection-cache and capture-cache hits;
-- time spent in matching, capture evaluation, expansion, and finalization.
-
-An optional deterministic graph dump should list nodes, states, generations,
-dependencies, selected rules, and activation-deferred owners.
+Internal maps must not determine traversal or diagnostic order.
 
 ## Implementation plan
 
-### Phase 1: behavioral contract and instrumentation
+### Phase 1: extract current responsibilities
 
-- Add focused tests for the acceptance cases below.
-- Add counters to the current entrypoints to establish attempt and evaluation
-  baselines.
-- Define normalized AST comparison helpers for old/new equivalence testing.
+- Introduce the internal `SyntaxRewriting.*` modules.
+- Move candidate matching, expansion helpers, and sequence helpers without
+  changing behavior.
+- Add focused tests for current rule, branch, capture, projection, and
+  argumentative-map ordering.
 
-### Phase 2: identities and structural selection
+### Phase 2: structural candidates and result types
 
-- Allocate ordinary declaration and parameter occurrence identities.
-- Split structural candidate enumeration from capture evaluation.
-- Introduce `SelectionCandidate`, `SelectionRecord`, and structured
-  `CaptureResult`.
+- Split structural enumeration from candidate checks.
+- Add `StructuralCandidate`, `SelectedCandidate`, `RewriteResult`, and
+  `CandidateAttempt`.
+- Expose each selected candidate's existing return type/federation.
+- Check typed holes with the existing subfederation relation.
+- Add the `=`-establishes-`Bool` and `if`-expects-`Bool` regression.
 
-### Phase 3: scheduler and compile-time graph
+### Phase 3: stack, dependencies, and backtracking
 
-- Implement node allocation, ready stack, dependency generations, reverse
-  wakeups, and deterministic finalization in a new internal module.
-- Support ordinary blocks and declaration discovery first.
-- Add targeted invalidation and caching.
+- Add `RewriteNode`, the four node states, and the explicit work stack.
+- Add node-result dependencies and reverse wakeups.
+- Represent active candidate cursors and parent continuations.
+- Propagate exhausted child candidates to their active parent.
+- Verify greedy fallback to later rules, branches, projections, and shorter
+  captures.
 
-### Phase 4: recursion
+### Phase 4: sequences and declarations
 
-- Add SCC classification.
-- Connect legal recursive components to existing seed semantics.
-- Add cycle and non-convergence diagnostics.
+- Add sequence frames and `SequenceDeclarations` dependencies.
+- Publish declarations only from finalized nodes.
+- Preserve the current provisional recursive `let` environment.
+- Verify that finalized nested sequences are not rebuilt by outer progress.
 
-### Phase 5: activation-deferred rewrites
+### Phase 5: expansion and diagnostics
 
-- Add activation-deferred validation for ordinary parameters and generic
-  binders.
-- Add contextual and `Args` activation dependencies.
-- Attach activation-deferred plans to function values and execute them inside
-  the owning activation.
+- Make expansion consume only accepted selections and finalized child results.
+- Replace `NodeExpanded` with terminal `NodeFinalized` behavior.
+- Retain ordered typing rejections throughout failed backtracking paths.
+- Report candidate rejection details before falling back to unknown identifier.
 
-### Phase 6: integration and removal
+### Phase 6: production switch and cleanup
 
-- Run old and new algorithms against the same non-blocked corpus and compare
-  normalized results.
-- Switch resource, standalone, block, and function-body rewriting to the new
-  entrypoint.
-- Remove whole-block fixed-point rescans and strict raw replay.
-- Remove compatibility code after all acceptance gates pass.
+- Switch standalone, resource, block, function-body, map, and syntax-insertion
+  rewriting to the stack scheduler.
+- Remove whole-sequence fixed-point passes.
+- Remove strict raw replay and its retained-entry exception.
+- Compare normalized AST results with the old implementation on the working
+  corpus during migration.
+- Run the complete test suite and remove the old implementation.
 
 ## Acceptance criteria
 
-### Correctness
-
-The replacement is acceptable only when all of the following hold:
+### Rewrite correctness
 
 - Std loads successfully.
-- `yield from 0 up` resolves its selected positional captures.
-- Argumentative maps continue to accept every declared ordering; the
-  alternatives `(0; "up") | ("up"; 0)` are not collapsed into positional
-  unions.
-- The `public` function shown above rewrites and executes without treating
-  `_declaration` as an unknown global identifier.
+- The `public` function rewrites without evaluating `_declaration` during
+  rewriting.
+- The `=` child candidate establishes the `Bool` result required by `if`.
+- `yield from 0 up` retains its selected positional captures.
+- Argumentative-map alternatives retain every declared ordering.
 - `%Int` syntax holes reject `Infinity`.
 - Nat captures reject negative integers.
 - `%IntLimit` accepts `Infinity`.
-- A capture must still inhabit both its syntax-hole schema and the selected
+- A capture continues to satisfy both its syntax-hole schema and selected
   function domain.
-- A blocked earlier rule is never skipped in favor of a later rule solely
-  because its capture value is unavailable.
-- Shadowed parameters with the same spelling produce distinct dependency
-  edges and use the correct activation.
-- Sequential generic bounds can depend on earlier generic binders.
-- `Args` remains available in its function activation.
-- `^`-protected binders cannot escape through an activation-deferred rewrite.
-- Legal recursive `let` declarations converge and illegal unseeded cycles
-  report a dependency cycle.
-- Duplicate and overlapping dependent declarations retain their current
+- Recursive `let`, module projection, contextual declarations, generics,
+  `Args`, and protection retain their current behavior without
+  scheduler-specific cases.
+
+### Greedy matching
+
+- A blocked earlier candidate prevents later candidates from being tried.
+- A rejected candidate advances to the next candidate in semantic order.
+- Exhausting a required child rejects the active parent candidate.
+- Exhausting a parent propagates failure to the next active parent choice
+  point.
+- Parent fallback covers rules, branches, projections, argumentative-map
+  alternatives, and shorter greedy captures.
+- An accepted candidate is expanded once and immediately finalized.
+- A finalized node is never rematched.
+
+### Dependencies and sequences
+
+- A parent waiting on a child resumes when that child finalizes.
+- Finalizing a child wakes only registered dependants.
+- New declarations resume sequence-declaration dependants without replaying
+  unrelated finalized nodes.
+- Nested finalized sequences are reused when their parent resumes.
+- Finalization performs no syntax selection from raw source.
+- No whole-block strict replay remains.
+
+### Diagnostics
+
+- Every typing-rejected candidate in a failed search is reported in semantic
+  attempt order.
+- Each rejection reports the candidate, capture, expected type, actual return
+  type, and reason.
+- Nested rejection paths are retained across parent-level backtracking.
+- Unknown identifier is reported only when the failed search contains no
+  typing-rejected candidate.
+- Existing specific non-matching rewrite failures retain their causal
   diagnostics.
-- Module-projected syntax and contextual `this`/`it` use the correct scope.
-- The dependent-declaration, scope, closure, function, standard-library,
-  parsing, core, types, and CLI suites pass.
 
-### Determinism
+### Architectural boundaries
 
-- Rewriting the same source 100 times produces the same normalized AST,
-  dependency graph dump, and diagnostics.
-- Changing evaluation order through unrelated declaration insertion does not
-  change selection results.
-- Test execution with randomized map allocation or hash seeds does not change
-  graph order or output.
-
-### Work bounds
-
-- A node with unchanged source, scope, rule-set generation, and dependency
-  generations is attempted at most once.
-- A blocked capture is not reevaluated until at least one recorded dependency
-  generation changes.
-- Finalization performs zero syntax-rule selections from raw source.
-- Changing one declaration enqueues only graph dependants, verified by counter
-  assertions in a block containing unrelated declarations.
-- No compatibility path performs a whole-block strict replay.
-
-### Performance
-
-- A synthetic block with `N` independent declarations plus one late dependency
-  exhibits near-linear rewrite work; doubling `N` may not increase node
-  attempts by more than 2.2 times.
-- A nested-block stress test performs no more than one unchanged attempt per
-  node per dependency generation.
-- On a fixed benchmark host, median rewrite-stage time over at least 10 runs
-  must improve by at least 30% on the Std-loading benchmark relative to the
-  instrumented baseline revision.
-- Peak resident memory on the same benchmark may not regress by more than 10%.
-- Performance results include node-attempt and capture-evaluation counts so a
-  wall-time improvement cannot conceal increased repeated work.
-
-### Diagnostics and maintainability
-
-- Every blocked node in a graph dump names at least one exact dependency key.
-- Every unresolved compile-time dependency produces a causal rewrite
-  diagnostic rather than `NoApplicableFunctionAlternative`.
-- Scheduler state is represented by explicit data types; no debug-only mutable
-  global state or identifier-name convention is used.
-- The old fixed-point/strict-replay implementation is removed after migration,
-  leaving one production rewrite algorithm.
+- `DatraLanguage.AST` is unchanged.
+- Parser generic resolution is unchanged.
+- Interpreter function invocation is unchanged.
+- Scope and dependent-declaration representations are unchanged.
+- No activation plan or runtime rewrite scheduler is introduced.
+- No name-based deferred-binding mechanism is introduced.
+- Production contains one syntax-rewrite execution algorithm.
 
 ## Completion definition
 
-The rewrite is complete when:
+The refactor is complete when:
 
-- all acceptance criteria pass;
-- the new scheduler is the only production path;
-- no compile-time node remains blocked at finalization;
-- every runtime obligation belongs to a specific activation-deferred plan;
-- benchmark and graph-counter results are recorded in the test-suite report;
-- the implementation and diagnostics contain no name-based deferred-binding
-  mechanism.
+- the explicit stack is the only production rewrite execution mode;
+- every successful rewrite ends with all required nodes finalized;
+- every failure either reports retained typing rejections or uses the
+  unknown-identifier fallback when none exist;
+- accepted selections are never discarded by raw replay;
+- dependencies resume only affected rewrite work;
+- greedy parent-level backtracking preserves current candidate order;
+- all acceptance criteria and existing suites pass;
+- the old fixed-point and strict-replay code has been removed.
