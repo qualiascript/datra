@@ -1,4 +1,4 @@
-# Dependent declaration test suite report — 2026-10-28
+# Dependent declaration test suite report — 2026-10-29
 
 ## Scope
 
@@ -15,6 +15,57 @@ small number of directly relevant integration checks. The callable-payload
 repair described below was made after the 19-test acceptance run and the core
 suite run, so those two runs are retained as baseline results rather than
 claimed as post-repair verification.
+
+## Unified declaration-scope refactor
+
+The interpreter no longer has a parallel `ScopeBindings`/`Binding` declaration
+system or a parallel `scopeNamedMapLayers` lookup path. `Scope` contains one
+declaration environment: dependent-declaration layers. Every exact lexical name
+created by the interpreter is represented as a singleton scoped declaration in
+one of those layers. This includes:
+
+- the `datra` host declaration;
+- contextual `_it` and `_this` declarations;
+- inferred generic and prepared function-argument declarations;
+- qualified imported-module declarations; and
+- declarations projected by `with` and module opening.
+
+Runtime values, import provenance, source-definition provenance, and canonical
+presentation are payload metadata on the scoped dependent declaration. They do
+not form another lookup table or fallback resolver. Retained eager source
+declarations use that payload as their unrestricted cached value, while
+restricted shadow-consistency evaluation still evaluates their source
+implementation. Runtime singleton declarations always use their stored value
+and are represented by `ScopedRuntimeSingletonDeclaration`; they do not invent
+a source implementation.
+
+The scoped declaration type distinguishes `ScopedDatraDependentDeclaration`,
+`ScopedRuntimeSingletonDeclaration`, and
+`ScopedProjectedDependentDeclaration`. A dynamic or transfinite named-map
+projection is a fallback declaration in the same layer index; it no longer uses
+a separate scope field. Neither runtime variant has a fabricated source head or
+implementation. In particular, an earlier temporary empty-identifier sentinel
+and the singleton `AtlasMap []` placeholder were removed. Exact lookup,
+containment, and discovery delegate through the scoped declaration. Exact
+runtime values are described by `RuntimeSingletonPayload`, explicitly payload
+metadata rather than another declaration type.
+
+The same declaration-layer abstractions now govern all relevant operations:
+
+- exact resolution uses the layer singleton/prefix index;
+- named-view discovery obtains the same stored runtime payload as exact lookup;
+- contextual-level collection uses indexed candidates for `_it` or `_this`;
+- definition protection and overlap checks use declaration candidates;
+- closure reconstruction obtains source definitions and module origins from the
+  selected scoped declaration; and
+- module discovery enumerates declaration-layer members and reads typed import
+  metadata.
+
+There is no secondary exact-name map and no linear exact-name fallback. The
+refactor also removed two avoidable quadratic paths: successful filtering now
+uses order-preserving linear accumulation, and shadow-consistency overlap checks
+query the already-built declaration index instead of scanning every local
+declaration for every candidate name.
 
 ## Passing checks
 
@@ -125,94 +176,45 @@ The same scans found no remaining active implementation or test uses of:
 - the obsolete block-position modifier errors; or
 - the superseded declaration and map terminology.
 
-## Current failures and interrupted check
+## Current bounded verification
 
-### Newly exposed `from` failure
+The old `UnknownIdentifier "from"` diagnosis depended on `lookupScope` being a
+binding-only closure boundary. That boundary has been removed: closures now
+obtain local and imported definitions through indexed scoped dependent
+declarations. The old failure has not been reproduced after the refactor,
+because the focused test does not yet finish standard-library syntax rewriting.
+It must therefore not be reported as the current failing result.
 
-The focused `standard-library syntax and string-template decoding` integration
-regression no longer reports `UnknownIdentifier "successor"`. It now advances
-farther and fails with:
+The focused `value holes evaluate expressions before selection` check was run
+under a hard 12-second timeout. It printed its test label but did not complete.
+A temporary progress trace, removed after diagnosis, located the time inside
+`rewriteResourceSyntax` while parsing `std.datra`, before module evaluation or
+eager declaration retention. The process remained CPU-bound with approximately
+24 MB maximum resident memory and continued advancing through rewrite passes.
+It repeatedly reconstructed validation scopes containing 50–53 declarations.
+This supports a severe repeated-computation diagnosis, not a deadlock or a
+proved infinite loop.
 
-```text
-SourceParseFailure (ParseFailure {parseFailureMessage =
-  "UnknownIdentifier \"from\""})
-```
+Post-refactor bounded checks currently establish:
 
-The same failure was observed in focused runs of both newly added regression
-tests. The pre-existing `value holes evaluate expressions before selection`
-test provides a smaller reproducer:
+- `cabal build exe:datra-haskell test:datra-interpreting-test -f-liquid`
+  passes;
+- `git diff --check` passes;
+- `closed infinite valued range` passes; and
+- all 12 `scope-protection substrate` tests pass.
 
-```datra
-"double %Nat" := (Nat -> Nat) do yield it * 2
-yield double (2 + 2)
-```
-
-It expects `8`, but fails while the standard-library parsing environment is
-constructing its syntax rules, before this program is evaluated. The adjacent
-`zero-hole syntax completes a total domain` program case and the
-`Std.(from (1 + 1) to 5)` expression case fail at the same boundary in the
-current tree. The earlier passing results in this report predate the
-callable-payload repair and were not rerun after it.
-
-The failure is in reconstruction of a declaration capture bound. An evaluated
-bound such as `Nat` is rendered as canonical Datra source, producing:
-
-```datra
-from 0 up
-```
-
-`closedSourceExpression` parses that text with the neutral parser and asks
-`inlineDependencies` to close its library dependencies. The neutral AST still
-contains an ordinary application headed by `from`. The closure resolver only
-starts from `lookupScope`, so it can capture lexical bindings but cannot capture
-the `from` dependent declaration family stored in
-`scopeDependentDeclarationLayers`. Consequently no dependency is collected,
-the source remains headed by bare `from`, and evaluation asks for a complete
-declaration member literally named `from`. The available family contains names
-such as `from 0 up`, not a member named only `from`, so lookup ends in
-`UnknownIdentifier "from"`. A diagnostic trace reached that lookup while the
-active resolution key was `Nat` and the declaration layer containing `from`
-was present.
-
-The closure representation already has the structural machinery needed to
-retain such a family: `Dependency` contains `dependencyDeclaration`, and
-`capturedDeclaration` can preserve and translate a complete dependent
-declaration head. No resolver construction currently sets
-`dependencyDeclaration` to `Just`; all three construction sites set it to
-`Nothing`, leaving that path unused.
-
-The underscore translation must obey these invariants:
-
-- a dependency address records its unmodified semantic origin;
-- reconstruction prepends one underscore only to the first address segment;
-- therefore `[Std, from]` is referenced as `_Std.from`, with the nested member
-  name unchanged; it must never become `Std._from` or `_Std._from`;
-- a genuinely local one-segment family `[from]` may become `_from`, in which
-  case the prefix translates the complete dependent name family rather than
-  one concrete member; and
-- references and recreated declarations must receive the same translation.
-
-A repair cannot merely teach `lookupScope` to return `_from`. In the neutral
-AST, the inner application in `from 0 up` is also structurally
-`FunctionApplication from 0`; the closure code's current strict-reference path
-recognizes that shape as the path `[from]`. Replacing the whole inner node by
-`_from` would discard the captured origin `0` and leave `_from up`. The repair
-must recognize and reconstruct the complete declared syntax invocation, retain
-all captures, and then translate only the dependency root according to the
-address invariant above. No repair was attempted in this pass.
-
-### Current hanging path
-
-The focused `module exports, private closure state, and declared syntax`
-integration check printed its test label but produced no result for 30 seconds.
-It was interrupted. No pass/fail claim is made for that check.
+The syntax-rewriter scope-cache problem is separate from declaration lookup:
+the repeated work occurs before Std is imported into a runtime scope. It remains
+the next performance issue to resolve before the dependent-declaration and
+closure regressions can receive a meaningful post-refactor result.
 
 ### Not run
 
 The full interpreter suite and the parsing, types, and CLI suites were not run
 to completion in this verification pass. The 19 selected acceptance tests and
-the core suite were not rerun after the callable-payload repair. This report
-therefore makes no post-repair pass/fail claim about those suites.
+the core suite were not rerun after the callable-payload and unified-scope
+repairs. This report therefore makes no post-repair pass/fail claim about those
+suites.
 
 ## Runtime-performance approaches that did not work
 

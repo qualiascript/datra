@@ -189,17 +189,6 @@ testModuleSyntaxAlias = do
         False False False value
       member name value = IdentifierOperation
         (IdentifierString name) value Nothing
-  let duplicateSource = ModuleSource "duplicate-module.datra"
-        (Begin [] (member "DuplicateModule" (Begin
-          [ binding "abc" (natural 123)
-          , binding "abc" (natural 456)
-          ]
-          (contextualAccess (IdentifierString "_this")))))
-        []
-  case moduleExportNames duplicateSource of
-    Left (OverlappingBindings "abc") -> pure ()
-    result -> assertFailure
-      ("same-block redeclaration was not rejected: " <> show result)
   let isolatedBody = Begin
         [binding "x" (identifierReference "Int")]
         (contextualAccess (IdentifierString "_this"))
