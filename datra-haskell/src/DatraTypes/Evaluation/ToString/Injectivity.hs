@@ -61,6 +61,10 @@ stringConversionProperties semantics
     FunctionBodySemantics {} -> injectiveUnknownAlphabet
     ExplicitSemantics {} -> knownAlphabet "0123456789"
     IntegerSemantics {} -> knownAlphabet "-0123456789"
+    IntegerLimitSemantics limit -> case limit of
+      NegativeInfinity -> exactStrings ["-Infinity"]
+      FiniteInteger integer -> exactStrings [show integer]
+      PositiveInfinity -> exactStrings ["Infinity"]
     NaturalRangeSemantics {} -> numericRange
     ValuedNaturalRangeSemantics {} -> naturalNumber
     NaturalTypeSemantics -> naturalNumber

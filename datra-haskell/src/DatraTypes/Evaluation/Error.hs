@@ -9,7 +9,6 @@ module Evaluation.Error
   , MapLengthFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
-  , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
@@ -24,9 +23,6 @@ import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError
   , SuperEllipsisRangeError
   )
-
-data OperandSide = LeftOperand | RightOperand
-  deriving (Eq, Show)
 
 data InterpretedValueKind
   = FunctionValueKind
@@ -139,10 +135,6 @@ data InterpretingError
   | ForwardGenericBoundReference String String
   | GenericIdentifierOverlap String
   | GenericIdentifierDisjointnessUndecidable String
-  | ExpectedNumericalOperand OperandSide InterpretedValueKind
-  | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
-  | ExpectedBooleanOperand OperandSide InterpretedValueKind
-  | ExpectedBooleanCondition InterpretedValueKind
   | ExpectedNaturalExponent InterpretedValueKind
   | IndeterminateInfinityOperation String
   | ExpectedInsertionOperand InterpretedValueKind

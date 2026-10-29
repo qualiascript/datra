@@ -109,9 +109,6 @@ terminateBeforeNewline (component : remaining) =
 
 prettyCanonicalResult :: CanonicalResult -> Doc annotation
 prettyCanonicalResult result
-  | result == CanonicalAsciiString "PosInf" = "Infinity"
-  | result == CanonicalAsciiString "NegInf" =
-      prettySourceSymbol MinusOperator <> "Infinity"
   | isBooleanValue "False" 0 result =
       pretty (Reserved.reservedSymbolIdentifierString Reserved.FalseSymbol)
   | isBooleanValue "True" 1 result =
@@ -141,6 +138,10 @@ prettyNonKeywordCanonicalResult result =
     CanonicalExplicit _ value -> prettyExplicit value
     CanonicalInteger value ->
       prettySourceSymbol MinusOperator <> pretty (negate value)
+    CanonicalIntegerLimit value -> case value of
+      NegativeInfinity -> prettySourceSymbol MinusOperator <> "Infinity"
+      FiniteInteger integer -> pretty integer
+      PositiveInfinity -> "Infinity"
     CanonicalFormulation level -> prettyFormulation level
     CanonicalSkip _ -> pretty skipSourceSymbol
     CanonicalRange description -> prettyRange description
@@ -508,9 +509,9 @@ prettyValuedIntegerRange origin target =
 
 prettyIntegerLimit :: IntegerLimit -> Doc annotation
 prettyIntegerLimit limit = case limit of
-  NegativeInfinity -> "$NegInf"
+  NegativeInfinity -> "-Infinity"
   FiniteInteger value -> pretty value
-  PositiveInfinity -> "$PosInf"
+  PositiveInfinity -> "Infinity"
 
 rangeWord, fromWord, toWord, upwardsWord, downwardsWord :: Doc annotation
 rangeWord = reservedSymbolDoc Reserved.RangeSymbol

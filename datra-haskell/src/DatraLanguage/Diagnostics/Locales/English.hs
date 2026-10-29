@@ -28,7 +28,6 @@ import Evaluation.Error
   , NamedAccessFailure (..)
   , MapLengthFailure (..)
   , OverloadFailure (..)
-  , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
@@ -168,22 +167,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "generic identifier cannot be proven disjoint from a dependent argument"
         ["identifier: " <> name]
-    ExpectedNumericalOperand side actual ->
-      LocalizedMessage
-        (operandSide side <> " operand must be numerical")
-        ["actual value kind: " <> valueKind actual]
-    ExpectedFiniteIntegerOperand side actual ->
-      LocalizedMessage
-        (operandSide side <> " operand must be a finite integer")
-        ["actual value kind: " <> valueKind actual]
-    ExpectedBooleanOperand side actual ->
-      LocalizedMessage
-        (operandSide side <> " operand must be Boolean")
-        ["actual value kind: " <> valueKind actual]
-    ExpectedBooleanCondition actual ->
-      LocalizedMessage
-        "if condition must be Boolean"
-        ["actual value kind: " <> valueKind actual]
     ExpectedNaturalExponent actual ->
       LocalizedMessage
         "exponent must be a natural value"
@@ -426,10 +409,6 @@ federationOperation AtlasMapFederationConcatenation = "concatenation"
 federationOperation AtlasMapFederationAccess = "access"
 federationOperation AtlasMapFederationSpecification = "specification"
 federationOperation AtlasMapFederationSubfederation = "subfederation"
-
-operandSide :: OperandSide -> String
-operandSide LeftOperand = "left"
-operandSide RightOperand = "right"
 
 valueKind :: InterpretedValueKind -> String
 valueKind FunctionValueKind = "function"

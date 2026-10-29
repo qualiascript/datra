@@ -294,8 +294,7 @@ coalizedIntegerSource source =
     Just integer -> Just (FiniteInteger integer)
     Nothing ->
       case interpretedSemanticResult source of
-        CanonicalAsciiString "PosInf" -> Just PositiveInfinity
-        CanonicalAsciiString "NegInf" -> Just NegativeInfinity
+        CanonicalIntegerLimit limit -> Just limit
         _ -> Nothing
 
 selectSequenceMembers

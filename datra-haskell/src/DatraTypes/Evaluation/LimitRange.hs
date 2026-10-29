@@ -7,10 +7,7 @@ module Evaluation.LimitRange
 
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Coalization (coalizeValue)
-import Evaluation.Error
-  ( InterpretingError (..)
-  , OperandSide (..)
-  )
+import Evaluation.Error (InterpretingError (..))
 import Evaluation.Numerical
   ( makeIntegerLimit
   , requireIntegerLimit
@@ -35,7 +32,7 @@ integerLimitRangeValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 integerLimitRangeValue kind startValue endpointValue = do
-  start <- requireIntegerLimit LeftOperand startValue
+  start <- requireIntegerLimit startValue
   endpoint <- requireIntegerRangeEndpoint endpointValue
   result <- case start of
     FiniteInteger finiteStart -> finiteStartRange kind finiteStart endpoint
@@ -125,7 +122,7 @@ requireIntegerRangeEndpoint value =
   case rangeDirection (interpretedSemanticSemantics value) of
     Just True -> Right UpwardsEndpoint
     Just False -> Right DownwardsEndpoint
-    Nothing -> FiniteEndpoint <$> requireIntegerLimit RightOperand value
+    Nothing -> FiniteEndpoint <$> requireIntegerLimit value
 
 rangeDirection :: ValueSemantics -> Maybe Bool
 rangeDirection (PresentedSemantics _ _ semantics) = rangeDirection semantics

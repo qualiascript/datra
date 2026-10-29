@@ -25,7 +25,6 @@ import Evaluation.Error
   , NamedAccessFailure (..)
   , MapLengthFailure (..)
   , OverloadFailure (..)
-  , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
@@ -167,22 +166,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "nu se poate demonstra că identificatorul generic este disjunct de un argument dependent"
         ["identificator: " <> name]
-    ExpectedNumericalOperand side actual ->
-      LocalizedMessage
-        ("operandul " <> operandSide side <> " trebuie să fie numeric")
-        ["tipul efectiv al valorii: " <> valueKind actual]
-    ExpectedFiniteIntegerOperand side actual ->
-      LocalizedMessage
-        ("operandul " <> operandSide side <> " trebuie să fie un întreg finit")
-        ["tipul efectiv al valorii: " <> valueKind actual]
-    ExpectedBooleanOperand side actual ->
-      LocalizedMessage
-        ("operandul " <> operandSide side <> " trebuie să fie boolean")
-        ["tipul efectiv al valorii: " <> valueKind actual]
-    ExpectedBooleanCondition actual ->
-      LocalizedMessage
-        "condiția if trebuie să fie booleană"
-        ["tipul efectiv al valorii: " <> valueKind actual]
     ExpectedNaturalExponent actual ->
       LocalizedMessage
         "exponentul trebuie să fie o valoare naturală"
@@ -430,10 +413,6 @@ federationOperation AtlasMapFederationConcatenation = "concatenare"
 federationOperation AtlasMapFederationAccess = "accesare"
 federationOperation AtlasMapFederationSpecification = "specificare"
 federationOperation AtlasMapFederationSubfederation = "subfederație"
-
-operandSide :: OperandSide -> String
-operandSide LeftOperand = "stâng"
-operandSide RightOperand = "drept"
 
 valueKind :: InterpretedValueKind -> String
 valueKind FunctionValueKind = "function"

@@ -20,8 +20,7 @@
     val Template := datra.Template
     val IdenStr := datra.IdenStr
 
-    val Infinity := $PosInf
-    val SignedInfinity := Infinity | $NegInf
+    val Infinity := datra.Infinity
     val false := (False : 0)
     val true := (True : 1)
     val nothing := (Nothing? : ())
@@ -35,8 +34,8 @@
 
     %($begin; _Block; $yield; _Expr) := datra.begin
     %($fun; _Expr) := (_Expr -> _Expr) datra.fun_body
-    %($if; _Expr; $then; _Expr; ($else; _Expr)?) :=
-      (_Expr; _Expr; _Expr? -> _Expr) datra.if_body
+    %($if; Bool; $then; _Expr; ($else; _Expr)?) :=
+      (Bool; _Expr; _Expr? -> _Expr) datra.if_body
     %($import; (List Str); _FunctionBody) :=
       (List Str; _FunctionBody -> _Expr) datra.import_body
     %($len; _Expr) := (Any -> NatLimit) datra.len_body
@@ -44,10 +43,10 @@
       (List _Expr; _FunctionBody -> _Expr) datra.with_body
 
     # These parsing rules are ordered from lower to higher precedence.
-    %(_Expr; $or; _Expr) := (_Expr; _Expr -> _Expr) datra.or_body
-    %(_Expr; $and; _Expr) := (_Expr; _Expr -> _Expr) datra.and_body
+    %(Bool; $or; Bool) := (Bool; Bool -> Bool) datra.or_body
+    %(Bool; $and; Bool) := (Bool; Bool -> Bool) datra.and_body
     %(_Expr; $of; _Expr) := (_Expr; _Expr -> _Expr) datra.of_body
-    %($not; _Expr) := (_Expr -> _Expr) datra.not_body
+    %($not; Bool) := (Bool -> Bool) datra.not_body
 
     %($do; _Block; $yield; _Expr) :=
       (_Block; _Expr -> _FunctionBody) datra.do_body

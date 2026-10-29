@@ -27,7 +27,6 @@ module Interpreting
   , InterpretedValueKind (..)
   , InterpretedMap
   , InterpretingError (..)
-  , OperandSide (..)
   , interpretExpression
   , interpretLocatedExpression
   , interpretExpressionReason
@@ -110,6 +109,7 @@ import SyntaxRewriting
   ( SyntaxContext (..)
   , renderSyntaxRewriteFailure
   , rewriteResourceSyntax
+  , rewriteStandaloneSyntax
   )
 import Rendering (renderCanonicalResult, renderInterpretedValue)
 import GenericScopeProtection
@@ -438,7 +438,7 @@ captureSyntaxHole base modules strict declarations previous kind captured =
     captureInScopes select targetExpression =
       enclosingSyntaxCapture <|> scopedCapture
       where
-        enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+        enclosing = extendModuleCatalog modules base
         enclosingSyntaxCapture = do
           target <- either (const Nothing) Just
             (evalInScope enclosing [] targetExpression)
@@ -471,7 +471,7 @@ classifySyntaxHoles
   -> [(SyntaxHoleKind Expression, Maybe InterpretedValue)]
 classifySyntaxHoles base modules declarations kinds = map classify kinds
   where
-    enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+    enclosing = extendModuleCatalog modules base
     declared = declareSyntaxScope enclosing
       (map syntaxValidationDeclaration declarations)
     classify kind = case kind of
@@ -488,7 +488,7 @@ evaluateSyntaxValue
   -> Expression
   -> Maybe InterpretedValue
 evaluateSyntaxValue base modules declarations expressionValue = do
-  let enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+  let enclosing = extendModuleCatalog modules base
   scope <- either (const Nothing) Just
     (declareSyntaxScope enclosing
       (map syntaxValidationDeclaration declarations))
@@ -502,7 +502,7 @@ evaluateSyntaxValueWithInput
   -> Expression
   -> Maybe InterpretedValue
 evaluateSyntaxValueWithInput base modules declarations input expressionValue = do
-  let enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+  let enclosing = extendModuleCatalog modules base
   parent <- either (const Nothing) Just
     (declareSyntaxScope enclosing
       (map syntaxValidationDeclaration declarations))
@@ -519,7 +519,7 @@ applySyntaxValue
   -> InterpretedValue
   -> Maybe InterpretedValue
 applySyntaxValue base modules declarations functionExpression input = do
-  let enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+  let enclosing = extendModuleCatalog modules base
   scope <- either (const Nothing) Just
     (declareSyntaxScope enclosing
       (map syntaxValidationDeclaration declarations))
@@ -549,7 +549,7 @@ syntaxContext base modules availableRules = SyntaxContext
   where
     enter declarations input = syntaxContext child modules availableRules
       where
-        enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+        enclosing = extendModuleCatalog modules base
         declared = declareSyntaxScope enclosing
           (map syntaxValidationDeclaration declarations)
         parent = either (const enclosing) id declared
@@ -682,7 +682,7 @@ interpretWithImports modules expression = do
   validateEvaluationSources modules expression
   scope <- defaultImportScope
   evalResourceInScopeWith UnrestrictedReduction
-    (extendScope [("\0imports", ModuleCatalog modules)] scope)
+    (extendModuleCatalog modules scope)
     [] expression
 
 interpretWithImportsAndStandardLibrary
@@ -705,9 +705,7 @@ interpretWithImportsAndStandardLibraryVisibility
   validateEvaluationSources modules expression
   (base, _) <- standardLibraryEnvironment visibility expression
   evalResourceInScopeWith UnrestrictedReduction
-    (extendScope
-      [("\0imports", ModuleCatalog modules)]
-      base)
+    (extendModuleCatalog modules base)
     []
     expression
 
@@ -784,8 +782,9 @@ standardModuleEnvironment
       (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
 standardModuleEnvironment allNames = do
   source <- defaultModuleSource
-  let base = rootScope source [("\0imports", ModuleCatalog
-        [(standardLibraryFileName, source)])]
+  let base = extendModuleCatalog
+        [(standardLibraryFileName, source)]
+        (rootScope source [])
   scope <- importLoadedModule base allNames source
   let imported =
         [ (namespace, value)
@@ -973,6 +972,8 @@ data Scope = Scope
   { scopeBindings :: ScopeBindings
   , scopeDependentDeclarationLayers :: [DependentDeclarationLayer]
   , scopeNamedMapLayers :: [NamedMapView]
+  , scopeModuleCatalog :: [(String, ModuleSource)]
+  , scopeSourceDependency :: Maybe PresentationDependency
   , scopeActivation :: ScopeActivation
   , scopeHandoff :: Maybe ScopeHandoff
   }
@@ -997,6 +998,8 @@ data ScopedDependentDeclaration = ScopedDependentDeclaration
 -- quadratic template work while its definitions were evaluated.
 data DependentDeclarationLayer = DependentDeclarationLayer
   { dependentDeclarationLayerMembers :: [ScopedDependentDeclaration]
+  , dependentDeclarationLayerSingletons
+      :: Map.Map String [ScopedDependentDeclaration]
   , dependentDeclarationLayerPrefixes :: DependentDeclarationTrie
   , dependentDeclarationLayerFallback :: [ScopedDependentDeclaration]
   }
@@ -1037,15 +1040,25 @@ dependentDeclarationLayer
   :: [ScopedDependentDeclaration]
   -> DependentDeclarationLayer
 dependentDeclarationLayer declarations = DependentDeclarationLayer
-  declarations prefixTrie fallback
+  declarations singletons prefixTrie fallback
   where
-    (prefixTrie, fallback) = foldr classify
-      (emptyDependentDeclarationTrie, []) declarations
+    (singletons, prefixTrie, fallback) = foldr classify
+      (Map.empty, emptyDependentDeclarationTrie, []) declarations
     classify scoped accumulated
+      | Just singleton <- dependentDeclarationSingletonName scoped =
+          ( Map.insertWith (<>) singleton [scoped] singletonIndex
+          , prefixIndex
+          , fallbackDeclarations
+          )
       | Just prefix <- commonPrefix scoped =
-          (insertDependentDeclarationPrefix prefix scoped (fst accumulated),
-            snd accumulated)
-      | otherwise = (fst accumulated, scoped : snd accumulated)
+          ( singletonIndex
+          , insertDependentDeclarationPrefix prefix scoped prefixIndex
+          , fallbackDeclarations
+          )
+      | otherwise =
+          (singletonIndex, prefixIndex, scoped : fallbackDeclarations)
+      where
+        (singletonIndex, prefixIndex, fallbackDeclarations) = accumulated
     commonPrefix scoped = do
       branches <- scopedDependentDeclarationBranches scoped
       prefixes <- traverse leadingLiteral branches
@@ -1064,7 +1077,8 @@ dependentDeclarationCandidates
   -> DependentDeclarationLayer
   -> [ScopedDependentDeclaration]
 dependentDeclarationCandidates name layer =
-  dependentDeclarationsWithMatchingPrefix name
+  Map.findWithDefault [] name (dependentDeclarationLayerSingletons layer)
+    <> dependentDeclarationsWithMatchingPrefix name
       (dependentDeclarationLayerPrefixes layer)
     <> dependentDeclarationLayerFallback layer
 
@@ -1082,14 +1096,14 @@ data Binding
   | RetainedBinding Scope (Maybe Expression) Expression InterpretedValue
   | ImportedBinding
       PresentationDependency FilePath InterpretedValue Scope
-  | ModuleCatalog [(String, ModuleSource)]
-  | LexicalScope PresentationDependency
 
 rootScope :: salt -> ScopeBindings -> Scope
 rootScope salt bindings = Scope
   { scopeBindings = bindings
   , scopeDependentDeclarationLayers = []
   , scopeNamedMapLayers = []
+  , scopeModuleCatalog = []
+  , scopeSourceDependency = Nothing
   , scopeActivation = initialScopeActivation salt
   , scopeHandoff = Nothing
   }
@@ -1113,6 +1127,14 @@ extendScope :: ScopeBindings -> Scope -> Scope
 extendScope bindings scope =
   scopeWithBindings (bindings <> scopeBindings scope) scope
 
+extendModuleCatalog :: [(String, ModuleSource)] -> Scope -> Scope
+extendModuleCatalog modules scope = scope
+  { scopeModuleCatalog = modules <> scopeModuleCatalog scope }
+
+withSourceDependency :: PresentationDependency -> Scope -> Scope
+withSourceDependency dependency scope = scope
+  { scopeSourceDependency = Just dependency }
+
 enterScope
   :: salt
   -> ScopeBindings
@@ -1123,6 +1145,8 @@ enterScope salt bindings decide parent = Scope
   { scopeBindings = bindings <> scopeBindings parent
   , scopeDependentDeclarationLayers = scopeDependentDeclarationLayers parent
   , scopeNamedMapLayers = scopeNamedMapLayers parent
+  , scopeModuleCatalog = scopeModuleCatalog parent
+  , scopeSourceDependency = scopeSourceDependency parent
   , scopeActivation = enterScopeActivation salt (scopeActivation parent)
   , scopeHandoff = Just (ScopeHandoff (scopeActivation parent) decide)
   }
@@ -1143,6 +1167,10 @@ enterLexicalScope salt lexical decide parent =
           scopeDependentDeclarationLayers parent
     , scopeNamedMapLayers =
         scopeNamedMapLayers lexical <> scopeNamedMapLayers parent
+    , scopeModuleCatalog =
+        scopeModuleCatalog lexical <> scopeModuleCatalog parent
+    , scopeSourceDependency =
+        scopeSourceDependency lexical <|> scopeSourceDependency parent
     }
 
 enterScopeWithReceiver
@@ -1357,7 +1385,7 @@ contextualFunction surface levels@(_ : _) = do
       pure (PreparedFunctionArgument supplied depth bindings)
 
     invoke _ reduction prepared = do
-      depth <- requireFiniteInteger LeftOperand
+      depth <- requireFiniteInteger
         (functionPreparedArgument prepared)
       value <- accessContextualMap reduction depth innerMap
       pure (EvaluatedFunctionInvocation value Nothing)
@@ -1956,9 +1984,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                         _ -> Nothing
                       exportedPayload = case imported of
                         Just (_, _, internal) -> withoutCanonicalDependencies
-                          [ dependency
-                          | (_, LexicalScope dependency) <- scopeBindings internal
-                          ]
+                          (scopePresentationDependencies internal)
                           payload
                         Nothing -> payload
                   if hasTrailingIdentifierMarker canonicalValueMarker selected
@@ -2757,9 +2783,6 @@ scopeLookupKeys scope = nub direct
     direct =
       [ name
       | (name, binding) <- scopeBindings scope
-      , case name of
-          '\0' : _ -> False
-          _ -> True
       , queryableBinding binding
       ]
 
@@ -2798,8 +2821,6 @@ queryableBinding binding =
     ShadowingConsistentBinding target -> queryableBinding target
     NamedBinding _ target -> queryableBinding target
     QualifiedBinding _ target -> queryableBinding target
-    ModuleCatalog {} -> False
-    LexicalScope {} -> False
     _ -> True
 
 resolveIdentifier
@@ -2875,8 +2896,6 @@ resolveIdentifierAccess reduction scope resolving name =
         (resolveInferredEitherAlias annotation value))
     resolve (ImportedBinding dependency _ value _) =
       Right (withCanonicalReference [dependency] name value)
-    resolve ModuleCatalog {} = Left (UnknownIdentifier name)
-    resolve LexicalScope {} = Left (UnknownIdentifier name)
     resolve (DeferredBinding captured annotation expressionValue) =
       let activeCaptured = captured
             { scopeActivation = scopeActivation scope
@@ -3074,13 +3093,7 @@ productiveRecursiveDeclaration name scoped =
     Nothing -> False
 
 scopePresentationDependency :: Scope -> Maybe PresentationDependency
-scopePresentationDependency scope =
-  case
-      [ dependency
-      | (_, LexicalScope dependency) <- scopeBindings scope
-      ] of
-    dependency : _ -> Just dependency
-    [] -> Nothing
+scopePresentationDependency = scopeSourceDependency
 
 scopePresentationDependencies :: Scope -> [PresentationDependency]
 scopePresentationDependencies = maybe [] pure . scopePresentationDependency
@@ -3165,10 +3178,8 @@ scopeBuilderWithContextualThisAndValidation
 scopeBuilderWithContextualThisAndValidation
     validateFamilies introducesThis enclosing entries = do
   let dependency = childPresentationDependency enclosing entries
-      scopedEnclosing = enterScope entries
-        [("\0scope", LexicalScope dependency)]
-        genericContinuationHandoff
-        enclosing
+      scopedEnclosing = withSourceDependency dependency
+        (enterScope entries [] genericContinuationHandoff enclosing)
   scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries
 
 scopeBuilderWithin
@@ -3181,8 +3192,7 @@ scopeBuilderWithin
       )
 scopeBuilderWithin enclosing entries =
   let dependency = childPresentationDependency enclosing entries
-      scopedEnclosing = extendScope
-        [("\0scope", LexicalScope dependency)] enclosing
+      scopedEnclosing = withSourceDependency dependency enclosing
   in scopeBuilderActivated True True scopedEnclosing entries
 
 scopeBuilderActivated
@@ -3757,7 +3767,7 @@ dependentDeclarationCaptureBound reduction captured resolving bound
       (_, CanonicalNaturalType) -> naturalTypeValue
       (_, CanonicalIntegerType) -> integerTypeValue
       _ -> do
-        expressionValue <- valueExpression bound
+        expressionValue <- valueExpressionIn captured bound
         evalInScopeWith reduction captured resolving expressionValue
 
 dependentDeclarationMemberByName
@@ -5586,11 +5596,9 @@ moduleBaseScope
   -> Either InterpretingError Scope
 moduleBaseScope base
     moduleSource@(ModuleSource path _ dependencies) = do
-  let seeded = extendScope
-        [ ("\0scope", LexicalScope (PresentationDependency ("module:" <> path)))
-        , ("\0imports", ModuleCatalog ((path, moduleSource) : dependencies))
-        ]
-        base
+  let seeded = withSourceDependency
+        (PresentationDependency ("module:" <> path))
+        (extendModuleCatalog ((path, moduleSource) : dependencies) base)
       standardDependency =
         [ source
         | (_, source@(ModuleSource identity _ _)) <- dependencies
@@ -5821,11 +5829,7 @@ moduleMemberPayload selected = accessValues selected (naturalValue 1)
 
 lookupModule :: Scope -> String -> Either InterpretingError ModuleSource
 lookupModule scope path
-  | value : _ <-
-      [ source
-      | (_, ModuleCatalog modules) <- scopeBindings scope
-      , Just source <- [lookup path modules]
-      ] = Right value
+  | Just value <- lookup path (scopeModuleCatalog scope) = Right value
   | otherwise = Left (ModuleEvaluationFailed (ModuleNotLoaded path))
 
 -- Imported values and their definition scopes form one module instance.
@@ -5890,9 +5894,12 @@ closureResolver scope = resolver
   where
     resolver = Resolver
       resolve moduleResolver scopeIndex contextualDepth definitionReference
-    definitionReference [] = False
-    definitionReference ("\0this" : _) = True
-    definitionReference (name : _) =
+    definitionReference path
+      | dependencyPathRoot path == ContextualThisRoot = True
+      | otherwise = case dependencyPathSegments path of
+          [] -> False
+          name : _ -> definitionName name
+    definitionName name =
       maybe False (not . bindingHasUnrestrictedShadowing)
           (lookupScope name scope)
         || any protectedDeclaration
@@ -5931,43 +5938,49 @@ closureResolver scope = resolver
             (IdentifierReference (IdentifierString name))
             (EllipsisNatural depth)
       value <- either (const Nothing) Just (evalInScope scope [] selected)
-      expressionValue <- either (const Nothing) Just (valueExpression value)
+      expressionValue <- either (const Nothing) Just
+        (valueExpressionIn scope value)
+      let dependencyName = dropWhile (== '_') name <> "_" <> show depth
       pure Dependency
         { dependencyKey = ContextualDependency name depth expressionValue
         , dependencyAddress = DependencyAddress
-            [IdentifierString (dropWhile (== '_') name <> "_" <> show depth)]
-        , dependencyDeclaration = Nothing
-        , dependencyExpression = expressionValue
+            [IdentifierString dependencyName]
+        , dependencyDeclaration = singletonDependencyDeclaration
+            dependencyName expressionValue
         , dependencyResolver = emptyResolver
         }
-    resolve [] = Nothing
-    -- FunctionClosure tags the exact strict-reference expansion so it remains
-    -- distinguishable from an ordinary @_this.name@ access. Both select the
-    -- named lexical binding here, but the tagged form must be resolved as one
-    -- dependency rather than traversed into and projected a second time.
-    resolve ["\0this", name] = resolve [name]
-    resolve ["_this", name] = resolve [name]
-    resolve (name : fields@(_ : _))
+    resolve path
+      | dependencyPathRoot path == ContextualThisRoot =
+          case dependencyPathSegments path of
+            [name] -> resolveAmbient [name]
+            _ -> Nothing
+      | otherwise = resolveAmbient (dependencyPathSegments path)
+    resolveAmbient [] = Nothing
+    resolveAmbient ["_this", name] = resolveAmbient [name]
+    resolveAmbient (name : fields@(_ : _))
       | Just (ImportedBinding _ identity _ imported) <- lookupScope name scope
-      , Just dependency <- resolveDependency (closureResolver imported) fields =
+      , Just dependency <- resolveDependency (closureResolver imported)
+          (DependencyPath AmbientRoot fields) =
           Just dependency
             { dependencyKey = ModuleDependency identity
                 (dependencyKey dependency)
             , dependencyAddress = prependDependencyAddress
                 (originAddress name)
                 (dependencyAddress dependency)
-            , dependencyExpression = normalizeExpression
-                (dependencyExpression dependency)
+            , dependencyDeclaration = dependentDeclarationWithImplementation
+                (normalizeExpression (dependentDeclarationImplementation
+                  (dependencyDeclaration dependency)))
+                (dependencyDeclaration dependency)
             }
-    resolve (name : fields) = do
+    resolveAmbient (name : fields) = do
       binding <- lookupScope name scope
       case (fields, bindingDefinition binding) of
         ([], Just (lexical, _, expressionValue)) ->
           Just Dependency
             { dependencyKey = BindingDependency name expressionValue
             , dependencyAddress = originAddress name
-            , dependencyDeclaration = Nothing
-            , dependencyExpression = expressionValue
+            , dependencyDeclaration = singletonDependencyDeclaration
+                name expressionValue
             , dependencyResolver = closureResolver lexical
             }
         _ -> do
@@ -5979,15 +5992,15 @@ closureResolver scope = resolver
             then Nothing
             else do
               expressionValue <- either (const Nothing) Just
-                (valueExpression selected)
+                (valueExpressionIn scope selected)
               pure Dependency
                 { dependencyKey = SelectedDependency
                     (map IdentifierString (name : fields)) expressionValue
                 , dependencyAddress = appendDependencyAddress
                     (originAddress name)
                     (map IdentifierString fields)
-                , dependencyDeclaration = Nothing
-                , dependencyExpression = expressionValue
+                , dependencyDeclaration = singletonDependencyDeclaration
+                    (last (name : fields)) expressionValue
                 , dependencyResolver = emptyResolver
                 }
     originAddress name
@@ -6006,6 +6019,15 @@ closureResolver scope = resolver
         (DependencyAddress suffix) = DependencyAddress (prefix <> suffix)
     appendDependencyAddress
         (DependencyAddress prefix) suffix = DependencyAddress (prefix <> suffix)
+
+singletonDependencyDeclaration
+  :: String
+  -> Expression
+  -> DependentDeclaration Expression
+singletonDependencyDeclaration name implementation = DependentDeclaration
+  (SimpleIdentifierDeclarationHead (IdentifierString name))
+  True False False implementation
+
 emptyResolver :: Resolver
 emptyResolver = Resolver
   (const Nothing)
@@ -6017,22 +6039,33 @@ emptyResolver = Resolver
 -- Render/parse remains the bridge from evaluated values to the shared AST.
 -- Resolve library spellings from the library source, using the same lexical
 -- dependency traversal as closures rather than a second primitive registry.
-valueExpression :: InterpretedValue -> Either InterpretingError Expression
-valueExpression = closedSourceExpression . renderCanonicalResult . interpretedSemanticResult
+valueExpressionIn
+  :: Scope
+  -> InterpretedValue
+  -> Either InterpretingError Expression
+valueExpressionIn definitions = closedSourceExpressionIn definitions
+  . renderCanonicalResult . interpretedSemanticResult
 
-closedSourceExpression :: String -> Either InterpretingError Expression
-closedSourceExpression text = do
+closedSourceExpressionIn
+  :: Scope
+  -> String
+  -> Either InterpretingError Expression
+closedSourceExpressionIn definitions text = do
   expressionValue <- parsedSourceExpression text
-  definitions <- defaultDefinitionScope
-  pure (inlineDependencies (closureResolver definitions) expressionValue)
+  let declarations =
+        [ DeclarationExpression (scopedDependentDeclarationValue scoped)
+        | layer <- scopeDependentDeclarationLayers definitions
+        , scoped <- dependentDeclarationLayerMembers layer
+        ]
+      rules = concatMap declarationRules declarations
+  rewritten <- Bifunctor.first
+    (const NoCanonicalStringConversion)
+    (rewriteStandaloneSyntax
+      (syntaxContext definitions [] []) rules declarations expressionValue)
+  pure (inlineDependencies (closureResolver definitions) rewritten)
 
 parsedSourceExpression :: String -> Either InterpretingError Expression
 parsedSourceExpression text = do
   expressionValue <- either (const (Left NoCanonicalStringConversion)) Right
     (parseDatra ("(" <> text <> "\n)"))
   pure (normalizeExpression expressionValue)
-
-defaultDefinitionScope :: Either InterpretingError Scope
-defaultDefinitionScope = defaultModuleSource >>= \source -> do
-  base <- rootScopeWithDatra source []
-  moduleScopeWithBase base source

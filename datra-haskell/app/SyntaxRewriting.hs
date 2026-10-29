@@ -8,6 +8,7 @@ module SyntaxRewriting
   ( SyntaxContext (..)
   , SyntaxRewriteFailure (..)
   , renderSyntaxRewriteFailure
+  , rewriteStandaloneSyntax
   , rewriteResourceSyntax
   ) where
 
@@ -351,6 +352,20 @@ rewriteEnvironment context rules declarations = RewriteEnvironment
   (contextEvaluate context) (contextEvaluateWithInput context)
   (contextApply context)
 
+-- | Rewrite one already-delimited expression with the same declaration
+-- environment used by resource rewriting.  Canonical values cross this
+-- boundary after rendering and parsing, so they must recover dependent
+-- declaration invocations before closure collection inspects references.
+rewriteStandaloneSyntax
+  :: SyntaxContext
+  -> [SyntaxRule]
+  -> [Expression]
+  -> Expression
+  -> Either SyntaxRewriteFailure Expression
+rewriteStandaloneSyntax context rules declarations =
+  rewriteStandalone (contextCapture context)
+    (rewriteEnvironment context rules declarations)
+
 rewriteResourceSyntax
   :: ResourceEnvelope
   -> SyntaxContext
@@ -518,13 +533,27 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
                 }
           (rewrittenEntry, trailing) <-
             rewriteWithTail False capture scoped entry remaining
-          let next = case Map.lookup position compiledLets of
+          let stableEntry = case drop position stableEntries of
+                candidate : _ -> candidate
+                [] -> rewrittenEntry
+              -- Recursive let schemas can depend on the declaration currently
+              -- being assembled.  A strict capture check cannot evaluate that
+              -- cycle yet; falling back to the neutral source would discard
+              -- the declaration selection already established by the
+              -- tentative pass.  Materialization validates the selected
+              -- captures once the recursive scope exists.
+              retainedEntry
+                | isLetDeclarationExpression stableEntry
+                , stableEntry /= entry
+                , rewrittenEntry == entry = stableEntry
+                | otherwise = rewrittenEntry
+              next = case Map.lookup position compiledLets of
                 Just compiled
-                  | isLetDeclarationExpression rewrittenEntry ->
-                      advanceScopeCompiled scoped rewrittenEntry compiled
-                _ -> advanceScope scoped rewrittenEntry
+                  | isLetDeclarationExpression retainedEntry ->
+                      advanceScopeCompiled scoped retainedEntry compiled
+                _ -> advanceScope scoped retainedEntry
           strictPass compiledLets stableEntries (position + 1)
-            (rewrittenEntry : reversed) next trailing
+            (retainedEntry : reversed) next trailing
 
     validateDependentDeclarations recursive compiledLets entries =
       go 0 Map.empty [] recursive entries

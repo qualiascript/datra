@@ -27,8 +27,8 @@ import DatraOrdinal
   )
 import Evaluation.Construction (makeExplicit, makeExplicitValue)
 import Evaluation.Error
-  ( InterpretingError (ExpectedNumericalOperand)
-  , OperandSide (LeftOperand, RightOperand)
+  ( FunctionFailure (NoApplicableFunctionAlternative)
+  , InterpretingError (FunctionEvaluationFailed)
   )
 import Evaluation.Numerical (requireNaturalExponent)
 import Evaluation.Value
@@ -51,8 +51,8 @@ ordinalMinusValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 ordinalMinusValues left right = do
-  x <- requireOrdinal LeftOperand left
-  y <- requireOrdinal RightOperand right
+  x <- requireOrdinal left
+  y <- requireOrdinal right
   pure (makeExplicit ComputedOrigin
     (maybe (finiteOrdinal 0) id (subtractOrdinal y x)))
 
@@ -61,7 +61,7 @@ ordinalExponentValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 ordinalExponentValues base exponentValue = do
-  ordinalValue <- requireOrdinal LeftOperand base
+  ordinalValue <- requireOrdinal base
   naturalPower <- requireNaturalExponent exponentValue
   pure (makeExplicit ComputedOrigin (powerOrdinal ordinalValue naturalPower))
 
@@ -80,8 +80,8 @@ ordinalBinary
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 ordinalBinary operation left right = do
-  leftValue <- requireOrdinal LeftOperand left
-  rightValue <- requireOrdinal RightOperand right
+  leftValue <- requireOrdinal left
+  rightValue <- requireOrdinal right
   pure (makeExplicit ComputedOrigin (operation leftValue rightValue))
 
 ordinalComparison
@@ -90,40 +90,38 @@ ordinalComparison
   -> InterpretedValue
   -> Either InterpretingError Bool
 ordinalComparison operation left right = do
-  leftValue <- requireOrdinal LeftOperand left
-  rightValue <- requireOrdinal RightOperand right
+  leftValue <- requireOrdinal left
+  rightValue <- requireOrdinal right
   pure (operation leftValue rightValue)
 
 requireOrdinal
-  :: OperandSide
-  -> InterpretedValue
+  :: InterpretedValue
   -> Either InterpretingError Ordinal
-requireOrdinal side value =
+requireOrdinal value =
   case ordinalProjection (interpretedSemanticSemantics value) of
     Just (_, ordinalValue) -> Right ordinalValue
-    Nothing -> Left
-      (ExpectedNumericalOperand side (interpretedValueKind value))
+    Nothing -> noApplicableAlternative
 
 requireExplicit
-  :: OperandSide
-  -> InterpretedValue
+  :: InterpretedValue
   -> Either InterpretingError EvaluatedExplicit
-requireExplicit side value =
+requireExplicit value =
   case ordinalProjection (interpretedSemanticSemantics value) of
     Just (_, ordinalValue) ->
       Right (makeExplicitValue ComputedOrigin ordinalValue)
-    Nothing -> Left
-      (ExpectedNumericalOperand side (interpretedValueKind value))
+    Nothing -> noApplicableAlternative
 
 requireRangeUpperBoundary
-  :: OperandSide
-  -> InterpretedValue
+  :: InterpretedValue
   -> Either InterpretingError (Natural, Ordinal)
-requireRangeUpperBoundary side value =
+requireRangeUpperBoundary value =
   case ordinalProjection (interpretedSemanticSemantics value) of
     Just boundary -> Right boundary
-    Nothing -> Left
-      (ExpectedNumericalOperand side (interpretedValueKind value))
+    Nothing -> noApplicableAlternative
+
+noApplicableAlternative :: Either InterpretingError value
+noApplicableAlternative =
+  Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 
 ordinalProjection :: ValueSemantics -> Maybe (Natural, Ordinal)
 ordinalProjection (PresentedSemantics _ _ semantics) = ordinalProjection semantics

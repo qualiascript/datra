@@ -278,8 +278,8 @@ testEvaluationBoundary = do
   assert "DatraTypes rejects non-finite operands without AST interpretation"
     (case Types.addValues nonemptyMap (Types.naturalValue 1) of
       Left
-          (Types.ExpectedFiniteIntegerOperand
-            Types.LeftOperand Types.MapValueKind) -> True
+          (Types.FunctionEvaluationFailed
+            Types.NoApplicableFunctionAlternative) -> True
       _ -> False)
   assert "DatraTypes owns checked range construction"
     (case Types.boundedRangeValue

@@ -77,11 +77,13 @@ decideBuiltinMetaSubfederation source target =
           || (isRange left expected && isInfinity right)
 
     isInfinity value =
-      interpretedSemanticResult value == CanonicalAsciiString "PosInf"
-        || interpretedSemanticResult value == CanonicalAsciiString "NegInf"
+      case interpretedSemanticResult value of
+        CanonicalIntegerLimit _ -> True
+        _ -> False
 
     isPositiveInfinity value =
-      interpretedSemanticResult value == CanonicalAsciiString "PosInf"
+      interpretedSemanticResult value
+        == CanonicalIntegerLimit PositiveInfinity
 
     isRange value expected =
       case (interpretedForm value, expected) of

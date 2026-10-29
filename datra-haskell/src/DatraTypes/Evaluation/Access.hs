@@ -16,7 +16,6 @@ import Control.Monad (foldM)
 import Evaluation.Error
   ( InterpretingError (..)
   , NamedAccessFailure (..)
-  , OperandSide (LeftOperand)
   )
 import Evaluation.Access.Composition
   ( FederationAccess (..)
@@ -77,7 +76,7 @@ accessValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
-  case requireIntegerLimit LeftOperand insertionValue of
+  case requireIntegerLimit insertionValue of
     Right PositiveInfinity ->
       accessValues mapValue (makeExplicit ComputedOrigin (omegaPower 1))
     _ -> accessUncoerced mapValue insertionValue

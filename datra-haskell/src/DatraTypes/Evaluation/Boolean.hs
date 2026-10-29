@@ -15,8 +15,8 @@ import DatraOrdinal (naturalAtOrdinal)
 import Evaluation.Construction (makeNatural)
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Error
-  ( InterpretingError (..)
-  , OperandSide (..)
+  ( FunctionFailure (NoApplicableFunctionAlternative)
+  , InterpretingError (FunctionEvaluationFailed)
   )
 import Evaluation.Numerical (numericallyEquivalent)
 import Evaluation.Specification.Decision (Decision (DecisionProved))
@@ -99,8 +99,8 @@ booleanAndValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 booleanAndValues left right = do
-  leftFlag <- requireBoolean LeftOperand left
-  rightFlag <- requireBoolean RightOperand right
+  leftFlag <- requireBoolean left
+  rightFlag <- requireBoolean right
   pure
     (makeBoolean
       (case (leftFlag, rightFlag) of
@@ -112,8 +112,8 @@ booleanOrValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 booleanOrValues left right = do
-  leftFlag <- requireBoolean LeftOperand left
-  rightFlag <- requireBoolean RightOperand right
+  leftFlag <- requireBoolean left
+  rightFlag <- requireBoolean right
   pure
     (makeBoolean
       (case (leftFlag, rightFlag) of
@@ -124,7 +124,7 @@ booleanNotValue
   :: InterpretedValue
   -> Either InterpretingError InterpretedValue
 booleanNotValue operand = do
-  flag <- requireBoolean LeftOperand operand
+  flag <- requireBoolean operand
   pure
     (makeBoolean
       (case flag of
@@ -138,16 +138,17 @@ booleanCondition value =
   case booleanFromSemantics (interpretedSemanticSemantics value) of
     Just DatraFalse -> Right False
     Just DatraTrue -> Right True
-    Nothing -> Left (ExpectedBooleanCondition (interpretedValueKind value))
+    Nothing -> Left
+      (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 
 requireBoolean
-  :: OperandSide
-  -> InterpretedValue
+  :: InterpretedValue
   -> Either InterpretingError DatraBoolean
-requireBoolean side value =
+requireBoolean value =
   case booleanFromSemantics (interpretedSemanticSemantics value) of
     Just flag -> Right flag
-    Nothing -> Left (ExpectedBooleanOperand side (interpretedValueKind value))
+    Nothing -> Left
+      (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 
 booleanFromSemantics :: ValueSemantics -> Maybe DatraBoolean
 booleanFromSemantics (PresentedSemantics _ _ semantics) =

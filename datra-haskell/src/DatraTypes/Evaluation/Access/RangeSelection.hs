@@ -163,6 +163,13 @@ semanticAccessSource semantics =
     ExplicitSemantics level value ->
       ordinarySource [singletonDescribedRange level value]
     IntegerSemantics _ -> ordinarySource []
+    IntegerLimitSemantics PositiveInfinity ->
+      AccessSource
+        { sourceDescribedRanges = [formulationDescribedRange 1]
+        , sourceIsRangeLike = True
+        , sourceFormulationLevel = Just 1
+        }
+    IntegerLimitSemantics _ -> ordinarySource []
     FormulationSemantics level ->
       AccessSource
         { sourceDescribedRanges = [formulationDescribedRange level]

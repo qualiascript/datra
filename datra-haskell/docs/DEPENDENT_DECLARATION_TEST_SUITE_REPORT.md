@@ -139,10 +139,67 @@ SourceParseFailure (ParseFailure {parseFailureMessage =
 ```
 
 The same failure was observed in focused runs of both newly added regression
-tests. It was also reproduced by the pre-existing `value holes evaluate
-expressions before selection` test, showing that the blocker is not specific
-to either new test body. Per the decision to stop at the next issue, its cause
-was not investigated and no repair was attempted.
+tests. The pre-existing `value holes evaluate expressions before selection`
+test provides a smaller reproducer:
+
+```datra
+"double %Nat" := (Nat -> Nat) do yield it * 2
+yield double (2 + 2)
+```
+
+It expects `8`, but fails while the standard-library parsing environment is
+constructing its syntax rules, before this program is evaluated. The adjacent
+`zero-hole syntax completes a total domain` program case and the
+`Std.(from (1 + 1) to 5)` expression case fail at the same boundary in the
+current tree. The earlier passing results in this report predate the
+callable-payload repair and were not rerun after it.
+
+The failure is in reconstruction of a declaration capture bound. An evaluated
+bound such as `Nat` is rendered as canonical Datra source, producing:
+
+```datra
+from 0 up
+```
+
+`closedSourceExpression` parses that text with the neutral parser and asks
+`inlineDependencies` to close its library dependencies. The neutral AST still
+contains an ordinary application headed by `from`. The closure resolver only
+starts from `lookupScope`, so it can capture lexical bindings but cannot capture
+the `from` dependent declaration family stored in
+`scopeDependentDeclarationLayers`. Consequently no dependency is collected,
+the source remains headed by bare `from`, and evaluation asks for a complete
+declaration member literally named `from`. The available family contains names
+such as `from 0 up`, not a member named only `from`, so lookup ends in
+`UnknownIdentifier "from"`. A diagnostic trace reached that lookup while the
+active resolution key was `Nat` and the declaration layer containing `from`
+was present.
+
+The closure representation already has the structural machinery needed to
+retain such a family: `Dependency` contains `dependencyDeclaration`, and
+`capturedDeclaration` can preserve and translate a complete dependent
+declaration head. No resolver construction currently sets
+`dependencyDeclaration` to `Just`; all three construction sites set it to
+`Nothing`, leaving that path unused.
+
+The underscore translation must obey these invariants:
+
+- a dependency address records its unmodified semantic origin;
+- reconstruction prepends one underscore only to the first address segment;
+- therefore `[Std, from]` is referenced as `_Std.from`, with the nested member
+  name unchanged; it must never become `Std._from` or `_Std._from`;
+- a genuinely local one-segment family `[from]` may become `_from`, in which
+  case the prefix translates the complete dependent name family rather than
+  one concrete member; and
+- references and recreated declarations must receive the same translation.
+
+A repair cannot merely teach `lookupScope` to return `_from`. In the neutral
+AST, the inner application in `from 0 up` is also structurally
+`FunctionApplication from 0`; the closure code's current strict-reference path
+recognizes that shape as the path `[from]`. Replacing the whole inner node by
+`_from` would discard the captured origin `0` and leave `_from up`. The repair
+must recognize and reconstruct the complete declared syntax invocation, retain
+all captures, and then translate only the dependency root according to the
+address invariant above. No repair was attempted in this pass.
 
 ### Current hanging path
 

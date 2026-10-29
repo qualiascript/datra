@@ -99,7 +99,6 @@ module DatraTypes
   , MapLengthFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
-  , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
@@ -291,7 +290,6 @@ import Evaluation.Error
   , NamedAccessFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
-  , OperandSide (..)
   )
 import Evaluation.Access (accessValues, namedAccessValue)
 import Evaluation.Construction

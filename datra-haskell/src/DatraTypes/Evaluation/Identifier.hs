@@ -11,6 +11,7 @@ module Evaluation.Identifier
   , privateSimpleIdentifier
   , privateIdentifierUnderlying
   , simpleIdentifierTypeValue
+  , integerComplementValue
   , inferredIdentifierAssignmentValue
   , identifierStringProjectionValue
   , canonicalValueMarker
@@ -171,6 +172,13 @@ simpleIdentifierTypeValue identifierString underlying =
     Nothing
     True
     underlying
+
+-- | The ordinary Datra value selecting the complemented half of Int/IntLimit.
+-- Numerical construction depends on this typed constructor, not on its
+-- identifier spellings.
+integerComplementValue :: InterpretedValue
+integerComplementValue =
+  simpleIdentifierTypeValue "Just" (makeAsciiString "Complement")
 
 -- | An inferred assignment may bind a non-total value such as a type.  Its
 -- federation remains the dependent argument family, while its canonical

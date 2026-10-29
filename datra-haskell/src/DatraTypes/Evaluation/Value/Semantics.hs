@@ -105,6 +105,7 @@ data ValueSemantics
   | FunctionBodySemantics String
   | ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
+  | IntegerLimitSemantics IntegerLimit
   | FormulationSemantics Natural
   | RangeSemantics Range.SuperEllipsisRangeDescription
   | NaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
@@ -168,6 +169,7 @@ data CanonicalResult
   | CanonicalNaturalType
   | CanonicalIntegerRange Integer IntegerRange.IntegerRangeTarget
   | CanonicalValuedIntegerRange Integer IntegerRange.IntegerRangeTarget
+  | CanonicalIntegerLimit IntegerLimit
   | CanonicalIntegerLimitRange IntegerLimit IntegerLimit
   | CanonicalIntegerType
   | CanonicalEither CanonicalResult CanonicalResult
@@ -314,6 +316,7 @@ canonicalResultWith retainPresentation semantics =
     FunctionBodySemantics source -> CanonicalReference source
     ExplicitSemantics level value -> CanonicalExplicit level value
     IntegerSemantics value -> CanonicalInteger value
+    IntegerLimitSemantics value -> CanonicalIntegerLimit value
     FormulationSemantics level -> CanonicalFormulation level
     RangeSemantics description -> CanonicalRange description
     NaturalRangeSemantics start target -> CanonicalNaturalRange start target

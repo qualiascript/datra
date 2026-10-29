@@ -45,12 +45,12 @@ valuedRangeArguments canonical = case canonical of
       IntegerRange.AllIntegersTarget -> Nothing
   CanonicalCoalization
       (CanonicalConcatenation
-        [finite, CanonicalAsciiString "PosInf"]) -> do
+        [finite, CanonicalIntegerLimit PositiveInfinity]) -> do
     (origin, DirectionRangeEndpoint "up") <- valuedRangeArguments finite
     Just (origin, FiniteRangeEndpoint PositiveInfinity)
   CanonicalCoalization
       (CanonicalConcatenation
-        [finite, CanonicalAsciiString "NegInf"]) -> do
+        [finite, CanonicalIntegerLimit NegativeInfinity]) -> do
     (origin, DirectionRangeEndpoint "down") <- valuedRangeArguments finite
     Just (origin, FiniteRangeEndpoint NegativeInfinity)
   _ -> Nothing
@@ -79,6 +79,7 @@ datraHostValue = do
     , ("Ordinal", Right ordinalTypeValue)
     , ("Nat", Right natural)
     , ("Int", Right integer)
+    , ("Infinity", Right (makeIntegerLimit PositiveInfinity))
     , ("Char", Right character)
     , ("IdenStr", Right identifierValueTypeValue)
     , ("Expr", Right expressionType)
@@ -105,7 +106,7 @@ datraHostValue = do
         addValues a b
     , nativeBody "datra" "abs" $ \arguments -> do
         value <- lookupArgument "value" arguments
-        number <- requireFiniteInteger LeftOperand value
+        number <- requireFiniteInteger value
         pure (integerValue (abs number))
     , ("ordinal", Right ordinalMembers)
     , syntaxBody "let" (expressionSyntaxInsertion
@@ -276,7 +277,7 @@ datraHostValue = do
     nativeBoundedRange kind argument = do
       startValue <- accessValues argument (naturalValue 0)
       endValue <- accessValues argument (naturalValue 1)
-      end <- requireIntegerLimit RightOperand endValue
+      end <- requireIntegerLimit endValue
       integerLimitRangeValue kind startValue (makeIntegerLimit end)
     valuedRangePreimage value = do
       (origin, endpoint) <- valuedRangeArguments

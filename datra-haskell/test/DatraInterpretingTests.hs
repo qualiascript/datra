@@ -44,7 +44,6 @@ import Interpreting
   , InterpretedValue
   , InterpretedValueKind (..)
   , InterpretingError (..)
-  , OperandSide (..)
   , interpretExpressionReason
   , interpretWithImports
   , interpretLocatedExpression
@@ -65,6 +64,7 @@ import DatraLanguage.Diagnostics.Interpreter
   ( AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
+  , FunctionFailure (..)
   )
 import Rendering
   ( renderInterpretedValue
@@ -563,13 +563,22 @@ testIntegers = do
       _ -> False)
 
 testClosedInfiniteValuedRange :: IO ()
-testClosedInfiniteValuedRange =
+testClosedInfiniteValuedRange = do
+  let positiveInfinity = Types.makeIntegerLimit Types.PositiveInfinity
+      negativeInfinity = Types.makeIntegerLimit Types.NegativeInfinity
+  assert "positive infinity has typed integer-limit semantics"
+    (Types.interpretedSemanticResult positiveInfinity
+      == Types.CanonicalIntegerLimit Types.PositiveInfinity)
+  assert "negative infinity has typed integer-limit semantics"
+    (Types.interpretedSemanticResult negativeInfinity
+      == Types.CanonicalIntegerLimit Types.NegativeInfinity)
+  assert "negative infinity retains the IntLimit complement structure"
+    (interpretedMapCardinality (interpretedMap negativeInfinity) == 2)
   case do
-      infinity <- Types.asciiStringValue "PosInf"
       Types.integerLimitRangeValue
         Types.ValuedIntegerRangeKind
         (Types.naturalValue 0)
-        infinity of
+        positiveInfinity of
     Left failure ->
       assertFailure ("closed infinite valued range construction failed: " <> show failure)
     Right closed -> do
@@ -1699,7 +1708,7 @@ testStringTemplates = do
         (StringTemplate
           [StringTemplateInterpolation
             (Addition (AsciiStringLiteral "x") (natural 1))]) of
-      Left (ExpectedFiniteIntegerOperand LeftOperand AsciiStringValueKind) -> True
+      Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
 
 testLookupFoliageTraversal :: IO ()
@@ -2012,7 +2021,7 @@ testBooleansAndEither = do
   assert "Boolean operators reject non-Booleans"
     (case interpretExpressionReason
         (AST.and (natural 1) (AST.boolean True)) of
-      Left (ExpectedBooleanOperand LeftOperand NaturalValueKind) -> True
+      Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
 
 testOptionalsAndConditionals :: IO ()
@@ -2198,7 +2207,7 @@ testOptionalsAndConditionals = do
   assert "if rejects a non-Boolean condition"
     (case interpretExpressionReason
         (AST.conditional (natural 1) (natural 2) (natural 3)) of
-      Left (ExpectedBooleanCondition NaturalValueKind) -> True
+      Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
 
 testCombinedTypeSystems :: IO ()
@@ -4174,14 +4183,12 @@ testTypedRejections = do
   assert "maps are rejected as numerical operands with a specific side"
     (case interpretExpressionReason
         ((AST.+) (AtlasMap [natural 0, natural 1]) (natural 1)) of
-      Left (ExpectedFiniteIntegerOperand LeftOperand MapValueKind) -> True
+      Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
   assert "non-total identifiers are rejected as numerical operands"
     (case interpretExpressionReason
         ((AST.+) (AST.dependentArgumentType "x" NaturalType) (natural 1)) of
-      Left
-          (ExpectedFiniteIntegerOperand
-            LeftOperand DependentArgumentTypeValueKind) -> True
+      Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
   assert "computed non-natural values are rejected as exponents"
     (case interpretWithImports ordinalImports
@@ -4247,7 +4254,7 @@ testLocatedRejection = do
       Left
           (DatraError
             (Just actualSpan)
-            (ExpectedFiniteIntegerOperand LeftOperand MapValueKind)) ->
+            (FunctionEvaluationFailed NoApplicableFunctionAlternative)) ->
         actualSpan == sourceSpan
       _ -> False)
   assert "English interpretation errors are localized only at display time"
