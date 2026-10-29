@@ -1,244 +1,124 @@
 # Dependent declaration test suite report — 2026-10-29
 
-## Scope
+## Current declaration model
 
-This report contains only results observed during the current verification
-pass. It distinguishes baseline results from checks rerun after the latest
-repair. It intentionally does not retain counts or failure lists from older
-verification passes, because the AST, block model, declaration modifiers,
-assertion feature, and test programs have changed since those runs.
+`Scope` has one declaration environment: its dependent-declaration layers.
+There is no parallel lexical-binding table or fallback name resolver. Exact
+lookup, discovery, overlap checks, definition protection, closure dependency
+collection, module projection, and contextual lookup all use the same indexed
+dependent-declaration abstractions.
 
-The complete suite was not run to completion. Per the decision to avoid the
-known hanging path, verification focused on the dependent-declaration
-acceptance tests, the new `def` regressions, a current core-suite run, and a
-small number of directly relevant integration checks. The callable-payload
-repair described below was made after the 19-test acceptance run and the core
-suite run, so those two runs are retained as baseline results rather than
-claimed as post-repair verification.
+Runtime singletons are the native fast representation of simple dependent
+declarations whose value already exists. Their stored value and provenance are
+payload metadata; they are still indexed, discovered, shadowed, and protected
+as declarations. This retains constant-time exact-name candidates without
+introducing a second declaration system or a linear fallback scan.
 
-## Unified declaration-scope refactor
+## Contextual declarations
 
-The interpreter no longer has a parallel `ScopeBindings`/`Binding` declaration
-system or a parallel `scopeNamedMapLayers` lookup path. `Scope` contains one
-declaration environment: dependent-declaration layers. Every exact lexical name
-created by the interpreter is represented as a singleton scoped declaration in
-one of those layers. This includes:
+`ContextualRole` is a semantic type outside the AST. It is the only place that
+owns the four surface spellings:
 
-- the `datra` host declaration;
-- contextual `_it` and `_this` declarations;
-- inferred generic and prepared function-argument declarations;
-- qualified imported-module declarations; and
-- declarations projected by `with` and module opening.
+| Role | Private declaration | Surface declaration |
+| --- | --- | --- |
+| `ContextualThis` | `_this` | `this` |
+| `ContextualIt` | `_it` | `it` |
 
-Runtime values, import provenance, source-definition provenance, and canonical
-presentation are payload metadata on the scoped dependent declaration. They do
-not form another lookup table or fallback resolver. Retained eager source
-declarations use that payload as their unrestricted cached value, while
-restricted shadow-consistency evaluation still evaluates their source
-implementation. Runtime singleton declarations always use their stored value
-and are represented by `ScopedRuntimeSingletonDeclaration`; they do not invent
-a source implementation.
+All four names are definitions (`def`) and follow the same shadowing rules.
+They are installed only in semantic scopes where their contextual values
+exist. Generic runtime-declaration extension does not add contextual aliases.
 
-The scoped declaration type distinguishes `ScopedDatraDependentDeclaration`,
-`ScopedRuntimeSingletonDeclaration`, and
-`ScopedProjectedDependentDeclaration`. A dynamic or transfinite named-map
-projection is a fallback declaration in the same layer index; it no longer uses
-a separate scope field. Neither runtime variant has a fabricated source head or
-implementation. In particular, an earlier temporary empty-identifier sentinel
-and the singleton `AtlasMap []` placeholder were removed. Exact lookup,
-containment, and discovery delegate through the scoped declaration. Exact
-runtime values are described by `RuntimeSingletonPayload`, explicitly payload
-metadata rather than another declaration type.
-
-The same declaration-layer abstractions now govern all relevant operations:
-
-- exact resolution uses the layer singleton/prefix index;
-- named-view discovery obtains the same stored runtime payload as exact lookup;
-- contextual-level collection uses indexed candidates for `_it` or `_this`;
-- definition protection and overlap checks use declaration candidates;
-- closure reconstruction obtains source definitions and module origins from the
-  selected scoped declaration; and
-- module discovery enumerates declaration-layer members and reads typed import
-  metadata.
-
-There is no secondary exact-name map and no linear exact-name fallback. The
-refactor also removed two avoidable quadratic paths: successful filtering now
-uses order-preserving linear accumulation, and shadow-consistency overlap checks
-query the already-built declaration index instead of scanning every local
-declaration for every candidate name.
-
-## Passing checks
-
-### Build
-
-```sh
-cabal build all -f-liquid
-```
-
-Passed. The library and `datra-haskell` executable compiled and linked.
-`git diff --check` also passed.
-
-### Dependent declarations and declaration modifiers
-
-```sh
-cabal test datra-interpreting-test \
-  --test-show-details=direct \
-  --test-option=-p \
-  --test-option='$NF=="dependent declarations" || $0 ~ /canonical value declarations/'
-```
-
-All 19 selected tests passed:
-
-- the dependent-declarations example;
-- independent `def` definition protection;
-- independent `val` canonical presentation;
-- declarations with neither marker and with both markers;
-- the full `let def val` form;
-- optional declaration names;
-- declaration specification and subfederation behavior;
-- rejection of `val` on an annotated assignment and on a non-declaration; and
-- the unified modifier diagnostic for `val let`, `val val`, `def let`,
-  `val def`, `let val def`, and `def def`.
-
-Every invalid modifier sequence reports its unique correct ordering. Modifier
-names are derived from the operator definitions rather than duplicated string
-constants.
-
-`ExpectedDependentDeclaration` remains the internal error constructor for a
-non-declaration in a declaration-only block. Its user-facing message is:
-
-```text
-operation has no effect inside block
-```
-
-### Core suite
-
-```sh
-cabal test datra-core-test --test-show-details=direct
-```
-
-All 35 tests passed: 29 examples and six Hedgehog properties. Each property
-completed 100 generated cases.
-
-### Migrated integration check
-
-The focused `recursive defaults, overloads, typing, and total blocks`
-integration regression passed after its assertion-only checks were migrated to
-named Boolean declarations and one yielded Boolean tuple.
-
-## Callable dependent-declaration repair
-
-Concrete dependent declarations now invoke ordinary callable payloads through
-the interpreter's normal `applyFunction` path. Runtime-insertion payloads still
-use their existing direct insertion path, and non-callable payloads remain
-unchanged. A single captured value is supplied as that positional value rather
-than as a singleton atlas map; named contextual bindings are still constructed
-from the validated dependent-declaration input.
-
-The migrated integration type check now inspects the declaration descriptor
-explicitly:
+The private declarations `_this` and `_it` use runtime-singleton declaration
+payloads because their values are supplied by the interpreter. Beside each
+private declaration, the interpreter installs an ordinary simple dependent
+declaration:
 
 ```datra
-successorTypeCheck :=
-  ((~"successor Nat next")[0].value) of ({value? : Nat} -> Int)
+def this := _this 0
+def it := _it 0
 ```
 
-The bare `successor` check was invalid because the declaration introduces the
-dependent name family, not a standalone `successor` identifier.
+Here `_this 0` and `_it 0` are ordinary function applications. `this` and `it`
+are not syntax rules, parser substitutions, or special AST nodes. The syntax
+rewriter leaves their identifier references alone, and evaluation resolves
+them through normal dependent-declaration lookup.
 
-Two focused regression cases were added:
+Tests that attempted to redefine `_this` or `_it` inside scopes where those
+private contextual definitions already exist were removed. They asserted an
+invalid form of shadowing. The top-level resource test that defines `_this`
+remains: that resource does not introduce a contextual `this`, so no `_this`
+definition exists there to conflict with it.
 
-- `dependent captures call ordinary functions through subfederation`, which
-  expects `successor 4 next` to produce `5` when `%Nat` feeds an optional
-  `Int` parameter; and
-- `dependent declaration descriptors expose their functions`, which expects
-  the descriptor lookup above to retain the callable and satisfy the narrowed
-  function type.
+## Closure and recursion handling
 
-The current tree builds successfully with these changes. Neither new test is
-claimed as passing because both encounter the downstream `from` failure below
-before an assertion result is produced.
+Closure traversal now carries explicit typed state instead of synthesizing
+names such as `__closure` or underscore-prefixed generated roots. The removed
+generated-binder mechanism is no longer part of dependency discovery.
 
-## Removal and stale-symbol scans
+Productive-recursion recognition resolves ordinary declarations before
+checking for a contextual self-reference. This is required because recursive
+Std definitions now encounter `this` as the declaration
+`def this := _this 0`, rather than as an AST rewrite to `_this 0`.
 
-Current source scans found no remaining language-level `assert` in `.datra`
-files or embedded Datra program strings. Haskell's ordinary test assertion
-helpers are intentionally unchanged.
+Std's recursive list definition is retained in its source form:
 
-The same scans found no remaining active implementation or test uses of:
+```datra
+let val List := &T? do yield fun () | (T; this)
+```
 
-- `assert_body`, `datra.assert`, or `AssertionFailed`;
-- `UnresolvedFunctionBody`, `UnresolvedBegin`, or `BlockEntry`;
-- `dependentDeclarationExpression`;
-- `RuntimeModules`, `EvaluationMode`, `modulesForMode`, or
-  `expressionForMode`;
-- the superseded standard-library namespace spelling;
-- the obsolete block-position modifier errors; or
-- the superseded declaration and map terminology.
+The interpreter follows the `this` declaration to recognize the private
+contextual application. It does not rewrite the source AST to expose that
+application. This removed the unbounded fixed-point expansion that previously
+exhausted memory while materializing Std.
 
-## Current bounded verification
+## Current verification
 
-The old `UnknownIdentifier "from"` diagnosis depended on `lookupScope` being a
-binding-only closure boundary. That boundary has been removed: closures now
-obtain local and imported definitions through indexed scoped dependent
-declarations. The old failure has not been reproduced after the refactor,
-because the focused test does not yet finish standard-library syntax rewriting.
-It must therefore not be reported as the current failing result.
+The current tree builds with:
 
-The focused `value holes evaluate expressions before selection` check was run
-under a hard 12-second timeout. It printed its test label but did not complete.
-A temporary progress trace, removed after diagnosis, located the time inside
-`rewriteResourceSyntax` while parsing `std.datra`, before module evaluation or
-eager declaration retention. The process remained CPU-bound with approximately
-24 MB maximum resident memory and continued advancing through rewrite passes.
-It repeatedly reconstructed validation scopes containing 50–53 declarations.
-This supports a severe repeated-computation diagnosis, not a deadlock or a
-proved infinite loop.
+```sh
+cabal build test:datra-interpreting-test test:datra-parsing-test -f-liquid
+```
 
-Post-refactor bounded checks currently establish:
+The focused generic-source parsing test passes, including the expectation that
+nested contextual source remains an ordinary `this` identifier reference in
+the parsed AST. `git diff --check` also passes.
 
-- `cabal build exe:datra-haskell test:datra-interpreting-test -f-liquid`
-  passes;
-- `git diff --check` passes;
-- `closed infinite valued range` passes; and
-- all 12 `scope-protection substrate` tests pass.
+The formerly memory-exhausting focused contextual test now terminates under a
+hard timeout and memory limit. It reaches a bounded, pre-existing Std failure
+after approximately 16 seconds instead of expanding until it hangs or runs out
+of memory:
 
-The syntax-rewriter scope-cache problem is separate from declaration lookup:
-the repeated work occurs before Std is imported into a runtime scope. It remains
-the next performance issue to resolve before the dependent-declaration and
-closure regressions can receive a meaningful post-refactor result.
+```text
+SourceParseFailure
+  (ParseFailure
+    { parseFailureMessage =
+        "FunctionEvaluationFailed NoApplicableFunctionAlternative"
+    })
+```
 
-### Not run
+A temporary diagnostic trace, removed after the observation, placed the error
+during Std syntax validation around these declarations:
 
-The full interpreter suite and the parsing, types, and CLI suites were not run
-to completion in this verification pass. The 19 selected acceptance tests and
-the core suite were not rerun after the callable-payload and unified-scope
-repairs. This report therefore makes no post-repair pass/fail claim about those
-suites.
+```datra
+let val NatLimit := from 0 to Infinity
+let val IntLimit := >< (NatLimit; $Complement?)
+```
 
-## Runtime-performance approaches that did not work
+The same failure occurs for a focused test whose body does not reference
+`this`, so it is not evidence of a remaining contextual-alias or closure
+failure. This pass did not investigate the Std error beyond locating it well
+enough to report the blocker.
 
-These are historical experiments retained only to prevent repeating known
-dead ends. They are not current benchmark results.
+## Remaining work
 
-- A singleton-only implementation of `dependentDeclarationNamedView` did not
-  improve the complete cold-start benchmark and was removed.
-- Replacing full ordinal coalization in `scopeEntriesValue` with finite
-  collection did not reduce allocation and was reverted.
-- Disabling dependent-family validation improved one focused measurement, but
-  is invalid because the validation is required for correctness.
-- Reordering structural and semantic overlap checks helped locally but did not
-  eliminate repeated family compilation or solve the runtime regression.
-- Separately caching syntax- and runtime-insertion probes helped locally but
-  did not compensate for compiling the same family in several passes.
-- A separate exact-name runtime map improved timing but split lookup into two
-  implementations; it was replaced by the uniform prefix-trie design.
-- Caching every family produced by the strict pass for validation made no
-  measurable improvement and was reverted.
-- Removing eager application-adapter admission without changing the matcher
-  made the focused run slower because unusable rules remained in every scan.
-- Retaining deferred-validity rules and checking them at matcher boundaries
-  increased both runtime and allocation.
-- Combining an ordered first-literal map index with deferred validity remained
-  slower because rebuilding indexes and merging candidate buckets cost more
-  than candidate filtering saved.
+- Diagnose the bounded Std `NoApplicableFunctionAlternative` separately from
+  the contextual-declaration refactor.
+- Once Std loads again, run the dependent-declaration, scope, closure,
+  interpreter, types, parsing, core, and CLI suites to obtain meaningful
+  post-refactor results.
+- Profile the full successful path before making further performance changes.
+  The current focused failure takes about the same time as the pre-refactor
+  failure, so no new timing regression has been established.
+
+No complete-suite pass count is reported here because Std currently fails
+before the selected interpreter test bodies execute.

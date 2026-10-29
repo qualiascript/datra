@@ -80,11 +80,11 @@ import DatraLanguage.AST
   , namedBeginBlock
   , normalizeExpression
   , optionalIdentifierExpression
-  , isContextualAccessOf
   , expressionChildren
   , mapExpressionChildren
   , mapDependentDeclaration
   )
+import DatraLanguage.ContextualDeclaration
 import DatraLanguage.SyntaxTemplate
   ( FunctionSyntax (FunctionSyntax)
   , SyntaxHoleKind (..)
@@ -511,10 +511,9 @@ evaluateSyntaxValueWithInput base modules declarations input expressionValue = d
   parent <- either (const Nothing) Just
     (declareSyntaxScope enclosing
       (map syntaxValidationDeclaration declarations))
-  let contextual = extendRuntimeDeclarations
-        (constantContextualDeclarations "it" input) parent
-  either (const Nothing) Just
-    (evalInScope contextual [] expressionValue)
+  let contextual = extendContextualRuntimeDeclarations
+        (constantContextualDeclarations ContextualIt input) parent
+  either (const Nothing) Just (evalInScope contextual [] expressionValue)
 
 applySyntaxValue
   :: Scope
@@ -562,9 +561,10 @@ syntaxContext base modules availableRules = SyntaxContext
           scope <- declared
           case input of
             Just expressionValue -> evalInScope scope [] expressionValue
-            Nothing -> Left (UnknownIdentifier "_it")
-        child = extendRuntimeDeclarations
-          (contextualDeclarations "it" False (const supplied)) parent
+            Nothing -> Left
+              (UnknownIdentifier (contextualPrivateName ContextualIt))
+        child = extendContextualRuntimeDeclarations
+          (contextualDeclarations ContextualIt False (const supplied)) parent
 
 binderDeclarations
   :: [(SyntaxHoleKind Expression, Expression)]
@@ -1059,7 +1059,7 @@ data RuntimeSingletonPayload = RuntimeSingletonPayload
 data RuntimeDeclarationValue
   = EvaluatedRuntimeValue InterpretedValue
   | ContextualRuntimeValue
-      String
+      ContextualRole
       Bool
       (Maybe [ScopedDependentDeclaration])
       (ResolutionStack
@@ -1192,6 +1192,29 @@ scopedRuntimeDeclaration
   -> ScopedDependentDeclaration
 scopedRuntimeDeclaration = ScopedRuntimeSingletonDeclaration
 
+scopedRuntimeDeclarations
+  :: Scope
+  -> RuntimeSingletonPayload
+  -> [ScopedDependentDeclaration]
+scopedRuntimeDeclarations scope runtime =
+  [scopedRuntimeDeclaration scope runtime]
+
+scopedContextualSurfaceDeclarations
+  :: Scope
+  -> [RuntimeSingletonPayload]
+  -> [ScopedDependentDeclaration]
+scopedContextualSurfaceDeclarations captured declarations =
+  [ ScopedDatraDependentDeclaration
+      captured
+      captured
+      declaration
+      (dependentDeclarationTemplateBranches declaration)
+      Nothing
+  | runtime <- declarations
+  , ContextualRuntimeValue role _ _ _ <- [runtimeDeclarationValue runtime]
+  , let declaration = contextualSurfaceDeclaration role
+  ]
+
 extendRuntimeDeclarations :: [RuntimeSingletonPayload] -> Scope -> Scope
 extendRuntimeDeclarations [] scope = scope
 extendRuntimeDeclarations declarations parent = scope
@@ -1199,9 +1222,33 @@ extendRuntimeDeclarations declarations parent = scope
     scope = parent
       { scopeDependentDeclarationLayers =
           runtimeDeclarationLayer
-            (map (scopedRuntimeDeclaration scope) declarations)
+            (concatMap
+              (scopedRuntimeDeclarations scope)
+              declarations)
             : scopeDependentDeclarationLayers parent
       }
+
+-- A contextual surface declaration belongs to the semantic scope which makes
+-- its private value available. Ordinary runtime declaration extension remains
+-- neutral: callers which establish a contextual scope opt into this paired
+-- private/surface layer explicitly.
+extendContextualRuntimeDeclarations
+  :: [RuntimeSingletonPayload]
+  -> Scope
+  -> Scope
+extendContextualRuntimeDeclarations [] scope = scope
+extendContextualRuntimeDeclarations declarations parent = surfaceScope
+  where
+    primitiveScope = extendRuntimeDeclarations declarations parent
+    surfaceDeclarations =
+      scopedContextualSurfaceDeclarations primitiveScope declarations
+    surfaceScope
+      | null surfaceDeclarations = primitiveScope
+      | otherwise = primitiveScope
+          { scopeDependentDeclarationLayers =
+              runtimeDeclarationLayer surfaceDeclarations
+                : scopeDependentDeclarationLayers primitiveScope
+          }
 
 extendRuntimeProjection :: NamedMapView -> Scope -> Scope
 extendRuntimeProjection projection parent = scope
@@ -1290,19 +1337,19 @@ evaluatedRuntimeDeclaration name value = RuntimeSingletonPayload
   }
 
 contextualRuntimeDeclaration
-  :: String
+  :: ContextualRole
   -> Bool
   -> Maybe [ScopedDependentDeclaration]
   -> (ResolutionStack
       -> ReductionContext
       -> Either InterpretingError InterpretedValue)
   -> RuntimeSingletonPayload
-contextualRuntimeDeclaration surface includesDependencies declarations value =
+contextualRuntimeDeclaration role includesDependencies declarations value =
   RuntimeSingletonPayload
-    { runtimeDeclarationName = "_" <> surface
-    , runtimeDeclarationIsDefinition = False
+    { runtimeDeclarationName = contextualPrivateName role
+    , runtimeDeclarationIsDefinition = True
     , runtimeDeclarationValue = ContextualRuntimeValue
-        surface includesDependencies declarations value
+        role includesDependencies declarations value
     , runtimeDeclarationPresentation = DirectRuntimePresentation
     , runtimeDeclarationOrigin = Nothing
     , runtimeDeclarationDefinition = Nothing
@@ -1311,11 +1358,11 @@ contextualRuntimeDeclaration surface includesDependencies declarations value =
     }
 
 constantContextualRuntimeDeclaration
-  :: String
+  :: ContextualRole
   -> InterpretedValue
   -> RuntimeSingletonPayload
-constantContextualRuntimeDeclaration surface value =
-  contextualRuntimeDeclaration surface False Nothing (const (const (Right value)))
+constantContextualRuntimeDeclaration role value =
+  contextualRuntimeDeclaration role False Nothing (const (const (Right value)))
 
 rootScope :: salt -> Scope
 rootScope salt = Scope
@@ -1455,7 +1502,7 @@ scopeNameIsDefinition scope name =
             UnrestrictedReduction [] scoped name)
 
 contextualRuntimeValue
-  :: String
+  :: ContextualRole
   -> Scope
   -> Maybe
       ( Bool
@@ -1464,15 +1511,15 @@ contextualRuntimeValue
           -> ReductionContext
           -> Either InterpretingError InterpretedValue
       )
-contextualRuntimeValue name scope = do
-  runtime <- runtimeDeclarationByName name scope
+contextualRuntimeValue role scope = do
+  runtime <- runtimeDeclarationByName (contextualPrivateName role) scope
   case runtimeDeclarationValue runtime of
     ContextualRuntimeValue _ includesDependencies declarations value ->
       Just (includesDependencies, declarations, value)
     EvaluatedRuntimeValue _ -> Nothing
 
 contextualValue
-  :: String
+  :: ContextualRole
   -> Scope
   -> Maybe
       ( Bool
@@ -1480,27 +1527,27 @@ contextualValue
           -> ReductionContext
           -> Either InterpretingError InterpretedValue
       )
-contextualValue name scope =
-  case contextualRuntimeValue name scope of
+contextualValue role scope =
+  case contextualRuntimeValue role scope of
     Just (includesDependencies, _, value) ->
       Just (includesDependencies, value)
     Nothing -> Nothing
 
 contextualDeclarations
-  :: String
+  :: ContextualRole
   -> Bool
   -> (ReductionContext -> Either InterpretingError InterpretedValue)
   -> [RuntimeSingletonPayload]
-contextualDeclarations surface includesDependencies value =
-  [contextualRuntimeDeclaration surface includesDependencies Nothing
+contextualDeclarations role includesDependencies value =
+  [contextualRuntimeDeclaration role includesDependencies Nothing
     (const value)]
 
 constantContextualDeclarations
-  :: String
+  :: ContextualRole
   -> InterpretedValue
   -> [RuntimeSingletonPayload]
-constantContextualDeclarations surface value =
-  [constantContextualRuntimeDeclaration surface value]
+constantContextualDeclarations role value =
+  [constantContextualRuntimeDeclaration role value]
 
 type ContextualLevel =
   (Bool, ReductionContext -> Either InterpretingError InterpretedValue)
@@ -1508,7 +1555,7 @@ type ContextualLevel =
 -- | A contextual function's private, coalized map. Its name is @_inner_this@
 -- or @_inner_it@, but it lives only in the native function closure and never
 -- enters a Datra lexical scope.
-data ContextualMap = ContextualMap String [ContextualLevel]
+data ContextualMap = ContextualMap ContextualRole [ContextualLevel]
 
 -- | Collect same-kind contextual declarations from current to outermost. The
 -- environment retained for a declaration-scope level begins at the previous
@@ -1516,10 +1563,10 @@ data ContextualMap = ContextualMap String [ContextualLevel]
 -- visible. Scopes which introduce no declaration of this kind add no hole.
 contextualLevels
   :: ResolutionStack
-  -> String
+  -> ContextualRole
   -> Scope
   -> [ContextualLevel]
-contextualLevels resolving surface scope =
+contextualLevels resolving role scope =
   [ (includesDependencies, value resolving)
   | layer <- scopeDependentDeclarationLayers scope
   , scoped <- dependentDeclarationCandidates key layer
@@ -1527,19 +1574,19 @@ contextualLevels resolving surface scope =
   , runtimeDeclarationName runtime == key
   , ContextualRuntimeValue selected includesDependencies _ value <-
       [runtimeDeclarationValue runtime]
-  , selected == surface
+  , selected == role
   ]
   where
-    key = "_" <> surface
+    key = contextualPrivateName role
 
 -- | A contextual function has the exact valued-natural domain of its
 -- available same-kind lexical levels. @_this n@ and @_it n@ lower inside the
 -- native closure to @_inner_this @ n@ and @_inner_it @ n@ respectively.
 contextualFunction
-  :: String
+  :: ContextualRole
   -> [ContextualLevel]
   -> Either InterpretingError InterpretedValue
-contextualFunction surface levels@(_ : _) = do
+contextualFunction role levels@(_ : _) = do
   domain <- valuedNaturalRangeValue 0 maximumDepth
   let schema = argumentSlotSchema Nothing False domain (Just (naturalValue 0))
   pure (makeFunctionValue (EvaluatedFunction
@@ -1562,7 +1609,7 @@ contextualFunction surface levels@(_ : _) = do
         (ScopeAccess
           (IdentifierReference (IdentifierString "datra"))
           (IdentifierReference (IdentifierString "Any"))))
-    innerMap = ContextualMap ("_inner_" <> surface) levels
+    innerMap = ContextualMap role levels
 
     -- The surface spelling has no holes and therefore supplies the empty map.
     -- Contextual depth zero is the function's ordinary default; explicit
@@ -1578,10 +1625,13 @@ contextualFunction surface levels@(_ : _) = do
       pure (EvaluatedFunctionInvocation value Nothing)
 
     valueSyntax :: FunctionSyntax InterpretedValue
-    valueSyntax = FunctionSyntax [SyntaxTemplate [SyntaxLiteral surface]]
+    valueSyntax = FunctionSyntax
+      [SyntaxTemplate [SyntaxLiteral (contextualSurfaceName role)]]
     sourceSyntax :: FunctionSyntax String
-    sourceSyntax = FunctionSyntax [SyntaxTemplate [SyntaxLiteral surface]]
-contextualFunction surface [] = Left (UnknownIdentifier ("_" <> surface))
+    sourceSyntax = FunctionSyntax
+      [SyntaxTemplate [SyntaxLiteral (contextualSurfaceName role)]]
+contextualFunction role [] = Left
+  (UnknownIdentifier (contextualPrivateName role))
 
 -- | Access the closure-local @_inner_this@ or @_inner_it@ map without forcing
 -- unrelated recursive levels.
@@ -1601,20 +1651,20 @@ accessContextualMap reduction depth (ContextualMap _ levels)
       (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 
 scopeContextualDeclarationMembers
-  :: String
+  :: ContextualRole
   -> Scope
   -> Maybe [ScopedDependentDeclaration]
-scopeContextualDeclarationMembers name scope =
-  case contextualRuntimeValue name scope of
+scopeContextualDeclarationMembers role scope =
+  case contextualRuntimeValue role scope of
     Just (_, declarations, _) -> declarations
     Nothing -> Nothing
 
 declarationContextualDeclaration
-  :: String
+  :: ContextualRole
   -> [ScopedDependentDeclaration]
   -> RuntimeSingletonPayload
-declarationContextualDeclaration surface declarations =
-  contextualRuntimeDeclaration surface False (Just declarations)
+declarationContextualDeclaration role declarations =
+  contextualRuntimeDeclaration role False (Just declarations)
     (\resolving reduction ->
       scopeEntriesValue reduction resolving declarations)
 
@@ -1670,7 +1720,7 @@ scopeEntriesNamedView reduction resolving entries = do
       (dependentDeclarationCandidates name layer)
 
 contextualThisAvailable :: Scope -> Bool
-contextualThisAvailable scope = case contextualValue "_this" scope of
+contextualThisAvailable scope = case contextualValue ContextualThis scope of
   Just _ -> True
   Nothing -> False
 
@@ -1685,16 +1735,34 @@ data RecursivePrefix
 lazyRecursivePrefix :: Scope -> Expression -> Maybe (Scope, RecursivePrefix)
 lazyRecursivePrefix scope expression = case expression of
   Fun value -> (scope,) <$> recursivePrefixFor
-    (isContextualAccessOf (IdentifierString "_this")) value
+    (isContextualDeclarationReference ContextualThis scope) value
   IdentifierReference (IdentifierString name) -> do
     (captured, _, definition) <- declarationDefinitionByName scope name
     let isSelf value = value == IdentifierReference (IdentifierString name)
     prefix <- case definition of
       Fun value -> recursivePrefixFor
-        (isContextualAccessOf (IdentifierString "_this")) value
+        (isContextualAccessOf ContextualThis) value
       value -> recursivePrefixFor isSelf value
     pure (captured, prefix)
   _ -> Nothing
+
+-- Contextual surface names are ordinary singleton declarations. Productive
+-- recursion follows their implementations through the declaration environment
+-- instead of recognizing a privileged source spelling.
+isContextualDeclarationReference
+  :: ContextualRole
+  -> Scope
+  -> Expression
+  -> Bool
+isContextualDeclarationReference role scope = go []
+  where
+    go visited expressionValue
+      | isContextualAccessOf role expressionValue = True
+      | IdentifierReference (IdentifierString name) <- expressionValue
+      , name `notElem` visited
+      , Just (_, _, implementation) <- declarationDefinitionByName scope name =
+          go (name : visited) implementation
+      | otherwise = False
 
 recursivePrefixFor :: (Expression -> Bool) -> Expression -> Maybe RecursivePrefix
 recursivePrefixFor isSelf expression = case expression of
@@ -1785,15 +1853,17 @@ evalResourceInScopeWith reduction scope resolving expressionValue =
     normalized ->
       interpretNormalizedExpressionWith reduction scope resolving normalized
 
-evalInContinuationScopeWith
+evalInContextualContinuationScopeWith
   :: salt
   -> ReductionContext
   -> [RuntimeSingletonPayload]
   -> Scope
   -> ResolutionStack
   -> Interpreter
-evalInContinuationScopeWith salt reduction bindings parent resolving expressionValue = do
-  let child = enterRuntimeScope salt bindings genericContinuationHandoff parent
+evalInContextualContinuationScopeWith
+    salt reduction bindings parent resolving expressionValue = do
+  let child = extendContextualRuntimeDeclarations bindings
+        (enterScope salt genericContinuationHandoff parent)
   value <- evalInScopeWith reduction child resolving expressionValue
   pure (handoffScopeValue child value)
 
@@ -1910,8 +1980,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           [actualOptional] ->
             case interpretedSemanticResult actualOptional of
               CanonicalAssignment "Just" _ _ -> do
-                result <- evalInContinuationScopeWith branch reduction
-                  (constantContextualDeclarations "it" actualOptional)
+                result <- evalInContextualContinuationScopeWith branch reduction
+                  (constantContextualDeclarations ContextualIt actualOptional)
                   scope resolving branch
                 liftMaybeResult result
               _ -> do
@@ -1964,7 +2034,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     Def _ -> Left OperationHasNoEffect
     Val _ -> Left OperationHasNoEffect
     Fun operand ->
-      case recursiveCollection operand of
+      case recursiveCollection scope operand of
         Just collection -> do
           let element = recursiveCollectionElement collection
           elementType <- interpret element
@@ -1978,9 +2048,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               _ -> Right neverValue
         Nothing -> recursive reduction
       where
-        recursive activeReduction = evalInContinuationScopeWith
+        recursive activeReduction = evalInContextualContinuationScopeWith
           operand activeReduction
-          (contextualDeclarations "this"
+          (contextualDeclarations ContextualThis
             (case operand of Begin {} -> True; _ -> False)
             recursive)
           scope resolving operand
@@ -2110,7 +2180,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     ScopeAccess
         thisValue
         (IdentifierReference (IdentifierString name))
-      | isContextualAccessOf (IdentifierString "_this") thisValue
+      | isContextualAccessOf ContextualThis thisValue
       , contextualThisAvailable scope
           -> resolveIdentifierWith reduction scope resolving name
     ScopeAccess operand body
@@ -2175,10 +2245,10 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     MapAccess
         thisValue
         insertionOperand
-      | isContextualAccessOf (IdentifierString "_this") thisValue
+      | isContextualAccessOf ContextualThis thisValue
       , contextualThisAvailable scope -> do
           insertion <- interpret insertionOperand
-          case contextualValue "_this" scope of
+          case contextualValue ContextualThis scope of
             Just (_, value) -> do
               contextual <- value resolving reduction
               runProtectedOperation
@@ -2187,7 +2257,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                     [actualContextual, actualInsertion] ->
                       accessValues actualContextual actualInsertion
                     _ -> Right neverValue
-            Nothing -> Left (UnknownIdentifier "_this")
+            Nothing -> Left
+              (UnknownIdentifier (contextualPrivateName ContextualThis))
     MapAccess mapOperand insertionOperand ->
       case lazyRecursivePrefix scope mapOperand of
         Just (captured, prefix) -> do
@@ -2211,8 +2282,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           familyKey = renderSourceExpression identifierExpression
           nameFamily supplied =
             interpretStringTemplateWith protection
-              (evalInContinuationScopeWith identifierExpression reduction
-                (constantContextualDeclarations "it" supplied)
+              (evalInContextualContinuationScopeWith identifierExpression reduction
+                (constantContextualDeclarations ContextualIt supplied)
                 scope resolving)
               parts
       identifier <- nameFamily typeAnnotation
@@ -3083,11 +3154,12 @@ evaluateDeclarationDefinitionActive reduction captured activeResolving
     evaluateDefinition =
       case expressionValue of
         contextual
-          | isContextualAccessOf (IdentifierString "_this") contextual
-          , Just (_, value) <- contextualValue "_this" captured ->
+          | isContextualAccessOf ContextualThis contextual
+          , Just (_, value) <- contextualValue ContextualThis captured ->
               value activeResolving reduction
-        IdentifierReference (IdentifierString reference)
-          | Just (_, value) <- contextualValue reference captured ->
+        IdentifierReference reference
+          | Just role <- contextualRoleForIdentifier reference
+          , Just (_, value) <- contextualValue role captured ->
               value activeResolving reduction
         _ -> evalInScopeWith reduction captured
           activeResolving expressionValue
@@ -3371,7 +3443,7 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
           scopeAt position = scopeAtWith position
           familyScopeAt position = scopeAtWith position
           scopeAtWith position =
-            extendRuntimeDeclarations runtimeDeclarations namedScope
+            extendContextualRuntimeDeclarations runtimeDeclarations namedScope
             where
               visible =
                 [ scoped
@@ -3388,7 +3460,7 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
                       <> scopeDependentDeclarationLayers scopedEnclosing
                 }
               runtimeDeclarations =
-                [ declarationContextualDeclaration "this" visible
+                [ declarationContextualDeclaration ContextualThis visible
                    | introduceThis
                    ]
 
@@ -3986,7 +4058,8 @@ dependentDeclarationMemberByName reduction resolving scoped name = do
     familyCaptured = scopedDependentDeclarationFamilyScope scoped
     sourceMember declaration
       | staticallyExcluded = Right Nothing
-      | otherwise = evaluateDeferredDeclarationWith
+      | otherwise = evaluateSource declaration
+    evaluateSource declaration = evaluateDeferredDeclarationWith
           reduction captured resolving name
           (dependentDeclarationImplementation declaration)
           (seedMember declaration) $ \active -> do
@@ -4233,14 +4306,15 @@ evaluateMaterializedDeclaration reduction captured resolving implementation
           (zip evaluatedCaptures values)
         makeArgumentativeMapPreservingSingleton members
       runtimeDeclarations =
-        [ contextualRuntimeDeclaration "it" False Nothing
+        [ contextualRuntimeDeclaration ContextualIt False Nothing
             (const (const contextualArgument))
+        | not (null evaluatedCaptures)
         ] <>
         [ evaluatedRuntimeDeclaration identifier value
         | (identifier, value) <- functionPreparedBindings input
         ]
       implementationScope =
-        extendRuntimeDeclarations runtimeDeclarations captured
+        extendContextualRuntimeDeclarations runtimeDeclarations captured
   implementationValue <- evaluateDeclarationDefinitionActive reduction
       implementationScope
       resolving
@@ -4599,9 +4673,14 @@ recursiveCollectionElement collection =
     RecursiveList element -> element
     RecursiveStream element -> element
 
-recursiveCollection :: Expression -> Maybe RecursiveCollection
-recursiveCollection expressionValue =
+recursiveCollection :: Scope -> Expression -> Maybe RecursiveCollection
+recursiveCollection scope expressionValue =
   case expressionValue of
+    recursiveStep
+      | Just (EitherType empty element, self) <-
+          twoCellMapExpression recursiveStep
+      , isEmptyMapExpression empty
+      , isSelf self -> Just (RecursiveList element)
     EitherType empty recursiveStep
       | isEmptyMapExpression empty
       , Just (element, self) <- twoCellMapExpression recursiveStep
@@ -4613,7 +4692,7 @@ recursiveCollection expressionValue =
           (requiredStreamElement headExpression))
     _ -> Nothing
   where
-    isSelf = isContextualAccessOf (IdentifierString "_this")
+    isSelf = isContextualDeclarationReference ContextualThis scope
     requiredStreamElement headExpression =
       case headExpression of
         EitherType empty element
@@ -4846,8 +4925,8 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
   let inferredGenericNames = argumentSchemaInferredGenericNames schema
   let parameters = parameterBindings schema
       names = map fst parameters
-      consistencyScope = extendRuntimeDeclarations
-        (constantContextualDeclarations "it" anyTypeValue) captured
+      consistencyScope = extendContextualRuntimeDeclarations
+        (constantContextualDeclarations ContextualIt anyTypeValue) captured
   case filter (scopeNameIsDefinition consistencyScope) names of
     name : _ -> Left (InconsistentShadowing name)
     [] -> pure ()
@@ -4863,7 +4942,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
     [] -> pure ()
   input <- parameterDomain schema
   let (explicitSelf, selfIncludesDependencies) = case
-        contextualValue "_this" captured of
+        contextualValue ContextualThis captured of
         Just (includesDependencies, _) -> (True, includesDependencies)
         _ -> (False, False)
   output <- case evaluatedTypes of
@@ -4935,12 +5014,12 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
               (map snd bodyImported)
               argument
             localDeclarations =
-              constantContextualDeclarations "it" bodyArgument
+              constantContextualDeclarations ContextualIt bodyArgument
                 <> [ evaluatedRuntimeDeclaration name value
                    | (name, value) <- bodyImported
                    ]
             bodyBase =
-              extendRuntimeDeclarations localDeclarations bodySeed
+              extendContextualRuntimeDeclarations localDeclarations bodySeed
         bodyScope <- importScopeWithin bodyBase [] preparedBindings
         value <- evalInScopeWith invocationReduction bodyScope [] bodyResult
         let escaped = withoutCanonicalDependencies
@@ -5558,8 +5637,8 @@ evaluateImport reduction captured resolving sourceExpression paths body =
                   bodySeed declarations
             importedDeclarations <- traverse
               (importArgumentDeclaration bodyDependency supplied) loaded
-            let bodyBase = extendRuntimeDeclarations
-                  (constantContextualDeclarations "it" bodyArgument
+            let bodyBase = extendContextualRuntimeDeclarations
+                  (constantContextualDeclarations ContextualIt bodyArgument
                     <> importedDeclarations)
                   bodySeed
             bodyScope <- importScopeWithin bodyBase [] declarations
@@ -6125,7 +6204,7 @@ closureResolver scope = resolver
     resolver = Resolver
       resolve moduleResolver scopeIndex contextualDepth definitionReference
     definitionReference path
-      | dependencyPathRoot path == ContextualThisRoot = True
+      | dependencyPathRoot path == ContextualRoot ContextualThis = True
       | otherwise = case dependencyPathSegments path of
           [] -> False
           name : _ -> definitionName name
@@ -6144,7 +6223,7 @@ closureResolver scope = resolver
     scopeIndex expressionValue = do
       index <- either (const Nothing) Just (evalInScope scope [] expressionValue)
       (_, position) <- interpretedExplicitOrdinal index
-      declarations <- scopeContextualDeclarationMembers "_this" scope
+      declarations <- scopeContextualDeclarationMembers ContextualThis scope
       view <- either (const Nothing) id
         (scopeEntriesNamedView UnrestrictedReduction [] declarations)
       member <- either (const Nothing) id
@@ -6160,16 +6239,15 @@ closureResolver scope = resolver
       [] -> case lookupModuleDefinitionScope scope path of
         Right imported -> Just (closureResolver imported)
         Left _ -> Nothing
-    contextualDepth name depth = do
-      let selected = FunctionApplication
-            (IdentifierReference (IdentifierString name))
-            (EllipsisNatural depth)
+    contextualDepth role depth = do
+      let selected = contextualAccessAt role depth
       value <- either (const Nothing) Just (evalInScope scope [] selected)
       expressionValue <- either (const Nothing) Just
         (valueExpressionIn scope value)
-      let dependencyName = dropWhile (== '_') name <> "_" <> show depth
+      let dependencyName =
+            contextualSurfaceName role <> "_" <> show depth
       pure Dependency
-        { dependencyKey = ContextualDependency name depth expressionValue
+        { dependencyKey = ContextualDependency role depth expressionValue
         , dependencyAddress = DependencyAddress
             [IdentifierString dependencyName]
         , dependencyDeclaration = singletonDependencyDeclaration
@@ -6177,13 +6255,15 @@ closureResolver scope = resolver
         , dependencyResolver = emptyResolver
         }
     resolve path
-      | dependencyPathRoot path == ContextualThisRoot =
+      | dependencyPathRoot path == ContextualRoot ContextualThis =
           case dependencyPathSegments path of
             [name] -> resolveAmbient [name]
             _ -> Nothing
       | otherwise = resolveAmbient (dependencyPathSegments path)
     resolveAmbient [] = Nothing
-    resolveAmbient ["_this", name] = resolveAmbient [name]
+    resolveAmbient [context, name]
+      | context == contextualPrivateName ContextualThis =
+          resolveAmbient [name]
     resolveAmbient (name : fields@(_ : _))
       | Just runtime <- runtimeDeclarationByName name scope
       , Just imported <- runtimeDeclarationImport runtime

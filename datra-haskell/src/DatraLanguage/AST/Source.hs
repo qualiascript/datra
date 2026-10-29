@@ -71,14 +71,6 @@ source context expression =
       <> " " <> source 0 body
     FunctionTypeValue _ input output -> wrapped 11
       (source 12 input <> " -> " <> functionTypeOutput output)
-    FunctionApplicationValue
-        (IdentifierReferenceValue (IdentifierString "_this"))
-        argument
-      | isDefaultContextualArgument argument -> "this"
-    FunctionApplicationValue
-        (IdentifierReferenceValue (IdentifierString "_it"))
-        argument
-      | isDefaultContextualArgument argument -> "it"
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
     DeclarationValue declaration ->
@@ -249,8 +241,3 @@ scopeBody body = case body of
   Expansion {} -> source 0 body
   EmptyMap -> source 0 body
   _ -> "(" <> source 0 body <> ")"
-
-isDefaultContextualArgument :: OperatorExpression -> Bool
-isDefaultContextualArgument (NaturalValue 0) = True
-isDefaultContextualArgument EmptyMap = True
-isDefaultContextualArgument _ = False

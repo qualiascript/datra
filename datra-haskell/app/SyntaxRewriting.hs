@@ -60,7 +60,6 @@ import SyntaxDefinitions
   , SyntaxTemplateCompilationFailure (..)
   , DependentSyntaxRule (..)
   , DependentSyntaxInvocation (..)
-  , contextualSyntaxRulesFor
   , declarationRuleFailures
   , declarationRules
   , expandSyntax
@@ -229,12 +228,20 @@ expandSelectedSyntaxMatch environment rule matched = do
       Just selected -> selected
       Nothing -> rewriteEvaluate environment
         (rewriteDeclarations environment)
-    directExpansion = do
-      implementation <- rewriteRuleImplementation rule
-      insertion <- case rewriteRuleEvaluation rule of
-        Just _ -> rewriteRuleSyntaxInsertion rule
-        Nothing -> syntaxFunctionInsertion evaluate implementation
-      applySyntaxFunction insertion (insertionCaptures rule captures)
+    -- A zero-hole declaration is an exact dependent lookup. Speculatively
+    -- evaluating its implementation is unnecessary; only declarations with
+    -- captures can provide a syntax-function insertion.
+    directExpansion
+      | any isHole (syntaxTemplatePieces
+          (syntaxTemplate (rewriteRule rule))) = do
+          implementation <- rewriteRuleImplementation rule
+          insertion <- case rewriteRuleEvaluation rule of
+            Just _ -> rewriteRuleSyntaxInsertion rule
+            Nothing -> syntaxFunctionInsertion evaluate implementation
+          applySyntaxFunction insertion (insertionCaptures rule captures)
+      | otherwise = Nothing
+    isHole SyntaxHole {} = True
+    isHole SyntaxLiteral {} = False
 
 insertionCaptures :: RewriteRule -> [Expression] -> [Expression]
 insertionCaptures rule captures
@@ -249,16 +256,14 @@ resolveSyntaxFunctionExpansion
 resolveSyntaxFunctionExpansion _ (SyntaxExpression expressionValue) =
   Right expressionValue
 resolveSyntaxFunctionExpansion environment (SyntaxBegin entries result) = do
-  let contextual = withContextualSyntax ["this"] environment
-      capture = contextCapture (rewriteContext contextual)
-  (rewrittenEntries, nested) <- rewriteSequence capture contextual entries
+  let capture = contextCapture (rewriteContext environment)
+  (rewrittenEntries, nested) <- rewriteSequence capture environment entries
   declarations <- lowerBlockDeclarations rewrittenEntries
   rewrittenResult <- rewriteStandalone capture nested result
   Right (Begin declarations rewrittenResult)
 resolveSyntaxFunctionExpansion environment
     (SyntaxFunctionBody entries result) = do
-  let contextual = withContextualSyntax ["this"]
-        (enterContext Nothing environment)
+  let contextual = enterContext Nothing environment
       capture = contextCapture (rewriteContext contextual)
   (rewrittenEntries, nested) <- rewriteSequence capture contextual entries
   declarations <- lowerBlockDeclarations rewrittenEntries
@@ -313,19 +318,6 @@ sameHoleClass DependentArgumentSyntaxHole {}
     DependentArgumentSyntaxHole {} = True
 sameHoleClass ValueSyntaxHole {} ValueSyntaxHole {} = True
 sameHoleClass _ _ = False
-
--- Contextual surface names exist only inside syntax nodes whose evaluator
--- installs the corresponding private binding. Entering such a node replaces
--- an outer rule with the node's fresh contextual binding; declarations within
--- the node may still shadow it through 'advanceScope'.
-withContextualSyntax :: [String] -> RewriteEnvironment -> RewriteEnvironment
-withContextualSyntax surfaces environment = environment
-  { rewriteRules = contextual <> filter (not . contextualName) existing }
-  where
-    contextual = map compileRewriteRule (contextualSyntaxRulesFor surfaces)
-    existing = rewriteRules environment
-    names = map rewriteRuleName contextual
-    contextualName rule = rewriteRuleName rule `elem` names
 
 type ClassifyHoles =
   [Expression]
@@ -396,7 +388,7 @@ rewriteResourceSyntax envelope context rules declarations raw =
 -- Keep visible syntax rules, while moving the declarations they depend on into
 -- the evaluator's parent scope. RHS declarations belong to the new scope.
 enterContext :: Maybe Expression -> RewriteEnvironment -> RewriteEnvironment
-enterContext value environment = withContextualSyntax ["it"] environment
+enterContext value environment = environment
   { rewriteContext = nested
   , rewriteDeclarations = []
   , rewriteClassifyHoles = contextClassify nested
@@ -897,7 +889,7 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing
                 remaining
     IdentifierTemplateOperation parts annotation given -> do
       let contextual = enterContext Nothing environment
-          bodyEnvironment = withContextualSyntax ["it"] environment
+          bodyEnvironment = environment
           bodyCapture = contextCapture (rewriteContext bodyEnvironment)
       rewrittenParts <- traverse (rewriteTemplatePart contextual) parts
       let (rawAnnotation, rawGiven) =
@@ -980,12 +972,12 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing
             remaining
     Fun signature
       | allowNestedContinuation -> do
-          let nested = withContextualSyntax ["this"] environment
+          let nested = environment
           (rewrittenSignature, remaining) <-
             rewriteWithTail True capture nested signature trailing
           finish (Fun rewrittenSignature) remaining
       | otherwise -> do
-          let nested = withContextualSyntax ["this"] environment
+          let nested = environment
           rewrittenSignature <- rewriteStandalone capture nested signature
           finish (Fun rewrittenSignature) trailing
     AtlasMap entries -> do
@@ -1000,7 +992,7 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing
         then finish (ArgumentativeMap rewritten) trailing
         else Left InvalidPrivateOptionalArgumentName
     Begin bindings result -> do
-      let contextual = withContextualSyntax ["this"] environment
+      let contextual = environment
       (rewrittenBindings, nested) <-
         rewriteSequence capture contextual
           (map DeclarationExpression bindings)
@@ -1008,8 +1000,7 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing
       declarations <- lowerBlockDeclarations rewrittenBindings
       pure (Begin declarations rewrittenResult, trailing)
     FunctionBody bindings result -> do
-      let contextual = withContextualSyntax ["this"]
-            (enterContext Nothing environment)
+      let contextual = enterContext Nothing environment
           nestedCapture = contextCapture (rewriteContext contextual)
       (rewrittenBindings, nested) <-
         rewriteSequence nestedCapture contextual
@@ -1255,20 +1246,14 @@ directSyntaxFunctionExpansion environment selectedRule application =
 blockRewriteEnvironment :: RewriteEnvironment -> RewriteRule -> RewriteEnvironment
 blockRewriteEnvironment environment rule =
   case directSyntaxFunctionExpansion environment rule probe of
-    Right FunctionBody {} -> withContextualSyntax ["this"]
-      (enterContext Nothing environment)
+    Right FunctionBody {} -> enterContext Nothing environment
     _ -> environment
   where
     probe = FunctionApplication
       (IdentifierReference (IdentifierString (rewriteRuleName rule)))
       (AtlasMap [AtlasMap [], AtlasMap []])
 
--- A contextual selector is itself a callable expression. Its depth argument
--- belongs to the selector, not to the syntax function it returns.
 syntaxApplicationSpine :: Expression -> (Expression, [Expression])
-syntaxApplicationSpine (FunctionApplication function argument)
-  | FunctionApplication (IdentifierReference (IdentifierString name)) _ <- function
-  , name == "_it" || name == "_this" = (function, [argument])
 syntaxApplicationSpine value = applicationSpine value
 
 directSyntaxArguments :: Expression -> [Expression]
@@ -2109,15 +2094,22 @@ compileScopedRewriteRules environment declarations rules = mapMaybe compile rule
           , rewriteRuleRuntimeInsertion = runtimeInsertion
           }
         implementation = syntaxRuleAdapter specializedRule
-        evaluatedImplementation = implementation >>= evaluate
+        hasHoles = any isHole specializedPieces
+        evaluatedImplementation
+          | hasHoles = implementation >>= evaluate
+          | otherwise = Nothing
         syntaxInsertion = evaluatedImplementation >>=
           syntaxFunctionInsertionFromValue
-        runtimeInsertion = do
-          value <- evaluatedImplementation <|> do
-            selected <- implementation
-            attached <- attachedFunctionImplementation selected
-            evaluate attached
-          interpretedRuntimeFunctionInsertion value
+        runtimeInsertion
+          | hasHoles = do
+              value <- evaluatedImplementation <|> do
+                selected <- implementation
+                attached <- attachedFunctionImplementation selected
+                evaluate attached
+              interpretedRuntimeFunctionInsertion value
+          | otherwise = Nothing
+        isHole SyntaxHole {} = True
+        isHole SyntaxLiteral {} = False
         classifyPiece piece (pieces, families) = case piece of
           SyntaxLiteral literal ->
             (SyntaxLiteral literal : pieces, families)

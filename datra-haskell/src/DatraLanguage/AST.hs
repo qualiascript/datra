@@ -18,8 +18,6 @@ module DatraLanguage.AST
   , Expression (..)
   , pattern FunctionType
   , pattern GenericFunctionType
-  , contextualAccess
-  , isContextualAccessOf
   , attachedFunctionImplementation
   , OperatorExpression (..)
   , toOperatorExpression
@@ -290,19 +288,6 @@ pattern GenericFunctionType
   -> Expression
 pattern GenericFunctionType generics domain codomain =
   FunctionTypeExpression generics domain codomain
-
--- | Apply a private contextual function with its depth omitted. The function
--- domain supplies the ordinary depth-zero default; an explicit depth remains
--- an ordinary argument.
-contextualAccess :: IdentifierString -> Expression
-contextualAccess name =
-  FunctionApplication (IdentifierReference name) (AtlasMap [])
-
-isContextualAccessOf :: IdentifierString -> Expression -> Bool
-isContextualAccessOf name expression = case expression of
-  FunctionApplication (IdentifierReference actual) argument
-    | actual == name -> argument == EllipsisNatural 0 || argument == AtlasMap []
-  _ -> False
 
 -- | The implementation attached by a function specification expression.
 -- This is structural syntax information; inspecting it does not evaluate the

@@ -9,13 +9,12 @@ module SyntaxDefinitions
   , TemplateSelection (..)
   , SyntaxTemplateCompilationFailure (..)
   , declarationRules, declarationRuleFailures
-  , contextualSyntaxRulesFor
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
   , syntaxApplicationRule
   , syntaxApplicationImplementation
   , syntaxDependentRule, syntaxRuleAdapter
   , expandSyntax
-  , declarationLiterals, absorbFunSequence
+  , declarationLiterals
   , normalizeSyntaxExpansion
   ) where
 import DatraLanguage.DependentDeclaration
@@ -82,22 +81,6 @@ data SyntaxTemplateCompilationFailure
       String
       SyntaxTemplateAdmissibilityFailure
   deriving (Eq, Show)
-
--- | Contextual bindings are supplied by their enclosing evaluator scopes,
--- not by Std. These zero-hole templates are ordinary syntax-function rules:
--- each surface word omits the argument whose domain has depth @0@ as its
--- default.
-contextualSyntaxRulesFor :: [String] -> [SyntaxRule]
-contextualSyntaxRulesFor = map rule
-  where
-    rule surface = SyntaxRule
-      { syntaxName = "_" <> surface
-      , syntaxTemplate = syntaxTemplateFromPattern surface
-      , syntaxSemantics = SyntaxAdapter callable
-      }
-      where
-        callable = IdentifierReference
-          (IdentifierString ("_" <> surface))
 
 declarationRules :: Expression -> [SyntaxRule]
 declarationRules = snd . declarationRuleResults
@@ -363,22 +346,6 @@ identifierReferences :: Expression -> [String]
 identifierReferences expressionValue = case expressionValue of
   IdentifierReference (IdentifierString name) -> [name]
   _ -> concatMap identifierReferences (expressionChildren expressionValue)
-
--- Within @fun@, the canonical recursive-list spelling associates a following
--- sequence with the nonempty branch: @() | T; this@ means
--- @() | (T; this)@.  This keeps @;@ available for nested element types.
-absorbFunSequence :: Expression -> Expression
-absorbFunSequence expressionValue =
-  case expressionValue of
-    MapSequence (EitherType (AtlasMap []) headValue : remaining)
-      | not (null remaining)
-      , isContextualAccessOf (IdentifierString "_this") (last remaining) ->
-          EitherType (AtlasMap []) (MapSequence (headValue : remaining))
-    AtlasMap (EitherType (AtlasMap []) headValue : remaining)
-      | not (null remaining)
-      , isContextualAccessOf (IdentifierString "_this") (last remaining) ->
-          EitherType (AtlasMap []) (AtlasMap (headValue : remaining))
-    _ -> expressionValue
 
 -- Literal alternatives of a named type can be spelled as keywords in an AST
 -- pattern, while ordinary application keeps their $identifier value spelling.

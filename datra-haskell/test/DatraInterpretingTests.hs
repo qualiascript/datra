@@ -23,8 +23,8 @@ import DatraLanguage.AST
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
   , pattern FunctionType
-  , contextualAccess
   )
+import DatraLanguage.ContextualDeclaration
 import DatraLanguage.AST.Syntax
   ( natural
   , (...)
@@ -191,7 +191,7 @@ testModuleSyntaxAlias = do
         (IdentifierString name) value Nothing
   let isolatedBody = Begin
         [binding "x" (identifierReference "Int")]
-        (contextualAccess (IdentifierString "_this"))
+        (identifierReference "this")
       isolatedSource = ModuleSource "isolated-module.datra"
         (Begin [] (member "IsolatedModule" isolatedBody)) []
   case moduleExportNames isolatedSource of
@@ -201,7 +201,7 @@ testModuleSyntaxAlias = do
   let explicitStd = ModuleSource "std.datra"
         (Begin [] (member "Std" (Begin
           [binding "Int" (natural 7)]
-          (contextualAccess (IdentifierString "_this")))))
+          (identifierReference "this"))))
         []
       importingSource = ModuleSource "importing-module.datra"
         (ScopeAccess (identifierReference "Std")
@@ -3851,7 +3851,7 @@ testIdentifiers = do
       "5 ~> (\"n%(it)\"? : Nat)" $
     \value -> assert "the unnamed optional branch retains a specification witness"
       (interpretedValueKind value == SpecificationValueKind)
-  let contextualIt = contextualAccess (IdentifierString "_it")
+  let contextualIt = contextualAccess ContextualIt
       directName = IdentifierTemplateOperation
         [ StringTemplateLiteral "x"
         , StringTemplateInterpolation contextualIt

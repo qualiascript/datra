@@ -144,10 +144,7 @@ scopeTests =
         , expressionFailureCase "explicit resources do not introduce it"
             "it"
             (SourceEvaluationFailure (UnknownIdentifier "it"))
-        , expressionCase "explicit begin may shadow private _this"
-            "begin _this := 23 yield _this"
-            "23 <~ begin _this := 23; yield _this"
-        , programCase "implicit begin may shadow private _this"
+        , programCase "a resource without contextual this may define _this"
             "_this := 23\nyield _this"
             "23"
         , programCase "ordinary identifier named this remains addressable"
@@ -254,9 +251,6 @@ scopeTests =
         , programCase "let declarations are visible throughout do"
             "f := (() -> Int do a := x + 1; let x := 10; yield a)\nyield f ()"
             "11"
-        , programCase "function input binding may be shadowed privately"
-            "f := (() -> Int do _it := 23; yield _it)\nyield f ()"
-            "23"
         , programCase "ordinary identifier named it remains addressable"
             "f := (() -> Int do it := 23; yield this.it)\nyield f ()"
             "23"
@@ -275,9 +269,6 @@ scopeTests =
                 <> "yield f ('x:1)"
             )
             "1"
-        , programCase "recursive self binding may be shadowed privately"
-            "yield (fun (() -> Int do _this := 23; yield _this)) ()"
-            "23"
         ]
     , testGroup "condition-local declarations"
         [ programCase "named comparison operand is available in a branch"
@@ -295,9 +286,6 @@ scopeTests =
         , programCase "Maybe branch aliases it"
             "yield (1; 2; 3) !? begin my_it := it; yield my_it[1][0]"
             "Just : 1"
-        , programCase "Maybe branch binding may be shadowed privately"
-            "yield (1; 2; 3) !? begin _it := 23; yield _it"
-            "Just : 23"
         ]
     , testGroup "map members"
         [ programCase "quoted identifier remains valid in a map"

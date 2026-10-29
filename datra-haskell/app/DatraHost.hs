@@ -13,7 +13,6 @@ import DatraTypes
 import DatraOrdinal (finiteOrdinalPositions)
 import IntegerRange qualified
 import NaturalRange qualified
-import SyntaxDefinitions (absorbFunSequence)
 
 datraHostIdentifier :: String
 datraHostIdentifier = "datra"
@@ -150,7 +149,7 @@ datraHostValue = do
           _ -> Nothing))
     , syntaxBody "fun" (expressionSyntaxInsertion
         (\case
-          [entry] -> Just (Fun (absorbFunSequence entry))
+          [entry] -> Just (Fun entry)
           _ -> Nothing)
         (\case
           Fun entry -> Just [entry]

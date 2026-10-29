@@ -18,7 +18,8 @@ import DatraLanguage.DependentDeclaration
   )
 import Data.List (nub)
 import DatraLanguage.AST
-import Control.Monad.Trans.State.Strict (State, get, put, runState)
+import DatraLanguage.ContextualDeclaration
+import Control.Monad.Trans.State.Strict (State, get, modify', put, runState)
 import Numeric.Natural (Natural)
 
 -- Keys identify bindings during this traversal only; they never enter source.
@@ -31,7 +32,7 @@ newtype DependencyAddress = DependencyAddress
 data DependencyKey
   = BindingDependency String Expression
   | SelectedDependency [IdentifierString] Expression
-  | ContextualDependency String Natural Expression
+  | ContextualDependency ContextualRole Natural Expression
   | ModuleDependency FilePath DependencyKey
   deriving (Eq, Show)
 
@@ -44,7 +45,7 @@ data Dependency = Dependency
 
 data DependencyRoot
   = AmbientRoot
-  | ContextualThisRoot
+  | ContextualRoot ContextualRole
   deriving (Eq, Show)
 
 data DependencyPath = DependencyPath
@@ -57,13 +58,18 @@ data Resolver = Resolver
   { resolveDependency :: DependencyPath -> Maybe Dependency
   , resolveDependencyModule :: String -> Maybe Resolver
   , resolveScopeIndex :: Expression -> Maybe String
-  , resolveContextualDepth :: String -> Natural -> Maybe Dependency
+  , resolveContextualDepth :: ContextualRole -> Natural -> Maybe Dependency
   , resolveDefinitionReference :: DependencyPath -> Bool
   }
 
 data DependencyMode = BindDependencies | InlineDependencies deriving (Eq)
 
-type References = [(DependencyKey, Expression)]
+data ActiveReference = ActiveReference
+  { activeReferenceExpression :: Expression
+  , activeReferenceIsClosureSelf :: Bool
+  }
+
+type References = [(DependencyKey, ActiveReference)]
 type Collected =
   [ ( DependencyKey
     , DependencyAddress
@@ -71,13 +77,17 @@ type Collected =
     )
   ]
 
+data ClosureState = ClosureState
+  { closureSelfReferenced :: Bool
+  , closureSelfReferencedInDefinition :: Bool
+  , closureCollected :: Collected
+  }
+
 data BoundName
   = LexicalBound String
-  | ContextualBound String
+  | ContextualBound ContextualRole
   | FixedThisBound
   deriving (Eq)
-
-data GeneratedBinder = ClosureSelfBinder
 
 closeFunction
   :: Resolver
@@ -87,7 +97,7 @@ closeFunction
   -> Expression
   -> Expression
 closeFunction resolver self explicitSelf selfIncludesDependencies expression =
-  close BindDependencies 0 [] [] resolver self
+  close BindDependencies resolver self
     explicitSelf selfIncludesDependencies expression
 
 -- Reuse the same scope-aware dependency graph when reconstructing values from
@@ -96,11 +106,11 @@ closeFunction resolver self explicitSelf selfIncludesDependencies expression =
 -- directly to the binding whose definition is being collected.
 inlineDependencies :: Resolver -> Expression -> Expression
 inlineDependencies resolver expression =
-  close InlineDependencies 0 [] [] resolver Nothing False False expression
+  close InlineDependencies resolver Nothing False False expression
 
-close :: DependencyMode -> Int -> References -> [String] -> Resolver
+close :: DependencyMode -> Resolver
   -> Maybe DependencyKey -> Bool -> Bool -> Expression -> Expression
-close mode depth ancestors occupied resolver self
+close mode resolver self
     explicitSelf selfIncludesDependencies original =
   case mode of
     InlineDependencies
@@ -117,110 +127,101 @@ close mode depth ancestors occupied resolver self
         (False, False, False) -> Begin definitions selfRewritten
   where
     expression = original
-    reserved = occupied <> declaredNames expression
-    root@(IdentifierString rootText) =
-      freshGeneratedBinder ClosureSelfBinder reserved
-    active = maybe ancestors
-      (\key -> (key, IdentifierReference root) : ancestors) self
+    active = maybe []
+      (\key ->
+        [ ( key
+          , ActiveReference (contextualAccess ContextualThis) True
+          )
+        ]) self
     initiallyBound
       | explicitSelf =
-          [FixedThisBound, ContextualBound "_this", LexicalBound "_this"]
+          [ FixedThisBound
+          , ContextualBound ContextualThis
+          , LexicalBound (contextualPrivateName ContextualThis)
+          ]
       | otherwise = []
-    (rewritten, collected) = runState
-      (rewrite mode depth (rootText : reserved) active resolver
-        initiallyBound expression)
-      []
+    (rewritten, ClosureState recursive recursiveInDefinitions collected) =
+      runState
+        (rewrite mode False active resolver initiallyBound expression)
+        (ClosureState False False [])
     definitions = dependencyDefinitions collected
-    recursiveInBody = root `elem` referenceNames rewritten
-    recursiveInDefinitions =
-      root `elem` concatMap declarationReferenceNames definitions
-    recursive = recursiveInBody || recursiveInDefinitions
     selfBound = explicitSelf || recursive
-    selfRewritten
-      | recursive = replaceReference root
-          (contextualAccess (IdentifierString "_this")) rewritten
-      | otherwise = rewritten
-    selfDefinitions
-      | recursive = map
-          (mapDependentDeclaration
-            (replaceReference root
-              (contextualAccess (IdentifierString "_this"))))
-          definitions
-      | otherwise = definitions
+    selfRewritten = rewritten
+    selfDefinitions = definitions
 
-rewrite :: DependencyMode -> Int -> [String] -> References -> Resolver -> [BoundName]
-  -> Expression -> State Collected Expression
-rewrite mode depth reserved active resolver bound
+rewrite :: DependencyMode -> Bool -> References -> Resolver -> [BoundName]
+  -> Expression -> State ClosureState Expression
+rewrite mode inDefinition active resolver bound
     (MapAccess thisValue index)
-  | isContextualAccessOf (IdentifierString "_this") thisValue
+  | isContextualAccessOf ContextualThis thisValue
   , Just name <- resolveScopeIndex resolver index = do
       -- Pure captured selectors have a fixed result. Retain the calculation's
       -- dependencies as well as the selected declaration, without rebuilding
       -- unrelated entries of the original scope map.
-      _ <- rewrite mode depth reserved active resolver bound index
-      value <- rewrite mode depth reserved active resolver bound
+      _ <- rewrite mode inDefinition active resolver bound index
+      value <- rewrite mode inDefinition active resolver bound
         (IdentifierReference (IdentifierString name))
       pure (IdentifierOperation (IdentifierString name) value Nothing)
-rewrite mode depth reserved active resolver bound expression
+rewrite mode inDefinition active resolver bound expression
   | FunctionApplication
-      (IdentifierReference (IdentifierString name))
+      (IdentifierReference identifier)
       (EllipsisNatural requestedDepth) <- expression
-  , name == "_this" || name == "_it"
-  , let localDepth = contextualBoundDepth name bound =
+  , Just role <- contextualRoleForIdentifier identifier
+  , let localDepth = contextualBoundDepth role bound =
       if requestedDepth < localDepth
         then pure expression
-        else case resolveContextualDepth resolver name
+        else case resolveContextualDepth resolver role
             (requestedDepth - localDepth) of
           Just dependency -> collectDependency
-            mode depth reserved active dependency
+            mode inDefinition active dependency
           Nothing -> pure expression
-rewrite _ _ _ _ _ bound expression
+rewrite _ _ _ _ bound expression
   | Just path <- referencePath expression
   , Just lexicalName <- dependencyPathLexicalName path
   , LexicalBound lexicalName `elem` bound = pure expression
-rewrite mode depth reserved active resolver bound expression
+rewrite mode inDefinition active resolver bound expression
   | Just path <- referencePath expression
   , Just lexicalName <- dependencyPathLexicalName path
   , LexicalBound lexicalName `notElem` bound
   , Just dependency <- resolveDependency resolver path = do
-      collectDependency mode depth reserved active dependency
-rewrite _ _ _ _ _ _ expression
+      collectDependency mode inDefinition active dependency
+rewrite _ _ _ _ _ expression
   | Just path <- referencePath expression
   , referencePathIsInternalContext path = pure expression
-rewrite _ _ _ _ resolver _ expression
+rewrite _ _ _ resolver _ expression
   | Just path <- referencePath expression
   , resolveDefinitionReference resolver path = pure expression
 
-rewrite mode depth reserved active resolver bound expression =
+rewrite mode inDefinition active resolver bound expression =
   case expression of
     -- A short scope access evaluates its RHS name inside the child scope
     -- opened by the rewritten source. It is not an ambient dependency to
     -- capture or rename independently.
     ScopeAccess source body@IdentifierReference {} ->
       ScopeAccess
-        <$> rewrite mode depth reserved active resolver bound source
+        <$> rewrite mode inDefinition active resolver bound source
         <*> pure body
     InModule path body
       | Just imported <- resolveDependencyModule resolver path ->
-          rewrite mode (depth + 1) reserved active imported bound body
+          rewrite mode inDefinition active imported bound body
     FunctionApplication
         (FunctionTypeExpression generics domain codomain)
         (FunctionBody entries result) -> do
       let parameters = parameterNames domain
       closedGenerics <- traverse
         (\binder -> do
-          closedBound <- rewrite mode depth reserved active resolver bound
+          closedBound <- rewrite mode inDefinition active resolver bound
             (genericBinderBound binder)
           pure binder
             { genericBinderBound = closedBound })
         generics
-      closedDomain <- rewrite mode depth reserved active resolver
+      closedDomain <- rewrite mode inDefinition active resolver
         (map LexicalBound parameters <> bound) domain
-      closedCodomain <- rewrite mode depth reserved active resolver
+      closedCodomain <- rewrite mode inDefinition active resolver
         (map LexicalBound parameters <> bound) codomain
-      body <- rewrite mode depth reserved active resolver
-        ( ContextualBound "_it"
-        : LexicalBound "_it"
+      body <- rewrite mode inDefinition active resolver
+        ( ContextualBound ContextualIt
+        : LexicalBound (contextualPrivateName ContextualIt)
         : map LexicalBound parameters <> bound)
         (FunctionBody entries result)
       pure (FunctionApplication
@@ -236,7 +237,7 @@ rewrite mode depth reserved active resolver bound expression =
               operand)
     _ -> traverseExpressionChildren recur expression
   where
-    recur = rewrite mode depth reserved active resolver bound
+    recur = rewrite mode inDefinition active resolver bound
     block constructor entries result = do
       let names = concatMap declarationBindingNames entries
           -- Source validity and declaration ordering have already been checked
@@ -247,10 +248,10 @@ rewrite mode depth reserved active resolver bound expression =
           contextualBound
             | FixedThisBound `elem` bound = map LexicalBound names <> bound
             | otherwise =
-                ContextualBound "_this"
-                : LexicalBound "_this"
+                ContextualBound ContextualThis
+                : LexicalBound (contextualPrivateName ContextualThis)
                 : map LexicalBound names <> bound
-          inside = rewrite mode depth reserved active
+          inside = rewrite mode inDefinition active
             resolver { resolveScopeIndex = const Nothing }
             contextualBound
       constructor
@@ -259,16 +260,23 @@ rewrite mode depth reserved active resolver bound expression =
 
 collectDependency
   :: DependencyMode
-  -> Int
-  -> [String]
+  -> Bool
   -> References
   -> Dependency
-  -> State Collected Expression
-collectDependency mode depth reserved active dependency =
+  -> State ClosureState Expression
+collectDependency mode inDefinition active dependency =
   case lookup (dependencyKey dependency) active of
-    Just reference -> pure reference
+    Just reference -> do
+      if activeReferenceIsClosureSelf reference
+        then modify' (\state -> state
+          { closureSelfReferenced = True
+          , closureSelfReferencedInDefinition =
+              closureSelfReferencedInDefinition state || inDefinition
+          })
+        else pure ()
+      pure (activeReferenceExpression reference)
     Nothing -> do
-      collected <- get
+      collected <- closureCollected <$> get
       case [ ()
            | (key, _, _) <- collected
            , key == dependencyKey dependency
@@ -283,27 +291,28 @@ collectDependency mode depth reserved active dependency =
                 , address
                 , dependencyDeclaration dependency
                 )
-              occupied = reserved
-                <> dependencyGeneratedRoots (collected <> [pending])
-          put (collected <>
-            [pending])
-          value <- rewrite mode (depth + 1) occupied
-            ((key, reference) : active)
+          modify' (\state -> state
+            { closureCollected = collected <> [pending] })
+          value <- rewrite mode True
+            ((key, ActiveReference reference False) : active)
             (dependencyResolver dependency)
             []
             (dependentDeclarationImplementation
               (dependencyDeclaration dependency))
-          transitive <- get
-          put
-            [ if existingKey == key
-                then
-                  ( existingKey
-                  , existingAddress
-                  , dependentDeclarationWithImplementation value declaration
-                  )
-                else entry
-            | entry@(existingKey, existingAddress, declaration) <- transitive
-            ]
+          state <- get
+          let transitive = closureCollected state
+          put state
+            { closureCollected =
+                [ if existingKey == key
+                    then
+                      ( existingKey
+                      , existingAddress
+                      , dependentDeclarationWithImplementation value declaration
+                      )
+                    else entry
+                | entry@(existingKey, existingAddress, declaration) <- transitive
+                ]
+            }
           pure reference
 
 dependencyReference :: DependencyAddress -> Expression
@@ -316,13 +325,6 @@ dependencyReference (DependencyAddress (root : fields)) =
 
 prependIdentifier :: IdentifierString -> IdentifierString
 prependIdentifier (IdentifierString name) = IdentifierString ('_' : name)
-
-dependencyGeneratedRoots :: Collected -> [String]
-dependencyGeneratedRoots collected = nub
-  [ name
-  | (_, DependencyAddress (root : _), _) <- collected
-  , let IdentifierString name = prependIdentifier root
-  ]
 
 -- Captured declarations are grouped by their structural origin. Only the
 -- declaration entering the closure gets translated by the injective @_@
@@ -354,7 +356,7 @@ scopeDefinitions prefixHere collected =
                 <- collected
             , first == name
             ])
-          (contextualAccess (IdentifierString "_this"))
+          (contextualAccess ContextualThis)
 
 capturedDeclaration
   :: Bool
@@ -369,9 +371,9 @@ capturedDeclaration prefixHere _ declaration =
       | prefixHere = prependDependentDeclarationName "_" eager
       | otherwise = eager
 
-contextualBoundDepth :: String -> [BoundName] -> Natural
-contextualBoundDepth name =
-  fromIntegral . length . filter (== ContextualBound name)
+contextualBoundDepth :: ContextualRole -> [BoundName] -> Natural
+contextualBoundDepth role =
+  fromIntegral . length . filter (== ContextualBound role)
 
 -- A retained begin block is itself a singleton type.  Selecting the result
 -- from an ordered pair outside that block recovers the yielded value's own
@@ -392,8 +394,8 @@ referencePath
     (ScopeAccess
       thisValue
       (IdentifierReference (IdentifierString name)))
-  | isContextualAccessOf (IdentifierString "_this") thisValue =
-      Just (DependencyPath ContextualThisRoot [name])
+  | isContextualAccessOf ContextualThis thisValue =
+      Just (DependencyPath (ContextualRoot ContextualThis) [name])
 referencePath expression
   | FunctionApplication
       (IdentifierReference (IdentifierString name))
@@ -416,20 +418,7 @@ dependencyPathLexicalName path = case dependencyPathSegments path of
 
 referencePathIsInternalContext :: DependencyPath -> Bool
 referencePathIsInternalContext path =
-  dependencyPathRoot path == ContextualThisRoot
-
-freshGeneratedBinder :: GeneratedBinder -> [String] -> IdentifierString
-freshGeneratedBinder binder reserved = go (0 :: Int)
-  where
-    go suffix
-      | name `elem` reserved = go (suffix + 1)
-      | otherwise = IdentifierString name
-      where
-        name = generatedBinderStem binder
-          <> if suffix == 0 then "" else "_" <> show suffix
-
-generatedBinderStem :: GeneratedBinder -> String
-generatedBinderStem ClosureSelfBinder = "__closure"
+  dependencyPathRoot path == ContextualRoot ContextualThis
 
 parameterNames :: Expression -> [String]
 parameterNames value@(IdentifierOperation _ _ _) = bindingNames value
@@ -438,38 +427,9 @@ parameterNames value
       optionalIdentifierExpression value = bindingNames named
 parameterNames value = concatMap parameterNames (expressionChildren value)
 
-declaredNames :: Expression -> [String]
-declaredNames value = nub (bindingNames value <> concatMap declaredNames (expressionChildren value))
-
-referenceNames :: Expression -> [IdentifierString]
-referenceNames (IdentifierReference name) = [name]
-referenceNames value = concatMap referenceNames (expressionChildren value)
-
-declarationReferenceNames
-  :: DependentDeclaration Expression
-  -> [IdentifierString]
-declarationReferenceNames declaration =
-  headReferences (dependentDeclarationHead declaration)
-    <> referenceNames (dependentDeclarationImplementation declaration)
-  where
-    headReferences headValue = case headValue of
-      SimpleIdentifierDeclarationHead {} -> []
-      StringTemplateDeclarationHead parts -> concatMap partReferences parts
-      EvaluatedDeclarationHead expressionValue -> referenceNames expressionValue
-    partReferences part = case part of
-      StringTemplateLiteral {} -> []
-      StringTemplateInterpolation expressionValue ->
-        referenceNames expressionValue
-
 declarationBindingNames :: DependentDeclaration Expression -> [String]
 declarationBindingNames declaration =
   case dependentDeclarationHead declaration of
     SimpleIdentifierDeclarationHead (IdentifierString name) -> [name]
     StringTemplateDeclarationHead [StringTemplateLiteral name] -> [name]
     _ -> []
-
-replaceReference :: IdentifierString -> Expression -> Expression -> Expression
-replaceReference target replacement expression =
-  case expression of
-    IdentifierReference name | name == target -> replacement
-    _ -> mapExpressionChildren (replaceReference target replacement) expression

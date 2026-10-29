@@ -19,7 +19,6 @@ import DatraLanguage.AST
   , StringTemplatePart (..)
   , pattern FunctionType
   , pattern GenericFunctionType
-  , contextualAccess
   , expressionChildren
   , normalizeExpression
   , renderExpression
@@ -492,14 +491,14 @@ regressionTests = do
   assertParsed "a nested begin introduces surface this"
     "value := begin yield this"
     (AST.assignment "value"
-      (Begin [] (contextualAccess (IdentifierString "_this")))
-      (Begin [] (contextualAccess (IdentifierString "_this"))))
+      (Begin [] (ref "this"))
+      (Begin [] (ref "this")))
   assertParsed "explicit contextual depth remains an ordinary application"
     "_this 2"
     (FunctionApplication
       (IdentifierReference (IdentifierString "_this"))
       (EllipsisNatural 2))
-  assert "only contextual depth zero renders with surface syntax"
+  assert "contextual depth renders as an ordinary application"
     ( renderSourceExpression
         (FunctionApplication
           (IdentifierReference (IdentifierString "_this"))

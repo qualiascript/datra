@@ -57,6 +57,8 @@ library
         DatraLanguage.AST.Reserved.Bootstrap
         DatraLanguage.AST.Syntax
         DatraLanguage.DependentDeclaration
+        DatraLanguage.ContextualRole
+        DatraLanguage.ContextualDeclaration
         DatraLanguage.SyntaxTemplate
         DatraLanguage.NeutralLexer
         DatraLanguage.Identifier
