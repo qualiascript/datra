@@ -109,10 +109,45 @@ The same failure occurs for a focused test whose body does not reference
 failure. This pass did not investigate the Std error beyond locating it well
 enough to report the blocker.
 
+Subsequent investigation separated two failures that had both been reported as
+`NoApplicableFunctionAlternative`. The selected dependent-declaration call
+path was rebuilding an argumentative map from the raw arguments after
+`dependentDeclarationInput` had already resolved and validated those
+arguments. It now passes the resulting `PreparedFunctionArgument` to the
+selected seed insertion instead. The Std-backed regression is:
+
+```datra
+yield from 0 up
+```
+
+That correction exposes the next failure while Std is rewriting `public`:
+
+```datra
+yield (
+  ((&_declaration :: _declarations) do
+    yield if _declaration._key[0] = "_" then () else _declaration),
+)
+```
+
+The tentative fixed-point pass successfully expands the `if`. After reaching
+the fixed point, however, `rewriteSequence` uses the stable entries only to
+construct declaration scopes and runs `rewriteWithTail` over the original raw
+entries again. The strict Bool capture consequently tries to evaluate
+`_declaration._key[0] = "_"` before the function is invoked, when
+`_declaration` has no runtime value. The successful tentative expansion is
+then discarded and the final surface error is `UnknownIdentifier "if"`.
+
+This is also a repeated-work path: syntax selection and expansion performed by
+the fixed-point pass are performed again by the strict pass. Temporary
+instrumentation observed the same failed Bool capture repeatedly while Std was
+loading. A successful end-to-end timing comparison is still needed before
+quantifying the performance impact.
+
 ## Remaining work
 
-- Diagnose the bounded Std `NoApplicableFunctionAlternative` separately from
-  the contextual-declaration refactor.
+- Implement the replacement algorithm specified in the
+  [syntax rewrite algorithm design](SYNTAX_REWRITE_ALGORITHM_DESIGN.md) and
+  restore successful Std loading.
 - Once Std loads again, run the dependent-declaration, scope, closure,
   interpreter, types, parsing, core, and CLI suites to obtain meaningful
   post-refactor results.
