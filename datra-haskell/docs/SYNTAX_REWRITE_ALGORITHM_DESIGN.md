@@ -23,6 +23,8 @@ The replacement owns:
 - greedy candidate selection and parent-level backtracking;
 - dependencies between rewrite nodes;
 - matching finalized child result types against syntax-hole types;
+- propagating candidate type checks through existing generic function
+  contexts;
 - retention of rejected candidate attempts;
 - expansion of accepted candidates;
 - declaration discovery inside rewritten results;
@@ -130,7 +132,11 @@ The replacement must satisfy these invariants:
 12. Rewriting the same source and scope is deterministic.
 13. Typing rejections take diagnostic precedence over an unknown-identifier
     fallback.
-14. Existing Datra scope, declaration, generic, protection, and runtime
+14. A generic candidate publishes its instantiated return type, not its
+    uninstantiated declared codomain.
+15. An unresolved generic typing context suspends one candidate frame while
+    child frames run; continuing that frame never repeats completed checks.
+16. Existing Datra scope, declaration, generic, protection, and runtime
     semantics remain unchanged.
 
 ## Proposed module structure
@@ -143,7 +149,7 @@ SyntaxRewriting.Types
   nodes, results, candidates, dependencies, and stack tasks
 
 SyntaxRewriting.Candidates
-  structural enumeration, type checks, and rejection records
+  structural enumeration, generic type propagation, and rejection records
 
 SyntaxRewriting.Stack
   work stack, greedy choice points, and failure propagation
@@ -232,9 +238,12 @@ data RewriteResult = RewriteResult
 candidate's return type. It is not the runtime value of
 `rewriteResultExpression`.
 
-Syntax-selected nodes publish the selected rule's return type. Ordinary nodes
-which do not establish a syntax result may publish no type. Parent candidates
-only depend on a child type when a hole requires one.
+Syntax-selected nodes publish the return type of the selected rule after its
+generic function context has been resolved from the finalized types of its
+captured children. For a non-generic rule this is its ordinary declared return
+type. Ordinary nodes which do not establish a syntax result may publish no
+type. Parent candidates only depend on a child type when a hole or generic
+context requires one.
 
 ## Structural candidates
 
@@ -271,7 +280,10 @@ or shorter greedy capture.
 ```haskell
 data CandidateAttempt
   = CandidateAccepted SelectedCandidate
-  | CandidateBlocked StructuralCandidate (Set RewriteDependency)
+  | CandidateBlocked
+      StructuralCandidate
+      CandidateFrame
+      (Set RewriteDependency)
   | CandidateRejected CandidateRejection
 ```
 
@@ -286,7 +298,11 @@ The candidate could apply, but one or more required rewrite results are not
 finalized. The node records dependencies and waits. Later candidates are not
 tried while an earlier candidate is blocked.
 
-When all dependencies finalize, the same candidate resumes.
+The blocked candidate's frame remains on the stack with its current capture
+cursor and typing context. Child frames run above it. When they finish, the
+parent frame continues at its next unfinished check. It does not enumerate the
+candidate again or repeat checks already recorded in the frame. No later
+candidate is considered until the current candidate is accepted or rejected.
 
 ### Rejected
 
@@ -351,6 +367,123 @@ The condition is accepted without obtaining a runtime value for
 This rule applies generally. A child result may be more specific than the hole
 type as long as its return federation is a subfederation of the expected one.
 
+## Generic candidate typing contexts
+
+Some dependent declarations select generic functions whose return type depends
+on the types of their captured values. In that case, candidate checking cannot
+compare the declaration's uninstantiated codomain directly with the parent
+hole type.
+
+The candidate has one persistent stack frame while its children are being
+rewritten:
+
+```haskell
+data CandidateFrame = CandidateFrame
+  { candidateFrameCandidate :: StructuralCandidate
+  , candidateFrameNextCapture :: Int
+  , candidateFrameTypingContext :: CandidateTypingContext
+  }
+
+data CandidateTypingContext = CandidateTypingContext
+  { candidateTypingInputs :: Map Int InterpretedValue
+  , candidateTypingExpectedHoles :: Map Int InterpretedValue
+  , candidateTypingReturnType :: Maybe InterpretedValue
+  }
+```
+
+`candidateFrameNextCapture` is a monotonic cursor. Completed capture checks and
+inferred generic inputs stay in `candidateFrameTypingContext`. Continuing a
+frame never restarts from the first capture.
+
+This is stack state around Datra's existing generic function preparation and
+inference. It does not introduce new generic identifiers, bounds, or resolution
+rules.
+
+Candidate typing proceeds in capture order:
+
+1. Use each finalized child result type as the type of that captured input.
+2. Feed the known input types through the selected function's existing generic
+   argument and bound checks.
+3. Instantiate any later hole types which depend on the generic values already
+   established.
+4. Propagate those instantiated expected types to the corresponding child
+   checks.
+5. Instantiate the candidate's return type when enough input types are known.
+6. Compare the instantiated return type with the parent hole type using the
+   existing subfederation relation.
+
+If a required child type is unavailable, the candidate frame records a
+`RewriteNodeResult` dependency and remains below that child on the work stack.
+The child performs its own single candidate traversal. When the child
+finalizes, the parent frame consumes its result, advances its cursor, and
+continues. Resolving one child can determine the expected type of a later
+capture, which is then pushed as the next child frame.
+
+```text
+candidate frame at capture A
+  -> needs child A type
+  -> push child A frame
+  -> child A finalizes
+  -> pop child A frame
+  -> generic argument becomes known
+  -> advance parent cursor
+  -> later hole type is instantiated
+  -> push child B frame under that hole type
+  -> child B finalizes
+  -> pop child B frame
+  -> return type is instantiated
+  -> final parent-hole subfederation check
+```
+
+This is one depth-first traversal of one candidate. The frame can be suspended
+behind several nested child frames, but candidate enumeration, completed
+capture checks, and established generic arguments are not redone. This is not
+a whole-sequence fixed point and does not rewrite finalized unrelated nodes.
+
+For example:
+
+```text
+((abc ^^ def) %% (ghi ^^ jkl))
+```
+
+The outer `%%` candidate frame waits below the frames needed for its operands.
+The left `^^` frame waits below the identifier nodes for `abc` and `def`; the
+right `^^` frame similarly depends on `ghi` and `jkl`. During the left descent,
+the outer and left operator candidates can both be blocked on the stack:
+
+```text
+%% candidate frame (blocked)
+  ^^ left candidate frame (blocked)
+    abc or def leaf work
+```
+
+After the left result finalizes, the stack descends through the right side:
+
+```text
+%% candidate frame (blocked)
+  ^^ right candidate frame (blocked)
+    ghi or jkl leaf work
+```
+
+As leaf types finalize, each inner frame unwinds into its parent. Each `^^`
+frame computes its instantiated return type once, and the `%%` frame consumes
+the two finalized operand types once. No candidate is restarted merely because
+its children were nested or generic.
+
+The candidate is accepted only when:
+
+- every required child type is finalized;
+- generic arguments and bounds are satisfied;
+- every dependent hole type has been instantiated and checked;
+- the instantiated return type is known; and
+- that return type satisfies the parent hole, when a parent hole exists.
+
+A generic mismatch produces a `CandidateRejection` containing the instantiated
+expected and actual types. An unresolved generic input blocks the candidate;
+it is not a rejection. Once accepted, `rewriteResultType` stores the
+instantiated return type, so the candidate's parent can continue the same
+process recursively.
+
 ## Rewrite dependencies
 
 Dependencies describe rewrite ordering, not Datra identifier or runtime-value
@@ -394,9 +527,15 @@ active while those children run.
 
 Child completion has three outcomes:
 
-- a compatible finalized result allows the parent candidate to continue;
+- a compatible finalized result advances the parent candidate's generic typing
+  context and allows checking to continue;
 - an unresolved child blocks the parent on `RewriteNodeResult child`;
 - exhaustion of the child's candidates rejects the active parent candidate.
+
+Advancing a generic typing context may reveal another required child. The
+parent frame advances its capture cursor and pushes that child. Previously
+completed checks remain stored in the frame until its instantiated return type
+is known.
 
 Rejection advances the parent's cursor. If the parent exhausts its candidates,
 failure propagates to the candidate which activated that parent.
@@ -455,13 +594,19 @@ When a node is entered:
 3. Try the candidate at the current cursor.
 4. Schedule any child nodes required to establish its captures.
 5. If a required result is unavailable, record dependencies and wait.
-6. When dependencies finalize, resume the same candidate.
-7. Reject and record the candidate if a literal, category, or typed-hole check
-   fails.
-8. Advance the cursor after rejection.
-9. Propagate failure to the active parent if all candidates are exhausted.
-10. Accept the candidate once all checks succeed.
-11. Expand it and finalize the node.
+6. When a dependency finalizes, continue the stored candidate frame from its
+   current capture cursor.
+7. Consume the finalized child type once through the candidate's existing
+   generic function context.
+8. If that establishes the expected type of another child, advance the cursor
+   and push that child without repeating completed checks.
+9. Reject and record the candidate if a literal, category, generic bound, or
+   instantiated typed-hole check fails.
+10. Advance the cursor after rejection.
+11. Propagate failure to the active parent if all candidates are exhausted.
+12. Accept the candidate once all checks and its instantiated return type are
+    resolved.
+13. Expand it and finalize the node.
 
 An ordinary expression which does not require a syntax selection is rebuilt
 from finalized children according to the existing rewriter behavior. Its lack
@@ -475,7 +620,8 @@ stored selection and finalized child results and produces the stable
 `Expression` stored in `NodeFinalized`.
 
 Expansion cannot reject the candidate or return to matching. All work needed
-to decide the candidate must already have completed.
+to decide the candidate, including generic type propagation and return-type
+instantiation, must already have completed.
 
 If syntax insertion introduces nested expressions that require rewriting,
 those expressions are allocated as dependencies during candidate preparation
@@ -557,7 +703,8 @@ reports:
 - the rule and template branch;
 - the captured source involved;
 - the expected hole type;
-- the actual finalized child return type;
+- the actual finalized child or instantiated candidate return type;
+- the resolved generic typing context relevant to the mismatch;
 - nested child rejection reasons, when applicable.
 
 For example, an `if` candidate whose condition finalizes to `Int` reports that
@@ -579,6 +726,7 @@ Finalization assembles stored results and verifies:
 - every emitted expression comes from a finalized node;
 - every syntax-selected node retains its selected candidate;
 - every required child result was finalized before parent acceptance;
+- every generic candidate stores a fully instantiated return type;
 - every published declaration comes from a finalized result;
 - no blocked dependency or active choice point remains;
 - no raw-source rematching occurs.
@@ -622,6 +770,10 @@ Internal maps must not determine traversal or diagnostic order.
   `CandidateAttempt`.
 - Expose each selected candidate's existing return type/federation.
 - Check typed holes with the existing subfederation relation.
+- Add `CandidateFrame` and its monotonic capture cursor around the existing
+  generic preparation and inference path.
+- Preserve completed capture checks and inferred generic inputs while nested
+  child frames run.
 - Add the `=`-establishes-`Bool` and `if`-expects-`Bool` regression.
 
 ### Phase 3: stack, dependencies, and backtracking
@@ -672,9 +824,15 @@ Internal maps must not determine traversal or diagnostic order.
 - `%IntLimit` accepts `Infinity`.
 - A capture continues to satisfy both its syntax-hole schema and selected
   function domain.
-- Recursive `let`, module projection, contextual declarations, generics,
-  `Args`, and protection retain their current behavior without
-  scheduler-specific cases.
+- A dependent declaration backed by a generic function is checked using the
+  return type instantiated from its captured child types.
+- Sequential generic dependencies can use earlier captured types to
+  instantiate later hole types and the final return type.
+- Recursive `let`, module projection, contextual declarations, `Args`, and
+  protection retain their current behavior.
+- Generic binder identity, resolution, bounds, and protection remain owned by
+  the existing generic implementation; candidate typing reuses that
+  implementation rather than creating scheduler-specific generic semantics.
 
 ### Greedy matching
 
@@ -692,6 +850,12 @@ Internal maps must not determine traversal or diagnostic order.
 
 - A parent waiting on a child resumes when that child finalizes.
 - Finalizing a child wakes only registered dependants.
+- Multiple generic candidates may be blocked simultaneously at different
+  depths of the stack.
+- Unwinding a finalized child continues its parent frame from the next
+  unfinished capture without repeating enumeration or completed type checks.
+- A generic candidate publishes its instantiated return type rather than its
+  uninstantiated declaration codomain.
 - New declarations resume sequence-declaration dependants without replaying
   unrelated finalized nodes.
 - Nested finalized sequences are reused when their parent resumes.
@@ -704,6 +868,8 @@ Internal maps must not determine traversal or diagnostic order.
   attempt order.
 - Each rejection reports the candidate, capture, expected type, actual return
   type, and reason.
+- Generic rejections report the instantiated context and the bound, hole, or
+  return-type check which failed.
 - Nested rejection paths are retained across parent-level backtracking.
 - Unknown identifier is reported only when the failed search contains no
   typing-rejected candidate.
@@ -726,6 +892,7 @@ The refactor is complete when:
 
 - the explicit stack is the only production rewrite execution mode;
 - every successful rewrite ends with all required nodes finalized;
+- every finalized generic candidate has a fully instantiated return type;
 - every failure either reports retained typing rejections or uses the
   unknown-identifier fallback when none exist;
 - accepted selections are never discarded by raw replay;
