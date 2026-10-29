@@ -660,7 +660,9 @@ integerLimitTests =
             "(true; true)"
         ]
     , testGroup "open and closed ranges"
-        [ programCase "from upward excludes positive infinity"
+        [ programCase "from resolves its selected positional captures"
+            "yield from 0 up" "from 0 up"
+        , programCase "from upward excludes positive infinity"
             "yield (Infinity of from 0 up)" "false"
         , programCase "from through infinity includes its endpoint"
             "yield (Infinity of from 0 to Infinity)" "true"

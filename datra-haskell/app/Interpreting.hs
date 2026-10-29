@@ -2722,7 +2722,7 @@ selectedDependentDeclarationMember
       values <- traverse
         (evalInScopeWith reduction usageScope resolving . snd)
         captures
-      _ <- dependentDeclarationInput
+      input <- dependentDeclarationInput
         [ (captureName, Nothing, value)
         | ((schemaExpression, _), value) <- zip captures values
         , let captureName = fst (captureExpression schemaExpression)
@@ -2731,6 +2731,7 @@ selectedDependentDeclarationMember
       payload <- applyDependentDeclarationImplementation
         (scopeActivation usageScope)
         reduction
+        input
         supplied
         seed
       pure (namedDeclarationMember declaration name payload)
@@ -4325,6 +4326,7 @@ evaluateMaterializedDeclaration reduction captured resolving implementation
     else applyDependentDeclarationImplementation
       (scopeActivation implementationScope)
       reduction
+      input
       supplied
       implementationValue
   pure (attachDeclarationSyntax Nothing template payload)
@@ -4358,12 +4360,18 @@ dependentDeclarationInput captures = do
 applyDependentDeclarationImplementation
   :: ScopeActivation
   -> ReductionContext
+  -> PreparedFunctionArgument
   -> InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-applyDependentDeclarationImplementation activation reduction supplied payload =
+applyDependentDeclarationImplementation activation reduction input supplied payload =
   case interpretedRuntimeFunctionInsertion payload of
-    Just insertion -> applyRuntimeFunction insertion supplied
+    -- A runtime insertion is the already-selected forward operation, so it
+    -- receives the capture schema's resolved positional argument.  An ordinary
+    -- function still receives the argumentative source below and performs its
+    -- own overload selection.
+    Just insertion ->
+      applyRuntimeFunction insertion (functionPreparedArgument input)
     Nothing
       | isFunctionFamily payload ->
           fst <$> applyFunction activation reduction payload supplied
