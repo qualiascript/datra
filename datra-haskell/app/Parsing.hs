@@ -72,8 +72,7 @@ import DatraLanguage.AST
       , ReverseMapSpecification
       , ReverseOverload
       , ReverseSafeOverload
-      , IdentifierOperation
-      , IdentifierTemplateOperation
+      , DependentArgument
       , Multiplication
       , Subtraction
       , Plus
@@ -382,14 +381,6 @@ resolveGenericExpression
   -> GenericResolution Expression
 resolveGenericExpression enclosing expressionValue =
   case expressionValue of
-    IdentifierOperation name annotation (Just given)
-      | given == annotation -> do
-          resolved <- resolveGenericExpression enclosing annotation
-          pure (IdentifierOperation name resolved (Just resolved))
-    IdentifierTemplateOperation parts annotation (Just given)
-      | given == annotation -> do
-          resolved <- resolveGenericExpression enclosing annotation
-          pure (IdentifierTemplateOperation parts resolved (Just resolved))
     FunctionTypeExpression [] domain codomain ->
       resolveNewGenericFunctionType enclosing domain codomain
     FunctionTypeExpression generics domain codomain -> do
@@ -522,9 +513,9 @@ functionTypeIdentifiers :: Expression -> [FunctionTypeIdentifier]
 functionTypeIdentifiers expressionValue =
   case expressionValue of
     FunctionTypeExpression {} -> []
-    IdentifierOperation name _ _ ->
+    DependentArgument (IdentifierReference name) _ ->
       [SimpleFunctionTypeIdentifier name]
-    dependent@IdentifierTemplateOperation {} ->
+    dependent@DependentArgument {} ->
       [DependentFunctionTypeIdentifier dependent]
     SyntaxBoundary value -> functionTypeIdentifiers value
     OptionalType value -> functionTypeIdentifiers value
@@ -593,7 +584,8 @@ prepareFunctionDomainExpression generics domain =
                 genericBinderIdentifier binder
               bound = prepareGenericExpression generics
                 (genericBinderBound binder)
-              declaration = IdentifierOperation name bound Nothing
+              declaration = DependentArgument
+                (IdentifierReference name) (Just bound)
           in if optionalName
               then OptionalType declaration
               else declaration
@@ -771,10 +763,10 @@ astForm =
       , ArgumentativeMap <$> (astSymbol "{}" *> many astExpression)
       , astBinary AST.ConcatenationOperator MapConcatenation
       , astNaturalRangeExpression
-      , try (astIdentifierTemplateOperation AST.AssignmentOperator (Just ()))
-      , try (astIdentifierTemplateOperation AST.DependentArgumentTypeOperator Nothing)
-      , astIdentifierOperation AST.AssignmentOperator (Just ())
-      , astIdentifierOperation AST.DependentArgumentTypeOperator Nothing
+      , try (astTemplateDependentArgument AST.AssignmentOperator (Just ()))
+      , try (astTemplateDependentArgument AST.DependentArgumentTypeOperator Nothing)
+      , astSimpleDependentArgument AST.AssignmentOperator (Just ())
+      , astSimpleDependentArgument AST.DependentArgumentTypeOperator Nothing
       , astBinary AST.ExpansionOperator MapExpansion
       , astBinary AST.RangeOperator SuperEllipsisRange
       , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
@@ -885,11 +877,11 @@ astGenericIdentifier expressionValue = do
         && isPrivateIdentifier (genericIdentifierText identifier)))
   pure identifier
 
-astIdentifierOperation
+astSimpleDependentArgument
   :: AST.Operator
   -> Maybe ()
   -> Parser Expression
-astIdentifierOperation operator assignmentMarker = do
+astSimpleDependentArgument operator assignmentMarker = do
   _ <- astOperatorToken operator
   identifierSpelling <- astIdentifierExpression
   operationIdentifierString <-
@@ -898,25 +890,29 @@ astIdentifierOperation operator assignmentMarker = do
   case assignmentMarker of
     Nothing ->
       pure
-        (IdentifierOperation operationIdentifierString typeAnnotation Nothing)
+        (DependentArgument
+          (IdentifierReference operationIdentifierString)
+          (Just typeAnnotation))
     Just () -> do
       givenValue <- optional astExpression
       pure
         (case givenValue of
           Nothing ->
-            IdentifierOperation
-              operationIdentifierString
-              typeAnnotation
-              (Just typeAnnotation)
+            MapSpecification typeAnnotation
+              (DependentArgument
+                (IdentifierReference operationIdentifierString)
+                Nothing)
           Just given ->
-            IdentifierOperation
-              operationIdentifierString typeAnnotation (Just given))
+            MapSpecification given
+              (DependentArgument
+                (IdentifierReference operationIdentifierString)
+                (Just typeAnnotation)))
 
-astIdentifierTemplateOperation
+astTemplateDependentArgument
   :: AST.Operator
   -> Maybe ()
   -> Parser Expression
-astIdentifierTemplateOperation operator assignmentMarker = do
+astTemplateDependentArgument operator assignmentMarker = do
   _ <- astOperatorToken operator
   template <- astLexeme astStringTemplateToken
   parts <- case template of
@@ -925,11 +921,15 @@ astIdentifierTemplateOperation operator assignmentMarker = do
   typeAnnotation <- astExpression
   case assignmentMarker of
     Nothing ->
-      pure (IdentifierTemplateOperation parts typeAnnotation Nothing)
+      pure (DependentArgument (StringTemplate parts) (Just typeAnnotation))
     Just () -> do
       givenValue <- optional astExpression
-      pure (IdentifierTemplateOperation
-        parts typeAnnotation (Just (maybe typeAnnotation id givenValue)))
+      pure (case givenValue of
+        Nothing -> MapSpecification typeAnnotation
+          (DependentArgument (StringTemplate parts) Nothing)
+        Just given -> MapSpecification given
+          (DependentArgument
+            (StringTemplate parts) (Just typeAnnotation)))
 
 astConditional :: Parser Expression
 astConditional = do
@@ -1082,7 +1082,7 @@ mapSeparator =
     <|> void (some lineBreak)
 
 -- Reverse specification is the outermost expression layer, so either side
--- can contain identifier operations, concatenation, and function applications.
+-- can contain dependent arguments, concatenation, and function applications.
 expression :: Parser Expression
 expression = expressionWith mapExpression
 
@@ -1216,8 +1216,8 @@ mapExpression =
   makeExprParser
     ( try templateConcatenationOrOperation
         <|> try evaluatedTemplateFederationOperation
-        <|> try identifierTemplateOperation
-        <|> try identifierOperation
+        <|> try templateDependentArgument
+        <|> try simpleDependentArgument
         <|> rangeExpression
     )
     mapOperatorTable
@@ -1235,7 +1235,7 @@ templateConcatenationOrOperation = do
   let concatenated = MapConcatenation first value
       evaluated = SyntaxBoundary concatenated
   maybe concatenated id <$>
-    optional (try (evaluatedIdentifierOperationFrom evaluated))
+    optional (try (evaluatedDependentArgumentFrom evaluated))
   where
     templateConcatenationOperand =
       try greedyStringTemplateExpression <|> stringExpression
@@ -1251,15 +1251,15 @@ templateConcatenationOrOperation = do
 evaluatedTemplateFederationOperation :: Parser Expression
 evaluatedTemplateFederationOperation = do
   evaluated <- templateFederationBoundary
-  evaluatedIdentifierOperationFrom evaluated
+  evaluatedDependentArgumentFrom evaluated
 
 -- Parenthesized expressions and greedy templates are common ordinary terms.
 -- Parse them once, then consume a declaration suffix only when one is
 -- actually present. The former arrangement parsed the complete nested term
 -- speculatively as a declaration head and parsed it all over again after
 -- backtracking, which made nested Std expressions exponentially expensive.
-evaluatedIdentifierOperationOrExpression :: Parser Expression
-evaluatedIdentifierOperationOrExpression = do
+evaluatedDependentArgumentOrExpression :: Parser Expression
+evaluatedDependentArgumentOrExpression = do
   (isParenthesized, evaluated) <- choice
     [ (\value -> (True, value)) <$> parenthesizedExpression
     , (\value -> (False, SyntaxBoundary value))
@@ -1276,7 +1276,7 @@ evaluatedIdentifierOperationOrExpression = do
             inner -> inner
       if validEvaluatedDeclarationHead headExpression
         then maybe evaluated id <$>
-          optional (try (evaluatedIdentifierOperationFrom evaluated))
+          optional (try (evaluatedDependentArgumentFrom evaluated))
         else pure evaluated
 
 reverseSpecificationAfter :: Expression -> Parser Expression
@@ -1286,32 +1286,32 @@ reverseSpecificationAfter target = do
   _ <- notFollowedBy (try (continuedSymbol reverseSpecificationSymbol))
   pure (MapSpecification source target)
 
-evaluatedIdentifierOperationFrom :: Expression -> Parser Expression
-evaluatedIdentifierOperationFrom evaluated = do
+evaluatedDependentArgumentFrom :: Expression -> Parser Expression
+evaluatedDependentArgumentFrom evaluated = do
   let headExpression = case evaluated of
         SyntaxBoundary inner -> inner
         inner -> inner
+      dependentName = SyntaxBoundary headExpression
   -- Parenthesized declaration heads name the binding whose value supplies the
   -- template; arbitrary parenthesized expressions remain ordinary operands.
   guard (validEvaluatedDeclarationHead headExpression)
-  let
-      parts = [StringTemplateInterpolation evaluated]
   isOptional <-
     maybe False (const True)
       <$> optional (operatorToken AST.OptionalOperator)
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
-        (typeAnnotation, givenValue) <- assignedIdentifierValue
+        givenValue <- assignedValueExpression
         pure (optionalIdentifier isOptional
-          (IdentifierTemplateOperation
-            parts typeAnnotation (Just givenValue)))
+          (MapSpecification givenValue
+            (DependentArgument dependentName Nothing)))
     , do
         _ <- continuedOperator AST.DependentArgumentTypeOperator
         typeAnnotation <- identifierValueExpression
         givenValue <- optional (assignedValueFor typeAnnotation)
         pure (optionalIdentifier isOptional
-          (IdentifierTemplateOperation parts typeAnnotation givenValue))
+          (maybe id MapSpecification givenValue
+            (DependentArgument dependentName (Just typeAnnotation))))
     ]
 
 -- An unparenthesized federation of explicit templates is a completed
@@ -1351,8 +1351,8 @@ validEvaluatedDeclarationHead expressionValue =
       SyntaxBoundary inner -> validConcatenatedDeclarationHead inner
       _ -> False
 
-identifierTemplateOperation :: Parser Expression
-identifierTemplateOperation = do
+templateDependentArgument :: Parser Expression
+templateDependentArgument = do
   template <- try stringExpression
   parts <- case template of
     StringTemplate values -> pure values
@@ -1363,21 +1363,22 @@ identifierTemplateOperation = do
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
-        (typeAnnotation, givenValue) <- assignedIdentifierValue
-        let operation = IdentifierTemplateOperation
-              parts typeAnnotation (Just givenValue)
+        givenValue <- assignedValueExpression
+        let operation = MapSpecification givenValue
+              (DependentArgument (StringTemplate parts) Nothing)
         pure (optionalIdentifier isOptional operation)
     , do
         _ <- continuedOperator AST.DependentArgumentTypeOperator
         typeAnnotation <- identifierValueExpression
         givenValue <- optional (assignedValueFor typeAnnotation)
-        let operation = IdentifierTemplateOperation parts typeAnnotation givenValue
+        let operation = maybe id MapSpecification givenValue
+              (DependentArgument (StringTemplate parts) (Just typeAnnotation))
         pure (optionalIdentifier isOptional operation)
     ]
 
 -- A colon distinguishes a declaration from a bare lexical reference or call.
-identifierOperation :: Parser Expression
-identifierOperation = do
+simpleDependentArgument :: Parser Expression
+simpleDependentArgument = do
   identifierSpelling <- try identifierExpression
   let identifierName = case identifierSpelling of
         BareIdentifier name -> name
@@ -1393,13 +1394,12 @@ identifierOperation = do
         _ <- continuedOperator AST.AssignmentOperator
         let name = case identifierSpelling of BareIdentifier value -> value; FullStringIdentifier value -> value
             operationIdentifierString = IdentifierString name
-        (typeAnnotation, givenValue) <- assignedIdentifierValue
+        givenValue <- assignedValueExpression
         void (validateIdentifierSpelling identifierSpelling)
-        let operation =
-              IdentifierOperation
-                operationIdentifierString
-                typeAnnotation
-                (Just givenValue)
+        let operation = MapSpecification givenValue
+              (DependentArgument
+                (IdentifierReference operationIdentifierString)
+                Nothing)
         pure (optionalIdentifier isOptional operation)
     , do
         _ <- continuedOperator AST.DependentArgumentTypeOperator
@@ -1409,9 +1409,10 @@ identifierOperation = do
         typeAnnotation <- identifierValueExpression
         void (validateIdentifierSpelling identifierSpelling)
         givenValue <- optional (assignedValueFor typeAnnotation)
-        let operation =
-              IdentifierOperation
-                operationIdentifierString typeAnnotation givenValue
+        let operation = maybe id MapSpecification givenValue
+              (DependentArgument
+                (IdentifierReference operationIdentifierString)
+                (Just typeAnnotation))
         pure (optionalIdentifier isOptional operation)
     ]
 
@@ -1423,11 +1424,6 @@ assignedValueFor _ = do
 optionalIdentifier :: Bool -> Expression -> Expression
 optionalIdentifier False operation = operation
 optionalIdentifier True operation = OptionalType operation
-
-assignedIdentifierValue :: Parser (Expression, Expression)
-assignedIdentifierValue = do
-  inferred <- assignedValueExpression
-  pure (inferred, inferred)
 
 -- Identifier annotations and assigned values may use range, arithmetic, and
 -- access operators directly. Concatenation and specification are deliberately
@@ -1462,9 +1458,9 @@ assignmentEitherExpressionWith :: Parser Expression -> Parser Expression
 assignmentEitherExpressionWith = eitherExpressionWithOperator
   (try
     (continuedOperator AST.EitherOperator
-      <* notFollowedBy (try identifierOperationStart)))
+      <* notFollowedBy (try dependentArgumentStart)))
 
--- An arithmetic operator followed by another identifier operation belongs to
+-- An arithmetic operator followed by another dependent argument belongs to
 -- the surrounding expression. Otherwise it remains part of this identifier's
 -- annotation or assigned value, preserving forms such as @x : 2 + 3@.
 boundaryAwareArithmeticExpression :: Parser Expression
@@ -1519,9 +1515,9 @@ term = do
     -- Horizontal whitespace has already been consumed by lexemes. A newline
     -- remains a block boundary; operator and syntax words cannot be arguments.
     applicationArgument _function = accessedTerm (choice
-      [ evaluatedIdentifierOperationOrExpression
-      , try identifierTemplateOperation
-      , try identifierOperation
+      [ evaluatedDependentArgumentOrExpression
+      , try templateDependentArgument
+      , try simpleDependentArgument
       , argumentativeMap
       , lookupExpression
       , trailingApplicationSkip
@@ -1555,7 +1551,7 @@ termAtom =
   choice
     [ bareSkip
     , genericIntroduction
-    , evaluatedIdentifierOperationOrExpression
+    , evaluatedDependentArgumentOrExpression
     , lookupExpression
     , argumentativeMap
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
@@ -1829,10 +1825,10 @@ multiplicationOperator infixOperator = try $ do
 operatorBeforeIdentifierBoundary :: AST.Operator -> Parser Text
 operatorBeforeIdentifierBoundary operator = try $ do
   continuedOperator operator
-    <* notFollowedBy (try identifierOperationStart)
+    <* notFollowedBy (try dependentArgumentStart)
 
-identifierOperationStart :: Parser ()
-identifierOperationStart = do
+dependentArgumentStart :: Parser ()
+dependentArgumentStart = do
   identifierSpelling <- identifierExpression
   _ <- validateIdentifierSpelling identifierSpelling
   _ <- optional (operatorToken AST.OptionalOperator)

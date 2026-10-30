@@ -67,17 +67,16 @@ natural = EllipsisNatural
 
 dependentArgumentType :: String -> Expression -> Expression
 dependentArgumentType identifierString typeAnnotation =
-  IdentifierOperation
-    (IdentifierString identifierString)
-    typeAnnotation
-    Nothing
+  DependentArgument
+    (IdentifierReference (IdentifierString identifierString))
+    (Just typeAnnotation)
 
 assignment :: String -> Expression -> Expression -> Expression
 assignment identifierString typeAnnotation givenValue =
-  IdentifierOperation
-    (IdentifierString identifierString)
-    typeAnnotation
-    (Just givenValue)
+  MapSpecification givenValue
+    (DependentArgument
+      (IdentifierReference (IdentifierString identifierString))
+      (if typeAnnotation == givenValue then Nothing else Just typeAnnotation))
 
 asciiString :: String -> Expression
 asciiString = AsciiStringLiteral

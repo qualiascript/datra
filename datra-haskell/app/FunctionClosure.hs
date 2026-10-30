@@ -161,7 +161,8 @@ rewrite mode inDefinition active resolver bound
       _ <- rewrite mode inDefinition active resolver bound index
       value <- rewrite mode inDefinition active resolver bound
         (IdentifierReference (IdentifierString name))
-      pure (IdentifierOperation (IdentifierString name) value Nothing)
+      pure (DependentArgument
+        (IdentifierReference (IdentifierString name)) (Just value))
 rewrite mode inDefinition active resolver bound expression
   | FunctionApplication
       (IdentifierReference identifier)
@@ -421,9 +422,11 @@ referencePathIsInternalContext path =
   dependencyPathRoot path == ContextualRoot ContextualThis
 
 parameterNames :: Expression -> [String]
-parameterNames value@(IdentifierOperation _ _ _) = bindingNames value
+parameterNames value@DependentArgument {} = bindingNames value
+parameterNames value@(MapSpecification _ (DependentArgument {})) =
+  bindingNames value
 parameterNames value
-  | Just (named@IdentifierOperation {}, _) <-
+  | Just (named, _) <-
       optionalIdentifierExpression value = bindingNames named
 parameterNames value = concatMap parameterNames (expressionChildren value)
 

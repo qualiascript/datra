@@ -35,7 +35,6 @@ The replacement owns:
 
 It does not change:
 
-- the Datra AST;
 - parser ownership of neutral syntax boundaries;
 - declaration lookup, precedence, shadowing, or scope semantics;
 - dependent-declaration representation or evaluation;
@@ -51,6 +50,34 @@ It does not change:
 
 `SyntaxRewriting` remains the public integration boundary. The implementation
 may be divided into internal `SyntaxRewriting.*` modules.
+
+### Dependent arguments are neutral syntax, not rewrite state
+
+The neutral AST has one dependent-argument form for every name family:
+
+```haskell
+DependentArgument
+  :: Expression       -- name or name-family expression
+  -> Maybe Expression -- explicit type annotation
+  -> Expression
+```
+
+Simple names and template names do not use separate AST constructors.
+Assignment is ordinary specification syntax rather than another field on the
+dependent argument:
+
+```text
+x : T       -> DependentArgument x (Just T)
+x := value  -> MapSpecification value (DependentArgument x Nothing)
+x : T := v  -> MapSpecification v (DependentArgument x (Just T))
+```
+
+In particular, inferred assignment stores `value` once. Rewriting cannot
+rewrite one copy and later compare or rebuild it against a stale duplicate.
+The evaluator interprets the missing annotation from the supplied
+specification value. Dependent-declaration recognition likewise remains an
+evaluator/interpreter concern: an inferred specification may be a declaration
+in block position, while syntax rewriting sees only ordinary AST structure.
 
 ## Problems in the current execution model
 

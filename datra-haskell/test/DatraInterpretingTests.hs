@@ -191,8 +191,8 @@ testModuleSyntaxAlias = do
   let binding name value = DependentDeclaration
         (SimpleIdentifierDeclarationHead (IdentifierString name))
         False False False value
-      member name value = IdentifierOperation
-        (IdentifierString name) value Nothing
+      member name value = DependentArgument
+        (identifierReference name) (Just value)
   let isolatedBody = Begin
         [binding "x" (identifierReference "Int")]
         (identifierReference "this")
@@ -1371,8 +1371,8 @@ testStringTemplates = do
         (StringTemplate
           [StringTemplateInterpolation
             (MapSequence
-              [ IdentifierOperation
-                  (IdentifierString "ie") NaturalType Nothing
+              [ DependentArgument
+                  (identifierReference "ie") (Just NaturalType)
               , IdentifierValueType
               ])])) $ \value ->
     assert "the canonical map member is decoded componentwise"
@@ -3856,21 +3856,21 @@ testIdentifiers = do
     \value -> assert "the unnamed optional branch retains a specification witness"
       (interpretedValueKind value == SpecificationValueKind)
   let contextualIt = contextualAccess ContextualIt
-      directName = IdentifierTemplateOperation
-        [ StringTemplateLiteral "x"
-        , StringTemplateInterpolation contextualIt
-        ]
-        NaturalType
-        Nothing
-      nestedEquivalentName = IdentifierTemplateOperation
-        [ StringTemplateInterpolation
+      directName = DependentArgument
+        (StringTemplate
+          [ StringTemplateLiteral "x"
+          , StringTemplateInterpolation contextualIt
+          ])
+        (Just NaturalType)
+      nestedEquivalentName = DependentArgument
+        (StringTemplate
+          [ StringTemplateInterpolation
             (StringTemplate
               [ StringTemplateLiteral "x"
               , StringTemplateInterpolation contextualIt
               ])
-        ]
-        NaturalType
-        Nothing
+          ])
+        (Just NaturalType)
   assert "different dependent expressions are not assumed disjoint"
     (case interpretExpressionReason
         (AST.eitherType directName nestedEquivalentName) of
@@ -3892,15 +3892,14 @@ testIdentifiers = do
         assert source (renderInterpretedValue value == "true"))
     ["abc", "Value", "Nothing"]
   let identifier identifierString typeAnnotation =
-        IdentifierOperation
-          (IdentifierString identifierString)
-          typeAnnotation
-          Nothing
+        DependentArgument
+          (identifierReference identifierString)
+          (Just typeAnnotation)
       assignment identifierString typeAnnotation givenValue =
-        IdentifierOperation
-          (IdentifierString identifierString)
-          typeAnnotation
-          (Just givenValue)
+        MapSpecification givenValue
+          (DependentArgument
+            (identifierReference identifierString)
+            (Just typeAnnotation))
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
       valueUnit = identifier "Value" (AtlasMap [])
@@ -4286,10 +4285,10 @@ testLocatedRejection = do
               <> "  șablonul nu mapează fiecare configurație sursă la un șir unic"
       Right _ -> False)
   let invalidAssignment =
-        IdentifierOperation
-          (IdentifierString "a")
-          NaturalType
-          (Just (SuperEllipsisRange (natural 1) (natural 3)))
+        MapSpecification
+          (SuperEllipsisRange (natural 1) (natural 3))
+          (DependentArgument
+            (identifierReference "a") (Just NaturalType))
   assert "assignment mismatches have a concise English diagnostic"
     (case interpretLocatedExpression (Located sourceSpan invalidAssignment) of
       Left valueError ->
@@ -4308,11 +4307,10 @@ testLocatedRejection = do
       Right _ -> False)
   let mismatchedIdentifier =
         (~>)
-          (IdentifierOperation
-            (IdentifierString "b")
-            (natural 10)
-            Nothing)
-          (IdentifierOperation (IdentifierString "a") NaturalType Nothing)
+          (DependentArgument
+            (identifierReference "b") (Just (natural 10)))
+          (DependentArgument
+            (identifierReference "a") (Just NaturalType))
   assert "identifier mismatches show expected and given identifier strings"
     (case interpretLocatedExpression
         (Located sourceSpan mismatchedIdentifier) of
@@ -4324,11 +4322,11 @@ testLocatedRejection = do
       Right _ -> False)
   let valueOutsideIdentifierAnnotation =
         (~>)
-          (IdentifierOperation (IdentifierString "x") (natural 12) Nothing)
-          (IdentifierOperation
-            (IdentifierString "x")
-            (ValuedNaturalRange 1 10)
-            Nothing)
+          (DependentArgument
+            (identifierReference "x") (Just (natural 12)))
+          (DependentArgument
+            (identifierReference "x")
+            (Just (ValuedNaturalRange 1 10)))
   assert "identifier membership errors show canonical expected and given values"
     (case interpretLocatedExpression
         (Located sourceSpan valueOutsideIdentifierAnnotation) of
@@ -4341,18 +4339,14 @@ testLocatedRejection = do
   let incompatibleIntermediateAnnotation =
         (~>)
           ((~>)
-            (IdentifierOperation
-              (IdentifierString "x")
-              (natural 8)
-              Nothing)
-            (IdentifierOperation
-              (IdentifierString "x")
-              (ValuedNaturalRange 5 20)
-              Nothing))
-          (IdentifierOperation
-            (IdentifierString "x")
-            (ValuedNaturalRange 1 10)
-            Nothing)
+            (DependentArgument
+              (identifierReference "x") (Just (natural 8)))
+            (DependentArgument
+              (identifierReference "x")
+              (Just (ValuedNaturalRange 5 20))))
+          (DependentArgument
+            (identifierReference "x")
+            (Just (ValuedNaturalRange 1 10)))
   assert "failed annotation widening identifies the intermediate federation"
     (case interpretLocatedExpression
         (Located sourceSpan incompatibleIntermediateAnnotation) of

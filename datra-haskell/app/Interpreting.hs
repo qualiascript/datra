@@ -76,6 +76,7 @@ import DatraLanguage.AST
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
   , attachedFunctionImplementation
+  , dependentArgumentExpression
   , namedBeginBlock
   , normalizeExpression
   , optionalIdentifierExpression
@@ -440,8 +441,7 @@ captureSyntaxHole base modules strict declarations previous kind captured =
       IdentifierReference {} -> Just value
       AsciiStringLiteral {} -> Just value
       StringTemplate {} -> Just value
-      IdentifierOperation _ _ Nothing -> Just value
-      IdentifierTemplateOperation _ _ Nothing -> Just value
+      DependentArgument {} -> Just value
       OptionalType inner -> OptionalType <$> dependentArgumentCapture inner
       _ -> Nothing
     valueEvaluationCapture targetExpression =
@@ -793,27 +793,21 @@ resolveSyntaxDeclarationHead declarations expressionValue =
     Let value -> Let (resolveSyntaxDeclarationHead declarations value)
     Def value -> Def (resolveSyntaxDeclarationHead declarations value)
     Val value -> Val (resolveSyntaxDeclarationHead declarations value)
-    IdentifierTemplateOperation
-        [StringTemplateInterpolation headExpression]
-        annotation
-        given ->
-      case resolvedParts headExpression of
-        Just parts -> IdentifierTemplateOperation parts annotation given
+    DependentArgument headExpression annotation ->
+      case resolvedHead headExpression of
+        Just headValue -> DependentArgument headValue annotation
         Nothing -> expressionValue
     _ -> expressionValue
   where
-    resolvedParts (SyntaxBoundary inner) = resolvedParts inner
-    resolvedParts (GreedyStringTemplate operand) = Just
-      [ StringTemplateInterpolation
-          (SyntaxBoundary (GreedyStringTemplate (resolveGreedy operand)))
-      ]
-    resolvedParts (StringTemplate parts) = Just parts
-    resolvedParts (AsciiStringLiteral literal) =
-      Just [StringTemplateLiteral literal]
-    resolvedParts (IdentifierReference (IdentifierString name)) = do
+    resolvedHead (SyntaxBoundary inner) = resolvedHead inner
+    resolvedHead (GreedyStringTemplate operand) = Just
+      (GreedyStringTemplate (resolveGreedy operand))
+    resolvedHead value@StringTemplate {} = Just value
+    resolvedHead value@AsciiStringLiteral {} = Just value
+    resolvedHead (IdentifierReference (IdentifierString name)) = do
       declaration <- firstDeclaration name (reverse declarations)
-      resolvedParts (dependentDeclarationImplementation declaration)
-    resolvedParts _ = Nothing
+      resolvedHead (dependentDeclarationImplementation declaration)
+    resolvedHead _ = Nothing
 
     resolveGreedy greedyPart = case greedyPart of
       SyntaxBoundary inner -> SyntaxBoundary (resolveGreedy inner)
@@ -857,7 +851,8 @@ binderDeclaration binder bound = case binder of
     -- Syntax binders are validation-only lexical declarations. Representing
     -- them as explicit self-valued assignments keeps block declarations
     -- assignment-only without changing the value visible to later holes.
-    assigned name = IdentifierOperation name bound (Just bound)
+    assigned name = MapSpecification bound
+      (DependentArgument (IdentifierReference name) Nothing)
 
 canonicalValueCapture
   :: (Expression -> Either InterpretingError InterpretedValue)
@@ -890,15 +885,13 @@ syntaxValidationDeclaration declaration = case declaration of
   where
     recursiveSeed (Def value) = Def (recursiveSeed value)
     recursiveSeed (Val value) = Val (recursiveSeed value)
-    recursiveSeed original@(IdentifierOperation name _ (Just definition)) =
+    recursiveSeed original@(MapSpecification definition
+        (DependentArgument name _)) =
       case recursiveFunctionImplementation definition of
         Just implementation ->
-          IdentifierOperation name implementation (Just implementation)
+          MapSpecification implementation
+            (DependentArgument name Nothing)
         Nothing -> original
-    -- Dependent declarations reach the same recursive seed through their
-    -- selected member's deferred binding. Keep the full implementation here
-    -- so that binding can still identify its attached function body.
-    recursiveSeed original@IdentifierTemplateOperation {} = original
     recursiveSeed value = value
 
 interpretLocatedExpression
@@ -2529,112 +2522,63 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           insertion <- interpret insertionOperand
           accessRepeatedPrefix captured resolving prefix insertion
         Nothing -> binary accessValues mapOperand insertionOperand
+    MapSpecification sourceOperand (DependentArgument name Nothing) -> do
+      source <- interpret sourceOperand
+      runProtectedOperation protection [source] $ \actuals ->
+        case actuals of
+          [actualSource] -> do
+            target <- interpretDependentArgumentName name actualSource
+            specifyValues actualSource target
+          _ -> Right neverValue
     MapSpecification sourceOperand targetOperand ->
       interpretSpecificationWith protection interpret sourceOperand targetOperand
-    IdentifierOperation
-        (IdentifierString identifierString)
-        typeAnnotationExpression
-        maybeGivenValueExpression ->
-      interpretIdentifierOperation
-        identifierString typeAnnotationExpression maybeGivenValueExpression
-    IdentifierTemplateOperation
-        parts
-        typeAnnotationExpression
-        maybeGivenValueExpression -> do
+    DependentArgument _ Nothing -> Left OperationHasNoEffect
+    DependentArgument nameExpression (Just typeAnnotationExpression) -> do
       typeAnnotation <- interpret typeAnnotationExpression
-      let identifierExpression = StringTemplate parts
-          familyKey = renderSourceExpression identifierExpression
-          nameFamily supplied =
-            interpretStringTemplateWith protection
-              (evalInContextualContinuationScopeWith identifierExpression reduction
-                (constantContextualDeclarations ContextualIt supplied)
-                scope resolving)
-              parts
-      identifier <- nameFamily typeAnnotation
-      case asciiStringFromInterpretedMap (interpretedMap identifier) of
-        Just identifierString
-          | interpretedValueHasTotalMap identifier
-          , isIdentifierValue identifierString ->
-          interpretIdentifierOperation
-            identifierString typeAnnotationExpression maybeGivenValueExpression
-        _ ->
-          let target = dependentArgumentTemplateTypeValue
-                familyKey identifier nameFamily typeAnnotation
-          in case maybeGivenValueExpression of
-            Nothing -> Right target
-            Just givenExpression -> do
-              given <- interpret givenExpression
-              _ <- specifyValues given typeAnnotation
-              givenIdentifier <- nameFamily given
-              case asciiStringFromInterpretedMap
-                  (interpretedMap givenIdentifier) of
-                Just identifierString
-                  | interpretedValueHasTotalMap givenIdentifier
-                  , isIdentifierValue identifierString ->
-                      assignIdentifierValues
-                        identifierString typeAnnotation given
-                _ ->
-                  let source = dependentArgumentTemplateTypeValue
-                        familyKey givenIdentifier nameFamily given
-                  in specifyValues source target
+      interpretDependentArgumentName nameExpression typeAnnotation
 
   where
     protection = scopeActivation scope
     interpret = evalInScopeWith reduction scope resolving
+    interpretDependentArgumentName nameExpression typeAnnotation =
+      case nameExpression of
+        IdentifierReference (IdentifierString identifierString) ->
+          interpretSimpleDependentArgument identifierString typeAnnotation
+        _ -> do
+          let familyKey = renderSourceExpression nameExpression
+              nameFamily supplied =
+                evalInContextualContinuationScopeWith nameExpression reduction
+                  (constantContextualDeclarations ContextualIt supplied)
+                  scope resolving nameExpression
+          identifier <- nameFamily typeAnnotation
+          case asciiStringFromInterpretedMap (interpretedMap identifier) of
+            Just identifierString
+              | interpretedValueHasTotalMap identifier
+              , isIdentifierValue identifierString ->
+              interpretSimpleDependentArgument identifierString typeAnnotation
+            _ ->
+              Right (dependentArgumentTemplateTypeValue
+                familyKey identifier nameFamily typeAnnotation)
     transparentEitherAlias value =
       case stripOuterIdentifierType value of
         Right underlying
           | interpretedValueKind underlying == EitherValueKind -> Right underlying
         _ -> Right value
-    interpretIdentifierOperation
-        identifierString typeAnnotationExpression
-        (Just givenValueExpression)
-      | typeAnnotationExpression == givenValueExpression = do
-          givenValue <- interpret givenValueExpression
-          if interpretedValueHasTotalMap givenValue
-            then Left RedundantAssignment
-            else pure
-              (inferredIdentifierAssignmentValue identifierString givenValue)
-    interpretIdentifierOperation
-        identifierString typeAnnotationExpression maybeGivenValueExpression = do
-      typeAnnotation <- interpret typeAnnotationExpression
-      case maybeGivenValueExpression of
-        Nothing ->
-          runProtectedOperation protection [typeAnnotation] $ \actuals ->
-            case actuals of
-              [actualAnnotation] -> do
-                if identifierString == "False"
-                    && interpretedValueKind actualAnnotation
-                      == NaturalValueKind
-                    && interpretedInteger actualAnnotation == Just 0
-                  then Right (booleanValue False)
-                  else if identifierString == "True"
-                    && interpretedValueKind actualAnnotation
-                      == NaturalValueKind
-                    && interpretedInteger actualAnnotation == Just 1
-                  then Right (booleanValue True)
-                  else Right (simpleIdentifierTypeValue
-                    identifierString actualAnnotation)
-              _ -> Right neverValue
-        Just givenValueExpression -> do
-          givenValue <- interpret givenValueExpression
-          runProtectedOperation
-            protection [typeAnnotation, givenValue] $ \actuals ->
-              case actuals of
-                [actualAnnotation, actualGiven] -> do
-                  case assignIdentifierValues
-                      identifierString actualAnnotation actualGiven of
-                    Left
-                        (AtlasMapFederationOperationRefuted
-                          AtlasMapFederationSpecificationHasNoMatchingMember) ->
-                      Left
-                        (GivenValueOutsideTypeAnnotation
-                          { expectedTypeAnnotation =
-                              renderInterpretedValue actualAnnotation
-                          , givenValue = renderInterpretedValue actualGiven
-                          })
-                    result -> result
-                _ -> Right neverValue
+    interpretSimpleDependentArgument identifierString typeAnnotation =
+      runProtectedOperation protection [typeAnnotation] $ \actuals ->
+        case actuals of
+          [actualAnnotation] -> do
+            if identifierString == "False"
+                && interpretedValueKind actualAnnotation == NaturalValueKind
+                && interpretedInteger actualAnnotation == Just 0
+              then Right (booleanValue False)
+              else if identifierString == "True"
+                  && interpretedValueKind actualAnnotation == NaturalValueKind
+                  && interpretedInteger actualAnnotation == Just 1
+                then Right (booleanValue True)
+                else Right (simpleIdentifierTypeValue
+                  identifierString actualAnnotation)
+          _ -> Right neverValue
     unary operation operand = do
       value <- interpret operand
       runProtectedOperation protection [value] $ \actuals ->
@@ -4730,7 +4674,8 @@ markDefinitionEntry declaration value
 captureExpression :: Expression -> (Maybe String, Expression)
 captureExpression (SyntaxBoundary inner) = captureExpression inner
 captureExpression
-    (IdentifierOperation (IdentifierString name) annotation Nothing) =
+    (DependentArgument
+      (IdentifierReference (IdentifierString name)) (Just annotation)) =
   (Just name, annotation)
 captureExpression expressionValue = (Nothing, expressionValue)
 
@@ -5067,17 +5012,27 @@ validateGenericArgumentsExcept
     validateEntries genericScope [] = Right genericScope
     validateEntries genericScope (entry : remaining) = do
       case entry of
-        IdentifierOperation (IdentifierString name) annotation _
-          | name `notElem` genericNames ->
+        parameter
+          | Just (name, annotation) <- namedDependentArgument parameter
+          , name `notElem` genericNames ->
               validateNamed genericScope name annotation
         optional
-          | Just
-              (IdentifierOperation (IdentifierString name) annotation _, _)
-              <- optionalIdentifierExpression optional
+          | Just (parameter, _) <- optionalIdentifierExpression optional
+          , Just (name, annotation) <- namedDependentArgument parameter
           , name `notElem` genericNames ->
               validateNamed genericScope name annotation
         _ -> Right ()
       validateEntries genericScope remaining
+    namedDependentArgument value = do
+      (nameExpression, annotation, _) <- dependentArgumentExpression value
+      effective <- annotation <|> givenValue value
+      case nameExpression of
+        IdentifierReference (IdentifierString name) -> Just (name, effective)
+        _ -> Nothing
+      where
+        givenValue selected = do
+          (_, _, given) <- dependentArgumentExpression selected
+          given
     validateNamed genericScope name annotation =
       case lookup name supplied of
         Nothing -> Right ()
@@ -5690,14 +5645,23 @@ prepareProtectedDomain
 
     namedDomainEntry entry =
       case entry of
-        IdentifierOperation (IdentifierString name) annotation _ ->
-          Just (name, annotation)
+        parameter
+          | Just named <- namedDependentArgument parameter -> Just named
         optional
-          | Just
-              (IdentifierOperation (IdentifierString name) annotation _, _)
-              <- optionalIdentifierExpression optional ->
-                Just (name, annotation)
+          | Just (parameter, _) <- optionalIdentifierExpression optional
+          , Just named <- namedDependentArgument parameter -> Just named
         _ -> Nothing
+
+    namedDependentArgument value = do
+      (nameExpression, annotation, _) <- dependentArgumentExpression value
+      effective <- annotation <|> givenValue value
+      case nameExpression of
+        IdentifierReference (IdentifierString name) -> Just (name, effective)
+        _ -> Nothing
+      where
+        givenValue selected = do
+          (_, _, given) <- dependentArgumentExpression selected
+          given
 
     preparedDeclarations prepared =
       [ evaluatedRuntimeDeclaration name value
@@ -6163,12 +6127,14 @@ moduleDeclarationScope outer resultExpression name =
 
 namedDeclarationValueExpression :: String -> Expression -> Maybe Expression
 namedDeclarationValueExpression selected expressionValue = case expressionValue of
-  IdentifierOperation (IdentifierString name) annotation given
-    | name == selected -> Just (case given of
-        Nothing -> annotation
+  dependent
+    | Just (IdentifierReference (IdentifierString name), annotation, given) <-
+        dependentArgumentExpression dependent
+    , name == selected -> Just (case given of
+        Nothing -> maybe expressionValue id annotation
         Just value
-          | value == annotation -> value
-          | otherwise -> MapSpecification value annotation)
+          | Just value == annotation -> value
+          | otherwise -> maybe value (MapSpecification value) annotation)
   AtlasMap members -> firstJust members
   ArgumentativeMap members -> firstJust members
   MapSequence members -> firstJust members

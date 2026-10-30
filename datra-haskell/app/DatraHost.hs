@@ -250,10 +250,10 @@ datraHostValue = do
       _ -> [value]
     absorbAssignedConcatenation value = case value of
       MapConcatenation
-          (IdentifierOperation name annotation (Just given)) right
-        | annotation == given ->
+          (MapSpecification given (DependentArgument name Nothing)) right ->
             let assignedValue = MapConcatenation given right
-            in IdentifierOperation name assignedValue (Just assignedValue)
+            in MapSpecification assignedValue
+              (DependentArgument name Nothing)
       _ -> value
 
     -- Native identities are represented by the same structural access tree

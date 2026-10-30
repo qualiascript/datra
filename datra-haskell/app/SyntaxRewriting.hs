@@ -597,30 +597,34 @@ splitAtLiteral literal value =
             )
 
     splitDeclaration = case value of
-      IdentifierOperation name annotation given ->
-        splitIdentifierOperation IdentifierOperation name annotation given
-      IdentifierTemplateOperation parts annotation given ->
-        splitIdentifierOperation IdentifierTemplateOperation
-          parts annotation given
+      DependentArgument name annotation ->
+        splitDependentArgument name annotation Nothing
+      MapSpecification _ (DependentArgument _ Nothing) -> Nothing
+      MapSpecification given (DependentArgument name annotation) ->
+        splitDependentArgument name annotation (Just given)
       _ -> Nothing
 
-    splitIdentifierOperation constructor name annotation given =
+    splitDependentArgument name annotation given =
       case given >>= splitAtLiteral literal of
         Just (before, suffix) ->
-          let rewrittenAnnotation = case given of
-                Just original
-                  | original == annotation ->
-                      maybe annotation id before
-                _ -> annotation
-          in Just
-            ( Just (constructor name rewrittenAnnotation before)
+          Just
+            ( Just (maybe
+                (DependentArgument name annotation)
+                (\givenValue -> MapSpecification givenValue
+                  (DependentArgument name annotation))
+                before)
             , suffix
             )
         Nothing -> do
-          (before, suffix) <- splitAtLiteral literal annotation
+          explicit <- annotation
+          (before, suffix) <- splitAtLiteral literal explicit
           pure
             ( (\beforeAnnotation ->
-                constructor name beforeAnnotation given) <$> before
+                maybe
+                  (DependentArgument name (Just beforeAnnotation))
+                  (\givenValue -> MapSpecification givenValue
+                    (DependentArgument name (Just beforeAnnotation)))
+                  given) <$> before
             , suffix
             )
 

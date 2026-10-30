@@ -206,12 +206,8 @@ signedArgumentCandidates template value = binarySign <> embeddedSigns
 
 declarationBoundaryCandidates :: Expression -> [Expression]
 declarationBoundaryCandidates value = case value of
-  IdentifierOperation name annotation Nothing ->
-    [ IdentifierOperation name rewritten (Just given)
-    | (rewritten, given) <- stripTrailingLiteralAssignment annotation
-    ]
-  IdentifierTemplateOperation parts annotation Nothing ->
-    [ IdentifierTemplateOperation parts rewritten (Just given)
+  DependentArgument name (Just annotation) ->
+    [ MapSpecification given (DependentArgument name (Just rewritten))
     | (rewritten, given) <- stripTrailingLiteralAssignment annotation
     ]
   _ -> []
@@ -221,8 +217,8 @@ stripTrailingLiteralAssignment
   -> [(Expression, Expression)]
 stripTrailingLiteralAssignment value = case value of
   FunctionApplication function
-      (IdentifierOperation name annotation (Just given))
-    | annotation == given ->
+      (MapSpecification given
+        (DependentArgument (IdentifierReference name) Nothing)) ->
         [(FunctionApplication function (IdentifierReference name), given)]
   _ -> []
 

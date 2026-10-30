@@ -3,6 +3,7 @@
 
 module DatraParsingTests (main) where
 
+import Control.Applicative ((<|>))
 import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
@@ -19,6 +20,7 @@ import DatraLanguage.AST
   , StringTemplatePart (..)
   , pattern FunctionType
   , pattern GenericFunctionType
+  , dependentArgumentExpression
   , expressionChildren
   , normalizeExpression
   , renderExpression
@@ -197,7 +199,9 @@ testGenericSourceParsing = do
     FunctionTypeExpression [binder]
         (ArgumentativeMap
           [OptionalType
-            (IdentifierOperation (IdentifierString "value") declaration Nothing)])
+            (DependentArgument
+              (IdentifierReference (IdentifierString "value"))
+              (Just declaration))])
         reference -> do
       assert "optional generic name is stored on the simple identifier"
         ( genericBinderPolarity binder == GenericProduct
@@ -250,8 +254,10 @@ testGenericSourceParsing = do
     FunctionTypeExpression [binder]
         domain@(SyntaxBoundary
           (AtlasMap
-            [ IdentifierOperation (IdentifierString "x") firstUse Nothing
-            , IdentifierOperation (IdentifierString "y") declaration Nothing
+            [ DependentArgument
+                (IdentifierReference (IdentifierString "x")) (Just firstUse)
+            , DependentArgument
+                (IdentifierReference (IdentifierString "y")) (Just declaration)
             ])) _ -> do
       assert "ordinary entries may use a generic before its written marker"
         ( firstUse == genericReference binder GenericUseReference
@@ -268,11 +274,14 @@ testGenericSourceParsing = do
           ("unexpected prepared forward-use domain: " <> show prepared)
       case prepareFunctionDomainExpression [binder] domain of
         AtlasMap
-            [ IdentifierOperation (IdentifierString "T") _ Nothing
-            , IdentifierOperation (IdentifierString "x")
-                (IdentifierReference (IdentifierString "T")) Nothing
-            , IdentifierOperation (IdentifierString "y")
-                (IdentifierReference (IdentifierString "T")) Nothing
+            [ DependentArgument
+                (IdentifierReference (IdentifierString "T")) (Just _)
+            , DependentArgument
+                (IdentifierReference (IdentifierString "x"))
+                (Just (IdentifierReference (IdentifierString "T")))
+            , DependentArgument
+                (IdentifierReference (IdentifierString "y"))
+                (Just (IdentifierReference (IdentifierString "T")))
             ] -> pure ()
         prepared -> fail
           ("unexpected lowered forward-use domain: " <> show prepared)
@@ -305,9 +314,12 @@ testGenericSourceParsing = do
         prepared -> fail ("unexpected prepared mixed domain: " <> show prepared)
       case prepareFunctionDomainExpression binders domain of
         ArgumentativeMap
-            ( IdentifierOperation (IdentifierString "S") _ Nothing
-            : IdentifierOperation (IdentifierString "T") _ Nothing
-            : IdentifierOperation (IdentifierString "U") _ Nothing
+            ( DependentArgument
+                (IdentifierReference (IdentifierString "S")) (Just _)
+            : DependentArgument
+                (IdentifierReference (IdentifierString "T")) (Just _)
+            : DependentArgument
+                (IdentifierReference (IdentifierString "U")) (Just _)
             : _
             ) -> pure ()
         prepared -> fail ("unexpected lowered mixed domain: " <> show prepared)
@@ -346,11 +358,13 @@ testGenericSourceParsing = do
   case collision of
     FunctionTypeExpression [_]
         domain@(ArgumentativeMap
-          [ OptionalType (IdentifierOperation domainName _ Nothing)
-          , OptionalType (IdentifierOperation _ _ Nothing)
+          [ OptionalType
+              (DependentArgument (IdentifierReference domainName) (Just _))
+          , OptionalType (DependentArgument _ (Just _))
           ])
         codomain@(SyntaxBoundary
-          (IdentifierOperation codomainName _ Nothing)) -> do
+          (DependentArgument
+            (IdentifierReference codomainName) (Just _))) -> do
       assert "ordinary collision candidates remain declarations for semantic validation"
         ( domainName == IdentifierString "T"
           && codomainName == IdentifierString "T"
@@ -435,17 +449,15 @@ testDependentDeclarationPrecedence = do
   assertNeutral
     "string and greedy-template concatenation is one declaration head"
     "\"_\",%($hello; Int) := body"
-    (IdentifierTemplateOperation
-      [StringTemplateInterpolation
+    (MapSpecification (ref "body")
+      (DependentArgument
         (SyntaxBoundary
           (MapConcatenation
             (AST.asciiString "_")
-            (SyntaxBoundary
-              (GreedyStringTemplate
-                (SyntaxBoundary
-                  (AtlasMap [AST.asciiString "hello", ref "Int"]))))))]
-      (ref "body")
-      (Just (ref "body")))
+            (GreedyStringTemplate
+              (SyntaxBoundary
+                (AtlasMap [AST.asciiString "hello", ref "Int"])))))
+        Nothing))
   case (dependentDeclaration expected, declarationRuleBranches expected) of
     (Just declaration, branches) ->
       assertEqual
@@ -457,8 +469,8 @@ testDependentDeclarationPrecedence = do
     _ -> assertFailure "dependent declaration did not compile into syntax rules"
   where
     source = "\"verify %_Expr\" | \"verify %($hard) %_Expr\" := body"
-    expected = IdentifierTemplateOperation
-      [StringTemplateInterpolation
+    expected = MapSpecification (ref "body")
+      (DependentArgument
         (SyntaxBoundary
           (EitherType
             (StringTemplate
@@ -470,9 +482,8 @@ testDependentDeclarationPrecedence = do
               , StringTemplateInterpolation (AST.asciiString "hard")
               , StringTemplateLiteral " "
               , StringTemplateInterpolation (ref "_Expr")
-              ])))]
-      (ref "body")
-      (Just (ref "body"))
+              ])))
+        Nothing)
     assertNeutral label input wanted =
       case parseNeutralPhrase input of
         Left failure -> assertFailure (renderParseFailure failure)
@@ -1535,7 +1546,7 @@ regressionTests = do
         ((natural 1 <:> natural 2) <@> natural 0)
     )
   assertAstOutput
-    "accessing an identifier operation requires grouping"
+    "accessing a dependent argument requires grouping"
     "(x : Nat) @ 0"
     (AST.dependentArgumentType "x" (ref "Nat") <@> natural 0)
   assertAstOutput
@@ -1571,28 +1582,23 @@ regressionTests = do
     "A_0'z : Nat"
     (AST.dependentArgumentType "A_0'z" (ref "Nat"))
   assertRejected
-    "identifier operations reject expression left sides"
+    "dependent arguments reject expression left sides"
     "(2 + 2) : Nat := 4"
   assertAstOutput
     "parenthesized names evaluate dependent declaration templates"
     "(abc) := 123"
-    (IdentifierTemplateOperation
-      [StringTemplateInterpolation (ref "abc")]
-      (natural 123)
-      (Just (natural 123)))
+    (MapSpecification (natural 123)
+      (DependentArgument (SyntaxBoundary (ref "abc")) Nothing))
   assertAstOutput
     "parenthesized names evaluate dependent argument templates"
     "(abc) : Nat"
-    (IdentifierTemplateOperation
-      [StringTemplateInterpolation (ref "abc")]
-      (ref "Nat")
-      Nothing)
+    (DependentArgument (SyntaxBoundary (ref "abc")) (Just (ref "Nat")))
   assertAstOutput
     "bare names remain literal declarations"
     "abc := 123"
     (AST.assignment "abc" (natural 123) (natural 123))
   assertRejected
-    "identifier operations reject dollar-prefixed left sides"
+    "dependent arguments reject dollar-prefixed left sides"
     "$x : Nat := 4"
   assertParsed "bare identifiers are references" "x" (IdentifierReference (IdentifierString "x"))
   assertParsed "apostrophe-prefixed identifiers are references"
@@ -1973,11 +1979,12 @@ regressionTests = do
   let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
   assertAstOutput "assignment retains its complete alternative value"
     "x := $up | $down"
-    (IdentifierOperation (IdentifierString "x") alternatives (Just alternatives))
+    (MapSpecification alternatives
+      (DependentArgument (ref "x") Nothing))
   assert "assignment rendering does not regroup a federation"
     (renderSourceExpression
-      (IdentifierOperation
-        (IdentifierString "x") alternatives (Just alternatives))
+      (MapSpecification alternatives
+        (DependentArgument (ref "x") Nothing))
       == "x := $up | $down")
   assert "quoted identifier references render as strict current-scope access"
     (renderSourceExpression (ref "___Std.Int") == "this.\"___Std.Int\"")
@@ -2375,10 +2382,9 @@ genExpression =
     , Gen.subterm2 genExpression genExpression MapSpecification
     , Gen.subterm2 genExpression genExpression Overload
     , Gen.subterm2 genExpression genExpression SafeOverload
-    , IdentifierOperation
-        <$> genIdentifierString
-        <*> genExpression
-        <*> Gen.maybe genExpression
+    , DependentArgument
+        <$> (IdentifierReference <$> genIdentifierString)
+        <*> (Just <$> genExpression)
     ]
 
 genRangeExpression :: H.Gen Expression
@@ -2531,10 +2537,14 @@ assertBundledModuleBlockShape = do
         Left failure -> fail
           (path <> ": unexpected parse failure: " <> renderParseFailure failure)
         Right located -> case openedBody (locatedValue located) of
-          Begin [] (IdentifierOperation
-              (IdentifierString actualName) annotation given)
-            | actualName == expectedName
-            , Begin {} <- maybe annotation id given -> pure ()
+          Begin [] dependent
+            | Just
+                ( IdentifierReference (IdentifierString actualName)
+                , annotation
+                , given
+                ) <- dependentArgumentExpression dependent
+            , actualName == expectedName
+            , Just (Begin {}) <- given <|> annotation -> pure ()
           actual -> fail
             (path <> ": expected an outer block yielding a named inner block, got "
               <> show actual)
@@ -2559,8 +2569,10 @@ assertStandardSyntaxDeclarationsAdmissible = do
         (expressionChildren expressionValue)
       where
         current = case expressionValue of
-          declaration@IdentifierTemplateOperation { identifierTemplateParts = parts }
-            | any isInterpolation parts -> [declaration]
+          declaration
+            | Just (StringTemplate parts, _, _) <-
+                dependentArgumentExpression declaration
+            , any isInterpolation parts -> [declaration]
           _ -> []
     isInterpolation StringTemplateInterpolation {} = True
     isInterpolation StringTemplateLiteral {} = False

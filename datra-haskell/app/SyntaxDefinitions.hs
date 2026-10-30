@@ -192,7 +192,8 @@ compileDependentDeclarationTemplate parts = do
       let (target, name) = capture expressionValue
       in ([SyntaxHole (ValueSyntaxHole target)], [name])
     capture (SyntaxBoundary inner) = capture inner
-    capture (IdentifierOperation name annotation Nothing) =
+    capture (DependentArgument
+        (IdentifierReference name) (Just annotation)) =
       (annotation, Just (name, annotation))
     capture value = (value, Nothing)
 
@@ -324,7 +325,7 @@ lowerConditionAtom condition yes no =
       ]
     rewrittenCondition = rewrite condition
     rewrite expressionValue = case expressionValue of
-      IdentifierOperation name _ Nothing
+      DependentArgument (IdentifierReference name) (Just _)
         | name `elem` selectedNames -> IdentifierReference name
       _ -> mapExpressionChildren rewrite expressionValue
 
@@ -353,7 +354,8 @@ conditionBindingCandidates
 conditionBindingCandidates expressionValue =
   concatMap conditionBindingCandidates (expressionChildren expressionValue)
     <> case expressionValue of
-      IdentifierOperation name value Nothing -> [(name, value)]
+      DependentArgument
+          (IdentifierReference name) (Just value) -> [(name, value)]
       _ -> []
 
 identifierReferences :: Expression -> [String]
@@ -369,8 +371,14 @@ declarationLiterals declarations typeName = concatMap declaration declarations
     declaration (Let value) = declaration value
     declaration (Def value) = declaration value
     declaration (Val value) = declaration value
-    declaration (IdentifierOperation (IdentifierString name) annotation given)
-      | name == typeName = literals (maybe annotation id given)
+    declaration dependent
+      | Just
+          ( IdentifierReference (IdentifierString name)
+          , annotation
+          , given
+          ) <- dependentArgumentExpression dependent
+      , name == typeName = maybe [] literals
+          (case given of Just value -> Just value; Nothing -> annotation)
     declaration _ = []
     literals (AsciiStringLiteral text) = [text]
     literals (EitherType a b) = literals a <> literals b

@@ -10,9 +10,8 @@ import DatraLanguage.AST
       ( AsciiStringLiteral
       , AtlasMap
       , FunctionBody
-      , IdentifierOperation
+      , DependentArgument
       , IdentifierReference
-      , IdentifierTemplateOperation
       , MapConcatenation
       , MapSequence
       , OptionalType
@@ -72,8 +71,7 @@ captureAtomicSyntaxExpression target captured =
       IdentifierReference {} -> Just value
       AsciiStringLiteral {} -> Just value
       StringTemplate {} -> Just value
-      IdentifierOperation _ _ Nothing -> Just value
-      IdentifierTemplateOperation _ _ Nothing -> Just value
+      DependentArgument {} -> Just value
       OptionalType inner -> OptionalType <$> dependentArgument inner
       _ -> Nothing
 

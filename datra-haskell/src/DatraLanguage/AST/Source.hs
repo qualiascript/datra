@@ -84,20 +84,16 @@ source context expression =
       | isOpaqueSymbolicSyntaxLiteral name -> name
       | otherwise -> "this." <> renderIdentifierString name
     LookupValue operand -> unary "~" operand
-    IdentifierOperationValue (IdentifierString name) annotation given ->
-      identifierOperation
-        (renderIdentifierString name) False annotation given
-    IdentifierTemplateOperationValue parts annotation given ->
-      identifierOperation
-        (renderStringTemplate (source 0) (const Nothing) parts)
-        False
-        annotation
-        given
+    DependentArgumentValue name (Just annotation) ->
+      dependentArgument (source 13 name) False (Just annotation) Nothing
+    DependentArgumentValue name Nothing -> source 13 name
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> argumentMembers members <> "}"
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
     Concatenate left EmptyMap -> wrapped 10 (source 10 left <> ",")
     Concatenate left right -> binary 2 "," left right
+    Specify given (DependentArgumentValue name annotation) ->
+      dependentArgument (source 13 name) False annotation (Just given)
     Specify left right -> binary 1 "~>" left right
     OverloadValue left right -> binary 1 "<<" left right
     SafeOverloadValue left right -> binary 1 "<<<" left right
@@ -124,17 +120,11 @@ source context expression =
     Not operand -> unary "not " operand
     CoalizationValue operand -> unary ">< " operand
     ValValue declaration -> wrapped 0 ("val " <> source 0 declaration)
+    OptionalValue (DependentArgumentValue name (Just annotation)) ->
+      dependentArgument (source 13 name) True (Just annotation) Nothing
     OptionalValue
-        (IdentifierOperationValue (IdentifierString name) annotation given) ->
-      identifierOperation
-        (renderIdentifierString name) True annotation given
-    OptionalValue
-        (IdentifierTemplateOperationValue parts annotation given) ->
-      identifierOperation
-        (renderStringTemplate (source 0) (const Nothing) parts)
-        True
-        annotation
-        given
+        (Specify given (DependentArgumentValue name annotation)) ->
+      dependentArgument (source 13 name) True annotation (Just given)
     OptionalValue operand -> wrapped 10 (source 10 operand <> "?")
     ScopeAccessValue operand
         (IdentifierReferenceValue (IdentifierString name)) ->
@@ -206,11 +196,10 @@ source context expression =
       case genericIntroductionBound introduction of
         IdentifierReferenceValue (IdentifierString "Any") -> ""
         bound -> " :: " <> source 0 bound
-    identifierOperation name optional annotation given = wrapped 1
-      (name <> (if optional then "?" else "") <> case given of
-        Just value | value == annotation -> " := " <> assignedValue value
-        _ -> " : " <> source 13 annotation
-          <> maybe "" (\value -> " := " <> assignedValue value) given)
+    dependentArgument name optional annotation given = wrapped 1
+      (name <> (if optional then "?" else "")
+        <> maybe "" (\value -> " : " <> source 13 value) annotation
+        <> maybe "" (\value -> " := " <> assignedValue value) given)
     -- Federation binds inside assignment. Other assignment operands retain
     -- their existing conservative grouping.
     assignedValue value@EitherValue {} = source 3 value

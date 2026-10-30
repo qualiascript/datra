@@ -26,6 +26,7 @@ module DatraLanguage.AST
   , expressionChildren
   , yieldedIdentifier
   , namedBeginBlock
+  , dependentArgumentExpression
   , optionalIdentifierExpression
   , normalizeExpression
   , renderExpression
@@ -58,7 +59,7 @@ import Prettyprinter
   )
 import Prettyprinter.Render.String (renderString)
 
--- | The identifier string used by identifier operations. It is deliberately
+-- | A validated simple identifier spelling. It is deliberately
 -- distinct from an expression: the parser is the boundary which validates
 -- its spelling, and an arbitrary expression can never inhabit this field.
 newtype IdentifierString = IdentifierString
@@ -262,15 +263,9 @@ data Expression
   | ReverseMapSpecification Expression Expression
   | ReverseOverload Expression Expression
   | ReverseSafeOverload Expression Expression
-  | IdentifierOperation
-      { identifierOperationString :: IdentifierString
-      , identifierOperationTypeAnnotation :: Expression
-      , identifierOperationGivenValue :: Maybe Expression
-      }
-  | IdentifierTemplateOperation
-      { identifierTemplateParts :: [StringTemplatePart Expression]
-      , identifierTemplateTypeAnnotation :: Expression
-      , identifierTemplateGivenValue :: Maybe Expression
+  | DependentArgument
+      { dependentArgumentName :: Expression
+      , dependentArgumentTypeAnnotation :: Maybe Expression
       }
   deriving (Eq, Ord, Show)
 
@@ -309,8 +304,13 @@ yieldedIdentifier
 yieldedIdentifier (Begin _ result) = yieldedIdentifier result
 yieldedIdentifier (ScopeAccess _ body) = yieldedIdentifier body
 yieldedIdentifier (Import _ (FunctionBody _ result)) = yieldedIdentifier result
-yieldedIdentifier (IdentifierOperation name annotation given) =
-  Just (name, annotation, given)
+yieldedIdentifier
+    (DependentArgument (IdentifierReference name) (Just annotation)) =
+  Just (name, annotation, Nothing)
+yieldedIdentifier
+    (MapSpecification given
+      (DependentArgument (IdentifierReference name) annotation)) =
+  Just (name, maybe given id annotation, Just given)
 yieldedIdentifier _ = Nothing
 
 -- | Some named module values are begin blocks. Their declarations remain
@@ -327,6 +327,19 @@ namedBeginBlock expressionValue = do
     Begin bindings result -> Just (name, bindings, result)
     _ -> Nothing
 
+-- | View both a bare dependent argument and its specification-sugar form.
+-- Assignment does not add another dependent-argument AST case: @name := value@
+-- is @MapSpecification value (DependentArgument name Nothing)@.
+dependentArgumentExpression
+  :: Expression
+  -> Maybe (Expression, Maybe Expression, Maybe Expression)
+dependentArgumentExpression (DependentArgument name annotation) =
+  Just (name, annotation, Nothing)
+dependentArgumentExpression
+    (MapSpecification given (DependentArgument name annotation)) =
+  Just (name, annotation, Just given)
+dependentArgumentExpression _ = Nothing
+
 -- | Recover the present and unnamed alternatives represented by identifier
 -- postfix @?@. Other optional nodes use ordinary @Maybe T@ semantics.
 optionalIdentifierExpression
@@ -334,8 +347,9 @@ optionalIdentifierExpression
   -> Maybe (Expression, Expression)
 optionalIdentifierExpression (OptionalType operation) =
   case operation of
-    IdentifierOperation _ annotation _ -> Just (operation, annotation)
-    IdentifierTemplateOperation _ annotation _ -> Just (operation, annotation)
+    DependentArgument _ (Just annotation) -> Just (operation, annotation)
+    MapSpecification given (DependentArgument _ annotation) ->
+      Just (operation, maybe given id annotation)
     _ -> Nothing
 optionalIdentifierExpression _ = Nothing
 
@@ -428,13 +442,7 @@ data OperatorExpression
   | Specify OperatorExpression OperatorExpression
   | OverloadValue OperatorExpression OperatorExpression
   | SafeOverloadValue OperatorExpression OperatorExpression
-  | IdentifierOperationValue
-      { operatorIdentifierString :: IdentifierString
-      , operatorTypeAnnotation :: OperatorExpression
-      , operatorGivenValue :: Maybe OperatorExpression
-      }
-  | IdentifierTemplateOperationValue
-      [StringTemplatePart OperatorExpression]
+  | DependentArgumentValue
       OperatorExpression
       (Maybe OperatorExpression)
   deriving (Eq, Show)
@@ -599,34 +607,14 @@ normalizeExpression (ReverseOverload supplied defaults) =
   Overload (normalizeExpression defaults) (normalizeExpression supplied)
 normalizeExpression (ReverseSafeOverload supplied defaults) =
   SafeOverload (normalizeExpression defaults) (normalizeExpression supplied)
-normalizeExpression
-    (IdentifierOperation identifierString typeAnnotation givenValue) =
-  IdentifierOperation
-    identifierString
-    (normalizeExpression typeAnnotation)
-    (normalizeExpression <$> givenValue)
-normalizeExpression
-    (IdentifierTemplateOperation parts typeAnnotation givenValue) =
-  IdentifierTemplateOperation
-    (map normalizeDeclarationTemplatePart parts)
-    (normalizeExpression typeAnnotation)
-    (normalizeExpression <$> givenValue)
+normalizeExpression (DependentArgument name typeAnnotation) =
+  DependentArgument
+    (normalizeDependentArgumentName name)
+    (normalizeExpression <$> typeAnnotation)
 
--- A bounded interpolation in declaration-head position carries a first-class
--- name expression. Keep that boundary until the declaration is classified;
--- ordinary string-template normalization must not erase the distinction.
-normalizeDeclarationTemplatePart
-  :: StringTemplatePart Expression
-  -> StringTemplatePart Expression
-normalizeDeclarationTemplatePart (StringTemplateLiteral value) =
-  StringTemplateLiteral value
-normalizeDeclarationTemplatePart
-    (StringTemplateInterpolation (SyntaxBoundary expressionValue)) =
-  StringTemplateInterpolation
-    (SyntaxBoundary (normalizeExpression expressionValue))
-normalizeDeclarationTemplatePart
-    (StringTemplateInterpolation expressionValue) =
-  StringTemplateInterpolation (normalizeExpression expressionValue)
+normalizeDependentArgumentName :: Expression -> Expression
+normalizeDependentArgumentName name@IdentifierReference {} = name
+normalizeDependentArgumentName name = normalizeExpression name
 
 normalizeStringTemplatePart
   :: StringTemplatePart Expression
@@ -785,16 +773,8 @@ lower (ReverseOverload supplied defaults) =
   OverloadValue (lower defaults) (lower supplied)
 lower (ReverseSafeOverload supplied defaults) =
   SafeOverloadValue (lower defaults) (lower supplied)
-lower (IdentifierOperation identifierString typeAnnotation givenValue) =
-  IdentifierOperationValue
-    identifierString
-    (lower typeAnnotation)
-    (lower <$> givenValue)
-lower (IdentifierTemplateOperation parts typeAnnotation givenValue) =
-  IdentifierTemplateOperationValue
-    (map lowerStringTemplatePart parts)
-    (lower typeAnnotation)
-    (lower <$> givenValue)
+lower (DependentArgument name typeAnnotation) =
+  DependentArgumentValue (lower name) (lower <$> typeAnnotation)
 
 lowerStringTemplatePart
   :: StringTemplatePart Expression
@@ -1007,42 +987,33 @@ prettyOperator (ScopeAccessValue source body) =
   prettyForm "." [prettyOperator source, prettyOperator body]
 prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
+prettyOperator
+    (Specify given (DependentArgumentValue name typeAnnotation)) =
+  prettyForm
+    (operatorCanonicalSymbol AssignmentOperator)
+    (prettyDependentArgumentName name :
+      maybe [] ((: []) . prettyOperator) typeAnnotation
+        <> [prettyOperator given])
 prettyOperator (Specify left right) =
   prettyBinary SpecificationOperator left right
 prettyOperator (OverloadValue left right) =
   prettyBinary OverloadOperator left right
 prettyOperator (SafeOverloadValue left right) =
   prettyBinary SafeOverloadOperator left right
-prettyOperator
-    (IdentifierOperationValue
-      (IdentifierString identifierString)
-      typeAnnotation
-      givenValue) =
-  case givenValue of
-    Nothing ->
-      prettyForm
-        (operatorCanonicalSymbol DependentArgumentTypeOperator)
-        [pretty (renderIdentifierString identifierString), prettyOperator typeAnnotation]
-    Just givenValueExpression ->
-      prettyForm
-        (operatorCanonicalSymbol AssignmentOperator)
-        (pretty (renderIdentifierString identifierString) :
-          if givenValueExpression == typeAnnotation
-            then [prettyOperator givenValueExpression]
-            else
-              [ prettyOperator typeAnnotation
-              , prettyOperator givenValueExpression
-              ])
-prettyOperator
-    (IdentifierTemplateOperationValue parts typeAnnotation givenValue) =
+prettyOperator (DependentArgumentValue name (Just typeAnnotation)) =
   prettyForm
-    (case givenValue of
-      Nothing -> operatorCanonicalSymbol DependentArgumentTypeOperator
-      Just _ -> operatorCanonicalSymbol AssignmentOperator)
-    ( pretty (renderStringTemplate renderOperatorExpression (const Nothing) parts)
-      : prettyOperator typeAnnotation
-      : maybe [] ((: []) . prettyOperator) givenValue
-    )
+    (operatorCanonicalSymbol DependentArgumentTypeOperator)
+    [prettyDependentArgumentName name, prettyOperator typeAnnotation]
+prettyOperator (DependentArgumentValue name Nothing) =
+  prettyDependentArgumentName name
+
+prettyDependentArgumentName :: OperatorExpression -> Doc annotation
+prettyDependentArgumentName name = case name of
+  IdentifierReferenceValue (IdentifierString identifierString) ->
+    pretty (renderIdentifierString identifierString)
+  StringTemplateValue parts ->
+    pretty (renderStringTemplate renderOperatorExpression (const Nothing) parts)
+  _ -> prettyOperator name
 
 prettyDeclaration
   :: DependentDeclaration OperatorExpression
@@ -1053,10 +1024,15 @@ prettyDeclaration declaration =
       implementation = dependentDeclarationImplementation declaration
       base = case dependentDeclarationHead declaration of
         SimpleIdentifierDeclarationHead name -> prettyOperator
-          (IdentifierOperationValue name implementation (Just implementation))
+          (Specify implementation
+            (DependentArgumentValue
+              (IdentifierReferenceValue name)
+              Nothing))
         StringTemplateDeclarationHead parts -> prettyOperator
-          (IdentifierTemplateOperationValue
-            parts implementation (Just implementation))
+          (Specify implementation
+            (DependentArgumentValue
+              (StringTemplateValue parts)
+              Nothing))
         EvaluatedDeclarationHead expressionValue -> prettyForm
           (operatorCanonicalSymbol AssignmentOperator)
           [prettyOperator expressionValue, prettyOperator implementation]
@@ -1299,12 +1275,10 @@ traverseExpressionChildren visit expression = case expression of
   InModule path value -> InModule path <$> visit value
   Import paths body -> Import paths <$> visit body
   ScopeAccess source body -> ScopeAccess <$> visit source <*> visit body
-  IdentifierOperation name annotation given -> IdentifierOperation name <$> visit annotation <*> traverse visit given
-  IdentifierTemplateOperation parts annotation given ->
-    IdentifierTemplateOperation
-      <$> traverse part parts
-      <*> visit annotation
-      <*> traverse visit given
+  DependentArgument name annotation ->
+    DependentArgument
+      <$> visitDependentArgumentName name
+      <*> traverse visit annotation
   StringTemplate parts -> StringTemplate <$> traverse part parts
   GreedyStringTemplate operand -> GreedyStringTemplate <$> visit operand
   _ -> pure expression
@@ -1316,6 +1290,8 @@ traverseExpressionChildren visit expression = case expression of
         <$> visit (genericBinderBound binder)
     part (StringTemplateLiteral text) = pure (StringTemplateLiteral text)
     part (StringTemplateInterpolation value) = StringTemplateInterpolation <$> visit value
+    visitDependentArgumentName name@IdentifierReference {} = pure name
+    visitDependentArgumentName name = visit name
 
 mapExpressionChildren :: (Expression -> Expression) -> Expression -> Expression
 mapExpressionChildren visit = runIdentity . traverseExpressionChildren (Identity . visit)

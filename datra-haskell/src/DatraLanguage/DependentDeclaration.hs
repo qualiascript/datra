@@ -44,37 +44,24 @@ dependentDeclaration = declaration False False False
     declaration strict definition canonical (SyntaxBoundary value) =
       declaration strict definition canonical value
     declaration strict definition canonical
-        (IdentifierOperation (IdentifierString name) annotation (Just given))
-      | annotation == given = Just (makeDeclaration
-          (SimpleIdentifierDeclarationHead (IdentifierString name))
-          strict definition canonical given)
+        (MapSpecification given (DependentArgument name Nothing)) =
+      Just (makeDeclaration
+        (classifyHead name) strict definition canonical given)
     declaration strict definition canonical optional
-      | Just (named@IdentifierOperation {}, _) <-
+      | Just (named, _) <-
           optionalIdentifierExpression optional =
           declaration strict definition canonical named
-    declaration strict definition canonical
-        (IdentifierTemplateOperation parts annotation (Just given))
-      | annotation == given = Just (makeDeclaration
-          (classifyTemplateHead parts) strict definition canonical given)
     declaration _ _ _ _ = Nothing
 
     makeDeclaration headValue strict definition canonical implementation =
       DependentDeclaration
         headValue strict definition canonical implementation
 
-    -- The parser carries a first-class declaration head through the existing
-    -- identifier-template AST node as one explicitly bounded interpolation.
-    -- Decode that carrier exactly once. From here on, evaluated heads and
-    -- quoted string templates are distinct representations.
-    classifyTemplateHead parts = case parts of
-      [StringTemplateInterpolation expressionValue]
-        | Just evaluated <- boundedHead expressionValue ->
-            EvaluatedDeclarationHead evaluated
-      _ -> StringTemplateDeclarationHead parts
-
-    boundedHead (SyntaxBoundary expressionValue) =
-      Just (stripBoundaries expressionValue)
-    boundedHead _ = Nothing
+    classifyHead name = case name of
+      IdentifierReference identifier -> SimpleIdentifierDeclarationHead identifier
+      StringTemplate parts -> StringTemplateDeclarationHead parts
+      expressionValue -> EvaluatedDeclarationHead
+        (stripBoundaries expressionValue)
 
     stripBoundaries (SyntaxBoundary expressionValue) =
       stripBoundaries expressionValue
@@ -282,8 +269,9 @@ bindingNames expressionValue = case expressionValue of
     SimpleIdentifierDeclarationHead (IdentifierString name) -> [name]
     StringTemplateDeclarationHead [StringTemplateLiteral name] -> [name]
     _ -> []
-  IdentifierOperation (IdentifierString name) _ _ -> [name]
-  IdentifierTemplateOperation [StringTemplateLiteral name] _ _ -> [name]
+  DependentArgument (IdentifierReference (IdentifierString name)) _ -> [name]
+  DependentArgument (StringTemplate [StringTemplateLiteral name]) _ -> [name]
+  MapSpecification _ target -> bindingNames target
   OptionalType inner -> bindingNames inner
   Let inner -> bindingNames inner
   Def inner -> bindingNames inner
