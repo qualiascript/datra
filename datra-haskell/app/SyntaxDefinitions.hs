@@ -8,7 +8,7 @@ module SyntaxDefinitions
   , SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
   , TemplateSelection (..)
   , SyntaxTemplateCompilationFailure (..)
-  , declarationRules, declarationRuleFailures
+  , declarationRules, declarationRuleBranches, declarationRuleFailures
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
   , syntaxApplicationRule
   , syntaxApplicationImplementation
@@ -37,7 +37,8 @@ import Data.Either (partitionEithers)
 import SyntaxTemplateAdmissibility (validateStringTemplate)
 
 data SyntaxRule = SyntaxRule
-  { syntaxName :: String, syntaxTemplate :: SyntaxTemplate Expression
+  { syntaxName :: String
+  , syntaxTemplate :: SyntaxTemplate Expression
   , syntaxSemantics :: SyntaxRuleSemantics
   } deriving (Eq,Show)
 
@@ -83,14 +84,23 @@ data SyntaxTemplateCompilationFailure
   deriving (Eq, Show)
 
 declarationRules :: Expression -> [SyntaxRule]
-declarationRules = snd . declarationRuleResults
+declarationRules = map third . snd . declarationRuleResults
+  where
+    third (_, _, rule) = rule
+
+declarationRuleBranches
+  :: Expression
+  -> [(DependentDeclaration Expression, Int, SyntaxRule)]
+declarationRuleBranches = snd . declarationRuleResults
 
 declarationRuleFailures :: Expression -> [SyntaxTemplateCompilationFailure]
 declarationRuleFailures = fst . declarationRuleResults
 
 declarationRuleResults
   :: Expression
-  -> ([SyntaxTemplateCompilationFailure], [SyntaxRule])
+  -> ( [SyntaxTemplateCompilationFailure]
+     , [(DependentDeclaration Expression, Int, SyntaxRule)]
+     )
 declarationRuleResults expressionValue =
   case dependentDeclaration expressionValue of
     Nothing -> ([], [])
@@ -99,13 +109,17 @@ declarationRuleResults expressionValue =
 
 dependentDeclarationRuleResults
   :: DependentDeclaration Expression
-  -> [Either SyntaxTemplateCompilationFailure SyntaxRule]
+  -> [Either SyntaxTemplateCompilationFailure
+      (DependentDeclaration Expression, Int, SyntaxRule)]
 dependentDeclarationRuleResults declaration =
   case dependentDeclarationHead declaration of
     SimpleIdentifierDeclarationHead name ->
-      [Right (simpleApplicationRule declaration name)]
-    _ -> map
-      (directTemplateRule declaration)
+      [Right (declaration, 0, simpleApplicationRule declaration name)]
+    _ -> zipWith
+      (\branch parts ->
+        (declaration, branch,) <$>
+          directTemplateRule declaration parts)
+      [0 ..]
       (dependentDeclarationSyntaxAlternatives declaration)
 
 simpleApplicationRule

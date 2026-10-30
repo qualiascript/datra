@@ -81,7 +81,7 @@ import DatraLanguage.Diagnostics
   )
 import DatraLanguage.Diagnostics.Application
   ( ModuleLoadFailure (CyclicModuleImport)
-  , ParseFailure (ParseFailure)
+  , ParseFailure (NeutralSourceParseFailure)
   , SyntaxTemplateAdmissibilityFailure (..)
   )
 import DatraLanguage.Diagnostics.Localization
@@ -549,9 +549,9 @@ testDiagnostics = do
           ]
     )
   assert "parser failures have exact bilingual localization"
-    ( localizeDiagnostic English (ParseFailure "bad token")
+    ( localizeDiagnostic English (NeutralSourceParseFailure "bad token")
         == LocalizedMessage "source could not be parsed" ["bad token"]
-      && localizeDiagnostic Romanian (ParseFailure "bad token")
+      && localizeDiagnostic Romanian (NeutralSourceParseFailure "bad token")
         == LocalizedMessage "sursa nu a putut fi analizată" ["bad token"]
     )
   assert "module-loading failures have exact bilingual localization"

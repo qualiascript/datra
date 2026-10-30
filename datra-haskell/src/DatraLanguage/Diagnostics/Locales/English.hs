@@ -7,19 +7,28 @@ module DatraLanguage.Diagnostics.Locales.English
   , localizeParseFailure
   , localizeModuleLoadFailure
   , localizeCommandLineOptionFailure
+  , localizeSyntaxRewriteFailure
+  , localizeCandidateRejectionReport
   , localizeInterpretingError
   , localizeSuperEllipsisRangeError
   , localizeSuperEllipsisRangeConcatError
   , englishOrdinal
   ) where
 
-import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
+import DatraLanguage.Diagnostics
+  ( LocalizedMessage (LocalizedMessage)
+  , renderDatraErrorWith
+  )
 import DatraLanguage.Diagnostics.Application
-  ( CommandLineOptionFailure (..)
+  ( CandidateRejectionReason (..)
+  , CandidateRejectionReport (..)
+  , CommandLineOptionFailure (..)
   , ModuleLoadFailure (..)
   , ParseFailure (..)
+  , SyntaxRewriteFailure (..)
   , SyntaxTemplateAdmissibilityFailure (..)
   )
+import DatraLanguage.AST.Source (renderSourceExpression)
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
@@ -55,15 +64,20 @@ import SuperEllipsisRange
   )
 
 localizeParseFailure :: ParseFailure -> LocalizedMessage
-localizeParseFailure (ParseFailure message) =
-  LocalizedMessage "source could not be parsed" [message]
+localizeParseFailure failure = case failure of
+  NeutralSourceParseFailure message ->
+    LocalizedMessage "source could not be parsed" [message]
+  SyntaxEnvironmentParseFailure message ->
+    LocalizedMessage "syntax environment could not be constructed" [message]
+  SyntaxRewriteParseFailure reason ->
+    localizeSyntaxRewriteFailure reason
 
 localizeModuleLoadFailure :: ModuleLoadFailure -> LocalizedMessage
 localizeModuleLoadFailure failure =
   case failure of
     ImportScanFailed path parseFailure ->
       LocalizedMessage "module imports could not be scanned"
-        ["module: " <> path, parseFailureMessage parseFailure]
+        (["module: " <> path] <> embeddedParseFailure parseFailure)
     ImportPathResolutionFailed requested location reason ->
       LocalizedMessage "module path could not be resolved"
         [ "module: " <> requested
@@ -80,7 +94,12 @@ localizeModuleLoadFailure failure =
         ]
     ImportedModuleParseFailed path parseFailure ->
       LocalizedMessage "imported module could not be parsed"
-        ["module: " <> path, parseFailureMessage parseFailure]
+        (["module: " <> path] <> embeddedParseFailure parseFailure)
+
+embeddedParseFailure :: ParseFailure -> [String]
+embeddedParseFailure failure = summary : details
+  where
+    LocalizedMessage summary details = localizeParseFailure failure
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -92,6 +111,64 @@ localizeCommandLineOptionFailure failure =
         [ "given locale: " <> value
         , "expected english, en, romana, romanian, or ro"
         ]
+
+localizeSyntaxRewriteFailure :: SyntaxRewriteFailure -> LocalizedMessage
+localizeSyntaxRewriteFailure failure = case failure of
+  AmbiguousBareSkipApplication ->
+    LocalizedMessage "bare skip application is ambiguous" []
+  OverlappingDependentDeclarations earlier later ->
+    LocalizedMessage "dependent declarations overlap"
+      [ "earlier declaration: " <> earlier
+      , "later declaration: " <> later
+      ]
+  NonInjectiveDependentDeclaration declaration ->
+    LocalizedMessage "dependent declaration is not injective"
+      ["declaration: " <> declaration]
+  InvalidDeclarationModifiers written correct ->
+    LocalizedMessage "declaration modifiers are invalid"
+      [ "written modifiers: " <> unwords written
+      , "correct modifiers: " <> unwords correct
+      ]
+  ExpectedDependentDeclaration expressionValue ->
+    LocalizedMessage "operation has no effect inside block"
+      ["expression: " <> renderSourceExpression expressionValue]
+  InvalidRewriteSyntaxTemplate template failureReason ->
+    LocalizedMessage
+      (syntaxTemplateFailureSummary template failureReason)
+      [ "pattern: " <> template
+      , syntaxTemplateFailureDetail failureReason
+      ]
+  RejectedSyntaxCandidates attempts ->
+    LocalizedMessage "syntax candidates were rejected by typing"
+      (map (renderDatraErrorWith localizeCandidateRejectionReport) attempts)
+
+localizeCandidateRejectionReport
+  :: CandidateRejectionReport
+  -> LocalizedMessage
+localizeCandidateRejectionReport report = LocalizedMessage
+  "syntax candidate does not satisfy its typing requirements"
+  ( [ "rule: " <> rejectedCandidateRule report
+    , "template branch: " <> show (rejectedCandidateBranch report)
+    , "capture index: " <> show (rejectedCandidateCapture report)
+    , "capture: " <> rejectedCandidateSource report
+    , "reason: " <> candidateRejectionReasonText
+        (rejectedCandidateReason report)
+    ]
+    <> maybe [] (pure . ("expected: " <>))
+      (rejectedCandidateExpected report)
+    <> maybe [] (pure . ("actual: " <>))
+      (rejectedCandidateActual report)
+    <> [ "inferred input " <> show index <> ": " <> value
+       | (index, value) <- rejectedCandidateInputs report
+       ]
+  )
+
+candidateRejectionReasonText :: CandidateRejectionReason -> String
+candidateRejectionReasonText reason = case reason of
+  TypedHoleMismatch -> "captured result is outside the required hole type"
+  GenericBoundMismatch -> "inferred generic input violates its bound"
+  CandidateReturnMismatch -> "candidate return type could not be established"
+  RequiredChildExhausted -> "required child expression has no applicable result"
 
 localizeAccessError :: AccessError -> LocalizedMessage
 localizeAccessError reason =

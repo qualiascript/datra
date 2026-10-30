@@ -4,11 +4,19 @@ module DatraLanguage.Diagnostics.Application
   ( ParseFailure (..)
   , ModuleLoadFailure (..)
   , SyntaxTemplateAdmissibilityFailure (..)
+  , CandidateRejectionReason (..)
+  , CandidateRejectionReport (..)
+  , SyntaxRewriteFailure (..)
   , CommandLineOptionFailure (..)
   ) where
 
-data ParseFailure = ParseFailure
-  { parseFailureMessage :: String }
+import DatraLanguage.AST (Expression)
+import DatraLanguage.Diagnostics (DatraError)
+
+data ParseFailure
+  = NeutralSourceParseFailure String
+  | SyntaxEnvironmentParseFailure String
+  | SyntaxRewriteParseFailure SyntaxRewriteFailure
   deriving (Eq, Show)
 
 data ModuleLoadFailure
@@ -24,6 +32,35 @@ data SyntaxTemplateAdmissibilityFailure
   | IncompleteCoreSyntaxOperator String
   | SyntaxTemplateProjectionLoss
   | UnstableSyntaxTemplateProjection
+  deriving (Eq, Show)
+
+data CandidateRejectionReason
+  = TypedHoleMismatch
+  | GenericBoundMismatch
+  | CandidateReturnMismatch
+  | RequiredChildExhausted
+  deriving (Eq, Ord, Show)
+
+data CandidateRejectionReport = CandidateRejectionReport
+  { rejectedCandidateRule :: String
+  , rejectedCandidateBranch :: Int
+  , rejectedCandidateCapture :: Int
+  , rejectedCandidateSource :: String
+  , rejectedCandidateExpected :: Maybe String
+  , rejectedCandidateActual :: Maybe String
+  , rejectedCandidateInputs :: [(Int, String)]
+  , rejectedCandidateReason :: CandidateRejectionReason
+  }
+  deriving (Eq, Show)
+
+data SyntaxRewriteFailure
+  = AmbiguousBareSkipApplication
+  | OverlappingDependentDeclarations String String
+  | NonInjectiveDependentDeclaration String
+  | InvalidDeclarationModifiers [String] [String]
+  | ExpectedDependentDeclaration Expression
+  | InvalidRewriteSyntaxTemplate String SyntaxTemplateAdmissibilityFailure
+  | RejectedSyntaxCandidates [DatraError CandidateRejectionReport]
   deriving (Eq, Show)
 
 data CommandLineOptionFailure

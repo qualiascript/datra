@@ -46,9 +46,14 @@ import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
+  , withoutSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (parseFailureMessage) )
+  ( ParseFailure )
+import DatraLanguage.Diagnostics.Localization
+  ( Locale (English)
+  , renderDatraError
+  )
 import DatraLanguage.Identifier qualified as Identifier
 import Interpreting
   ( StandardLibraryVisibility (NoStandardLibrary, QualifiedStandardLibrary)
@@ -76,6 +81,7 @@ import SyntaxDefinitions
   , SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , SyntaxTemplate (..)
+  , declarationRuleBranches
   , declarationRules
   , expandSyntax
   )
@@ -94,6 +100,9 @@ import Test.Tasty.HUnit (assertBool, assertEqual, assertFailure, testCase)
 
 main :: IO ()
 main = defaultMain testTree
+
+renderParseFailure :: ParseFailure -> String
+renderParseFailure = renderDatraError English . withoutSourceSpan
 
 testTree :: TestTree
 testTree =
@@ -389,7 +398,7 @@ parseGenericSource :: String -> IO Expression
 parseGenericSource source =
   case parseDatra ("(" <> source <> "\n)") of
     Left failure -> fail
-      ("unexpected generic parse failure: " <> parseFailureMessage failure)
+      ("unexpected generic parse failure: " <> renderParseFailure failure)
     Right expressionValue -> pure expressionValue
 
 assertGenericRejected :: String -> String -> IO ()
@@ -437,6 +446,15 @@ testDependentDeclarationPrecedence = do
                   (AtlasMap [AST.asciiString "hello", ref "Int"]))))))]
       (ref "body")
       (Just (ref "body")))
+  case (dependentDeclaration expected, declarationRuleBranches expected) of
+    (Just declaration, branches) ->
+      assertEqual
+        "compiled syntax branches retain dependent-declaration identity and order"
+        [ (declaration, 0)
+        , (declaration, 1)
+        ]
+        [ (owner, branch) | (owner, branch, _) <- branches ]
+    _ -> assertFailure "dependent declaration did not compile into syntax rules"
   where
     source = "\"verify %_Expr\" | \"verify %($hard) %_Expr\" := body"
     expected = IdentifierTemplateOperation
@@ -457,7 +475,7 @@ testDependentDeclarationPrecedence = do
       (Just (ref "body"))
     assertNeutral label input wanted =
       case parseNeutralPhrase input of
-        Left failure -> assertFailure (parseFailureMessage failure)
+        Left failure -> assertFailure (renderParseFailure failure)
         Right actual -> assertEqual label wanted actual
 
 regressionTests :: IO ()
@@ -480,14 +498,14 @@ regressionTests = do
       | otherwise -> fail
           ("implicit resource rewrote surface this: " <> show actual)
     Left failure -> fail
-      ("implicit resource unexpectedly failed: " <> parseFailureMessage failure)
+      ("implicit resource unexpectedly failed: " <> renderParseFailure failure)
   case parseSource "begin yield 5" of
     Right actual
       | actual == Begin [] (Begin [] (natural 5)) -> pure ()
       | otherwise -> fail
           ("top-level begin had the wrong block shape: " <> show actual)
     Left failure -> fail
-      ("top-level begin unexpectedly failed: " <> parseFailureMessage failure)
+      ("top-level begin unexpectedly failed: " <> renderParseFailure failure)
   assertParsed "a nested begin introduces surface this"
     "value := begin yield this"
     (AST.assignment "value"
@@ -2296,7 +2314,7 @@ propAstRoundTrip = H.property $ do
   let rendered = renderExpression expressionValue
   case parseDatraAst rendered of
     Left message -> do
-      H.footnote (parseFailureMessage message)
+      H.footnote (renderParseFailure message)
       H.failure
     Right roundTripped -> renderExpression roundTripped H.=== rendered
 
@@ -2432,7 +2450,7 @@ assertLocatedParse :: IO ()
 assertLocatedParse =
   case parseSourceLocated True "<input>" "(1; 2)" of
     Left message -> fail
-      ("located parse unexpectedly failed: " <> parseFailureMessage message)
+      ("located parse unexpectedly failed: " <> renderParseFailure message)
     Right
         (Located
           (SourceSpan source start end)
@@ -2465,7 +2483,7 @@ assertResourceEnvelopes = do
       Right actual -> do
         assert ("program AST: " <> source) (actual == expected)
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
-      Left message -> fail (parseFailureMessage message))
+      Left message -> fail (renderParseFailure message))
     [ ("a := 6\nyield a", Begin
         [declarationEntry (AST.assignment "a" (natural 6) (natural 6))]
         (IdentifierReference (IdentifierString "a")))
@@ -2498,7 +2516,7 @@ assertResourceEnvelopes = do
     assertEnvelope label source expected =
       case parseDatraRawLocatedWithSourceName "<input>" source of
         Left message -> fail
-          (label <> ": unexpected failure: " <> parseFailureMessage message)
+          (label <> ": unexpected failure: " <> renderParseFailure message)
         Right (actual, _) -> assert label (actual == expected)
 
 assertBundledModuleBlockShape :: IO ()
@@ -2511,7 +2529,7 @@ assertBundledModuleBlockShape = do
       case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
           visibility [] path source of
         Left failure -> fail
-          (path <> ": unexpected parse failure: " <> parseFailureMessage failure)
+          (path <> ": unexpected parse failure: " <> renderParseFailure failure)
         Right located -> case openedBody (locatedValue located) of
           Begin [] (IdentifierOperation
               (IdentifierString actualName) annotation given)
@@ -2529,7 +2547,7 @@ assertStandardSyntaxDeclarationsAdmissible = do
   source <- readFile "libs/std.datra"
   case parseDatraRawLocatedWithSourceName "libs/std.datra" source of
     Left failure -> fail
-      ("Std neutral parse failed: " <> parseFailureMessage failure)
+      ("Std neutral parse failed: " <> renderParseFailure failure)
     Right (_, Located _ raw) -> do
       let declarations = syntaxDeclarations raw
       assert "Std contains syntax declarations" (not (null declarations))
@@ -2599,7 +2617,7 @@ assertAstOutput :: String -> String -> Expression -> IO ()
 assertAstOutput label source expected =
   case parseSource ("(" <> source <> "\n)") of
     Left message -> fail
-      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
+      (label <> ": unexpected parse failure: " <> renderParseFailure message)
     Right actual
       | canonicalAst actual == canonicalAst expected ->
           assertAstRoundTrip label (renderExpression actual)
@@ -2620,7 +2638,7 @@ assertAstRoundTrip label renderedAst =
     Left message ->
       fail
         (label <> ": emitted AST could not be parsed: "
-          <> parseFailureMessage message)
+          <> renderParseFailure message)
     Right roundTripped
       | roundTripped == renderedAst -> pure ()
       | otherwise ->
@@ -2643,7 +2661,7 @@ assertParsed :: String -> String -> Expression -> IO ()
 assertParsed label source expected =
   case parseSource ("(" <> source <> "\n)") of
     Left message -> fail
-      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
+      (label <> ": unexpected parse failure: " <> renderParseFailure message)
     Right actual
       | actual == expected -> pure ()
       | otherwise ->

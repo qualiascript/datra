@@ -83,9 +83,10 @@ import DatraLanguage.Diagnostics
   , locatedValue
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
+  , withoutSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (parseFailureMessage) )
+  ( ParseFailure )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
   , renderDatraError
@@ -110,6 +111,9 @@ import Test.Tasty.HUnit (assertBool, assertEqual, assertFailure, testCase)
 
 main :: IO ()
 main = defaultMain testTree
+
+renderParseFailure :: ParseFailure -> String
+renderParseFailure = renderDatraError English . withoutSourceSpan
 
 testTree :: TestTree
 testTree =
@@ -424,7 +428,7 @@ expectSourceValue :: String -> String -> (InterpretedValue -> IO ()) -> IO ()
 expectSourceValue label source check =
   case parseProductionSource ("(" <> source <> "\n)") of
     Left message -> fail
-      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
+      (label <> ": unexpected parse failure: " <> renderParseFailure message)
     Right expressionValue -> expectValue label expressionValue check
 
 expectSourceRejection
@@ -435,7 +439,7 @@ expectSourceRejection
 expectSourceRejection label source matches =
   case parseProductionSource ("(" <> source <> "\n)") of
     Left message -> fail
-      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
+      (label <> ": unexpected parse failure: " <> renderParseFailure message)
     Right expressionValue ->
       case interpretExpressionReason expressionValue of
         Left rejection
@@ -952,7 +956,7 @@ parseTestExpression :: String -> IO Expression
 parseTestExpression source =
   case parseProductionSource ("(" <> source <> "\n)") of
     Left message -> fail
-      ("test expression failed to parse: " <> parseFailureMessage message)
+      ("test expression failed to parse: " <> renderParseFailure message)
     Right expressionValue -> pure expressionValue
 
 testBegin :: IO ()
@@ -1077,7 +1081,7 @@ testPrograms :: IO ()
 testPrograms = do
   mapM_ (\(source, expected) ->
     case parseProductionSource source of
-      Left message -> fail (parseFailureMessage message)
+      Left message -> fail (renderParseFailure message)
       Right expression -> case interpretWithImports [] expression of
         Left rejection -> fail
           (source <> ": unexpected rejection: " <> show rejection)
@@ -2537,7 +2541,7 @@ testRendering = do
               Left message ->
                 fail
                   ("canonical map did not parse: "
-                    <> parseFailureMessage message)
+                    <> renderParseFailure message)
               Right roundTripExpression ->
                 case interpretExpressionReason roundTripExpression of
                   Left rejection ->

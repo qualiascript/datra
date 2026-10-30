@@ -153,7 +153,7 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (ParseFailure) )
+  ( ParseFailure (NeutralSourceParseFailure) )
 import IdentifierValueType
   ( isIdentifierValue
   , isIdentifierValueCharacter
@@ -237,7 +237,7 @@ parseDatra = parseDatraWithSourceName "<input>"
 parseNeutralPhrase :: String -> Either ParseFailure Expression
 parseNeutralPhrase source =
   resolveGenericFunctionTypes <$> Bifunctor.first
-    (ParseFailure . errorBundlePretty)
+    (NeutralSourceParseFailure . errorBundlePretty)
     (runParser
       (runReaderT
         (fullSpaceConsumer *> expression <* fullSpaceConsumer <* eof)
@@ -339,7 +339,7 @@ parseDatraRawLocatedWithSourceName
   -> Either ParseFailure (ResourceEnvelope, Located Expression)
 parseDatraRawLocatedWithSourceName resourceName source = do
   (envelope, Located sourceSpan expressionValue) <-
-    Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
+    Bifunctor.first (NeutralSourceParseFailure . errorBundlePretty) (runParser
       (runReaderT locatedRawResourceWithEnvelope
         (ParserContext 0))
       resourceName (Text.pack source))
@@ -671,7 +671,7 @@ parseDatraAstLocatedWithSourceName
   -> String
   -> Either ParseFailure (Located Expression)
 parseDatraAstLocatedWithSourceName resourceName source =
-  Bifunctor.first (ParseFailure . errorBundlePretty)
+  Bifunctor.first (NeutralSourceParseFailure . errorBundlePretty)
     (runDatraParser locatedAstResource resourceName (Text.pack source))
 
 runDatraParser

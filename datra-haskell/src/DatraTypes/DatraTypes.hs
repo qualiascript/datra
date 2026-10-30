@@ -168,6 +168,8 @@ module DatraTypes
   , IntegerRangeKind (..)
   , integerLimitRangeValue
   , integerLimitRangeIsSubfederationOf
+  , valuedIntegerRangeInsertion
+  , boundedIntegerRangeInsertion
   , integerTypeValue
   , dependentArgumentTypeValue
   , dependentArgumentTemplateTypeValue
@@ -436,6 +438,10 @@ import Evaluation.LimitRange
   ( IntegerRangeKind (..)
   , integerLimitRangeValue
   , integerLimitRangeIsSubfederationOf
+  )
+import Evaluation.RangeInsertion
+  ( valuedIntegerRangeInsertion
+  , boundedIntegerRangeInsertion
   )
 import Evaluation.Length (mapLengthValue)
 import Evaluation.Identifier

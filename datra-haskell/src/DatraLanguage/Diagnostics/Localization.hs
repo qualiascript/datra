@@ -14,9 +14,11 @@ import DatraLanguage.Diagnostics
   , renderDatraErrorWith
   )
 import DatraLanguage.Diagnostics.Application
-  ( CommandLineOptionFailure
+  ( CandidateRejectionReport
+  , CommandLineOptionFailure
   , ModuleLoadFailure
   , ParseFailure
+  , SyntaxRewriteFailure
   )
 import Evaluation.Error (InterpretingError)
 import DatraLanguage.Diagnostics.Locales.English qualified as English
@@ -48,6 +50,14 @@ instance LocalizedDiagnostic ModuleLoadFailure where
 instance LocalizedDiagnostic CommandLineOptionFailure where
   localizeDiagnostic English = English.localizeCommandLineOptionFailure
   localizeDiagnostic Romanian = Romanian.localizeCommandLineOptionFailure
+
+instance LocalizedDiagnostic SyntaxRewriteFailure where
+  localizeDiagnostic English = English.localizeSyntaxRewriteFailure
+  localizeDiagnostic Romanian = Romanian.localizeSyntaxRewriteFailure
+
+instance LocalizedDiagnostic CandidateRejectionReport where
+  localizeDiagnostic English = English.localizeCandidateRejectionReport
+  localizeDiagnostic Romanian = Romanian.localizeCandidateRejectionReport
 
 instance LocalizedDiagnostic InterpretingError where
   localizeDiagnostic English = English.localizeInterpretingError

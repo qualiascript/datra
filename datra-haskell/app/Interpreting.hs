@@ -55,7 +55,6 @@ import FunctionClosure
 import DatraHost
   ( datraHostIdentifier
   , datraHostValue
-  , namedMembers
   )
 import IdentifierValueType (isIdentifierValue)
 import LibraryFiles
@@ -108,8 +107,8 @@ import Parsing
   )
 import SyntaxRewriting
   ( SyntaxContext (..)
-  , renderSyntaxRewriteFailure
   , rewriteResourceSyntax
+  , rewriteResourceSyntaxLocated
   , rewriteStandaloneSyntax
   )
 import Rendering (renderCanonicalResult, renderInterpretedValue)
@@ -123,13 +122,23 @@ import SyntaxDefinitions
   )
 import DatraLanguage.Diagnostics
   ( DatraError
-  , Located (Located)
+  , Located (Located, locatedValue)
   , atSourceSpan
   , withoutSourceSpan
   )
 import DatraLanguage.Diagnostics.Application (ParseFailure (..))
+import DatraLanguage.Diagnostics.Localization
+  ( Locale (English)
+  , renderDatraError
+  )
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)
+import DatraOrdinal
+  ( finiteOrdinal
+  , finiteOrdinalPositions
+  , naturalAtOrdinal
+  , naturalsBelow
+  , omega
+  )
 import FoliageMap (foliageMap, foliageMapPositionAt)
 import System.FilePath (takeFileName)
 
@@ -182,7 +191,7 @@ parseDatraSourceSyntax standardLibraryVisibility sourceName source = do
   (envelope, locatedRaw@(Located _ raw)) <-
     parseDatraRawLocatedWithSourceName sourceName source
   (base, standardRules, baseModuleRules) <-
-    Bifunctor.first (ParseFailure . show)
+    Bifunctor.first (SyntaxEnvironmentParseFailure . show)
       (standardLibraryParsingEnvironment standardLibraryVisibility raw)
   pure ParsedDatraSource
     { parsedEnvelope = envelope
@@ -218,7 +227,8 @@ parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
     then do
       (_, Located sourceSpan _) <-
         parseDatraRawLocatedWithSourceName sourceName source
-      expressionValue <- Bifunctor.first (ParseFailure . show)
+      expressionValue <- Bifunctor.first
+        (SyntaxEnvironmentParseFailure . show)
         parsedDefaultModule
       pure (Located sourceSpan expressionValue)
     else do
@@ -240,18 +250,17 @@ rewriteParsedDatraSourceWithImports modules parsed = do
         ]
       availableModuleRules = baseModuleRules <> dependencyRules
       initialRules = standardRules
-      rewrite = rewriteResourceSyntax envelope
+      rewrite = rewriteResourceSyntaxLocated envelope
         (syntaxContext base modules availableModuleRules)
-        initialRules [] raw
-  expressionValue <- Bifunctor.first rewriteParseFailure rewrite
-  pure (Located sourceSpan (resolveGenericFunctionTypes expressionValue))
+        initialRules [] (parsedRawExpression parsed)
+  rewritten <- Bifunctor.first rewriteParseFailure rewrite
+  pure (resolveGenericFunctionTypes <$> rewritten)
   where
     envelope = parsedEnvelope parsed
-    Located sourceSpan raw = parsedRawExpression parsed
     base = parsedBaseScope parsed
     standardRules = parsedStandardRules parsed
     baseModuleRules = parsedBaseModuleRules parsed
-    rewriteParseFailure = ParseFailure . renderSyntaxRewriteFailure
+    rewriteParseFailure = SyntaxRewriteParseFailure
 
 importedSyntaxRules
   :: Scope
@@ -275,7 +284,8 @@ discoverImportInvocations
   -> Expression
   -> Either ParseFailure [[String]]
 discoverImportInvocations base activeRules envelope raw = do
-  baseModuleRules <- Bifunctor.first (ParseFailure . show) $ traverse
+  baseModuleRules <- Bifunctor.first
+    (SyntaxEnvironmentParseFailure . show) $ traverse
     (\(namespace, identity, value) -> do
       rules <- moduleSyntaxRulesFromValueIn identity namespace value
       pure (namespace, rules))
@@ -289,8 +299,7 @@ discoverImportInvocations base activeRules envelope raw = do
   let availableRules =
         [(namespace, namespace, rules) | (namespace, rules) <- baseModuleRules]
       context = syntaxContext base [] availableRules
-  rewritten <- Bifunctor.first
-    (ParseFailure . renderSyntaxRewriteFailure) $
+  rewritten <- Bifunctor.first SyntaxRewriteParseFailure $
     rewriteResourceSyntax envelope context activeRules [] raw
   pure (nub (importsInExpansion rewritten))
   where
@@ -499,6 +508,32 @@ evaluateSyntaxValue base modules declarations expressionValue = do
       (map syntaxValidationDeclaration declarations))
   either (const Nothing) Just (evalInScope scope [] expressionValue)
 
+-- Rewrite-result typing is intentionally weaker than evaluation.  Operators
+-- with a language-defined Boolean codomain publish that codomain without
+-- forcing their operands; all other expressions retain the ordinary syntax
+-- evaluation path.
+syntaxResultType
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> Expression
+  -> Maybe InterpretedValue
+syntaxResultType base modules declarations expressionValue =
+  case expressionValue of
+    Subfederation {} -> booleanType
+    Equality {} -> booleanType
+    Inequality {} -> booleanType
+    LessThan {} -> booleanType
+    LessThanOrEqual {} -> booleanType
+    GreaterThan {} -> booleanType
+    GreaterThanOrEqual {} -> booleanType
+    BooleanAnd {} -> booleanType
+    BooleanOr {} -> booleanType
+    BooleanNot {} -> booleanType
+    _ -> evaluateSyntaxValue base modules declarations expressionValue
+  where
+    booleanType = evaluateSyntaxValue base modules declarations BooleanType
+
 evaluateSyntaxValueWithInput
   :: Scope
   -> [(String, ModuleSource)]
@@ -547,6 +582,7 @@ syntaxContext base modules availableRules = SyntaxContext
   (captureSyntaxHole base modules)
   (importedSyntaxRules base modules availableRules)
   (evaluateSyntaxValue base modules)
+  (syntaxResultType base modules)
   (evaluateSyntaxValueWithInput base modules)
   (applySyntaxValue base modules)
   enter
@@ -679,8 +715,7 @@ interpretExpressionReason expressionValue = do
 interpretClosedExpression :: Expression -> Either InterpretingError InterpretedValue
 interpretClosedExpression expressionValue = do
   validateFunctionBodyParts expressionValue
-  scope <- rootScopeWithDatra expressionValue
-  evalInScope scope [] expressionValue
+  evalInScope (rootScope expressionValue) [] expressionValue
 
 interpretWithImports :: [(String, ModuleSource)] -> Expression -> Either InterpretingError InterpretedValue
 interpretWithImports modules expression = do
@@ -752,10 +787,7 @@ standardLibraryParsingEnvironment
   -> Either InterpretingError
       (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
 standardLibraryParsingEnvironment visibility raw = case visibility of
-  NoStandardLibrary -> do
-    scope <- rootScopeWithDatra raw
-    hostRules <- datraHostSyntaxRules
-    Right (scope, [], hostRules)
+  NoStandardLibrary -> Right (rootScope raw, [], [])
   QualifiedStandardLibrary -> qualifiedStandardModuleBundle
   AllStandardLibrary -> defaultModuleBundle
 
@@ -787,9 +819,10 @@ standardModuleEnvironment
       (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
 standardModuleEnvironment allNames = do
   source <- defaultModuleSource
-  let base = extendModuleCatalog
+  let unseeded = extendModuleCatalog
         [(standardLibraryFileName, source)]
         (rootScope source)
+  (base, hostRules) <- standardLibraryBootstrap unseeded
   scope <- importLoadedModule base allNames source
   let imported =
         [ (namespace, value)
@@ -806,7 +839,6 @@ standardModuleEnvironment allNames = do
         standardLibraryFileName namespace value
       pure (standardLibraryFileName, namespace, rules))
     imported
-  hostRules <- datraHostSyntaxRules
   if null imported
     then Left (ModuleEvaluationFailed
       (ModuleNotLoaded standardLibraryFileName))
@@ -815,33 +847,46 @@ standardModuleEnvironment allNames = do
       , [rule | allNames, (_, _, rules) <- ruleSets, rule <- rules]
       , hostRules <> ruleSets
       )
-datraHostSyntaxRules
-  :: Either InterpretingError [(String, String, [SyntaxRule])]
-datraHostSyntaxRules = do
+
+-- The native object enters the language once, as an ordinary protected
+-- dependent declaration while Std is being built. Syntax discovery consumes
+-- that same value; later lookup and member access remain ordinary Datra.
+standardLibraryBootstrap
+  :: Scope
+  -> Either InterpretingError
+      (Scope, [(String, String, [SyntaxRule])])
+standardLibraryBootstrap base = do
   host <- datraHostValue
+  let declaration = (evaluatedRuntimeDeclaration datraHostIdentifier
+        (withCanonicalReference [] datraHostIdentifier host))
+        { runtimeDeclarationIsDefinition = True }
+      scope = extendRuntimeDeclarations [declaration] base
   rules <- moduleSyntaxRulesFromValueIn
     datraHostIdentifier datraHostIdentifier host
-  pure [(datraHostIdentifier, datraHostIdentifier, rules)]
+  pure
+    ( scope
+    , [(datraHostIdentifier, datraHostIdentifier, rules)]
+    )
 
 parsedDefaultModule :: Either InterpretingError Expression
 parsedDefaultModule = do
-  (envelope, Located _ raw) <- either parseFailure Right
+  (envelope, locatedRaw@(Located _ raw)) <- either parseFailure Right
     (parseDatraRawLocatedWithSourceName standardLibraryFileName
       (requiredBundledLibrarySource standardLibraryFileName))
-  emptyScope <- rootScopeWithDatra raw
-  hostRules <- datraHostSyntaxRules
+  (emptyScope, hostRules) <- standardLibraryBootstrap (rootScope raw)
   let
       context = syntaxContext emptyScope [] hostRules
-      rewritten = rewriteResourceSyntax envelope context [] [] raw
-  rewrittenValue <- either
-    (parseFailure . ParseFailure . renderSyntaxRewriteFailure)
+      rewritten = rewriteResourceSyntaxLocated
+        envelope context [] [] locatedRaw
+  rewrittenValue <- locatedValue <$> either
+    (parseFailure . SyntaxRewriteParseFailure)
     Right
     rewritten
   pure (resolveGenericFunctionTypes rewrittenValue)
   where
-    parseFailure = Left . ModuleEvaluationFailed
-      . StandardLibraryParseFailure standardLibraryFileName
-      . parseFailureMessage
+    parseFailure failure = Left (ModuleEvaluationFailed
+      (StandardLibraryParseFailure standardLibraryFileName
+        (renderDatraError English (withoutSourceSpan failure))))
 {-# NOINLINE parsedDefaultModule #-}
 
 defaultModuleSource :: Either InterpretingError ModuleSource
@@ -1372,16 +1417,6 @@ rootScope salt = Scope
   , scopeActivation = initialScopeActivation salt
   , scopeHandoff = Nothing
   }
-
-rootScopeWithDatra
-  :: salt
-  -> Either InterpretingError Scope
-rootScopeWithDatra salt = do
-  host <- datraHostValue
-  let declaration = (evaluatedRuntimeDeclaration datraHostIdentifier
-        (withCanonicalReference [] datraHostIdentifier host))
-        { runtimeDeclarationIsDefinition = True }
-  pure (extendRuntimeDeclarations [declaration] (rootScope salt))
 
 extendModuleCatalog :: [(String, ModuleSource)] -> Scope -> Scope
 extendModuleCatalog modules scope = scope
@@ -5934,12 +5969,7 @@ moduleBaseScope base
         ]
   case (takeFileName path == standardLibraryFileName, standardDependency) of
     (False, standard : _) -> importLoadedModule seeded False standard
-    (True, _) -> do
-      host <- datraHostValue
-      let declaration = (evaluatedRuntimeDeclaration datraHostIdentifier
-            (withCanonicalReference [] datraHostIdentifier host))
-            { runtimeDeclarationIsDefinition = True }
-      Right (extendRuntimeDeclarations [declaration] seeded)
+    (True, _) -> fst <$> standardLibraryBootstrap seeded
     _ -> Right seeded
 
 -- Resource-level scope access and import wrap the declarations which produce
@@ -5971,8 +6001,8 @@ prepareModuleResource base expressionValue = case expressionValue of
 
 moduleExportNames :: ModuleSource -> Either InterpretingError [String]
 moduleExportNames source = do
-  base <- rootScopeWithDatra source
-  (_, declarations) <- loadedModuleDeclarationsWithBase base source
+  (_, declarations) <- loadedModuleDeclarationsWithBase
+    (rootScope source) source
   concat <$> traverse declarationExports declarations
   where
     declarationExports binder = do
@@ -5992,8 +6022,8 @@ moduleSyntaxRuleSets
   -> ModuleSource
   -> Either InterpretingError [(String, [SyntaxRule])]
 moduleSyntaxRuleSets requested source = do
-  base <- rootScopeWithDatra source
-  (_, declarations) <- loadedModuleDeclarationsWithBase base source
+  (_, declarations) <- loadedModuleDeclarationsWithBase
+    (rootScope source) source
   traverse rulesForDeclaration declarations
   where
     rulesForDeclaration binder =
@@ -6032,12 +6062,9 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
                 }
           | template <- sourceTemplates
           , let member = IdentifierReference (IdentifierString name)
-                callable
-                  | scopeName == datraHostIdentifier = ScopeAccess
-                      (IdentifierReference
-                        (IdentifierString datraHostIdentifier))
-                      member
-                  | otherwise = InModule scopeName member
+                callable = ScopeAccess
+                  (IdentifierReference (IdentifierString scopeName))
+                  member
           ]
     parseScopedRuleExpression sourceText = do
       expressionValue <- parseRuleExpression sourceText
@@ -6085,6 +6112,42 @@ moduleNamedMembers value =
   where
     namedMemberPair member =
       (namedMemberName member, namedMemberValue member)
+
+namedMembers
+  :: InterpretedValue
+  -> Either InterpretingError [(String, InterpretedValue)]
+namedMembers value =
+  case namedMapViewForValue value of
+    Just named -> do
+      orderType <- namedMapOrderType named
+      positions <- maybe invalid Right (finiteOrdinalPositions orderType)
+      members <- traverse
+        (\position -> namedMapMemberAt named position >>= maybe invalid Right)
+        positions
+      pure
+        [ (namedMemberName member, namedMemberValue member)
+        | member <- members
+        ]
+    Nothing -> case argumentativeMapMembers value of
+      Just members
+        | Right named <- traverse field members -> Right named
+      _ -> projectedMembers
+  where
+    projectedMembers = case simpleIdentifierName value of
+      Just name -> Right [(name, value)]
+      Nothing -> do
+        positions <- maybe invalid Right
+          (finiteOrdinalPositions
+            (interpretedMapFinalOrderType (interpretedMap value)))
+        members <- traverse memberAt positions
+        traverse field members
+    invalid = Left (ModuleEvaluationFailed
+      ImportedModuleRequiresNamedExports)
+    memberAt position = maybe invalid Right
+      (interpretedMapValueAt (interpretedMap value) position)
+    field member = case simpleIdentifierName member of
+      Just name -> Right (name, member)
+      Nothing -> Left (ModuleEvaluationFailed ModuleExportRequiresIdentifier)
 
 publicDomainValue
   :: InterpretedValue
@@ -6180,9 +6243,7 @@ lookupModuleDefinitionScope scope path =
       [] -> lookupModule scope path >>= moduleScope
 
 moduleScope :: ModuleSource -> Either InterpretingError Scope
-moduleScope source = do
-  base <- rootScopeWithDatra source
-  moduleScopeWithBase base source
+moduleScope source = moduleScopeWithBase (rootScope source) source
 
 moduleScopeWithBase
   :: Scope

@@ -4,19 +4,28 @@ module DatraLanguage.Diagnostics.Locales.Romanian
   , localizeParseFailure
   , localizeModuleLoadFailure
   , localizeCommandLineOptionFailure
+  , localizeSyntaxRewriteFailure
+  , localizeCandidateRejectionReport
   , localizeInterpretingError
   , localizeSuperEllipsisRangeError
   , localizeSuperEllipsisRangeConcatError
   , romanianOrdinal
   ) where
 
-import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
+import DatraLanguage.Diagnostics
+  ( LocalizedMessage (LocalizedMessage)
+  , renderDatraErrorWith
+  )
 import DatraLanguage.Diagnostics.Application
-  ( CommandLineOptionFailure (..)
+  ( CandidateRejectionReason (..)
+  , CandidateRejectionReport (..)
+  , CommandLineOptionFailure (..)
   , ModuleLoadFailure (..)
   , ParseFailure (..)
+  , SyntaxRewriteFailure (..)
   , SyntaxTemplateAdmissibilityFailure (..)
   )
+import DatraLanguage.AST.Source (renderSourceExpression)
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
@@ -51,15 +60,20 @@ import SuperEllipsisRange
   )
 
 localizeParseFailure :: ParseFailure -> LocalizedMessage
-localizeParseFailure (ParseFailure message) =
-  LocalizedMessage "sursa nu a putut fi analizată" [message]
+localizeParseFailure failure = case failure of
+  NeutralSourceParseFailure message ->
+    LocalizedMessage "sursa nu a putut fi analizată" [message]
+  SyntaxEnvironmentParseFailure message ->
+    LocalizedMessage "mediul sintactic nu a putut fi construit" [message]
+  SyntaxRewriteParseFailure reason ->
+    localizeSyntaxRewriteFailure reason
 
 localizeModuleLoadFailure :: ModuleLoadFailure -> LocalizedMessage
 localizeModuleLoadFailure failure =
   case failure of
     ImportScanFailed path parseFailure ->
       LocalizedMessage "importurile modulului nu au putut fi analizate"
-        ["modul: " <> path, parseFailureMessage parseFailure]
+        (["modul: " <> path] <> embeddedParseFailure parseFailure)
     ImportPathResolutionFailed requested location reason ->
       LocalizedMessage "calea modulului nu a putut fi rezolvată"
         [ "modul: " <> requested
@@ -76,7 +90,12 @@ localizeModuleLoadFailure failure =
         ]
     ImportedModuleParseFailed path parseFailure ->
       LocalizedMessage "modulul importat nu a putut fi analizat"
-        ["modul: " <> path, parseFailureMessage parseFailure]
+        (["modul: " <> path] <> embeddedParseFailure parseFailure)
+
+embeddedParseFailure :: ParseFailure -> [String]
+embeddedParseFailure failure = summary : details
+  where
+    LocalizedMessage summary details = localizeParseFailure failure
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -88,6 +107,64 @@ localizeCommandLineOptionFailure failure =
         [ "limbă furnizată: " <> value
         , "se așteaptă english, en, romana, romanian sau ro"
         ]
+
+localizeSyntaxRewriteFailure :: SyntaxRewriteFailure -> LocalizedMessage
+localizeSyntaxRewriteFailure failure = case failure of
+  AmbiguousBareSkipApplication ->
+    LocalizedMessage "aplicarea simplă de omitere este ambiguă" []
+  OverlappingDependentDeclarations earlier later ->
+    LocalizedMessage "declarațiile dependente se suprapun"
+      [ "declarația anterioară: " <> earlier
+      , "declarația ulterioară: " <> later
+      ]
+  NonInjectiveDependentDeclaration declaration ->
+    LocalizedMessage "declarația dependentă nu este injectivă"
+      ["declarație: " <> declaration]
+  InvalidDeclarationModifiers written correct ->
+    LocalizedMessage "modificatorii declarației sunt nevalizi"
+      [ "modificatori scriși: " <> unwords written
+      , "modificatori corecți: " <> unwords correct
+      ]
+  ExpectedDependentDeclaration expressionValue ->
+    LocalizedMessage "operația nu are efect în interiorul blocului"
+      ["expresie: " <> renderSourceExpression expressionValue]
+  InvalidRewriteSyntaxTemplate template failureReason ->
+    LocalizedMessage
+      (syntaxTemplateFailureSummary template failureReason)
+      [ "șablon: " <> template
+      , syntaxTemplateFailureDetail failureReason
+      ]
+  RejectedSyntaxCandidates attempts ->
+    LocalizedMessage "candidații sintactici au fost respinși de tipizare"
+      (map (renderDatraErrorWith localizeCandidateRejectionReport) attempts)
+
+localizeCandidateRejectionReport
+  :: CandidateRejectionReport
+  -> LocalizedMessage
+localizeCandidateRejectionReport report = LocalizedMessage
+  "candidatul sintactic nu îndeplinește cerințele de tipizare"
+  ( [ "regulă: " <> rejectedCandidateRule report
+    , "ramură de șablon: " <> show (rejectedCandidateBranch report)
+    , "indexul capturii: " <> show (rejectedCandidateCapture report)
+    , "captură: " <> rejectedCandidateSource report
+    , "motiv: " <> candidateRejectionReasonText
+        (rejectedCandidateReason report)
+    ]
+    <> maybe [] (pure . ("așteptat: " <>))
+      (rejectedCandidateExpected report)
+    <> maybe [] (pure . ("efectiv: " <>))
+      (rejectedCandidateActual report)
+    <> [ "intrare dedusă " <> show index <> ": " <> value
+       | (index, value) <- rejectedCandidateInputs report
+       ]
+  )
+
+candidateRejectionReasonText :: CandidateRejectionReason -> String
+candidateRejectionReasonText reason = case reason of
+  TypedHoleMismatch -> "rezultatul capturat este în afara tipului cerut"
+  GenericBoundMismatch -> "intrarea generică dedusă încalcă limita"
+  CandidateReturnMismatch -> "tipul rezultatului candidatului nu a putut fi stabilit"
+  RequiredChildExhausted -> "expresia copil necesară nu are rezultat aplicabil"
 
 localizeAccessError :: AccessError -> LocalizedMessage
 localizeAccessError reason =

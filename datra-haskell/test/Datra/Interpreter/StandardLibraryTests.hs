@@ -4,7 +4,7 @@ module Datra.Interpreter.StandardLibraryTests
 
 import Datra.TestSupport
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (ParseFailure) )
+  ( ParseFailure (NeutralSourceParseFailure) )
 import DatraTypes
   ( AtlasMapFederationRefutation
       (AtlasMapFederationSpecificationHasNoMatchingMember)
@@ -41,35 +41,35 @@ standardLibraryTests =
         , programFailureCase "val rejects an annotated assignment"
             "begin val x : Nat := 7; yield x"
             (SourceParseFailure
-              (ParseFailure "operation has no effect inside block"))
+              (NeutralSourceParseFailure "operation has no effect inside block"))
         , programFailureCase "val syntax rejects a non-declaration"
             "yield val (1; 2)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "modifier order errors share one diagnostic"
             "begin val let x := 7; yield x"
-            (SourceParseFailure (ParseFailure
+            (SourceParseFailure (NeutralSourceParseFailure
               "invalid declaration modifiers: val let\ncorrect form: let val"))
         , programFailureCase "duplicate modifiers share the same diagnostic"
             "begin val val x := 7; yield x"
-            (SourceParseFailure (ParseFailure
+            (SourceParseFailure (NeutralSourceParseFailure
               "invalid declaration modifiers: val val\ncorrect form: val"))
         , programFailureCase "def before let reports the canonical correction"
             "begin def let x := 7; yield x"
-            (SourceParseFailure (ParseFailure
+            (SourceParseFailure (NeutralSourceParseFailure
               "invalid declaration modifiers: def let\ncorrect form: let def"))
         , programFailureCase "val before def reports the canonical correction"
             "begin val def x := 7; yield x"
-            (SourceParseFailure (ParseFailure
+            (SourceParseFailure (NeutralSourceParseFailure
               "invalid declaration modifiers: val def\ncorrect form: def val"))
         , programFailureCase "late def reports the full canonical correction"
             "begin let val def x := 7; yield x"
-            (SourceParseFailure (ParseFailure
+            (SourceParseFailure (NeutralSourceParseFailure
               ("invalid declaration modifiers: let val def"
                 <> "\ncorrect form: let def val")))
         , programFailureCase "duplicate def uses the unified diagnostic"
             "begin def def x := 7; yield x"
-            (SourceParseFailure (ParseFailure
+            (SourceParseFailure (NeutralSourceParseFailure
               "invalid declaration modifiers: def def\ncorrect form: def"))
         ]
     , testGroup "private syntax categories"
@@ -423,7 +423,7 @@ standardLibraryTests =
     , testGroup "scope rejections"
         [ programFailureCase "duplicate scope member"
             "a:=5\na:=8\nyield this"
-            (SourceParseFailure (ParseFailure
+            (SourceParseFailure (NeutralSourceParseFailure
               "OverlappingDependentDeclarations \"a\" \"a\""))
         , programFailureCase "specified function validates narrowed input"
             ("f := ({x?:Int} -> Int do yield x+1)\n"
@@ -848,7 +848,7 @@ declaredPatternTests =
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programFailureCase "duplicate syntax declaration"
         (declaration <> declaration <> "yield this")
-        (SourceParseFailure (ParseFailure
+        (SourceParseFailure (NeutralSourceParseFailure
           "OverlappingDependentDeclarations \"step %Nat next\" \"step %Nat next\""))
     ]
   where

@@ -8,10 +8,12 @@
 module SyntaxTemplateMatching
   ( SyntaxTemplateMatchFailure (..)
   , SyntaxMatch (..)
+  , StructuralSyntaxMatch (..)
+  , enumerateSyntaxRulesSelections
+  , enumerateSyntaxRuleSelections
   , matchSyntaxRule
   , matchSyntaxRules
   , matchSyntaxRulesWith
-  , matchSyntaxRulesSelectionWith
   , expandSyntaxMatch
   ) where
 
@@ -46,6 +48,50 @@ data SyntaxMatch = SyntaxMatch
   , syntaxMatchRemaining :: [Expression]
   }
 
+-- | A template match whose holes have only been partitioned structurally.
+-- No capture membership, evaluation, or generic inference has occurred.
+-- Keeping this distinct from 'SyntaxMatch' lets the rewrite scheduler retain
+-- every greedy choice point and type its children incrementally.
+data StructuralSyntaxMatch = StructuralSyntaxMatch
+  { structuralSyntaxMatchRule :: SyntaxRule
+  , structuralSyntaxMatchSelection
+      :: TemplateSelection Expression Expression
+  , structuralSyntaxMatchCaptures
+      :: [(SyntaxHoleKind Expression, Expression)]
+  , structuralSyntaxMatchRemaining :: [Expression]
+  }
+
+enumerateSyntaxRuleSelections
+  :: SyntaxRule
+  -> Expression
+  -> [StructuralSyntaxMatch]
+enumerateSyntaxRuleSelections rule = enumerateSyntaxRulesSelections [rule]
+
+enumerateSyntaxRulesSelections
+  :: [SyntaxRule]
+  -> Expression
+  -> [StructuralSyntaxMatch]
+enumerateSyntaxRulesSelections rules expressionValue =
+  [ StructuralSyntaxMatch rule
+      (TemplateSelection
+        (applicationFrom candidate)
+        (map snd captures))
+      captures
+      remaining
+  | rule <- filter (prefixMatches phrase) rules
+  , consumed <- reverse
+      [minimumRequiredValues (rulePieces rule) .. length phrase]
+  , let (candidate, remaining) = splitAt consumed phrase
+  , captures <- matchPiecesStructurally (rulePieces rule) candidate
+  ]
+  where
+    phrase = applicationPhrase expressionValue
+    prefixMatches values rule = and
+      (zipWith matchesLiteralExpression
+        (syntaxTemplateLiteralPrefix rule)
+        values)
+      && length (syntaxTemplateLiteralPrefix rule) <= length values
+
 -- | Match within one application spine. Its explicit head identifier first
 -- filters templates by their literal prefix. The selected template
 -- still expands to its own binding, whose name may differ. Rules
@@ -72,35 +118,28 @@ matchSyntaxRulesWith
   -> Expression
   -> Either SyntaxTemplateMatchFailure Expression
 matchSyntaxRulesWith captureHole rules expressionValue =
-  expandSyntaxMatch <$> matchSyntaxRulesSelectionWith
-    captureHole rules expressionValue
+  expandSyntaxMatch <$> chooseSuccessful
+    [ SyntaxMatch
+        (structuralSyntaxMatchRule matched)
+        ((structuralSyntaxMatchSelection matched)
+          { templateSelectionCaptures = map snd captures })
+        (structuralSyntaxMatchRemaining matched)
+    | matched <- enumerateSyntaxRulesSelections rules expressionValue
+    , captures <- maybeToList
+        (validateCaptures captureHole
+          (structuralSyntaxMatchCaptures matched))
+    ]
 
-matchSyntaxRulesSelectionWith
+validateCaptures
   :: CaptureHole
-  -> [SyntaxRule]
-  -> Expression
-  -> Either SyntaxTemplateMatchFailure SyntaxMatch
-matchSyntaxRulesSelectionWith captureHole rules expressionValue = do
-  let phrase = applicationPhrase expressionValue
-      applicable = filter (prefixMatches phrase) rules
-      successful =
-        [ SyntaxMatch rule
-            (TemplateSelection (applicationFrom candidate) captures)
-            remaining
-        | rule <- applicable
-        , consumed <- reverse
-            [minimumRequiredValues (rulePieces rule) .. length phrase]
-        , let (candidate, remaining) = splitAt consumed phrase
-        , captures <- matchPieces captureHole [] (rulePieces rule) candidate
-        ]
-  chooseSuccessful successful
+  -> [(SyntaxHoleKind Expression, Expression)]
+  -> Maybe [(SyntaxHoleKind Expression, Expression)]
+validateCaptures captureHole = go []
   where
-    prefixMatches phrase rule = and
-      (zipWith matchesLiteral
-        (syntaxTemplateLiteralPrefix rule)
-        phrase)
-      && length (syntaxTemplateLiteralPrefix rule) <= length phrase
-    matchesLiteral = matchesLiteralExpression
+    go selected [] = Just selected
+    go selected ((kind, source) : remaining) = do
+      captured <- captureHole selected kind source
+      go (selected <> [(kind, captured)]) remaining
 
 expandSyntaxMatch :: SyntaxMatch -> Expression
 expandSyntaxMatch matched = foldl FunctionApplication expanded
@@ -141,28 +180,23 @@ applicationSpine = go []
       go (argument : arguments) function
     go arguments function = (function, arguments)
 
-matchPieces
-  :: CaptureHole
-  -> [(SyntaxHoleKind Expression, Expression)]
-  -> [SyntaxPiece Expression]
+matchPiecesStructurally
+  :: [SyntaxPiece Expression]
   -> [Expression]
-  -> [[Expression]]
-matchPieces _ _ [] [] = [[]]
-matchPieces _ _ [] _ = []
-matchPieces holeMatches capturedValues
+  -> [[(SyntaxHoleKind Expression, Expression)]]
+matchPiecesStructurally [] [] = [[]]
+matchPiecesStructurally [] _ = []
+matchPiecesStructurally
     (SyntaxLiteral literal : pieces) (value : values)
   | matchesLiteralExpression literal value =
-      matchPieces holeMatches capturedValues pieces values
-matchPieces _ _ (SyntaxLiteral _ : _) _ = []
-matchPieces holeMatches capturedValues (SyntaxHole kind : pieces) values =
-  [ matchedCapture : captures
+      matchPiecesStructurally pieces values
+matchPiecesStructurally (SyntaxLiteral _ : _) _ = []
+matchPiecesStructurally (SyntaxHole kind : pieces) values =
+  [ (kind, capture) : captures
   | count <- reverse [1 .. maximumCaptureLength pieces values]
   , let (captured, remaining) = splitAt count values
-  , let capture = applicationFrom captured
-  , matchedCapture <- maybeToList
-      (holeMatches capturedValues kind capture)
-  , captures <- matchPieces holeMatches
-      (capturedValues <> [(kind, matchedCapture)]) pieces remaining
+        capture = applicationFrom captured
+  , captures <- matchPiecesStructurally pieces remaining
   ]
 
 maybeToList :: Maybe value -> [value]

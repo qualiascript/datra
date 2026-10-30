@@ -239,6 +239,7 @@ library
         Evaluation.Overload
         Evaluation.DatraType
         Evaluation.Range
+        Evaluation.RangeInsertion
         Evaluation.ResultContract
         Evaluation.Specification
         Evaluation.Specification.ArgumentativeMap
@@ -346,6 +347,11 @@ executable datra-haskell
         SyntaxTemplateMatching
         SyntaxTemplateProjection
         SyntaxRewriting
+        SyntaxRewriting.Types
+        SyntaxRewriting.Candidates
+        SyntaxRewriting.Diagnostics
+        SyntaxRewriting.Dependencies
+        SyntaxRewriting.Stack
         Parsing
         Rendering
         ScopeProtection
@@ -410,6 +416,11 @@ test-suite datra-parsing-test
         SyntaxTemplateMatching
         SyntaxTemplateProjection
         SyntaxRewriting
+        SyntaxRewriting.Types
+        SyntaxRewriting.Candidates
+        SyntaxRewriting.Diagnostics
+        SyntaxRewriting.Dependencies
+        SyntaxRewriting.Stack
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell
@@ -455,6 +466,11 @@ test-suite datra-interpreting-test
         SyntaxTemplateMatching
         SyntaxTemplateProjection
         SyntaxRewriting
+        SyntaxRewriting.Types
+        SyntaxRewriting.Candidates
+        SyntaxRewriting.Diagnostics
+        SyntaxRewriting.Dependencies
+        SyntaxRewriting.Stack
         Parsing
         Rendering
         ScopeProtection
