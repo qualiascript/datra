@@ -19,6 +19,8 @@ and protected values keep their current meanings and implementations.
 The replacement owns:
 
 - allocation and ordering of internal rewrite nodes;
+- ownership, reservation, and commitment of the neutral sequence spans consumed
+  by those nodes;
 - structural syntax-candidate enumeration;
 - greedy candidate selection and parent-level backtracking;
 - dependencies between rewrite nodes;
@@ -79,6 +81,47 @@ specification value. Dependent-declaration recognition likewise remains an
 evaluator/interpreter concern: an inferred specification may be a declaration
 in block position, while syntax rewriting sees only ordinary AST structure.
 
+### Neutral sequence boundaries are not rewrite-node boundaries
+
+The parser may retain a completed newline- or semicolon-separated expression
+as one entry in a neutral `AtlasMap`. That separator is useful source structure,
+but it does not prove that the entry is a complete declarative-syntax phrase.
+In particular, it must not cause syntax rewriting to allocate and finalize one
+independent node per source line.
+
+For example, the standard `do` syntax is declared as:
+
+```datra
+%($do; _Block; $yield; _Expr)
+```
+
+and `Args` uses it across neutral sequence entries:
+
+```datra
+val Args := &T? do
+  slots := (^_i :: Nat) do yield "arg%(_i)"? : T
+yield ((^n? :: Nat) do yield slots[0..n])
+```
+
+Here `do` begins inside the first entry, `_Block` captures following entries,
+and `yield` terminates that capture in a later entry. The complete outer entry
+is the finalized `val Args := <FunctionBody>` declaration, not any one parsed
+line. Publishing the first line independently would expose an incomplete
+declaration and make the `do` candidate impossible to own correctly.
+
+The governing invariant is:
+
+> Rewrite nodes correspond to selected syntax phrases or ordinary expressions,
+> not source lines. Neutral sequence-entry boundaries are matching structure,
+> and the stack decides when a finalized phrase has consumed one or more
+> entries.
+
+The parser continues to own neutral parentheses, maps, separators, and other
+source boundaries. Syntax templates decide how those boundaries may be
+consumed: a block hole may capture an ordered entry span up to a following
+literal such as `yield`, while an ordinary expression hole does not acquire
+unrestricted permission to consume unrelated entries.
+
 ## Problems in the current execution model
 
 ### Stable rewrite results are discarded
@@ -112,6 +155,19 @@ When one rewritten entry reveals a declaration, every raw entry is rewritten
 again. Nested sequences multiply this work. Entries whose candidates, child
 results, and syntax scope have not changed still repeat matching, capture
 checks, expansion, and traversal.
+
+### Raw sequence entries are mistaken for rewrite nodes
+
+Allocating one rewrite node for every neutral sequence entry commits to a node
+boundary before structural candidate selection has established the phrase's
+extent. This fails for block syntax whose leading literal occurs inside one
+entry and whose block and terminating literal occur in later entries.
+
+The stack must instead retain the ordered neutral sequence, begin matching at
+the current sequence position, and let each structural candidate record the
+span it would consume. A blocked candidate keeps that tentative span reserved.
+A rejected candidate releases it before the next candidate is tried. Only a
+finalized result commits the span and advances the sequence beyond it.
 
 ### Greedy matching crosses node boundaries
 
@@ -168,6 +224,15 @@ The replacement must satisfy these invariants:
     child frames run; continuing that frame never repeats completed checks.
 16. Existing Datra scope, declaration, generic, protection, and runtime
     semantics remain unchanged.
+17. A newline or semicolon retained as a neutral sequence separator does not by
+    itself create a rewrite-node boundary.
+18. A candidate may start at a focus inside the current entry and consume a
+    following entry span when its template, such as a block hole followed by a
+    delimiter, requires that structure.
+19. Entries tentatively claimed by a blocked candidate are not independently
+    finalized or published by overlapping nodes.
+20. A sequence advances and publishes evaluator-provided families only from
+    the finalized phrase which committed the corresponding source span.
 
 ## Proposed module structure
 
@@ -203,8 +268,11 @@ diagnostic selection should remain separate responsibilities.
 
 ## Rewrite nodes and results
 
-A rewrite node is an internal wrapper around an existing `Expression`. It is
-not an AST constructor.
+A rewrite node is an internal wrapper around one rewrite locus. An ordinary
+locus is an existing `Expression`; a sequence-aware locus also has access to
+the unconsumed neutral sequence continuation needed to establish the complete
+phrase. A rewrite node is not an AST constructor, and its identity must not be
+derived mechanically from a physical source line.
 
 Conceptually:
 
@@ -239,6 +307,13 @@ The states mean:
   finalize;
 - `NodeFinalized`: the node has its stable result and will never be matched
   again.
+
+For sequence-aware work, the active structural candidate also retains its
+tentative source span. The span may begin at a focus within the current entry
+and end in a later entry. It remains candidate state until the enclosing entry
+result finalizes; only then may the sequence frame commit it. Parent and child
+continuations therefore install finalized results incrementally without
+reparsing or reconstructing the claimed source.
 
 Rewriting failure is a result of the scheduler, not a persistent node state:
 
@@ -296,12 +371,19 @@ data StructuralCandidate = StructuralCandidate
   , structuralCandidateBranch :: Int
   , structuralCandidateCapturedSource :: [Expression]
   , structuralCandidateRemaining :: [Expression]
+  , structuralCandidateSequenceSpan :: Maybe SequenceSpan
   }
 ```
 
 Enumeration records source captures but does not evaluate their runtime
 values. This is a refactor of `SyntaxTemplateMatching`, not a new matching
 language.
+
+`structuralCandidateSequenceSpan` is present only when the candidate consumes
+neutral sequence continuation outside its initial expression focus. It records
+the tentative extent; it does not mutate the sequence cursor. Different
+candidates at the same choice point may claim different extents according to
+the existing longest-match order.
 
 The ordered list is also the complete backtracking order. The next choice may
 be another rule, template branch, projection, argumentative-map alternative,
@@ -335,6 +417,8 @@ cursor and typing context. Child frames run above it. When they finish, the
 parent frame continues at its next unfinished check. It does not enumerate the
 candidate again or repeat checks already recorded in the frame. No later
 candidate is considered until the current candidate is accepted or rejected.
+Any tentative sequence span owned by that candidate remains reserved for the
+same duration, so overlapping entries cannot be scheduled as unrelated work.
 
 ### Rejected
 
@@ -524,7 +608,7 @@ dependencies.
 ```haskell
 data RewriteDependency
   = RewriteNodeResult RewriteNodeId
-  | SequenceDeclarations SequenceId
+  | SequenceFamilies SequenceId
 ```
 
 ### Node-result dependency
@@ -535,16 +619,17 @@ finalized result, usually to check a typed hole.
 The dependency graph stores reverse edges so finalizing a child wakes only the
 parents which require it.
 
-### Sequence-declaration dependency
+### Sequence-family dependency
 
-`SequenceDeclarations sequence` means that a node cannot determine its syntax
-candidates until interpreter-owned family publication in the containing
+`SequenceFamilies sequence` means that a node cannot determine its syntax
+candidates until the interpreter-owned family context in the containing
 sequence makes further progress or completes.
 
 When a finalized node publishes a new declaration or syntax rule, dependants
-of that sequence-declaration work are resumed. Implementations may later
-replace this coarse edge with exact declaration or rule edges as an
-optimization. This does not change matching behavior.
+of that sequence-family context are resumed. Implementations may later replace
+this coarse edge with exact family edges as an optimization. This does not
+change matching behavior or give the scheduler ownership of declaration
+recognition.
 
 There is no general semantic dependency graph and no name-based deferred
 binding mechanism.
@@ -611,8 +696,11 @@ data RewriteTask
 
 The stack order is deterministic:
 
-- sequence entries are initially pushed in reverse source order;
-- the first source entry therefore runs first;
+- sequence positions are considered in source order;
+- a node is allocated from the current unconsumed position rather than from
+  every entry in advance;
+- a candidate's tentative sequence span remains reserved until the candidate
+  is rejected or its containing phrase finalizes;
 - child work is pushed before its parent continuation;
 - dependencies wake parents in source-node order;
 - candidate cursors always advance through the stored semantic order.
@@ -666,28 +754,61 @@ violation, not a reason to try another syntax candidate.
 
 ## Sequence scheduling
 
-A sequence frame owns the ordered nodes for one block-like scope:
+A sequence frame owns the ordered neutral entries for one block-like scope. It
+does not initially turn those entries into independently owned nodes:
 
 ```haskell
 data SequenceFrame = SequenceFrame
-  { sequenceNodes :: [RewriteNodeId]
+  { sequenceSource :: [Expression]
+  , sequenceCursor :: SequencePosition
+  , sequenceActiveSpan :: Maybe (RewriteNodeId, SequenceSpan)
   , sequenceContext :: SyntaxContext
   , sequenceWaitingNodes :: [RewriteNodeId]
-  , sequenceResults :: Map RewriteNodeId RewriteResult
+  , sequenceResults :: [RewriteResult]
   }
 ```
 
+`SequencePosition` is a logical position in the neutral sequence and may carry
+an expression focus within its current entry. `SequenceSpan` is the source
+extent tentatively consumed by a candidate. These are scheduler concepts, not
+new AST nodes or declaration representations; their exact implementation may
+be a zipper, stable paths, or an equivalent stack-owned continuation.
+
 Initialization:
 
-1. Create one node for each raw entry.
+1. Retain the ordered raw entries and place the cursor at the first unconsumed
+   position.
 2. Ask the interpreter for the provisional recursive family context.
-3. Push entries in reverse source order.
+3. Allocate work lazily at the cursor, exposing the unconsumed continuation to
+   structural matching.
+
+At a sequence position:
+
+1. Enumerate candidates from the current expression focus and, where the
+   template permits it, the following neutral entries.
+2. Record the candidate's tentative span without advancing the frame cursor.
+3. Run captured child work above the stored candidate frame.
+4. If the candidate blocks, preserve both its typing progress and span claim.
+5. If it rejects, release the claim and try the next candidate, which may have
+   a different extent.
+6. If the containing phrase finalizes, commit its span, append its stored
+   result, and advance to the first unconsumed position.
+
+If no sequence-spanning syntax applies, the ordinary expression at the cursor
+forms the next rewrite locus and commits its single-entry extent when it
+finalizes. Nested block captures create nested sequence frames; their entries
+are not also scheduled as peers of the containing outer phrase.
 
 When a finalized result introduces a syntax family:
 
 1. Ask the interpreter-owned context for the next visible family context.
-2. Resume nodes waiting on `SequenceDeclarations` for that sequence.
+2. Resume nodes waiting on `SequenceFamilies` for that sequence.
 3. Leave all unrelated finalized nodes unchanged.
+
+Family publication occurs only after the complete phrase commits. For the
+multiline `Args` example, the outer sequence publishes the finalized
+`val Args := <FunctionBody>` result. The captured `slots` declaration belongs
+to the nested function-body frame and is never published as an outer sibling.
 
 The rewrite scheduler stores and orders the returned syntax families. It does
 not recognize dependent declarations, resolve declaration heads, construct or
@@ -695,10 +816,9 @@ validate families, check overlap or injectivity, lower declarations, or
 evaluate declaration implementations. Those operations remain entirely in
 the evaluator/interpreter.
 
-When family publication completes, remaining sequence-declaration
-dependants receive the completed family context. If they still
-exhaust their candidates, ordinary parent backtracking or root failure
-applies.
+When family publication completes, remaining sequence-family dependants
+receive the completed family context. If they still exhaust their candidates,
+ordinary parent backtracking or root failure applies.
 
 Recursive `let` declarations continue to use the existing provisional-scope
 and seed behavior. The scheduler does not add another recursion model.
@@ -759,15 +879,21 @@ erase a different causal error.
 Rewriting succeeds when every required node is `NodeFinalized` and the work
 stack is empty.
 
-Finalization assembles stored results and verifies:
+Finalization is a terminal stack transition, not an assembly or validation
+pass. The transition returns the result already stored by the finalized root.
+The scheduler enforces its invariants incrementally at the transition which
+could violate them:
 
-- every emitted expression comes from a finalized node;
-- every syntax-selected node retains its selected candidate;
-- every required child result was finalized before parent acceptance;
-- every generic candidate stores a fully instantiated return type;
-- every published declaration comes from a finalized result;
-- no blocked dependency or active choice point remains;
-- no raw-source rematching occurs.
+- a child result is installed only when that child finalizes;
+- a syntax selection is stored when its candidate is accepted;
+- required child and generic checks complete before parent acceptance;
+- a sequence span is committed only when its containing phrase finalizes;
+- evaluator-provided families are published only from that finalized phrase;
+- a node with blocked dependencies or an active choice point cannot finalize;
+- raw source is never rematched after its node finalizes.
+
+Consequently, reaching root finalization is sufficient evidence of success.
+There is no end-of-rewrite reconstruction or validation walk.
 
 Finalization does not:
 
@@ -782,7 +908,7 @@ Finalization does not:
 
 Determinism is enforced by:
 
-- source-order node allocation;
+- source-order sequence positions and committed spans;
 - LIFO child-before-parent execution;
 - existing rule and template-branch ordering;
 - existing longest-prefix and longest-capture ordering;
@@ -826,7 +952,13 @@ Internal maps must not determine traversal or diagnostic order.
 
 ### Phase 4: sequences and declarations
 
-- Add sequence frames and `SequenceDeclarations` dependencies.
+- Add sequence frames and `SequenceFamilies` dependencies.
+- Allocate nodes lazily from sequence positions rather than eagerly per raw
+  entry.
+- Retain tentative candidate spans across blocking and commit them only from
+  finalized phrase results.
+- Allow block-hole candidates to capture following neutral entries through
+  their terminating literal without making every syntax hole line-spanning.
 - Publish interpreter-owned syntax families only from finalized nodes.
 - Preserve the current provisional recursive `let` environment.
 - Verify that finalized nested sequences are not rebuilt by outer progress.
@@ -869,6 +1001,9 @@ Internal maps must not determine traversal or diagnostic order.
   instantiate later hole types and the final return type.
 - Recursive `let`, module projection, contextual declarations, `Args`, and
   protection retain their current behavior.
+- The multiline `Args` declaration is one outer rewrite phrase: its `do` block
+  consumes the following entries through `yield`, and only the finalized
+  declaration is published to the outer sequence.
 - Generic binder identity, resolution, bounds, and protection remain owned by
   the existing generic implementation; candidate typing reuses that
   implementation rather than creating scheduler-specific generic semantics.
@@ -895,8 +1030,15 @@ Internal maps must not determine traversal or diagnostic order.
   unfinished capture without repeating enumeration or completed type checks.
 - A generic candidate publishes its instantiated return type rather than its
   uninstantiated declaration codomain.
-- New declarations resume sequence-declaration dependants without replaying
-  unrelated finalized nodes.
+- Neutral newline and semicolon separators remain available to matching but do
+  not force independent rewrite nodes.
+- A blocked sequence-spanning candidate prevents overlapping entries from
+  finalizing or publishing independently.
+- Rejecting a spanning candidate releases its tentative span before the next
+  greedy candidate is tried; finalizing the accepted phrase commits the span
+  exactly once.
+- New evaluator-provided families resume sequence-family dependants without
+  replaying unrelated finalized nodes.
 - Nested finalized sequences are reused when their parent resumes.
 - Finalization performs no syntax selection from raw source.
 - No whole-block strict replay remains.
