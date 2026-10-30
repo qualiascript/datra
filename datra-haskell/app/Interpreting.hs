@@ -48,7 +48,7 @@ module Interpreting
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (nub, nubBy, isPrefixOf, partition, stripPrefix)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, mapMaybe)
 import Data.Set qualified as Set
 import DatraLanguage.DependentDeclaration
 import FunctionClosure
@@ -107,6 +107,7 @@ import Parsing
   )
 import SyntaxRewriting
   ( SyntaxContext (..)
+  , SyntaxRuleFamily (..)
   , rewriteResourceSyntax
   , rewriteResourceSyntaxLocated
   , rewriteStandaloneSyntax
@@ -118,6 +119,7 @@ import SyntaxDefinitions
   ( SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , declarationRules
+  , declarationRuleBranches
   , syntaxApplicationRule
   )
 import DatraLanguage.Diagnostics
@@ -126,7 +128,8 @@ import DatraLanguage.Diagnostics
   , atSourceSpan
   , withoutSourceSpan
   )
-import DatraLanguage.Diagnostics.Application (ParseFailure (..))
+import DatraLanguage.Diagnostics.Application
+  ( ParseFailure (..), SyntaxRewriteFailure (..) )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English)
   , renderDatraError
@@ -251,8 +254,8 @@ rewriteParsedDatraSourceWithImports modules parsed = do
       availableModuleRules = baseModuleRules <> dependencyRules
       initialRules = standardRules
       rewrite = rewriteResourceSyntaxLocated envelope
-        (syntaxContext base modules availableModuleRules)
-        initialRules [] (parsedRawExpression parsed)
+        (syntaxContext base modules availableModuleRules initialRules [])
+        (parsedRawExpression parsed)
   rewritten <- Bifunctor.first rewriteParseFailure rewrite
   pure (resolveGenericFunctionTypes <$> rewritten)
   where
@@ -298,9 +301,9 @@ discoverImportInvocations base activeRules envelope raw = do
     ]
   let availableRules =
         [(namespace, namespace, rules) | (namespace, rules) <- baseModuleRules]
-      context = syntaxContext base [] availableRules
+      context = syntaxContext base [] availableRules activeRules []
   rewritten <- Bifunctor.first SyntaxRewriteParseFailure $
-    rewriteResourceSyntax envelope context activeRules [] raw
+    rewriteResourceSyntax envelope context raw
   pure (nub (importsInExpansion rewritten))
   where
     importsInExpansion expressionValue =
@@ -576,20 +579,77 @@ syntaxContext
   :: Scope
   -> [(String, ModuleSource)]
   -> [(String, String, [SyntaxRule])]
+  -> [SyntaxRule]
+  -> [Expression]
   -> SyntaxContext
-syntaxContext base modules availableRules = SyntaxContext
-  (classifySyntaxHoles base modules)
-  (captureSyntaxHole base modules)
-  (importedSyntaxRules base modules availableRules)
-  (evaluateSyntaxValue base modules)
-  (syntaxResultType base modules)
-  (evaluateSyntaxValueWithInput base modules)
-  (applySyntaxValue base modules)
-  enter
+syntaxContext base modules availableRules initialRules initialDeclarations =
+  make base initialDeclarations initialFamilies
   where
-    enter declarations input = syntaxContext child modules availableRules
+    initialFamilies = externalFamily base initialDeclarations initialRules
+      : declarationFamilies base initialDeclarations
+
+    make currentBase declarations families = context
       where
-        enclosing = extendModuleCatalog modules base
+        context = SyntaxContext
+          { contextSourceSpan = Nothing
+          , contextRuleFamilies = filter
+              (not . null . syntaxRuleFamilyRules) families
+          , contextClassify = classifySyntaxHoles currentBase modules declarations
+          , contextCapture = captureSyntaxHole currentBase modules
+              `withDeclarations` declarations
+          , contextEvaluate = evaluateSyntaxValue currentBase modules declarations
+          , contextResultType = syntaxResultType currentBase modules declarations
+          , contextEvaluateWithInput =
+              evaluateSyntaxValueWithInput currentBase modules declarations
+          , contextApply = applySyntaxValue currentBase modules declarations
+          , contextAssembleSequence = assembleSyntaxSequence
+          , contextAssembleImplicitResource = assembleImplicitSyntaxResource
+          , contextAssembleExpansion = assembleSyntaxExpansion
+          , contextPublish = publish currentBase declarations families
+          , contextRecursive = recursive currentBase declarations families
+          , contextScope = scoped currentBase declarations families
+          , contextEnter = enter currentBase declarations families
+          }
+
+    withDeclarations capture declarations strict previous kind captured =
+      capture strict declarations previous kind captured
+
+    publish currentBase declarations families entry = do
+      let resolved = resolveSyntaxDeclarationHead declarations entry
+      _ <- dependentDeclaration resolved
+      let names = bindingNames entry
+          retainedDeclarations = retainDeclarations names declarations
+          retainedFamilies = retainFamilies names families
+          nextDeclarations = retainedDeclarations <> [entry]
+          introduced = declarationFamily currentBase retainedDeclarations
+            entry resolved
+      pure (make currentBase nextDeclarations
+        (retainedFamilies <> [introduced]))
+
+    recursive currentBase declarations families entries =
+      foldl publishLet (make currentBase declarations families)
+        [ entry
+        | entry <- entries
+        , maybe False dependentDeclarationIsLet
+            (dependentDeclaration entry)
+        ]
+      where
+        publishLet context entry =
+          case contextPublish context entry of
+            Just next -> next
+            Nothing -> context
+
+    scoped currentBase declarations families source =
+      make currentBase declarations
+        (families <> [externalFamily currentBase declarations rules])
+      where
+        rules = importedSyntaxRules currentBase modules availableRules
+          declarations source
+
+    enter currentBase declarations families input =
+      make child [] families
+      where
+        enclosing = extendModuleCatalog modules currentBase
         declared = declareSyntaxScope enclosing
           (map syntaxValidationDeclaration declarations)
         parent = either (const enclosing) id declared
@@ -601,6 +661,175 @@ syntaxContext base modules availableRules = SyntaxContext
               (UnknownIdentifier (contextualPrivateName ContextualIt))
         child = extendContextualRuntimeDeclarations
           (contextualDeclarations ContextualIt False (const supplied)) parent
+
+    declarationFamilies currentBase = snd . foldl introduce ([], [])
+      where
+        introduce (visible, families) entry =
+          case dependentDeclaration resolved of
+            Nothing -> (visible, families)
+            Just _ ->
+              let names = bindingNames entry
+                  retained = retainDeclarations names visible
+                  next = retained <> [entry]
+              in ( next
+                 , retainFamilies names families <>
+                    [declarationFamily currentBase retained entry resolved]
+                 )
+          where
+            resolved = resolveSyntaxDeclarationHead visible entry
+
+    declarationFamily currentBase visible entry resolved = SyntaxRuleFamily
+      { syntaxRuleFamilyNames = bindingNames entry
+      , syntaxRuleFamilyRules =
+          [ (branch, specialize rule)
+          | (_, branch, rule) <- declarationRuleBranches resolved
+          ]
+      , syntaxRuleFamilyClassify = classifySyntaxHoles
+          currentBase modules visible
+      , syntaxRuleFamilyEvaluate = evaluateSyntaxValue
+          currentBase modules visible
+      , syntaxRuleFamilyApply = applySyntaxValue currentBase modules visible
+      }
+      where
+        specialize rule = rule
+          { syntaxTemplate = SyntaxTemplate
+              [ case piece of
+                  SyntaxHole kind -> SyntaxHole (fst (classify kind))
+                  SyntaxLiteral {} -> piece
+              | piece <- syntaxTemplatePieces (syntaxTemplate rule)
+              ]
+          }
+        classify kind = classifySyntaxHole currentBase modules visible kind
+
+    externalFamily currentBase declarations rules = SyntaxRuleFamily
+      { syntaxRuleFamilyNames = map syntaxName rules
+      , syntaxRuleFamilyRules = map (0,) rules
+      , syntaxRuleFamilyClassify = classifySyntaxHoles
+          currentBase modules declarations
+      , syntaxRuleFamilyEvaluate = evaluateSyntaxValue
+          currentBase modules declarations
+      , syntaxRuleFamilyApply = applySyntaxValue
+          currentBase modules declarations
+      }
+
+    retainDeclarations names = filter
+      (null . filter (`elem` names) . bindingNames)
+    retainFamilies names = mapMaybe retain
+      where
+        retain family =
+          let retained = filter
+                ((`notElem` names) . syntaxName . snd)
+                (syntaxRuleFamilyRules family)
+          in if null retained
+              then Nothing
+              else Just family { syntaxRuleFamilyRules = retained }
+
+lowerSyntaxDeclarations
+  :: [Expression]
+  -> Either SyntaxRewriteFailure [DependentDeclaration Expression]
+lowerSyntaxDeclarations = traverse lower
+  where
+    lower expressionValue = maybe
+      (case invalidDependentDeclarationModifiers expressionValue of
+        Just (written, correct) ->
+          Left (InvalidDeclarationModifiers written correct)
+        Nothing -> Left (ExpectedDependentDeclaration expressionValue))
+      Right
+      (dependentDeclaration expressionValue)
+
+assembleSyntaxSequence
+  :: Expression
+  -> [Expression]
+  -> Either SyntaxRewriteFailure Expression
+assembleSyntaxSequence source expressions = case source of
+  AtlasMap _ -> Right (AtlasMap expressions)
+  Begin declarations _ -> assembleSyntaxBlock Begin
+    (length declarations) expressions
+  FunctionBody declarations _ -> assembleSyntaxBlock FunctionBody
+    (length declarations) expressions
+  _ -> Right source
+
+assembleImplicitSyntaxResource
+  :: [Expression]
+  -> Either SyntaxRewriteFailure Expression
+assembleImplicitSyntaxResource expressions = case reverse expressions of
+  [] -> Right (Begin [] (AtlasMap []))
+  result : reversedDeclarations -> do
+    declarations <- lowerSyntaxDeclarations (reverse reversedDeclarations)
+    Right (Begin declarations result)
+
+assembleSyntaxExpansion
+  :: SyntaxFunctionExpansion
+  -> [Expression]
+  -> Either SyntaxRewriteFailure Expression
+assembleSyntaxExpansion expansion expressions = case expansion of
+  SyntaxExpression expressionValue -> Right expressionValue
+  SyntaxBegin entries _ -> assembleSyntaxBlock Begin
+    (length entries) expressions
+  SyntaxFunctionBody entries _ -> assembleSyntaxBlock FunctionBody
+    (length entries) expressions
+
+assembleSyntaxBlock
+  :: ([DependentDeclaration Expression] -> Expression -> Expression)
+  -> Int
+  -> [Expression]
+  -> Either SyntaxRewriteFailure Expression
+assembleSyntaxBlock constructor declarationCount expressions = do
+  let (declarationExpressions, resultExpressions) =
+        splitAt declarationCount expressions
+  declarations <- lowerSyntaxDeclarations declarationExpressions
+  pure (constructor declarations (applicationFromExpressions resultExpressions))
+
+applicationFromExpressions :: [Expression] -> Expression
+applicationFromExpressions [] = AtlasMap []
+applicationFromExpressions (first : remaining) =
+  foldl FunctionApplication first remaining
+
+-- Dependent-name resolution is an interpreter concern. Syntax rewriting sees
+-- only the resulting rule family and never inspects a declaration head.
+resolveSyntaxDeclarationHead :: [Expression] -> Expression -> Expression
+resolveSyntaxDeclarationHead declarations expressionValue =
+  case expressionValue of
+    Let value -> Let (resolveSyntaxDeclarationHead declarations value)
+    Def value -> Def (resolveSyntaxDeclarationHead declarations value)
+    Val value -> Val (resolveSyntaxDeclarationHead declarations value)
+    IdentifierTemplateOperation
+        [StringTemplateInterpolation headExpression]
+        annotation
+        given ->
+      case resolvedParts headExpression of
+        Just parts -> IdentifierTemplateOperation parts annotation given
+        Nothing -> expressionValue
+    _ -> expressionValue
+  where
+    resolvedParts (SyntaxBoundary inner) = resolvedParts inner
+    resolvedParts (GreedyStringTemplate operand) = Just
+      [ StringTemplateInterpolation
+          (SyntaxBoundary (GreedyStringTemplate (resolveGreedy operand)))
+      ]
+    resolvedParts (StringTemplate parts) = Just parts
+    resolvedParts (AsciiStringLiteral literal) =
+      Just [StringTemplateLiteral literal]
+    resolvedParts (IdentifierReference (IdentifierString name)) = do
+      declaration <- firstDeclaration name (reverse declarations)
+      resolvedParts (dependentDeclarationImplementation declaration)
+    resolvedParts _ = Nothing
+
+    resolveGreedy greedyPart = case greedyPart of
+      SyntaxBoundary inner -> SyntaxBoundary (resolveGreedy inner)
+      AtlasMap members -> AtlasMap (map resolveGreedy members)
+      MapSequence members -> MapSequence (map resolveGreedy members)
+      EitherType left right ->
+        EitherType (resolveGreedy left) (resolveGreedy right)
+      OptionalType operand -> OptionalType (resolveGreedy operand)
+      atom -> atom
+
+    firstDeclaration _ [] = Nothing
+    firstDeclaration requested (candidate : remaining) =
+      case dependentDeclaration candidate of
+        Just declaration
+          | requested `elem` bindingNames candidate -> Just declaration
+        _ -> firstDeclaration requested remaining
 
 binderDeclarations
   :: [(SyntaxHoleKind Expression, Expression)]
@@ -875,9 +1104,9 @@ parsedDefaultModule = do
       (requiredBundledLibrarySource standardLibraryFileName))
   (emptyScope, hostRules) <- standardLibraryBootstrap (rootScope raw)
   let
-      context = syntaxContext emptyScope [] hostRules
+      context = syntaxContext emptyScope [] hostRules [] []
       rewritten = rewriteResourceSyntaxLocated
-        envelope context [] [] locatedRaw
+        envelope context locatedRaw
   rewrittenValue <- locatedValue <$> either
     (parseFailure . SyntaxRewriteParseFailure)
     Right
@@ -6435,7 +6664,7 @@ closedSourceExpressionIn definitions text = do
   rewritten <- Bifunctor.first
     (const NoCanonicalStringConversion)
     (rewriteStandaloneSyntax
-      (syntaxContext definitions [] []) rules declarations expressionValue)
+      (syntaxContext definitions [] [] rules declarations) expressionValue)
   pure (inlineDependencies (closureResolver definitions) rewritten)
 
 parsedSourceExpression :: String -> Either InterpretingError Expression

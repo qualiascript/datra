@@ -1,9 +1,8 @@
 module SyntaxRewriting.Types
   ( SyntaxContext (..)
+  , SyntaxRuleFamily (..)
   , ClassifyHoles
   , CaptureHole
-  , ScopeRules
-  , RewriteEnvironment (..)
   , RewriteRule (..)
   , RewriteNodeId (..)
   , SequenceId (..)
@@ -33,89 +32,85 @@ import Data.Set qualified as Set
 import DatraLanguage.AST (Expression)
 import DatraLanguage.Diagnostics (DatraError, SourceSpan)
 import DatraLanguage.Diagnostics.Application
-  ( CandidateRejectionReason (..) )
+  ( CandidateRejectionReason (..), SyntaxRewriteFailure )
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind
   , TemplateSelection
   )
 import DatraTypes
   ( InterpretedValue
-  , RuntimeFunctionInsertion
   , SyntaxFunctionExpansion
   , SyntaxFunctionInsertion
   )
 import SyntaxDefinitions (SyntaxRule)
-import DatraLanguage.DependentDeclaration (DependentDeclaration)
 
 type ClassifyHoles =
-  [Expression]
-  -> [SyntaxHoleKind Expression]
+  [SyntaxHoleKind Expression]
   -> [(SyntaxHoleKind Expression, Maybe InterpretedValue)]
 
 type CaptureHole =
   Bool
-  -> [Expression]
   -> [(SyntaxHoleKind Expression, Expression)]
   -> SyntaxHoleKind Expression
   -> Expression
   -> Maybe Expression
 
-type ScopeRules = [Expression] -> Expression -> [SyntaxRule]
+-- | One visible declaration family, already paired with the lexical
+-- interpreter operations captured at its declaration position. Syntax
+-- rewriting orders and selects these families but does not construct or
+-- interpret dependent declarations.
+data SyntaxRuleFamily = SyntaxRuleFamily
+  { syntaxRuleFamilyNames :: [String]
+  , syntaxRuleFamilyRules :: [(Int, SyntaxRule)]
+  , syntaxRuleFamilyClassify :: ClassifyHoles
+  , syntaxRuleFamilyEvaluate :: Expression -> Maybe InterpretedValue
+  , syntaxRuleFamilyApply
+      :: Expression
+      -> InterpretedValue
+      -> Maybe InterpretedValue
+  }
 
 data SyntaxContext = SyntaxContext
-  { contextClassify :: ClassifyHoles
+  { contextSourceSpan :: Maybe SourceSpan
+  , contextRuleFamilies :: [SyntaxRuleFamily]
+  , contextClassify :: ClassifyHoles
   , contextCapture :: CaptureHole
-  , contextScopeRules :: ScopeRules
-  , contextEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
-  , contextResultType :: [Expression] -> Expression -> Maybe InterpretedValue
+  , contextEvaluate :: Expression -> Maybe InterpretedValue
+  , contextResultType :: Expression -> Maybe InterpretedValue
   , contextEvaluateWithInput
-      :: [Expression]
-      -> InterpretedValue
+      :: InterpretedValue
       -> Expression
       -> Maybe InterpretedValue
   , contextApply
-      :: [Expression]
-      -> Expression
+      :: Expression
       -> InterpretedValue
       -> Maybe InterpretedValue
-  , contextEnter :: [Expression] -> Maybe Expression -> SyntaxContext
+  , contextAssembleSequence
+      :: Expression
+      -> [Expression]
+      -> Either SyntaxRewriteFailure Expression
+  , contextAssembleImplicitResource
+      :: [Expression]
+      -> Either SyntaxRewriteFailure Expression
+  , contextAssembleExpansion
+      :: SyntaxFunctionExpansion
+      -> [Expression]
+      -> Either SyntaxRewriteFailure Expression
+  , contextPublish :: Expression -> Maybe SyntaxContext
+  , contextRecursive :: [Expression] -> SyntaxContext
+  , contextScope :: Expression -> SyntaxContext
+  , contextEnter :: Maybe Expression -> SyntaxContext
   }
 
 data RewriteRule = RewriteRule
   { rewriteRule :: SyntaxRule
-  , rewriteRuleDeclaration :: Maybe (DependentDeclaration Expression)
   , rewriteRuleBranch :: Int
   , rewriteRuleLiteralPrefix :: [String]
   , rewriteRuleLiterals :: Set.Set String
   , rewriteRuleEvaluation :: Maybe (Expression -> Maybe InterpretedValue)
   , rewriteRuleHoleFamilies :: [Maybe InterpretedValue]
   , rewriteRuleSyntaxInsertion :: Maybe SyntaxFunctionInsertion
-  , rewriteRuleRuntimeInsertion :: Maybe RuntimeFunctionInsertion
   , rewriteRuleReturnType :: Maybe InterpretedValue
-  }
-
-data RewriteEnvironment = RewriteEnvironment
-  { rewriteContext :: SyntaxContext
-  , rewriteSourceSpan :: Maybe SourceSpan
-  , rewriteRules :: [RewriteRule]
-  , rewriteDeclarations :: [Expression]
-  , rewriteClassifyHoles :: ClassifyHoles
-  , rewriteScopeRules :: ScopeRules
-  , rewriteEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
-  , rewriteResultTypeOf
-      :: [Expression]
-      -> Expression
-      -> Maybe InterpretedValue
-  , rewriteEvaluateWithInput
-      :: [Expression]
-      -> InterpretedValue
-      -> Expression
-      -> Maybe InterpretedValue
-  , rewriteApply
-      :: [Expression]
-      -> Expression
-      -> InterpretedValue
-      -> Maybe InterpretedValue
   }
 
 newtype RewriteNodeId = RewriteNodeId Int
@@ -247,7 +242,9 @@ data RewriteNode environment = RewriteNode
   , rewriteNodeAttempts :: [CandidateAttempt]
   , rewriteNodeCandidateCursor :: Int
   , rewriteNodeParent :: RewriteParent
-  , rewriteNodeOrdinaryChildren :: [RewriteNodeId]
+  , rewriteNodeExpression :: Expression
+  , rewriteNodeOrdinaryCursor :: Int
+  , rewriteNodeOrdinaryChild :: Maybe RewriteNodeId
   , rewriteNodeOrdinaryResult :: Maybe RewriteResult
   , rewriteNodeState :: RewriteNodeState
   }

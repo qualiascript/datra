@@ -8,6 +8,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.List.NonEmpty (NonEmpty (..))
+import Control.Monad.Trans.State.Strict (State, runState, state)
 import SyntaxRewriting.Dependencies
   ( DependencyGraph
   , emptyDependencyGraph
@@ -35,12 +36,13 @@ import SyntaxRewriting.Types
   , StructuralCandidate (..)
   , SelectedCandidate (..)
   )
-import DatraLanguage.AST (Expression (..))
+import DatraLanguage.AST
+  ( Expression (..), traverseExpressionChildren )
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind
   , TemplateSelection (..)
   )
-import DatraTypes (InterpretedValue)
+import DatraTypes (InterpretedValue, SyntaxFunctionExpansion (..))
 import SyntaxRewriting.Candidates
   ( advanceCandidateFrameWith
   , candidateFrameRequiresTypedChild
@@ -49,7 +51,8 @@ import SyntaxRewriting.Candidates
 
 data RewriteStackOperations environment failure = RewriteStackOperations
   { stackEnumerateCandidates
-      :: environment
+      :: Bool
+      -> environment
       -> Expression
       -> [StructuralCandidate]
   , stackCaptureHole
@@ -74,11 +77,25 @@ data RewriteStackOperations environment failure = RewriteStackOperations
       :: InterpretedValue
       -> InterpretedValue
       -> Bool
-  , stackAdvanceOrdinary
+  , stackOrdinaryChild
       :: environment
       -> Expression
-      -> [RewriteResult]
-      -> Either failure (Either RewriteResult (environment, Expression))
+      -> Int
+      -> Maybe (environment, Expression)
+  , stackFinalizeOrdinary
+      :: environment
+      -> Expression
+      -> Either failure RewriteResult
+  , stackAssembleSequence
+      :: environment
+      -> Expression
+      -> [Expression]
+      -> Either failure Expression
+  , stackAssembleExpansion
+      :: environment
+      -> SyntaxFunctionExpansion
+      -> [Expression]
+      -> Either failure Expression
   , stackSequenceEntries
       :: environment
       -> Expression
@@ -91,11 +108,6 @@ data RewriteStackOperations environment failure = RewriteStackOperations
       -> Int
       -> RewriteResult
       -> Either failure (Maybe environment)
-  , stackMaterializeSequence
-      :: environment
-      -> Expression
-      -> [RewriteResult]
-      -> Either failure RewriteResult
   , stackPrepareCandidate
       :: environment
       -> SelectedCandidate
@@ -104,11 +116,6 @@ data RewriteStackOperations environment failure = RewriteStackOperations
       :: environment
       -> PreparedExpansion
       -> Either Expression (environment, environment, [Expression])
-  , stackMaterializeExpansion
-      :: environment
-      -> PreparedExpansion
-      -> [RewriteResult]
-      -> Either failure Expression
   , stackCandidateRejection
       :: environment
       -> CandidateRejectionDetails
@@ -138,10 +145,9 @@ allocateRewriteNode
   :: environment
   -> Expression
   -> RewriteParent
-  -> [StructuralCandidate]
   -> RewriteMachine environment
   -> (RewriteNodeId, RewriteMachine environment)
-allocateRewriteNode environment source parent candidates machine =
+allocateRewriteNode environment source parent machine =
   (nodeId, machine
     { machineNodes = Map.insert nodeId node (machineNodes machine)
     , machineNextNode = machineNextNode machine + 1
@@ -152,11 +158,13 @@ allocateRewriteNode environment source parent candidates machine =
       { rewriteNodeId = nodeId
       , rewriteNodeSource = source
       , rewriteNodeEnvironment = environment
-      , rewriteNodeCandidates = candidates
+      , rewriteNodeCandidates = []
       , rewriteNodeAttempts = []
       , rewriteNodeCandidateCursor = 0
       , rewriteNodeParent = parent
-      , rewriteNodeOrdinaryChildren = []
+      , rewriteNodeExpression = source
+      , rewriteNodeOrdinaryCursor = 0
+      , rewriteNodeOrdinaryChild = Nothing
       , rewriteNodeOrdinaryResult = Nothing
       , rewriteNodeState = NodePending
       }
@@ -212,7 +220,7 @@ allocateSequenceFrame owner source initialEnvironment environment
       foldl allocate ([], machine) entries
     allocate (nodeIds, current) entry =
       let (nodeId, next) = allocateRewriteNode environment entry
-            (RewriteSequenceParent sequenceId) [] current
+            (RewriteSequenceParent sequenceId) current
       in (nodeIds <> [nodeId], next)
     frame = SequenceFrame
       { sequenceFrameId = sequenceId
@@ -253,6 +261,41 @@ finalizeRewriteNode nodeId result machine =
     (_, remainingDependencies) = releaseDependency
       (RewriteNodeResult nodeId) (machineDependencies machine)
 
+replaceExpressionChild :: Int -> Expression -> Expression -> Expression
+replaceExpressionChild selected replacement source = fst
+  (runState (traverseExpressionChildren replace source) 0)
+  where
+    replace :: Expression -> State Int Expression
+    replace child = state $ \index ->
+      (if index == selected then replacement else child, index + 1)
+
+materializeSequence
+  :: RewriteStackOperations environment failure
+  -> environment
+  -> Expression
+  -> [RewriteResult]
+  -> Either failure RewriteResult
+materializeSequence operations environment source results = do
+  expressionValue <- stackAssembleSequence operations
+    environment source expressions
+  stackFinalizeOrdinary operations environment expressionValue
+  where
+    expressions = map rewriteResultExpression results
+
+materializeExpansion
+  :: RewriteStackOperations environment failure
+  -> environment
+  -> PreparedExpansion
+  -> [RewriteResult]
+  -> Either failure Expression
+materializeExpansion operations environment prepared results = do
+  core <- stackAssembleExpansion operations environment
+    (preparedExpansionSyntax prepared) expressions
+  pure (foldl FunctionApplication core
+    (preparedExpansionRemaining prepared))
+  where
+    expressions = map rewriteResultExpression results
+
 -- | Execute one rewrite choice point with an explicit task stack. A root
 -- finalization is the terminal scheduler transition; execution never drains
 -- the stack and then guesses whether rewriting completed.
@@ -260,13 +303,12 @@ runRewriteStack
   :: RewriteStackOperations environment failure
   -> environment
   -> Expression
-  -> [StructuralCandidate]
   -> Either failure (RewriteResult, [CandidateRejection])
-runRewriteStack operations environment source candidates =
+runRewriteStack operations environment source =
   executeTask (EnterNode root) [] allocated
   where
     (root, allocated) = allocateRewriteNode
-      environment source RewriteRoot candidates emptyRewriteMachine
+      environment source RewriteRoot emptyRewriteMachine
 
     executeTask task backlog machine = step task backlog machine
 
@@ -292,17 +334,22 @@ runRewriteStack operations environment source candidates =
             backlog finalized
 
     step task backlog machine = case task of
-      EnterNode nodeId
-        | null (rewriteNodeCandidates node) ->
-            beginOrdinary node backlog machine
-        | otherwise ->
-            continueTasks (TryCandidate nodeId 0 :| []) backlog
-              (updateRewriteNode nodeId
-                (\current -> current
-                  { rewriteNodeState = NodeActive
-                  , rewriteNodeCandidateCursor = 0
-                  }) machine)
-        where node = rewriteNodeAt nodeId machine
+      EnterNode nodeId ->
+        let node = rewriteNodeAt nodeId machine
+            candidateSource = rewriteNodeExpression node
+            candidates = stackEnumerateCandidates operations
+              (case rewriteNodeParent node of RewriteRoot -> True; _ -> False)
+              (rewriteNodeEnvironment node) candidateSource
+            entered = updateRewriteNode nodeId
+              (\current -> current
+                { rewriteNodeCandidates = candidates
+                , rewriteNodeState = NodeActive
+                , rewriteNodeCandidateCursor = 0
+                }) machine
+            active = rewriteNodeAt nodeId entered
+        in if null candidates
+            then beginOrdinary active backlog entered
+            else continueTasks (TryCandidate nodeId 0 :| []) backlog entered
       TryCandidate nodeId cursor ->
         continueCandidate nodeId cursor Nothing backlog machine
       ResumeCandidate nodeId cursor ->
@@ -346,8 +393,6 @@ runRewriteStack operations environment source candidates =
               (childId, allocatedChild) = allocateRewriteNode
                 childEnvironment sourceExpression
                 (RewriteCandidateParent continuation)
-                (stackEnumerateCandidates operations
-                  childEnvironment sourceExpression)
                 machine
               continuedFrame = frame
                 { candidateFrameChildren = Map.insert index childId
@@ -493,8 +538,7 @@ runRewriteStack operations environment source candidates =
                 [] -> continueTasks (FinalizeSequence
                     (sequenceFrameId frame) :| []) backlog machine
         childId : _ ->
-          let child = rewriteNodeAt childId machine
-              childEnvironment = sequenceFrameEnvironment frame
+          let childEnvironment = sequenceFrameEnvironment frame
               advanced = updateSequenceFrame (sequenceFrameId frame)
                 (\current -> current
                   { sequenceFrameCursor = sequenceFrameCursor current + 1 })
@@ -502,9 +546,7 @@ runRewriteStack operations environment source candidates =
               prepared = updateRewriteNode childId
                 (\current -> current
                   { rewriteNodeEnvironment = childEnvironment
-                  , rewriteNodeCandidates =
-                      stackEnumerateCandidates operations childEnvironment
-                        (rewriteNodeSource child)
+                  , rewriteNodeCandidates = []
                   , rewriteNodeCandidateCursor = 0
                   , rewriteNodeAttempts = []
                   , rewriteNodeState = NodePending
@@ -581,42 +623,28 @@ runRewriteStack operations environment source candidates =
                 (machineSequences machine) }
       case sequenceFrameExpansion frame of
         Nothing -> do
-          result <- stackMaterializeSequence operations
+          result <- materializeSequence operations
             (sequenceFrameInitialEnvironment frame)
             (sequenceFrameSource frame) results
           finishNode owner result backlog withoutSequence
         Just (selected, expansion) -> do
-          expanded <- stackMaterializeExpansion operations
+          expanded <- materializeExpansion operations
             (sequenceFrameInitialEnvironment frame) expansion
             results
           finishCandidate owner (rewriteNodeCandidateCursor owner)
             selected expanded backlog withoutSequence
 
     resumeSequenceDeclarations frame nodeId backlog machine =
-      let node = rewriteNodeAt nodeId machine
-          selectedEnvironment = sequenceFrameEnvironment frame
-          availableCandidates = stackEnumerateCandidates operations
-            selectedEnvironment (rewriteNodeSource node)
-          sequenceId = sequenceFrameId frame
-          preparedNode = updateRewriteNode nodeId
+      let selectedEnvironment = sequenceFrameEnvironment frame
+          prepared = updateRewriteNode nodeId
             (\current -> current
               { rewriteNodeEnvironment = selectedEnvironment
-              , rewriteNodeCandidates = availableCandidates
+              , rewriteNodeCandidates = []
               , rewriteNodeCandidateCursor = 0
               , rewriteNodeAttempts = []
               , rewriteNodeState = NodePending
               }) machine
-          prepared = preparedNode
-      in case availableCandidates of
-        _ : _ -> continueTasks (EnterNode nodeId :| []) backlog prepared
-        []
-          | sequenceFrameDeclarationsComplete frame ->
-              beginOrdinary (rewriteNodeAt nodeId prepared) backlog prepared
-          | otherwise ->
-              let dependency = SequenceDeclarations sequenceId
-                  waiting = blockRewriteNode nodeId
-                    (Set.singleton dependency) prepared
-              in continueTasks (EnterSequence sequenceId :| []) backlog waiting
+      in continueTasks (EnterNode nodeId :| []) backlog prepared
 
     dependencyTask dependency = case dependency of
       RewriteNodeResult nodeId -> EnterNode nodeId
@@ -659,39 +687,45 @@ runRewriteStack operations environment source candidates =
       ]
 
     advanceOrdinary node backlog machine =
-      case ordinaryResults node machine of
-        Left child -> continueTasks (EnterNode child :| []) backlog machine
-        Right results -> do
-          progress <- stackAdvanceOrdinary operations
-            (rewriteNodeEnvironment node) (rewriteNodeSource node) results
-          case progress of
-            Left result -> finishOrdinary node result backlog machine
-            Right (childEnvironment, childSource) ->
+      case rewriteNodeOrdinaryChild node of
+        Just childId -> case finalizedResult machine childId of
+          Nothing -> continueTasks (EnterNode childId :| []) backlog machine
+          Just childResult ->
+            let nodeId = rewriteNodeId node
+                cursor = rewriteNodeOrdinaryCursor node
+                updatedExpression = replaceExpressionChild cursor
+                  (rewriteResultExpression childResult)
+                  (rewriteNodeExpression node)
+                advanced = updateRewriteNode nodeId
+                  (\current -> current
+                    { rewriteNodeExpression = updatedExpression
+                    , rewriteNodeOrdinaryCursor = cursor + 1
+                    , rewriteNodeOrdinaryChild = Nothing
+                    }) machine
+            in continueTasks (ResumeOrdinary nodeId :| []) backlog advanced
+        Nothing ->
+          case stackOrdinaryChild operations
+              (rewriteNodeEnvironment node)
+              (rewriteNodeExpression node)
+              (rewriteNodeOrdinaryCursor node) of
+            Nothing -> do
+              result <- stackFinalizeOrdinary operations
+                (rewriteNodeEnvironment node) (rewriteNodeExpression node)
+              finishOrdinary node result backlog machine
+            Just (childEnvironment, childSource) ->
               let parentId = rewriteNodeId node
-                  (childId, allocated) = allocateRewriteNode
+                  (childId, allocatedChild) = allocateRewriteNode
                     childEnvironment childSource
                     (RewriteOrdinaryParent parentId)
-                    (stackEnumerateCandidates operations
-                      childEnvironment childSource)
                     machine
                   dependency = RewriteNodeResult childId
                   prepared = updateRewriteNode parentId
                     (\current -> current
-                      { rewriteNodeOrdinaryChildren =
-                          rewriteNodeOrdinaryChildren current <> [childId] })
-                    allocated
+                      { rewriteNodeOrdinaryChild = Just childId })
+                    allocatedChild
                   waiting = blockRewriteNode parentId
                     (Set.singleton dependency) prepared
               in continueTasks (EnterNode childId :| []) backlog waiting
-
-    ordinaryResults node machine = collect
-      (rewriteNodeOrdinaryChildren node)
-      where
-        collect [] = Right []
-        collect (child : remaining) =
-          case finalizedResult machine child of
-            Nothing -> Left child
-            Just result -> (result :) <$> collect remaining
 
     finalizedResult machine nodeId = do
       case rewriteNodeState (rewriteNodeAt nodeId machine) of

@@ -27,7 +27,8 @@ The replacement owns:
   contexts;
 - retention of rejected candidate attempts;
 - expansion of accepted candidates;
-- declaration discovery inside rewritten results;
+- publication of evaluator-provided syntax-rule families from finalized
+  results;
 - ordering and resumption of nodes whose inputs are not finalized;
 - finalization from stored rewrite results rather than raw source;
 - syntax-rewrite diagnostics when candidates were rejected by typing.
@@ -38,6 +39,8 @@ It does not change:
 - parser ownership of neutral syntax boundaries;
 - declaration lookup, precedence, shadowing, or scope semantics;
 - dependent-declaration representation or evaluation;
+- dependent-declaration recognition, validation, lowering, family
+  construction, or shadowing;
 - function activation or parameter binding;
 - generic-binder allocation or protection;
 - `Args`, `this`, `it`, `_this`, or `_it`;
@@ -158,7 +161,7 @@ SyntaxRewriting.Dependencies
   node-result edges and reverse wakeups
 
 SyntaxRewriting.Sequence
-  block scheduling and declaration publication
+  block scheduling and syntax-family publication
 
 SyntaxRewriting.Expansion
   final materialization of accepted candidates
@@ -184,10 +187,12 @@ newtype RewriteNodeId = RewriteNodeId Int
 data RewriteNode = RewriteNode
   { rewriteNodeId :: RewriteNodeId
   , rewriteNodeSource :: Expression
-  , rewriteNodeEnvironment :: RewriteEnvironment
+  , rewriteNodeContext :: SyntaxContext
   , rewriteNodeCandidates :: [StructuralCandidate]
   , rewriteNodeAttempts :: [CandidateAttempt]
   , rewriteNodeCandidateCursor :: Int
+  , rewriteNodeExpression :: Expression
+  , rewriteNodeChildCursor :: Int
   , rewriteNodeParent :: Maybe CandidateContinuation
   , rewriteNodeState :: RewriteNodeState
   }
@@ -212,7 +217,7 @@ Rewriting failure is a result of the scheduler, not a persistent node state:
 
 ```haskell
 runRewrite
-  :: RewriteEnvironment
+  :: SyntaxContext
   -> Expression
   -> Either RewriteFailure RewriteResult
 ```
@@ -506,8 +511,8 @@ parents which require it.
 ### Sequence-declaration dependency
 
 `SequenceDeclarations sequence` means that a node cannot determine its syntax
-candidates until declaration discovery in the containing sequence makes
-further progress or completes.
+candidates until interpreter-owned family publication in the containing
+sequence makes further progress or completes.
 
 When a finalized node publishes a new declaration or syntax rule, dependants
 of that sequence-declaration work are resumed. Implementations may later
@@ -608,10 +613,11 @@ When a node is entered:
     resolved.
 13. Expand it and finalize the node.
 
-An ordinary expression which does not require a syntax selection is rebuilt
-from finalized children according to the existing rewriter behavior. Its lack
-of a syntax candidate is not itself a failure unless an active parent requires
-that node to establish a matching result.
+An ordinary node stores its current expression and a monotonic child cursor.
+Each finalized child is installed immediately into that stored expression and
+advances the cursor exactly once. There is no end-of-pass ordinary-expression
+rebuild. Its lack of a syntax candidate is not itself a failure unless an
+active parent requires that node to establish a matching result.
 
 ## Expansion
 
@@ -638,7 +644,7 @@ A sequence frame owns the ordered nodes for one block-like scope:
 ```haskell
 data SequenceFrame = SequenceFrame
   { sequenceNodes :: [RewriteNodeId]
-  , sequenceEnvironment :: RewriteEnvironment
+  , sequenceContext :: SyntaxContext
   , sequenceWaitingNodes :: [RewriteNodeId]
   , sequenceResults :: Map RewriteNodeId RewriteResult
   }
@@ -647,18 +653,23 @@ data SequenceFrame = SequenceFrame
 Initialization:
 
 1. Create one node for each raw entry.
-2. Build the same provisional recursive environment used by the current
-   implementation.
+2. Ask the interpreter for the provisional recursive family context.
 3. Push entries in reverse source order.
 
-When a node finalizes with a declaration:
+When a finalized result introduces a syntax family:
 
-1. Publish it through the existing scope helpers.
+1. Ask the interpreter-owned context for the next visible family context.
 2. Resume nodes waiting on `SequenceDeclarations` for that sequence.
 3. Leave all unrelated finalized nodes unchanged.
 
-When declaration discovery completes, remaining sequence-declaration
-dependants receive the completed declaration environment. If they still
+The rewrite scheduler stores and orders the returned syntax families. It does
+not recognize dependent declarations, resolve declaration heads, construct or
+validate families, check overlap or injectivity, lower declarations, or
+evaluate declaration implementations. Those operations remain entirely in
+the evaluator/interpreter.
+
+When family publication completes, remaining sequence-declaration
+dependants receive the completed family context. If they still
 exhaust their candidates, ordinary parent backtracking or root failure
 applies.
 
@@ -734,6 +745,7 @@ Finalization assembles stored results and verifies:
 Finalization does not:
 
 - perform a strict whole-block pass;
+- rebuild an ordinary expression from a collected child list;
 - evaluate function-local runtime values;
 - resolve identifiers through a new mechanism;
 - reconstruct selections from source;
@@ -788,7 +800,7 @@ Internal maps must not determine traversal or diagnostic order.
 ### Phase 4: sequences and declarations
 
 - Add sequence frames and `SequenceDeclarations` dependencies.
-- Publish declarations only from finalized nodes.
+- Publish interpreter-owned syntax families only from finalized nodes.
 - Preserve the current provisional recursive `let` environment.
 - Verify that finalized nested sequences are not rebuilt by outer progress.
 

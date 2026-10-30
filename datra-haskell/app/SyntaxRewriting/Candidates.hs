@@ -1,6 +1,5 @@
 module SyntaxRewriting.Candidates
   ( compileRewriteRule
-  , compileDependentRewriteRule
   , enumerateRuleStructuralCandidates
   , initialCandidateFrame
   , advanceCandidateFrameWith
@@ -9,7 +8,6 @@ module SyntaxRewriting.Candidates
   ) where
 
 import DatraLanguage.AST (Expression (..))
-import DatraLanguage.DependentDeclaration (DependentDeclaration)
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
@@ -196,7 +194,6 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
 compileRewriteRule :: SyntaxRule -> RewriteRule
 compileRewriteRule rule = RewriteRule
   { rewriteRule = rule
-  , rewriteRuleDeclaration = Nothing
   , rewriteRuleBranch = 0
   , rewriteRuleLiteralPrefix = syntaxTemplateLiteralPrefix rule
   , rewriteRuleLiterals = Set.fromList
@@ -205,22 +202,10 @@ compileRewriteRule rule = RewriteRule
   , rewriteRuleHoleFamilies =
       [ Nothing | SyntaxHole _ <- pieces ]
   , rewriteRuleSyntaxInsertion = Nothing
-  , rewriteRuleRuntimeInsertion = Nothing
   , rewriteRuleReturnType = Nothing
   }
   where
     pieces = syntaxTemplatePieces (syntaxTemplate rule)
-
-compileDependentRewriteRule
-  :: DependentDeclaration Expression
-  -> Int
-  -> SyntaxRule
-  -> RewriteRule
-compileDependentRewriteRule declaration branch rule =
-  (compileRewriteRule rule)
-    { rewriteRuleDeclaration = Just declaration
-    , rewriteRuleBranch = branch
-    }
 
 enumerateRuleStructuralCandidates
   :: RewriteRule
