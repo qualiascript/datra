@@ -39,7 +39,15 @@ specifyValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-specifyValues source target
+specifyValues source target =
+  withSpecificationTargetEvidence target
+    <$> specifyValuesWithoutEvidence source target
+
+specifyValuesWithoutEvidence
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+specifyValuesWithoutEvidence source target
   | NeverForm <- interpretedForm source
   , NeverForm <- interpretedForm target = Right neverValue
   | NeverForm <- interpretedForm source = Left
@@ -111,7 +119,7 @@ contextuallySpecifyValues source target =
     Right prepared -> Right prepared
     Left original ->
       case interpretedForm target of
-        DependentIdentifierTypeForm identifier
+        DependentArgumentTypeForm identifier
           | sourceHasNoIdentifier source
           , SimpleIdentifierDependency name <-
               evaluatedIdentifierDependency identifier -> do
@@ -137,7 +145,7 @@ sourceHasNoIdentifier :: InterpretedValue -> Bool
 sourceHasNoIdentifier source =
   case interpretedForm source of
     AssignmentForm _ -> False
-    DependentIdentifierTypeForm _ -> False
+    DependentArgumentTypeForm _ -> False
     SpecificationForm specification ->
       sourceHasNoIdentifier (evaluatedSpecificationSourceValue specification)
     _ -> True

@@ -88,8 +88,8 @@ syntaxProjectionCandidates includeConcatenation template value =
       <> terminalExpressionBoundaries
       <> contextualClosure initialSeen initial
 
-    -- Function type, syntax type, and concatenation are complete-expression
-    -- boundaries. A template whose only hole is its final expression may move
+    -- Function type and concatenation are complete-expression boundaries. A
+    -- template whose only hole is its final expression may move
     -- such a boundary into that hole, but the result is already in the exact
     -- application shape the matcher consumes. Feeding it back into the
     -- generic contextual closure creates exponentially many equivalent trees
@@ -206,12 +206,8 @@ signedArgumentCandidates template value = binarySign <> embeddedSigns
 
 declarationBoundaryCandidates :: Expression -> [Expression]
 declarationBoundaryCandidates value = case value of
-  IdentifierOperation name annotation Nothing ->
-    [ IdentifierOperation name rewritten (Just given)
-    | (rewritten, given) <- stripTrailingLiteralAssignment annotation
-    ]
-  IdentifierTemplateOperation parts annotation Nothing ->
-    [ IdentifierTemplateOperation parts rewritten (Just given)
+  DependentArgument name (Just annotation) ->
+    [ MapSpecification given (DependentArgument name (Just rewritten))
     | (rewritten, given) <- stripTrailingLiteralAssignment annotation
     ]
   _ -> []
@@ -221,8 +217,8 @@ stripTrailingLiteralAssignment
   -> [(Expression, Expression)]
 stripTrailingLiteralAssignment value = case value of
   FunctionApplication function
-      (IdentifierOperation name annotation (Just given))
-    | annotation == given ->
+      (MapSpecification given
+        (DependentArgument (IdentifierReference name) Nothing)) ->
         [(FunctionApplication function (IdentifierReference name), given)]
   _ -> []
 
@@ -279,7 +275,6 @@ terminalExpressionBoundaryCandidates template
       FunctionTypeExpression generics left right ->
         Just (left,
           (\newLeft -> FunctionTypeExpression generics newLeft right))
-      SyntaxType left right -> Just (left, (`SyntaxType` right))
       MapConcatenation left right -> Just (left, (`MapConcatenation` right))
       _ -> Nothing
     simpleExpressionPrefix = case reverse (syntaxTemplatePieces template) of

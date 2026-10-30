@@ -43,6 +43,7 @@ import DatraLanguage.AST (GenericBinderId, GenericPolarity)
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
+  , naturalsBelow
   , omega
   , ordinalGT
   , ordinalGTE
@@ -51,7 +52,7 @@ import DatraOrdinal
 import DatraLanguage.Identifier (isPrivateIdentifier)
 import Evaluation.Arguments
   ( argumentRows
-  , makeArgumentMap
+  , makeArgumentativeMap
   , makeDistinctUnion
   , overloadArgumentRows
   )
@@ -75,8 +76,12 @@ import Evaluation.Map
   , makeAtlasMap
   , makeAtlasMapPreservingSingleton
   )
-import Evaluation.Specification (assignIdentifierValues, specifyValues)
-import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
+import Evaluation.Specification
+  ( assignIdentifierValues
+  , contextuallySpecifyValues
+  , specifyValues
+  )
+import Evaluation.Specification.ArgumentativeMap qualified as ArgumentativeMap
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.Specification.Subfederation (decideValueSubfederation)
@@ -157,7 +162,7 @@ type Replacements = [(Int, Maybe InterpretedValue)]
 
 -- | Overload the defaults and supplied values in a runtime value. Missing
 -- non-defaulted slots remain types, which makes the operator useful for
--- incrementally constructing argument maps.
+-- incrementally constructing argumentative maps.
 overloadValues
   :: InterpretedValue
   -> InterpretedValue
@@ -231,7 +236,7 @@ resolveReplacements template supplied
       rows <- overloadArgumentRows rowSource
       writtenRows <-
         case interpretedForm rowSource of
-          ArgumentMapForm members _ ->
+          ArgumentativeMapForm members _ ->
             overloadArgumentRows (makeAtlasMap 2 members)
           _ -> pure rows
       let writtenOrder = suppliedSlots
@@ -364,7 +369,7 @@ positionalContents :: [String] -> InterpretedValue -> Maybe InterpretedValue
 positionalContents targetNames value =
   case interpretedForm value of
     CoalizationForm operand -> positionalContents targetNames operand
-    ArgumentMapForm members _ ->
+    ArgumentativeMapForm members _ ->
       makeAtlasMap 2 <$> traverse (positionalInput targetNames) members
     SequentialMapForm -> do
       members <- finiteMembers value
@@ -389,7 +394,9 @@ matchSlot targetNames slot input = do
     PrivatePositionalSlot ->
       case suppliedValue input of
         (Nothing, _) -> pure ()
-        (Just _, _) -> Nothing
+        (Just name, _)
+          | name `notElem` targetNames -> pure ()
+          | otherwise -> Nothing
     _ -> pure ()
   let (suppliedName, suppliedInput) =
         case slotName slot of
@@ -421,15 +428,21 @@ matchSlot targetNames slot input = do
       maybe [] (:[]) (positionalInput targetNames input)
     positionalFallback (Just _) = []
     matchInputValue inputValue =
-      case specifyValues inputValue (slotAnnotation slot) of
+      case specifySlot inputValue of
         Right prepared
-          | DependentSumForm _ <- interpretedForm (slotAnnotation slot) ->
+          | hasDependentArgumentFamily (slotAnnotation slot) ->
               Just prepared
           | DecisionProved () <-
               decideValueSubfederation inputValue (slotAnnotation slot) ->
               Just inputValue
           | otherwise -> Just prepared
         Left _ -> Nothing
+      where
+        specifySlot =
+          case slotRouting slot of
+            UnnamedSlot -> \value ->
+              contextuallySpecifyValues value (slotAnnotation slot)
+            _ -> \value -> specifyValues value (slotAnnotation slot)
 
 suppliedValue :: InterpretedValue -> (Maybe String, InterpretedValue)
 suppliedValue value =
@@ -511,7 +524,7 @@ templateSlots = slots
       ProjectedArgumentSchema _ -> []
       EmptyArgumentSchema -> []
 
--- Ordered maps retain one slot order. Argument maps contribute every member
+-- Ordered maps retain one slot order. Argumentative maps contribute every member
 -- order, so unnamed values remain ambiguous while named values normalize to
 -- one replacement set. Concatenation preserves the order of its segments.
 templateSlotOrders :: ArgumentSchema -> [[Slot]]
@@ -557,7 +570,7 @@ argumentSchemaFromValue value = fst (fromValue 0 value)
               fromComposite next current
     fromComposite next current =
       case interpretedForm current of
-        ArgumentMapForm members _ ->
+        ArgumentativeMapForm members _ ->
           mapChildren unorderedArgumentSchema next members
         ConcatenatedMapForm left right ->
           let (leftTemplate, afterLeft) = fromProjected next left
@@ -689,7 +702,7 @@ orderedArgumentSchema = OrderedArgumentSchema
 unorderedArgumentSchema :: [ArgumentSchema] -> ArgumentSchema
 unorderedArgumentSchema schemas =
   case schemas of
-    -- A singleton projected family has no alternate argument-map ordering.
+    -- A singleton projected family has no alternate argumentative-map ordering.
     -- Keep the projection visible so its dependent fibres can prepare calls
     -- and construct the named value exposed to the function body.
     [projected@ProjectedArgumentSchema {}] -> projected
@@ -771,7 +784,7 @@ argumentSchemaDomain schema =
           makeAtlasMap cardinality <$> traverse argumentSchemaDomain children
         UnorderedArgumentSchema children -> do
           members <- traverse argumentSchemaDomain children
-          case makeArgumentMap members of
+          case makeArgumentativeMap members of
             Right domain -> Right domain
             -- The runtime schema retains unordered routing and gives the written
             -- positional order priority. When optional labels make its permuted
@@ -916,7 +929,7 @@ projectedPositionalDomain target =
   where
     eraseNames value =
       case interpretedForm value of
-        DependentIdentifierTypeForm identifier ->
+        DependentArgumentTypeForm identifier ->
           eraseNames (evaluatedIdentifierUnderlying identifier)
         EitherForm alternatives ->
           traverse eraseNames
@@ -948,7 +961,7 @@ argumentSchemaValuesComplete schema supplied =
       completed <- traverse (completeSlot replacements) (templateSlots normalized)
       pure (makeAtlasMap 2 (map snd completed))
 
--- | Complete an evaluated argument-map type and expose named slots in the
+-- | Complete an evaluated argumentative-map type and expose named slots in the
 -- type's canonical positional order. Dependent projections use this same
 -- machinery, so named and positional calls cannot acquire separate rules.
 argumentValuesComplete
@@ -981,15 +994,18 @@ foliageArgumentValuesCompleteWith
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 foliageArgumentValuesCompleteWith complete family supplied = do
-  ordered <- maybe undecidable Right (orderedAtlasMapView family)
+  ordered <- maybe undecidable Right (orderedAtlasMapView ordinalFamily)
   reservations <- decisionEither
-    (ArgumentMap.argumentReservations
+    (ArgumentativeMap.argumentReservations
       selectFederationMember supplied [family])
   let positional =
-        ArgumentMap.positionalArgumentSource reservations supplied
+        ArgumentativeMap.positionalArgumentSource reservations supplied
   rows <- argumentRows supplied
   let orderType = ordinalOrderedValuesOrderType ordered
-      traversal = foliageMap orderType
+      traversal = maybe
+        (foliageMap orderType)
+        coalizedMapFoliageTraversal
+        coalizedView
       sourceFrontier = 1 + maximum (0 : map (fromIntegral . length) rows)
       ranks = case naturalAtOrdinal orderType of
         Just count -> naturalPositions count
@@ -1001,6 +1017,9 @@ foliageArgumentValuesCompleteWith complete family supplied = do
   search reservations positional suppliedOrder
     (ordinalLTE orderType omega) Nothing ordered traversal ranks exhausted
   where
+    coalizedView = interpretedCoalizedMapView family
+    ordinalFamily = maybe family coalizedMapOrdinalValue coalizedView
+
     search _ _ _ _ _ _ _ [] exhausted = exhausted
     search reservations positional suppliedOrder monotonicFamily previousOrder
         ordered traversal
@@ -1015,7 +1034,7 @@ foliageArgumentValuesCompleteWith complete family supplied = do
               conclusive = monotonic
                 && candidateOrder `ordinalGTE` suppliedOrder
           case decisionEither
-              (ArgumentMap.argumentReservations
+              (ArgumentativeMap.argumentReservations
                 selectFederationMember supplied [candidate]) of
             Left _ -> undecidable
             Right candidateReservations ->
@@ -1036,8 +1055,7 @@ foliageArgumentValuesCompleteWith complete family supplied = do
           monotonicFamily (Just candidateOrder) ordered traversal
           remaining exhausted
 
-    naturalPositions 0 = []
-    naturalPositions count = [0 .. count - 1]
+    naturalPositions = naturalsBelow
 
     decisionEither decision =
       case decision of
@@ -1116,7 +1134,7 @@ overloadArgumentSchemaCompleteWithTrustedGenerics
             (map namedSlot completed <> projectedMembers)
       pure
         ( prepared
-        , [(name, value) | (Just name, value) <- completed]
+        , completedBindings genericSlots completed
         )
     Nothing -> case schema of
       ProjectedArgumentSchema _ -> do
@@ -1129,8 +1147,17 @@ overloadArgumentSchemaCompleteWithTrustedGenerics
         completed <- completeGenericSlots trustedInfer
           (genericEvidence slots provisional) slots provisional
         let prepared = bodyAggregate normalized (map namedSlot completed)
-        pure (prepared, [(name, value) | (Just name, value) <- completed])
+        pure (prepared, completedBindings slots completed)
   where
+    completedBindings slots completed =
+      [ (name, trustedBindingValue slot value)
+      | (slot, (Just name, value)) <- zip slots completed
+      ]
+    trustedBindingValue slot fallback =
+      case slotGenericBinder slot of
+        Just binder -> maybe fallback id
+          (lookup (genericArgumentBinderId binder) trusted)
+        Nothing -> fallback
     trustedValue slot =
       case slotGenericBinder slot of
         Just binder -> maybe (slotAnnotation slot) id
@@ -1188,7 +1215,7 @@ canonicalArgumentMembers
   -> Either InterpretingError [InterpretedValue]
 canonicalArgumentMembers value =
   case interpretedForm value of
-    ArgumentMapForm members _ -> Right members
+    ArgumentativeMapForm members _ -> Right members
     _ -> do
       rows <- argumentRows value
       case rows of
@@ -1296,7 +1323,7 @@ finiteMembers value = do
     (interpretedMapFinalOrderType (interpretedMap value))
   traverse
     (interpretedMapValueAt (interpretedMap value) . finiteOrdinal)
-    (if count == 0 then [] else [0 .. count - 1])
+    (naturalsBelow count)
 
 optionalNamedParts
   :: InterpretedValue
@@ -1325,7 +1352,7 @@ namedParts
   -> Maybe (String, InterpretedValue, Maybe InterpretedValue)
 namedParts value =
   case interpretedForm value of
-    DependentIdentifierTypeForm identifier -> do
+    DependentArgumentTypeForm identifier -> do
       name <- simpleName (evaluatedIdentifierDependency identifier)
       pure (name, evaluatedIdentifierUnderlying identifier, Nothing)
     AssignmentForm specification -> specificationParts specification
@@ -1343,7 +1370,7 @@ namedParts value =
     simpleName dependency =
       case dependency of
         SimpleIdentifierDependency name -> Just name
-        DependentIdentifierDependency {} -> Nothing
+        DependentArgumentDependency {} -> Nothing
 
 completeSlot
   :: Replacements
@@ -1385,7 +1412,7 @@ buildTemplate replacements template =
     OrderedArgumentSchema cardinality children ->
       makeAtlasMap cardinality <$> traverse (buildTemplate replacements) children
     UnorderedArgumentSchema children ->
-      traverse (buildTemplate replacements) children >>= makeArgumentMap
+      traverse (buildTemplate replacements) children >>= makeArgumentativeMap
     ConcatenatedArgumentSchema left right ->
       do
         leftValue <- buildTemplate replacements left

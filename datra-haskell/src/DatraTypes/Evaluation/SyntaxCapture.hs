@@ -10,17 +10,16 @@ import DatraLanguage.AST
       ( AsciiStringLiteral
       , AtlasMap
       , FunctionBody
-      , IdentifierOperation
+      , DependentArgument
       , IdentifierReference
-      , IdentifierTemplateOperation
       , MapConcatenation
       , MapSequence
       , OptionalType
       , StringTemplate
       , SyntaxBoundary
       )
-  , isDeclarationExpression
   )
+import DatraLanguage.DependentDeclaration (dependentDeclarationCandidate)
 import DatraLanguage.SyntaxTemplate (SyntaxHoleKind (..))
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.IdentifierErasure (stripOuterIdentifierType)
@@ -63,18 +62,17 @@ captureAtomicSyntaxExpression target captured =
         FunctionBody {} -> Just captured
         _ -> Nothing
     BuiltinMetaTypeForm (ASTMetaType DeclarationAST)
-      | isDeclarationExpression captured -> Just captured
-    BuiltinMetaTypeForm (ASTMetaType DependentIdentifierAST) ->
-      dependentIdentifier captured
+      | dependentDeclarationCandidate captured -> Just captured
+    BuiltinMetaTypeForm (ASTMetaType DependentArgumentAST) ->
+      dependentArgument captured
     _ -> Nothing
   where
-    dependentIdentifier value = case value of
+    dependentArgument value = case value of
       IdentifierReference {} -> Just value
       AsciiStringLiteral {} -> Just value
       StringTemplate {} -> Just value
-      IdentifierOperation _ _ Nothing -> Just value
-      IdentifierTemplateOperation _ _ Nothing -> Just value
-      OptionalType inner -> OptionalType <$> dependentIdentifier inner
+      DependentArgument {} -> Just value
+      OptionalType inner -> OptionalType <$> dependentArgument inner
       _ -> Nothing
 
 captureSyntaxList
@@ -142,9 +140,9 @@ specializeSyntaxHoleKind target hole =
     FunctionBodySyntaxHole value
   (BuiltinMetaTypeForm (ASTMetaType DeclarationAST), ValueSyntaxHole value) ->
     DeclarationSyntaxHole value
-  ( BuiltinMetaTypeForm (ASTMetaType DependentIdentifierAST)
+  ( BuiltinMetaTypeForm (ASTMetaType DependentArgumentAST)
     , ValueSyntaxHole value
-    ) -> DependentIdentifierSyntaxHole value
+    ) -> DependentArgumentSyntaxHole value
   (_, ValueSyntaxHole value)
     | Just _ <- syntaxListElement normalized -> ExpressionSyntaxHole value
   _ -> hole

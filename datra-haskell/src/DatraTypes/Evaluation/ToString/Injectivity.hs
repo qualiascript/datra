@@ -61,11 +61,16 @@ stringConversionProperties semantics
     FunctionBodySemantics {} -> injectiveUnknownAlphabet
     ExplicitSemantics {} -> knownAlphabet "0123456789"
     IntegerSemantics {} -> knownAlphabet "-0123456789"
+    IntegerLimitSemantics limit -> case limit of
+      NegativeInfinity -> exactStrings ["-Infinity"]
+      FiniteInteger integer -> exactStrings [show integer]
+      PositiveInfinity -> exactStrings ["Infinity"]
     NaturalRangeSemantics {} -> numericRange
     ValuedNaturalRangeSemantics {} -> naturalNumber
     NaturalTypeSemantics -> naturalNumber
     IntegerRangeSemantics {} -> numericRange
     ValuedIntegerRangeSemantics {} -> integerNumber
+    IntegerLimitRangeSemantics {} -> numericRange
     IntegerTypeSemantics -> integerNumber
     AsciiStringSemantics {} -> injectiveUnknownAlphabet
     IdentifierValueTypeSemantics ->
@@ -77,17 +82,17 @@ stringConversionProperties semantics
     SkipSemantics _ -> exactStrings ["*"]
     RangeConcatenationSemantics {} -> injectiveUnknownAlphabet
     ConcatenationSemantics members -> compositeProperties members
-    DependentIdentifierTypeSemantics dependency underlying True _
+    DependentArgumentTypeSemantics dependency underlying True _
       | Just rendered <- reservedConstructorString dependency underlying ->
           exactStrings [rendered]
-    DependentIdentifierTypeSemantics
+    DependentArgumentTypeSemantics
         (SimpleIdentifierDependency _) underlying _ _ ->
       structuralWrapperProperties underlying
-    DependentIdentifierTypeSemantics
-        (DependentIdentifierDependency {}) underlying _ True ->
+    DependentArgumentTypeSemantics
+        (DependentArgumentDependency {}) underlying _ True ->
       structuralWrapperProperties underlying
-    DependentIdentifierTypeSemantics
-        (DependentIdentifierDependency {}) _ _ False ->
+    DependentArgumentTypeSemantics
+        (DependentArgumentDependency {}) _ _ False ->
       unknownConversion
     -- A projection may erase the underlying member entirely: a constant
     -- identifier family maps every member to the same string, and a dependent
@@ -100,7 +105,7 @@ stringConversionProperties semantics
       compositeProperties [typeAnnotation, givenValue]
     CoalizationSemantics operand -> structuralWrapperProperties operand
     MapSemantics _ components -> compositeProperties components
-    ArgumentMapSemantics _ components -> compositeProperties components
+    ArgumentativeMapSemantics _ components -> compositeProperties components
     SpecificationSemantics source target ->
       compositeProperties [source, target]
     FormulationSemantics {} -> injectiveUnknownAlphabet

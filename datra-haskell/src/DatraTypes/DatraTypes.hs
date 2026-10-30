@@ -8,23 +8,32 @@ module DatraTypes
   , DatraType
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
+  , SyntaxFunctionExpansion (..)
+  , SyntaxFunctionInsertion (..)
+  , RuntimeFunctionInsertion (..)
   , EvaluatedFunctionBody (..)
   , functionBodySource
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
+  , withFunctionSyntax
   , makeFunctionBodyValue
   , interpretedFunctionBody
+  , interpretedRuntimeFunctionInsertion
   , makeDependentSumValue
   , dependentSumView
+  , dependentSumElementType
   , withDependentSumView
   , orderedAtlasMapView
   , withOrderedAtlasMapView
   , withOrderedAtlasMapValues
-  , withMapView
+  , CoalizedMapView (..)
+  , withCoalizedMapView
+  , interpretedCoalizedMapView
   , OrdinalIndexedFamily (..)
   , ordinalIndexedValueFamily
+  , ordinalIndexedProductFamily
   , withDependentSumAccess
   , withDependentSumFamily
   , withDependentSumReservationTarget
@@ -36,6 +45,7 @@ module DatraTypes
   , captureSyntaxExpression
   , specializeSyntaxHoleKind
   , functionAlternatives
+  , isFunctionFamily
   , templateTypeValue
   , syntaxTemplateTypeValue
   , anyTypeValue
@@ -52,6 +62,7 @@ module DatraTypes
   , InterpretedValue
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
+  , EvaluatedGreedyStringTemplate (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
@@ -64,6 +75,23 @@ module DatraTypes
   , CanonicalResult (..)
   , InterpretedValueKind (..)
   , InterpretedMap
+  , NamedMember (..)
+  , NamedMapOrdinalProjection (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapOrdinalOrderType
+  , namedMapOrdinalMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapDeclaredMembers
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , coalizeNamedMapView
+  , coalizeNamedOrdinalMapView
+  , withNamedMapView
   , InterpretingError (..)
   , FunctionFailure (..)
   , ModuleEvaluationFailure (..)
@@ -71,7 +99,6 @@ module DatraTypes
   , MapLengthFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
-  , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
@@ -88,6 +115,7 @@ module DatraTypes
   , asciiStringValue
   , charTypeValue
   , listTypeValue
+  , streamTypeValue
   , identifierValueTypeValue
   , CanonicalStringCodec (..)
   , toStringValue
@@ -139,23 +167,28 @@ module DatraTypes
   , valuedIntegerRangeDownwardsValue
   , IntegerRangeKind (..)
   , integerLimitRangeValue
+  , integerLimitRangeIsSubfederationOf
+  , valuedIntegerRangeInsertion
+  , boundedIntegerRangeInsertion
   , integerTypeValue
-  , dependentIdentifierTypeValue
-  , dependentIdentifierTemplateTypeValue
+  , dependentArgumentTypeValue
+  , dependentArgumentTemplateTypeValue
   , identifierTemplateTypeValue
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , canonicalValueMarker
+  , definitionMarker
   , withTrailingIdentifierMarker
   , hasTrailingIdentifierMarker
   , assignIdentifierValues
   , makeAtlasMap
   , makeAtlasMapPreservingSingleton
   , isEmptyMap
-  , makeArgumentMap
-  , makeArgumentMapPreservingSingleton
-  , argumentMapMembers
+  , makeArgumentativeMap
+  , makeArgumentativeMapPreservingSingleton
+  , argumentativeMapMembers
   , argumentRows
   , overloadArgumentRows
   , functionArgumentValue
@@ -167,6 +200,7 @@ module DatraTypes
   , ArgumentSchema
   , argumentSchemaFromValue
   , argumentSlotSchema
+  , dependentArgumentSlotSchema
   , orderedArgumentSchema
   , unorderedArgumentSchema
   , concatenatedArgumentSchema
@@ -205,12 +239,16 @@ module DatraTypes
   , accessValues
   , validateFunctionInput
   , specifyValues
+  , specifyDependentSumElement
   , contextuallySpecifyValues
   , IdentifierNameDisjointness (..)
   , identifierNameDisjointness
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedGreedyStringTemplate
+  , interpretedNamedMapView
   , withStringTemplatePlan
+  , withGreedyStringTemplatePlan
   , interpretedDatraType
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
@@ -254,7 +292,6 @@ import Evaluation.Error
   , NamedAccessFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
-  , OperandSide (..)
   )
 import Evaluation.Access (accessValues, namedAccessValue)
 import Evaluation.Construction
@@ -291,12 +328,12 @@ import Evaluation.FunctionArguments
   , selectFunctionCandidate
   )
 import Evaluation.Arguments
-  ( argumentMapMembers
+  ( argumentativeMapMembers
   , argumentPresentations
   , argumentRows
   , functionArgumentValue
-  , makeArgumentMap
-  , makeArgumentMapPreservingSingleton
+  , makeArgumentativeMap
+  , makeArgumentativeMapPreservingSingleton
   , overloadArgumentRows
   )
 import Evaluation.Optional
@@ -341,6 +378,7 @@ import Evaluation.Overload
   , suppliedArgumentValue
   , foliageArgumentValuesComplete
   , argumentSlotSchema
+  , dependentArgumentSlotSchema
   , concatenatedArgumentSchema
   , projectedArgumentSchema
   , orderedArgumentSchema
@@ -399,15 +437,22 @@ import Evaluation.Range
 import Evaluation.LimitRange
   ( IntegerRangeKind (..)
   , integerLimitRangeValue
+  , integerLimitRangeIsSubfederationOf
+  )
+import Evaluation.RangeInsertion
+  ( valuedIntegerRangeInsertion
+  , boundedIntegerRangeInsertion
   )
 import Evaluation.Length (mapLengthValue)
 import Evaluation.Identifier
-  ( dependentIdentifierTypeValue
-  , dependentIdentifierTemplateTypeValue
+  ( dependentArgumentTypeValue
+  , dependentArgumentTemplateTypeValue
   , identifierTemplateTypeValue
   , canonicalValueMarker
+  , definitionMarker
   , hasTrailingIdentifierMarker
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , withTrailingIdentifierMarker
@@ -415,6 +460,7 @@ import Evaluation.Identifier
 import Evaluation.OrdinalIndexedFamily
   ( OrdinalIndexedFamily (..)
   , ordinalIndexedValueFamily
+  , ordinalIndexedProductFamily
   )
 import Evaluation.Specification
   ( assignIdentifierValues
@@ -435,21 +481,29 @@ import Evaluation.Value
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , EvaluatedFunctionBody (..)
+  , SyntaxFunctionExpansion (..)
+  , SyntaxFunctionInsertion (..)
+  , RuntimeFunctionInsertion (..)
   , functionBodySource
   , EvaluatedFunctionInvocation (..)
   , ReductionContext (..)
   , DependentSumStructure (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
+  , withFunctionSyntax
   , makeFunctionBodyValue
   , interpretedFunctionBody
+  , interpretedRuntimeFunctionInsertion
   , makeDependentSumValue
   , dependentSumView
+  , dependentSumElementType
   , withDependentSumView
   , orderedAtlasMapView
   , withOrderedAtlasMapView
   , withOrderedAtlasMapValues
-  , withMapView
+  , CoalizedMapView (..)
+  , withCoalizedMapView
+  , interpretedCoalizedMapView
   , withDependentSumStructure
   , withDependentSumAccess
   , withDependentSumFamily
@@ -458,6 +512,7 @@ import Evaluation.Value
   , makeCheckedLazyMapValue
   , syntaxCategoryTypeValue
   , functionAlternatives
+  , isFunctionFamily
   , templateTypeValue
   , syntaxTemplateTypeValue
   , anyTypeValue
@@ -475,8 +530,26 @@ import Evaluation.Value
   , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
+  , NamedMember (..)
+  , NamedMapOrdinalProjection (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapOrdinalOrderType
+  , namedMapOrdinalMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapDeclaredMembers
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , coalizeNamedMapView
+  , coalizeNamedOrdinalMapView
+  , withNamedMapView
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
+  , EvaluatedGreedyStringTemplate (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
@@ -488,6 +561,8 @@ import Evaluation.Value
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedCanonicalPresentation
+  , interpretedNamedMapView
+  , withSpecificationTargetEvidence
   , withCanonicalReference
   , withCanonicalNamedAccess
   , withCanonicalApplication
@@ -514,10 +589,25 @@ import Evaluation.Value
   , interpretedTypeIsTotal
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedGreedyStringTemplate
   , withStringTemplatePlan
+  , withGreedyStringTemplatePlan
   )
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega)
+import DatraOrdinal
+  ( addOrdinals
+  , finiteOrdinal
+  , naturalAtOrdinal
+  , naturalsBelow
+  , ordinalLT
+  , omega
+  )
+import MapOperators.OrderedAtlasMap
+  ( OrdinalOrderedValues (..)
+  , appendOrdinalOrderedValues
+  , emptyOrdinalOrderedValues
+  , singletonOrdinalOrderedValues
+  )
 
 import Data.Char (ord)
 import Data.List (find)
@@ -583,19 +673,21 @@ listTypeValue presentationSource elementType =
       case interpretedValueKind source of
         MapValueKind -> validateMembers source
         AsciiStringValueKind -> pure ()
-        -- Atlas normalization erases a singleton sequence, so @T; ()@ is
-        -- represented by the element itself.  This is the one-element fibre
-        -- of the same recursive list, not a separate special case in source.
-        _ -> () <$ specifyValues source elementType
+        _ -> case interpretedCoalizedMapView source of
+          Just view -> validateMembers (coalizedMapOrdinalValue view)
+          -- Atlas normalization erases a singleton sequence, so @T; ()@ is
+          -- represented by the element itself.  This is the one-element fibre
+          -- of the same recursive list, not a separate special case in source.
+          Nothing -> () <$ specifyDependentSumElement source elementType
       pure source
     validateMembers source = do
       count <- maybe
         (Left (FunctionEvaluationFailed
-          FunctionArgumentsRequireFinitePages))
+          NoApplicableFunctionAlternative))
         Right
         (naturalAtOrdinal
           (interpretedMapFinalOrderType (interpretedMap source)))
-      mapM_ (validateAt source) (if count == 0 then [] else [0 .. count - 1])
+      mapM_ (validateAt source) (naturalsBelow count)
     validateAt source position = do
       member <- maybe
         (Left (FunctionEvaluationFailed
@@ -603,7 +695,111 @@ listTypeValue presentationSource elementType =
         Right
         (interpretedMapValueAt
           (interpretedMap source) (finiteOrdinal position))
-      () <$ specifyValues member elementType
+      () <$ specifyDependentSumElement member elementType
+
+-- | A semantic nonempty stream fixed point. Unlike a finite recursive list,
+-- a stream has exactly the natural positions and validates each element only
+-- when that position is demanded. This preserves type checking without
+-- attempting to traverse an infinite source during specification.
+streamTypeValue :: String -> InterpretedValue -> InterpretedValue
+streamTypeValue presentationSource elementType =
+  withDependentSumStructure (StreamDependentSum elementType) value
+  where
+    value = withDependentSumAccess project
+      (makeDependentSumValue presentationSource staticTarget validate)
+    staticTarget = makeLazyMapValue omega (const (Just elementType))
+    project insertion =
+      case interpretedValueKind insertion of
+        NaturalValueKind -> Right elementType
+        _ -> Right value
+    validate source
+      | interpretedValueKind sourceView == MapValueKind
+      , interpretedMapFinalOrderType sourceMap == omega =
+          Right (withCoalizedMapView checkedView source)
+      | otherwise =
+          Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
+      where
+        sourceView
+          | interpretedValueKind source == MapValueKind = source
+          | otherwise = maybe source coalizedMapOrdinalValue
+              (interpretedCoalizedMapView source)
+        sourceMap = interpretedMap sourceView
+        checkedMap = makeCheckedLazyMapValue omega $ \position -> do
+          selected <- interpretedMapValueAtChecked sourceMap position
+          traverse
+            (\member -> member <$ specifyDependentSumElement member elementType)
+            selected
+        checkedView = case interpretedNamedMapView sourceView of
+          Just named -> withNamedMapView named checkedMap
+          Nothing -> checkedMap
+
+-- | Recursive homogeneous collections retain each original value after type
+-- checking. Identifier values additionally have an ordinary structural map
+-- view containing their canonical name, payload, and transparent metadata;
+-- use that existing view for tuple-shaped element schemas without replacing
+-- the identifier value returned to Datra.
+specifyDependentSumElement
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+specifyDependentSumElement source target =
+  if interpretedValueKind source == DependentArgumentTypeValueKind
+    then do
+      sourceView <- structuralMapView source
+      let schema = argumentSchemaFromValue target
+      _ <- argumentSchemaValuesComplete schema sourceView
+      let evidenced = withSpecificationTargetEvidence target source
+      pure (case namedFields schema sourceView of
+        Just fields -> withNamedMapView fields evidenced
+        Nothing -> evidenced)
+    else specifyValues source target
+  where
+    namedFields schema value = do
+      let names = map fst (argumentSchemaBindings schema)
+          nameValues = foldl
+            appendOrdinalOrderedValues
+            emptyOrdinalOrderedValues
+            (map singletonOrdinalOrderedValues names)
+      if null names
+        then Nothing
+        else Just (viewFor nameValues (interpretedMap value))
+
+    viewFor names values = namedMapView orderType memberAt memberByName
+      (fmap (maybe False (const True)) . memberByName)
+      where
+        orderType = ordinalOrderedValuesOrderType names
+        memberAt position = case ordinalOrderedValueAt names position of
+          Nothing -> Right Nothing
+          Just name -> fmap
+            (fmap (NamedMember name . simpleIdentifierTypeValue name))
+            (interpretedMapValueAtChecked values position)
+        memberByName name = seek (finiteOrdinal 0)
+          where
+            seek position
+              | not (position `ordinalLT` orderType) = Right Nothing
+              | otherwise = do
+                  member <- memberAt position
+                  case member of
+                    Just selected | namedMemberName selected == name ->
+                      Right (Just selected)
+                    _ -> seek (addOrdinals position (finiteOrdinal 1))
+
+    structuralMapView value = do
+      count <- maybe
+        (Left (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        Right
+        (naturalAtOrdinal orderType)
+      members <- traverse memberAt (naturalsBelow count)
+      pure (makeAtlasMap 2 members)
+      where
+        sourceMap = interpretedMap value
+        orderType = interpretedMapFinalOrderType sourceMap
+        memberAt position = maybe
+          (Left (FunctionEvaluationFailed
+            (FunctionArgumentPageUnavailable position)))
+          Right
+          =<< interpretedMapValueAtChecked sourceMap
+            (finiteOrdinal position)
 
 identifierValueTypeValue :: InterpretedValue
 identifierValueTypeValue = makeIdentifierValueType

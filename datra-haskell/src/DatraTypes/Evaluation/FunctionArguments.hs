@@ -41,11 +41,12 @@ compileParametersWithGenerics generics evaluate written static =
   compileWith False written static
   where
     inferenceBoundary = case written of
-      ArgumentMap _ -> True
+      ArgumentativeMap _ -> True
       _ -> False
     compileWith allowPrivateOptional writtenValue staticValue =
       case staticValue of
-        IdentifierOperation (IdentifierString name) annotation given ->
+        parameter
+          | Just (name, annotation, given) <- namedParameter parameter ->
           case genericByName name of
             Just binder -> do
               annotationValue <- evaluate annotation
@@ -55,9 +56,8 @@ compileParametersWithGenerics generics evaluate written static =
               genericEvidenceArgumentSchema (genericReferences writtenValue)
                 <$> parameterSlot (Just name) False annotation given
         optional
-          | Just
-              (IdentifierOperation (IdentifierString name) annotation given, _)
-              <- optionalIdentifierExpression optional -> do
+          | Just (operation, _) <- optionalIdentifierExpression optional
+          , Just (name, annotation, given) <- namedParameter operation -> do
               validateOptionalName allowPrivateOptional name True
               case genericByName name of
                 Just binder -> do
@@ -79,10 +79,10 @@ compileParametersWithGenerics generics evaluate written static =
               orderedArgumentSchema 2
                 <$> traverse (uncurry (compileWith True))
                   (zip writtenMembers staticMembers)
-        ArgumentMap staticMembers
-          | ArgumentMap writtenMembers <- writtenValue
+        ArgumentativeMap staticMembers
+          | ArgumentativeMap writtenMembers <- writtenValue
           , length writtenMembers == length staticMembers -> do
-              traverse_ validateArgumentMapName writtenMembers
+              traverse_ validateArgumentativeMapName writtenMembers
               unorderedArgumentSchema
                 <$> traverse (uncurry (compileWith False))
                   (zip writtenMembers staticMembers)
@@ -121,11 +121,11 @@ compileParametersWithGenerics generics evaluate written static =
       | optional && not allowPrivate && isPrivateIdentifier name =
           Left (PrivateParameterCannotBeOptional name)
       | otherwise = Right ()
-    validateArgumentMapName member =
+    validateArgumentativeMapName member =
       case member of
         optional
-          | Just (IdentifierOperation (IdentifierString name) _ _, _) <-
-              optionalIdentifierExpression optional
+          | Just (operation, _) <- optionalIdentifierExpression optional
+          , Just (name, _, _) <- namedParameter operation
           , isPrivateIdentifier name ->
               Left (PrivateParameterCannotBeOptional name)
         _ -> Right ()
@@ -133,6 +133,16 @@ compileParametersWithGenerics generics evaluate written static =
       annotationValue <- evaluate annotation
       argumentSlotSchema name optional annotationValue
         <$> traverse evaluate given
+
+    namedParameter value = case value of
+      DependentArgument
+          (IdentifierReference (IdentifierString name)) (Just annotation) ->
+        Just (name, annotation, Nothing)
+      MapSpecification given
+          (DependentArgument
+            (IdentifierReference (IdentifierString name)) annotation) ->
+        Just (name, maybe given id annotation, Just given)
+      _ -> Nothing
 
 compileDependentParameter
   :: String

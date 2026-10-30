@@ -6,9 +6,8 @@ yield (
   Second : begin
     let _offset := 4
     y := 4
-    shiftSecond :=
-      "shift second %Int" % ({value? : Int} -> Int) do
-        yield value + _offset
+    "shift second %Int" := ({value? : Int} -> Int) do
+      yield value + _offset
   yield public this
 )
 )

@@ -54,20 +54,20 @@ standardLibraryTypeExamples =
   , canonical "Str" "Str"
   , canonical "IdenStr" "IdenStr"
   , canonical "Bool" "Bool"
-  , canonical "private Expr primitive" "'datra.Expr"
-  , canonical "private identifier-expression primitive"
-      "'datra.DependentIdentifier"
+  , canonical "private Expr primitive" "datra.Expr"
+  , canonical "private dependent-argument primitive"
+      "datra.DependentArgument"
   , canonical "private declaration primitive"
-      "'datra.Declaration"
-  , canonical "private Block primitive" "'datra.Block"
+      "datra.DependentDeclaration"
+  , canonical "private Block primitive" "datra.Block"
   , canonical "private function-body primitive"
-      "'datra.FunctionBody"
+      "datra.FunctionBody"
   , canonical "NatRange" "NatRange"
   , canonical "IntRange" "IntRange"
   , canonical "NatValRange" "NatValRange"
   , canonical "IntValRange" "IntValRange"
   , canonical "Template" "Template"
-  , canonical "private SyntaxTemplate primitive" "'datra.SyntaxTemplate"
+  , canonical "private SyntaxTemplate primitive" "datra.SyntaxTemplate"
   ]
 
 compositeTypeExamples :: [DatraTypeExample]
@@ -81,7 +81,7 @@ compositeTypeExamples =
   , canonical "total begin/yield block" "begin yield 11"
   , canonical "function" "Nat -> Nat"
   , canonical "map containing a syntax category"
-      "(Nat; 'datra.Expr)"
+      "(Nat; datra.Expr)"
   , canonical "federation containing a function" "Nat | (Nat -> Nat)"
   ]
 
@@ -93,11 +93,11 @@ datraTypeExampleTests example =
   testGroup (exampleName example)
     [ programCase "reflexive subfederation and self-specification"
         (unlines
-          [ "assert (" <> source <> ") of (" <> source <> ")"
-          , "assert ((" <> source <> ") ~> (" <> source
-              <> ")) of (" <> source <> ")"
+          [ "yield ((" <> source <> ") of (" <> source <> ");"
+          , "  ((" <> source <> ") ~> (" <> source
+              <> ")) of (" <> source <> "))"
           ])
-        "()"
+        "(true; true)"
     , testCase "string capability" $ do
         value <- requireExpression source
         assertStringCapability value

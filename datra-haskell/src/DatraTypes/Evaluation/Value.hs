@@ -18,14 +18,19 @@ module Evaluation.Value
   , canonicalStringImplementation
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
+  , SyntaxFunctionExpansion (..)
+  , SyntaxFunctionInsertion (..)
+  , RuntimeFunctionInsertion (..)
   , EvaluatedFunctionBody (..)
   , functionBodySource
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
+  , withFunctionSyntax
   , makeFunctionBodyValue
   , interpretedFunctionBody
+  , interpretedRuntimeFunctionInsertion
   , syntaxCategoryTypeValue
   , functionAlternatives
   , isFunctionFamily
@@ -55,12 +60,13 @@ module Evaluation.Value
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
-  , EvaluatedDependentIdentifierType (..)
+  , EvaluatedDependentArgumentType (..)
   , DependentSumStructure (..)
   , EvaluatedDependentSum (..)
   , InterpretedTotalAtlasMap (..)
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
+  , EvaluatedGreedyStringTemplate (..)
   , EvaluatedAtlasMapFederationMember (..)
   , EvaluatedSpecification (..)
   , ValueForm (..)
@@ -69,11 +75,29 @@ module Evaluation.Value
   , OrdinalOrderedValues (..)
   , InterpretedMap (..)
   , interpretedMapCardinality
+  , NamedMember (..)
+  , NamedMapOrdinalProjection (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapOrdinalOrderType
+  , namedMapOrdinalMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapDeclaredMembers
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , coalizeNamedMapView
+  , coalizeNamedOrdinalMapView
+  , interpretedSimpleIdentifierName
   , ToStringInverseDecision (..)
   , ProvenInjectiveToString (..)
   , InterpretedAtlasMapFederationPrimitive (..)
   , InterpretedAtlasMapFederation
   , PresentationDependency (..)
+  , IntegerLimit (..)
   , ValueSemantics (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
@@ -91,11 +115,17 @@ module Evaluation.Value
   , makeSingletonInterpretedValue
   , makeDependentSumValue
   , dependentSumView
+  , dependentSumElementType
+  , finiteDependentSumElementType
+  , finiteDependentSumView
   , withDependentSumView
+  , withSpecificationTargetEvidence
   , orderedAtlasMapView
   , withOrderedAtlasMapView
   , withOrderedAtlasMapValues
-  , withMapView
+  , CoalizedMapView (..)
+  , withCoalizedMapView
+  , interpretedCoalizedMapView
   , withDependentSumStructure
   , withDependentSumAccess
   , withDependentSumFamily
@@ -114,6 +144,7 @@ module Evaluation.Value
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedSemanticSemantics
+  , withInterpretedSemantics
   , interpretedCanonicalPresentation
   , withCanonicalReference
   , withCanonicalNamedAccess
@@ -124,9 +155,14 @@ module Evaluation.Value
   , withEvaluationSource
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedGreedyStringTemplate
+  , interpretedNamedMapView
+  , withNamedMapView
   , withStringTemplatePlan
+  , withGreedyStringTemplatePlan
   , interpretedExplicitOrdinal
   , interpretedSpecificationSourceValue
+  , interpretedSpecificationTargetEvidence
   , interpretedFederationSpecificationBranches
   , interpretedFederationSpecificationSourceValue
   , interpretedInteger
@@ -168,9 +204,22 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxTemplate (..)
   )
 import DatraLanguage.AST (Expression)
-import DatraLanguage.Diagnostics.Application (SyntaxExpansionFailure)
-import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
-import Evaluation.Error (InterpretedValueKind (..), InterpretingError)
+import DatraOrdinal
+  ( Ordinal
+  , addOrdinals
+  , finiteOrdinal
+  , naturalAtOrdinal
+  , naturalsBelow
+  , ordinalLT
+  , subtractOrdinal
+  , omega
+  )
+import FoliageMap (FoliageMap, foliageMap, foliageMapPositionAt)
+import Evaluation.Error
+  ( InterpretedValueKind (..)
+  , InterpretingError (..)
+  , NamedAccessFailure (..)
+  )
 import Evaluation.DatraType
 import Evaluation.Value.Semantics
 import MapOperators.OrderedAtlasMap
@@ -253,7 +302,7 @@ data EvaluatedEither = EvaluatedEither
   , evaluatedEitherRight :: InterpretedValue
   }
 
-data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
+data EvaluatedDependentArgumentType = EvaluatedDependentArgumentType
   { evaluatedIdentifierDependency :: IdentifierDependency
   , evaluatedIdentifierUnderlying :: InterpretedValue
   , evaluatedIdentifierNameFederation :: Maybe InterpretedValue
@@ -269,6 +318,7 @@ data DependentSumStructure
   = OrdinaryDependentSum
   | CharacterDependentSum
   | ListDependentSum InterpretedValue
+  | StreamDependentSum InterpretedValue
 
 -- | A dependent sum keeps its ordinary structural approximation for map
 -- operations and its exact left-to-right membership procedure for typing.
@@ -306,10 +356,10 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedEitherMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
-  | EvaluatedArgumentMapMember
+  | EvaluatedArgumentativeMapMember
       InterpretedValue
       EvaluatedAtlasMapFederationMember
-  | EvaluatedDependentIdentifierTypeMember
+  | EvaluatedDependentArgumentTypeMember
       (Maybe EvaluatedAtlasMapFederationMember)
       EvaluatedAtlasMapFederationMember
   | EvaluatedDependentSumMember InterpretedValue
@@ -349,10 +399,36 @@ data EvaluatedFunctionInvocation = EvaluatedFunctionInvocation
   , functionInvocationContract :: Maybe InterpretedValue
   }
 
+-- | A syntax hook can return a semantic expression immediately or hand a raw
+-- declaration block back to the syntax rewriter. Raw blocks remain an
+-- application-layer phase value and never enter the language AST.
+data SyntaxFunctionExpansion
+  = SyntaxExpression Expression
+  | SyntaxBegin [Expression] Expression
+  | SyntaxFunctionBody [Expression] Expression
+  deriving (Eq, Show)
+
+data SyntaxFunctionInsertion = SyntaxFunctionInsertion
+  { applySyntaxFunction :: [Expression] -> Maybe SyntaxFunctionExpansion
+  , preimageSyntaxFunction :: Expression -> Maybe [Expression]
+  }
+
+-- | An executable runtime function together with a partial left inverse.
+-- The shared forward map keeps the injectivity witness attached to the exact
+-- operation used for invocation.
+data RuntimeFunctionInsertion = RuntimeFunctionInsertion
+  { applyRuntimeFunction
+      :: InterpretedValue
+      -> Either InterpretingError InterpretedValue
+  , preimageRuntimeFunction
+      :: InterpretedValue
+      -> Maybe InterpretedValue
+  }
+
 data EvaluatedFunctionBody
   = EvaluatedSyntaxFunctionBody
       String
-      ([Expression] -> Either SyntaxExpansionFailure Expression)
+      SyntaxFunctionInsertion
   | EvaluatedRuntimeFunctionBody String EvaluatedFunction
 
 data EvaluatedFunction = EvaluatedFunction
@@ -371,6 +447,7 @@ data EvaluatedFunction = EvaluatedFunction
         -> PreparedFunctionArgument
         -> Either InterpretingError EvaluatedFunctionInvocation)
   , functionValidatesResult :: Bool
+  , functionInsertion :: Maybe RuntimeFunctionInsertion
   }
 
 -- | Ordinary evaluation is unrestricted. Shadowing consistency is established
@@ -415,8 +492,8 @@ functionSyntaxEquivalent left right =
         (DeclarationSyntaxHole leftValue)
         (DeclarationSyntaxHole rightValue) = equivalent leftValue rightValue
     holeEquivalent
-        (DependentIdentifierSyntaxHole leftValue)
-        (DependentIdentifierSyntaxHole rightValue) =
+        (DependentArgumentSyntaxHole leftValue)
+        (DependentArgumentSyntaxHole rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
         (ValueSyntaxHole leftValue) (ValueSyntaxHole rightValue) =
@@ -436,6 +513,24 @@ makeFunctionValue function = makeInterpretedValue functionDatraType
   where
     signature = functionSignatureSource function
     canonicalSource = maybe signature id (functionSource function)
+
+-- | Add a declaration's callable syntax without rebuilding the function.
+-- Reconstructing through 'makeFunctionValue' would discard auxiliary runtime
+-- capabilities such as dependent-sum, map, and specification evidence views.
+withFunctionSyntax
+  :: FunctionSyntax InterpretedValue
+  -> FunctionSyntax String
+  -> InterpretedValue
+  -> InterpretedValue
+withFunctionSyntax evaluated source value =
+  case interpretedForm value of
+    FunctionForm function -> value
+      { interpretedForm = FunctionForm function
+          { functionSyntax = Just evaluated
+          , functionSyntaxSource = Just source
+          }
+      }
+    _ -> value
 
 makeFunctionBodyValue :: EvaluatedFunctionBody -> InterpretedValue
 makeFunctionBodyValue body = case body of
@@ -469,13 +564,32 @@ interpretedFunctionBody value = case interpretedForm value of
       source = case functionSource function of
         Just implementationSource -> implementationSource
         Nothing -> functionSignatureSource function
-  DependentIdentifierTypeForm identifier ->
+  DependentArgumentTypeForm identifier ->
     interpretedFunctionBody (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification ->
     interpretedFunctionBody (evaluatedSpecificationSourceValue specification)
   SpecificationForm specification ->
     interpretedFunctionBody (evaluatedSpecificationSourceValue specification)
   _ -> Nothing
+
+-- | Recover the executable insertion evidence attached either directly to a
+-- function or through its runtime body. Typed wrappers deliberately keep the
+-- body separate from the signature, so consumers must inspect both layers.
+interpretedRuntimeFunctionInsertion
+  :: InterpretedValue
+  -> Maybe RuntimeFunctionInsertion
+interpretedRuntimeFunctionInsertion value =
+  case interpretedFunction value >>= functionInsertionFrom of
+    Just insertion -> Just insertion
+    Nothing -> interpretedFunctionBody value >>= bodyInsertion
+  where
+    bodyInsertion body = case body of
+      EvaluatedRuntimeFunctionBody _ function -> functionInsertionFrom function
+      EvaluatedSyntaxFunctionBody {} -> Nothing
+    functionInsertionFrom function =
+      case functionInsertion function of
+        Just insertion -> Just insertion
+        Nothing -> functionBody function >>= bodyInsertion
 
 interpretedFunction :: InterpretedValue -> Maybe EvaluatedFunction
 interpretedFunction value = case interpretedForm value of
@@ -484,7 +598,7 @@ interpretedFunction value = case interpretedForm value of
 
 callableFunction :: InterpretedValue -> Maybe EvaluatedFunction
 callableFunction value = case interpretedForm value of
-  DependentIdentifierTypeForm identifier -> callableFunction (evaluatedIdentifierUnderlying identifier)
+  DependentArgumentTypeForm identifier -> callableFunction (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification -> callableFunction (evaluatedSpecificationSourceValue specification)
   SpecificationForm specification -> callableFunction (evaluatedSpecificationSourceValue specification)
   _ -> interpretedFunction value
@@ -495,7 +609,7 @@ functionSignature value = (\function -> (functionDomain function, functionCodoma
 functionAlternatives :: InterpretedValue -> [EvaluatedFunction]
 functionAlternatives value = case interpretedForm value of
   EitherForm alternatives -> functionAlternatives (evaluatedEitherLeft alternatives) <> functionAlternatives (evaluatedEitherRight alternatives)
-  DependentIdentifierTypeForm identifier -> functionAlternatives (evaluatedIdentifierUnderlying identifier)
+  DependentArgumentTypeForm identifier -> functionAlternatives (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification -> functionAlternatives (evaluatedSpecificationSourceValue specification)
   SpecificationForm specification -> functionAlternatives (evaluatedSpecificationSourceValue specification)
   FunctionForm function -> [function]
@@ -510,7 +624,7 @@ isFunctionFamily value =
     EitherForm alternatives ->
       isFunctionFamily (evaluatedEitherLeft alternatives)
         && isFunctionFamily (evaluatedEitherRight alternatives)
-    DependentIdentifierTypeForm identifier ->
+    DependentArgumentTypeForm identifier ->
       isFunctionFamily (evaluatedIdentifierUnderlying identifier)
     AssignmentForm specification ->
       isFunctionFamily (evaluatedSpecificationSourceValue specification)
@@ -526,8 +640,8 @@ builtinMetaTypeName (ASTMetaType category) = case category of
   ExpressionAST -> "Expr"
   BlockAST -> "Block"
   FunctionBodyAST -> "FunctionBody"
-  DeclarationAST -> "Declaration"
-  DependentIdentifierAST -> "DependentIdentifier"
+  DeclarationAST -> "DependentDeclaration"
+  DependentArgumentAST -> "DependentArgument"
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
 builtinMetaTypeName NatValRangeMetaType = "NatValRange"
@@ -537,13 +651,13 @@ builtinMetaTypeName SyntaxTemplateMetaType = "_SyntaxTemplate"
 
 builtinMetaTypeCanonicalString :: BuiltinMetaType -> String
 builtinMetaTypeCanonicalString (ASTMetaType category) = case category of
-  ExpressionAST -> "'datra.Expr"
-  BlockAST -> "'datra.Block"
-  FunctionBodyAST -> "'datra.FunctionBody"
-  DeclarationAST -> "'datra.Declaration"
-  DependentIdentifierAST -> "'datra.DependentIdentifier"
+  ExpressionAST -> "datra.Expr"
+  BlockAST -> "datra.Block"
+  FunctionBodyAST -> "datra.FunctionBody"
+  DeclarationAST -> "datra.DependentDeclaration"
+  DependentArgumentAST -> "datra.DependentArgument"
 builtinMetaTypeCanonicalString SyntaxTemplateMetaType =
-  "'datra.SyntaxTemplate"
+  "datra.SyntaxTemplate"
 builtinMetaTypeCanonicalString kind = builtinMetaTypeName kind
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
@@ -583,7 +697,7 @@ data ValueForm
   | IntegerRangeForm EvaluatedIntegerRange
   | ValuedIntegerRangeForm EvaluatedValuedIntegerRange
   | EitherForm EvaluatedEither
-  | ArgumentMapForm [InterpretedValue] InterpretedValue
+  | ArgumentativeMapForm [InterpretedValue] InterpretedValue
   | SkipForm InterpretedValue
   | FederationSpecificationForm
       InterpretedValue InterpretedValue [InterpretedValue]
@@ -596,8 +710,8 @@ data ValueForm
   | TemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
-  | DependentIdentifierTypeForm EvaluatedDependentIdentifierType
-  | IdentifierStringProjectionForm EvaluatedDependentIdentifierType
+  | DependentArgumentTypeForm EvaluatedDependentArgumentType
+  | IdentifierStringProjectionForm EvaluatedDependentArgumentType
   | DependentSumForm EvaluatedDependentSum
   | CoalizationForm InterpretedValue
   | SequentialMapForm
@@ -618,6 +732,253 @@ data InterpretedMap = InterpretedMap
   , interpretedMapComponents :: [ValueSemantics]
   }
 
+-- | One materialized member of a named namespace. Visibility and canonical
+-- declaration status belong to the member rather than being rediscovered by
+-- inspecting its rendered value.
+data NamedMember = NamedMember
+  { namedMemberName :: String
+  , namedMemberValue :: InterpretedValue
+  }
+
+-- | A namespace-preserving view of an Atlas map. Ordinal access retains the
+-- map's own order; direct name lookup must decide absence without enumerating
+-- that order. The finite declaration manifest is metadata for syntax and
+-- module interfaces, not a substitute for enumerating the value namespace.
+data NamedMapOrdinalProjection = NamedMapOrdinalProjection
+  { namedOrdinalProjectionOrderType :: Ordinal
+  , namedOrdinalProjectionMemberAt
+      :: Ordinal -> Either InterpretingError (Maybe NamedMember)
+  }
+
+-- | Direct name projection is available independently of ordinal traversal.
+-- Some namespaces, notably syntax-category declaration families, can decode a
+-- concrete name without possessing a canonical enumeration of every name.
+data NamedMapProjection = NamedMapProjection
+  { namedProjectionCollection
+      :: Either InterpretingError NamedMapOrdinalProjection
+  , namedProjectionOrdinal
+      :: Either InterpretingError NamedMapOrdinalProjection
+  , namedProjectionMemberByName
+      :: String -> Either InterpretingError (Maybe NamedMember)
+  , namedProjectionContainsName
+      :: String -> Either InterpretingError Bool
+  -- The manifest may materialize representative declarations. Keep it
+  -- explicitly delayed so composing namespace views cannot evaluate those
+  -- declarations while the surrounding recursive scope is still forming.
+  , namedProjectionDeclaredMembers
+      :: () -> Either InterpretingError [NamedMember]
+  }
+
+newtype NamedMapView = NamedMapView
+  { namedMapProjection :: NamedMapProjection
+  }
+
+-- | Recover a simple declaration name from its identifier value. The name is
+-- already represented by the first slot, so lookup does not need a parallel
+-- metadata record.
+interpretedSimpleIdentifierName :: InterpretedValue -> Maybe String
+interpretedSimpleIdentifierName value =
+  case interpretedForm value of
+    DependentArgumentTypeForm identifier -> dependencyName identifier
+    IdentifierStringProjectionForm identifier -> dependencyName identifier
+    AssignmentForm specification ->
+      interpretedSimpleIdentifierName (evaluatedSpecificationTarget specification)
+    SpecificationForm specification ->
+      interpretedSimpleIdentifierName (evaluatedSpecificationTarget specification)
+    _ -> semanticName (interpretedSemantics value)
+  where
+    dependencyName identifier =
+      case evaluatedIdentifierDependency identifier of
+        SimpleIdentifierDependency name -> Just name
+        DependentArgumentDependency {} -> Nothing
+    semanticName semantics = case semantics of
+      PresentedSemantics _ _ underlying -> semanticName underlying
+      AssignmentSemantics name _ _ -> Just name
+      DependentArgumentTypeSemantics
+          (SimpleIdentifierDependency name) _ _ _ -> Just name
+      _ -> Nothing
+
+namedMapView
+  :: Ordinal
+  -> (Ordinal -> Either InterpretingError (Maybe NamedMember))
+  -> (String -> Either InterpretingError (Maybe NamedMember))
+  -> (String -> Either InterpretingError Bool)
+  -> NamedMapView
+namedMapView orderType memberAt memberByName containsName =
+  NamedMapView (NamedMapProjection
+    (Right ordinalProjection)
+    (Right (NamedMapOrdinalProjection orderType memberAt))
+    memberByName
+    containsName
+    (const (Right [])))
+  where
+    ordinalProjection = NamedMapOrdinalProjection orderType memberAt
+
+namedMapOrderType :: NamedMapView -> Either InterpretingError Ordinal
+namedMapOrderType view = namedOrdinalProjectionOrderType
+  <$> namedProjectionCollection (namedMapProjection view)
+
+namedMapMemberAt
+  :: NamedMapView
+  -> Ordinal
+  -> Either InterpretingError (Maybe NamedMember)
+namedMapMemberAt view position = do
+  ordinalProjection <- namedProjectionCollection (namedMapProjection view)
+  namedOrdinalProjectionMemberAt ordinalProjection position
+
+-- | Read the concrete ordinal namespace rather than the finite collection
+-- manifest. Positional scope and generic-map operations use this projection.
+namedMapOrdinalOrderType :: NamedMapView -> Either InterpretingError Ordinal
+namedMapOrdinalOrderType view = namedOrdinalProjectionOrderType
+  <$> namedProjectionOrdinal (namedMapProjection view)
+
+namedMapOrdinalMemberAt
+  :: NamedMapView
+  -> Ordinal
+  -> Either InterpretingError (Maybe NamedMember)
+namedMapOrdinalMemberAt view position = do
+  ordinalProjection <- namedProjectionOrdinal (namedMapProjection view)
+  namedOrdinalProjectionMemberAt ordinalProjection position
+
+namedMapMemberByName
+  :: NamedMapView
+  -> String
+  -> Either InterpretingError (Maybe NamedMember)
+namedMapMemberByName = namedProjectionMemberByName . namedMapProjection
+
+namedMapContainsName
+  :: NamedMapView
+  -> String
+  -> Either InterpretingError Bool
+namedMapContainsName = namedProjectionContainsName . namedMapProjection
+
+namedMapDeclaredMembers
+  :: NamedMapView
+  -> Either InterpretingError [NamedMember]
+namedMapDeclaredMembers view =
+  namedProjectionDeclaredMembers (namedMapProjection view) ()
+
+namedMapViewForValue :: InterpretedValue -> Maybe NamedMapView
+namedMapViewForValue value =
+  case interpretedNamedMapView value of
+    Just view -> Just view
+    Nothing -> case interpretedSimpleIdentifierName value of
+      Just name -> Just (NamedMapView (NamedMapProjection
+        (Right singletonProjection)
+        (Right (NamedMapOrdinalProjection
+          (finiteOrdinal 1)
+          (\position -> Right
+            (if position == finiteOrdinal 0 then Just member else Nothing))))
+        (\candidate -> Right
+          (if candidate == name then Just member else Nothing))
+        (\candidate -> Right (candidate == name))
+        (const (Right [member]))))
+        where
+          member = NamedMember name value
+          singletonProjection = NamedMapOrdinalProjection
+            (finiteOrdinal 1)
+            (\position -> Right
+              (if position == finiteOrdinal 0 then Just member else Nothing))
+      Nothing -> Nothing
+
+appendNamedMapViews :: NamedMapView -> NamedMapView -> NamedMapView
+appendNamedMapViews left right = NamedMapView (appendNamedMapProjections
+  (namedMapProjection left)
+  (namedMapProjection right))
+
+appendNamedMapProjections
+  :: NamedMapProjection
+  -> NamedMapProjection
+  -> NamedMapProjection
+appendNamedMapProjections left right = NamedMapProjection
+  (appendOrdinalProjections
+    <$> namedProjectionCollection left
+    <*> namedProjectionCollection right)
+  (appendOrdinalProjections
+    <$> namedProjectionOrdinal left
+    <*> namedProjectionOrdinal right)
+  memberByName
+  (\name -> (||)
+    <$> namedProjectionContainsName left name
+    <*> namedProjectionContainsName right name)
+  (\() -> (<>)
+    <$> namedProjectionDeclaredMembers left ()
+    <*> namedProjectionDeclaredMembers right ())
+  where
+    appendOrdinalProjections leftOrdinal rightOrdinal =
+      NamedMapOrdinalProjection
+        (addOrdinals leftOrder
+          (namedOrdinalProjectionOrderType rightOrdinal))
+        memberAt
+      where
+        leftOrder = namedOrdinalProjectionOrderType leftOrdinal
+        memberAt position
+          | position `ordinalLT` leftOrder =
+              namedOrdinalProjectionMemberAt leftOrdinal position
+          | otherwise = case subtractOrdinal leftOrder position of
+              Just relative ->
+                namedOrdinalProjectionMemberAt rightOrdinal relative
+              Nothing -> Right Nothing
+    memberByName name = do
+      leftMember <- namedProjectionMemberByName left name
+      rightMember <- namedProjectionMemberByName right name
+      case (leftMember, rightMember) of
+        (Nothing, member) -> Right member
+        (member, Nothing) -> Right member
+        (Just _, Just _) ->
+          Left (NamedAccessFailed (NamedFieldAmbiguous name))
+
+-- | Materialize the collection projection of a named namespace as an
+-- ordinary Atlas-map shell. This projection is the finite declaration
+-- manifest when the concrete namespace itself cannot be enumerated.
+coalizeNamedMapView :: NamedMapView -> Either InterpretingError InterpretedValue
+coalizeNamedMapView = coalizeNamedProjection namedProjectionCollection
+
+-- | Materialize the concrete ordinal namespace. Generic map views use this
+-- projection whenever the declaration family has an ordinal carrier; the
+-- collection manifest remains independently attached for syntax and module
+-- discovery.
+coalizeNamedOrdinalMapView
+  :: NamedMapView
+  -> Either InterpretingError InterpretedValue
+coalizeNamedOrdinalMapView = coalizeNamedProjection namedProjectionOrdinal
+
+coalizeNamedProjection
+  :: (NamedMapProjection
+      -> Either InterpretingError NamedMapOrdinalProjection)
+  -> NamedMapView
+  -> Either InterpretingError InterpretedValue
+coalizeNamedProjection selectProjection view = do
+  source <- selectProjection (namedMapProjection view)
+  let normalized = foliageOrdinalProjection source
+      shellOrderType = namedOrdinalProjectionOrderType normalized
+  pure (withNamedMapView view
+    (makeCheckedLazyMapValue
+      shellOrderType
+      (fmap (fmap namedMemberValue)
+        . namedOrdinalProjectionMemberAt normalized)))
+
+-- | Collections use natural positions even when their source namespace is a
+-- transfinite ordinal sum. The ordinal projection remains available for
+-- callers that need the source order; the ordinary Atlas shell follows the
+-- same fair foliage traversal used by generic map views.
+foliageOrdinalProjection
+  :: NamedMapOrdinalProjection
+  -> NamedMapOrdinalProjection
+foliageOrdinalProjection source =
+  case naturalAtOrdinal sourceOrder of
+    Just _ -> source
+    Nothing -> NamedMapOrdinalProjection omega memberAt
+  where
+    sourceOrder = namedOrdinalProjectionOrderType source
+    traversal = foliageMap sourceOrder
+    memberAt position = case naturalAtOrdinal position of
+      Nothing -> Right Nothing
+      Just rank -> case foliageMapPositionAt traversal rank of
+        Just sourcePosition ->
+          namedOrdinalProjectionMemberAt source sourcePosition
+        Nothing -> Right Nothing
+
 -- | Compatibility name for the number of Atlas pages represented by a map.
 -- This is distinct from the final page's possibly-transfinite order type.
 interpretedMapCardinality :: InterpretedMap -> Natural
@@ -636,6 +997,10 @@ data EvaluatedStringTemplateSegment
       Natural
       InterpretedValue
       InterpretedValue
+
+newtype EvaluatedGreedyStringTemplate = EvaluatedGreedyStringTemplate
+  { evaluatedGreedyStringTemplateOperand :: Expression
+  }
 
 -- | The partial inverse carried by a proven pointwise string conversion.
 data ToStringInverseDecision
@@ -658,8 +1023,8 @@ data InterpretedAtlasMapFederationPrimitive
   | IntegerRangeAtlasMapFederation EvaluatedIntegerRange
   | ValuedIntegerRangeAtlasMapFederation EvaluatedValuedIntegerRange
   | EitherAtlasMapFederation EvaluatedEither
-  | DependentIdentifierTypeAtlasMapFederation EvaluatedDependentIdentifierType
-  | IdentifierStringProjectionAtlasMapFederation EvaluatedDependentIdentifierType
+  | DependentArgumentTypeAtlasMapFederation EvaluatedDependentArgumentType
+  | IdentifierStringProjectionAtlasMapFederation EvaluatedDependentArgumentType
   | IdentifierValueTypeAtlasMapFederation
   | ToStringAtlasMapFederation
       InterpretedValue
@@ -681,9 +1046,13 @@ data InterpretedValue = InterpretedValue
   , interpretedEvaluationSource :: Maybe String
   , interpretedScopeProtection :: Maybe ScopeProtection
   , interpretedDependentSumView :: Maybe EvaluatedDependentSum
+  , interpretedSpecificationTargetEvidence :: Maybe InterpretedValue
   , interpretedOrderedAtlasMapView
       :: Maybe (OrdinalOrderedValues InterpretedValue)
+  , interpretedCoalizedMapView :: Maybe CoalizedMapView
   , interpretedStringTemplate :: Maybe EvaluatedStringTemplate
+  , interpretedGreedyStringTemplate :: Maybe EvaluatedGreedyStringTemplate
+  , interpretedNamedMapView :: Maybe NamedMapView
   }
 
 newtype DynamicScopeLabel = DynamicScopeLabel Natural
@@ -734,9 +1103,16 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
     , interpretedEvaluationSource = Nothing
     , interpretedScopeProtection = Nothing
     , interpretedDependentSumView = Nothing
+    , interpretedSpecificationTargetEvidence = Nothing
     , interpretedOrderedAtlasMapView = Nothing
+    , interpretedCoalizedMapView = Nothing
     , interpretedStringTemplate = Nothing
+    , interpretedGreedyStringTemplate = Nothing
+    , interpretedNamedMapView = Nothing
     }
+
+withNamedMapView :: NamedMapView -> InterpretedValue -> InterpretedValue
+withNamedMapView view value = value { interpretedNamedMapView = Just view }
 
 withStringTemplatePlan
   :: EvaluatedStringTemplate
@@ -744,6 +1120,13 @@ withStringTemplatePlan
   -> InterpretedValue
 withStringTemplatePlan plan value =
   value { interpretedStringTemplate = Just plan }
+
+withGreedyStringTemplatePlan
+  :: EvaluatedGreedyStringTemplate
+  -> InterpretedValue
+  -> InterpretedValue
+withGreedyStringTemplatePlan plan value =
+  value { interpretedGreedyStringTemplate = Just plan }
 
 neverValue :: InterpretedValue
 neverValue =
@@ -821,6 +1204,117 @@ dependentSumView value =
     DependentSumForm dependent -> Just dependent
     _ -> interpretedDependentSumView value
 
+-- | Recover the common member type of a homogeneous dependent-sum family.
+-- This is deliberately phrased in terms of the semantic dependent-sum
+-- capability: callers do not need to know whether the family came from a
+-- finite list, an omega stream, or a disjoint union of the two.
+dependentSumElementType :: InterpretedValue -> Maybe InterpretedValue
+dependentSumElementType value =
+  case interpretedSpecificationTargetEvidence value
+      >>= dependentSumElementType of
+    Just elementType -> Just elementType
+    Nothing ->
+      case evaluatedDependentSumStructure <$> dependentSumView value of
+        Just (ListDependentSum elementType) -> Just elementType
+        Just (StreamDependentSum elementType) -> Just elementType
+        _ -> case interpretedForm value of
+          EitherForm alternatives -> commonElementType
+            (dependentSumElementType (evaluatedEitherLeft alternatives))
+            (dependentSumElementType (evaluatedEitherRight alternatives))
+          SpecificationForm specification ->
+            dependentSumElementType (evaluatedSpecificationTarget specification)
+          AssignmentForm specification ->
+            dependentSumElementType (evaluatedSpecificationTarget specification)
+          FederationSpecificationForm _ _ branches ->
+            commonElementTypes (map dependentSumElementType branches)
+          _ -> Nothing
+  where
+    commonElementType (Just left) (Just right)
+      | interpretedSemanticResult left == interpretedSemanticResult right =
+          Just left
+    commonElementType _ _ = Nothing
+    commonElementTypes [] = Nothing
+    commonElementTypes (first : remaining) =
+      foldl commonElementType first remaining
+
+-- | Recover the member type of a finite recursive collection. Besides the
+-- empty-or-step fixed point itself, a finite homogeneous prefix followed by
+-- the same collection is another presentation of that family (for example
+-- @T; List T@). This observes evaluated map structure, not parser encodings.
+finiteDependentSumElementType :: InterpretedValue -> Maybe InterpretedValue
+finiteDependentSumElementType = fmap snd . finiteDependentSumView
+
+-- | The guaranteed finite prefix length and homogeneous member type of a
+-- recursive finite collection.
+finiteDependentSumView
+  :: InterpretedValue
+  -> Maybe (Natural, InterpretedValue)
+finiteDependentSumView value =
+  case interpretedSpecificationTargetEvidence value
+      >>= finiteDependentSumView of
+    Just description -> Just description
+    Nothing ->
+      case evaluatedDependentSumStructure <$> dependentSumView value of
+        Just (ListDependentSum elementType) -> Just (0, elementType)
+        _ -> case interpretedForm value of
+          EitherForm alternatives -> commonElementType
+            (finiteDependentSumView
+              (evaluatedEitherLeft alternatives))
+            (finiteDependentSumView
+              (evaluatedEitherRight alternatives))
+          SpecificationForm specification ->
+            finiteDependentSumView
+              (evaluatedSpecificationTarget specification)
+          AssignmentForm specification ->
+            finiteDependentSumView
+              (evaluatedSpecificationTarget specification)
+          FederationSpecificationForm _ _ branches ->
+            commonElementTypes
+              (map finiteDependentSumView branches)
+          ConcatenatedMapForm left right -> do
+            (minimumLength, elementType) <- finiteDependentSumView right
+            guard (sameElementType elementType left)
+            Just (minimumLength + 1, elementType)
+          SequentialMapForm -> finitePrefixElementType value
+          MapForm -> finitePrefixElementType value
+          _ -> Nothing
+  where
+    commonElementType
+        (Just (leftMinimum, left))
+        (Just (rightMinimum, right))
+      | sameElementType left right =
+          Just (min leftMinimum rightMinimum, left)
+    commonElementType _ _ = Nothing
+    commonElementTypes [] = Nothing
+    commonElementTypes (first : remaining) =
+      foldl commonElementType first remaining
+    finitePrefixElementType sequenceValue = do
+      count <- naturalAtOrdinal
+        (interpretedMapFinalOrderType (interpretedMap sequenceValue))
+      guard (count >= 2)
+      members <- traverse
+        (interpretedMapValueAt (interpretedMap sequenceValue) . finiteOrdinal)
+        (naturalsBelow count)
+      (prefix, tailValue) <- splitLast members
+      (minimumLength, elementType) <- finiteDependentSumView tailValue
+      guard (all (sameElementType elementType) prefix)
+      Just (minimumLength + fromIntegral (length prefix), elementType)
+    splitLast [] = Nothing
+    splitLast members = Just (init members, last members)
+    sameElementType left right =
+      interpretedSemanticResult left == interpretedSemanticResult right
+
+-- | Retain the target established by successful specification without
+-- replacing the source's runtime representation. Evaluation paths that need
+-- type-directed structure can recover the proof instead of re-validating or
+-- guessing it from the erased source value.
+withSpecificationTargetEvidence
+  :: InterpretedValue
+  -> InterpretedValue
+  -> InterpretedValue
+withSpecificationTargetEvidence target value = value
+  { interpretedSpecificationTargetEvidence = Just target }
+
 -- | Attach the dependent-sum capability of the first value to the second
 -- without replacing the second value's primary form.
 withDependentSumView :: InterpretedValue -> InterpretedValue -> InterpretedValue
@@ -854,16 +1348,29 @@ withOrderedAtlasMapValues
 withOrderedAtlasMapValues values value =
   value { interpretedOrderedAtlasMapView = Just values }
 
+-- | The single lazy map capability shared by product and sum generics.  The
+-- ordinal carrier is authoritative for access and concatenation; foliage is
+-- only its fair natural traversal, so it can never drift onto another family.
+data CoalizedMapView = CoalizedMapView
+  { coalizedMapOrdinalValue :: InterpretedValue
+  , coalizedMapFoliageTraversal :: FoliageMap
+  }
+
 -- | Retain a value's primary behavior while exposing another value through
--- ordinary Atlas access. Generic functions use this for the lazy map induced
--- by a valued-range prefix; calls and canonical rendering remain functional.
-withMapView :: InterpretedValue -> InterpretedValue -> InterpretedValue
-withMapView view value = value
+-- ordinary Atlas access. Generic functions of either polarity use the same
+-- coalized view: direct access keeps the source ordinal indexing, while
+-- consumers that enumerate use the attached foliage traversal.
+withCoalizedMapView :: InterpretedValue -> InterpretedValue -> InterpretedValue
+withCoalizedMapView view value = value
   { interpretedInsertionCapability = interpretedInsertionCapability view
   , interpretedMap = interpretedMap view
   , interpretedAtlasMapFederation = interpretedAtlasMapFederation view
   , interpretedTotalAtlasMap = interpretedTotalAtlasMap view
   , interpretedOrderedAtlasMapView = orderedAtlasMapView view
+  , interpretedNamedMapView = interpretedNamedMapView view
+  , interpretedCoalizedMapView = Just (CoalizedMapView
+      view
+      (foliageMap (interpretedMapFinalOrderType (interpretedMap view))))
   }
 
 -- | Attach source-independent structure to a dependent sum.  Constructors
@@ -998,7 +1505,41 @@ withEvaluationSource source value =
     }
 
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
-interpretedCanonicalResult = canonicalResult . interpretedSemantics
+interpretedCanonicalResult value =
+  case coalizedMapResult value of
+    Just result -> result
+    Nothing -> canonicalResult (interpretedSemantics value)
+
+-- | Canonical rendering is a consumer of a coalized map, not part of its
+-- construction. It follows the same foliage traversal for every ordinal
+-- order: finite foliage terminates, while transfinite foliage stays lazy and
+-- productive. Functions retain their callable presentation until
+-- concatenation produces a map value.
+coalizedMapResult :: InterpretedValue -> Maybe CanonicalResult
+coalizedMapResult value = do
+  guard (case interpretedForm value of
+    FunctionForm _ -> False
+    _ -> True)
+  coalized <- interpretedCoalizedMapView value
+  let valueMap = interpretedMap (coalizedMapOrdinalValue coalized)
+  pure (CanonicalMap
+    (interpretedMapCardinality valueMap)
+    (componentsAt coalized valueMap 0))
+
+componentsAt
+  :: CoalizedMapView
+  -> InterpretedMap
+  -> Natural
+  -> [CanonicalResult]
+componentsAt coalized valueMap rank =
+  case foliageMapPositionAt
+      (coalizedMapFoliageTraversal coalized) rank of
+    Nothing -> []
+    Just position ->
+      case interpretedMapValueAt valueMap position of
+        Nothing -> componentsAt coalized valueMap (rank + 1)
+        Just member -> interpretedCanonicalResult member
+          : componentsAt coalized valueMap (rank + 1)
 
 -- | Presentation-free identity for type checks and semantic comparisons.
 interpretedSemanticResult :: InterpretedValue -> CanonicalResult
@@ -1007,6 +1548,13 @@ interpretedSemanticResult = semanticCanonicalResult . interpretedSemantics
 -- | Runtime operations inspect the denoted value, never its retained name.
 interpretedSemanticSemantics :: InterpretedValue -> ValueSemantics
 interpretedSemanticSemantics = semanticValueSemantics . interpretedSemantics
+
+withInterpretedSemantics
+  :: ValueSemantics
+  -> InterpretedValue
+  -> InterpretedValue
+withInterpretedSemantics semantics value = value
+  { interpretedSemantics = semantics }
 
 interpretedCanonicalPresentation
   :: InterpretedValue
@@ -1090,7 +1638,7 @@ interpretedValueKind value =
     IntegerRangeForm _ -> RangeValueKind
     ValuedIntegerRangeForm _ -> RangeValueKind
     EitherForm _ -> EitherValueKind
-    ArgumentMapForm _ _ -> MapValueKind
+    ArgumentativeMapForm _ _ -> MapValueKind
     SkipForm _ -> FormulationValueKind
     FederationSpecificationForm _ _ _ -> SpecificationValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
@@ -1100,8 +1648,8 @@ interpretedValueKind value =
     TemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
-    DependentIdentifierTypeForm _ -> DependentIdentifierTypeValueKind
-    IdentifierStringProjectionForm _ -> DependentIdentifierTypeValueKind
+    DependentArgumentTypeForm _ -> DependentArgumentTypeValueKind
+    IdentifierStringProjectionForm _ -> DependentArgumentTypeValueKind
     DependentSumForm _ -> MapValueKind
     CoalizationForm _ -> MapValueKind
     SequentialMapForm -> MapValueKind
@@ -1199,9 +1747,7 @@ asciiStringFromInterpretedMap valueMap = do
       guard (characterCode < 256)
       pure (chr (fromIntegral characterCode))
 
-    finitePositions 0 = []
-    finitePositions cardinality =
-      map finiteOrdinal [0 .. cardinality - 1]
+    finitePositions = map finiteOrdinal . naturalsBelow
 
 explicitOrdinal :: EvaluatedExplicit -> (Natural, Ordinal)
 explicitOrdinal (EvaluatedExplicit level _ value) =

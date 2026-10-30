@@ -6,22 +6,29 @@ module DatraLanguage.Diagnostics.Locales.English
   ( localizeAccessError
   , localizeParseFailure
   , localizeModuleLoadFailure
-  , localizeSyntaxExpansionFailure
   , localizeCommandLineOptionFailure
+  , localizeSyntaxRewriteFailure
+  , localizeCandidateRejectionReport
   , localizeInterpretingError
   , localizeSuperEllipsisRangeError
   , localizeSuperEllipsisRangeConcatError
   , englishOrdinal
   ) where
 
-import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
+import DatraLanguage.Diagnostics
+  ( LocalizedMessage (LocalizedMessage)
+  , renderDatraErrorWith
+  )
 import DatraLanguage.Diagnostics.Application
-  ( CommandLineOptionFailure (..)
+  ( CandidateRejectionReason (..)
+  , CandidateRejectionReport (..)
+  , CommandLineOptionFailure (..)
   , ModuleLoadFailure (..)
   , ParseFailure (..)
-  , SyntaxExpansionFailure (..)
+  , SyntaxRewriteFailure (..)
   , SyntaxTemplateAdmissibilityFailure (..)
   )
+import DatraLanguage.AST.Source (renderSourceExpression)
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
@@ -30,7 +37,6 @@ import Evaluation.Error
   , NamedAccessFailure (..)
   , MapLengthFailure (..)
   , OverloadFailure (..)
-  , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
@@ -58,15 +64,20 @@ import SuperEllipsisRange
   )
 
 localizeParseFailure :: ParseFailure -> LocalizedMessage
-localizeParseFailure (ParseFailure message) =
-  LocalizedMessage "source could not be parsed" [message]
+localizeParseFailure failure = case failure of
+  NeutralSourceParseFailure message ->
+    LocalizedMessage "source could not be parsed" [message]
+  SyntaxEnvironmentParseFailure message ->
+    LocalizedMessage "syntax environment could not be constructed" [message]
+  SyntaxRewriteParseFailure reason ->
+    localizeSyntaxRewriteFailure reason
 
 localizeModuleLoadFailure :: ModuleLoadFailure -> LocalizedMessage
 localizeModuleLoadFailure failure =
   case failure of
     ImportScanFailed path parseFailure ->
       LocalizedMessage "module imports could not be scanned"
-        ["module: " <> path, parseFailureMessage parseFailure]
+        (["module: " <> path] <> embeddedParseFailure parseFailure)
     ImportPathResolutionFailed requested location reason ->
       LocalizedMessage "module path could not be resolved"
         [ "module: " <> requested
@@ -83,16 +94,12 @@ localizeModuleLoadFailure failure =
         ]
     ImportedModuleParseFailed path parseFailure ->
       LocalizedMessage "imported module could not be parsed"
-        ["module: " <> path, parseFailureMessage parseFailure]
+        (["module: " <> path] <> embeddedParseFailure parseFailure)
 
-localizeSyntaxExpansionFailure
-  :: SyntaxExpansionFailure
-  -> LocalizedMessage
-localizeSyntaxExpansionFailure failure =
-  case failure of
-    UnknownSyntaxControlAdapter name ->
-      LocalizedMessage "syntax control adapter is not registered"
-        ["adapter: " <> name]
+embeddedParseFailure :: ParseFailure -> [String]
+embeddedParseFailure failure = summary : details
+  where
+    LocalizedMessage summary details = localizeParseFailure failure
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -104,11 +111,64 @@ localizeCommandLineOptionFailure failure =
         [ "given locale: " <> value
         , "expected english, en, romana, romanian, or ro"
         ]
-    UnsupportedEvaluationMode value ->
-      LocalizedMessage "evaluation mode is not supported"
-        [ "given mode: " <> value
-        , "expected dev, development, prod, or production"
-        ]
+
+localizeSyntaxRewriteFailure :: SyntaxRewriteFailure -> LocalizedMessage
+localizeSyntaxRewriteFailure failure = case failure of
+  AmbiguousBareSkipApplication ->
+    LocalizedMessage "bare skip application is ambiguous" []
+  OverlappingDependentDeclarations earlier later ->
+    LocalizedMessage "dependent declarations overlap"
+      [ "earlier declaration: " <> earlier
+      , "later declaration: " <> later
+      ]
+  NonInjectiveDependentDeclaration declaration ->
+    LocalizedMessage "dependent declaration is not injective"
+      ["declaration: " <> declaration]
+  InvalidDeclarationModifiers written correct ->
+    LocalizedMessage "declaration modifiers are invalid"
+      [ "written modifiers: " <> unwords written
+      , "correct modifiers: " <> unwords correct
+      ]
+  ExpectedDependentDeclaration expressionValue ->
+    LocalizedMessage "operation has no effect inside block"
+      ["expression: " <> renderSourceExpression expressionValue]
+  InvalidRewriteSyntaxTemplate template failureReason ->
+    LocalizedMessage
+      (syntaxTemplateFailureSummary template failureReason)
+      [ "pattern: " <> template
+      , syntaxTemplateFailureDetail failureReason
+      ]
+  RejectedSyntaxCandidates attempts ->
+    LocalizedMessage "syntax candidates were rejected by typing"
+      (map (renderDatraErrorWith localizeCandidateRejectionReport) attempts)
+
+localizeCandidateRejectionReport
+  :: CandidateRejectionReport
+  -> LocalizedMessage
+localizeCandidateRejectionReport report = LocalizedMessage
+  "syntax candidate does not satisfy its typing requirements"
+  ( [ "rule: " <> rejectedCandidateRule report
+    , "template branch: " <> show (rejectedCandidateBranch report)
+    , "capture index: " <> show (rejectedCandidateCapture report)
+    , "capture: " <> rejectedCandidateSource report
+    , "reason: " <> candidateRejectionReasonText
+        (rejectedCandidateReason report)
+    ]
+    <> maybe [] (pure . ("expected: " <>))
+      (rejectedCandidateExpected report)
+    <> maybe [] (pure . ("actual: " <>))
+      (rejectedCandidateActual report)
+    <> [ "inferred input " <> show index <> ": " <> value
+       | (index, value) <- rejectedCandidateInputs report
+       ]
+  )
+
+candidateRejectionReasonText :: CandidateRejectionReason -> String
+candidateRejectionReasonText reason = case reason of
+  TypedHoleMismatch -> "captured result is outside the required hole type"
+  GenericBoundMismatch -> "inferred generic input violates its bound"
+  CandidateReturnMismatch -> "candidate return type could not be established"
+  RequiredChildExhausted -> "required child expression has no applicable result"
 
 localizeAccessError :: AccessError -> LocalizedMessage
 localizeAccessError reason =
@@ -138,11 +198,10 @@ localizeInterpretingError reason =
         ["expected type: " <> name]
     OverloadError failure ->
       LocalizedMessage "overloading failed" [overloadFailure failure]
-    AssertionFailed -> LocalizedMessage "assertion failed" []
     OperationHasNoEffect ->
       LocalizedMessage "operation has no effect" []
-    IdentifierStringOverlap name ->
-      LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
+    OverlappingBindings name ->
+      LocalizedMessage "bindings overlap in the same scope" ["binding: " <> name]
     InconsistentShadowing name ->
       LocalizedMessage
         "identifier shadowing is inconsistent with its existing binding"
@@ -157,12 +216,12 @@ localizeInterpretingError reason =
       LocalizedMessage
         "private function parameter cannot be optional"
         ["identifier: " <> name]
-    CyclicIdentifierReference names ->
-      LocalizedMessage "cyclic identifier dependency" ["identifiers: " <> show names]
-    LetOutsideBegin ->
-      LocalizedMessage "let requires an enclosing begin block" []
-    ValOutsideBegin ->
-      LocalizedMessage "val requires an identifier declaration in a block" []
+    InvalidDependentDeclarationModifiers written correct ->
+      LocalizedMessage
+        "declaration modifiers must occur at most once in let def val order"
+        [ "written modifiers: " <> written
+        , "correct modifiers: " <> correct
+        ]
     GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
         "generic introduction requires an enclosing function type"
@@ -183,24 +242,8 @@ localizeInterpretingError reason =
         ["identifier: " <> name]
     GenericIdentifierDisjointnessUndecidable name ->
       LocalizedMessage
-        "generic identifier cannot be proven disjoint from a dependent identifier"
+        "generic identifier cannot be proven disjoint from a dependent argument"
         ["identifier: " <> name]
-    ExpectedNumericalOperand side actual ->
-      LocalizedMessage
-        (operandSide side <> " operand must be numerical")
-        ["actual value kind: " <> valueKind actual]
-    ExpectedFiniteIntegerOperand side actual ->
-      LocalizedMessage
-        (operandSide side <> " operand must be a finite integer")
-        ["actual value kind: " <> valueKind actual]
-    ExpectedBooleanOperand side actual ->
-      LocalizedMessage
-        (operandSide side <> " operand must be Boolean")
-        ["actual value kind: " <> valueKind actual]
-    ExpectedBooleanCondition actual ->
-      LocalizedMessage
-        "if condition must be Boolean"
-        ["actual value kind: " <> valueKind actual]
     ExpectedNaturalExponent actual ->
       LocalizedMessage
         "exponent must be a natural value"
@@ -285,10 +328,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "value does not have a canonical string conversion"
         ["only injective, round-trippable string conversions are accepted"]
-    InvalidSyntaxTemplateOperand ->
-      LocalizedMessage
-        "% expects a compile-time string or total map of strings"
-        []
     InvalidSyntaxTemplate template failure ->
       LocalizedMessage
         (syntaxTemplateFailureSummary template failure)
@@ -328,8 +367,6 @@ syntaxTemplateFailureSummary _ (IncompleteCoreSyntaxOperator operator) =
   "syntax pattern ends with the incomplete core operator " <> operator
 syntaxTemplateFailureSummary _ SyntaxTemplateProjectionLoss =
   "syntax pattern loses a literal or hole during matching"
-syntaxTemplateFailureSummary _ SyntaxTemplateProjectionOrderMismatch =
-  "syntax pattern reorders or duplicates a literal or hole"
 syntaxTemplateFailureSummary _ UnstableSyntaxTemplateProjection =
   "syntax pattern changes when rendered and parsed again"
 
@@ -340,18 +377,12 @@ syntaxTemplateFailureDetail (IncompleteCoreSyntaxOperator _) =
   "the complete pattern must supply the operator's required operand"
 syntaxTemplateFailureDetail SyntaxTemplateProjectionLoss =
   "the matcher cannot recover every pattern boundary from the neutral AST"
-syntaxTemplateFailureDetail SyntaxTemplateProjectionOrderMismatch =
-  "the matcher must recover each hole exactly once and in source order"
 syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
   "the recovered neutral form must survive a canonical round trip"
 
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =
   case failure of
-    AstPatternRequiresFunctionSignature ->
-      LocalizedMessage "an AST pattern requires a function signature" []
-    AstPatternRequiresFunctionImplementation ->
-      LocalizedMessage "an AST pattern requires a function implementation" []
     HostSyntaxHookRequiresAstCaptures ->
       LocalizedMessage "host syntax hook requires unevaluated AST captures" []
     MissingNativeArgument name ->
@@ -379,8 +410,6 @@ localizeFunctionFailure failure =
       LocalizedMessage "function specification has no matching alternative" []
     AmbiguousFunctionSpecification ->
       LocalizedMessage "function specification is ambiguous" []
-    FunctionArgumentsRequireFinitePages ->
-      LocalizedMessage "function arguments require finitely many pages" []
     FunctionArgumentPageUnavailable position ->
       LocalizedMessage "function argument page is unavailable"
         ["position: " <> show position]
@@ -458,10 +487,6 @@ federationOperation AtlasMapFederationAccess = "access"
 federationOperation AtlasMapFederationSpecification = "specification"
 federationOperation AtlasMapFederationSubfederation = "subfederation"
 
-operandSide :: OperandSide -> String
-operandSide LeftOperand = "left"
-operandSide RightOperand = "right"
-
 valueKind :: InterpretedValueKind -> String
 valueKind FunctionValueKind = "function"
 valueKind NaturalValueKind = "natural"
@@ -473,7 +498,7 @@ valueKind FormulationValueKind = "super-ellipsis formulation"
 valueKind RangeValueKind = "range"
 valueKind RangeConcatenationValueKind = "range concatenation"
 valueKind AsciiStringValueKind = "ASCII string"
-valueKind DependentIdentifierTypeValueKind = "identifier type"
+valueKind DependentArgumentTypeValueKind = "dependent argument type"
 valueKind MapValueKind = "map"
 valueKind SpecificationValueKind = "specification morphism"
 

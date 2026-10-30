@@ -11,11 +11,14 @@ module DatraLanguage.AST
   , GenericBinder (..)
   , GenericReference (..)
   , StringTemplatePart (..)
+  , DependentDeclarationHead (..)
+  , DependentDeclaration (..)
+  , traverseDependentDeclaration
+  , mapDependentDeclaration
   , Expression (..)
   , pattern FunctionType
   , pattern GenericFunctionType
-  , contextualAccess
-  , isContextualAccessOf
+  , attachedFunctionImplementation
   , OperatorExpression (..)
   , toOperatorExpression
   , traverseExpressionChildren
@@ -23,8 +26,8 @@ module DatraLanguage.AST
   , expressionChildren
   , yieldedIdentifier
   , namedBeginBlock
+  , dependentArgumentExpression
   , optionalIdentifierExpression
-  , isDeclarationExpression
   , normalizeExpression
   , renderExpression
   , renderOperatorExpression
@@ -44,7 +47,7 @@ import DatraLanguage.AST.Operator
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.Diagnostics (SourceSpan)
-import IdentifierValueType (isIdentifierValue)
+import IdentifierValueType (isIdentifierValue, isIdentifierValueCharacter)
 import Numeric.Natural (Natural)
 import Numeric (showHex)
 import Prettyprinter
@@ -56,7 +59,7 @@ import Prettyprinter
   )
 import Prettyprinter.Render.String (renderString)
 
--- | The identifier string used by identifier operations. It is deliberately
+-- | A validated simple identifier spelling. It is deliberately
 -- distinct from an expression: the parser is the boundary which validates
 -- its spelling, and an arbitrary expression can never inhabit this field.
 newtype IdentifierString = IdentifierString
@@ -92,7 +95,7 @@ data GenericReferenceRole
   deriving (Eq, Ord, Show)
 
 -- | Raw generic syntax before its nearest function type has collected it.
--- Generic identifiers are deliberately simple: dependent identifier
+-- Generic identifiers are deliberately simple: dependent argument
 -- expressions cannot inhabit this representation. The parser supplies @Any@
 -- as the bound when the @::@ clause is omitted.
 data GenericIntroduction expression = GenericIntroduction
@@ -130,6 +133,54 @@ data StringTemplatePart expression
   | StringTemplateInterpolation expression
   deriving (Eq, Ord, Show)
 
+-- | A declaration is semantic block structure, not an expression which must
+-- later be recognized by inspecting modifier and assignment nodes.
+data DependentDeclarationHead expression
+  = SimpleIdentifierDeclarationHead IdentifierString
+  | StringTemplateDeclarationHead [StringTemplatePart expression]
+  | EvaluatedDeclarationHead expression
+  deriving (Eq, Ord, Show)
+
+data DependentDeclaration expression = DependentDeclaration
+  { dependentDeclarationHead :: DependentDeclarationHead expression
+  , dependentDeclarationIsLet :: Bool
+  , dependentDeclarationIsDefinition :: Bool
+  , dependentDeclarationIsCanonicalValue :: Bool
+  , dependentDeclarationImplementation :: expression
+  }
+  deriving (Eq, Ord, Show)
+
+traverseDependentDeclaration
+  :: Applicative f
+  => (left -> f right)
+  -> DependentDeclaration left
+  -> f (DependentDeclaration right)
+traverseDependentDeclaration visit declaration = DependentDeclaration
+  <$> traverseHead (dependentDeclarationHead declaration)
+  <*> pure (dependentDeclarationIsLet declaration)
+  <*> pure (dependentDeclarationIsDefinition declaration)
+  <*> pure (dependentDeclarationIsCanonicalValue declaration)
+  <*> visit (dependentDeclarationImplementation declaration)
+  where
+    traverseHead headValue = case headValue of
+      SimpleIdentifierDeclarationHead name ->
+        pure (SimpleIdentifierDeclarationHead name)
+      StringTemplateDeclarationHead parts ->
+        StringTemplateDeclarationHead <$> traverse traversePart parts
+      EvaluatedDeclarationHead expressionValue ->
+        EvaluatedDeclarationHead <$> visit expressionValue
+    traversePart part = case part of
+      StringTemplateLiteral literal -> pure (StringTemplateLiteral literal)
+      StringTemplateInterpolation expressionValue ->
+        StringTemplateInterpolation <$> visit expressionValue
+
+mapDependentDeclaration
+  :: (left -> right)
+  -> DependentDeclaration left
+  -> DependentDeclaration right
+mapDependentDeclaration transform =
+  runIdentity . traverseDependentDeclaration (pure . transform)
+
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
 -- later by the type checker and interpreter, not while constructing the AST.
 data Expression
@@ -139,9 +190,10 @@ data Expression
   | AsciiStringLiteral String
   | NothingLiteral
   | StringTemplate [StringTemplatePart Expression]
+  | GreedyStringTemplate Expression
   | IdentifierValueType
   | AtlasMap [Expression]
-  | ArgumentMap [Expression]
+  | ArgumentativeMap [Expression]
   | MapSequence [Expression]
   -- | A transient raw-parser boundary. Declarative syntax rewriting removes
   -- it before the public/post-matching AST is exposed.
@@ -166,7 +218,6 @@ data Expression
   | BooleanType
   | EitherType Expression Expression
   | OptionalType Expression
-  | In Expression Expression
   | MaybeThen Expression Expression
   | Conditional Expression Expression Expression
   | Addition Expression Expression
@@ -184,18 +235,18 @@ data Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
   | Coalization Expression
+  | Def Expression
   | Val Expression
-  | Assert Bool Expression
   | Fun Expression
   | GenericIntroductionExpression (GenericIntroduction Expression)
   | GenericReferenceExpression GenericReference
   | InModule String Expression
   | Import [String] Expression
-  | SyntaxType Expression Expression
   | FunctionTypeExpression [GenericBinder Expression] Expression Expression
-  | FunctionBody [Expression] Expression
+  | FunctionBody [DependentDeclaration Expression] Expression
   | FunctionApplication Expression Expression
-  | Begin [Expression] Expression
+  | DeclarationExpression (DependentDeclaration Expression)
+  | Begin [DependentDeclaration Expression] Expression
   | Let Expression
   | IdentifierReference IdentifierString
   | Lookup Expression
@@ -212,15 +263,9 @@ data Expression
   | ReverseMapSpecification Expression Expression
   | ReverseOverload Expression Expression
   | ReverseSafeOverload Expression Expression
-  | IdentifierOperation
-      { identifierOperationString :: IdentifierString
-      , identifierOperationTypeAnnotation :: Expression
-      , identifierOperationGivenValue :: Maybe Expression
-      }
-  | IdentifierTemplateOperation
-      { identifierTemplateParts :: [StringTemplatePart Expression]
-      , identifierTemplateTypeAnnotation :: Expression
-      , identifierTemplateGivenValue :: Maybe Expression
+  | DependentArgument
+      { dependentArgumentName :: Expression
+      , dependentArgumentTypeAnnotation :: Maybe Expression
       }
   deriving (Eq, Ord, Show)
 
@@ -239,18 +284,16 @@ pattern GenericFunctionType
 pattern GenericFunctionType generics domain codomain =
   FunctionTypeExpression generics domain codomain
 
--- | Apply a private contextual function with its depth omitted. The function
--- domain supplies the ordinary depth-zero default; an explicit depth remains
--- an ordinary argument.
-contextualAccess :: IdentifierString -> Expression
-contextualAccess name =
-  FunctionApplication (IdentifierReference name) (AtlasMap [])
-
-isContextualAccessOf :: IdentifierString -> Expression -> Bool
-isContextualAccessOf name expression = case expression of
-  FunctionApplication (IdentifierReference actual) argument
-    | actual == name -> argument == EllipsisNatural 0 || argument == AtlasMap []
-  _ -> False
+-- | The implementation attached by a function specification expression.
+-- This is structural syntax information; inspecting it does not evaluate the
+-- function's domain or codomain.
+attachedFunctionImplementation :: Expression -> Maybe Expression
+attachedFunctionImplementation expression = case expression of
+  FunctionApplication FunctionTypeExpression {} implementation ->
+    Just implementation
+  MapSpecification implementation FunctionTypeExpression {} ->
+    Just implementation
+  _ -> Nothing
 
 -- | A module resource yields exactly one simple identifier type. Its
 -- annotation or assigned implementation is the value imported under that
@@ -261,8 +304,13 @@ yieldedIdentifier
 yieldedIdentifier (Begin _ result) = yieldedIdentifier result
 yieldedIdentifier (ScopeAccess _ body) = yieldedIdentifier body
 yieldedIdentifier (Import _ (FunctionBody _ result)) = yieldedIdentifier result
-yieldedIdentifier (IdentifierOperation name annotation given) =
-  Just (name, annotation, given)
+yieldedIdentifier
+    (DependentArgument (IdentifierReference name) (Just annotation)) =
+  Just (name, annotation, Nothing)
+yieldedIdentifier
+    (MapSpecification given
+      (DependentArgument (IdentifierReference name) annotation)) =
+  Just (name, maybe given id annotation, Just given)
 yieldedIdentifier _ = Nothing
 
 -- | Some named module values are begin blocks. Their declarations remain
@@ -270,13 +318,27 @@ yieldedIdentifier _ = Nothing
 -- requirement of the general import contract.
 namedBeginBlock
   :: Expression
-  -> Maybe (IdentifierString, [Expression], Expression)
+  -> Maybe
+      (IdentifierString, [DependentDeclaration Expression], Expression)
 namedBeginBlock expressionValue = do
   (name, annotation, given) <- yieldedIdentifier expressionValue
   let value = maybe annotation id given
   case value of
     Begin bindings result -> Just (name, bindings, result)
     _ -> Nothing
+
+-- | View both a bare dependent argument and its specification-sugar form.
+-- Assignment does not add another dependent-argument AST case: @name := value@
+-- is @MapSpecification value (DependentArgument name Nothing)@.
+dependentArgumentExpression
+  :: Expression
+  -> Maybe (Expression, Maybe Expression, Maybe Expression)
+dependentArgumentExpression (DependentArgument name annotation) =
+  Just (name, annotation, Nothing)
+dependentArgumentExpression
+    (MapSpecification given (DependentArgument name annotation)) =
+  Just (name, annotation, Just given)
+dependentArgumentExpression _ = Nothing
 
 -- | Recover the present and unnamed alternatives represented by identifier
 -- postfix @?@. Other optional nodes use ordinary @Maybe T@ semantics.
@@ -285,26 +347,11 @@ optionalIdentifierExpression
   -> Maybe (Expression, Expression)
 optionalIdentifierExpression (OptionalType operation) =
   case operation of
-    IdentifierOperation _ annotation _ -> Just (operation, annotation)
-    IdentifierTemplateOperation _ annotation _ -> Just (operation, annotation)
+    DependentArgument _ (Just annotation) -> Just (operation, annotation)
+    MapSpecification given (DependentArgument _ annotation) ->
+      Just (operation, maybe given id annotation)
     _ -> Nothing
 optionalIdentifierExpression _ = Nothing
-
--- | A declaration is an inferred identifier assignment as it may appear in a
--- block, possibly decorated by declaration modifiers. Both an unassigned
--- @x : T@ and an explicitly annotated @x : T := value@ remain identifier
--- expressions for maps and specifications, but are not executable
--- declarations. Modifier ordering and other semantic restrictions remain the
--- responsibility of block evaluation.
-isDeclarationExpression :: Expression -> Bool
-isDeclarationExpression (IdentifierOperation _ annotation (Just given)) =
-  annotation == given
-isDeclarationExpression (OptionalType inner) =
-  isDeclarationExpression inner
-isDeclarationExpression (Let inner) = isDeclarationExpression inner
-isDeclarationExpression (Val inner) = isDeclarationExpression inner
-isDeclarationExpression (In _ inner) = isDeclarationExpression inner
-isDeclarationExpression _ = False
 
 -- | Lower map notation and render the unevaluated AST using canonical AST
 -- operator notation.
@@ -319,6 +366,7 @@ data OperatorExpression
   | AsciiStringValue String
   | NothingValue
   | StringTemplateValue [StringTemplatePart OperatorExpression]
+  | GreedyStringTemplateValue OperatorExpression
   | IdentifierValueTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
@@ -343,7 +391,6 @@ data OperatorExpression
   | BooleanTypeValue
   | EitherValue OperatorExpression OperatorExpression
   | OptionalValue OperatorExpression
-  | InValue OperatorExpression OperatorExpression
   | MaybeThenValue OperatorExpression OperatorExpression
   | ConditionalValue
       OperatorExpression
@@ -364,22 +411,26 @@ data OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
   | CoalizationValue OperatorExpression
+  | DefValue OperatorExpression
   | ValValue OperatorExpression
-  | AssertValue Bool OperatorExpression
   | FunValue OperatorExpression
   | GenericIntroductionValue
       (GenericIntroduction OperatorExpression)
   | GenericReferenceValue GenericReference
   | InModuleValue String OperatorExpression
   | ImportValue [String] OperatorExpression
-  | SyntaxTypeValue OperatorExpression OperatorExpression
   | FunctionTypeValue
       [GenericBinder OperatorExpression]
       OperatorExpression
       OperatorExpression
-  | FunctionBodyValue [OperatorExpression] OperatorExpression
+  | FunctionBodyValue
+      [DependentDeclaration OperatorExpression]
+      OperatorExpression
   | FunctionApplicationValue OperatorExpression OperatorExpression
-  | BeginValue [OperatorExpression] OperatorExpression
+  | DeclarationValue (DependentDeclaration OperatorExpression)
+  | BeginValue
+      [DependentDeclaration OperatorExpression]
+      OperatorExpression
   | LetValue OperatorExpression
   | IdentifierReferenceValue IdentifierString
   | LookupValue OperatorExpression
@@ -391,13 +442,7 @@ data OperatorExpression
   | Specify OperatorExpression OperatorExpression
   | OverloadValue OperatorExpression OperatorExpression
   | SafeOverloadValue OperatorExpression OperatorExpression
-  | IdentifierOperationValue
-      { operatorIdentifierString :: IdentifierString
-      , operatorTypeAnnotation :: OperatorExpression
-      , operatorGivenValue :: Maybe OperatorExpression
-      }
-  | IdentifierTemplateOperationValue
-      [StringTemplatePart OperatorExpression]
+  | DependentArgumentValue
       OperatorExpression
       (Maybe OperatorExpression)
   deriving (Eq, Show)
@@ -417,11 +462,13 @@ normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
 normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplatePart parts)
+normalizeExpression (GreedyStringTemplate operand) =
+  GreedyStringTemplate (normalizeExpression operand)
 normalizeExpression IdentifierValueType = IdentifierValueType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
-normalizeExpression (ArgumentMap expressions) =
-  ArgumentMap (map normalizeExpression expressions)
+normalizeExpression (ArgumentativeMap expressions) =
+  ArgumentativeMap (map normalizeExpression expressions)
 normalizeExpression (MapSequence expressions) =
   normalizeSequence MapSequence expressions
 normalizeExpression (SyntaxBoundary expressionValue) =
@@ -463,8 +510,6 @@ normalizeExpression (EitherType left right) =
     (normalizeExpression right)
 normalizeExpression (OptionalType operand) =
   OptionalType (normalizeExpression operand)
-normalizeExpression (In value body) =
-  In (normalizeExpression value) (normalizeExpression body)
 normalizeExpression (MaybeThen optional branch) =
   MaybeThen (normalizeExpression optional) (normalizeExpression branch)
 normalizeExpression (Conditional condition consequent alternative) =
@@ -500,10 +545,10 @@ normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
 normalizeExpression (Coalization operand) =
   Coalization (normalizeExpression operand)
+normalizeExpression (Def declaration) =
+  Def (normalizeExpression declaration)
 normalizeExpression (Val declaration) =
   Val (normalizeExpression declaration)
-normalizeExpression (Assert hard condition) =
-  Assert hard (normalizeExpression condition)
 normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
 normalizeExpression (GenericIntroductionExpression introduction) =
   GenericIntroductionExpression
@@ -516,10 +561,6 @@ normalizeExpression (GenericReferenceExpression reference) =
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
 normalizeExpression (Import paths body) =
   Import paths (normalizeExpression body)
-normalizeExpression (SyntaxType templates signature) =
-  SyntaxType
-    (normalizeExpression templates)
-    (normalizeExpression signature)
 normalizeExpression (FunctionTypeExpression generics input output) =
   FunctionTypeExpression
     [ binder
@@ -530,10 +571,17 @@ normalizeExpression (FunctionTypeExpression generics input output) =
     ]
     (normalizeExpression input)
     (normalizeExpression output)
-normalizeExpression (FunctionBody bindings result) = FunctionBody (map normalizeExpression bindings) (normalizeExpression result)
+normalizeExpression (FunctionBody bindings result) =
+  FunctionBody
+    (map (mapDependentDeclaration normalizeExpression) bindings)
+    (normalizeExpression result)
 normalizeExpression (FunctionApplication function input) = FunctionApplication (normalizeExpression function) (normalizeExpression input)
+normalizeExpression (DeclarationExpression declaration) =
+  DeclarationExpression (mapDependentDeclaration normalizeExpression declaration)
 normalizeExpression (Begin bindings result) =
-  Begin (map normalizeExpression bindings) (normalizeExpression result)
+  Begin
+    (map (mapDependentDeclaration normalizeExpression) bindings)
+    (normalizeExpression result)
 normalizeExpression (Let binding) = Let (normalizeExpression binding)
 normalizeExpression (IdentifierReference name) = IdentifierReference name
 normalizeExpression (Lookup operand) = Lookup (normalizeExpression operand)
@@ -559,18 +607,14 @@ normalizeExpression (ReverseOverload supplied defaults) =
   Overload (normalizeExpression defaults) (normalizeExpression supplied)
 normalizeExpression (ReverseSafeOverload supplied defaults) =
   SafeOverload (normalizeExpression defaults) (normalizeExpression supplied)
-normalizeExpression
-    (IdentifierOperation identifierString typeAnnotation givenValue) =
-  IdentifierOperation
-    identifierString
-    (normalizeExpression typeAnnotation)
-    (normalizeExpression <$> givenValue)
-normalizeExpression
-    (IdentifierTemplateOperation parts typeAnnotation givenValue) =
-  IdentifierTemplateOperation
-    (map normalizeStringTemplatePart parts)
-    (normalizeExpression typeAnnotation)
-    (normalizeExpression <$> givenValue)
+normalizeExpression (DependentArgument name typeAnnotation) =
+  DependentArgument
+    (normalizeDependentArgumentName name)
+    (normalizeExpression <$> typeAnnotation)
+
+normalizeDependentArgumentName :: Expression -> Expression
+normalizeDependentArgumentName name@IdentifierReference {} = name
+normalizeDependentArgumentName name = normalizeExpression name
 
 normalizeStringTemplatePart
   :: StringTemplatePart Expression
@@ -627,11 +671,13 @@ lower (AsciiStringLiteral value) = AsciiStringValue value
 lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplatePart parts)
+lower (GreedyStringTemplate operand) =
+  GreedyStringTemplateValue (lower operand)
 lower IdentifierValueType = IdentifierValueTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
-lower (ArgumentMap expressions) = Arguments (map lower expressions)
+lower (ArgumentativeMap expressions) = Arguments (map lower expressions)
 lower (MapSequence expressions) = Sequential (map lower expressions)
 lower (SyntaxBoundary expressionValue) = lower expressionValue
 lower (MapExpansion left right) = Expansion (lower left) (lower right)
@@ -660,7 +706,6 @@ lower (BooleanLiteral value) = BooleanValue value
 lower BooleanType = BooleanTypeValue
 lower (EitherType left right) = EitherValue (lower left) (lower right)
 lower (OptionalType operand) = OptionalValue (lower operand)
-lower (In value body) = InValue (lower value) (lower body)
 lower (MaybeThen optional branch) =
   MaybeThenValue (lower optional) (lower branch)
 lower (Conditional condition consequent alternative) =
@@ -681,8 +726,8 @@ lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
+lower (Def declaration) = DefValue (lower declaration)
 lower (Val declaration) = ValValue (lower declaration)
-lower (Assert hard condition) = AssertValue hard (lower condition)
 lower (Fun operand) = FunValue (lower operand)
 lower (GenericIntroductionExpression introduction) =
   GenericIntroductionValue
@@ -694,8 +739,6 @@ lower (GenericReferenceExpression reference) =
   GenericReferenceValue reference
 lower (InModule path value) = InModuleValue path (lower value)
 lower (Import paths body) = ImportValue paths (lower body)
-lower (SyntaxType templates signature) =
-  SyntaxTypeValue (lower templates) (lower signature)
 lower (FunctionTypeExpression generics input output) =
   FunctionTypeValue
     [ binder
@@ -705,9 +748,13 @@ lower (FunctionTypeExpression generics input output) =
     ]
     (lower input)
     (lower output)
-lower (FunctionBody bindings result) = FunctionBodyValue (map lower bindings) (lower result)
+lower (FunctionBody bindings result) = FunctionBodyValue
+  (map (mapDependentDeclaration lower) bindings) (lower result)
 lower (FunctionApplication function input) = FunctionApplicationValue (lower function) (lower input)
-lower (Begin bindings result) = BeginValue (map lower bindings) (lower result)
+lower (DeclarationExpression declaration) =
+  DeclarationValue (mapDependentDeclaration lower declaration)
+lower (Begin bindings result) = BeginValue
+  (map (mapDependentDeclaration lower) bindings) (lower result)
 lower (Let binding) = LetValue (lower binding)
 lower (IdentifierReference name) = IdentifierReferenceValue name
 lower (Lookup operand) = LookupValue (lower operand)
@@ -726,16 +773,8 @@ lower (ReverseOverload supplied defaults) =
   OverloadValue (lower defaults) (lower supplied)
 lower (ReverseSafeOverload supplied defaults) =
   SafeOverloadValue (lower defaults) (lower supplied)
-lower (IdentifierOperation identifierString typeAnnotation givenValue) =
-  IdentifierOperationValue
-    identifierString
-    (lower typeAnnotation)
-    (lower <$> givenValue)
-lower (IdentifierTemplateOperation parts typeAnnotation givenValue) =
-  IdentifierTemplateOperationValue
-    (map lowerStringTemplatePart parts)
-    (lower typeAnnotation)
-    (lower <$> givenValue)
+lower (DependentArgument name typeAnnotation) =
+  DependentArgumentValue (lower name) (lower <$> typeAnnotation)
 
 lowerStringTemplatePart
   :: StringTemplatePart Expression
@@ -784,6 +823,8 @@ prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
 prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
+prettyOperator (GreedyStringTemplateValue operand) =
+  prettyUnary GreedyStringTemplateOperator operand
 prettyOperator IdentifierValueTypeValue =
   reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
 prettyOperator EmptyMap = "()"
@@ -848,9 +889,6 @@ prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
 prettyOperator (OptionalValue operand) =
   prettyUnary OptionalOperator operand
-prettyOperator (InValue value body) =
-  prettyForm (operatorCanonicalSymbol InOperator)
-    [prettyOperator value, prettyOperator body]
 prettyOperator (MaybeThenValue optional branch) =
   prettyForm (operatorCanonicalSymbol MaybeThenOperator)
     [prettyOperator optional, prettyOperator branch]
@@ -891,11 +929,10 @@ prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
 prettyOperator (CoalizationValue operand) =
   prettyUnary CoalizationOperator operand
+prettyOperator (DefValue declaration) =
+  prettyUnary DefOperator declaration
 prettyOperator (ValValue declaration) =
   prettyUnary ValOperator declaration
-prettyOperator (AssertValue hard condition) =
-  prettyForm (if hard then "assert-hard" else "assert")
-    [prettyOperator condition]
 prettyOperator (FunValue operand) = prettyForm "fun" [prettyOperator operand]
 prettyOperator (GenericIntroductionValue introduction) =
   prettyForm "generic-introduction"
@@ -917,8 +954,6 @@ prettyOperator (ImportValue paths body) = prettyForm "import"
   [ prettyForm "paths" (map (pretty . renderAsciiStringLiteral) paths)
   , prettyOperator body
   ]
-prettyOperator (SyntaxTypeValue templates signature) =
-  prettyBinary SyntaxTypeOperator templates signature
 prettyOperator (FunctionTypeValue [] input output) =
   prettyBinary FunctionTypeOperator input output
 prettyOperator (FunctionTypeValue generics input output) =
@@ -927,11 +962,16 @@ prettyOperator (FunctionTypeValue generics input output) =
     , prettyOperator input
     , prettyOperator output
     ]
-prettyOperator (FunctionBodyValue bindings result) = prettyForm "do" [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
+prettyOperator (FunctionBodyValue bindings result) = prettyForm "do"
+  [ prettyForm "bindings" (map prettyDeclaration bindings)
+  , prettyOperator result
+  ]
 prettyOperator (FunctionApplicationValue function input) = prettyBinary ApplicationOperator function input
+prettyOperator (DeclarationValue declaration) =
+  prettyDeclaration declaration
 prettyOperator (BeginValue bindings result) =
   prettyForm "begin"
-    [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
+    [prettyForm "bindings" (map prettyDeclaration bindings), prettyOperator result]
 prettyOperator (LetValue binding) = prettyUnary LetOperator binding
 prettyOperator (IdentifierReferenceValue (IdentifierString name)) =
   prettyForm "ref" [pretty (renderAsciiStringLiteral name)]
@@ -947,42 +987,67 @@ prettyOperator (ScopeAccessValue source body) =
   prettyForm "." [prettyOperator source, prettyOperator body]
 prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
+prettyOperator
+    (Specify given (DependentArgumentValue name typeAnnotation)) =
+  prettyForm
+    (operatorCanonicalSymbol AssignmentOperator)
+    (prettyDependentArgumentName name :
+      maybe [] ((: []) . prettyOperator) typeAnnotation
+        <> [prettyOperator given])
 prettyOperator (Specify left right) =
   prettyBinary SpecificationOperator left right
 prettyOperator (OverloadValue left right) =
   prettyBinary OverloadOperator left right
 prettyOperator (SafeOverloadValue left right) =
   prettyBinary SafeOverloadOperator left right
-prettyOperator
-    (IdentifierOperationValue
-      (IdentifierString identifierString)
-      typeAnnotation
-      givenValue) =
-  case givenValue of
-    Nothing ->
-      prettyForm
-        (operatorCanonicalSymbol DependentIdentifierTypeOperator)
-        [pretty (renderIdentifierString identifierString), prettyOperator typeAnnotation]
-    Just givenValueExpression ->
-      prettyForm
-        (operatorCanonicalSymbol AssignmentOperator)
-        (pretty (renderIdentifierString identifierString) :
-          if givenValueExpression == typeAnnotation
-            then [prettyOperator givenValueExpression]
-            else
-              [ prettyOperator typeAnnotation
-              , prettyOperator givenValueExpression
-              ])
-prettyOperator
-    (IdentifierTemplateOperationValue parts typeAnnotation givenValue) =
+prettyOperator (DependentArgumentValue name (Just typeAnnotation)) =
   prettyForm
-    (case givenValue of
-      Nothing -> operatorCanonicalSymbol DependentIdentifierTypeOperator
-      Just _ -> operatorCanonicalSymbol AssignmentOperator)
-    ( pretty (renderStringTemplate renderOperatorExpression (const Nothing) parts)
-      : prettyOperator typeAnnotation
-      : maybe [] ((: []) . prettyOperator) givenValue
-    )
+    (operatorCanonicalSymbol DependentArgumentTypeOperator)
+    [prettyDependentArgumentName name, prettyOperator typeAnnotation]
+prettyOperator (DependentArgumentValue name Nothing) =
+  prettyDependentArgumentName name
+
+prettyDependentArgumentName :: OperatorExpression -> Doc annotation
+prettyDependentArgumentName name = case name of
+  IdentifierReferenceValue (IdentifierString identifierString) ->
+    pretty (renderIdentifierString identifierString)
+  StringTemplateValue parts ->
+    pretty (renderStringTemplate renderOperatorExpression (const Nothing) parts)
+  _ -> prettyOperator name
+
+prettyDeclaration
+  :: DependentDeclaration OperatorExpression
+  -> Doc annotation
+prettyDeclaration declaration =
+  applyLet (applyDefinition (applyCanonical base))
+  where
+      implementation = dependentDeclarationImplementation declaration
+      base = case dependentDeclarationHead declaration of
+        SimpleIdentifierDeclarationHead name -> prettyOperator
+          (Specify implementation
+            (DependentArgumentValue
+              (IdentifierReferenceValue name)
+              Nothing))
+        StringTemplateDeclarationHead parts -> prettyOperator
+          (Specify implementation
+            (DependentArgumentValue
+              (StringTemplateValue parts)
+              Nothing))
+        EvaluatedDeclarationHead expressionValue -> prettyForm
+          (operatorCanonicalSymbol AssignmentOperator)
+          [prettyOperator expressionValue, prettyOperator implementation]
+      applyCanonical
+        | dependentDeclarationIsCanonicalValue declaration =
+            prettyFormFor ValOperator . pure
+        | otherwise = id
+      applyDefinition
+        | dependentDeclarationIsDefinition declaration =
+            prettyFormFor DefOperator . pure
+        | otherwise = id
+      applyLet
+        | dependentDeclarationIsLet declaration =
+            prettyFormFor LetOperator . pure
+        | otherwise = id
 
 prettyUnary
   :: Operator
@@ -1056,9 +1121,8 @@ renderAsciiStringLiteral value = renderStandardStringLiteral value
 
 -- | Render a canonical identifier expression with its compact bare spelling.
 renderIdentifierString :: String -> String
-renderIdentifierString value@(first : _)
-  | isLeadingCanonicalCharacter first
-      && isIdentifierValue value = value
+renderIdentifierString value
+  | isIdentifierValue value = value
 renderIdentifierString value = renderStandardStringLiteral value
 
 renderStandardStringLiteral :: String -> String
@@ -1120,7 +1184,7 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
 
     compactInterpolationBoundary [] = True
     compactInterpolationBoundary (character : _) =
-      not (isCanonicalCharacter character)
+      not (isIdentifierValueCharacter character)
 
 compactOperatorStringInterpolation
   :: OperatorExpression
@@ -1139,29 +1203,15 @@ compactOperatorStringInterpolation expressionValue =
   where
     reserved = Just . Reserved.reservedSymbolIdentifierString
 
-isLeadingCanonicalCharacter :: Char -> Bool
-isLeadingCanonicalCharacter character =
-  isAsciiLetter character || character == '_' || character == '\''
-
-isCanonicalCharacter :: Char -> Bool
-isCanonicalCharacter character =
-  isLeadingCanonicalCharacter character
-    || ('0' <= character && character <= '9')
-    || character == '\''
-
-isAsciiLetter :: Char -> Bool
-isAsciiLetter character =
-  ('a' <= character && character <= 'z')
-    || ('A' <= character && character <= 'Z')
-
 -- | One shared traversal of immediate AST children, preserving identifiers and
 -- literal metadata. Analyses and source migrations compose it recursively.
 traverseExpressionChildren :: Applicative f => (Expression -> f Expression) -> Expression -> f Expression
 traverseExpressionChildren visit expression = case expression of
   AtlasMap xs -> AtlasMap <$> traverse visit xs
-  ArgumentMap xs -> ArgumentMap <$> traverse visit xs
+  ArgumentativeMap xs -> ArgumentativeMap <$> traverse visit xs
   MapSequence xs -> MapSequence <$> traverse visit xs
   SyntaxBoundary x -> SyntaxBoundary <$> visit x
+  Def x -> Def <$> visit x
   Val x -> Val <$> visit x
   Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x
@@ -1174,7 +1224,6 @@ traverseExpressionChildren visit expression = case expression of
   MapExpansion a b -> MapExpansion <$> visit a <*> visit b
   SuperEllipsisRange a b -> SuperEllipsisRange <$> visit a <*> visit b
   EitherType a b -> EitherType <$> visit a <*> visit b
-  In a b -> In <$> visit a <*> visit b
   MaybeThen a b -> MaybeThen <$> visit a <*> visit b
   Addition a b -> Addition <$> visit a <*> visit b
   Subtraction a b -> Subtraction <$> visit a <*> visit b
@@ -1187,7 +1236,6 @@ traverseExpressionChildren visit expression = case expression of
   GreaterThanOrEqual a b -> GreaterThanOrEqual <$> visit a <*> visit b
   BooleanAnd a b -> BooleanAnd <$> visit a <*> visit b
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
-  Assert hard x -> Assert hard <$> visit x
   Fun x -> Fun <$> visit x
   GenericIntroductionExpression introduction ->
     (\bound -> GenericIntroductionExpression
@@ -1203,6 +1251,8 @@ traverseExpressionChildren visit expression = case expression of
       <*> visit domain
       <*> visit codomain
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
+  DeclarationExpression declaration ->
+    DeclarationExpression <$> traverseDependentDeclaration visit declaration
   Lookup operand -> Lookup <$> visit operand
   Multiplication a b -> Multiplication <$> visit a <*> visit b
   Exponentiation a b -> Exponentiation <$> visit a <*> visit b
@@ -1216,21 +1266,21 @@ traverseExpressionChildren visit expression = case expression of
     ReverseMapSpecification <$> visit a <*> visit b
   ReverseOverload a b -> ReverseOverload <$> visit a <*> visit b
   ReverseSafeOverload a b -> ReverseSafeOverload <$> visit a <*> visit b
-  Begin xs y -> Begin <$> traverse visit xs <*> visit y
-  FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y
+  Begin xs y ->
+    Begin <$> traverse (traverseDependentDeclaration visit) xs <*> visit y
+  FunctionBody xs y -> FunctionBody
+    <$> traverse (traverseDependentDeclaration visit) xs
+    <*> visit y
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
   Import paths body -> Import paths <$> visit body
   ScopeAccess source body -> ScopeAccess <$> visit source <*> visit body
-  SyntaxType templates signature ->
-    SyntaxType <$> visit templates <*> visit signature
-  IdentifierOperation name annotation given -> IdentifierOperation name <$> visit annotation <*> traverse visit given
-  IdentifierTemplateOperation parts annotation given ->
-    IdentifierTemplateOperation
-      <$> traverse part parts
-      <*> visit annotation
-      <*> traverse visit given
+  DependentArgument name annotation ->
+    DependentArgument
+      <$> visitDependentArgumentName name
+      <*> traverse visit annotation
   StringTemplate parts -> StringTemplate <$> traverse part parts
+  GreedyStringTemplate operand -> GreedyStringTemplate <$> visit operand
   _ -> pure expression
   where
     visitBinder binder =
@@ -1240,6 +1290,8 @@ traverseExpressionChildren visit expression = case expression of
         <$> visit (genericBinderBound binder)
     part (StringTemplateLiteral text) = pure (StringTemplateLiteral text)
     part (StringTemplateInterpolation value) = StringTemplateInterpolation <$> visit value
+    visitDependentArgumentName name@IdentifierReference {} = pure name
+    visitDependentArgumentName name = visit name
 
 mapExpressionChildren :: (Expression -> Expression) -> Expression -> Expression
 mapExpressionChildren visit = runIdentity . traverseExpressionChildren (Identity . visit)

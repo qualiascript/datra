@@ -34,9 +34,8 @@ import AtlasMapFederationExpression
   )
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Error
-  ( InterpretedValueKind (..)
+  ( FunctionFailure (NoApplicableFunctionAlternative)
   , InterpretingError (..)
-  , OperandSide (..)
   )
 import Evaluation.Construction (makeInteger, mapFromInsertion)
 import Evaluation.Ordinal
@@ -72,22 +71,22 @@ boundedRangeValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 boundedRangeValue lowerValue upperValue = do
-  lower <- requireExplicit LeftOperand lowerValue
-  upper <- requireRangeUpperBoundary RightOperand upperValue
+  lower <- requireExplicit lowerValue
+  upper <- requireRangeUpperBoundary upperValue
   makeBoundedRange lower upper
 
 openPlusRangeValue
   :: InterpretedValue
   -> Either InterpretingError InterpretedValue
 openPlusRangeValue value = do
-  endpoint <- requireExplicit LeftOperand value
+  endpoint <- requireExplicit value
   makeRange endpoint Range.PlusSign
 
 openMinusRangeValue
   :: InterpretedValue
   -> Either InterpretingError InterpretedValue
 openMinusRangeValue value = do
-  endpoint <- requireExplicit LeftOperand value
+  endpoint <- requireExplicit value
   makeRange endpoint Range.MinusSign
 
 naturalRangeValue :: Natural -> Natural -> Either InterpretingError InterpretedValue
@@ -155,8 +154,7 @@ integerRangeValue start target =
       case IntegerRange.integerRange
           origin destination interpretedIntegerRangeValue of
         Just value -> Right value
-        Nothing -> Left (ExpectedFiniteIntegerOperand
-          LeftOperand IntegerValueKind)
+        Nothing -> noApplicableAlternative
 
 integerRangeUpwardsValue
   :: Integer -> Either InterpretingError InterpretedValue
@@ -165,8 +163,7 @@ integerRangeUpwardsValue start =
     case IntegerRange.integerRange
         origin IntegerRange.upwards interpretedIntegerRangeValue of
       Just value -> Right value
-      Nothing -> Left (ExpectedFiniteIntegerOperand
-        LeftOperand IntegerValueKind)
+      Nothing -> noApplicableAlternative
 
 integerRangeDownwardsValue
   :: Integer -> Either InterpretingError InterpretedValue
@@ -175,8 +172,7 @@ integerRangeDownwardsValue start =
     case IntegerRange.integerRange
         origin IntegerRange.downwards interpretedIntegerRangeValue of
       Just value -> Right value
-      Nothing -> Left (ExpectedFiniteIntegerOperand
-        LeftOperand IntegerValueKind)
+      Nothing -> noApplicableAlternative
 
 valuedIntegerRangeValue
   :: Integer -> Integer -> Either InterpretingError InterpretedValue
@@ -189,8 +185,7 @@ valuedIntegerRangeValue start target =
             (ValuedIntegerRangeSemantics
               start (IntegerRange.FiniteIntegerTarget target))) of
         Just value -> Right value
-        Nothing -> Left (ExpectedFiniteIntegerOperand
-          LeftOperand IntegerValueKind)
+        Nothing -> noApplicableAlternative
 
 valuedIntegerRangeUpwardsValue
   :: Integer -> Either InterpretingError InterpretedValue
@@ -202,8 +197,7 @@ valuedIntegerRangeUpwardsValue start =
           (ValuedIntegerRangeSemantics
             start IntegerRange.UpwardsIntegerTarget)) of
       Just value -> Right value
-      Nothing -> Left (ExpectedFiniteIntegerOperand
-        LeftOperand IntegerValueKind)
+      Nothing -> noApplicableAlternative
 
 valuedIntegerRangeDownwardsValue
   :: Integer -> Either InterpretingError InterpretedValue
@@ -215,8 +209,11 @@ valuedIntegerRangeDownwardsValue start =
           (ValuedIntegerRangeSemantics
             start IntegerRange.DownwardsIntegerTarget)) of
       Just value -> Right value
-      Nothing -> Left (ExpectedFiniteIntegerOperand
-        LeftOperand IntegerValueKind)
+      Nothing -> noApplicableAlternative
+
+noApplicableAlternative :: Either InterpretingError value
+noApplicableAlternative =
+  Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 
 integerTypeValue :: Either InterpretingError InterpretedValue
 integerTypeValue =

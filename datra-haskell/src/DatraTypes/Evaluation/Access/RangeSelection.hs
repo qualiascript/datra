@@ -69,7 +69,7 @@ accessSource value =
     NothingForm -> ordinarySource []
     EitherForm _ -> ordinarySource []
     SkipForm _ -> ordinarySource []
-    ArgumentMapForm _ _ -> ordinarySource []
+    ArgumentativeMapForm _ _ -> ordinarySource []
     FederationSpecificationForm _ _ _ -> ordinarySource []
     RangeConcatenationForm ranges _ ->
       rangeSource (map evaluatedDescribedRange ranges)
@@ -111,7 +111,7 @@ accessSource value =
     TemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
     AssignmentForm _ -> ordinarySource []
-    DependentIdentifierTypeForm _ -> ordinarySource []
+    DependentArgumentTypeForm _ -> ordinarySource []
     IdentifierStringProjectionForm _ -> ordinarySource []
     DependentSumForm _ -> ordinarySource []
     CoalizationForm _ ->
@@ -163,6 +163,13 @@ semanticAccessSource semantics =
     ExplicitSemantics level value ->
       ordinarySource [singletonDescribedRange level value]
     IntegerSemantics _ -> ordinarySource []
+    IntegerLimitSemantics PositiveInfinity ->
+      AccessSource
+        { sourceDescribedRanges = [formulationDescribedRange 1]
+        , sourceIsRangeLike = True
+        , sourceFormulationLevel = Just 1
+        }
+    IntegerLimitSemantics _ -> ordinarySource []
     FormulationSemantics level ->
       AccessSource
         { sourceDescribedRanges = [formulationDescribedRange level]
@@ -181,10 +188,11 @@ semanticAccessSource semantics =
       rangeSource [naturalDescribedRange 0 NaturalRange.UpwardsTarget]
     IntegerRangeSemantics _ _ -> rangeSource []
     ValuedIntegerRangeSemantics _ _ -> rangeSource []
+    IntegerLimitRangeSemantics _ _ -> rangeSource []
     IntegerTypeSemantics -> rangeSource []
     EitherSemantics _ _ -> ordinarySource []
     SkipSemantics _ -> ordinarySource []
-    ArgumentMapSemantics _ _ -> ordinarySource []
+    ArgumentativeMapSemantics _ _ -> ordinarySource []
     RangeConcatenationSemantics descriptions ->
       rangeSource (map describedRangeFromDescription descriptions)
     ConcatenationSemantics members ->
@@ -200,7 +208,7 @@ semanticAccessSource semantics =
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)
     SpecificationSemantics _ _ -> ordinarySource []
-    DependentIdentifierTypeSemantics _ _ _ _ -> ordinarySource []
+    DependentArgumentTypeSemantics _ _ _ _ -> ordinarySource []
     IdentifierStringProjectionSemantics _ _ _ -> ordinarySource []
     AssignmentSemantics _ _ _ -> ordinarySource []
     DependentSumSemantics _ -> ordinarySource []

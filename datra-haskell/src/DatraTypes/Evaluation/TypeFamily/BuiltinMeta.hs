@@ -77,11 +77,13 @@ decideBuiltinMetaSubfederation source target =
           || (isRange left expected && isInfinity right)
 
     isInfinity value =
-      interpretedSemanticResult value == CanonicalAsciiString "PosInf"
-        || interpretedSemanticResult value == CanonicalAsciiString "NegInf"
+      case interpretedSemanticResult value of
+        CanonicalIntegerLimit _ -> True
+        _ -> False
 
     isPositiveInfinity value =
-      interpretedSemanticResult value == CanonicalAsciiString "PosInf"
+      interpretedSemanticResult value
+        == CanonicalIntegerLimit PositiveInfinity
 
     isRange value expected =
       case (interpretedForm value, expected) of
@@ -115,7 +117,7 @@ isTransfiniteOrdinal (PresentedSemantics _ _ semantics) =
 isTransfiniteOrdinal semantics = case semantics of
   ExplicitSemantics level _ -> level > 1
   FormulationSemantics level -> level > 0
-  DependentIdentifierTypeSemantics _ underlying _ _ ->
+  DependentArgumentTypeSemantics _ underlying _ _ ->
     isTransfiniteOrdinal underlying
   AssignmentSemantics _ _ given -> isTransfiniteOrdinal given
   SpecificationSemantics source _ -> isTransfiniteOrdinal source

@@ -3,6 +3,7 @@ module DatraLanguage.AST.Source (renderSourceExpression) where
 
 import Data.List (intercalate)
 import DatraLanguage.AST
+import DatraLanguage.AST.Operator qualified as Operator
 import DatraLanguage.NeutralLexer (isOpaqueSymbolicSyntaxLiteral)
 
 renderSourceExpression :: Expression -> String
@@ -68,50 +69,36 @@ source context expression =
     ImportValue paths body -> "import "
       <> intercalate "; " (map renderAsciiStringLiteral paths)
       <> " " <> source 0 body
-    SyntaxTypeValue templates signature -> wrapped 1
-      (source 2 templates <> " % " <> source 0 signature)
     FunctionTypeValue _ input output -> wrapped 11
       (source 12 input <> " -> " <> functionTypeOutput output)
-    FunctionApplicationValue
-        (IdentifierReferenceValue (IdentifierString "_this"))
-        argument
-      | isDefaultContextualArgument argument -> "this"
-    FunctionApplicationValue
-        (IdentifierReferenceValue (IdentifierString "_it"))
-        argument
-      | isDefaultContextualArgument argument -> "it"
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
+    DeclarationValue declaration ->
+      sourceDeclaration declaration
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
+    DefValue declaration -> wrapped 0 ("def " <> source 0 declaration)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
       | isOpaqueSymbolicSyntaxLiteral name -> name
       | otherwise -> "this." <> renderIdentifierString name
     LookupValue operand -> unary "~" operand
-    IdentifierOperationValue (IdentifierString name) annotation given ->
-      identifierOperation
-        (renderIdentifierString name) False annotation given
-    IdentifierTemplateOperationValue parts annotation given ->
-      identifierOperation
-        (renderStringTemplate (source 0) (const Nothing) parts)
-        False
-        annotation
-        given
+    DependentArgumentValue name (Just annotation) ->
+      dependentArgument (source 13 name) False (Just annotation) Nothing
+    DependentArgumentValue name Nothing -> source 13 name
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> argumentMembers members <> "}"
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
     Concatenate left EmptyMap -> wrapped 10 (source 10 left <> ",")
     Concatenate left right -> binary 2 "," left right
+    Specify given (DependentArgumentValue name annotation) ->
+      dependentArgument (source 13 name) False annotation (Just given)
     Specify left right -> binary 1 "~>" left right
     OverloadValue left right -> binary 1 "<<" left right
     SafeOverloadValue left right -> binary 1 "<<<" left right
-    AssertValue hard condition -> wrapped 0
-      ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
-    InValue value body -> binary 0 "in" value body
     MaybeThenValue optional branch -> binary 1 "!?" optional branch
     EitherValue left right -> binary 3 "|" left right
     Or left right -> binary 4 "or" left right
@@ -133,17 +120,11 @@ source context expression =
     Not operand -> unary "not " operand
     CoalizationValue operand -> unary ">< " operand
     ValValue declaration -> wrapped 0 ("val " <> source 0 declaration)
+    OptionalValue (DependentArgumentValue name (Just annotation)) ->
+      dependentArgument (source 13 name) True (Just annotation) Nothing
     OptionalValue
-        (IdentifierOperationValue (IdentifierString name) annotation given) ->
-      identifierOperation
-        (renderIdentifierString name) True annotation given
-    OptionalValue
-        (IdentifierTemplateOperationValue parts annotation given) ->
-      identifierOperation
-        (renderStringTemplate (source 0) (const Nothing) parts)
-        True
-        annotation
-        given
+        (Specify given (DependentArgumentValue name annotation)) ->
+      dependentArgument (source 13 name) True annotation (Just given)
     OptionalValue operand -> wrapped 10 (source 10 operand <> "?")
     ScopeAccessValue operand
         (IdentifierReferenceValue (IdentifierString name)) ->
@@ -168,6 +149,10 @@ source context expression =
     InclusiveValuedIntegerRangeUpwards start -> open "from" start "up"
     InclusiveValuedIntegerRangeDownwards start -> open "from" start "down"
     StringTemplateValue parts -> renderStringTemplate (source 0) (const Nothing) parts
+    GreedyStringTemplateValue operand ->
+      maybe "" id
+        (Operator.operatorSourceSymbol Operator.GreedyStringTemplateOperator)
+        <> source 9 operand
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom
@@ -211,17 +196,32 @@ source context expression =
       case genericIntroductionBound introduction of
         IdentifierReferenceValue (IdentifierString "Any") -> ""
         bound -> " :: " <> source 0 bound
-    identifierOperation name optional annotation given = wrapped 1
-      (name <> (if optional then "?" else "") <> case given of
-        Just value | value == annotation -> " := " <> assignedValue value
-        _ -> " : " <> source 13 annotation
-          <> maybe "" (\value -> " := " <> assignedValue value) given)
+    dependentArgument name optional annotation given = wrapped 1
+      (name <> (if optional then "?" else "")
+        <> maybe "" (\value -> " : " <> source 13 value) annotation
+        <> maybe "" (\value -> " := " <> assignedValue value) given)
     -- Federation binds inside assignment. Other assignment operands retain
     -- their existing conservative grouping.
     assignedValue value@EitherValue {} = source 3 value
     assignedValue value = source 7 value
     block keyword bindings result = keyword <> " "
-      <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
+      <> intercalate "; "
+        (map sourceDeclaration bindings <> ["yield " <> source 0 result])
+    sourceDeclaration declaration =
+        modifier "let " (dependentDeclarationIsLet declaration)
+          <> modifier "def " (dependentDeclarationIsDefinition declaration)
+          <> modifier "val "
+            (dependentDeclarationIsCanonicalValue declaration)
+          <> declarationHead (dependentDeclarationHead declaration)
+          <> " := "
+          <> assignedValue (dependentDeclarationImplementation declaration)
+    declarationHead headValue = case headValue of
+      SimpleIdentifierDeclarationHead (IdentifierString name) ->
+        renderIdentifierString name
+      StringTemplateDeclarationHead parts ->
+        renderStringTemplate (source 0) (const Nothing) parts
+      EvaluatedDeclarationHead expressionValue -> source 0 expressionValue
+    modifier written present = if present then written else ""
     argumentMembers = intercalate "; " . map (source 0)
 
 scopeBody :: OperatorExpression -> String
@@ -230,8 +230,3 @@ scopeBody body = case body of
   Expansion {} -> source 0 body
   EmptyMap -> source 0 body
   _ -> "(" <> source 0 body <> ")"
-
-isDefaultContextualArgument :: OperatorExpression -> Bool
-isDefaultContextualArgument (NaturalValue 0) = True
-isDefaultContextualArgument EmptyMap = True
-isDefaultContextualArgument _ = False

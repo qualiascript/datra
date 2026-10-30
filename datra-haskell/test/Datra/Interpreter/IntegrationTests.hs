@@ -3,8 +3,6 @@ module Datra.Interpreter.IntegrationTests
   ) where
 
 import Datra.TestSupport
-import Interpreting
-  ( EvaluationMode (DevelopmentMode, ProductionMode) )
 import Test.Tasty (TestTree, testGroup)
 
 integrationTests :: TestTree
@@ -12,69 +10,61 @@ integrationTests =
   testGroup "cross-feature regression programs"
     [ programCase "recursive defaults, overloads, typing, and total blocks"
         recursiveDefaultProgram
-        "()"
+        "(true; true; true; true; true; true; true; true)"
     , programCase "standard-library syntax and string-template decoding"
         templateBackedProgram
-        "()"
-    , programCase "let scope composes through an assertion-only function"
-        scopedAssertionProgram
-        "()"
+        "(true; true; true; true)"
+    , programCase "let scope composes through a checking function"
+        scopedCheckProgram
+        "(true; true)"
     , moduleCase moduleOrigin
         "module exports, private closure state, and declared syntax"
         moduleProgram
-        "()"
-    , programCaseInMode DevelopmentMode
-        "development assertions validate the complete pipeline"
-        modeProgram
-        "()"
-    , programCaseInMode ProductionMode
-        "production omits soft assertions but retains hard integration checks"
-        productionModeProgram
-        "()"
+        "(true; true; true)"
     , programFileCase 21
         "composed language regression"
         "test/fixtures/integration/composed_features.datra"
-        "()"
+        "(true; true; true; true; true; true; true; true)"
     ]
 
 recursiveDefaultProgram :: String
 recursiveDefaultProgram = unlines
   [ "let factorial := ({n? : Int := 5} -> Int do"
-  , "  assert n of Int"
   , "  yield if n = 0 then 1 else n * factorial (n - 1))"
   , "arguments := ({n? : Int := 5} << 6)"
-  , "assert arguments of (n? : Int)"
-  , "assert factorial () = 120"
-  , "assert factorial arguments = 720"
   , "result := begin yield factorial 6"
-  , "assert result = 720"
-  , "assert result =/= 719"
-  , "assert not (result =/= 720)"
-  , "assert 720 of result"
-  , "assert (720 ~> result) = result"
+  , "argumentsTypeCheck := arguments of (n? : Int)"
+  , "defaultCheck := factorial () = 120"
+  , "argumentCheck := factorial arguments = 720"
+  , "resultCheck := result = 720"
+  , "inequalityCheck := result =/= 719"
+  , "negatedInequalityCheck := not (result =/= 720)"
+  , "membershipCheck := 720 of result"
+  , "specificationCheck := (720 ~> result) = result"
+  , "yield (argumentsTypeCheck; defaultCheck; argumentCheck; resultCheck;"
+  , "  inequalityCheck; negatedInequalityCheck; membershipCheck;"
+  , "  specificationCheck)"
   ]
 
 templateBackedProgram :: String
 templateBackedProgram = unlines
-  [ "successor := \"successor %Nat next\" % ({value? : Int} -> Int) do"
-  , "  assert value of Nat"
+  [ "\"successor %Nat next\" := ({value? : Int} -> Int) do"
   , "  yield value + 1"
-  , "assert successor 4 next = 5"
-  , "assert successor of ({value? : Nat} -> Int)"
-  , "assert (\"from 2 to 5\" ~> \"from %Int to %Int\")[1] of Int"
-  , "assert (\"from 2 to 5\" ~> \"from %Int to %Int\")[2] of Int"
+  , "successorResultCheck := successor 4 next = 5"
+  , "successorTypeCheck := ((~\"successor Nat next\")[0].value) of ({value? : Nat} -> Int)"
+  , "fromCheck := (\"from 2 to 5\" ~> \"from %Int to %Int\")[1] of Int"
+  , "toCheck := (\"from 2 to 5\" ~> \"from %Int to %Int\")[2] of Int"
+  , "yield (successorResultCheck; successorTypeCheck; fromCheck; toCheck)"
   ]
 
-scopedAssertionProgram :: String
-scopedAssertionProgram = unlines
+scopedCheckProgram :: String
+scopedCheckProgram = unlines
   [ "before := seed + 1"
   , "let seed := 10"
-  , "check := (() -> () do"
+  , "check := (() -> Bool do"
   , "  local := before + seed"
-  , "  assert local = 21"
-  , "  yield ())"
-  , "assert before = 11"
-  , "assert check () = ()"
+  , "  yield local = 21)"
+  , "yield (before = 11; check ())"
   ]
 
 moduleOrigin :: FilePath
@@ -83,27 +73,8 @@ moduleOrigin = "test/fixtures/modules/main.datra"
 moduleProgram :: String
 moduleProgram = unlines
   [ "import \"library_one\" do"
-  , "  assert LibraryOne.x = 7"
-  , "  assert LibraryOne.increment 7 = 11"
-  , "  assert LibraryOne.(shift 7) = 11"
-  , "yield ()"
-  ]
-
-modeProgram :: String
-modeProgram = factorialForMode <> unlines
-  [ "assert factorial () = 120"
-  , "assert hard factorial 6 = 720"
-  ]
-
-productionModeProgram :: String
-productionModeProgram = factorialForMode <> unlines
-  [ "assert missing_soft_assertion_dependency"
-  , "assert hard factorial () = 120"
-  , "assert hard ({n? : Int := 5} << 6) of (n? : Int)"
-  ]
-
-factorialForMode :: String
-factorialForMode = unlines
-  [ "let factorial := ({n? : Int := 5} -> Int do"
-  , "  yield if n = 0 then 1 else n * factorial (n - 1))"
+  , "  valueCheck := LibraryOne.x = 7"
+  , "  incrementCheck := LibraryOne.increment 7 = 11"
+  , "  shiftCheck := LibraryOne.(shift 7) = 11"
+  , "yield (valueCheck; incrementCheck; shiftCheck)"
   ]

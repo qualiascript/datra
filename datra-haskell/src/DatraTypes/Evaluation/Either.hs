@@ -4,8 +4,8 @@ module Evaluation.Either
   ) where
 
 import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
-import Data.List (nubBy)
+  ( AtlasMapFederationExpression (..) )
+import Data.List (isPrefixOf, nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.SyntaxTemplate
@@ -13,7 +13,7 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   )
-import DatraOrdinal (Ordinal, finiteOrdinal)
+import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal, omega)
 import Evaluation.Coalization (valueIsCoalition)
 import Evaluation.Error
   ( InterpretingError (EitherAlternativesNotDistinct) )
@@ -72,6 +72,9 @@ alternativesArePairwiseDistinct (member : remaining) =
 
 alternativesAreDistinct :: InterpretedValue -> InterpretedValue -> Bool
 alternativesAreDistinct left right
+  | Just leftLengths <- memberMapLengthDomain left
+  , Just rightLengths <- memberMapLengthDomain right
+  , mapLengthDomainsAreDisjoint leftLengths rightLengths = True
   | Just leftFunction <- interpretedFunction left
   , Just rightFunction <- interpretedFunction right
   , Just leftSyntax <- functionSyntax leftFunction
@@ -100,25 +103,25 @@ alternativesAreDistinct left right
       alternativesAreDistinct
         left
         (evaluatedSpecificationTarget rightSpecification)
-  | DependentIdentifierTypeForm leftIdentifier <- interpretedForm left
-  , DependentIdentifierTypeForm rightIdentifier <- interpretedForm right =
+  | DependentArgumentTypeForm leftIdentifier <- interpretedForm left
+  , DependentArgumentTypeForm rightIdentifier <- interpretedForm right =
       identifierAlternativesAreDistinct leftIdentifier rightIdentifier
-  | DependentIdentifierTypeForm _ <- interpretedForm left = True
-  | DependentIdentifierTypeForm _ <- interpretedForm right = True
+  | DependentArgumentTypeForm _ <- interpretedForm left = True
+  | DependentArgumentTypeForm _ <- interpretedForm right = True
   | Just leftSlots <- structuralSlotOrdinal left
   , Just rightSlots <- structuralSlotOrdinal right
   , leftSlots /= rightSlots = True
-  | ArgumentMapForm leftMembers _ <- interpretedForm left
-  , ArgumentMapForm rightMembers _ <- interpretedForm right =
+  | ArgumentativeMapForm leftMembers _ <- interpretedForm left
+  , ArgumentativeMapForm rightMembers _ <- interpretedForm right =
       length leftMembers /= length rightMembers
         || or (zipWith alternativesAreDistinct leftMembers rightMembers)
-  | ArgumentMapForm _ _ <- interpretedForm left
+  | ArgumentativeMapForm _ _ <- interpretedForm left
   , BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm right = True
   | BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm left
-  , ArgumentMapForm _ _ <- interpretedForm right = True
-  | ArgumentMapForm _ underlying <- interpretedForm left =
+  , ArgumentativeMapForm _ _ <- interpretedForm right = True
+  | ArgumentativeMapForm _ underlying <- interpretedForm left =
       alternativesAreDistinct underlying right
-  | ArgumentMapForm _ underlying <- interpretedForm right =
+  | ArgumentativeMapForm _ underlying <- interpretedForm right =
       alternativesAreDistinct left underlying
   | BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm left
   , ValuedNaturalRangeForm _ <- interpretedForm right = True
@@ -149,10 +152,126 @@ alternativesAreDistinct left right
   | interpretedValueHasTotalMap left = memberIsRefuted left right
   | interpretedValueHasTotalMap right = memberIsRefuted right left
   | valueProducesStrings left
+  , valueProducesStrings right =
+      stringFederationsAreDistinct
+        (interpretedAtlasMapFederation left)
+        (interpretedAtlasMapFederation right)
+  | valueProducesStrings left
   , isNumericalRange right = True
   | isNumericalRange left
   , valueProducesStrings right = True
   | otherwise = rangeAlternativesAreDistinct left right
+
+-- Map families with disjoint possible final-page lengths cannot share a
+-- member. This is the ordinary structural map-length separation lifted to
+-- dependent sums whose validators constrain member length.
+data MemberMapLengthDomain
+  = ExactMemberMapLength Ordinal
+  | FiniteMemberMapLength
+
+memberMapLengthDomain
+  :: InterpretedValue
+  -> Maybe MemberMapLengthDomain
+memberMapLengthDomain value =
+  case evaluatedDependentSumStructure <$> dependentSumView value of
+    Just (ListDependentSum _) -> Just FiniteMemberMapLength
+    Just (StreamDependentSum _) -> Just (ExactMemberMapLength omega)
+    _
+      | interpretedValueHasTotalMap value ->
+          Just (ExactMemberMapLength
+            (interpretedMapFinalOrderType (interpretedMap value)))
+      | otherwise -> Nothing
+
+mapLengthDomainsAreDisjoint
+  :: MemberMapLengthDomain
+  -> MemberMapLengthDomain
+  -> Bool
+mapLengthDomainsAreDisjoint left right =
+  case (left, right) of
+    (ExactMemberMapLength leftOrder, ExactMemberMapLength rightOrder) ->
+      leftOrder /= rightOrder
+    (FiniteMemberMapLength, ExactMemberMapLength rightOrder) ->
+      naturalAtOrdinal rightOrder == Nothing
+    (ExactMemberMapLength leftOrder, FiniteMemberMapLength) ->
+      naturalAtOrdinal leftOrder == Nothing
+    (FiniteMemberMapLength, FiniteMemberMapLength) -> False
+
+-- Compare the evaluated string languages, rather than the source templates
+-- which produced them. Prefixes prove separation across different template
+-- shapes; identically segmented templates delegate capture separation back to
+-- the ordinary federation decision procedure.
+stringFederationsAreDistinct
+  :: InterpretedAtlasMapFederation
+  -> InterpretedAtlasMapFederation
+  -> Bool
+stringFederationsAreDistinct left right =
+  incompatiblePrefixes left right
+    || case (stringComponents left, stringComponents right) of
+      (Just leftComponents, Just rightComponents)
+        | sameComponentShape leftComponents rightComponents ->
+            or (zipWith componentsAreDistinct
+              leftComponents rightComponents)
+      _ -> False
+  where
+    incompatiblePrefixes leftFederation rightFederation =
+      case (literalPrefix leftFederation, literalPrefix rightFederation) of
+        (leftPrefix@(_ : _), rightPrefix@(_ : _)) ->
+          not (leftPrefix `isPrefixOf` rightPrefix)
+            && not (rightPrefix `isPrefixOf` leftPrefix)
+        _ -> False
+
+    componentsAreDistinct
+        (StringVariable leftSource _)
+        (StringVariable rightSource _) =
+      alternativesAreDistinct leftSource rightSource
+    componentsAreDistinct _ _ = False
+
+data StringFederationComponent
+  = StringLiteral String
+  | StringVariable InterpretedValue ProvenInjectiveToString
+
+sameComponentShape
+  :: [StringFederationComponent]
+  -> [StringFederationComponent]
+  -> Bool
+sameComponentShape left right =
+  length left == length right
+    && and (zipWith same left right)
+  where
+    same (StringLiteral leftLiteral) (StringLiteral rightLiteral) =
+      leftLiteral == rightLiteral
+    same StringVariable {} StringVariable {} = True
+    same _ _ = False
+
+stringComponents
+  :: InterpretedAtlasMapFederation
+  -> Maybe [StringFederationComponent]
+stringComponents federation =
+  case federation of
+    SingletonAtlasMapFederation valueMap ->
+      case interpretedMapComponents valueMap of
+        [AsciiStringSemantics characters] ->
+          Just [StringLiteral characters]
+        _ -> Nothing
+    PrimitiveAtlasMapFederation primitive ->
+      case primitive of
+        ToStringAtlasMapFederation source proof ->
+          Just [StringVariable source proof]
+        _ -> Nothing
+    CoalizedAtlasMapFederation operand -> stringComponents operand
+    ConcatenatedAtlasMapFederation left right ->
+      (<>) <$> stringComponents left <*> stringComponents right
+    SequentialAtlasMapFederation _ -> Nothing
+    ExpansionAtlasMapFederation _ _ -> Nothing
+
+literalPrefix :: InterpretedAtlasMapFederation -> String
+literalPrefix federation =
+  case stringComponents federation of
+    Just components -> foldr prefix "" components
+    Nothing -> ""
+  where
+    prefix (StringLiteral literal) remaining = literal <> remaining
+    prefix StringVariable {} _ = ""
 
 -- Declaration order makes structurally different templates deterministic for
 -- the declared spelling. Ordinary application is always available, so the
@@ -232,7 +351,7 @@ structuralSlotOrdinal value
         (interpretedMapPageCardinality (interpretedMap value)))
       ExpansionMapForm _ _ -> Just (finiteOrdinal
         (interpretedMapPageCardinality (interpretedMap value)))
-      ArgumentMapForm members _ ->
+      ArgumentativeMapForm members _ ->
         Just (finiteOrdinal (fromIntegral (length members)))
       _ -> Just (finiteOrdinal 1)
 
@@ -248,8 +367,8 @@ isNumericalRange value =
     _ -> False
 
 identifierAlternativesAreDistinct
-  :: EvaluatedDependentIdentifierType
-  -> EvaluatedDependentIdentifierType
+  :: EvaluatedDependentArgumentType
+  -> EvaluatedDependentArgumentType
   -> Bool
 identifierAlternativesAreDistinct left right
   | SimpleIdentifierDependency leftName <- evaluatedIdentifierDependency left

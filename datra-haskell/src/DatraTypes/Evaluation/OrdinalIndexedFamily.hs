@@ -1,24 +1,30 @@
 -- | Canonical ordinal-indexed value families.
 --
--- Any semantic ordered Atlas map of order type at most @omega@ is an atomic
--- family. A sequential map whose members are all such families is their
--- lexicographic product: its first member is the outermost coordinate and its
--- last member varies fastest.
+-- Any semantic ordered Atlas map is an atomic family. A sequential map whose
+-- members are such families is their lexicographic product: its first member
+-- is the outermost coordinate and its last member varies fastest.
 module Evaluation.OrdinalIndexedFamily
   ( OrdinalIndexedFamily (..)
+  , ordinalIndexedProductFamily
   , ordinalIndexedValueFamily
   ) where
 
 import DatraOrdinal
   ( Ordinal
+  , addOrdinals
   , finiteOrdinal
   , multiplyOrdinals
-  , omega
   , ordinal
   , ordinalCoefficients
-  , ordinalLTE
+  , ordinalLT
+  , subtractOrdinal
   )
 import Evaluation.Federation.Structure (sequenceOperands)
+import Evaluation.Coalization (coalizeValue)
+import Evaluation.Identifier
+  ( identifierUnderlyingValue
+  , identifierValueAtUnderlying
+  )
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Value
 import Numeric.Natural (Natural)
@@ -28,24 +34,51 @@ data OrdinalIndexedFamily = OrdinalIndexedFamily
   , ordinalIndexedFamilyValueAt :: Ordinal -> Maybe InterpretedValue
   }
 
--- | Recognize the closed fragment whose values have a canonical ordinal
--- order. Limit endpoints such as @from 0 to Infinity@ deliberately do not
--- enter this fragment: they are coalized composites, not valued-range forms.
+-- | Recognize values with a canonical ordinal order. Limit endpoints such as
+-- @from 0 to Infinity@ still do not enter this fragment: they are coalized
+-- composites and therefore do not expose an ordered Atlas-map view.
 ordinalIndexedValueFamily
   :: InterpretedValue
   -> Maybe OrdinalIndexedFamily
 ordinalIndexedValueFamily value =
-  case interpretedForm value of
-    SequentialMapForm -> do
-      members <- sequenceOperands value
-      productFamily <$> traverse ordinalIndexedValueFamily members
-    _ -> atomicFamily value
+  case identifierUnderlyingValue value of
+    Just underlying -> do
+      family <- ordinalIndexedValueFamily underlying
+      pure family
+        { ordinalIndexedFamilyValueAt = \position -> do
+            selected <- ordinalIndexedFamilyValueAt family position
+            identifierValueAtUnderlying value selected
+        }
+    Nothing -> case interpretedForm value of
+      CoalizationForm operand -> do
+        family <- ordinalIndexedValueFamily operand
+        pure family
+          { ordinalIndexedFamilyValueAt =
+              fmap coalizeValue . ordinalIndexedFamilyValueAt family
+          }
+      SequentialMapForm -> do
+        members <- sequenceOperands value
+        productFamily <$> traverse ordinalIndexedValueFamily members
+      EitherForm alternatives -> do
+        left <- ordinalIndexedValueFamily (evaluatedEitherLeft alternatives)
+        right <- ordinalIndexedValueFamily (evaluatedEitherRight alternatives)
+        pure (sumFamily left right)
+      _ -> atomicFamily value
+
+-- | Form the lexicographic product without first erasing its components into
+-- an Atlas map. This matters for infinite coordinates: the map's flattened
+-- order cannot be inspected as a finite list, while the component values can
+-- each expose their own ordinal-indexed capability directly.
+ordinalIndexedProductFamily
+  :: [InterpretedValue]
+  -> Maybe OrdinalIndexedFamily
+ordinalIndexedProductFamily values =
+  productFamily <$> traverse ordinalIndexedValueFamily values
 
 atomicFamily :: InterpretedValue -> Maybe OrdinalIndexedFamily
 atomicFamily value = do
   values <- orderedAtlasMapView value
   let orderType = ordinalOrderedValuesOrderType values
-  if ordinalLTE orderType omega then pure () else Nothing
   pure OrdinalIndexedFamily
     { ordinalIndexedFamilyOrderType = orderType
     , ordinalIndexedFamilyValueAt = ordinalOrderedValueAt values
@@ -61,6 +94,24 @@ productFamily members = OrdinalIndexedFamily
     components = componentFamily members
     makeProductWitness [] = makeAtlasMap 0 []
     makeProductWitness values = makeAtlasMap 2 values
+
+sumFamily
+  :: OrdinalIndexedFamily
+  -> OrdinalIndexedFamily
+  -> OrdinalIndexedFamily
+sumFamily left right = OrdinalIndexedFamily
+  { ordinalIndexedFamilyOrderType =
+      addOrdinals leftOrder rightOrder
+  , ordinalIndexedFamilyValueAt = \position ->
+      if ordinalLT position leftOrder
+        then ordinalIndexedFamilyValueAt left position
+        else do
+          rightPosition <- subtractOrdinal leftOrder position
+          ordinalIndexedFamilyValueAt right rightPosition
+  }
+  where
+    leftOrder = ordinalIndexedFamilyOrderType left
+    rightOrder = ordinalIndexedFamilyOrderType right
 
 data ComponentFamily = ComponentFamily
   { componentFamilyOrderType :: Ordinal

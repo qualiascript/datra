@@ -3,13 +3,20 @@
 module DatraLanguage.Diagnostics.Application
   ( ParseFailure (..)
   , ModuleLoadFailure (..)
-  , SyntaxExpansionFailure (..)
   , SyntaxTemplateAdmissibilityFailure (..)
+  , CandidateRejectionReason (..)
+  , CandidateRejectionReport (..)
+  , SyntaxRewriteFailure (..)
   , CommandLineOptionFailure (..)
   ) where
 
-data ParseFailure = ParseFailure
-  { parseFailureMessage :: String }
+import DatraLanguage.AST (Expression)
+import DatraLanguage.Diagnostics (DatraError)
+
+data ParseFailure
+  = NeutralSourceParseFailure String
+  | SyntaxEnvironmentParseFailure String
+  | SyntaxRewriteParseFailure SyntaxRewriteFailure
   deriving (Eq, Show)
 
 data ModuleLoadFailure
@@ -20,19 +27,42 @@ data ModuleLoadFailure
   | ImportedModuleParseFailed FilePath ParseFailure
   deriving (Eq, Show)
 
-data SyntaxExpansionFailure
-  = UnknownSyntaxControlAdapter String
-  deriving (Eq, Show)
-
 data SyntaxTemplateAdmissibilityFailure
   = NeutralSyntaxTemplateParseFailure
   | IncompleteCoreSyntaxOperator String
   | SyntaxTemplateProjectionLoss
-  | SyntaxTemplateProjectionOrderMismatch
   | UnstableSyntaxTemplateProjection
+  deriving (Eq, Show)
+
+data CandidateRejectionReason
+  = TypedHoleMismatch
+  | GenericBoundMismatch
+  | CandidateReturnMismatch
+  | RequiredChildExhausted
+  deriving (Eq, Ord, Show)
+
+data CandidateRejectionReport = CandidateRejectionReport
+  { rejectedCandidateRule :: String
+  , rejectedCandidateBranch :: Int
+  , rejectedCandidateCapture :: Int
+  , rejectedCandidateSource :: String
+  , rejectedCandidateExpected :: Maybe String
+  , rejectedCandidateActual :: Maybe String
+  , rejectedCandidateInputs :: [(Int, String)]
+  , rejectedCandidateReason :: CandidateRejectionReason
+  }
+  deriving (Eq, Show)
+
+data SyntaxRewriteFailure
+  = AmbiguousBareSkipApplication
+  | OverlappingDependentDeclarations String String
+  | NonInjectiveDependentDeclaration String
+  | InvalidDeclarationModifiers [String] [String]
+  | ExpectedDependentDeclaration Expression
+  | InvalidRewriteSyntaxTemplate String SyntaxTemplateAdmissibilityFailure
+  | RejectedSyntaxCandidates [DatraError CandidateRejectionReport]
   deriving (Eq, Show)
 
 data CommandLineOptionFailure
   = UnsupportedDiagnosticLocale String
-  | UnsupportedEvaluationMode String
   deriving (Eq, Show)

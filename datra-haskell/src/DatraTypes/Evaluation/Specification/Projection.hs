@@ -19,7 +19,7 @@ import DatraLanguage.SyntaxTemplate
 
 -- | Present retained matching evidence as an ordinary finite map. String
 -- templates expose the complete source string followed by their interpolation
--- selections. Dependent identifiers expose their selected name followed by
+-- selections. Dependent arguments expose their selected name followed by
 -- the specification of their underlying values.
 specificationProjection
   :: EvaluatedSpecification
@@ -38,9 +38,9 @@ projectionFor
   -> Either InterpretingError (Maybe InterpretedValue)
 projectionFor source target member =
   case (interpretedForm source, interpretedForm target, member) of
-    ( DependentIdentifierTypeForm sourceIdentifier
-      , DependentIdentifierTypeForm targetIdentifier
-      , EvaluatedDependentIdentifierTypeMember
+    ( DependentArgumentTypeForm sourceIdentifier
+      , DependentArgumentTypeForm targetIdentifier
+      , EvaluatedDependentArgumentTypeMember
           (Just _)
           _
       ) -> do
@@ -51,9 +51,9 @@ projectionFor source target member =
           (evaluatedIdentifierUnderlying targetIdentifier)
         pure (Just (selectionProjection
           (TemplateSelection sourceName [underlying])))
-    ( DependentIdentifierTypeForm sourceIdentifier
-      , DependentIdentifierTypeForm targetIdentifier
-      , EvaluatedDependentIdentifierTypeMember
+    ( DependentArgumentTypeForm sourceIdentifier
+      , DependentArgumentTypeForm targetIdentifier
+      , EvaluatedDependentArgumentTypeMember
           Nothing
           underlyingMember
       ) ->
@@ -92,7 +92,7 @@ concreteString value =
       concreteString (evaluatedSpecificationSourceValue specification)
     AssignmentForm specification ->
       concreteString (evaluatedSpecificationSourceValue specification)
-    DependentIdentifierTypeForm identifier ->
+    DependentArgumentTypeForm identifier ->
       concreteString (evaluatedIdentifierUnderlying identifier)
     _ -> Nothing
 

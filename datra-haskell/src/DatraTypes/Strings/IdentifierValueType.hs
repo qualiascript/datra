@@ -21,17 +21,13 @@ identifierValue value
   | isIdentifierValue value = Just (IdentifierValue value)
   | otherwise = Nothing
 
--- | Compact strings start with an ASCII letter, digit, underscore, or
--- apostrophe. A leading underscore or apostrophe requires an immediately
--- following ASCII alphanumeric character. The complete string must contain at
--- least one non-digit.
+-- | A simple identifier is a nonempty string over the identifier alphabet
+-- whose first character is not a digit.
 isIdentifierValue :: String -> Bool
 isIdentifierValue [] = False
-isIdentifierValue value@(first : rest) =
-  isIdentifierValueInitialCharacter first
-    && all isIdentifierValueCharacter rest
-    && any (not . isAsciiDigit) value
-    && validSpecialPrefix value
+isIdentifierValue value@(first : _) =
+  not (isAsciiDigit first)
+    && all isIdentifierValueCharacter value
 
 -- | Every character which can occur somewhere in an identifier value. This
 -- language fact lets template concatenation prove that delimiters such as a
@@ -44,15 +40,6 @@ isIdentifierValueCharacter :: Char -> Bool
 isIdentifierValueCharacter character =
   isAsciiAlphaNumeric character || character == '_' || character == '\''
 
-isIdentifierValueInitialCharacter :: Char -> Bool
-isIdentifierValueInitialCharacter = isIdentifierValueCharacter
-
-validSpecialPrefix :: String -> Bool
-validSpecialPrefix (prefix : following : _)
-  | prefix == '_' || prefix == '\'' = isAsciiAlphaNumeric following
-validSpecialPrefix [prefix]
-  | prefix == '_' || prefix == '\'' = False
-validSpecialPrefix _ = True
 
 isAsciiAlphaNumeric :: Char -> Bool
 isAsciiAlphaNumeric character =

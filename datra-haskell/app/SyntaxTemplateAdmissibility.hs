@@ -2,12 +2,14 @@
 -- the same structural projection used by runtime syntax rewriting.
 module SyntaxTemplateAdmissibility
   ( validateSyntaxTemplate
+  , validateStringTemplate
+  , syntaxTemplateRefines
+  , syntaxTemplatesOverlap
   ) where
 
 import DatraLanguage.AST
   ( Expression (..)
-  , IdentifierString (IdentifierString)
-  , expressionChildren
+  , StringTemplatePart (..)
   , normalizeExpression
   )
 import DatraLanguage.AST.Source (renderSourceExpression)
@@ -20,28 +22,44 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxTemplate (..)
   )
 import Parsing
-  ( freshNeutralWitnessIdentifiers
-  , neutralExpressionWitnessSources
+  ( neutralExpressionWitnessSources
   , neutralIncompletePrefixOperator
   , parseNeutralPhrase
   )
 import SyntaxTemplateProjection (projectSyntaxTemplate)
 
-data Witness = Witness
+newtype Witness = Witness
   { witnessSource :: String
-  , witnessMarker :: String
   }
 
 validateSyntaxTemplate
   :: SyntaxTemplate Expression
   -> Either SyntaxTemplateAdmissibilityFailure ()
 validateSyntaxTemplate template =
+  validateSyntaxTemplateWith (renderWitness template) template
+
+-- | Validate a declaration template using the source spelling which actually
+-- produced it.  Quoted templates concatenate their literal chunks exactly;
+-- greedy templates reach this function after lowering has inserted their
+-- canonical single-space separators.  Keeping source rendering here separate
+-- from the whitespace-delimited matcher prevents validation from silently
+-- changing an exact quoted template with 'unwords'.
+validateStringTemplate
+  :: [StringTemplatePart Expression]
+  -> SyntaxTemplate Expression
+  -> Either SyntaxTemplateAdmissibilityFailure ()
+validateStringTemplate parts = validateSyntaxTemplateWith (renderParts parts)
+
+validateSyntaxTemplateWith
+  :: ([Witness] -> String)
+  -> SyntaxTemplate Expression
+  -> Either SyntaxTemplateAdmissibilityFailure ()
+validateSyntaxTemplateWith render template =
   traverse_ validateWitness (templateWitnesses template)
   where
     validateWitness witnesses = do
       expected <- traverse expectedWitness witnesses
-      let source = renderWitness template witnesses
-          markers = map witnessMarker witnesses
+      let source = render witnesses
           capture _ value
             | normalizeExpression value `elem` expected =
                 Just (normalizeExpression value)
@@ -53,11 +71,8 @@ validateSyntaxTemplate template =
       recovered <- case projectSyntaxTemplate capture template parsed of
         Just captures
           | map normalizeExpression captures == expected -> Right expected
-          | otherwise -> Left SyntaxTemplateProjectionOrderMismatch
-        Nothing
-          | markerOrder markers parsed == markers ->
-              Left SyntaxTemplateProjectionLoss
-          | otherwise -> Left SyntaxTemplateProjectionOrderMismatch
+          | otherwise -> Left SyntaxTemplateProjectionLoss
+        Nothing -> Left SyntaxTemplateProjectionLoss
       let canonical = renderSourceExpression parsed
       reparsed <- either
         (const (Left UnstableSyntaxTemplateProjection))
@@ -75,6 +90,115 @@ validateSyntaxTemplate template =
       Just operator -> IncompleteCoreSyntaxOperator operator
       Nothing -> NeutralSyntaxTemplateParseFailure
 
+renderParts
+  :: [StringTemplatePart Expression]
+  -> [Witness]
+  -> String
+renderParts [] _ = ""
+renderParts (StringTemplateLiteral literal : remaining) witnesses =
+  literal <> renderParts remaining witnesses
+renderParts (StringTemplateInterpolation {} : remaining)
+    (witness : witnesses) =
+  witnessSource witness <> renderParts remaining witnesses
+renderParts (StringTemplateInterpolation {} : _) [] = ""
+
+-- | Structural inclusion between two syntax-template federations.  The
+-- source template is rendered with the same neutral witnesses used by
+-- admissibility, then projected through the target.  A target expression hole
+-- may absorb a larger admissible source fragment; aligned holes delegate their
+-- value-family relation to the caller.
+syntaxTemplateRefines
+  :: (SyntaxHoleKind Expression -> SyntaxHoleKind Expression -> Bool)
+  -> SyntaxTemplate Expression
+  -> SyntaxTemplate Expression
+  -> Bool
+syntaxTemplateRefines holeRefines source target =
+  all refinesWitness (templateWitnesses source)
+  where
+    sourceKinds =
+      [ kind
+      | SyntaxHole kind <- syntaxTemplatePieces source
+      ]
+    refinesWitness witnesses =
+      case parseNeutralPhrase (renderWitness source witnesses) of
+        Left _ -> False
+        Right parsed ->
+          case projectSyntaxTemplate
+              (capture witnesses)
+              target
+              parsed of
+            Just _ -> True
+            Nothing -> False
+    capture witnesses targetKind captured =
+      case exactSourceHole witnesses captured of
+        Just sourceKind
+          | holeRefines sourceKind targetKind -> Just captured
+          | otherwise -> Nothing
+        Nothing -> case targetKind of
+          ExpressionSyntaxHole {} -> Just captured
+          _ -> Nothing
+    exactSourceHole witnesses captured = firstExact
+      [ (witness, kind)
+      | (witness, kind) <- zip witnesses sourceKinds
+      ]
+      where
+        normalized = normalizeExpression captured
+        firstExact [] = Nothing
+        firstExact ((witness, kind) : remaining) =
+          case parseNeutralPhrase (witnessSource witness) of
+            Right expected
+              | normalizeExpression expected == normalized -> Just kind
+            _ -> firstExact remaining
+
+-- | Whether two syntax-template families have any structural member in
+-- common. Witnesses are projected in both directions because either template
+-- may provide the literal structure absorbed by an expression hole in the
+-- other. Aligned typed holes delegate federation intersection to the caller.
+syntaxTemplatesOverlap
+  :: (SyntaxHoleKind Expression -> SyntaxHoleKind Expression -> Bool)
+  -> SyntaxTemplate Expression
+  -> SyntaxTemplate Expression
+  -> Bool
+syntaxTemplatesOverlap holeOverlaps left right =
+  any (projects left right) (templateWitnesses left)
+    || any (projects right left) (templateWitnesses right)
+  where
+    projects source target witnesses =
+      case parseNeutralPhrase (renderWitness source witnesses) of
+        Left _ -> False
+        Right parsed -> case projectSyntaxTemplate
+            (capture source witnesses)
+            target
+            parsed of
+          Just _ -> True
+          Nothing -> False
+
+    capture source witnesses targetKind captured =
+      case exactSourceHole source witnesses captured of
+        Just sourceKind ->
+          if holeOverlaps sourceKind targetKind
+            then Just captured
+            else Nothing
+        Nothing -> case targetKind of
+          ExpressionSyntaxHole {} -> Just captured
+          _ -> Nothing
+
+    exactSourceHole source witnesses captured = firstExact
+      [ (witness, kind)
+      | (witness, kind) <- zip witnesses
+          [ kind
+          | SyntaxHole kind <- syntaxTemplatePieces source
+          ]
+      ]
+      where
+        normalized = normalizeExpression captured
+        firstExact [] = Nothing
+        firstExact ((witness, kind) : remaining) =
+          case parseNeutralPhrase (witnessSource witness) of
+            Right expected
+              | normalizeExpression expected == normalized -> Just kind
+            _ -> firstExact remaining
+
 templateWitnesses :: SyntaxTemplate Expression -> [[Witness]]
 templateWitnesses template = atomic : variants
   where
@@ -88,10 +212,13 @@ templateWitnesses template = atomic : variants
       | (preceding, SyntaxHole kind, remaining) <- pieceContexts
       ]
     pieceContexts = contexts [] (syntaxTemplatePieces template)
-    identifiers = take (holeCount * 2)
-      (freshNeutralWitnessIdentifiers literals)
-    markers = take holeCount identifiers
-    auxiliaries = take holeCount (drop holeCount identifiers)
+    neutralValues =
+      [ EllipsisNatural value
+      | value <- [0 ..]
+      , EllipsisNatural value `notElem` literalValues
+      ]
+    markers = take holeCount neutralValues
+    auxiliaries = take holeCount (drop holeCount neutralValues)
     bases = zipWith3 atomicWitness holes markers auxiliaries
     atomic = bases
     variants =
@@ -100,31 +227,16 @@ templateWitnesses template = atomic : variants
           zip [0 :: Int ..] (zip3 holes markers auxiliaries)
       , generalExpressionHole kind
       , source <- drop 1
-          (neutralExpressionWitnessSources marker auxiliary)
+          (neutralExpressionWitnessSources
+            (renderSourceExpression marker)
+            (renderSourceExpression auxiliary))
       , let embeddedSource
               | needsGrouping = groupedSource source
               | otherwise = source
-            witness = Witness embeddedSource marker
+            witness = Witness embeddedSource
       ]
 
-    atomicWitness (kind, _) marker auxiliary = Witness
-      (renderSourceExpression (witnessExpression kind marker auxiliary))
-      marker
-    witnessExpression kind marker auxiliary = case kind of
-      BlockSyntaxHole {} -> AtlasMap
-        [identifier auxiliary, identifier marker]
-      FunctionBodySyntaxHole {} -> AtlasMap
-        [ FunctionBody [identifier auxiliary] (identifier marker)
-        , AtlasMap []
-        ]
-      DeclarationSyntaxHole {} ->
-        let value = identifier auxiliary
-        in IdentifierOperation
-          (IdentifierString marker)
-          value
-          (Just value)
-      _ -> identifier marker
-    identifier = IdentifierReference . IdentifierString
+    atomicWitness _ marker _ = Witness (renderSourceExpression marker)
     groupedSource source = case parseNeutralPhrase source of
       Right expressionValue -> renderSourceExpression
         (MapSequence [expressionValue])
@@ -135,7 +247,11 @@ templateWitnesses template = atomic : variants
     generalExpressionHole _ = False
     isHole SyntaxHole {} = True
     isHole _ = False
-    literals = [literal | SyntaxLiteral literal <- syntaxTemplatePieces template]
+    literalValues =
+      [ normalizeExpression parsed
+      | SyntaxLiteral literal <- syntaxTemplatePieces template
+      , Right parsed <- [parseNeutralPhrase literal]
+      ]
 
 contexts :: [value] -> [value] -> [([value], value, [value])]
 contexts _ [] = []
@@ -153,17 +269,6 @@ renderWitness (SyntaxTemplate pieces) witnesses =
     go (SyntaxHole {} : remaining) (witness : available) =
       witnessSource witness : go remaining available
     go (SyntaxHole {} : _) [] = []
-
-markerOrder :: [String] -> Expression -> [String]
-markerOrder markers = collect
-  where
-    collect expressionValue = current
-      <> concatMap collect (expressionChildren expressionValue)
-      where
-        current = case expressionValue of
-          IdentifierReference (IdentifierString name)
-            | name `elem` markers -> [name]
-          _ -> []
 
 traverse_ :: (value -> Either failure ()) -> [value] -> Either failure ()
 traverse_ _ [] = Right ()

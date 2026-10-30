@@ -3,22 +3,29 @@ module DatraLanguage.Diagnostics.Locales.Romanian
   ( localizeAccessError
   , localizeParseFailure
   , localizeModuleLoadFailure
-  , localizeSyntaxExpansionFailure
   , localizeCommandLineOptionFailure
+  , localizeSyntaxRewriteFailure
+  , localizeCandidateRejectionReport
   , localizeInterpretingError
   , localizeSuperEllipsisRangeError
   , localizeSuperEllipsisRangeConcatError
   , romanianOrdinal
   ) where
 
-import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
+import DatraLanguage.Diagnostics
+  ( LocalizedMessage (LocalizedMessage)
+  , renderDatraErrorWith
+  )
 import DatraLanguage.Diagnostics.Application
-  ( CommandLineOptionFailure (..)
+  ( CandidateRejectionReason (..)
+  , CandidateRejectionReport (..)
+  , CommandLineOptionFailure (..)
   , ModuleLoadFailure (..)
   , ParseFailure (..)
-  , SyntaxExpansionFailure (..)
+  , SyntaxRewriteFailure (..)
   , SyntaxTemplateAdmissibilityFailure (..)
   )
+import DatraLanguage.AST.Source (renderSourceExpression)
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
@@ -27,7 +34,6 @@ import Evaluation.Error
   , NamedAccessFailure (..)
   , MapLengthFailure (..)
   , OverloadFailure (..)
-  , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
@@ -54,15 +60,20 @@ import SuperEllipsisRange
   )
 
 localizeParseFailure :: ParseFailure -> LocalizedMessage
-localizeParseFailure (ParseFailure message) =
-  LocalizedMessage "sursa nu a putut fi analizată" [message]
+localizeParseFailure failure = case failure of
+  NeutralSourceParseFailure message ->
+    LocalizedMessage "sursa nu a putut fi analizată" [message]
+  SyntaxEnvironmentParseFailure message ->
+    LocalizedMessage "mediul sintactic nu a putut fi construit" [message]
+  SyntaxRewriteParseFailure reason ->
+    localizeSyntaxRewriteFailure reason
 
 localizeModuleLoadFailure :: ModuleLoadFailure -> LocalizedMessage
 localizeModuleLoadFailure failure =
   case failure of
     ImportScanFailed path parseFailure ->
       LocalizedMessage "importurile modulului nu au putut fi analizate"
-        ["modul: " <> path, parseFailureMessage parseFailure]
+        (["modul: " <> path] <> embeddedParseFailure parseFailure)
     ImportPathResolutionFailed requested location reason ->
       LocalizedMessage "calea modulului nu a putut fi rezolvată"
         [ "modul: " <> requested
@@ -79,16 +90,12 @@ localizeModuleLoadFailure failure =
         ]
     ImportedModuleParseFailed path parseFailure ->
       LocalizedMessage "modulul importat nu a putut fi analizat"
-        ["modul: " <> path, parseFailureMessage parseFailure]
+        (["modul: " <> path] <> embeddedParseFailure parseFailure)
 
-localizeSyntaxExpansionFailure
-  :: SyntaxExpansionFailure
-  -> LocalizedMessage
-localizeSyntaxExpansionFailure failure =
-  case failure of
-    UnknownSyntaxControlAdapter name ->
-      LocalizedMessage "adaptorul de control sintactic nu este înregistrat"
-        ["adaptor: " <> name]
+embeddedParseFailure :: ParseFailure -> [String]
+embeddedParseFailure failure = summary : details
+  where
+    LocalizedMessage summary details = localizeParseFailure failure
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -100,11 +107,64 @@ localizeCommandLineOptionFailure failure =
         [ "limbă furnizată: " <> value
         , "se așteaptă english, en, romana, romanian sau ro"
         ]
-    UnsupportedEvaluationMode value ->
-      LocalizedMessage "modul de evaluare nu este acceptat"
-        [ "mod furnizat: " <> value
-        , "se așteaptă dev, development, prod sau production"
-        ]
+
+localizeSyntaxRewriteFailure :: SyntaxRewriteFailure -> LocalizedMessage
+localizeSyntaxRewriteFailure failure = case failure of
+  AmbiguousBareSkipApplication ->
+    LocalizedMessage "aplicarea simplă de omitere este ambiguă" []
+  OverlappingDependentDeclarations earlier later ->
+    LocalizedMessage "declarațiile dependente se suprapun"
+      [ "declarația anterioară: " <> earlier
+      , "declarația ulterioară: " <> later
+      ]
+  NonInjectiveDependentDeclaration declaration ->
+    LocalizedMessage "declarația dependentă nu este injectivă"
+      ["declarație: " <> declaration]
+  InvalidDeclarationModifiers written correct ->
+    LocalizedMessage "modificatorii declarației sunt nevalizi"
+      [ "modificatori scriși: " <> unwords written
+      , "modificatori corecți: " <> unwords correct
+      ]
+  ExpectedDependentDeclaration expressionValue ->
+    LocalizedMessage "operația nu are efect în interiorul blocului"
+      ["expresie: " <> renderSourceExpression expressionValue]
+  InvalidRewriteSyntaxTemplate template failureReason ->
+    LocalizedMessage
+      (syntaxTemplateFailureSummary template failureReason)
+      [ "șablon: " <> template
+      , syntaxTemplateFailureDetail failureReason
+      ]
+  RejectedSyntaxCandidates attempts ->
+    LocalizedMessage "candidații sintactici au fost respinși de tipizare"
+      (map (renderDatraErrorWith localizeCandidateRejectionReport) attempts)
+
+localizeCandidateRejectionReport
+  :: CandidateRejectionReport
+  -> LocalizedMessage
+localizeCandidateRejectionReport report = LocalizedMessage
+  "candidatul sintactic nu îndeplinește cerințele de tipizare"
+  ( [ "regulă: " <> rejectedCandidateRule report
+    , "ramură de șablon: " <> show (rejectedCandidateBranch report)
+    , "indexul capturii: " <> show (rejectedCandidateCapture report)
+    , "captură: " <> rejectedCandidateSource report
+    , "motiv: " <> candidateRejectionReasonText
+        (rejectedCandidateReason report)
+    ]
+    <> maybe [] (pure . ("așteptat: " <>))
+      (rejectedCandidateExpected report)
+    <> maybe [] (pure . ("efectiv: " <>))
+      (rejectedCandidateActual report)
+    <> [ "intrare dedusă " <> show index <> ": " <> value
+       | (index, value) <- rejectedCandidateInputs report
+       ]
+  )
+
+candidateRejectionReasonText :: CandidateRejectionReason -> String
+candidateRejectionReasonText reason = case reason of
+  TypedHoleMismatch -> "rezultatul capturat este în afara tipului cerut"
+  GenericBoundMismatch -> "intrarea generică dedusă încalcă limita"
+  CandidateReturnMismatch -> "tipul rezultatului candidatului nu a putut fi stabilit"
+  RequiredChildExhausted -> "expresia copil necesară nu are rezultat aplicabil"
 
 localizeAccessError :: AccessError -> LocalizedMessage
 localizeAccessError reason =
@@ -136,11 +196,11 @@ localizeInterpretingError reason =
         ["tip așteptat: " <> name]
     OverloadError failure ->
       LocalizedMessage "supraîncărcarea a eșuat" [overloadFailure failure]
-    AssertionFailed -> LocalizedMessage "aserțiunea a eșuat" []
     OperationHasNoEffect ->
       LocalizedMessage "operația nu are efect" []
-    IdentifierStringOverlap name ->
-      LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
+    OverlappingBindings name ->
+      LocalizedMessage "legările se suprapun în același domeniu"
+        ["legare: " <> name]
     InconsistentShadowing name ->
       LocalizedMessage
         "ascunderea identificatorului nu este consecventă cu legarea existentă"
@@ -155,12 +215,12 @@ localizeInterpretingError reason =
       LocalizedMessage
         "parametrul privat al funcției nu poate fi opțional"
         ["identificator: " <> name]
-    CyclicIdentifierReference names ->
-      LocalizedMessage "dependență ciclică între identificatori" ["identificatori: " <> show names]
-    LetOutsideBegin ->
-      LocalizedMessage "let necesită un bloc begin" []
-    ValOutsideBegin ->
-      LocalizedMessage "val necesită o declarație de identificator într-un bloc" []
+    InvalidDependentDeclarationModifiers written correct ->
+      LocalizedMessage
+        "modificatorii declarației trebuie să apară cel mult o dată în ordinea let def val"
+        [ "modificatori scriși: " <> written
+        , "modificatori corecți: " <> correct
+        ]
     GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
         "introducerea generică necesită un tip de funcție exterior"
@@ -181,24 +241,8 @@ localizeInterpretingError reason =
         ["identificator: " <> name]
     GenericIdentifierDisjointnessUndecidable name ->
       LocalizedMessage
-        "nu se poate demonstra că identificatorul generic este disjunct de un identificator dependent"
+        "nu se poate demonstra că identificatorul generic este disjunct de un argument dependent"
         ["identificator: " <> name]
-    ExpectedNumericalOperand side actual ->
-      LocalizedMessage
-        ("operandul " <> operandSide side <> " trebuie să fie numeric")
-        ["tipul efectiv al valorii: " <> valueKind actual]
-    ExpectedFiniteIntegerOperand side actual ->
-      LocalizedMessage
-        ("operandul " <> operandSide side <> " trebuie să fie un întreg finit")
-        ["tipul efectiv al valorii: " <> valueKind actual]
-    ExpectedBooleanOperand side actual ->
-      LocalizedMessage
-        ("operandul " <> operandSide side <> " trebuie să fie boolean")
-        ["tipul efectiv al valorii: " <> valueKind actual]
-    ExpectedBooleanCondition actual ->
-      LocalizedMessage
-        "condiția if trebuie să fie booleană"
-        ["tipul efectiv al valorii: " <> valueKind actual]
     ExpectedNaturalExponent actual ->
       LocalizedMessage
         "exponentul trebuie să fie o valoare naturală"
@@ -285,10 +329,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "valoarea nu are o conversie canonică în șir"
         ["sunt acceptate doar conversii în șir injective și reversibile"]
-    InvalidSyntaxTemplateOperand ->
-      LocalizedMessage
-        "% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
-        []
     InvalidSyntaxTemplate template failure ->
       LocalizedMessage
         (syntaxTemplateFailureSummary template failure)
@@ -328,8 +368,6 @@ syntaxTemplateFailureSummary _ (IncompleteCoreSyntaxOperator operator) =
   "șablonul sintactic se termină cu operatorul nucleu incomplet " <> operator
 syntaxTemplateFailureSummary _ SyntaxTemplateProjectionLoss =
   "șablonul sintactic pierde un literal sau un gol în timpul potrivirii"
-syntaxTemplateFailureSummary _ SyntaxTemplateProjectionOrderMismatch =
-  "șablonul sintactic reordonează sau duplică un literal sau un gol"
 syntaxTemplateFailureSummary _ UnstableSyntaxTemplateProjection =
   "șablonul sintactic se schimbă după afișare și reanalizare"
 
@@ -340,18 +378,12 @@ syntaxTemplateFailureDetail (IncompleteCoreSyntaxOperator _) =
   "șablonul complet trebuie să furnizeze operandul cerut de operator"
 syntaxTemplateFailureDetail SyntaxTemplateProjectionLoss =
   "potrivitorul nu poate recupera fiecare limită din arborele sintactic neutru"
-syntaxTemplateFailureDetail SyntaxTemplateProjectionOrderMismatch =
-  "potrivitorul trebuie să recupereze fiecare gol exact o dată și în ordinea sursei"
 syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
   "forma neutră recuperată trebuie să rămână stabilă după o conversie canonică"
 
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =
   case failure of
-    AstPatternRequiresFunctionSignature ->
-      LocalizedMessage "un șablon AST necesită o semnătură de funcție" []
-    AstPatternRequiresFunctionImplementation ->
-      LocalizedMessage "un șablon AST necesită o implementare de funcție" []
     HostSyntaxHookRequiresAstCaptures ->
       LocalizedMessage "cârligul de sintaxă gazdă necesită capturi AST neevaluate" []
     MissingNativeArgument name ->
@@ -379,8 +411,6 @@ localizeFunctionFailure failure =
       LocalizedMessage "specificația funcției nu are o alternativă corespunzătoare" []
     AmbiguousFunctionSpecification ->
       LocalizedMessage "specificația funcției este ambiguă" []
-    FunctionArgumentsRequireFinitePages ->
-      LocalizedMessage "argumentele funcției necesită un număr finit de pagini" []
     FunctionArgumentPageUnavailable position ->
       LocalizedMessage "pagina argumentului funcției nu este disponibilă"
         ["poziție: " <> show position]
@@ -461,10 +491,6 @@ federationOperation AtlasMapFederationAccess = "accesare"
 federationOperation AtlasMapFederationSpecification = "specificare"
 federationOperation AtlasMapFederationSubfederation = "subfederație"
 
-operandSide :: OperandSide -> String
-operandSide LeftOperand = "stâng"
-operandSide RightOperand = "drept"
-
 valueKind :: InterpretedValueKind -> String
 valueKind FunctionValueKind = "function"
 valueKind NaturalValueKind = "număr natural"
@@ -476,7 +502,7 @@ valueKind FormulationValueKind = "formulare cu super-elipsă"
 valueKind RangeValueKind = "interval"
 valueKind RangeConcatenationValueKind = "concatenare de intervale"
 valueKind AsciiStringValueKind = "șir ASCII"
-valueKind DependentIdentifierTypeValueKind = "tip identificator"
+valueKind DependentArgumentTypeValueKind = "tip argument dependent"
 valueKind MapValueKind = "hartă"
 valueKind SpecificationValueKind = "morfism de specificare"
 

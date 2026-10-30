@@ -80,9 +80,8 @@ import DatraLanguage.Diagnostics
   , atSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
-  ( CommandLineOptionFailure (UnsupportedEvaluationMode)
-  , ModuleLoadFailure (CyclicModuleImport)
-  , ParseFailure (ParseFailure)
+  ( ModuleLoadFailure (CyclicModuleImport)
+  , ParseFailure (NeutralSourceParseFailure)
   , SyntaxTemplateAdmissibilityFailure (..)
   )
 import DatraLanguage.Diagnostics.Localization
@@ -158,6 +157,8 @@ testTree =
         , testCase "diagnostics" testDiagnostics
         , testCase "generic identifier disjointness"
             testGenericIdentifierDisjointness
+        , testCase "collection length disjointness"
+            testCollectionLengthDisjointness
         , testCase "evaluation boundary" testEvaluationBoundary
         , testCase "map length" testMapLength
         , testCase "ASCII map" testAsciiMap
@@ -262,10 +263,11 @@ testOrdinalIndexedFamilyCapability = do
   let aboveOmega = Types.makeLazyMapValue
         (addOrdinals omega (finiteOrdinal 1))
         (const Nothing)
-  assert "an atomic ordered map above omega is not an indexed family"
+  assert "an atomic ordered map above omega preserves its ordinal index"
     (case Types.ordinalIndexedValueFamily aboveOmega of
-      Nothing -> True
-      Just _ -> False)
+      Nothing -> False
+      Just family -> Types.ordinalIndexedFamilyOrderType family
+        == addOrdinals omega (finiteOrdinal 1))
 
 testEvaluationBoundary :: IO ()
 testEvaluationBoundary = do
@@ -276,8 +278,8 @@ testEvaluationBoundary = do
   assert "DatraTypes rejects non-finite operands without AST interpretation"
     (case Types.addValues nonemptyMap (Types.naturalValue 1) of
       Left
-          (Types.ExpectedFiniteIntegerOperand
-            Types.LeftOperand Types.MapValueKind) -> True
+          (Types.FunctionEvaluationFailed
+            Types.NoApplicableFunctionAlternative) -> True
       _ -> False)
   assert "DatraTypes owns checked range construction"
     (case Types.boundedRangeValue
@@ -520,12 +522,12 @@ testDiagnostics = do
       && localizeDiagnostic English
           (Types.GenericIdentifierDisjointnessUndecidable "T")
       == LocalizedMessage
-          "generic identifier cannot be proven disjoint from a dependent identifier"
+          "generic identifier cannot be proven disjoint from a dependent argument"
           ["identifier: T"]
       && localizeDiagnostic Romanian
           (Types.GenericIdentifierDisjointnessUndecidable "T")
       == LocalizedMessage
-          "nu se poate demonstra că identificatorul generic este disjunct de un identificator dependent"
+          "nu se poate demonstra că identificatorul generic este disjunct de un argument dependent"
           ["identificator: T"]
     )
   assert "inadmissible syntax templates have an explicit bilingual diagnostic"
@@ -546,20 +548,10 @@ testDiagnostics = do
           , "șablonul complet trebuie să furnizeze operandul cerut de operator"
           ]
     )
-  assert "invalid syntax-template operands have an explicit bilingual diagnostic"
-    ( localizeDiagnostic English Types.InvalidSyntaxTemplateOperand
-        == LocalizedMessage
-          "% expects a compile-time string or total map of strings"
-          []
-      && localizeDiagnostic Romanian Types.InvalidSyntaxTemplateOperand
-        == LocalizedMessage
-          "% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
-          []
-    )
   assert "parser failures have exact bilingual localization"
-    ( localizeDiagnostic English (ParseFailure "bad token")
+    ( localizeDiagnostic English (NeutralSourceParseFailure "bad token")
         == LocalizedMessage "source could not be parsed" ["bad token"]
-      && localizeDiagnostic Romanian (ParseFailure "bad token")
+      && localizeDiagnostic Romanian (NeutralSourceParseFailure "bad token")
         == LocalizedMessage "sursa nu a putut fi analizată" ["bad token"]
     )
   assert "module-loading failures have exact bilingual localization"
@@ -567,20 +559,6 @@ testDiagnostics = do
         == LocalizedMessage "cyclic module import" ["module: cycle.datra"]
       && localizeDiagnostic Romanian (CyclicModuleImport "cycle.datra")
         == LocalizedMessage "import ciclic de modul" ["modul: cycle.datra"]
-    )
-  assert "CLI-option failures have exact bilingual localization"
-    ( localizeDiagnostic English (UnsupportedEvaluationMode "fast")
-        == LocalizedMessage
-          "evaluation mode is not supported"
-          [ "given mode: fast"
-          , "expected dev, development, prod, or production"
-          ]
-      && localizeDiagnostic Romanian (UnsupportedEvaluationMode "fast")
-        == LocalizedMessage
-          "modul de evaluare nu este acceptat"
-          [ "mod furnizat: fast"
-          , "se așteaptă dev, development, prod sau production"
-          ]
     )
 
 testGenericIdentifierDisjointness :: IO ()
@@ -591,16 +569,16 @@ testGenericIdentifierDisjointness = do
     (Types.asciiStringValue "U")
   names <- expectRight "construct identifier-name federation"
     (Types.eitherValue first second)
-  naturalType <- expectRight "construct dependent identifier bound"
+  naturalType <- expectRight "construct dependent argument bound"
     Types.naturalTypeValue
   let family = Types.identifierTemplateTypeValue
         "generic-disjointness-test" names naturalType
-      opaque = Types.dependentIdentifierTypeValue
+      opaque = Types.dependentArgumentTypeValue
         "opaque-generic-disjointness-test" (const "T") naturalType
       namedAny = Types.simpleIdentifierTypeValue "T" Types.anyTypeValue
-  assert "a named Any remains a dependent identifier type"
+  assert "a named Any remains a dependent argument type"
     (Types.interpretedValueKind namedAny
-      == Types.DependentIdentifierTypeValueKind)
+      == Types.DependentArgumentTypeValueKind)
   assert "a named Any remains distinct from its unnamed bound"
     (case Types.eitherValue namedAny Types.anyTypeValue of
       Right _ -> True
@@ -615,6 +593,16 @@ testGenericIdentifierDisjointness = do
     (Types.identifierNameDisjointness "T" opaque
       == Types.IdentifierNameDisjointnessUndecidable)
 
+testCollectionLengthDisjointness :: IO ()
+testCollectionLengthDisjointness = do
+  let elementType = Types.anyTypeValue
+      listType = Types.listTypeValue "List Any" elementType
+      streamType = Types.streamTypeValue "Stream Any" elementType
+  assert "finite lists and omega-length streams are disjoint map families"
+    (case Types.eitherValue listType streamType of
+      Right _ -> True
+      Left _ -> False)
+
 assert :: String -> Bool -> IO ()
 assert = assertBool
 
@@ -628,8 +616,9 @@ testArgumentSchemas = do
         | expression == naturalExpression = Right naturalType
         | otherwise = Left (Types.UnknownIdentifier "unexpected test expression")
       privateOptional = AST.OptionalType
-        (AST.IdentifierOperation
-          (AST.IdentifierString "_value") naturalExpression Nothing)
+        (AST.DependentArgument
+          (AST.IdentifierReference (AST.IdentifierString "_value"))
+          (Just naturalExpression))
   assert "private optional parameters use a structured boundary error"
     (case Types.compileParameters evaluateNatural privateOptional of
       Left (Types.PrivateParameterCannotBeOptional "_value") -> True
@@ -643,7 +632,7 @@ testArgumentSchemas = do
             (Just "exponent") True naturalType Nothing
         ]
   skipped <- expectRight "construct skipped arguments"
-    (Types.makeArgumentMap [Types.skipValue, exponentValue])
+    (Types.makeArgumentativeMap [Types.skipValue, exponentValue])
   completed <- expectRight "complete skipped default"
     (Types.argumentSchemaValuesComplete positionalSchema skipped)
   assert "a skip consumes its slot and retains that slot's default"
@@ -669,7 +658,7 @@ testArgumentSchemas = do
 
   text <- expectRight "construct ASCII string" (Types.asciiStringValue "value")
   reordered <- expectRight "construct uniquely reorderable arguments"
-    (Types.makeArgumentMap [text, Types.naturalValue 7])
+    (Types.makeArgumentativeMap [text, Types.naturalValue 7])
   characterType <- expectRight "construct Char" Types.charTypeValue
   let stringType = Types.coalizeValue
         (Types.listTypeValue "List Char" characterType)
@@ -680,7 +669,7 @@ testArgumentSchemas = do
         ]
   (_, reorderedBindings) <- expectRight "uniquely reorder arguments"
     (Types.overloadArgumentSchemaComplete reorderSchema reordered)
-  assert "an argument map uses its sole type-correct reordering"
+  assert "an argumentative map uses its sole type-correct reordering"
     (map (\(name, value) -> (name, Types.interpretedCanonicalResult value))
         reorderedBindings
       == [ ("x", Types.interpretedCanonicalResult (Types.naturalValue 7))

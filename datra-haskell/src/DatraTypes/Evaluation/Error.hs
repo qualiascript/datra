@@ -9,7 +9,6 @@ module Evaluation.Error
   , MapLengthFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
-  , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
@@ -25,9 +24,6 @@ import SuperEllipsisRange
   , SuperEllipsisRangeError
   )
 
-data OperandSide = LeftOperand | RightOperand
-  deriving (Eq, Show)
-
 data InterpretedValueKind
   = FunctionValueKind
   | NaturalValueKind
@@ -39,7 +35,7 @@ data InterpretedValueKind
   | RangeValueKind
   | RangeConcatenationValueKind
   | AsciiStringValueKind
-  | DependentIdentifierTypeValueKind
+  | DependentArgumentTypeValueKind
   | MapValueKind
   | SpecificationValueKind
   deriving (Eq, Show)
@@ -82,9 +78,7 @@ overloadFailureIsAmbiguous failure =
     _ -> False
 
 data FunctionFailure
-  = AstPatternRequiresFunctionSignature
-  | AstPatternRequiresFunctionImplementation
-  | HostSyntaxHookRequiresAstCaptures
+  = HostSyntaxHookRequiresAstCaptures
   | MissingNativeArgument String
   | AmbiguousFunctionSumApplication
   | AmbiguousFunctionArgumentBindings
@@ -95,7 +89,6 @@ data FunctionFailure
   | EmptyFunctionSum
   | NoMatchingFunctionSpecificationAlternative
   | AmbiguousFunctionSpecification
-  | FunctionArgumentsRequireFinitePages
   | FunctionArgumentPageUnavailable Natural
   | ExpectedFunctionType
   deriving (Eq, Show)
@@ -130,25 +123,18 @@ data InterpretingError
   | ModuleEvaluationFailed ModuleEvaluationFailure
   | ExpectedBuiltinType String
   | OverloadError OverloadFailure
-  | AssertionFailed
   | OperationHasNoEffect
-  | IdentifierStringOverlap String
+  | OverlappingBindings String
   | InconsistentShadowing String
   | LetBindingCannotShadowConsistentIdentifier String
   | UnknownIdentifier String
   | PrivateParameterCannotBeOptional String
-  | CyclicIdentifierReference [String]
-  | LetOutsideBegin
-  | ValOutsideBegin
+  | InvalidDependentDeclarationModifiers String String
   | GenericIntroductionOutsideFunctionType String
   | DuplicateGenericIdentifier String
   | ForwardGenericBoundReference String String
   | GenericIdentifierOverlap String
   | GenericIdentifierDisjointnessUndecidable String
-  | ExpectedNumericalOperand OperandSide InterpretedValueKind
-  | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
-  | ExpectedBooleanOperand OperandSide InterpretedValueKind
-  | ExpectedBooleanCondition InterpretedValueKind
   | ExpectedNaturalExponent InterpretedValueKind
   | IndeterminateInfinityOperation String
   | ExpectedInsertionOperand InterpretedValueKind
@@ -174,7 +160,6 @@ data InterpretingError
   | AtlasMapFederationOperationUndecidable AtlasMapFederationUncertainty
   | NonInjectiveStringInterpolation
   | NoCanonicalStringConversion
-  | InvalidSyntaxTemplateOperand
   | InvalidSyntaxTemplate
       String
       SyntaxTemplateAdmissibilityFailure

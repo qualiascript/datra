@@ -17,15 +17,15 @@ functionTests =
         [ programCase "it observes the complete given map"
             (unlines
               [ "sum := (Nat; Nat -> Nat do yield it[0] + it[1])"
-              , "assert sum (1; 2) = 3"
+              , "yield sum (1; 2) = 3"
               ])
-            "()"
+            "true"
         , programCase "sequenced Int annotations remain individual slots"
             (unlines
               [ "sum := ((Int; Int) -> Int do yield it[0] + it[1])"
-              , "assert sum ((2 ~> Int); (5 ~> Int)) = 7"
+              , "yield sum ((2 ~> Int); (5 ~> Int)) = 7"
               ])
-            "()"
+            "true"
         , programFailureCase
             "function domains use ordinary concatenation validation"
             "yield (1, 2 -> Any)"
@@ -33,9 +33,9 @@ functionTests =
         , programCase "it observes defaults after skipped-argument overloading"
             (unlines
               [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield it.base ^ it.exponent)"
-              , "assert my_pow (*; 3) = 8"
+              , "yield my_pow (*; 3) = 8"
               ])
-            "()"
+            "true"
         , programCase "explicit unordered parameters"
             "f := ({a?:Int;b?:Int} -> Int do yield a+b)\nyield f (b:5;6)"
             "11"
@@ -80,10 +80,10 @@ functionTests =
             (SourceEvaluationFailure
               (GenericIntroductionOutsideFunctionType "&"))
         , programCase "generic function types compile their prepared prefix"
-            ( "assert ((x : T; y : ^T) -> Any) of "
+            ( "yield ((x : T; y : ^T) -> Any) of "
                 <> "((T : Any; x : Any; y : Any) -> Any)"
             )
-            "()"
+            "true"
         , programFailureCase "generic names cannot overlap domain names"
             (unlines
               [ "f := ({T? : Any; marker? : &T} -> Any do yield marker)"
@@ -300,7 +300,7 @@ functionTests =
               , "yield eliminate {T : Nat; marker : 3; value : 5}"
               ])
             "(\"5\"; true)"
-        , programCase "a closed argument-map codomain eliminates recursively"
+        , programCase "a closed argumentative-map codomain eliminates recursively"
             (unlines
               [ "eliminate := ({marker? : ^T; value? : T} -> {text? : Str; valid? : Bool} do"
               , "  pair := (T -> {text? : Str; valid? : Bool} do"
@@ -439,15 +439,14 @@ functionTests =
             (unlines
               [ "f := {abc? : Nat; xyz? : Nat} -> Bool do"
               , "  yield it.abc = abc and it.xyz = xyz"
-              , "assert f(3; 4)"
-              , "assert f(xyz : 4, abc : 3)"
-              ]) "()"
+              , "yield (f(3; 4); f(xyz : 4, abc : 3))"
+              ]) "(true; true)"
         , programCase "mixed slots preserve their written positions"
             (unlines
               [ "f := (abc? : Nat; Nat; xyz? : Nat) -> Bool do"
               , "  yield it[0][0] = $abc and it[0][1] = 3 and it[1] = 4 and it[2][0] = $xyz and it[2][1] = 5"
-              , "assert f(3; 4; 5)"
-              ]) "()"
+              , "yield f(3; 4; 5)"
+              ]) "true"
         , programCase "named access satisfies a declared output type"
             "f := ({abc? : Nat} -> Nat do yield it.abc + 1)\nyield f 6"
             "7"
@@ -456,37 +455,34 @@ functionTests =
               [ "Slots := (() -> Any do yield (abc? : Nat; Nat))"
               , "f := {Slots (),} -> Bool do"
               , "  yield it.abc = 3 and it[1] = 4"
-              , "assert f(3; 4)"
-              ]) "()"
+              , "yield f(3; 4)"
+              ]) "true"
         , programCase "aliased schemas preserve names"
             (unlines
               [ "Schema := (abc? : Nat; Nat)"
               , "f := Schema -> Bool do"
               , "  yield it.abc = 3 and it[1] = 4"
-              , "assert f(3; 4)"
-              ]) "()"
+              , "yield f(3; 4)"
+              ]) "true"
         , programCase "projected schemas retain names inside the body"
             (unlines
               [ "Slots := &T? -> Any do"
               , "  slots := (^_i :: Nat) -> Any do yield \"field%(_i)\"? : T"
               , "yield ((^n? :: Nat) -> Any do yield slots[0..n])"
               , "f := {Slots Nat,} -> Any do yield it"
-              , "assert (f(3; 4))[0][1] = 3"
-              , "assert (f(3; 4)).field1 = 4"
-              ]) "()"
+              , "yield ((f(3; 4))[0][1] = 3; (f(3; 4)).field1 = 4)"
+              ]) "(true; true)"
         , programCase "projected input maps retain names after returning"
             (unlines
               [ "f := {Args Int,} -> Any do yield it"
-              , "assert (f(3; 4)).arg0 = 3"
-              , "assert (f(arg1 : 4, 3)).arg1 = 4"
-              ]) "()"
+              , "yield ((f(3; 4)).arg0 = 3; (f(arg1 : 4, 3)).arg1 = 4)"
+              ]) "(true; true)"
         , programCase "empty and singleton unnamed inputs keep their shape"
             (unlines
               [ "emptyInput := (() -> Any do yield it)"
               , "single := (Nat -> Nat do yield it)"
-              , "assert emptyInput() = ()"
-              , "assert single 8 = 8"
-              ]) "()"
+              , "yield (emptyInput() = (); single 8 = 8)"
+              ]) "(true; true)"
         , programCase "mixed parameters can be returned positionally"
             "f := ((abc? : Nat; Nat) -> (Nat; Nat) do yield (abc; it[1]))\nyield f(3; 4)"
             "(3; 4)"
@@ -498,26 +494,26 @@ functionTests =
             "true"
         , programCase "private regular names may be omitted but not changed"
             (unlines
-              [ "assert 5 of (_x : Int)"
-              , "assert (_x : 5) of (_x : Int)"
-              , "assert not ((_y : 5) of (_x : Int))"
+              [ "yield (5 of (_x : Int);"
+              , "  (_x : 5) of (_x : Int);"
+              , "  not ((_y : 5) of (_x : Int)))"
               ])
-            "()"
-        , programCase "private argument-map names may be changed"
+            "(true; true; true)"
+        , programCase "private argumentative-map names may be changed"
             (unlines
-              [ "assert 5 of {_x : Int}"
-              , "assert (_x : 5) of {_x : Int}"
-              , "assert (_y : 5) of {_x : Int}"
+              [ "yield (5 of {_x : Int};"
+              , "  (_x : 5) of {_x : Int};"
+              , "  (_y : 5) of {_x : Int})"
               ])
-            "()"
+            "(true; true; true)"
         , programCase "private names compose with specification"
             (unlines
-              [ "assert (5 ~> (_x : Int)) of (_x : Int)"
-              , "assert ((_x : Int) <~ 5) of (_x : Int)"
-              , "assert (5 ~> {_x : Int}) of {_x : Int}"
-              , "assert ({_x : Int} <~ 5) of {_x : Int}"
+              [ "yield ((5 ~> (_x : Int)) of (_x : Int);"
+              , "  ((_x : Int) <~ 5) of (_x : Int);"
+              , "  (5 ~> {_x : Int}) of {_x : Int};"
+              , "  ({_x : Int} <~ 5) of {_x : Int})"
               ])
-            "()"
+            "(true; true; true; true)"
         , programCase "matching identifiers reserve their candidate"
             "yield (my_val : 3) of {value : Int, my_val : Str}"
             "false"
@@ -537,18 +533,18 @@ functionTests =
             "false"
         , programCase "private domains are compatible with unnamed domains"
             (unlines
-              [ "assert (Int -> Nat) of ((_x : Int) -> Nat)"
-              , "assert ((_x : Int) -> Nat) of (Int -> Nat)"
-              , "assert not (((_x : Int) -> Nat) of ((_y : Int) -> Nat))"
+              [ "yield ((Int -> Nat) of ((_x : Int) -> Nat);"
+              , "  ((_x : Int) -> Nat) of (Int -> Nat);"
+              , "  not (((_x : Int) -> Nat) of ((_y : Int) -> Nat)))"
               ])
-            "()"
+            "(true; true; true)"
         , programCase "private codomains are compatible with unnamed codomains"
             (unlines
-              [ "assert (Nat -> (_x : Int)) of (Nat -> Int)"
-              , "assert (Nat -> Int) of (Nat -> (_x : Int))"
-              , "assert not ((Nat -> (_x : Int)) of (Nat -> (_y : Int)))"
+              [ "yield ((Nat -> (_x : Int)) of (Nat -> Int);"
+              , "  (Nat -> Int) of (Nat -> (_x : Int));"
+              , "  not ((Nat -> (_x : Int)) of (Nat -> (_y : Int))))"
               ])
-            "()"
+            "(true; true; true)"
         , programCase "required names accept matching named input"
             "f := ({x:Int} -> Int do yield x+1)\nyield f (x:2)"
             "3"
@@ -587,19 +583,19 @@ functionTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase
-            "singleton argument-map private parameter is positional"
+            "singleton argumentative-map private parameter is positional"
             ( "f := ({_x:Int} -> Int do yield _x+1)\n"
                 <> "yield f 2"
             )
             "3"
         , programFailureCase
-            "singleton argument-map private parameter rejects its written name"
+            "singleton argumentative-map private parameter rejects its written name"
             ( "f := ({_x:Int} -> Int do yield ~\"_x\"+1)\n"
                 <> "yield f (_x:2)"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-        , programCase "private argument-map parameters preserve written order"
+        , programCase "private argumentative-map parameters preserve written order"
             ( "sum := ({_x:Int;_y:Int} -> Int do "
                 <> "yield _x+_y)\nyield sum (1;2)"
             )
@@ -638,14 +634,14 @@ functionTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "function type annotates an identifier"
-            "assert (callback : (Nat -> Nat)) of (callback : (Nat -> Nat))"
-            "()"
+            "yield (callback : (Nat -> Nat)) of (callback : (Nat -> Nat))"
+            "true"
         , programCase "block binding accepts a canonical function annotation"
             "callback := (Nat -> Nat)\nyield callback of (Nat -> Nat)"
             "true"
         , expressionCase "syntax category can annotate an identifier"
-            "node : 'datra.Expr"
-            "node : 'datra.Expr"
+            "node : datra.Expr"
+            "node : datra.Expr"
         , programCase "function parameter annotation is canonical"
             "f := ({callback?:(Nat -> Nat)} -> Nat do yield 0)\nyield f ({n?:Nat} -> Nat do yield n)"
             "0"
@@ -659,7 +655,7 @@ functionTests =
                 <> "yield identity (Nat; 5)"
             )
             "5"
-        , programCase "optional binder accepts named dependent identifiers"
+        , programCase "optional binder accepts named dependent arguments"
             ( "identity := ({value? : &T? :: Any} -> T do yield value)\n"
                 <> "yield identity {T : Nat; value : 5}"
             )
@@ -742,7 +738,7 @@ argumentSchemaMatrixTests =
             "names select an otherwise ambiguous reorder"
             "{x : Int; y : Int}" "x * 10 + y" "(y : 3, x : 2)" "23"
         , ArgumentSchemaCase
-            "concatenated ordered and argument-map segments compose"
+            "concatenated ordered and argumentative-map segments compose"
             "x : Int, {y? : Int; z? : Int}"
             "x * 100 + y * 10 + z" "(x : 2, z : 4, 3)" "234"
         , ArgumentSchemaCase

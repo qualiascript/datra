@@ -5,7 +5,7 @@ module Evaluation.ResultContract
   ( decideClosedPublicResultContract
   ) where
 
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow)
 import Evaluation.Specification.Decision
   ( Decision (..)
   , decideAll
@@ -49,7 +49,7 @@ decideClosedPublicResultContract = go 256
               [ descend (evaluatedEitherLeft alternatives)
               , descend (evaluatedEitherRight alternatives)
               ]
-            ArgumentMapForm members _ -> combine (map descend members)
+            ArgumentativeMapForm members _ -> combine (map descend members)
             SkipForm _ -> ineligible
             FederationSpecificationForm _ target branches ->
               combine (descend target : map descend branches)
@@ -62,7 +62,7 @@ decideClosedPublicResultContract = go 256
               descend (evaluatedSpecificationTarget specification)
             AssignmentForm specification ->
               descend (evaluatedSpecificationTarget specification)
-            DependentIdentifierTypeForm identifier ->
+            DependentArgumentTypeForm identifier ->
               case evaluatedIdentifierDependency identifier of
                 SimpleIdentifierDependency _ ->
                   case ( evaluatedIdentifierNameFederation identifier
@@ -71,7 +71,7 @@ decideClosedPublicResultContract = go 256
                     (Nothing, Nothing) ->
                       descend (evaluatedIdentifierUnderlying identifier)
                     _ -> ineligible
-                DependentIdentifierDependency {} -> ineligible
+                DependentArgumentDependency {} -> ineligible
             IdentifierStringProjectionForm _ -> ineligible
             DependentSumForm _ -> ineligible
             CoalizationForm operand -> descend operand
@@ -91,7 +91,7 @@ decideClosedPublicResultContract = go 256
               [ maybe DecisionUndecidable descend
                   (interpretedMapValueAt
                     (interpretedMap contract) (finiteOrdinal position))
-              | position <- if count == 0 then [] else [0 .. count - 1]
+              | position <- naturalsBelow count
               ]
 
     eligible = DecisionProved ()

@@ -28,7 +28,7 @@ data ASTMetaCategory
   | BlockAST
   | FunctionBodyAST
   | DeclarationAST
-  | DependentIdentifierAST
+  | DependentArgumentAST
   deriving (Eq, Show)
 
 data BuiltinMetaType

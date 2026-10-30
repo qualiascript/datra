@@ -33,7 +33,7 @@ identifierNameDisjointness
   -> IdentifierNameDisjointness
 identifierNameDisjointness candidate value =
   case interpretedForm value of
-    DependentIdentifierTypeForm identifier -> againstIdentifier identifier
+    DependentArgumentTypeForm identifier -> againstIdentifier identifier
     IdentifierStringProjectionForm identifier -> againstIdentifier identifier
     SpecificationForm specification ->
       identifierNameDisjointness candidate
@@ -48,7 +48,7 @@ identifierNameDisjointness candidate value =
         SimpleIdentifierDependency name
           | name == candidate -> IdentifierNameOverlap
           | otherwise -> IdentifierNameDisjoint
-        dependency@DependentIdentifierDependency {} ->
+        dependency@DependentArgumentDependency {} ->
           case evaluatedIdentifierNameFederation identifier of
             Just names -> fromDecision
               (decideValueSubfederation (makeAsciiString candidate) names)
@@ -90,6 +90,13 @@ decideValueSubfederation source target
   , ListDependentSum sourceElement <-
       evaluatedDependentSumStructure sourceDependent
   , ListDependentSum targetElement <-
+      evaluatedDependentSumStructure targetDependent =
+      decideValueSubfederation sourceElement targetElement
+  | Just sourceDependent <- dependentSumView source
+  , Just targetDependent <- dependentSumView target
+  , StreamDependentSum sourceElement <-
+      evaluatedDependentSumStructure sourceDependent
+  , StreamDependentSum targetElement <-
       evaluatedDependentSumStructure targetDependent =
       decideValueSubfederation sourceElement targetElement
   | Just dependent <- dependentSumView target =
