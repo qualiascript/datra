@@ -107,7 +107,8 @@ import Parsing
   , ResourceEnvelope (..)
   )
 import SyntaxRewriting
-  ( SyntaxContext (..)
+  ( RewriteLocus (..)
+  , SyntaxContext (..)
   , SyntaxRuleFamily (..)
   , rewriteResourceSyntax
   , rewriteResourceSyntaxLocated
@@ -123,6 +124,7 @@ import SyntaxDefinitions
   , declarationRuleBranches
   , syntaxApplicationRule
   )
+import SyntaxTemplateProjection (applicationPhrase)
 import DatraLanguage.Diagnostics
   ( DatraError
   , Located (Located, locatedValue)
@@ -414,7 +416,7 @@ captureSyntaxHole base modules strict declarations previous kind captured =
     ExpressionSyntaxHole {} -> Just captured
     BlockSyntaxHole {} -> case captured of
       AtlasMap {} -> Just captured
-      _ -> Nothing
+      _ -> Just (AtlasMap (applicationPhrase captured))
     FunctionBodySyntaxHole {} -> case captured of
       FunctionBody {} -> Just captured
       _ -> Nothing
@@ -602,14 +604,47 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
           , contextEvaluateWithInput =
               evaluateSyntaxValueWithInput currentBase modules declarations
           , contextApply = applySyntaxValue currentBase modules declarations
-          , contextAssembleSequence = assembleSyntaxSequence
           , contextAssembleImplicitResource = assembleImplicitSyntaxResource
-          , contextAssembleExpansion = assembleSyntaxExpansion
+          , contextExpandSyntax = expandSyntaxExpression
+          , contextRewriteScope = rewriteScope context
           , contextPublish = publish currentBase declarations families
           , contextRecursive = recursive currentBase declarations families
           , contextScope = scoped currentBase declarations families
           , contextEnter = enter currentBase declarations families
           }
+
+    rewriteScope environment locus = case locus of
+      RewriteExpression expressionValue ->
+        expressionScope environment expressionValue
+      RewriteChild parent cursor child ->
+        expressionScope (scopeAt cursor (childScopes parent)) child
+      where
+        childScopes expressionValue = case expressionValue of
+          MaybeThen _ _ ->
+            [ environment
+            , contextEnter environment Nothing
+            ]
+          ScopeAccess source _ ->
+            [ environment
+            , (contextEnter (contextScope environment source) Nothing)
+                { contextSourceSpan = contextSourceSpan environment }
+            ]
+          _ -> map (const environment)
+            (expressionChildren expressionValue)
+        scopeAt selected = maybe environment id
+          . listHead . drop selected
+        listHead [] = Nothing
+        listHead (selected : _) = Just selected
+
+    expressionScope environment expressionValue = case expressionValue of
+      AtlasMap entries -> contextRecursive environment entries
+      Begin declarations result -> contextRecursive
+        (contextEnter environment Nothing)
+        (map DeclarationExpression declarations <> [result])
+      FunctionBody declarations result -> contextRecursive
+        (contextEnter environment Nothing)
+        (map DeclarationExpression declarations <> [result])
+      _ -> environment
 
     withDeclarations capture declarations strict previous kind captured =
       capture strict declarations previous kind captured
@@ -660,7 +695,8 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
             Nothing -> Left
               (UnknownIdentifier (contextualPrivateName ContextualIt))
         child = extendContextualRuntimeDeclarations
-          (contextualDeclarations ContextualIt False (const supplied)) parent
+          (contextualDeclarations ContextualIt False (const supplied))
+          (enterScope input genericContinuationHandoff parent)
 
     declarationFamilies currentBase = snd . foldl introduce ([], [])
       where
@@ -737,18 +773,6 @@ lowerSyntaxDeclarations = traverse lower
       Right
       (dependentDeclaration expressionValue)
 
-assembleSyntaxSequence
-  :: Expression
-  -> [Expression]
-  -> Either SyntaxRewriteFailure Expression
-assembleSyntaxSequence source expressions = case source of
-  AtlasMap _ -> Right (AtlasMap expressions)
-  Begin declarations _ -> assembleSyntaxBlock Begin
-    (length declarations) expressions
-  FunctionBody declarations _ -> assembleSyntaxBlock FunctionBody
-    (length declarations) expressions
-  _ -> Right source
-
 assembleImplicitSyntaxResource
   :: [Expression]
   -> Either SyntaxRewriteFailure Expression
@@ -758,32 +782,15 @@ assembleImplicitSyntaxResource expressions = case reverse expressions of
     declarations <- lowerSyntaxDeclarations (reverse reversedDeclarations)
     Right (Begin declarations result)
 
-assembleSyntaxExpansion
+expandSyntaxExpression
   :: SyntaxFunctionExpansion
-  -> [Expression]
   -> Either SyntaxRewriteFailure Expression
-assembleSyntaxExpansion expansion expressions = case expansion of
+expandSyntaxExpression expansion = case expansion of
   SyntaxExpression expressionValue -> Right expressionValue
-  SyntaxBegin entries _ -> assembleSyntaxBlock Begin
-    (length entries) expressions
-  SyntaxFunctionBody entries _ -> assembleSyntaxBlock FunctionBody
-    (length entries) expressions
-
-assembleSyntaxBlock
-  :: ([DependentDeclaration Expression] -> Expression -> Expression)
-  -> Int
-  -> [Expression]
-  -> Either SyntaxRewriteFailure Expression
-assembleSyntaxBlock constructor declarationCount expressions = do
-  let (declarationExpressions, resultExpressions) =
-        splitAt declarationCount expressions
-  declarations <- lowerSyntaxDeclarations declarationExpressions
-  pure (constructor declarations (applicationFromExpressions resultExpressions))
-
-applicationFromExpressions :: [Expression] -> Expression
-applicationFromExpressions [] = AtlasMap []
-applicationFromExpressions (first : remaining) =
-  foldl FunctionApplication first remaining
+  SyntaxBegin entries result ->
+    Begin <$> lowerSyntaxDeclarations entries <*> pure result
+  SyntaxFunctionBody entries result ->
+    FunctionBody <$> lowerSyntaxDeclarations entries <*> pure result
 
 -- Dependent-name resolution is an interpreter concern. Syntax rewriting sees
 -- only the resulting rule family and never inspects a declaration head.

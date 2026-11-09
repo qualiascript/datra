@@ -350,7 +350,6 @@ executable datra-haskell
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
         SyntaxRewriting.Diagnostics
-        SyntaxRewriting.Dependencies
         SyntaxRewriting.Stack
         Parsing
         Rendering
@@ -419,7 +418,6 @@ test-suite datra-parsing-test
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
         SyntaxRewriting.Diagnostics
-        SyntaxRewriting.Dependencies
         SyntaxRewriting.Stack
         Paths_datra_haskell
     autogen-modules:
@@ -469,7 +467,6 @@ test-suite datra-interpreting-test
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
         SyntaxRewriting.Diagnostics
-        SyntaxRewriting.Dependencies
         SyntaxRewriting.Stack
         Parsing
         Rendering

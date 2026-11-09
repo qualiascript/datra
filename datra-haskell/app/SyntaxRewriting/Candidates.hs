@@ -3,7 +3,6 @@ module SyntaxRewriting.Candidates
   , enumerateRuleStructuralCandidates
   , initialCandidateFrame
   , advanceCandidateFrameWith
-  , candidateFrameRequiresTypedChild
   , structuralCandidateMatch
   ) where
 
@@ -15,11 +14,8 @@ import DatraLanguage.SyntaxTemplate
   , TemplateSelection (..)
   )
 import SyntaxDefinitions
-  ( SyntaxRule (..)
-  , syntaxTemplateLiteralPrefix
-  )
+  ( SyntaxRule (..) )
 import Data.Map.Strict qualified as Map
-import Data.Set qualified as Set
 import DatraTypes (InterpretedValue)
 import SyntaxRewriting.Types
   ( CandidateFrame (..)
@@ -27,8 +23,6 @@ import SyntaxRewriting.Types
   , CandidateRejectionDetails (..)
   , CandidateRejectionReason (..)
   , CandidateTypingContext (..)
-  , RewriteDependency (..)
-  , RewriteNodeId
   , RewriteResult (..)
   , RewriteRule (..)
   , StructuralCandidate (..)
@@ -38,32 +32,18 @@ import SyntaxTemplateMatching
   , StructuralSyntaxMatch (..)
   , enumerateSyntaxRuleSelections
   )
-import SyntaxTemplateProjection
-  ( applicationFrom
-  , applicationPhrase
-  , literalExpression
-  , matchesLiteral
-  )
 
 initialCandidateFrame :: StructuralCandidate -> CandidateFrame
-initialCandidateFrame candidate = CandidateFrame
-  { candidateFrameCandidate = candidate
-  , candidateFrameNextCapture = 0
+initialCandidateFrame _ = CandidateFrame
+  { candidateFrameNextCapture = 0
   , candidateFrameTypingContext = CandidateTypingContext
       { candidateTypingInputs = Map.empty
       , candidateTypingExpectedHoles = Map.empty
       , candidateTypingReturnType = Nothing
       }
-  , candidateFrameChildren = Map.empty
+  , candidateFrameResults = Map.empty
   , candidateFramePreparedCaptures = Map.empty
   }
-
-candidateFrameRequiresTypedChild :: CandidateFrame -> Bool
-candidateFrameRequiresTypedChild frame = case drop
-    (candidateFrameNextCapture frame)
-    (structuralCandidateCaptures (candidateFrameCandidate frame)) of
-  (ValueSyntaxHole {}, _) : _ -> True
-  _ -> False
 
 -- | Continue one candidate from its stored capture cursor.  The callbacks are
 -- the existing Datra typing operations: expected-hole instantiation, result
@@ -77,12 +57,12 @@ advanceCandidateFrameWith
      )
   -> (CandidateTypingContext -> Int -> Maybe InterpretedValue)
   -> (CandidateTypingContext -> Maybe InterpretedValue)
-  -> (RewriteNodeId -> Maybe RewriteResult)
   -> (InterpretedValue -> InterpretedValue -> Bool)
+  -> StructuralCandidate
   -> CandidateFrame
   -> CandidateFrameProgress
 advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
-    lookupResult compatible =
+    compatible candidate =
   advance
   where
     advance frame
@@ -92,8 +72,7 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
               context { candidateTypingReturnType = Just resultType }
               [ preparedResult
               | index <- [0 .. length captures - 1]
-              , Just child <- [Map.lookup index children]
-              , Just childResult <- [lookupResult child]
+              , Just childResult <- [Map.lookup index results]
               , let preparedResult = childResult
                       { rewriteResultExpression = Map.findWithDefault
                           (rewriteResultExpression childResult) index
@@ -104,18 +83,14 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
             Nothing -> CandidateFrameRejected
               (rejectionDetails CandidateReturnMismatch Nothing Nothing frame)
       | otherwise =
-          case Map.lookup captureIndex children of
-            Nothing -> CandidateFrameNeedsChild captureIndex kind source
-            Just child -> case lookupResult child of
-              Nothing -> CandidateFrameBlocked
-                (Set.singleton (RewriteNodeResult child))
-              Just result -> checkResult frame result
+          case Map.lookup captureIndex results of
+            Nothing -> CandidateFrameNeedsChild frame captureIndex kind source
+            Just result -> checkResult frame result
       where
-        candidate = candidateFrameCandidate frame
         captures = structuralCandidateCaptures candidate
         captureIndex = candidateFrameNextCapture frame
         context = candidateFrameTypingContext frame
-        children = candidateFrameChildren frame
+        results = candidateFrameResults frame
         (kind, source) = captures !! captureIndex
     checkResult frame result = case prepared of
       Nothing -> CandidateFrameRejected
@@ -156,7 +131,7 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         context = candidateFrameTypingContext frame
         expected = expectedHole context index
         captures = structuralCandidateCaptures
-          (candidateFrameCandidate frame)
+          candidate
         (kind, _) = captures !! index
         completed =
           [ (previousKind, preparedExpression)
@@ -183,7 +158,6 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         , candidateRejectionReason = reason
         }
       where
-        candidate = candidateFrameCandidate frame
         captures = structuralCandidateCaptures candidate
         index = candidateFrameNextCapture frame
         source = case drop index captures of
@@ -195,9 +169,6 @@ compileRewriteRule :: SyntaxRule -> RewriteRule
 compileRewriteRule rule = RewriteRule
   { rewriteRule = rule
   , rewriteRuleBranch = 0
-  , rewriteRuleLiteralPrefix = syntaxTemplateLiteralPrefix rule
-  , rewriteRuleLiterals = Set.fromList
-      [ literal | SyntaxLiteral literal <- pieces ]
   , rewriteRuleEvaluation = Nothing
   , rewriteRuleHoleFamilies =
       [ Nothing | SyntaxHole _ <- pieces ]
@@ -224,59 +195,11 @@ enumerateRuleStructuralCandidates compiled projections =
           structuralSyntaxMatchRemaining matched
       }
   | (projection, expressionValue) <- zip [0 ..]
-      (concatMap (candidateProjections compiled) projections)
+      projections
   , matched <- enumerateSyntaxRuleSelections rule expressionValue
   ]
   where
     rule = rewriteRule compiled
-
-candidateProjections :: RewriteRule -> Expression -> [Expression]
-candidateProjections compiled expressionValue =
-  blockTemplateProjections compiled expressionValue
-    <> [expressionValue]
-
-blockTemplateProjections :: RewriteRule -> Expression -> [Expression]
-blockTemplateProjections compiled expressionValue = do
-  (prefix, delimiter) <- maybeToList
-    (blockTemplateShape (syntaxTemplatePieces
-      (syntaxTemplate (rewriteRule compiled))))
-  let phrase = applicationPhrase expressionValue
-  if and (zipWith matchesLiteral prefix phrase)
-      && length phrase >= length prefix
-    then do
-      let afterPrefix = drop (length prefix) phrase
-          (writtenBlockMembers, delimiterAndResult) =
-            break (matchesLiteral delimiter) afterPrefix
-      _ : resultMembers <- pure delimiterAndResult
-      if null resultMembers
-        then []
-        else pure (applicationFrom
-          ( map literalExpression prefix
-            <> [ AtlasMap writtenBlockMembers
-               , literalExpression delimiter
-               , applicationFrom resultMembers
-               ]
-          ))
-    else []
-
-blockTemplateShape
-  :: [SyntaxPiece Expression]
-  -> Maybe ([String], String)
-blockTemplateShape pieces = case break isBlockHole pieces of
-  (prefix, SyntaxHole BlockSyntaxHole {}
-      : SyntaxLiteral delimiter
-      : [SyntaxHole ExpressionSyntaxHole {}]) ->
-    (, delimiter) <$> traverse literal prefix
-  _ -> Nothing
-  where
-    isBlockHole (SyntaxHole BlockSyntaxHole {}) = True
-    isBlockHole _ = False
-    literal (SyntaxLiteral value) = Just value
-    literal _ = Nothing
-
-maybeToList :: Maybe value -> [value]
-maybeToList Nothing = []
-maybeToList (Just value) = [value]
 
 structuralCandidateMatch :: StructuralCandidate -> SyntaxMatch
 structuralCandidateMatch candidate = SyntaxMatch

@@ -5,30 +5,25 @@ module SyntaxRewriting.Types
   , CaptureHole
   , RewriteRule (..)
   , RewriteNodeId (..)
-  , SequenceId (..)
-  , RewriteDependency (..)
+  , RewriteLocus (..)
   , StructuralCandidate (..)
   , SelectedCandidate (..)
   , PreparedExpansion (..)
   , CandidateTypingContext (..)
   , CandidateFrame (..)
   , CandidateFrameProgress (..)
-  , CandidateContinuation (..)
-  , RewriteParent (..)
-  , CandidateAttempt (..)
   , CandidateRejectionReason (..)
   , CandidateRejectionDetails (..)
   , CandidateRejection (..)
   , RewriteResult (..)
+  , CandidateSearch (..)
+  , OrdinaryTraversal (..)
+  , RewriteWork (..)
   , RewriteNodeState (..)
   , RewriteNode (..)
-  , SequenceFrame (..)
-  , RewriteTask (..)
   ) where
 
 import Data.Map.Strict (Map)
-import Data.Set (Set)
-import Data.Set qualified as Set
 import DatraLanguage.AST (Expression)
 import DatraLanguage.Diagnostics (DatraError, SourceSpan)
 import DatraLanguage.Diagnostics.Application
@@ -55,10 +50,6 @@ type CaptureHole =
   -> Expression
   -> Maybe Expression
 
--- | One visible declaration family, already paired with the lexical
--- interpreter operations captured at its declaration position. Syntax
--- rewriting orders and selects these families but does not construct or
--- interpret dependent declarations.
 data SyntaxRuleFamily = SyntaxRuleFamily
   { syntaxRuleFamilyNames :: [String]
   , syntaxRuleFamilyRules :: [(Int, SyntaxRule)]
@@ -85,17 +76,13 @@ data SyntaxContext = SyntaxContext
       :: Expression
       -> InterpretedValue
       -> Maybe InterpretedValue
-  , contextAssembleSequence
-      :: Expression
-      -> [Expression]
-      -> Either SyntaxRewriteFailure Expression
   , contextAssembleImplicitResource
       :: [Expression]
       -> Either SyntaxRewriteFailure Expression
-  , contextAssembleExpansion
+  , contextExpandSyntax
       :: SyntaxFunctionExpansion
-      -> [Expression]
       -> Either SyntaxRewriteFailure Expression
+  , contextRewriteScope :: RewriteLocus -> SyntaxContext
   , contextPublish :: Expression -> Maybe SyntaxContext
   , contextRecursive :: [Expression] -> SyntaxContext
   , contextScope :: Expression -> SyntaxContext
@@ -105,8 +92,6 @@ data SyntaxContext = SyntaxContext
 data RewriteRule = RewriteRule
   { rewriteRule :: SyntaxRule
   , rewriteRuleBranch :: Int
-  , rewriteRuleLiteralPrefix :: [String]
-  , rewriteRuleLiterals :: Set.Set String
   , rewriteRuleEvaluation :: Maybe (Expression -> Maybe InterpretedValue)
   , rewriteRuleHoleFamilies :: [Maybe InterpretedValue]
   , rewriteRuleSyntaxInsertion :: Maybe SyntaxFunctionInsertion
@@ -116,17 +101,13 @@ data RewriteRule = RewriteRule
 newtype RewriteNodeId = RewriteNodeId Int
   deriving (Eq, Ord, Show)
 
-newtype SequenceId = SequenceId Int
-  deriving (Eq, Ord, Show)
+-- | The only scope question the rewrite machine asks the interpreter.  A
+-- detached expression is a root, capture, or freshly expanded expression;
+-- a child locus additionally describes the semantic edge used to reach it.
+data RewriteLocus
+  = RewriteExpression Expression
+  | RewriteChild Expression Int Expression
 
-data RewriteDependency
-  = RewriteNodeResult RewriteNodeId
-  | SequenceDeclarations SequenceId
-  deriving (Eq, Ord, Show)
-
--- | One structurally possible interpretation, before any capture is typed.
--- The list order produced by the candidate enumerator is the complete greedy
--- backtracking order and is therefore retained verbatim by a rewrite node.
 data StructuralCandidate = StructuralCandidate
   { structuralCandidateRule :: RewriteRule
   , structuralCandidateBranch :: Int
@@ -144,17 +125,11 @@ data SelectedCandidate = SelectedCandidate
   , selectedReturnType :: InterpretedValue
   }
 
--- | The concrete expansion produced once a candidate's captures and return
--- type are fixed. Nested block work is scheduled from this value before the
--- candidate is accepted; finalization only attaches the stored remainder.
 data PreparedExpansion = PreparedExpansion
   { preparedExpansionSyntax :: SyntaxFunctionExpansion
   , preparedExpansionRemaining :: [Expression]
   }
 
--- | Persistent type inference accumulated while a candidate frame is below
--- child work on the stack.  Entries are indexed by template capture position;
--- advancing a frame never removes or recomputes an earlier entry.
 data CandidateTypingContext = CandidateTypingContext
   { candidateTypingInputs :: Map Int InterpretedValue
   , candidateTypingExpectedHoles :: Map Int InterpretedValue
@@ -162,38 +137,23 @@ data CandidateTypingContext = CandidateTypingContext
   }
 
 data CandidateFrame = CandidateFrame
-  { candidateFrameCandidate :: StructuralCandidate
-  , candidateFrameNextCapture :: Int
+  { candidateFrameNextCapture :: Int
   , candidateFrameTypingContext :: CandidateTypingContext
-  , candidateFrameChildren :: Map Int RewriteNodeId
+  , candidateFrameResults :: Map Int RewriteResult
   , candidateFramePreparedCaptures :: Map Int Expression
   }
 
 data CandidateFrameProgress
   = CandidateFrameNeedsChild
+      CandidateFrame
       Int
       (SyntaxHoleKind Expression)
       Expression
-  | CandidateFrameBlocked (Set RewriteDependency)
   | CandidateFrameRejected CandidateRejectionDetails
   | CandidateFrameAccepted
       CandidateTypingContext
       [RewriteResult]
       InterpretedValue
-
-data CandidateContinuation = CandidateContinuation
-  { continuationParentNode :: RewriteNodeId
-  , continuationCandidateCursor :: Int
-  , continuationCaptureIndex :: Int
-  }
-  deriving (Eq, Ord, Show)
-
-data RewriteParent
-  = RewriteRoot
-  | RewriteCandidateParent CandidateContinuation
-  | RewriteOrdinaryParent RewriteNodeId
-  | RewriteSequenceParent SequenceId
-  deriving (Eq, Ord, Show)
 
 data CandidateRejectionDetails = CandidateRejectionDetails
   { candidateRejectionRule :: RewriteRule
@@ -212,62 +172,39 @@ data CandidateRejection = CandidateRejection
   , candidateRejectionChildren :: [CandidateRejection]
   }
 
-data CandidateAttempt
-  = CandidateAccepted SelectedCandidate
-  | CandidateBlocked
-      StructuralCandidate
-      CandidateFrame
-      (Set RewriteDependency)
-  | CandidateRejected CandidateRejection
-
 data RewriteResult = RewriteResult
   { rewriteResultExpression :: Expression
   , rewriteResultType :: Maybe InterpretedValue
   , rewriteResultSelection :: Maybe SelectedCandidate
   }
 
+data CandidateSearch = CandidateSearch
+  { candidateSearchCandidates :: [StructuralCandidate]
+  , candidateSearchCursor :: Int
+  , candidateSearchRejections :: [CandidateRejection]
+  , candidateSearchFrame :: Maybe CandidateFrame
+  }
+
+data OrdinaryTraversal = OrdinaryTraversal
+  { ordinaryTraversalCursor :: Int
+  , ordinaryTraversalSelection :: Maybe SelectedCandidate
+  , ordinaryTraversalFinalizedCaptures :: [Expression]
+  }
+
+data RewriteWork
+  = SearchCandidates CandidateSearch
+  | TraverseChildren OrdinaryTraversal
+
 data RewriteNodeState
   = NodePending
-  | NodeActive
-  | NodeWaiting (Set RewriteDependency)
+  | NodeReady RewriteWork
+  | NodeWaiting RewriteWork RewriteNodeId
   | NodeFinalized RewriteResult
 
--- The environment is parameterized so the state model remains below the
--- application-specific callbacks used by SyntaxRewriting.
 data RewriteNode environment = RewriteNode
-  { rewriteNodeId :: RewriteNodeId
-  , rewriteNodeSource :: Expression
+  { rewriteNodeExpression :: Expression
   , rewriteNodeEnvironment :: environment
-  , rewriteNodeCandidates :: [StructuralCandidate]
-  , rewriteNodeAttempts :: [CandidateAttempt]
-  , rewriteNodeCandidateCursor :: Int
-  , rewriteNodeParent :: RewriteParent
-  , rewriteNodeExpression :: Expression
-  , rewriteNodeOrdinaryCursor :: Int
-  , rewriteNodeOrdinaryChild :: Maybe RewriteNodeId
-  , rewriteNodeOrdinaryResult :: Maybe RewriteResult
+  , rewriteNodeParent :: Maybe RewriteNodeId
+  , rewriteNodeRejections :: [CandidateRejection]
   , rewriteNodeState :: RewriteNodeState
   }
-
-data SequenceFrame environment = SequenceFrame
-  { sequenceFrameId :: SequenceId
-  , sequenceFrameOwner :: RewriteNodeId
-  , sequenceFrameSource :: Expression
-  , sequenceFrameNodes :: [RewriteNodeId]
-  , sequenceFrameInitialEnvironment :: environment
-  , sequenceFrameEnvironment :: environment
-  , sequenceFrameCursor :: Int
-  , sequenceFrameResults :: Map RewriteNodeId RewriteResult
-  , sequenceFrameDeclarationsComplete :: Bool
-  , sequenceFrameExpansion :: Maybe (SelectedCandidate, PreparedExpansion)
-  }
-
-data RewriteTask
-  = EnterNode RewriteNodeId
-  | TryCandidate RewriteNodeId Int
-  | ResumeCandidate RewriteNodeId Int
-  | ResumeOrdinary RewriteNodeId
-  | EnterSequence SequenceId
-  | ResumeSequence SequenceId RewriteNodeId
-  | ResumeSequenceDeclarations SequenceId RewriteNodeId
-  | FinalizeSequence SequenceId
