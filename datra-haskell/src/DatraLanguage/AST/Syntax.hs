@@ -34,15 +34,11 @@ module DatraLanguage.AST.Syntax
   , optional
   , conditional
   , conditionalWithoutElse
-  , subfederation
   , equal
   , less
   , lessOrEqual
   , greater
   , greaterOrEqual
-  , and
-  , or
-  , not
   , plus
   , minus
   , (-)
@@ -60,7 +56,7 @@ import DatraLanguage.AST
   , StringTemplatePart
   )
 import Numeric.Natural (Natural)
-import Prelude hiding (and, not, or, (+), (-), (*), (^))
+import Prelude hiding ((+), (-), (*), (^))
 
 natural :: Natural -> Expression
 natural = EllipsisNatural
@@ -191,18 +187,6 @@ greater = GreaterThan
 
 greaterOrEqual :: Expression -> Expression -> Expression
 greaterOrEqual = GreaterThanOrEqual
-
-subfederation :: Expression -> Expression -> Expression
-subfederation = Subfederation
-
-and :: Expression -> Expression -> Expression
-and = BooleanAnd
-
-or :: Expression -> Expression -> Expression
-or = BooleanOr
-
-not :: Expression -> Expression
-not = BooleanNot
 
 plus :: Expression -> Expression
 plus = Plus

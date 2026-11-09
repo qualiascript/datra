@@ -5,7 +5,7 @@ module Evaluation.TypeFamily.Structural.Specification
   ) where
 
 import BooleanType (DatraBoolean (..))
-import DatraLanguage.AST (renderAsciiStringLiteral)
+import DatraLanguage.Pretty (renderAsciiStringLiteral)
 import Evaluation.Arguments (argumentAlternatives)
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error

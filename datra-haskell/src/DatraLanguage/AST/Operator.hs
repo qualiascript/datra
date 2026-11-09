@@ -19,16 +19,12 @@ data Operator
   | AdditionOperator
   | SubtractionOperator
   | MinusOperator
-  | SubfederationOperator
   | EqualityOperator
   | InequalityOperator
   | LessThanOperator
   | LessThanOrEqualOperator
   | GreaterThanOperator
   | GreaterThanOrEqualOperator
-  | BooleanAndOperator
-  | BooleanOrOperator
-  | BooleanNotOperator
   | CoalizationOperator
   | LookupOperator
   | GreedyStringTemplateOperator
@@ -65,16 +61,12 @@ operatorCanonicalSymbol RangeMinusOperator = "..-"
 operatorCanonicalSymbol AdditionOperator = "+"
 operatorCanonicalSymbol SubtractionOperator = "-"
 operatorCanonicalSymbol MinusOperator = "-"
-operatorCanonicalSymbol SubfederationOperator = "of"
 operatorCanonicalSymbol EqualityOperator = "="
 operatorCanonicalSymbol InequalityOperator = "=/="
 operatorCanonicalSymbol LessThanOperator = "<"
 operatorCanonicalSymbol LessThanOrEqualOperator = "<="
 operatorCanonicalSymbol GreaterThanOperator = ">"
 operatorCanonicalSymbol GreaterThanOrEqualOperator = ">="
-operatorCanonicalSymbol BooleanAndOperator = "and"
-operatorCanonicalSymbol BooleanOrOperator = "or"
-operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol CoalizationOperator = "><"
 operatorCanonicalSymbol LookupOperator = "~"
 operatorCanonicalSymbol GreedyStringTemplateOperator = "%"
@@ -111,16 +103,12 @@ operatorSourceSymbol RangeMinusOperator = Just "..-"
 operatorSourceSymbol AdditionOperator = Just "+"
 operatorSourceSymbol SubtractionOperator = Just "-"
 operatorSourceSymbol MinusOperator = Just "-"
-operatorSourceSymbol SubfederationOperator = Just "of"
 operatorSourceSymbol EqualityOperator = Just "="
 operatorSourceSymbol InequalityOperator = Just "=/="
 operatorSourceSymbol LessThanOperator = Just "<"
 operatorSourceSymbol LessThanOrEqualOperator = Just "<="
 operatorSourceSymbol GreaterThanOperator = Just ">"
 operatorSourceSymbol GreaterThanOrEqualOperator = Just ">="
-operatorSourceSymbol BooleanAndOperator = Just "and"
-operatorSourceSymbol BooleanOrOperator = Just "or"
-operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol CoalizationOperator = Just "><"
 operatorSourceSymbol LookupOperator = Just "~"
 operatorSourceSymbol GreedyStringTemplateOperator = Just "%"

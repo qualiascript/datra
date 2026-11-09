@@ -46,8 +46,6 @@ module DatraTypes
   , specializeSyntaxHoleKind
   , functionAlternatives
   , isFunctionFamily
-  , templateTypeValue
-  , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , naturalRangeTypeValue
@@ -509,8 +507,6 @@ import Evaluation.Value
   , syntaxCategoryTypeValue
   , functionAlternatives
   , isFunctionFamily
-  , templateTypeValue
-  , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , naturalRangeTypeValue

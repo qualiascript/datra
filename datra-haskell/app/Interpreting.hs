@@ -56,7 +56,7 @@ import DatraHost
   ( datraHostIdentifier
   , datraHostValue
   )
-import DatraLanguage.IdentifierSyntax (isIdentifierValue)
+import DatraLanguage.Identifier (isIdentifierValue)
 import LibraryFiles
   ( standardLibraryFileName
   , requiredBundledLibrarySource
@@ -72,7 +72,6 @@ import DatraLanguage.AST
   , GenericIdentifier (..)
   , GenericIntroduction (..)
   , GenericPolarity (..)
-  , GenericReference (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
   , attachedFunctionImplementation
@@ -521,16 +520,12 @@ syntaxResultType
   -> Maybe InterpretedValue
 syntaxResultType base modules declarations expressionValue =
   case expressionValue of
-    Subfederation {} -> booleanType
     Equality {} -> booleanType
     Inequality {} -> booleanType
     LessThan {} -> booleanType
     LessThanOrEqual {} -> booleanType
     GreaterThan {} -> booleanType
     GreaterThanOrEqual {} -> booleanType
-    BooleanAnd {} -> booleanType
-    BooleanOr {} -> booleanType
-    BooleanNot {} -> booleanType
     _ -> evaluateSyntaxValue base modules declarations expressionValue
   where
     booleanType = evaluateSyntaxValue base modules declarations BooleanType
@@ -2255,8 +2250,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       checkedBinary multiplyValues left right
     Exponentiation base exponentValue ->
       checkedBinary exponentiateValues base exponentValue
-    Subfederation source target ->
-      checkedBinary subfederationValues source target
     Equality left right -> checkedBinary equalValues left right
     Inequality left right ->
       checkedBinary
@@ -2271,11 +2264,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       binaryComparison (== GT) left right
     GreaterThanOrEqual left right ->
       binaryComparison (/= LT) left right
-    BooleanAnd left right ->
-      checkedBinary booleanAndValues left right
-    BooleanOr left right ->
-      checkedBinary booleanOrValues left right
-    BooleanNot operand -> checkedUnary booleanNotValue operand
     Coalization operand -> unary (Right . coalizeValue) operand
     Fun operand ->
       case recursiveCollection scope operand of
@@ -2303,8 +2291,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (case genericIntroductionPolarity introduction of
           GenericProduct -> "&"
           GenericSum -> "^"))
-    GenericReferenceExpression {} ->
-      Left (FunctionEvaluationFailed ExpectedFunctionType)
     InModule path body -> do
       imported <- lookupModuleDefinitionScope scope path
       evalInLexicalContinuationScopeWith body reduction
@@ -5536,13 +5522,8 @@ genericFamilyEnvelope
   -> Maybe Expression
 genericFamilyEnvelope generics expressionValue =
   let transformed = go expressionValue
-  in if null sumBinders then Nothing else Just transformed
+  in if null sumNames then Nothing else Just transformed
   where
-    sumBinders =
-      [ genericBinderId binder
-      | binder <- generics
-      , genericBinderPolarity binder == GenericSum
-      ]
     sumNames =
       [ name
       | binder <- generics
@@ -5552,9 +5533,6 @@ genericFamilyEnvelope generics expressionValue =
       ]
     go current =
       case current of
-        SuperEllipsisRange lower (GenericReferenceExpression reference)
-          | genericReferenceBinderId reference `elem` sumBinders ->
-              SuperEllipsisRangePlus (go lower)
         SuperEllipsisRange lower
             (IdentifierReference (IdentifierString name))
           | name `elem` sumNames -> SuperEllipsisRangePlus (go lower)

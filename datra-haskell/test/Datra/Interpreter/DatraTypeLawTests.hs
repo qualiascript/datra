@@ -66,8 +66,6 @@ standardLibraryTypeExamples =
   , canonical "IntRange" "IntRange"
   , canonical "NatValRange" "NatValRange"
   , canonical "IntValRange" "IntValRange"
-  , canonical "Template" "Template"
-  , canonical "private SyntaxTemplate primitive" "datra.SyntaxTemplate"
   ]
 
 compositeTypeExamples :: [DatraTypeExample]

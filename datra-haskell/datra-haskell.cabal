@@ -62,6 +62,8 @@ library
         DatraLanguage.SyntaxTemplate
         DatraLanguage.NeutralLexer
         DatraLanguage.Identifier
+        DatraLanguage.Pretty
+        DatraLanguage.StringTemplate
         DatraTypes
         DatraTypes.DependentTypes
         AsciiMap
@@ -97,7 +99,6 @@ library
         IntegerRange
         ValuedIntegerRange
         IntegerType
-        DatraLanguage.IdentifierSyntax
         DependentArgumentType
         SimpleIdentifierType
         AtlasMapFederation

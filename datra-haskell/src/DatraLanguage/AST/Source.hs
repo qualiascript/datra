@@ -2,56 +2,20 @@
 module DatraLanguage.AST.Source (renderSourceExpression) where
 
 import Data.List (intercalate)
+import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.AST
 import DatraLanguage.AST.Operator qualified as Operator
 import DatraLanguage.NeutralLexer (isOpaqueSymbolicSyntaxLiteral)
+import DatraLanguage.Pretty
+  ( renderAsciiStringLiteral
+  , renderIdentifierString
+  , renderOperatorExpression
+  , renderStringTemplate
+  )
 
 renderSourceExpression :: Expression -> String
 renderSourceExpression =
-  source 0 . toOperatorExpression . restoreGenericSurface
-
--- Resolved function types retain their telescope separately from the marked
--- declaration occurrence. Reconstruct surface introductions only for source
--- rendering; the semantic AST remains binder-identity based.
-restoreGenericSurface :: Expression -> Expression
-restoreGenericSurface = restore []
-  where
-    restore enclosing expressionValue =
-      case expressionValue of
-        MapSpecification implementation
-            signature@(FunctionTypeExpression generics _ _) ->
-          MapSpecification
-            (restore (generics <> enclosing) implementation)
-            (restore enclosing signature)
-        FunctionTypeExpression generics domain codomain ->
-          let visible = generics <> enclosing
-          in FunctionTypeExpression generics
-              (restore visible domain)
-              (restore visible codomain)
-        GenericReferenceExpression reference ->
-          case lookupBinder (genericReferenceBinderId reference) enclosing of
-            Just binder ->
-              case genericReferenceRole reference of
-                GenericUseReference -> restore enclosing
-                  (genericIdentifierReference
-                    (genericBinderIdentifier binder))
-                GenericDeclarationReference ->
-                  GenericIntroductionExpression
-                    (GenericIntroduction
-                      (genericBinderPolarity binder)
-                      (genericBinderIdentifier binder)
-                      (restore enclosing (genericBinderBound binder))
-                      (genericBinderSource binder))
-            Nothing -> GenericReferenceExpression reference
-        _ -> mapExpressionChildren (restore enclosing) expressionValue
-
-    lookupBinder _ [] = Nothing
-    lookupBinder identity (binder : remaining)
-      | genericBinderId binder == identity = Just binder
-      | otherwise = lookupBinder identity remaining
-
-    genericIdentifierReference =
-      IdentifierReference . genericIdentifierName
+  source 0 . toOperatorExpression
 
 -- Parenthesize nested operations conservatively, while leaving each block
 -- entry and the yield expression readable at their own expression boundary.
@@ -64,7 +28,6 @@ source context expression =
         <> renderGenericIdentifier
           (genericIntroductionIdentifier introduction)
         <> genericBound introduction)
-    GenericReferenceValue {} -> atom
     InModuleValue _ value -> source context value
     ImportValue paths body -> "import "
       <> intercalate "; " (map renderAsciiStringLiteral paths)
@@ -85,8 +48,10 @@ source context expression =
     DependentArgumentValue name (Just annotation) ->
       dependentArgument (source 13 name) False (Just annotation) Nothing
     DependentArgumentValue name Nothing -> source 13 name
-    Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
-    Arguments members -> "{" <> argumentMembers members <> "}"
+    Sequential members -> "(" <>
+      intercalate "; " (map (source 0) (NonEmpty.toList members)) <> ")"
+    ArgumentativeMapValue members ->
+      "{" <> argumentMembers members <> "}"
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
     Concatenate left EmptyMap -> wrapped 10 (source 10 left <> ",")
     Concatenate left right -> binary 2 "," left right
@@ -99,15 +64,12 @@ source context expression =
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
     MaybeThenValue optional branch -> binary 1 "!?" optional branch
     EitherValue left right -> binary 3 "|" left right
-    Or left right -> binary 4 "or" left right
-    And left right -> binary 5 "and" left right
     Equal left right -> binary 6 "=" left right
     NotEqual left right -> binary 6 "=/=" left right
     Less left right -> binary 6 "<" left right
     LessOrEqual left right -> binary 6 "<=" left right
     Greater left right -> binary 6 ">" left right
     GreaterOrEqual left right -> binary 6 ">=" left right
-    IsSubfederation left right -> binary 6 "of" left right
     Add left right -> binary 7 "+" left right
     Subtract left right -> binary 7 "-" left right
     Multiply left right -> wrapped 8
@@ -115,7 +77,6 @@ source context expression =
     Power left right -> binary 9 "^" left right
     Positive operand -> unary "+" operand
     Negate operand -> unary "-" operand
-    Not operand -> unary "not " operand
     CoalizationValue operand -> unary ">< " operand
     OptionalValue (DependentArgumentValue name (Just annotation)) ->
       dependentArgument (source 13 name) True (Just annotation) Nothing

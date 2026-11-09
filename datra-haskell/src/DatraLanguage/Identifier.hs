@@ -3,6 +3,7 @@ module DatraLanguage.Identifier
   ( IdentifierSpelling (..)
   , identifierSpellingValue
   , isPrivateIdentifier
+  , isIdentifierValue
   , isIdentifierCharacter
   , isAsciiCharacter
   ) where
@@ -22,6 +23,13 @@ identifierSpellingValue (BareIdentifier value) = Just value
 isPrivateIdentifier :: String -> Bool
 isPrivateIdentifier ('_' : _) = True
 isPrivateIdentifier _ = False
+
+-- | A bare identifier is nonempty and uses the identifier alphabet without a
+-- leading digit.
+isIdentifierValue :: String -> Bool
+isIdentifierValue [] = False
+isIdentifierValue value@(first : _) =
+  not (isAsciiDigit first) && all isIdentifierCharacter value
 
 isIdentifierCharacter :: Char -> Bool
 isIdentifierCharacter character =

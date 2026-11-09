@@ -45,7 +45,7 @@ typeFamilyOperations family =
   case family of
     PrimitiveTypeFamily kind -> TypeFamilyOperations
       { specifyTypeFamily = \decide _ ->
-          Primitive.specifyPrimitiveType decide kind
+          Primitive.specifyPrimitiveType decide
       , decideTypeFamilySubfederation = \_ source _ ->
           Primitive.decidePrimitiveSubfederation source kind
       }

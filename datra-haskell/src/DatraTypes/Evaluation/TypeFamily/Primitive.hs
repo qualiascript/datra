@@ -6,16 +6,14 @@ module Evaluation.TypeFamily.Primitive
 
 import Evaluation.Error (InterpretingError (ExpectedPrimitiveType))
 import Evaluation.Specification.Decision (Decision (..))
-import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.Value
 
 specifyPrimitiveType
   :: (InterpretedValue -> InterpretedValue -> Decision ())
-  -> PrimitiveType
   -> InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-specifyPrimitiveType decideSubfederation kind source target =
+specifyPrimitiveType decideSubfederation source target =
   case decideSubfederation source target of
     DecisionProved () -> Right source
     _ -> Left ExpectedPrimitiveType
@@ -28,7 +26,6 @@ decidePrimitiveSubfederation source target =
   if accepted then DecisionProved () else DecisionRefuted
   where
     accepted = case (interpretedForm source, target) of
-      (_, TemplatePrimitive) -> valueProducesStrings source
       (CoalizationForm operand, expected) ->
         case decidePrimitiveSubfederation operand expected of
           DecisionProved () -> True

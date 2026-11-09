@@ -14,18 +14,15 @@ import DatraLanguage.AST
   , GenericIdentifier (..)
   , GenericIntroduction (..)
   , GenericPolarity (..)
-  , GenericReference (..)
-  , GenericReferenceRole (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
   , pattern FunctionType
-  , pattern GenericFunctionType
   , dependentArgumentExpression
   , expressionChildren
   , normalizeExpression
-  , renderExpression
   , toOperatorExpression
   )
+import DatraLanguage.Pretty (renderExpression)
 import DatraLanguage.DependentDeclaration
   ( DeclarationModifier (..)
   , applyDeclarationModifier
@@ -152,13 +149,9 @@ testGenericAstRepresentation = do
         , genericBinderBound = ref "IntLimit"
         , genericBinderSource = Nothing
         }
-      declaration = GenericReferenceExpression (GenericReference
-        binderIdentity
-        GenericDeclarationReference)
-      reference = GenericReferenceExpression (GenericReference
-        binderIdentity
-        GenericUseReference)
-      signature = GenericFunctionType
+      declaration = genericIntroduction binder
+      reference = ref "_T"
+      signature = FunctionTypeExpression
         [binder]
         (FunctionApplication (ref "Args") declaration)
         reference
@@ -180,8 +173,8 @@ testGenericAstRepresentation = do
   assert "normalization preserves the ordered generic prefix"
     (normalizeExpression signature == signature)
   assertEqual
-    "canonical AST rendering preserves binder identity and occurrence role"
-    "(generic-function-type (generic-prefix (generic-binder 0 & (ref $_T) (ref $IntLimit))) (apply-func (ref $Args) (generic-reference 0 declaration)) (generic-reference 0 use))"
+    "canonical function AST accepts an optional generic prefix"
+    "(-> (generic-prefix (generic-binder 0 & (ref $_T) (ref $IntLimit))) (apply-func (ref $Args) (generic-introduction & (ref $_T) (ref $IntLimit))) (ref $_T))"
     (renderExpression signature)
   assertAstRoundTrip "generic function AST" (renderExpression signature)
 
@@ -211,10 +204,10 @@ testGenericSourceParsing = do
         ( genericBinderPolarity binder == GenericProduct
           && genericBinderIdentifier binder == genericIdentifier "T" True
         )
-      assert "the marked occurrence becomes the declaration reference"
-        (declaration == genericReference binder GenericDeclarationReference)
-      assert "the codomain occurrence becomes a use reference"
-        (reference == genericReference binder GenericUseReference)
+      assert "the marked occurrence remains the generic introduction"
+        (declaration == genericIntroduction binder)
+      assert "the codomain occurrence is an ordinary identifier reference"
+        (reference == ref "T")
       assert "optional naming does not wrap the declaration as an optional value"
         (case declaration of OptionalType {} -> False; _ -> True)
     other -> fail ("unexpected optional generic AST: " <> show other)
@@ -225,8 +218,8 @@ testGenericSourceParsing = do
     FunctionTypeExpression [binder] domain reference -> do
       assert "private generic identifiers retain ordinary privacy spelling"
         (genericBinderIdentifier binder == genericIdentifier "_T" False)
-      assert "private generic codomain references use binder identity"
-        (reference == genericReference binder GenericUseReference)
+      assert "private generic codomain references stay ordinary"
+        (reference == ref "_T")
       case prepareFunctionDomain [binder] domain of
         PreparedFunctionDomain PreparedArgumentFunctionDomain
             [ PreparedGenericFunctionDomainMember preparedBinder
@@ -264,9 +257,8 @@ testGenericSourceParsing = do
                 (IdentifierReference (IdentifierString "y")) (Just declaration)
             ])) _ -> do
       assert "ordinary entries may use a generic before its written marker"
-        ( firstUse == genericReference binder GenericUseReference
-          && declaration
-            == genericReference binder GenericDeclarationReference
+        ( firstUse == ref "T"
+          && declaration == genericIntroduction binder
         )
       case prepareFunctionDomain [binder] domain of
         PreparedFunctionDomain PreparedOrderedFunctionDomain
@@ -395,9 +387,6 @@ testGenericSourceParsing = do
         _ -> fail ("nested generic function was not preserved: " <> show domain)
     other -> fail ("unexpected nested generic AST: " <> show other)
   where
-    genericReference binder role =
-      GenericReferenceExpression
-        (GenericReference (genericBinderId binder) role)
     descendants expressionValue =
       expressionValue : concatMap descendants (expressionChildren expressionValue)
     preparedPolarity member =
@@ -411,6 +400,15 @@ testGenericSourceParsing = do
 genericIdentifier :: String -> Bool -> GenericIdentifier
 genericIdentifier name optionalName =
   GenericIdentifier (IdentifierString name) optionalName
+
+genericIntroduction :: GenericBinder Expression -> Expression
+genericIntroduction binder =
+  GenericIntroductionExpression GenericIntroduction
+    { genericIntroductionPolarity = genericBinderPolarity binder
+    , genericIntroductionIdentifier = genericBinderIdentifier binder
+    , genericIntroductionBound = genericBinderBound binder
+    , genericIntroductionSource = genericBinderSource binder
+    }
 
 parseGenericSource :: String -> IO Expression
 parseGenericSource source =
@@ -829,11 +827,8 @@ regressionTests = do
             declaration)
           (AtlasMap [])])
         (OptionalType reference) ->
-      let expectedDeclaration = GenericReferenceExpression
-            (GenericReference (genericBinderId binder)
-              GenericDeclarationReference)
-          expectedReference = GenericReferenceExpression
-            (GenericReference (genericBinderId binder) GenericUseReference)
+      let expectedDeclaration = genericIntroduction binder
+          expectedReference = ref "_T"
           actualDeclaration = case declaration of
             SyntaxBoundary value -> value
             value -> value
@@ -973,14 +968,6 @@ regressionTests = do
   assertParsed "inferred function domains accept reverse specifications"
     "(Any <~ Nat) do yield value"
     (appliedBody (MapSpecification (ref "Nat") (ref "Any")))
-  assertParsed "function domains accept subfederations"
-    "(Nat of Any) -> Any do yield value"
-    (arrowBody
-      (Subfederation (ref "Nat") (ref "Any"))
-      (ref "Any"))
-  assertParsed "inferred function domains accept subfederations"
-    "(Nat of Any) do yield value"
-    (appliedBody (Subfederation (ref "Nat") (ref "Any")))
   assertParsed "an explicit code-block codomain is preserved"
     "{value? : Any} -> Nat do yield value"
     (arrowBody optionalInput (ref "Nat"))
@@ -1208,36 +1195,9 @@ regressionTests = do
       (natural 0)
       (AST.eitherType (natural 1) (natural 2)))
   assertAstOutput
-    "Boolean and, or, and not"
-    "false and not true or true"
-    (AST.or
-      (AST.and (ref "false") (AST.not (ref "true")))
-      (ref "true"))
-  assertAstOutput
-    "parenthesized blocks stay inside a nested Boolean operand"
-    "(5 of (begin yield 5)) and not (6 of (begin yield 5))"
-    (AST.and
-      (AST.subfederation (natural 5) (Begin [] (natural 5)))
-      (AST.not
-        (AST.subfederation (natural 6) (Begin [] (natural 5)))))
-  assertAstOutput
     "federation equality"
     "1 = 1"
     (AST.equal (natural 1) (natural 1))
-  assertAstOutput
-    "subfederation morphism check"
-    "1 of Int"
-    (AST.subfederation (natural 1) (ref "Int"))
-  assertAstOutput
-    "a trailing skip can be a declared syntax operand"
-    "1 of *"
-    (AST.subfederation (natural 1) Skip)
-  assertAstOutput
-    "equality binds inside a subfederation check"
-    "1 of Int = true"
-    (AST.subfederation
-      (natural 1)
-      (AST.equal (ref "Int") (ref "true")))
   assertAstOutput
     "Maybe is an ordinary type application"
     "Maybe Nat"
@@ -1322,18 +1282,6 @@ regressionTests = do
         (AST.assignment "b" (natural 23) (natural 23))
         ~> optionalIntegerSlots
     )
-  assertAstOutput
-    "optional identifier range subfederation check"
-    "(2, b := 5) of (a? : Int, b? : from 3 to 8)"
-    (AST.subfederation
-      (MapConcatenation
-        (natural 2)
-        (AST.assignment "b" (natural 5) (natural 5)))
-      (MapConcatenation
-        (OptionalType
-          (AST.dependentArgumentType "a" (ref "Int")))
-        (OptionalType
-          (AST.dependentArgumentType "b" (fromTo 3 8)))))
   let optionalAssigned identifierString value =
         OptionalType
           (AST.assignment
@@ -1402,22 +1350,6 @@ regressionTests = do
     "binary conditional defaults to unit"
     "if false then 1"
     (AST.conditionalWithoutElse (ref "false") (natural 1))
-  assertAstOutput
-    "conditional combines optionals, equality, logic, and identifiers"
-    ( "if (Maybe Nat = (Nat | Nothing := ())) and not false "
-        <> "then (a? : Nat := 5) else (Nothing := ())"
-    )
-    (AST.conditional
-      (AST.and
-        (AST.equal
-          (FunctionApplication (ref "Maybe") (ref "Nat"))
-          (AST.eitherType
-            (ref "Nat")
-            (AST.assignment "Nothing" AST.emptyMap AST.emptyMap)))
-        (AST.not (ref "false")))
-      (OptionalType
-        (AST.assignment "a" (ref "Nat") (natural 5)))
-      (AST.assignment "Nothing" AST.emptyMap AST.emptyMap))
   assertAstOutput
     "natural value specified into Nat"
     "2 ~> Nat"
@@ -1748,15 +1680,6 @@ regressionTests = do
     "IdenStr is available to string templates"
     "\"%IdenStr\""
     (StringTemplate [StringTemplateInterpolation (ref "IdenStr")])
-  assertAstOutput
-    "digit-leading compact strings retain an apostrophe before an operator"
-    "$12' of \"%(Nat)'\""
-    (AST.subfederation
-      (AsciiStringLiteral "12'")
-      (StringTemplate
-        [ StringTemplateInterpolation (ref "Nat")
-        , StringTemplateLiteral "'"
-        ]))
   assertRejected
     "the removed weak interpolation marker is rejected"
     "\"%!Str\""
@@ -1867,12 +1790,6 @@ regressionTests = do
   assertRejected
     "an unescaped percent without an interpolation is rejected"
     "\"literal % character\""
-  assertAstOutput
-    "string literals are members of Str"
-    "(\"my_string\" of Str) = true"
-    (AST.equal
-      (AST.subfederation (AST.asciiString "my_string") (ref "Str"))
-      (ref "true"))
   assertAllHexadecimalAsciiEscapes
   assertAstOutput
     "StandardString preserves multiline leading and trailing characters"
@@ -2135,14 +2052,6 @@ regressionTests = do
     "2\n3"
     (natural 2 <:> natural 3)
   assertAstOutput
-    "a parenthesized syntax operand ends before the next map element"
-    "1 of (Nat -> Int)\n\"x\""
-    ( Subfederation
-        (natural 1)
-        (FunctionType (ref "Nat") (ref "Int"))
-        <:> AsciiStringLiteral "x"
-    )
-  assertAstOutput
     "a newline after an operator continues the expression"
     "2 +\n3\n4"
     ((natural 2 AST.+ natural 3) <:> natural 4)
@@ -2340,7 +2249,7 @@ genExpression =
   Gen.recursive Gen.choice
     [ EllipsisNatural <$> Gen.integral (Range.linear 0 1000)
     , pure EllipsisLiteral
-    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "Template"]
+    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange"]
     , IdentifierReference <$> genIdentifierString
     , pure (ref "_this")
     , datraRef <$> Gen.element
@@ -2374,7 +2283,6 @@ genExpression =
     , Gen.subterm genExpression Minus
     , Gen.subterm2 genExpression genExpression Multiplication
     , Gen.subterm2 genExpression genExpression Exponentiation
-    , Gen.subterm2 genExpression genExpression Subfederation
     , Gen.subterm2 genExpression genExpression Equality
     , Gen.subterm2 genExpression genExpression Inequality
     , Gen.subterm2 genExpression genExpression EitherType

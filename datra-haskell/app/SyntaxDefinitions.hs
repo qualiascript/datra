@@ -274,11 +274,8 @@ substituteCaptures
 
 -- A named subexpression in a condition becomes a condition-local declaration
 -- when its name is used elsewhere in that condition or in either branch.
--- Boolean operators lower to nested conditionals only when such a binding is
--- present. This preserves short-circuit paths: a binding in the right side of
--- @or@ is not evaluated when the left side succeeds, while it remains visible
--- wherever that right side was evaluated. Unreferenced named values retain
--- their ordinary value semantics (for example, @Just : 1@ remains a tag).
+-- Operator semantics belong to declared functions; this pass only localizes
+-- the complete condition expression.
 conditionalWithBindings
   :: Expression
   -> Expression
@@ -287,17 +284,9 @@ conditionalWithBindings
 conditionalWithBindings rawCondition yes no
   | null (selectedConditionBindings condition yes no) =
       Conditional condition yes no
-  | otherwise = lower condition yes no
+  | otherwise = lowerConditionAtom condition yes no
   where
     condition = normalizeExpression rawCondition
-    lower (BooleanOr left right) consequent alternative =
-      lower left consequent (lower right consequent alternative)
-    lower (BooleanAnd left right) consequent alternative =
-      lower left (lower right consequent alternative) alternative
-    lower (BooleanNot operand) consequent alternative =
-      lower operand alternative consequent
-    lower operand consequent alternative =
-      lowerConditionAtom operand consequent alternative
 
 -- Syntax captures are themselves rewritten after their enclosing template is
 -- expanded. Re-run the shape-dependent part of a control expansion once those

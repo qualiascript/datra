@@ -40,8 +40,6 @@ data PrimitiveType
   | IntRangePrimitive
   | NatValRangePrimitive
   | IntValRangePrimitive
-  | TemplatePrimitive
-  | SyntaxTemplatePrimitive
   deriving (Eq, Show)
 
 -- | One family owns both fundamental typing operations. Keeping this as one

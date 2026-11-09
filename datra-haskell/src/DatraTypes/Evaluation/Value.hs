@@ -34,8 +34,6 @@ module Evaluation.Value
   , syntaxCategoryTypeValue
   , functionAlternatives
   , isFunctionFamily
-  , templateTypeValue
-  , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , naturalRangeTypeValue
@@ -646,16 +644,13 @@ primitiveTypeValue kind = makeInterpretedValue
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (PrimitiveTypeSemantics kind)
 
 anyTypeValue, ordinalTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
-  naturalValuedRangeTypeValue, integerValuedRangeTypeValue,
-  templateTypeValue, syntaxTemplateTypeValue :: InterpretedValue
+  naturalValuedRangeTypeValue, integerValuedRangeTypeValue :: InterpretedValue
 anyTypeValue = primitiveTypeValue AnyPrimitive
 ordinalTypeValue = primitiveTypeValue OrdinalPrimitive
 naturalRangeTypeValue = primitiveTypeValue NatRangePrimitive
 integerRangeTypeValue = primitiveTypeValue IntRangePrimitive
 naturalValuedRangeTypeValue = primitiveTypeValue NatValRangePrimitive
 integerValuedRangeTypeValue = primitiveTypeValue IntValRangePrimitive
-templateTypeValue = primitiveTypeValue TemplatePrimitive
-syntaxTemplateTypeValue = primitiveTypeValue SyntaxTemplatePrimitive
 
 syntaxCategoryTypeValue :: SyntaxCategory -> InterpretedValue
 syntaxCategoryTypeValue = primitiveTypeValue . SyntaxPrimitive
@@ -1600,7 +1595,6 @@ interpretedValueKind value =
     NeverForm -> MapValueKind
     PrimitiveTypeForm (SyntaxPrimitive _) -> FunctionValueKind
     FunctionBodyForm _ -> FunctionValueKind
-    PrimitiveTypeForm TemplatePrimitive -> AsciiStringValueKind
     PrimitiveTypeForm _ -> RangeValueKind
     FunctionForm _ -> FunctionValueKind
     ExplicitForm (EvaluatedExplicit _ NaturalOrigin _) -> NaturalValueKind

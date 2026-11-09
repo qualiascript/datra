@@ -127,31 +127,45 @@ import syntax without teaching the stack about imports.
 Candidate enumeration has one structural projection boundary:
 
 ```haskell
-structuralTemplateCaptures
-  :: SyntaxTemplate Expression
+structuralPatternCaptures
+  :: Expression
   -> Expression
   -> [[(Expression, Expression)]]
 ```
 
-Each pair is the declared target expression and the neutral source expression
-selected for that hole. Hole behavior is not encoded in the template.
+The first expression is the ordinary structural pattern retained from the
+syntax declaration. Each pair is the declared target expression and the
+neutral source expression selected for that position. Literal positions are
+ordinary `IdentifierLiteral` nodes; hole behavior is not encoded in a parallel
+template representation.
 
-Rules are enumerated in declaration order. Projections for a rule are
-enumerated in the order returned by `SyntaxTemplateProjection`. Each structural
+Rules are enumerated in declaration order. Structural projections for a rule
+are enumerated in deterministic AST order. Each structural
 match records the rule, branch, projection, captures, whole selection, and
 unconsumed application remainder.
 
 The rewriter does not search rendered source strings, cache literal facts,
-split expressions at literals, or recognize individual templates. Literal
-matching and neutral-AST reassociation live in `SyntaxTemplateProjection`.
+split expressions at literals, or recognize individual declared patterns.
+Literal
+matching and neutral-AST reassociation operate directly on the declared
+expression pattern.
 Projection contains only neutral structural views which cannot be declared in
-`std.datra`. It does not reify `let`, `def`, `val`, `do`, or any other
-standard-library operation as a built-in candidate. Those operations are
-selected exclusively through their declared syntax rules.
+`std.datra`. It does not reify `let`, `def`, `val`, `do`, `of`, `and`, `or`,
+`not`, or any other standard-library operation as a built-in candidate. Those
+operations are selected exclusively through their declared syntax rules. In
+particular, `of`, `and`, `or`, and `not` have no dedicated source AST,
+operator AST, canonical parser, evaluator, or syntax-insertion cases; their
+declared functions lower to ordinary application structure.
 
 Semantic capture is a later evaluator operation. For example, a `_Block`
 capture normalizes its generic application-shaped provisional capture into an
 `AtlasMap`. This does not change structural candidate enumeration.
+
+Syntax declarations, function syntax, admissibility, equivalence, and matching
+all use ordinary expression patterns. Identifier spelling belongs to
+`DatraLanguage.Identifier`, built-in operator spelling belongs to the operator
+AST, and parsing owns token boundaries. The rewriter never renders or re-lexes
+a pattern.
 
 ## Candidate search
 
@@ -226,7 +240,7 @@ When no child remains, finalization returns the expression already stored on
 the node. There is no reconstruction pass.
 
 The traversal is uniform over the AST. The stack has no independent knowledge
-of `GreedyStringTemplate` or any other expression constructor.
+of `SyntaxTemplate` or any other expression constructor.
 
 ## Neutral sequences
 
@@ -251,6 +265,14 @@ once. Its unfinished children then follow the same ordinary traversal.
 ```
 
 ## Declaration modifiers
+
+Declaration assembly has one name domain: `datra.IdentifierLiteral`. A bare
+identifier reference in the complete left-hand-side position is normalized to
+its corresponding static identifier literal; every other left-hand side must
+subtype `datra.IdentifierLiteral`. `SyntaxTemplate` is such a subtype, while
+`Str` is not. Consequently a declaration can use an abstract identifier-literal
+head, but it cannot consume a string as a name without an explicit `$`
+conversion.
 
 `let`, `def`, and `val` are standard-library syntax, not expression
 constructors and not projection cases. Their syntax functions operate on a
@@ -320,10 +342,8 @@ cabal run datra-haskell -- build --input output.datra \
 At the block-assembly boundary, the outer `yield` application is still present
 as an ordinary expression. Therefore the declared `do`/`yield` form did not
 consume the complete neutral source region before ordinary block validation.
-The identifier-literal and target-directed capture design is implemented before
-diagnosing a narrower structural cause, because `$do` and `$yield` must first
-have unambiguous non-string AST meaning. No `do`-, `yield`-, arity-, or
-source-string-specific projection is an acceptable fix.
+No `do`-, `yield`-, arity-, or source-string-specific projection is an
+acceptable fix.
 
 ## Required invariants
 
@@ -345,3 +365,8 @@ source-string-specific projection is an acceptable fix.
 15. The stack is the sole authority for syntax-rewrite scheduling and state.
 16. A finalized node is never rematched.
 17. Root finalization is the only terminal transition.
+18. Declared syntax is stored and matched as ordinary expression structure.
+19. Syntax rewriting uses structural AST data exclusively.
+20. Dependent-declaration heads are identifier references or expressions that
+    subtype `datra.IdentifierLiteral`; `SyntaxTemplate` is in that domain and
+    `Str` is not.

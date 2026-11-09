@@ -18,7 +18,9 @@ import DatraLanguage.AST.Operator
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST
   ( StringTemplatePart (..)
-  , renderAsciiStringLiteral
+  )
+import DatraLanguage.Pretty
+  ( renderAsciiStringLiteral
   , renderIdentifierString
   , renderStringTemplate
   )

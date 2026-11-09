@@ -48,8 +48,6 @@ datraHostValue = do
     , ("DependentDeclaration", Right dependentDeclarationType)
     , ("Block", Right blockType)
     , ("FunctionBody", Right functionBodyType)
-    , ("Template", Right templateTypeValue)
-    , ("SyntaxTemplate", Right syntaxTemplateTypeValue)
     , ("NatRange", Right naturalRangeTypeValue)
     , ("IntRange", Right integerRangeTypeValue)
     , ("NatValRange", Right naturalValuedRangeTypeValue)
@@ -58,6 +56,10 @@ datraHostValue = do
     , suppliedInsertionBody "from_body" valuedIntegerRangeInsertion
     , suppliedInsertionBody "range_body" boundedIntegerRangeInsertion
     , nativeBody [] "add" (binaryArgument addValues)
+    , nativeBody [] "of_body" (binaryArgument subfederationValues)
+    , nativeBody [] "and_body" (binaryArgument booleanAndValues)
+    , nativeBody [] "or_body" (binaryArgument booleanOrValues)
+    , nativeBody [] "not_body" (unaryArgument booleanNotValue)
     , nativeBody [] "abs" $ \argument -> do
         value <- argumentAt 0 argument
         number <- requireFiniteInteger value
@@ -120,34 +122,6 @@ datraHostValue = do
         (\case
           ScopeAccess (ArgumentativeMap modules) (Begin bindings result) -> Just
             [ArgumentativeMap modules, FunctionBody bindings result]
-          _ -> Nothing))
-    , syntaxBody "of_body" (expressionSyntaxInsertion
-        (\case
-          [source, target] -> Just (Subfederation source target)
-          _ -> Nothing)
-        (\case
-          Subfederation source target -> Just [source, target]
-          _ -> Nothing))
-    , syntaxBody "and_body" (expressionSyntaxInsertion
-        (\case
-          [left, right] -> Just (BooleanAnd left right)
-          _ -> Nothing)
-        (\case
-          BooleanAnd left right -> Just [left, right]
-          _ -> Nothing))
-    , syntaxBody "or_body" (expressionSyntaxInsertion
-        (\case
-          [left, right] -> Just (BooleanOr left right)
-          _ -> Nothing)
-        (\case
-          BooleanOr left right -> Just [left, right]
-          _ -> Nothing))
-    , syntaxBody "not_body" (expressionSyntaxInsertion
-        (\case
-          [value] -> Just (BooleanNot value)
-          _ -> Nothing)
-        (\case
-          BooleanNot value -> Just [value]
           _ -> Nothing))
     ]
   where
@@ -212,6 +186,8 @@ datraHostValue = do
       left <- argumentAt 0 argument
       right <- argumentAt 1 argument
       operation left right
+    unaryArgument operation argument =
+      argumentAt 0 argument >>= operation
     ordinalBinaryBody name operation = nativeBody
       ["ordinal"] name (binaryArgument operation)
     ordinalComparisonBody name operation =

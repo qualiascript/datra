@@ -219,6 +219,35 @@ testModuleSyntaxAlias = do
 identifierReference :: String -> Expression
 identifierReference = IdentifierReference . IdentifierString
 
+hostOperator :: String -> [Expression] -> Expression
+hostOperator body arguments =
+  FunctionApplication
+    (FunctionApplication
+      (FunctionType domain (identifierReference "Any"))
+      (ScopeAccess
+        (identifierReference "datra")
+        (identifierReference body)))
+    supplied
+  where
+    domain = case arguments of
+      [_] -> identifierReference "Any"
+      _ -> AtlasMap (map (const (identifierReference "Any")) arguments)
+    supplied = case arguments of
+      [argument] -> argument
+      _ -> AtlasMap arguments
+
+subfederation :: Expression -> Expression -> Expression
+subfederation left right = hostOperator "of_body" [left, right]
+
+booleanAnd :: Expression -> Expression -> Expression
+booleanAnd left right = hostOperator "and_body" [left, right]
+
+booleanOr :: Expression -> Expression -> Expression
+booleanOr left right = hostOperator "or_body" [left, right]
+
+booleanNot :: Expression -> Expression
+booleanNot value = hostOperator "not_body" [value]
+
 sourceNatType :: String
 sourceNatType = "Nat"
 
@@ -342,7 +371,7 @@ propConditionalArithmeticRange = H.property $ do
       selectedResult =
         (AST.-) (integerExpression left) (integerExpression right)
       rejectedDeadBranch =
-        AST.and (natural 1) (AST.boolean True)
+        booleanAnd (natural 1) (AST.boolean True)
       expressionValue =
         AST.conditional
           commutativeCondition
@@ -638,7 +667,7 @@ testLiteralsAndArithmetic = do
   expectValue
       "string membership"
       (AST.equal
-        (AST.subfederation (AST.asciiString "my_string") AST.stringType)
+        (subfederation (AST.asciiString "my_string") AST.stringType)
         (AST.boolean True)) $ \value ->
     assert "a string literal is a member of Str"
       (renderInterpretedValue value == "true")
@@ -1044,7 +1073,6 @@ testCanonicalTypes = do
     , "begin yield 11"
     , "Nat -> Nat"
     , "Nat | (Nat -> Nat)"
-    , "Template"
     , "datra.Expr"
     , "datra.DependentArgument"
     , "datra.DependentDeclaration"
@@ -1055,7 +1083,6 @@ testCanonicalTypes = do
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
-    , "datra.SyntaxTemplate"
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
     case Types.toStringValue canonicalStringCodec value of
@@ -1364,19 +1391,6 @@ testStringTemplates = do
       "\"ie : 12\" of \"%(ie : Nat)\"" $ \value ->
     assert "a direct simple identifier member is decoded canonically"
       (renderInterpretedValue value == "true")
-  expectValue
-      "map containing a simple identifier type is injective"
-      (AST.subfederation
-        (AsciiStringLiteral "(ie : 12; $alco)")
-        (StringTemplate
-          [StringTemplateInterpolation
-            (MapSequence
-              [ DependentArgument
-                  (identifierReference "ie") (Just NaturalType)
-              , IdentifierValueType
-              ])])) $ \value ->
-    assert "the canonical map member is decoded componentwise"
-      (renderInterpretedValue value == "true")
   expectSourceValue
       "Either containing a simple identifier type is injective"
       "\"ie : 12\" of \"%(ie : Nat | IdenStr)\"" $ \value ->
@@ -1545,12 +1559,12 @@ testStringTemplates = do
       _ -> False)
   expectValue
       "matching delimited string-template subfederation"
-      (AST.subfederation separatedNaturals separatedNaturals) $ \value ->
+      (subfederation separatedNaturals separatedNaturals) $ \value ->
     assert "string-template inclusion follows the same component structure"
       (renderInterpretedValue value == "true")
   expectValue
       "delimited string template is a Str subfederation"
-      (AST.subfederation separatedNaturals AST.stringType) $ \value ->
+      (subfederation separatedNaturals AST.stringType) $ \value ->
     assert "every member produced by the template is a string"
       (renderInterpretedValue value == "true")
   let booleanTemplate =
@@ -1911,20 +1925,20 @@ testBooleansAndEither = do
         == "false ~> Bool")
   expectValue
       "Boolean conjunction"
-      (AST.and (AST.boolean True) (AST.boolean False)) $ \value ->
+      (booleanAnd (AST.boolean True) (AST.boolean False)) $ \value ->
     assert "True and False is False"
       (renderInterpretedValue value == "false")
   expectValue
       "Boolean disjunction"
-      (AST.or (AST.boolean False) (AST.boolean True)) $ \value ->
+      (booleanOr (AST.boolean False) (AST.boolean True)) $ \value ->
     assert "False or True is True"
       (renderInterpretedValue value == "true")
-  expectValue "Boolean negation" (AST.not (AST.boolean False)) $ \value ->
+  expectValue "Boolean negation" (booleanNot (AST.boolean False)) $ \value ->
     assert "not False is True"
       (renderInterpretedValue value == "true")
   expectValue
       "canonical Boolean identifier values"
-      (AST.and
+      (booleanAnd
         (AST.dependentArgumentType "True" (natural 1))
         (AST.dependentArgumentType "False" (natural 0))) $ \value ->
     assert "True : 1 and False : 0 retain Boolean behavior"
@@ -1985,7 +1999,7 @@ testBooleansAndEither = do
         <> renderInterpretedValue value)
   expectValue
       "Either source branches are included as federation members"
-      (AST.subfederation
+      (subfederation
         (AST.eitherType (natural 0) (natural 1))
         AST.naturalType) $ \value ->
     assert "a union is included when each alternative is in the target"
@@ -2013,7 +2027,7 @@ testBooleansAndEither = do
       (renderInterpretedValue value == "1 ~> (0 | 1 | 2)")
   assert "Boolean operators reject non-Booleans"
     (case interpretExpressionReason
-        (AST.and (natural 1) (AST.boolean True)) of
+        (booleanAnd (natural 1) (AST.boolean True)) of
       Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
 
@@ -2152,7 +2166,7 @@ testOptionalsAndConditionals = do
       (renderInterpretedValue value == "false")
   expectValue
       "optional identifier specification morphism exists"
-      (AST.subfederation
+      (subfederation
         (MapConcatenation
           (natural 2)
           (AST.dependentArgumentType "b" (natural 5)))
@@ -2163,7 +2177,7 @@ testOptionalsAndConditionals = do
       (renderInterpretedValue value == "true")
   expectValue
       "optional identifier range subfederation morphism exists"
-      (AST.subfederation
+      (subfederation
         (MapConcatenation
           (natural 2)
           (AST.dependentArgumentType "b" (natural 5)))
@@ -2194,7 +2208,7 @@ testOptionalsAndConditionals = do
       (AST.conditional
         (AST.boolean True)
         (natural 7)
-        (AST.and (natural 1) (AST.boolean False))) $ \value ->
+        (booleanAnd (natural 1) (AST.boolean False))) $ \value ->
     assert "an unselected ill-typed branch is not evaluated"
       (renderInterpretedValue value == "7")
   assert "if rejects a non-Boolean condition"
@@ -2212,9 +2226,9 @@ testCombinedTypeSystems = do
           (AST.dependentArgumentType "False" (natural 0))
           (AST.dependentArgumentType "True" (natural 1))
       condition =
-        AST.and
+        booleanAnd
           (AST.equal AST.booleanType expandedBool)
-          (AST.not (AST.boolean False))
+          (booleanNot (AST.boolean False))
       computedInteger =
         (AST.+) (AST.minus (natural 6)) (natural 2)
   expectValue
@@ -2228,7 +2242,7 @@ testCombinedTypeSystems = do
   expectValue
       "false branch optional specification"
       ( AST.conditional
-          (AST.and (AST.boolean True) (AST.boolean False))
+          (booleanAnd (AST.boolean True) (AST.boolean False))
           (justValue computedInteger)
           nothingValue
           ~> maybeType AST.integerType
@@ -2273,12 +2287,12 @@ testCombinatorialNumericalSystems = do
       (renderInterpretedValue value == "false")
   expectValue
       "proper signed range subfederation"
-      (AST.subfederation smallRange largeRange) $ \value ->
+      (subfederation smallRange largeRange) $ \value ->
     assert "of proves an existing inclusion morphism"
       (renderInterpretedValue value == "true")
   expectValue
       "missing reverse signed range subfederation"
-      (AST.subfederation largeRange smallRange) $ \value ->
+      (subfederation largeRange smallRange) $ \value ->
     assert "of is false when the inclusion morphism does not exist"
       (renderInterpretedValue value == "false")
   expectValue

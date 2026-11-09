@@ -2,7 +2,7 @@ module Main (main) where
 
 import Data.Char (toLower)
 import Data.Bifunctor qualified as Bifunctor
-import DatraLanguage.AST (renderExpression)
+import DatraLanguage.Pretty (renderExpression)
 import DatraLanguage.Diagnostics
   ( Located (locatedValue)
   , withoutSourceSpan

@@ -103,11 +103,13 @@ standardLibraryTests =
         , programFailureCase "the former Declaration name is unavailable"
             "yield Declaration"
             (SourceEvaluationFailure (UnknownIdentifier "Declaration"))
-        , programFailureCase "_SyntaxTemplate is private to the library"
-            "yield _SyntaxTemplate"
-            (SourceEvaluationFailure (UnknownIdentifier "_SyntaxTemplate"))
-        , programCase "SyntaxTemplate retains its host-map canonical spelling"
-            "yield datra.SyntaxTemplate" "datra.SyntaxTemplate"
+        , programFailureCase "the former Template host target is unavailable"
+            "yield datra.Template"
+            (SourceEvaluationFailure (UnknownIdentifier "Template"))
+        , programFailureCase
+            "the former SyntaxTemplate host target is unavailable"
+            "yield datra.SyntaxTemplate"
+            (SourceEvaluationFailure (UnknownIdentifier "SyntaxTemplate"))
         ]
     , testGroup "final-page length"
         [ programCase "finite lengths use the final page"
@@ -475,13 +477,6 @@ standardLibraryTests =
             , "(from (-5) to Infinity ~> IntValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"
             , "not (datra.Block of datra.Expr)"
-            , "\"%Any\" of Template"
-            , "\"%Int %IdenStr\" of Template"
-            , "(\"%Int %IdenStr\" ~> Template) of Template"
-            , "not (2 of Template)"
-            , "Str of Template"
-            , "Template of Any"
-            , "(\"left\"; \"right\") of InhabitedList Template"
             ]
         ]
     , testGroup "dependent List"
