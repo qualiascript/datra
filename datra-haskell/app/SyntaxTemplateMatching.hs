@@ -1,8 +1,9 @@
 -- | Match declared syntax templates against an already parsed AST.
 --
--- Matching is deliberately independent of source layout.  The input is an
--- application AST, literals are compared by canonical source spelling, and
--- holes receive reconstructed AST subexpressions.  A caller supplies the
+-- Matching is deliberately independent of source layout. The input template
+-- and source have both been lowered by the neutral parser, so core operators
+-- are matched as AST constructors. Holes receive selected AST subexpressions.
+-- A caller supplies the
 -- membership decision for each hole so value holes can use Datra's ordinary
 -- string-template/value matching rather than a second parser-side type system.
 module SyntaxTemplateMatching
@@ -17,19 +18,17 @@ module SyntaxTemplateMatching
   , expandSyntaxMatch
   ) where
 
-import DatraLanguage.AST
-  ( Expression (..)
-  , IdentifierString (IdentifierString)
-  )
-import DatraLanguage.AST.Source (renderSourceExpression)
+import DatraLanguage.AST (Expression (FunctionApplication))
 import SyntaxDefinitions
   ( SyntaxHoleKind (..)
-  , SyntaxPiece (..)
   , SyntaxRule (..)
-  , SyntaxTemplate (..)
   , TemplateSelection (..)
   , expandSyntax
-  , syntaxTemplateLiteralPrefix
+  )
+import SyntaxTemplateProjection
+  ( applicationFrom
+  , applicationPhrase
+  , structuralTemplateCaptures
   )
 data SyntaxTemplateMatchFailure
   = NoMatchingSyntaxTemplate
@@ -78,19 +77,15 @@ enumerateSyntaxRulesSelections rules expressionValue =
         (map snd captures))
       captures
       remaining
-  | rule <- filter (prefixMatches phrase) rules
-  , consumed <- reverse
-      [minimumRequiredValues (rulePieces rule) .. length phrase]
+  | rule <- rules
+  , consumed <- reverse [1 .. length phrase]
   , let (candidate, remaining) = splitAt consumed phrase
-  , captures <- matchPiecesStructurally (rulePieces rule) candidate
+        selected = applicationFrom candidate
+  , captures <- structuralTemplateCaptures
+      (syntaxTemplate rule) selected
   ]
   where
     phrase = applicationPhrase expressionValue
-    prefixMatches values rule = and
-      (zipWith matchesLiteralExpression
-        (syntaxTemplateLiteralPrefix rule)
-        values)
-      && length (syntaxTemplateLiteralPrefix rule) <= length values
 
 -- | Match within one application spine. Its explicit head identifier first
 -- filters templates by their literal prefix. The selected template
@@ -165,58 +160,6 @@ chooseSuccessful
 chooseSuccessful [] = Left NoMatchingSyntaxTemplate
 chooseSuccessful (matched : _) = Right matched
 
-rulePieces :: SyntaxRule -> [SyntaxPiece Expression]
-rulePieces = syntaxTemplatePieces . syntaxTemplate
-
-applicationPhrase :: Expression -> [Expression]
-applicationPhrase expressionValue =
-  case applicationSpine expressionValue of
-    (headValue, arguments) -> headValue : arguments
-
-applicationSpine :: Expression -> (Expression, [Expression])
-applicationSpine = go []
-  where
-    go arguments (FunctionApplication function argument) =
-      go (argument : arguments) function
-    go arguments function = (function, arguments)
-
-matchPiecesStructurally
-  :: [SyntaxPiece Expression]
-  -> [Expression]
-  -> [[(SyntaxHoleKind Expression, Expression)]]
-matchPiecesStructurally [] [] = [[]]
-matchPiecesStructurally [] _ = []
-matchPiecesStructurally
-    (SyntaxLiteral literal : pieces) (value : values)
-  | matchesLiteralExpression literal value =
-      matchPiecesStructurally pieces values
-matchPiecesStructurally (SyntaxLiteral _ : _) _ = []
-matchPiecesStructurally (SyntaxHole kind : pieces) values =
-  [ (kind, capture) : captures
-  | count <- reverse [1 .. maximumCaptureLength pieces values]
-  , let (captured, remaining) = splitAt count values
-        capture = applicationFrom captured
-  , captures <- matchPiecesStructurally pieces remaining
-  ]
-
 maybeToList :: Maybe value -> [value]
 maybeToList Nothing = []
 maybeToList (Just value) = [value]
-
-maximumCaptureLength :: [SyntaxPiece Expression] -> [Expression] -> Int
-maximumCaptureLength remaining values =
-  max 0 (length values - minimumRequiredValues remaining)
-
-minimumRequiredValues :: [SyntaxPiece Expression] -> Int
-minimumRequiredValues = length
-
-applicationFrom :: [Expression] -> Expression
-applicationFrom [] = AtlasMap []
-applicationFrom (first : remaining) =
-  foldl FunctionApplication first remaining
-
-matchesLiteralExpression :: String -> Expression -> Bool
-matchesLiteralExpression literal expressionValue =
-  case expressionValue of
-    IdentifierReference (IdentifierString value) -> value == literal
-    _ -> renderSourceExpression expressionValue == literal

@@ -5,6 +5,7 @@
     _DependentDeclaration := datra.DependentDeclaration
     _Block := datra.Block
     _FunctionBody := datra.FunctionBody
+    _IdentifierReference := datra.IdentifierReference
 
     %($let; _DependentDeclaration) :=
       (_DependentDeclaration -> _DependentDeclaration) datra.let_body
@@ -17,8 +18,6 @@
     val Never := datra.never
     val Ordinal := datra.Ordinal
     val Char := datra.Char
-    val Template := datra.Template
-    val IdenStr := datra.IdenStr
 
     val Infinity := datra.Infinity
     val false := (False : 0)

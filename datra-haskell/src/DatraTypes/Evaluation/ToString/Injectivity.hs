@@ -13,7 +13,6 @@ import DatraOrdinal (naturalAtOrdinal)
 import Evaluation.Value
 import Evaluation.Numerical
   ( complementedIntegerTypeIncludesInfinity )
-import IdentifierValueType (identifierValueCharacterAlphabet)
 
 data StringConversionProperties = StringConversionProperties
   { conversionCharacterAlphabet :: Maybe String
@@ -40,8 +39,7 @@ proveInjectiveToString datraType decodeCanonical source =
     properties = case canonicalStringImplementation datraType of
       StructuralCanonicalString -> stringConversionProperties semantics
       FunctionCanonicalString -> unknownAlphabetProperties
-      BuiltinMetaCanonicalString kind ->
-        exactStrings [builtinMetaTypeCanonicalString kind]
+      PrimitiveCanonicalString _ -> unknownAlphabetProperties
       TotalBlockCanonicalString -> stringConversionProperties semantics
     semantics = interpretedSemanticSemantics source
 
@@ -56,7 +54,7 @@ stringConversionProperties semantics
       complementedIntegerProperties includesInfinity
   | otherwise = case semantics of
     NeverSemantics -> exactStrings ["Never"]
-    BuiltinMetaTypeSemantics _ -> unknownConversion
+    PrimitiveTypeSemantics _ -> unknownConversion
     FunctionSemantics {} -> injectiveUnknownAlphabet
     FunctionBodySemantics {} -> injectiveUnknownAlphabet
     ExplicitSemantics {} -> knownAlphabet "0123456789"
@@ -73,8 +71,6 @@ stringConversionProperties semantics
     IntegerLimitRangeSemantics {} -> numericRange
     IntegerTypeSemantics -> integerNumber
     AsciiStringSemantics {} -> injectiveUnknownAlphabet
-    IdentifierValueTypeSemantics ->
-      knownAlphabet identifierValueCharacterAlphabet
     EitherSemantics left right ->
       eitherConversionProperties
         (stringConversionProperties left)

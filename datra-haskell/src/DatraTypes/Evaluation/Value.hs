@@ -4,15 +4,15 @@
 -- Constructors stay internal; the public 'DatraTypes' module exposes only the
 -- observations and checked operations needed by the AST interpreter.
 module Evaluation.Value
-  ( ASTMetaCategory (..)
-  , BuiltinMetaType (..)
+  ( SyntaxCategory (..)
+  , PrimitiveType (..)
   , CanonicalStringImplementation (..)
   , DatraType
   , DatraTypeFamily (..)
   , structuralDatraType
   , composedStructuralDatraType
   , functionDatraType
-  , builtinMetaDatraType
+  , primitiveDatraType
   , totalBlockDatraType
   , datraTypeFamily
   , canonicalStringImplementation
@@ -38,8 +38,6 @@ module Evaluation.Value
   , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
-  , builtinMetaTypeName
-  , builtinMetaTypeCanonicalString
   , naturalRangeTypeValue
   , integerRangeTypeValue
   , naturalValuedRangeTypeValue
@@ -496,6 +494,14 @@ functionSyntaxEquivalent left right =
         (DependentArgumentSyntaxHole rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
+        (IdentifierReferenceSyntaxHole leftValue)
+        (IdentifierReferenceSyntaxHole rightValue) =
+          equivalent leftValue rightValue
+    holeEquivalent
+        (StringLiteralSyntaxHole leftValue)
+        (StringLiteralSyntaxHole rightValue) =
+          equivalent leftValue rightValue
+    holeEquivalent
         (ValueSyntaxHole leftValue) (ValueSyntaxHole rightValue) =
       equivalent leftValue rightValue
     holeEquivalent _ _ = False
@@ -539,7 +545,7 @@ makeFunctionBodyValue body = case body of
     bodyValue (FunctionForm implementation)
   where
     bodyValue form = makeInterpretedValue
-      (builtinMetaDatraType (ASTMetaType FunctionBodyAST))
+      (primitiveDatraType (SyntaxPrimitive FunctionBodyAST))
       form
       NoInsertion
       emptyInterpretedMap
@@ -557,7 +563,7 @@ interpretedFunctionBody value = case interpretedForm value of
   FunctionBodyForm body -> Just body
   FunctionForm function -> case datraTypeFamily
       (interpretedDatraType value) of
-    BuiltinMetaTypeFamily (ASTMetaType FunctionBodyAST) ->
+    PrimitiveTypeFamily (SyntaxPrimitive FunctionBodyAST) ->
       Just (EvaluatedRuntimeFunctionBody source function)
     _ -> Nothing
     where
@@ -633,57 +639,30 @@ isFunctionFamily value =
     FunctionForm _ -> True
     _ -> False
 
-builtinMetaTypeName :: BuiltinMetaType -> String
-builtinMetaTypeName AnyMetaType = "Any"
-builtinMetaTypeName OrdinalMetaType = "Ordinal"
-builtinMetaTypeName (ASTMetaType category) = case category of
-  ExpressionAST -> "Expr"
-  BlockAST -> "Block"
-  FunctionBodyAST -> "FunctionBody"
-  DeclarationAST -> "DependentDeclaration"
-  DependentArgumentAST -> "DependentArgument"
-builtinMetaTypeName NatRangeMetaType = "NatRange"
-builtinMetaTypeName IntRangeMetaType = "IntRange"
-builtinMetaTypeName NatValRangeMetaType = "NatValRange"
-builtinMetaTypeName IntValRangeMetaType = "IntValRange"
-builtinMetaTypeName TemplateMetaType = "Template"
-builtinMetaTypeName SyntaxTemplateMetaType = "_SyntaxTemplate"
-
-builtinMetaTypeCanonicalString :: BuiltinMetaType -> String
-builtinMetaTypeCanonicalString (ASTMetaType category) = case category of
-  ExpressionAST -> "datra.Expr"
-  BlockAST -> "datra.Block"
-  FunctionBodyAST -> "datra.FunctionBody"
-  DeclarationAST -> "datra.DependentDeclaration"
-  DependentArgumentAST -> "datra.DependentArgument"
-builtinMetaTypeCanonicalString SyntaxTemplateMetaType =
-  "datra.SyntaxTemplate"
-builtinMetaTypeCanonicalString kind = builtinMetaTypeName kind
-
-builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
-builtinMetaTypeValue kind = makeInterpretedValue
-  (builtinMetaDatraType kind)
-  (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
-  (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (BuiltinMetaTypeSemantics kind)
+primitiveTypeValue :: PrimitiveType -> InterpretedValue
+primitiveTypeValue kind = makeInterpretedValue
+  (primitiveDatraType kind)
+  (PrimitiveTypeForm kind) NoInsertion emptyInterpretedMap
+  (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (PrimitiveTypeSemantics kind)
 
 anyTypeValue, ordinalTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
   naturalValuedRangeTypeValue, integerValuedRangeTypeValue,
   templateTypeValue, syntaxTemplateTypeValue :: InterpretedValue
-anyTypeValue = builtinMetaTypeValue AnyMetaType
-ordinalTypeValue = builtinMetaTypeValue OrdinalMetaType
-naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
-integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType
-naturalValuedRangeTypeValue = builtinMetaTypeValue NatValRangeMetaType
-integerValuedRangeTypeValue = builtinMetaTypeValue IntValRangeMetaType
-templateTypeValue = builtinMetaTypeValue TemplateMetaType
-syntaxTemplateTypeValue = builtinMetaTypeValue SyntaxTemplateMetaType
+anyTypeValue = primitiveTypeValue AnyPrimitive
+ordinalTypeValue = primitiveTypeValue OrdinalPrimitive
+naturalRangeTypeValue = primitiveTypeValue NatRangePrimitive
+integerRangeTypeValue = primitiveTypeValue IntRangePrimitive
+naturalValuedRangeTypeValue = primitiveTypeValue NatValRangePrimitive
+integerValuedRangeTypeValue = primitiveTypeValue IntValRangePrimitive
+templateTypeValue = primitiveTypeValue TemplatePrimitive
+syntaxTemplateTypeValue = primitiveTypeValue SyntaxTemplatePrimitive
 
-syntaxCategoryTypeValue :: ASTMetaCategory -> InterpretedValue
-syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType
+syntaxCategoryTypeValue :: SyntaxCategory -> InterpretedValue
+syntaxCategoryTypeValue = primitiveTypeValue . SyntaxPrimitive
 
 data ValueForm
   = NeverForm
-  | BuiltinMetaTypeForm BuiltinMetaType
+  | PrimitiveTypeForm PrimitiveType
   | FunctionBodyForm EvaluatedFunctionBody
   | FunctionForm EvaluatedFunction
   | ExplicitForm EvaluatedExplicit
@@ -705,7 +684,6 @@ data ValueForm
       [EvaluatedRange]
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
-  | IdentifierValueTypeForm
   | ToStringForm
   | TemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
@@ -1025,7 +1003,6 @@ data InterpretedAtlasMapFederationPrimitive
   | EitherAtlasMapFederation EvaluatedEither
   | DependentArgumentTypeAtlasMapFederation EvaluatedDependentArgumentType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedDependentArgumentType
-  | IdentifierValueTypeAtlasMapFederation
   | ToStringAtlasMapFederation
       InterpretedValue
       ProvenInjectiveToString
@@ -1621,10 +1598,10 @@ interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =
   case interpretedForm value of
     NeverForm -> MapValueKind
-    BuiltinMetaTypeForm (ASTMetaType _) -> FunctionValueKind
+    PrimitiveTypeForm (SyntaxPrimitive _) -> FunctionValueKind
     FunctionBodyForm _ -> FunctionValueKind
-    BuiltinMetaTypeForm TemplateMetaType -> AsciiStringValueKind
-    BuiltinMetaTypeForm _ -> RangeValueKind
+    PrimitiveTypeForm TemplatePrimitive -> AsciiStringValueKind
+    PrimitiveTypeForm _ -> RangeValueKind
     FunctionForm _ -> FunctionValueKind
     ExplicitForm (EvaluatedExplicit _ NaturalOrigin _) -> NaturalValueKind
     ExplicitForm _ -> ExplicitOrdinalValueKind
@@ -1643,7 +1620,6 @@ interpretedValueKind value =
     FederationSpecificationForm _ _ _ -> SpecificationValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
-    IdentifierValueTypeForm -> AsciiStringValueKind
     ToStringForm -> AsciiStringValueKind
     TemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind

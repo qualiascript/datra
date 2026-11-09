@@ -4,7 +4,6 @@ module Evaluation.Construction
   , makeNatural
   , makeInteger
   , makeAsciiString
-  , makeIdentifierValueType
   , makeExplicit
   , makeExplicitValue
   , makeFormulation
@@ -81,18 +80,6 @@ makeAsciiString characters = value
         valueMap
         TotalInterpretedMap
         semantics
-
--- | The federation of strings accepted by compact @$...@ syntax.
-makeIdentifierValueType :: InterpretedValue
-makeIdentifierValueType =
-  makeInterpretedValue
-    structuralDatraType
-    IdentifierValueTypeForm
-    NoInsertion
-    emptyInterpretedMap
-    (PrimitiveAtlasMapFederation IdentifierValueTypeAtlasMapFederation)
-    NonTotalInterpretedMap
-    IdentifierValueTypeSemantics
 
 makeExplicit :: ExplicitOrigin -> Ordinal -> InterpretedValue
 makeExplicit origin = explicitInterpretedValue . makeExplicitValue origin

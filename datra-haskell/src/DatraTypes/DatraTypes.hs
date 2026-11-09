@@ -4,7 +4,7 @@
 -- checked construction, canonicalization, access validation, and their
 -- strongly typed failures belong here.
 module DatraTypes
-  ( ASTMetaCategory (..)
+  ( SyntaxCategory (..)
   , DatraType
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
@@ -50,8 +50,6 @@ module DatraTypes
   , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
-  , builtinMetaTypeName
-  , builtinMetaTypeCanonicalString
   , naturalRangeTypeValue
   , integerRangeTypeValue
   , naturalValuedRangeTypeValue
@@ -116,7 +114,6 @@ module DatraTypes
   , charTypeValue
   , listTypeValue
   , streamTypeValue
-  , identifierValueTypeValue
   , CanonicalStringCodec (..)
   , toStringValue
   , templateValue
@@ -296,7 +293,6 @@ import Evaluation.Error
 import Evaluation.Access (accessValues, namedAccessValue)
 import Evaluation.Construction
   ( makeAsciiString
-  , makeIdentifierValueType
   , makeFormulation
   , makeSkip
   , makeNatural
@@ -476,7 +472,7 @@ import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.ResultContract
   ( decideClosedPublicResultContract )
 import Evaluation.Value
-  ( ASTMetaCategory (..)
+  ( SyntaxCategory (..)
   , DatraType
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
@@ -517,8 +513,6 @@ import Evaluation.Value
   , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
-  , builtinMetaTypeName
-  , builtinMetaTypeCanonicalString
   , naturalRangeTypeValue
   , integerRangeTypeValue
   , naturalValuedRangeTypeValue
@@ -800,9 +794,6 @@ specifyDependentSumElement source target =
           Right
           =<< interpretedMapValueAtChecked sourceMap
             (finiteOrdinal position)
-
-identifierValueTypeValue :: InterpretedValue
-identifierValueTypeValue = makeIdentifierValueType
 
 formulationValue :: Natural -> InterpretedValue
 formulationValue = makeFormulation

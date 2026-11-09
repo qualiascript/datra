@@ -97,7 +97,7 @@ library
         IntegerRange
         ValuedIntegerRange
         IntegerType
-        IdentifierValueType
+        DatraLanguage.IdentifierSyntax
         DependentArgumentType
         SimpleIdentifierType
         AtlasMapFederation
@@ -251,7 +251,7 @@ library
         Evaluation.Specification.Subfederation
         Evaluation.ToString
         Evaluation.ToString.Injectivity
-        Evaluation.TypeFamily.BuiltinMeta
+        Evaluation.TypeFamily.Primitive
         Evaluation.TypeFamily
         Evaluation.TypeFamily.Function
         Evaluation.TypeFamily.Structural

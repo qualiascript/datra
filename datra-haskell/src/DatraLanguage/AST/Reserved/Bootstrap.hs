@@ -11,7 +11,6 @@ import DatraLanguage.AST
       ( BooleanLiteral
       , BooleanType
       , IntegerType
-      , IdentifierValueType
       , NaturalType
       , NothingLiteral
       )
@@ -28,8 +27,6 @@ reservedSymbolReplacements = mapMaybe replacement reservedSymbols
   where
     replacement BooleanTypeSymbol = Just (BooleanTypeSymbol, BooleanType)
     replacement StringTypeSymbol = Nothing
-    replacement IdentifierValueTypeSymbol =
-      Just (IdentifierValueTypeSymbol, IdentifierValueType)
     replacement IntegerTypeSymbol = Just (IntegerTypeSymbol, IntegerType)
     replacement NaturalTypeSymbol = Just (NaturalTypeSymbol, NaturalType)
     replacement FalseSymbol = Just (FalseSymbol, BooleanLiteral False)

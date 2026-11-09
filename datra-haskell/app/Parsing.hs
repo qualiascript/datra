@@ -154,7 +154,7 @@ import DatraLanguage.Diagnostics
   )
 import DatraLanguage.Diagnostics.Application
   ( ParseFailure (NeutralSourceParseFailure) )
-import IdentifierValueType
+import DatraLanguage.IdentifierSyntax
   ( isIdentifierValue
   , isIdentifierValueCharacter
   )

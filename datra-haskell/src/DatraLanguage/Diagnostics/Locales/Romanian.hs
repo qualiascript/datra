@@ -191,9 +191,8 @@ localizeInterpretingError reason =
     MapLengthFailed failure -> localizeMapLengthFailure failure
     FunctionEvaluationFailed failure -> localizeFunctionFailure failure
     ModuleEvaluationFailed failure -> localizeModuleFailure failure
-    ExpectedBuiltinType name ->
-      LocalizedMessage "valoarea nu aparține tipului încorporat necesar"
-        ["tip așteptat: " <> name]
+    ExpectedPrimitiveType ->
+      LocalizedMessage "valoarea nu aparține tipului primitiv necesar" []
     OverloadError failure ->
       LocalizedMessage "supraîncărcarea a eșuat" [overloadFailure failure]
     OperationHasNoEffect ->

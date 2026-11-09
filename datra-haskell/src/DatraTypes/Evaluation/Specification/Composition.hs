@@ -36,7 +36,7 @@ import Evaluation.Specification.String
   ( selectStringFederationMember
   , valueProducesStrings
   )
-import Evaluation.TypeFamily.BuiltinMeta qualified as BuiltinMeta
+import Evaluation.TypeFamily.Primitive qualified as Primitive
 import Evaluation.Value
 
 -- | Select a total source map from any target federation. Atomic targets are
@@ -77,11 +77,11 @@ selectFederationMember source target
         Left (AtlasMapFederationOperationUndecidable _) ->
           DecisionUndecidable
         Left _ -> DecisionRefuted
-  | BuiltinMetaTypeForm AnyMetaType <- interpretedForm target =
+  | PrimitiveTypeForm AnyPrimitive <- interpretedForm target =
       DecisionProved
         (EvaluatedCanonicalTypeMember (interpretedSemanticResult source))
-  | BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm target =
-      case BuiltinMeta.decideBuiltinMetaSubfederation source OrdinalMetaType of
+  | PrimitiveTypeForm OrdinalPrimitive <- interpretedForm target =
+      case Primitive.decidePrimitiveSubfederation source OrdinalPrimitive of
         DecisionProved () -> DecisionProved
           (EvaluatedCanonicalTypeMember (interpretedSemanticResult source))
         DecisionRefuted -> DecisionRefuted

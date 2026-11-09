@@ -49,7 +49,7 @@ accessSource :: InterpretedValue -> AccessSource
 accessSource value =
   case interpretedForm value of
     NeverForm -> ordinarySource []
-    BuiltinMetaTypeForm _ -> ordinarySource []
+    PrimitiveTypeForm _ -> ordinarySource []
     FunctionForm _ -> ordinarySource []
     FunctionBodyForm _ -> ordinarySource []
     RangeForm valueRange ->
@@ -106,7 +106,6 @@ accessSource value =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
-    IdentifierValueTypeForm -> ordinarySource []
     ToStringForm -> ordinarySource []
     TemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
@@ -157,7 +156,7 @@ semanticAccessSource (PresentedSemantics _ _ semantics) =
 semanticAccessSource semantics =
   case semantics of
     NeverSemantics -> ordinarySource []
-    BuiltinMetaTypeSemantics _ -> ordinarySource []
+    PrimitiveTypeSemantics _ -> ordinarySource []
     FunctionSemantics {} -> ordinarySource []
     FunctionBodySemantics {} -> ordinarySource []
     ExplicitSemantics level value ->
@@ -202,7 +201,6 @@ semanticAccessSource semantics =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
-    IdentifierValueTypeSemantics -> ordinarySource []
     ToStringSemantics _ -> ordinarySource []
     TemplateSemantics _ -> ordinarySource []
     MapSemantics _ components ->

@@ -116,17 +116,17 @@ alternativesAreDistinct left right
       length leftMembers /= length rightMembers
         || or (zipWith alternativesAreDistinct leftMembers rightMembers)
   | ArgumentativeMapForm _ _ <- interpretedForm left
-  , BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm right = True
-  | BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm left
+  , PrimitiveTypeForm (SyntaxPrimitive _) <- interpretedForm right = True
+  | PrimitiveTypeForm (SyntaxPrimitive _) <- interpretedForm left
   , ArgumentativeMapForm _ _ <- interpretedForm right = True
   | ArgumentativeMapForm _ underlying <- interpretedForm left =
       alternativesAreDistinct underlying right
   | ArgumentativeMapForm _ underlying <- interpretedForm right =
       alternativesAreDistinct left underlying
-  | BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm left
+  | PrimitiveTypeForm OrdinalPrimitive <- interpretedForm left
   , ValuedNaturalRangeForm _ <- interpretedForm right = True
   | ValuedNaturalRangeForm _ <- interpretedForm left
-  , BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm right = True
+  , PrimitiveTypeForm OrdinalPrimitive <- interpretedForm right = True
   | EitherForm leftEither <- interpretedForm left =
       alternativesAreDistinct (evaluatedEitherLeft leftEither) right
         && alternativesAreDistinct (evaluatedEitherRight leftEither) right

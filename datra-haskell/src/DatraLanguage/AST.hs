@@ -50,7 +50,7 @@ import DatraLanguage.AST.Operator
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.Diagnostics (SourceSpan)
-import IdentifierValueType (isIdentifierValue, isIdentifierValueCharacter)
+import DatraLanguage.IdentifierSyntax (isIdentifierValue, isIdentifierValueCharacter)
 import Numeric.Natural (Natural)
 import Numeric (showHex)
 import Prettyprinter
@@ -218,7 +218,6 @@ data Expression
   | NothingLiteral
   | StringTemplate [StringTemplatePart Expression]
   | GreedyStringTemplate Expression
-  | IdentifierValueType
   | AtlasMap [Expression]
   | ArgumentativeMap [Expression]
   | MapSequence [Expression]
@@ -391,7 +390,6 @@ data OperatorExpression
   | NothingValue
   | StringTemplateValue [StringTemplatePart OperatorExpression]
   | GreedyStringTemplateValue OperatorExpression
-  | IdentifierValueTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
   | Arguments [OperatorExpression]
@@ -485,7 +483,6 @@ normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplatePart parts)
 normalizeExpression (GreedyStringTemplate operand) =
   GreedyStringTemplate (normalizeExpression operand)
-normalizeExpression IdentifierValueType = IdentifierValueType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (ArgumentativeMap expressions) =
@@ -689,7 +686,6 @@ lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplatePart parts)
 lower (GreedyStringTemplate operand) =
   GreedyStringTemplateValue (lower operand)
-lower IdentifierValueType = IdentifierValueTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
@@ -838,8 +834,6 @@ prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
 prettyOperator (GreedyStringTemplateValue operand) =
   prettyUnary GreedyStringTemplateOperator operand
-prettyOperator IdentifierValueTypeValue =
-  reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
 prettyOperator EmptyMap = "()"
 prettyOperator (Sequential []) = "()"
 prettyOperator (Sequential [expressionValue]) = prettyOperator expressionValue
@@ -1200,8 +1194,6 @@ compactOperatorStringInterpolation
 compactOperatorStringInterpolation expressionValue =
   case expressionValue of
     NothingValue -> reserved Reserved.NothingSymbol
-    IdentifierValueTypeValue ->
-      reserved Reserved.IdentifierValueTypeSymbol
     NaturalTypeValue -> reserved Reserved.NaturalTypeSymbol
     IntegerTypeValue -> reserved Reserved.IntegerTypeSymbol
     BooleanValue False -> reserved Reserved.FalseSymbol

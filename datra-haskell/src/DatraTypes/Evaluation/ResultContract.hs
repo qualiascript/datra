@@ -27,12 +27,12 @@ decideClosedPublicResultContract = go 256
       | otherwise =
           case interpretedForm value of
             NeverForm -> eligible
-            BuiltinMetaTypeForm OrdinalMetaType -> eligible
-            BuiltinMetaTypeForm NatRangeMetaType -> eligible
-            BuiltinMetaTypeForm IntRangeMetaType -> eligible
-            BuiltinMetaTypeForm NatValRangeMetaType -> eligible
-            BuiltinMetaTypeForm IntValRangeMetaType -> eligible
-            BuiltinMetaTypeForm _ -> ineligible
+            PrimitiveTypeForm OrdinalPrimitive -> eligible
+            PrimitiveTypeForm NatRangePrimitive -> eligible
+            PrimitiveTypeForm IntRangePrimitive -> eligible
+            PrimitiveTypeForm NatValRangePrimitive -> eligible
+            PrimitiveTypeForm IntValRangePrimitive -> eligible
+            PrimitiveTypeForm _ -> ineligible
             FunctionForm _ -> ineligible
             FunctionBodyForm _ -> ineligible
             ExplicitForm _ -> eligible
@@ -55,7 +55,6 @@ decideClosedPublicResultContract = go 256
               combine (descend target : map descend branches)
             RangeConcatenationForm _ _ -> eligible
             AsciiStringForm _ -> eligible
-            IdentifierValueTypeForm -> eligible
             ToStringForm -> eligible
             TemplateForm underlying -> descend underlying
             SpecificationForm specification ->

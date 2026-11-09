@@ -87,8 +87,6 @@ selectAtomicFederationMember source target =
           (DecisionProved . EvaluatedValuedIntegerRangeMember)
           (interpretedInteger source
             >>= selectValuedIntegerRangeMember targetRange))
-    PrimitiveAtlasMapFederation IdentifierValueTypeAtlasMapFederation ->
-      Nothing
     PrimitiveAtlasMapFederation (DependentArgumentTypeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation

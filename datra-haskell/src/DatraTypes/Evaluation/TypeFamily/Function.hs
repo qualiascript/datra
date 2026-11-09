@@ -100,7 +100,7 @@ decideFunctionSubfederation decideSubfederation source target
               (functionCodomain targetFunction)
           ])
   | interpretedSemanticResult source == interpretedSemanticResult target = DecisionProved ()
-  | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
+  | PrimitiveTypeForm _ <- interpretedForm source = DecisionRefuted
   | otherwise = DecisionRefuted
 
 patternCompatible

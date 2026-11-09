@@ -52,7 +52,6 @@ import SyntaxTemplateMatching
 import SyntaxTemplateProjection
   ( applicationFrom
   , applicationSpine
-  , syntaxProjectionCandidates
   )
 import SyntaxRewriting.Types
   ( CandidateRejection
@@ -361,9 +360,7 @@ runStructuralCandidates capture environment source =
         [(specialized, _)] -> captureStrict specialized
         _ -> captureStrict kind
       where
-        captureStrict selected = capture
-          False
-          previous selected captured
+        captureStrict selected = capture previous selected captured
     expectedHole selectedEnvironment candidate context index =
       Map.lookup index (candidateTypingExpectedHoles context)
         <|> listHead (drop index (rewriteRuleHoleFamilies compiled))
@@ -428,18 +425,15 @@ publishChild environment parent cursor result = Right $ case parent of
     entry = rewriteResultExpression result
 
 structuralCandidatesFor
-  :: Bool
-  -> SyntaxContext
+  :: SyntaxContext
   -> Expression
   -> [StructuralCandidate]
-structuralCandidatesFor includeConcatenation environment value =
+structuralCandidatesFor environment value =
     enumerate value (contextRewriteRules environment)
       <> scopedCandidates
   where
     enumerate selectedValue = concatMap (\rule ->
-      enumerateRuleStructuralCandidates rule
-        (syntaxProjectionCandidates includeConcatenation
-          (syntaxTemplate (rewriteRule rule)) selectedValue))
+      enumerateRuleStructuralCandidates rule [selectedValue])
     scopedCandidates = case applicationSpine value of
       (ScopeAccess source body, arguments@(_ : _)) ->
         let scopedEnvironment = contextScope environment source

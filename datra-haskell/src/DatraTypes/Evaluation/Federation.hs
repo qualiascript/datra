@@ -188,10 +188,6 @@ decidePrimitiveSubfederation
        AtlasMapFederationUncertainty
        ()
 decidePrimitiveSubfederation
-    IdentifierValueTypeAtlasMapFederation
-    IdentifierValueTypeAtlasMapFederation =
-  AtlasMapFederationProved ()
-decidePrimitiveSubfederation
     (NaturalRangeAtlasMapFederation
       (EvaluatedNaturalRange sourceRange))
     (NaturalRangeAtlasMapFederation

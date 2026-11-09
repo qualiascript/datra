@@ -1,25 +1,10 @@
--- | Strings which have Datra's compact @$identifier@ spelling.
---
--- This module is the single definition of the compact-string language. Both
--- source parsing and evaluated @IdenStr@ membership delegate to it.
-module IdentifierValueType
-  ( IdentifierValueType
-  , identifierValue
-  , identifierValueText
-  , isIdentifierValue
+-- | The lexical language shared by bare identifiers and compact @$value@
+-- string literals.
+module DatraLanguage.IdentifierSyntax
+  ( isIdentifierValue
   , isIdentifierValueCharacter
   , identifierValueCharacterAlphabet
   ) where
-
-newtype IdentifierValueType = IdentifierValue
-  { identifierValueText :: String
-  }
-  deriving (Eq, Show)
-
-identifierValue :: String -> Maybe IdentifierValueType
-identifierValue value
-  | isIdentifierValue value = Just (IdentifierValue value)
-  | otherwise = Nothing
 
 -- | A simple identifier is a nonempty string over the identifier alphabet
 -- whose first character is not a digit.
@@ -29,9 +14,7 @@ isIdentifierValue value@(first : _) =
   not (isAsciiDigit first)
     && all isIdentifierValueCharacter value
 
--- | Every character which can occur somewhere in an identifier value. This
--- language fact lets template concatenation prove that delimiters such as a
--- space cannot occur inside an @IdenStr@ interpolation.
+-- | Every character which can occur somewhere in an identifier spelling.
 identifierValueCharacterAlphabet :: String
 identifierValueCharacterAlphabet =
   ['a' .. 'z'] <> ['A' .. 'Z'] <> ['0' .. '9'] <> "_'"

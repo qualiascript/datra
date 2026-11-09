@@ -14,7 +14,6 @@ import Evaluation.Specification.Decision
   , mapDecision
   )
 import Evaluation.Value
-import IdentifierValueType (isIdentifierValue)
 
 -- | Whether a value denotes only strings.  Most cases are visible directly
 -- in the federation expression.  A source-defined string type additionally
@@ -49,7 +48,6 @@ federationProducesStrings federation =
         _ -> False
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
-        IdentifierValueTypeAtlasMapFederation -> True
         ToStringAtlasMapFederation _ _ -> True
         _ -> False
     CoalizedAtlasMapFederation operand ->
@@ -116,11 +114,6 @@ selectCharacters selectMember characters federation =
         _ -> Nothing
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
-        IdentifierValueTypeAtlasMapFederation ->
-          Just
-            (if isIdentifierValue characters
-              then DecisionProved (EvaluatedAsciiStringMember characters)
-              else DecisionRefuted)
         ToStringAtlasMapFederation source proof ->
           Just
             (case invertInjectiveToString proof characters of

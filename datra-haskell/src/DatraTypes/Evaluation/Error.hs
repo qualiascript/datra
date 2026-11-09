@@ -121,7 +121,7 @@ data InterpretingError
   | MapLengthFailed MapLengthFailure
   | FunctionEvaluationFailed FunctionFailure
   | ModuleEvaluationFailed ModuleEvaluationFailure
-  | ExpectedBuiltinType String
+  | ExpectedPrimitiveType
   | OverloadError OverloadFailure
   | OperationHasNoEffect
   | OverlappingBindings String

@@ -44,8 +44,7 @@ type ClassifyHoles =
   -> [(SyntaxHoleKind Expression, Maybe InterpretedValue)]
 
 type CaptureHole =
-  Bool
-  -> [(SyntaxHoleKind Expression, Expression)]
+  [(SyntaxHoleKind Expression, Expression)]
   -> SyntaxHoleKind Expression
   -> Expression
   -> Maybe Expression

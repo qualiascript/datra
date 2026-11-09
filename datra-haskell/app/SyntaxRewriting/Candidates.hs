@@ -142,6 +142,7 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
           ]
 
         requiresTypedResult ValueSyntaxHole {} _ = True
+        requiresTypedResult StringLiteralSyntaxHole {} _ = True
         requiresTypedResult _ selected = case rewriteResultSelection selected of
           Just _ -> True
           Nothing -> False

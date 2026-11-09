@@ -42,9 +42,9 @@ datraHostValue = do
     , ("Int", Right integer)
     , ("Infinity", Right (makeIntegerLimit PositiveInfinity))
     , ("Char", Right character)
-    , ("IdenStr", Right identifierValueTypeValue)
     , ("Expr", Right expressionType)
     , ("DependentArgument", Right dependentArgumentType)
+    , ("IdentifierReference", Right identifierReferenceType)
     , ("DependentDeclaration", Right dependentDeclarationType)
     , ("Block", Right blockType)
     , ("FunctionBody", Right functionBodyType)
@@ -156,6 +156,7 @@ datraHostValue = do
       preimage
     expressionType = syntaxCategoryTypeValue ExpressionAST
     dependentArgumentType = syntaxCategoryTypeValue DependentArgumentAST
+    identifierReferenceType = syntaxCategoryTypeValue IdentifierReferenceAST
     dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST

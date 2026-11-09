@@ -25,7 +25,6 @@ import DatraLanguage.AST
 import DatraTypes
   ( CanonicalResult (..)
   , IntegerLimit (..)
-  , builtinMetaTypeCanonicalString
   , InterpretedValue
   , interpretedCanonicalResult
   , interpretedEvaluationSource
@@ -128,8 +127,7 @@ prettyNonKeywordCanonicalResult result =
     CanonicalApplication function argument ->
       prettyCanonicalApplicationOperand function
         <+> prettyCanonicalApplicationArgument argument
-    CanonicalBuiltinMetaType kind ->
-      pretty (builtinMetaTypeCanonicalString kind)
+    CanonicalPrimitiveType kind -> pretty (show kind)
     CanonicalFunction input output body ->
       let signature = parens (prettyCanonicalResult input) <+> "->" <+> parens (prettyCanonicalResult output)
       in case body of
@@ -164,8 +162,6 @@ prettyNonKeywordCanonicalResult result =
       concatWith (\left right -> left <> ", " <> right)
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
-    CanonicalIdentifierValueType ->
-      reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
     CanonicalToString source ->
       pretty
         (renderStringTemplate
@@ -245,13 +241,12 @@ prettyCanonicalApplicationArgument argument =
   case argument of
     CanonicalReference {} -> prettyCanonicalResult argument
     CanonicalNamedAccess {} -> prettyCanonicalResult argument
-    CanonicalBuiltinMetaType {} -> prettyCanonicalResult argument
+    CanonicalPrimitiveType {} -> prettyCanonicalResult argument
     CanonicalExplicit {} -> prettyCanonicalResult argument
     CanonicalInteger {} -> prettyCanonicalResult argument
     CanonicalFormulation {} -> prettyCanonicalResult argument
     CanonicalNaturalType -> prettyCanonicalResult argument
     CanonicalIntegerType -> prettyCanonicalResult argument
-    CanonicalIdentifierValueType -> prettyCanonicalResult argument
     CanonicalDependentSum {} -> prettyCanonicalResult argument
     CanonicalAsciiString {} -> prettyCanonicalResult argument
     CanonicalArgumentativeMap {} -> prettyCanonicalResult argument
@@ -285,8 +280,6 @@ canonicalStringTemplateParts result =
       CanonicalConcatenation members ->
         concat <$> traverse canonicalStringTemplateParts members
       CanonicalAsciiString value -> Just [StringTemplateLiteral value]
-      CanonicalIdentifierValueType ->
-        Just [StringTemplateInterpolation result]
       CanonicalToString source -> Just [StringTemplateInterpolation source]
       CanonicalTemplate nested -> canonicalStringTemplateParts nested
       _ -> Nothing
@@ -294,8 +287,6 @@ canonicalStringTemplateParts result =
 compactCanonicalStringInterpolation :: CanonicalResult -> Maybe String
 compactCanonicalStringInterpolation result
   | CanonicalReference name <- result = Just name
-  | result == CanonicalIdentifierValueType =
-      reserved Reserved.IdentifierValueTypeSymbol
   | result == CanonicalNaturalType = reserved Reserved.NaturalTypeSymbol
   | result == CanonicalIntegerType = reserved Reserved.IntegerTypeSymbol
   | isBooleanValue "False" 0 result = reserved Reserved.FalseSymbol
@@ -360,7 +351,6 @@ isAtomicOptionalOperand CanonicalReference {} = True
 isAtomicOptionalOperand CanonicalNamedAccess {} = True
 isAtomicOptionalOperand CanonicalNaturalType = True
 isAtomicOptionalOperand CanonicalIntegerType = True
-isAtomicOptionalOperand CanonicalIdentifierValueType = True
 isAtomicOptionalOperand operand = isBooleanType operand
 
 optionalIdentifierParts

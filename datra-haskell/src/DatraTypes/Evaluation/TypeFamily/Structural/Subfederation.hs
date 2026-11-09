@@ -62,7 +62,7 @@ decideStructuralSubfederation decideSubfederation source target
   | Just _ <- interpretedFunction source
   , EitherForm targetEither <- interpretedForm target =
       decideAnyEitherAlternative decideSubfederation source targetEither
-  | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
+  | PrimitiveTypeForm _ <- interpretedForm source = DecisionRefuted
   | Just _ <- interpretedFunction source = DecisionRefuted
   | Just sourceUnderlying <- privateIdentifierUnderlying source
   , Nothing <- evaluatedIdentifierType target =

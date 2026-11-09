@@ -23,7 +23,7 @@ module Evaluation.Value.Semantics
   ) where
 
 import DatraOrdinal (Ordinal)
-import Evaluation.DatraType (BuiltinMetaType)
+import Evaluation.DatraType (PrimitiveType)
 import IntegerRange qualified
 import NaturalRange qualified
 import Numeric.Natural (Natural)
@@ -99,7 +99,7 @@ data ValueSemantics
   = PresentedSemantics
       [PresentationDependency] ValuePresentation ValueSemantics
   | NeverSemantics
-  | BuiltinMetaTypeSemantics BuiltinMetaType
+  | PrimitiveTypeSemantics PrimitiveType
   | FunctionSemantics
       ValueSemantics ValueSemantics (Maybe String)
   | FunctionBodySemantics String
@@ -120,7 +120,6 @@ data ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
-  | IdentifierValueTypeSemantics
   | ToStringSemantics ValueSemantics
   | TemplateSemantics ValueSemantics
   | DependentSumSemantics String
@@ -157,7 +156,7 @@ data CanonicalResult
   | CanonicalNever
   | CanonicalNamedAccess CanonicalResult String
   | CanonicalApplication CanonicalResult CanonicalResult
-  | CanonicalBuiltinMetaType BuiltinMetaType
+  | CanonicalPrimitiveType PrimitiveType
   | CanonicalFunction
       CanonicalResult CanonicalResult (Maybe String)
   | CanonicalExplicit Natural Ordinal
@@ -177,7 +176,6 @@ data CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
-  | CanonicalIdentifierValueType
   | CanonicalToString CanonicalResult
   | CanonicalTemplate CanonicalResult
   | CanonicalDependentSum String
@@ -309,7 +307,7 @@ canonicalResultWith retainPresentation semantics =
       | retainPresentation -> presentationResult presentation
       | otherwise -> canonicalResultWith False underlying
     NeverSemantics -> CanonicalNever
-    BuiltinMetaTypeSemantics kind -> CanonicalBuiltinMetaType kind
+    PrimitiveTypeSemantics kind -> CanonicalPrimitiveType kind
     FunctionSemantics input output body ->
       CanonicalFunction
         (recur input) (recur output) body
@@ -337,7 +335,6 @@ canonicalResultWith retainPresentation semantics =
     ConcatenationSemantics members ->
       CanonicalConcatenation (map recur members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
-    IdentifierValueTypeSemantics -> CanonicalIdentifierValueType
     ToStringSemantics source -> CanonicalToString (recur source)
     TemplateSemantics source ->
       CanonicalTemplate (recur source)

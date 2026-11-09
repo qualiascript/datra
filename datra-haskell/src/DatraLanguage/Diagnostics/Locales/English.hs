@@ -193,9 +193,8 @@ localizeInterpretingError reason =
     MapLengthFailed failure -> localizeMapLengthFailure failure
     FunctionEvaluationFailed failure -> localizeFunctionFailure failure
     ModuleEvaluationFailed failure -> localizeModuleFailure failure
-    ExpectedBuiltinType name ->
-      LocalizedMessage "value does not belong to the required built-in type"
-        ["expected type: " <> name]
+    ExpectedPrimitiveType ->
+      LocalizedMessage "value does not belong to the required primitive type" []
     OverloadError failure ->
       LocalizedMessage "overloading failed" [overloadFailure failure]
     OperationHasNoEffect ->

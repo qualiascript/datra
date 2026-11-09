@@ -35,7 +35,7 @@ import SyntaxRewriting.Types
 
 data RewriteStackOperations environment failure = RewriteStackOperations
   { stackEnumerateCandidates
-      :: Bool -> environment -> Expression -> [StructuralCandidate]
+      :: environment -> Expression -> [StructuralCandidate]
   , stackCaptureHole
       :: environment
       -> StructuralCandidate
@@ -159,8 +159,7 @@ runRewriteStack operations initialEnvironment source =
     enterNode nodeId stack machine =
       let node = nodeAt nodeId machine
           environment = rewriteNodeEnvironment node
-          candidates = stackEnumerateCandidates operations
-            (rewriteNodeParent node == Nothing) environment
+          candidates = stackEnumerateCandidates operations environment
             (rewriteNodeExpression node)
           ready
             | null candidates = TraverseChildren (ordinary Nothing)

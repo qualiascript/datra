@@ -14,7 +14,7 @@ module Evaluation.TypeFamily
 import Evaluation.DatraType (DatraTypeFamily (..))
 import Evaluation.Error (InterpretingError)
 import Evaluation.Specification.Decision (Decision)
-import Evaluation.TypeFamily.BuiltinMeta qualified as BuiltinMeta
+import Evaluation.TypeFamily.Primitive qualified as Primitive
 import Evaluation.TypeFamily.Function qualified as Function
 import Evaluation.TypeFamily.Structural qualified as Structural
 import Evaluation.TypeFamily.TotalBlock qualified as TotalBlock
@@ -43,11 +43,11 @@ data TypeFamilyOperations = TypeFamilyOperations
 typeFamilyOperations :: DatraTypeFamily -> TypeFamilyOperations
 typeFamilyOperations family =
   case family of
-    BuiltinMetaTypeFamily kind -> TypeFamilyOperations
+    PrimitiveTypeFamily kind -> TypeFamilyOperations
       { specifyTypeFamily = \decide _ ->
-          BuiltinMeta.specifyBuiltinMetaType decide kind
+          Primitive.specifyPrimitiveType decide kind
       , decideTypeFamilySubfederation = \_ source _ ->
-          BuiltinMeta.decideBuiltinMetaSubfederation source kind
+          Primitive.decidePrimitiveSubfederation source kind
       }
     FunctionTypeFamily -> TypeFamilyOperations
       { specifyTypeFamily = Function.specifyFunction

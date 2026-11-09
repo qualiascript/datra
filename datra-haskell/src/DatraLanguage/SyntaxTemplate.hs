@@ -21,6 +21,8 @@ data SyntaxHoleKind value
   | FunctionBodySyntaxHole value
   | DeclarationSyntaxHole value
   | DependentArgumentSyntaxHole value
+  | IdentifierReferenceSyntaxHole value
+  | StringLiteralSyntaxHole value
   | ValueSyntaxHole value
   deriving (Eq, Show)
 
@@ -30,6 +32,8 @@ syntaxHoleValue (BlockSyntaxHole value) = value
 syntaxHoleValue (FunctionBodySyntaxHole value) = value
 syntaxHoleValue (DeclarationSyntaxHole value) = value
 syntaxHoleValue (DependentArgumentSyntaxHole value) = value
+syntaxHoleValue (IdentifierReferenceSyntaxHole value) = value
+syntaxHoleValue (StringLiteralSyntaxHole value) = value
 syntaxHoleValue (ValueSyntaxHole value) = value
 
 mapSyntaxHoleKind
@@ -43,6 +47,9 @@ mapSyntaxHoleKind transform kind = case kind of
   DeclarationSyntaxHole value -> DeclarationSyntaxHole (transform value)
   DependentArgumentSyntaxHole value ->
     DependentArgumentSyntaxHole (transform value)
+  IdentifierReferenceSyntaxHole value ->
+    IdentifierReferenceSyntaxHole (transform value)
+  StringLiteralSyntaxHole value -> StringLiteralSyntaxHole (transform value)
   ValueSyntaxHole value -> ValueSyntaxHole (transform value)
 
 data SyntaxPiece value
@@ -96,6 +103,10 @@ traverseSyntaxTemplate transform (SyntaxTemplate pieces) =
       SyntaxHole . DeclarationSyntaxHole <$> transform value
     traversePiece (SyntaxHole (DependentArgumentSyntaxHole value)) =
       SyntaxHole . DependentArgumentSyntaxHole <$> transform value
+    traversePiece (SyntaxHole (IdentifierReferenceSyntaxHole value)) =
+      SyntaxHole . IdentifierReferenceSyntaxHole <$> transform value
+    traversePiece (SyntaxHole (StringLiteralSyntaxHole value)) =
+      SyntaxHole . StringLiteralSyntaxHole <$> transform value
     traversePiece (SyntaxHole (ValueSyntaxHole value)) =
       SyntaxHole . ValueSyntaxHole <$> transform value
 
@@ -111,4 +122,8 @@ renderSyntaxTemplate renderValue (SyntaxTemplate pieces) =
       "%_DependentDeclaration"
     renderPiece (SyntaxHole DependentArgumentSyntaxHole {}) =
       "%_DependentArgument"
+    renderPiece (SyntaxHole (IdentifierReferenceSyntaxHole value)) =
+      '%' : renderValue value
+    renderPiece (SyntaxHole (StringLiteralSyntaxHole value)) =
+      '%' : renderValue value
     renderPiece (SyntaxHole (ValueSyntaxHole value)) = '%' : renderValue value

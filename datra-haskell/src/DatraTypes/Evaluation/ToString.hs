@@ -17,7 +17,6 @@ import Evaluation.Error (InterpretingError)
 import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.ToString.Injectivity (proveInjectiveToString)
 import Evaluation.Value
-import IdentifierValueType (identifierValueCharacterAlphabet)
 
 -- | The canonical presentation is a codec, not merely a pretty-printer.
 -- Decoding returns every value interpretation of the text; selection against
@@ -195,8 +194,6 @@ stringFederationExcludes delimiter federation =
             || case injectiveToStringCharacterAlphabet proof of
               Nothing -> False
               Just alphabet -> any (`notElem` alphabet) delimiter
-        IdentifierValueTypeAtlasMapFederation ->
-          any (`notElem` identifierValueCharacterAlphabet) delimiter
         _ -> False
     CoalizedAtlasMapFederation operand ->
       stringFederationExcludes delimiter operand

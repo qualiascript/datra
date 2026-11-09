@@ -23,12 +23,13 @@ import DatraLanguage.DependentDeclaration (dependentDeclarationCandidate)
 import DatraLanguage.SyntaxTemplate (SyntaxHoleKind (..))
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.IdentifierErasure (stripOuterIdentifierType)
+import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.Value
-  ( ASTMetaCategory (..)
-  , BuiltinMetaType (ASTMetaType)
+  ( SyntaxCategory (..)
+  , PrimitiveType (SyntaxPrimitive)
   , EvaluatedEither (..)
   , InterpretedValue
-  , ValueForm (BuiltinMetaTypeForm, EitherForm)
+  , ValueForm (PrimitiveTypeForm, EitherForm)
   , interpretedForm
   , interpretedMap
   , interpretedMapFinalOrderType
@@ -52,19 +53,23 @@ captureAtomicSyntaxExpression
   -> Maybe Expression
 captureAtomicSyntaxExpression target captured =
   case interpretedForm target of
-    BuiltinMetaTypeForm (ASTMetaType ExpressionAST) -> Just captured
-    BuiltinMetaTypeForm (ASTMetaType BlockAST) ->
+    PrimitiveTypeForm (SyntaxPrimitive ExpressionAST) -> Just captured
+    PrimitiveTypeForm (SyntaxPrimitive BlockAST) ->
       case captured of
         AtlasMap {} -> Just captured
         _ -> Nothing
-    BuiltinMetaTypeForm (ASTMetaType FunctionBodyAST) ->
+    PrimitiveTypeForm (SyntaxPrimitive FunctionBodyAST) ->
       case captured of
         FunctionBody {} -> Just captured
         _ -> Nothing
-    BuiltinMetaTypeForm (ASTMetaType DeclarationAST)
+    PrimitiveTypeForm (SyntaxPrimitive DeclarationAST)
       | dependentDeclarationCandidate captured -> Just captured
-    BuiltinMetaTypeForm (ASTMetaType DependentArgumentAST) ->
+    PrimitiveTypeForm (SyntaxPrimitive DependentArgumentAST) ->
       dependentArgument captured
+    PrimitiveTypeForm (SyntaxPrimitive IdentifierReferenceAST) ->
+      case captured of
+        IdentifierReference {} -> Just captured
+        _ -> Nothing
     _ -> Nothing
   where
     dependentArgument value = case value of
@@ -112,7 +117,7 @@ syntaxListElement target = direct target <|> do
     emptyBranch branch =
       interpretedMapFinalOrderType (interpretedMap branch) == finiteOrdinal 0
     syntaxElement value = case interpretedForm value of
-      BuiltinMetaTypeForm (ASTMetaType _) -> Just value
+      PrimitiveTypeForm (SyntaxPrimitive _) -> Just value
       _ -> syntaxListElement value <|> do
         unwrapped <- either
           (const Nothing) Just (stripOuterIdentifierType value)
@@ -132,17 +137,22 @@ specializeSyntaxHoleKind
   -> SyntaxHoleKind value
 specializeSyntaxHoleKind target hole =
   case (interpretedForm normalized, hole) of
-  (BuiltinMetaTypeForm (ASTMetaType ExpressionAST), ValueSyntaxHole value) ->
+  (PrimitiveTypeForm (SyntaxPrimitive ExpressionAST), ValueSyntaxHole value) ->
     ExpressionSyntaxHole value
-  (BuiltinMetaTypeForm (ASTMetaType BlockAST), ValueSyntaxHole value) ->
+  (PrimitiveTypeForm (SyntaxPrimitive BlockAST), ValueSyntaxHole value) ->
     BlockSyntaxHole value
-  (BuiltinMetaTypeForm (ASTMetaType FunctionBodyAST), ValueSyntaxHole value) ->
+  (PrimitiveTypeForm (SyntaxPrimitive FunctionBodyAST), ValueSyntaxHole value) ->
     FunctionBodySyntaxHole value
-  (BuiltinMetaTypeForm (ASTMetaType DeclarationAST), ValueSyntaxHole value) ->
+  (PrimitiveTypeForm (SyntaxPrimitive DeclarationAST), ValueSyntaxHole value) ->
     DeclarationSyntaxHole value
-  ( BuiltinMetaTypeForm (ASTMetaType DependentArgumentAST)
+  ( PrimitiveTypeForm (SyntaxPrimitive DependentArgumentAST)
     , ValueSyntaxHole value
     ) -> DependentArgumentSyntaxHole value
+  ( PrimitiveTypeForm (SyntaxPrimitive IdentifierReferenceAST)
+    , ValueSyntaxHole value
+    ) -> IdentifierReferenceSyntaxHole value
+  (_, ValueSyntaxHole value)
+    | valueProducesStrings normalized -> StringLiteralSyntaxHole value
   (_, ValueSyntaxHole value)
     | Just _ <- syntaxListElement normalized -> ExpressionSyntaxHole value
   _ -> hole

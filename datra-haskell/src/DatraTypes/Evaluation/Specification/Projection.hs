@@ -121,11 +121,6 @@ templateHoles target member =
             <*> templateHoles right rightMember
         _ -> pure Nothing
     AsciiStringForm _ -> pure (Just [])
-    IdentifierValueTypeForm ->
-      case member of
-        EvaluatedAsciiStringMember characters ->
-          Just . pure <$> specifyValues (makeAsciiString characters) target
-        _ -> pure Nothing
     ToStringForm ->
       case (interpretedAtlasMapFederation target, member) of
         ( PrimitiveAtlasMapFederation

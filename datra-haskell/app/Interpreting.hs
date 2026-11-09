@@ -56,7 +56,7 @@ import DatraHost
   ( datraHostIdentifier
   , datraHostValue
   )
-import IdentifierValueType (isIdentifierValue)
+import DatraLanguage.IdentifierSyntax (isIdentifierValue)
 import LibraryFiles
   ( standardLibraryFileName
   , requiredBundledLibrarySource
@@ -405,13 +405,12 @@ mapScopeEntries value = case value of
 captureSyntaxHole
   :: Scope
   -> [(String, ModuleSource)]
-  -> Bool
   -> [Expression]
   -> [(SyntaxHoleKind Expression, Expression)]
   -> SyntaxHoleKind Expression
   -> Expression
   -> Maybe Expression
-captureSyntaxHole base modules strict declarations previous kind captured =
+captureSyntaxHole base modules declarations previous kind captured =
   case kind of
     ExpressionSyntaxHole {} -> Just captured
     BlockSyntaxHole {} -> case captured of
@@ -424,21 +423,18 @@ captureSyntaxHole base modules strict declarations previous kind captured =
       | dependentDeclarationCandidate captured -> Just captured
       | otherwise -> Nothing
     DependentArgumentSyntaxHole {} -> dependentArgumentCapture captured
+    IdentifierReferenceSyntaxHole {} -> case captured of
+      IdentifierReference {} -> Just captured
+      _ -> Nothing
+    StringLiteralSyntaxHole {} -> case captured of
+      AsciiStringLiteral {} -> Just captured
+      _ -> Nothing
     ValueSyntaxHole target ->
-      literalCapture target captured
-        <|> if strict then valueEvaluationCapture target else tentativeCapture
+      literalCapture target captured <|> valueEvaluationCapture target
   where
-    literalCapture (AsciiStringLiteral literal)
-        (IdentifierReference (IdentifierString capturedLiteral))
-      | literal == capturedLiteral = Just (AsciiStringLiteral literal)
     literalCapture target value
       | target == value = Just value
     literalCapture _ _ = Nothing
-    tentativeCapture = case captured of
-      IdentifierReference (IdentifierString name)
-        | name `notElem` concatMap bindingNames declarations ->
-            Just (AsciiStringLiteral name)
-      _ -> Just captured
     dependentArgumentCapture value = case value of
       IdentifierReference {} -> Just value
       AsciiStringLiteral {} -> Just value
@@ -646,8 +642,8 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
         (map DeclarationExpression declarations <> [result])
       _ -> environment
 
-    withDeclarations capture declarations strict previous kind captured =
-      capture strict declarations previous kind captured
+    withDeclarations capture declarations previous kind captured =
+      capture declarations previous kind captured
 
     publish currentBase declarations families entry = do
       let resolved = resolveSyntaxDeclarationHead declarations entry
@@ -2172,7 +2168,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       Right (withGreedyStringTemplatePlan
         (EvaluatedGreedyStringTemplate operand)
         (templateValue rendered))
-    IdentifierValueType -> Right identifierValueTypeValue
     AtlasMap expressions -> interpretContainer
       (interpretProtectedAtlasMap makeAtlasMap expressions)
       (AtlasMap expressions)
