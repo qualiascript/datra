@@ -494,8 +494,8 @@ functionSyntaxEquivalent left right =
         (DependentArgumentSyntaxHole rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
-        (IdentifierReferenceSyntaxHole leftValue)
-        (IdentifierReferenceSyntaxHole rightValue) =
+        (IdentifierLiteralSyntaxHole leftValue)
+        (IdentifierLiteralSyntaxHole rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
         (StringLiteralSyntaxHole leftValue)

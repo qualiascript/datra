@@ -423,7 +423,7 @@ captureSyntaxHole base modules declarations previous kind captured =
       | dependentDeclarationCandidate captured -> Just captured
       | otherwise -> Nothing
     DependentArgumentSyntaxHole {} -> dependentArgumentCapture captured
-    IdentifierReferenceSyntaxHole {} -> case captured of
+    IdentifierLiteralSyntaxHole {} -> case captured of
       IdentifierReference {} -> Just captured
       _ -> Nothing
     StringLiteralSyntaxHole {} -> case captured of

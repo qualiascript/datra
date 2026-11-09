@@ -124,15 +124,17 @@ import syntax without teaching the stack about imports.
 
 ## Structural candidates
 
-Candidate enumeration has one projection boundary:
+Candidate enumeration has one structural projection boundary:
 
 ```haskell
-syntaxProjectionCandidates
-  :: Bool
-  -> SyntaxTemplate Expression
+structuralTemplateCaptures
+  :: SyntaxTemplate Expression
   -> Expression
-  -> [Expression]
+  -> [[(Expression, Expression)]]
 ```
+
+Each pair is the declared target expression and the neutral source expression
+selected for that hole. Hole behavior is not encoded in the template.
 
 Rules are enumerated in declaration order. Projections for a rule are
 enumerated in the order returned by `SyntaxTemplateProjection`. Each structural
@@ -178,8 +180,11 @@ Advancing a frame performs as much synchronous work as possible. If another
 child is needed, the blocked result carries the advanced frame:
 
 ```haskell
-CandidateFrameNeedsChild CandidateFrame Int SyntaxHoleKind Expression
+CandidateFrameNeedsChild CandidateFrame Int Expression Expression
 ```
+
+The final fields are the hole's declared target and structurally selected
+source. The evaluator derives capture behavior from the evaluated target.
 
 This is a progress invariant. A child request can never discard cursor,
 typing, or prepared-capture progress.
@@ -284,6 +289,41 @@ Rejections are recorded at the transition where their evidence becomes
 available. A rejection contains the rule and branch, capture position, source,
 expected and actual types, instantiated typing context, reason, and nested
 child rejections.
+
+## Current blocking failure
+
+The executable builds, but constructing the standard-library syntax
+environment fails at `libs/std.datra:73`. The failing source is:
+
+```datra
+val Args := &T? do
+  slots := (^_i :: Nat) do yield "arg%(_i)"? : T
+yield ((^n? :: Nat) do yield slots[0..n])
+```
+
+The exact diagnostic is:
+
+```text
+module imports could not be scanned
+  module: output.datra
+  syntax environment could not be constructed
+  ModuleEvaluationFailed (StandardLibraryParseFailure "std.datra" "operation has no effect inside block\n  expression: yield ((^n? :: Nat) do yield (slots[0 .. n]))")
+```
+
+The reproduction command is:
+
+```sh
+cabal run datra-haskell -- build --input output.datra \
+  --ast-output /tmp/datra-design.ast --output /tmp/datra-design.out
+```
+
+At the block-assembly boundary, the outer `yield` application is still present
+as an ordinary expression. Therefore the declared `do`/`yield` form did not
+consume the complete neutral source region before ordinary block validation.
+The identifier-literal and target-directed capture design is implemented before
+diagnosing a narrower structural cause, because `$do` and `$yield` must first
+have unambiguous non-string AST meaning. No `do`-, `yield`-, arity-, or
+source-string-specific projection is an acceptable fix.
 
 ## Required invariants
 

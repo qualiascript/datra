@@ -5,7 +5,7 @@
     _DependentDeclaration := datra.DependentDeclaration
     _Block := datra.Block
     _FunctionBody := datra.FunctionBody
-    _IdentifierReference := datra.IdentifierReference
+    _IdentifierLiteral := datra.IdentifierLiteral
 
     %($let; _DependentDeclaration) :=
       (_DependentDeclaration -> _DependentDeclaration) datra.let_body

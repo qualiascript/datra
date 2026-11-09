@@ -29,7 +29,7 @@ data SyntaxCategory
   | FunctionBodyAST
   | DeclarationAST
   | DependentArgumentAST
-  | IdentifierReferenceAST
+  | IdentifierLiteralAST
   deriving (Eq, Show)
 
 data PrimitiveType

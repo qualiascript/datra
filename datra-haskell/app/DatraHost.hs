@@ -44,7 +44,7 @@ datraHostValue = do
     , ("Char", Right character)
     , ("Expr", Right expressionType)
     , ("DependentArgument", Right dependentArgumentType)
-    , ("IdentifierReference", Right identifierReferenceType)
+    , ("IdentifierLiteral", Right identifierLiteralType)
     , ("DependentDeclaration", Right dependentDeclarationType)
     , ("Block", Right blockType)
     , ("FunctionBody", Right functionBodyType)
@@ -156,7 +156,7 @@ datraHostValue = do
       preimage
     expressionType = syntaxCategoryTypeValue ExpressionAST
     dependentArgumentType = syntaxCategoryTypeValue DependentArgumentAST
-    identifierReferenceType = syntaxCategoryTypeValue IdentifierReferenceAST
+    identifierLiteralType = syntaxCategoryTypeValue IdentifierLiteralAST
     dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
