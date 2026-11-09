@@ -765,13 +765,13 @@ lowerSyntaxDeclarations
   -> Either SyntaxRewriteFailure [DependentDeclaration Expression]
 lowerSyntaxDeclarations = traverse lower
   where
-    lower expressionValue = maybe
-      (case invalidDependentDeclarationModifiers expressionValue of
-        Just (written, correct) ->
-          Left (InvalidDeclarationModifiers written correct)
-        Nothing -> Left (ExpectedDependentDeclaration expressionValue))
-      Right
-      (dependentDeclaration expressionValue)
+    lower expressionValue = case dependentDeclaration expressionValue of
+      Nothing -> Left (ExpectedDependentDeclaration expressionValue)
+      Just declaration -> case
+          invalidDependentDeclarationModifiers declaration of
+        Just (written, correct) -> Left
+          (InvalidDependentDeclarationModifiers written correct)
+        Nothing -> Right declaration
 
 assembleImplicitSyntaxResource
   :: [Expression]
@@ -796,16 +796,25 @@ expandSyntaxExpression expansion = case expansion of
 -- only the resulting rule family and never inspects a declaration head.
 resolveSyntaxDeclarationHead :: [Expression] -> Expression -> Expression
 resolveSyntaxDeclarationHead declarations expressionValue =
-  case expressionValue of
-    Let value -> Let (resolveSyntaxDeclarationHead declarations value)
-    Def value -> Def (resolveSyntaxDeclarationHead declarations value)
-    Val value -> Val (resolveSyntaxDeclarationHead declarations value)
-    DependentArgument headExpression annotation ->
-      case resolvedHead headExpression of
-        Just headValue -> DependentArgument headValue annotation
-        Nothing -> expressionValue
-    _ -> expressionValue
+  case dependentDeclaration expressionValue of
+    Just declaration -> DeclarationExpression declaration
+      { dependentDeclarationHead = resolvedDeclarationHead declaration }
+    Nothing -> expressionValue
   where
+    resolvedDeclarationHead declaration =
+      case dependentDeclarationHead declaration of
+        SimpleIdentifierDeclarationHead name ->
+          maybe (SimpleIdentifierDeclarationHead name) classify
+            (resolvedHead (IdentifierReference name))
+        StringTemplateDeclarationHead parts ->
+          StringTemplateDeclarationHead parts
+        EvaluatedDeclarationHead value ->
+          maybe (EvaluatedDeclarationHead value) classify
+            (resolvedHead value)
+    classify (IdentifierReference name) =
+      SimpleIdentifierDeclarationHead name
+    classify (StringTemplate parts) = StringTemplateDeclarationHead parts
+    classify value = EvaluatedDeclarationHead value
     resolvedHead (SyntaxBoundary inner) = resolvedHead inner
     resolvedHead (GreedyStringTemplate operand) = Just
       (GreedyStringTemplate (resolveGreedy operand))
@@ -886,12 +895,14 @@ canonicalValueCapture interpret targetExpression captured = do
 -- from the same seed. The completed declaration remains unchanged everywhere
 -- outside this scope and is still checked against its full signature.
 syntaxValidationDeclaration :: Expression -> Expression
-syntaxValidationDeclaration declaration = case declaration of
-  Let value -> Let (recursiveSeed value)
-  _ -> declaration
+syntaxValidationDeclaration expressionValue = case expressionValue of
+  DeclarationExpression declaration
+    | dependentDeclarationIsLet declaration ->
+        DeclarationExpression declaration
+          { dependentDeclarationImplementation = recursiveSeed
+              (dependentDeclarationImplementation declaration) }
+  _ -> expressionValue
   where
-    recursiveSeed (Def value) = Def (recursiveSeed value)
-    recursiveSeed (Val value) = Val (recursiveSeed value)
     recursiveSeed original@(MapSpecification definition
         (DependentArgument name _)) =
       case recursiveFunctionImplementation definition of
@@ -936,19 +947,16 @@ interpretExpressionReason
   :: Expression
   -> Either InterpretingError InterpretedValue
 interpretExpressionReason expressionValue = do
-  validateFunctionBodyParts expressionValue
   scope <- defaultImportScope
   evalInScope scope [] expressionValue
 
 -- | Evaluate a closed reconstruction without importing Std or any modules.
 interpretClosedExpression :: Expression -> Either InterpretingError InterpretedValue
-interpretClosedExpression expressionValue = do
-  validateFunctionBodyParts expressionValue
+interpretClosedExpression expressionValue =
   evalInScope (rootScope expressionValue) [] expressionValue
 
 interpretWithImports :: [(String, ModuleSource)] -> Expression -> Either InterpretingError InterpretedValue
 interpretWithImports modules expression = do
-  validateEvaluationSources modules expression
   scope <- defaultImportScope
   evalResourceInScopeWith UnrestrictedReduction
     (extendModuleCatalog modules scope)
@@ -971,32 +979,11 @@ interpretWithImportsAndStandardLibraryVisibility
   -> Either InterpretingError InterpretedValue
 interpretWithImportsAndStandardLibraryVisibility
     visibility modules expression = do
-  validateEvaluationSources modules expression
   (base, _) <- standardLibraryEnvironment visibility expression
   evalResourceInScopeWith UnrestrictedReduction
     (extendModuleCatalog modules base)
     []
     expression
-
-validateFunctionBodyParts :: Expression -> Either InterpretingError ()
-validateFunctionBodyParts expressionValue = do
-  case invalidDependentDeclarationModifiers expressionValue of
-    Just (written, correct) -> Left (InvalidDependentDeclarationModifiers
-      (unwords written) (unwords correct))
-    Nothing -> Right ()
-
-validateEvaluationSources
-  :: [(String, ModuleSource)]
-  -> Expression
-  -> Either InterpretingError ()
-validateEvaluationSources modules expressionValue = do
-  validateFunctionBodyParts expressionValue
-  mapM_ (validateModuleSource . snd) modules
-  where
-    validateModuleSource (ModuleSource _ source dependencies) = do
-      validateFunctionBodyParts source
-      mapM_ (validateModuleSource . snd) dependencies
-
 
 defaultImportScope :: Either InterpretingError Scope
 defaultImportScope = fst <$> defaultModuleEnvironment
@@ -2295,8 +2282,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       checkedBinary booleanOrValues left right
     BooleanNot operand -> checkedUnary booleanNotValue operand
     Coalization operand -> unary (Right . coalizeValue) operand
-    Def _ -> Left OperationHasNoEffect
-    Val _ -> Left OperationHasNoEffect
     Fun operand ->
       case recursiveCollection scope operand of
         Just collection -> do
@@ -2404,7 +2389,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (Just (renderSourceExpression expressionValue))
         reduction scope resolving bindings result
     DeclarationExpression _ -> Left OperationHasNoEffect
-    Let _ -> Left OperationHasNoEffect
     IdentifierReference (IdentifierString name) ->
       resolveIdentifierWith reduction scope resolving name
     Lookup (ArgumentativeMap
@@ -3403,9 +3387,8 @@ recursiveFunctionImplementation expressionValue =
       Just implementation
     _ -> case expressionValue of
       Begin _ result -> recursiveFunctionImplementation result
-      Let value -> recursiveFunctionImplementation value
-      Def value -> recursiveFunctionImplementation value
-      Val value -> recursiveFunctionImplementation value
+      DeclarationExpression declaration -> recursiveFunctionImplementation
+        (dependentDeclarationImplementation declaration)
       EitherType left right ->
         case recursiveFunctionImplementation left of
           Just implementation -> Just implementation
@@ -6600,7 +6583,7 @@ singletonDependencyDeclaration
   -> DependentDeclaration Expression
 singletonDependencyDeclaration name implementation = DependentDeclaration
   (SimpleIdentifierDeclarationHead (IdentifierString name))
-  True False False implementation
+  True False False [DeclarationLet] implementation
 
 emptyResolver :: Resolver
 emptyResolver = Resolver

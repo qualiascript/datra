@@ -14,6 +14,7 @@ module DatraLanguage.ContextualDeclaration
 import DatraLanguage.AST
   ( DependentDeclaration (..)
   , DependentDeclarationHead (..)
+  , DeclarationModifier (DeclarationDef)
   , Expression (..)
   , IdentifierString (..)
   )
@@ -56,5 +57,5 @@ contextualSurfaceDeclaration
 contextualSurfaceDeclaration role = DependentDeclaration
   (SimpleIdentifierDeclarationHead
     (IdentifierString (contextualSurfaceName role)))
-  False True False
+  False True False [DeclarationDef]
   (contextualAccessAt role 0)

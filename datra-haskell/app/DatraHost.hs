@@ -7,6 +7,10 @@ module DatraHost
 
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
+import DatraLanguage.DependentDeclaration
+  ( applyDeclarationModifier
+  , removeDeclarationModifier
+  )
 import DatraLanguage.SyntaxTemplate
   ( FunctionSyntax (..), SyntaxPiece (..), SyntaxTemplate (..) )
 import DatraTypes
@@ -59,27 +63,9 @@ datraHostValue = do
         number <- requireFiniteInteger value
         pure (integerValue (abs number))
     , ("ordinal", Right ordinalMembers)
-    , syntaxBody "let_body" (expressionSyntaxInsertion
-        (\case
-          [entry] -> Just (Let (absorbAssignedConcatenation entry))
-          _ -> Nothing)
-        (\case
-          Let entry -> Just [entry]
-          _ -> Nothing))
-    , syntaxBody "def_body" (expressionSyntaxInsertion
-        (\case
-          [entry] -> Just (Def (absorbAssignedConcatenation entry))
-          _ -> Nothing)
-        (\case
-          Def entry -> Just [entry]
-          _ -> Nothing))
-    , syntaxBody "val_body" (expressionSyntaxInsertion
-        (\case
-          [entry] -> Just (Val (absorbAssignedConcatenation entry))
-          _ -> Nothing)
-        (\case
-          Val entry -> Just [entry]
-          _ -> Nothing))
+    , syntaxBody "let_body" (modifierBody DeclarationLet)
+    , syntaxBody "def_body" (modifierBody DeclarationDef)
+    , syntaxBody "val_body" (modifierBody DeclarationVal)
     , syntaxFunction "begin" (SyntaxFunctionInsertion
         (\case
           [entries, result] -> Just
@@ -255,6 +241,12 @@ datraHostValue = do
             in MapSpecification assignedValue
               (DependentArgument name Nothing)
       _ -> value
+    modifierBody modifier = expressionSyntaxInsertion
+      (\case
+        [entry] -> applyDeclarationModifier modifier
+          (absorbAssignedConcatenation entry)
+        _ -> Nothing)
+      (removeDeclarationModifier modifier)
 
     -- Native identities are represented by the same structural access tree
     -- used by the surface language.  Rendering is presentation only; member

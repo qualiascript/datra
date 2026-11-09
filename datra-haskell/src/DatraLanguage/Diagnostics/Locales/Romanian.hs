@@ -120,7 +120,7 @@ localizeSyntaxRewriteFailure failure = case failure of
   NonInjectiveDependentDeclaration declaration ->
     LocalizedMessage "declarația dependentă nu este injectivă"
       ["declarație: " <> declaration]
-  InvalidDeclarationModifiers written correct ->
+  InvalidDependentDeclarationModifiers written correct ->
     LocalizedMessage "modificatorii declarației sunt nevalizi"
       [ "modificatori scriși: " <> unwords written
       , "modificatori corecți: " <> unwords correct
@@ -215,12 +215,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "parametrul privat al funcției nu poate fi opțional"
         ["identificator: " <> name]
-    InvalidDependentDeclarationModifiers written correct ->
-      LocalizedMessage
-        "modificatorii declarației trebuie să apară cel mult o dată în ordinea let def val"
-        [ "modificatori scriși: " <> written
-        , "modificatori corecți: " <> correct
-        ]
     GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
         "introducerea generică necesită un tip de funcție exterior"

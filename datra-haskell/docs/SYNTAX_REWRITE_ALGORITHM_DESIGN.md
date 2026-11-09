@@ -142,6 +142,10 @@ unconsumed application remainder.
 The rewriter does not search rendered source strings, cache literal facts,
 split expressions at literals, or recognize individual templates. Literal
 matching and neutral-AST reassociation live in `SyntaxTemplateProjection`.
+Projection contains only neutral structural views which cannot be declared in
+`std.datra`. It does not reify `let`, `def`, `val`, `do`, or any other
+standard-library operation as a built-in candidate. Those operations are
+selected exclusively through their declared syntax rules.
 
 Semantic capture is a later evaluator operation. For example, a `_Block`
 capture normalizes its generic application-shaped provisional capture into an
@@ -240,6 +244,32 @@ once. Its unfinished children then follow the same ordinary traversal.
 %($do; _Block; $yield; _Expr) :=
   (_Block; _Expr -> _FunctionBody) datra.do_body
 ```
+
+## Declaration modifiers
+
+`let`, `def`, and `val` are standard-library syntax, not expression
+constructors and not projection cases. Their syntax functions operate on a
+`DeclarationExpression` and append one `DeclarationModifier` to the
+declaration's application history.
+
+The history is stored in expansion order, from the innermost modifier to the
+outermost modifier. This is the right-to-left order in which a written form is
+applied. For example, `let def val x := value` records:
+
+```haskell
+[DeclarationVal, DeclarationDef, DeclarationLet]
+```
+
+The three semantic modifier flags are updated from that history. Declaration
+validity is not stored independently; `dependentDeclarationIsValid` derives it
+by comparing the exact history with the duplicate-free canonical subsequence
+of `[val, def, let]`.
+
+Modifier syntax always returns a declaration value, including invalid order or
+repetition. When a declaration enters a block, block assembly checks the
+derived validity predicate. An invalid declaration produces the single
+localized `InvalidDependentDeclarationModifiers` compiler error, carrying the
+written modifier order and its equivalent canonical `let def val` order.
 
 ## Finalization and diagnostics
 

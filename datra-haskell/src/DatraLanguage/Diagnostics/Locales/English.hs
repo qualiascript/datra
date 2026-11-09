@@ -124,7 +124,7 @@ localizeSyntaxRewriteFailure failure = case failure of
   NonInjectiveDependentDeclaration declaration ->
     LocalizedMessage "dependent declaration is not injective"
       ["declaration: " <> declaration]
-  InvalidDeclarationModifiers written correct ->
+  InvalidDependentDeclarationModifiers written correct ->
     LocalizedMessage "declaration modifiers are invalid"
       [ "written modifiers: " <> unwords written
       , "correct modifiers: " <> unwords correct
@@ -216,12 +216,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "private function parameter cannot be optional"
         ["identifier: " <> name]
-    InvalidDependentDeclarationModifiers written correct ->
-      LocalizedMessage
-        "declaration modifiers must occur at most once in let def val order"
-        [ "written modifiers: " <> written
-        , "correct modifiers: " <> correct
-        ]
     GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
         "generic introduction requires an enclosing function type"

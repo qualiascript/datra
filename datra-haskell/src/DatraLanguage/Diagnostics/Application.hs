@@ -57,7 +57,7 @@ data SyntaxRewriteFailure
   = AmbiguousBareSkipApplication
   | OverlappingDependentDeclarations String String
   | NonInjectiveDependentDeclaration String
-  | InvalidDeclarationModifiers [String] [String]
+  | InvalidDependentDeclarationModifiers [String] [String]
   | ExpectedDependentDeclaration Expression
   | InvalidRewriteSyntaxTemplate String SyntaxTemplateAdmissibilityFailure
   | RejectedSyntaxCandidates [DatraError CandidateRejectionReport]

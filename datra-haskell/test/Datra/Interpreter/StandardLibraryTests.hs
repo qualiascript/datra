@@ -4,7 +4,9 @@ module Datra.Interpreter.StandardLibraryTests
 
 import Datra.TestSupport
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (NeutralSourceParseFailure) )
+  ( ParseFailure (NeutralSourceParseFailure, SyntaxRewriteParseFailure)
+  , SyntaxRewriteFailure (InvalidDependentDeclarationModifiers)
+  )
 import DatraTypes
   ( AtlasMapFederationRefutation
       (AtlasMapFederationSpecificationHasNoMatchingMember)
@@ -48,29 +50,32 @@ standardLibraryTests =
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "modifier order errors share one diagnostic"
             "begin val let x := 7; yield x"
-            (SourceParseFailure (NeutralSourceParseFailure
-              "invalid declaration modifiers: val let\ncorrect form: let val"))
+            (SourceParseFailure (SyntaxRewriteParseFailure
+              (InvalidDependentDeclarationModifiers
+                ["val", "let"] ["let", "val"])))
         , programFailureCase "duplicate modifiers share the same diagnostic"
             "begin val val x := 7; yield x"
-            (SourceParseFailure (NeutralSourceParseFailure
-              "invalid declaration modifiers: val val\ncorrect form: val"))
+            (SourceParseFailure (SyntaxRewriteParseFailure
+              (InvalidDependentDeclarationModifiers ["val", "val"] ["val"])))
         , programFailureCase "def before let reports the canonical correction"
             "begin def let x := 7; yield x"
-            (SourceParseFailure (NeutralSourceParseFailure
-              "invalid declaration modifiers: def let\ncorrect form: let def"))
+            (SourceParseFailure (SyntaxRewriteParseFailure
+              (InvalidDependentDeclarationModifiers
+                ["def", "let"] ["let", "def"])))
         , programFailureCase "val before def reports the canonical correction"
             "begin val def x := 7; yield x"
-            (SourceParseFailure (NeutralSourceParseFailure
-              "invalid declaration modifiers: val def\ncorrect form: def val"))
+            (SourceParseFailure (SyntaxRewriteParseFailure
+              (InvalidDependentDeclarationModifiers
+                ["val", "def"] ["def", "val"])))
         , programFailureCase "late def reports the full canonical correction"
             "begin let val def x := 7; yield x"
-            (SourceParseFailure (NeutralSourceParseFailure
-              ("invalid declaration modifiers: let val def"
-                <> "\ncorrect form: let def val")))
+            (SourceParseFailure (SyntaxRewriteParseFailure
+              (InvalidDependentDeclarationModifiers
+                ["let", "val", "def"] ["let", "def", "val"])))
         , programFailureCase "duplicate def uses the unified diagnostic"
             "begin def def x := 7; yield x"
-            (SourceParseFailure (NeutralSourceParseFailure
-              "invalid declaration modifiers: def def\ncorrect form: def"))
+            (SourceParseFailure (SyntaxRewriteParseFailure
+              (InvalidDependentDeclarationModifiers ["def", "def"] ["def"])))
         ]
     , testGroup "private syntax categories"
         [ programFailureCase "AST is no longer implicitly imported"

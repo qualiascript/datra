@@ -190,7 +190,7 @@ testModuleSyntaxAlias :: IO ()
 testModuleSyntaxAlias = do
   let binding name value = DependentDeclaration
         (SimpleIdentifierDeclarationHead (IdentifierString name))
-        False False False value
+        False False False [] value
       member name value = DependentArgument
         (identifierReference name) (Just value)
   let isolatedBody = Begin

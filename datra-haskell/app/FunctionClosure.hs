@@ -347,7 +347,7 @@ scopeDefinitions prefixHere collected =
       ]
     childDefinition name = DependentDeclaration
       (SimpleIdentifierDeclarationHead renderedName)
-      True False False childScope
+      True False False [DeclarationLet] childScope
       where
         renderedName = if prefixHere then prependIdentifier name else name
         childScope = Begin

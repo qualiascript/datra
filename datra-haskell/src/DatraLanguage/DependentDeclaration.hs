@@ -3,8 +3,11 @@
 module DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
   , DependentDeclarationHead (..)
+  , DeclarationModifier (..)
   , dependentDeclaration
   , dependentDeclarationCandidate
+  , applyDeclarationModifier
+  , removeDeclarationModifier
   , invalidDependentDeclarationModifiers
   , dependentDeclarationNameExpression
   , dependentDeclarationNameFamilyExpression
@@ -15,47 +18,29 @@ module DatraLanguage.DependentDeclaration
   ) where
 
 import DatraLanguage.AST
-import DatraLanguage.AST.Operator
-  ( Operator (DefOperator, LetOperator, ValOperator)
-  , operatorCanonicalSymbol
-  )
-import Data.List (nub, sort)
-import Data.Maybe (listToMaybe, mapMaybe)
+import DatraLanguage.AST.Operator (operatorCanonicalSymbol)
 
 -- A declaration is an inferred assignment in block position. Identifier
 -- annotations and dependent arguments remain expressions until an explicit
 -- assignment gives them a value.
 dependentDeclaration :: Expression -> Maybe (DependentDeclaration Expression)
-dependentDeclaration = declaration False False False
+dependentDeclaration = declaration
   where
-    declaration _ _ _ (DeclarationExpression semantic) = Just semantic
-    declaration _ definition canonical (Let _)
-      | definition || canonical = Nothing
-    declaration _ definition canonical (Let value) =
-      declaration True definition canonical value
-    declaration _ _ canonical (Def _)
-      | canonical = Nothing
-    declaration strict False canonical (Def value) =
-      declaration strict True canonical value
-    declaration _ True _ (Def _) = Nothing
-    declaration strict definition False (Val value) =
-      declaration strict definition True value
-    declaration _ _ True (Val _) = Nothing
-    declaration strict definition canonical (SyntaxBoundary value) =
-      declaration strict definition canonical value
-    declaration strict definition canonical
+    declaration (DeclarationExpression semantic) = Just semantic
+    declaration (SyntaxBoundary value) = declaration value
+    declaration
         (MapSpecification given (DependentArgument name Nothing)) =
       Just (makeDeclaration
-        (classifyHead name) strict definition canonical given)
-    declaration strict definition canonical optional
+        (classifyHead name) given)
+    declaration optional
       | Just (named, _) <-
           optionalIdentifierExpression optional =
-          declaration strict definition canonical named
-    declaration _ _ _ _ = Nothing
+          declaration named
+    declaration _ = Nothing
 
-    makeDeclaration headValue strict definition canonical implementation =
+    makeDeclaration headValue implementation =
       DependentDeclaration
-        headValue strict definition canonical implementation
+        headValue False False False [] implementation
 
     classifyHead name = case name of
       IdentifierReference identifier -> SimpleIdentifierDeclarationHead identifier
@@ -67,58 +52,70 @@ dependentDeclaration = declaration False False False
       stripBoundaries expressionValue
     stripBoundaries expressionValue = expressionValue
 
--- Declaration modifiers are an ordered, duplicate-free subset of
--- @let def val@. Return both the written sequence and its unique canonical
--- ordering so every invalid combination can share one actionable diagnostic.
+-- | Record one modifier in the right-to-left order in which syntax expansion
+-- applies it. Invalid order and repetition remain representable until the
+-- declaration reaches its block boundary, where one diagnostic reports both
+-- the written and canonical orders.
+applyDeclarationModifier
+  :: DeclarationModifier
+  -> Expression
+  -> Maybe Expression
+applyDeclarationModifier modifier expressionValue = do
+  declaration <- dependentDeclaration expressionValue
+  let applications = dependentDeclarationModifierApplications declaration
+        <> [modifier]
+  pure (DeclarationExpression
+    (withModifierApplications applications declaration))
+
+-- | Inverse used by syntax-function reconstruction. Only the outermost
+-- application can be removed, preserving exact modifier history.
+removeDeclarationModifier
+  :: DeclarationModifier
+  -> Expression
+  -> Maybe [Expression]
+removeDeclarationModifier modifier expressionValue = do
+  declaration <- dependentDeclaration expressionValue
+  case reverse (dependentDeclarationModifierApplications declaration) of
+    outermost : remaining
+      | outermost == modifier -> pure
+          [ DeclarationExpression
+              (withModifierApplications (reverse remaining) declaration) ]
+    _ -> Nothing
+
 invalidDependentDeclarationModifiers
-  :: Expression
+  :: DependentDeclaration expression
   -> Maybe ([String], [String])
-invalidDependentDeclarationModifiers expressionValue =
-  case current expressionValue of
-    Just failure -> Just failure
-    Nothing -> listToMaybe
-      (mapMaybe invalidDependentDeclarationModifiers
-        (expressionChildren expressionValue))
+invalidDependentDeclarationModifiers declaration
+  | dependentDeclarationIsValid declaration = Nothing
+  | otherwise = Just
+      ( map modifierName (reverse applications)
+      , map modifierName (reverse (canonicalApplications applications))
+      )
   where
-    current selected = case collect [] selected of
-      ([], _) -> Nothing
-      (written, base)
-        | written /= canonical
-        , Just _ <- dependentDeclaration base -> Just
-            (map modifierName written, map modifierName canonical)
-        | otherwise -> Nothing
-        where
-          canonical = nub (sort written)
+    applications = dependentDeclarationModifierApplications declaration
 
-    collect modifiers (SyntaxBoundary inner) = collect modifiers inner
-    collect modifiers (Let inner) = collect (modifiers <> [ModifierLet]) inner
-    collect modifiers (Def inner) = collect (modifiers <> [ModifierDef]) inner
-    collect modifiers (Val inner) = collect (modifiers <> [ModifierVal]) inner
-    collect modifiers base = (modifiers, base)
+withModifierApplications
+  :: [DeclarationModifier]
+  -> DependentDeclaration expression
+  -> DependentDeclaration expression
+withModifierApplications applications declaration = declaration
+  { dependentDeclarationIsLet = DeclarationLet `elem` applications
+  , dependentDeclarationIsDefinition = DeclarationDef `elem` applications
+  , dependentDeclarationIsCanonicalValue = DeclarationVal `elem` applications
+  , dependentDeclarationModifierApplications = applications
+  }
 
-    modifierName = operatorCanonicalSymbol . modifierOperator
-    modifierOperator ModifierLet = LetOperator
-    modifierOperator ModifierDef = DefOperator
-    modifierOperator ModifierVal = ValOperator
+canonicalApplications
+  :: [DeclarationModifier]
+  -> [DeclarationModifier]
+canonicalApplications applications = filter (`elem` applications)
+  [DeclarationVal, DeclarationDef, DeclarationLet]
 
--- Syntax matching admits a declaration-shaped modifier chain before semantic
--- ordering is checked, so malformed chains remain intact for the single
--- modifier diagnostic instead of degrading into an unrelated application.
+modifierName :: DeclarationModifier -> String
+modifierName = operatorCanonicalSymbol . declarationModifierOperator
+
 dependentDeclarationCandidate :: Expression -> Bool
-dependentDeclarationCandidate expressionValue =
-  maybe False (const True) (dependentDeclaration (stripModifiers expressionValue))
-  where
-    stripModifiers (SyntaxBoundary inner) = stripModifiers inner
-    stripModifiers (Let inner) = stripModifiers inner
-    stripModifiers (Def inner) = stripModifiers inner
-    stripModifiers (Val inner) = stripModifiers inner
-    stripModifiers base = base
-
-data DeclarationModifier
-  = ModifierLet
-  | ModifierDef
-  | ModifierVal
-  deriving (Eq, Ord)
+dependentDeclarationCandidate = maybe False (const True) . dependentDeclaration
 
 
 -- A syntax boundary on the sole interpolation marks an evaluated declaration
@@ -273,7 +270,4 @@ bindingNames expressionValue = case expressionValue of
   DependentArgument (StringTemplate [StringTemplateLiteral name]) _ -> [name]
   MapSpecification _ target -> bindingNames target
   OptionalType inner -> bindingNames inner
-  Let inner -> bindingNames inner
-  Def inner -> bindingNames inner
-  Val inner -> bindingNames inner
   _ -> []

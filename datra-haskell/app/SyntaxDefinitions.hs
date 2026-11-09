@@ -319,7 +319,7 @@ lowerConditionAtom condition yes no =
     declarations =
       [ DependentDeclaration
           (SimpleIdentifierDeclarationHead name)
-          False False False value
+          False False False [] value
       | (name, original) <- selected
       , let value = rewrite original
       ]
@@ -368,17 +368,12 @@ identifierReferences expressionValue = case expressionValue of
 declarationLiterals :: [Expression] -> String -> [String]
 declarationLiterals declarations typeName = concatMap declaration declarations
   where
-    declaration (Let value) = declaration value
-    declaration (Def value) = declaration value
-    declaration (Val value) = declaration value
     declaration dependent
-      | Just
-          ( IdentifierReference (IdentifierString name)
-          , annotation
-          , given
-          ) <- dependentArgumentExpression dependent
-      , name == typeName = maybe [] literals
-          (case given of Just value -> Just value; Nothing -> annotation)
+      | Just semantic <- dependentDeclaration dependent
+      , SimpleIdentifierDeclarationHead (IdentifierString name) <-
+          dependentDeclarationHead semantic
+      , name == typeName = literals
+          (dependentDeclarationImplementation semantic)
     declaration _ = []
     literals (AsciiStringLiteral text) = [text]
     literals (EitherType a b) = literals a <> literals b

@@ -77,8 +77,6 @@ source context expression =
       sourceDeclaration declaration
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
-    LetValue binding -> wrapped 0 ("let " <> source 0 binding)
-    DefValue declaration -> wrapped 0 ("def " <> source 0 declaration)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
       | isOpaqueSymbolicSyntaxLiteral name -> name
@@ -119,7 +117,6 @@ source context expression =
     Negate operand -> unary "-" operand
     Not operand -> unary "not " operand
     CoalizationValue operand -> unary ">< " operand
-    ValValue declaration -> wrapped 0 ("val " <> source 0 declaration)
     OptionalValue (DependentArgumentValue name (Just annotation)) ->
       dependentArgument (source 13 name) True (Just annotation) Nothing
     OptionalValue

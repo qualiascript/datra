@@ -26,7 +26,11 @@ import DatraLanguage.AST
   , renderExpression
   , toOperatorExpression
   )
-import DatraLanguage.DependentDeclaration (dependentDeclaration)
+import DatraLanguage.DependentDeclaration
+  ( DeclarationModifier (..)
+  , applyDeclarationModifier
+  , dependentDeclaration
+  )
 import DatraLanguage.AST.Syntax
   ( natural
   , (...)
@@ -892,7 +896,7 @@ regressionTests = do
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
     "begin let x := 10 yield x"
-    (Begin [declarationEntry (Let
+    (Begin [declarationEntry (modified DeclarationLet
         (AST.assignment "x" (natural 10) (natural 10)))]
       (IdentifierReference (IdentifierString "x")))
   assertParsed "references are parsed independently of lexical lookup" "(begin x : 1 yield x), x"
@@ -901,14 +905,12 @@ regressionTests = do
         (IdentifierReference (IdentifierString "x")))
       (IdentifierReference (IdentifierString "x")))
   assertParsed "let accepts an assigned declaration" "let x := 1"
-    (Let (AST.assignment "x" (natural 1) (natural 1)))
+    (modified DeclarationLet (AST.assignment "x" (natural 1) (natural 1)))
   assertParsed "val marks one assigned declaration" "val x := 1"
-    (Val (AST.assignment "x" (natural 1) (natural 1)))
+    (modified DeclarationVal (AST.assignment "x" (natural 1) (natural 1)))
   assertParsed "let composes outside val" "let val x := 1"
-    (Let (Val (AST.assignment "x" (natural 1) (natural 1))))
-  assertParsed "val preserves the rejected inner-let ordering"
-    "val let x := 1"
-    (Val (Let (AST.assignment "x" (natural 1) (natural 1))))
+    (modified DeclarationLet (modified DeclarationVal
+      (AST.assignment "x" (natural 1) (natural 1))))
   assertParsed "an incomplete begin form remains ordinary application syntax"
     "begin x : 1"
     (FunctionApplication
@@ -2361,7 +2363,6 @@ genExpression =
         (\binding result -> FunctionBody [generatedDeclaration binding] result)
     , Gen.subterm2 genExpression genExpression
         (\binding result -> Begin [generatedDeclaration binding] result)
-    , Gen.subterm genExpression Let
     , Gen.subterm genExpression (StringTemplate . (:[]) . StringTemplateInterpolation)
     , Gen.subterm2 genExpression genExpression MapExpansion
     , Gen.subterm2 genExpression genExpression SuperEllipsisRange
@@ -2713,10 +2714,16 @@ declarationEntry expressionValue =
     Just declaration -> declaration
     Nothing -> error "test expression is not a dependent declaration"
 
+modified :: DeclarationModifier -> Expression -> Expression
+modified modifier expressionValue =
+  case applyDeclarationModifier modifier expressionValue of
+    Just result -> result
+    Nothing -> error "test declaration modifier is invalid"
+
 generatedDeclaration :: Expression -> DependentDeclaration Expression
 generatedDeclaration = DependentDeclaration
   (SimpleIdentifierDeclarationHead (IdentifierString "generated"))
-  False False False
+  False False False []
 
 datraRef :: [String] -> Expression
 datraRef = foldl ScopeAccess (ref "datra") . map ref

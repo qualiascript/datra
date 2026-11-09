@@ -12,7 +12,10 @@ module DatraLanguage.AST
   , GenericReference (..)
   , StringTemplatePart (..)
   , DependentDeclarationHead (..)
+  , DeclarationModifier (..)
+  , declarationModifierOperator
   , DependentDeclaration (..)
+  , dependentDeclarationIsValid
   , traverseDependentDeclaration
   , mapDependentDeclaration
   , Expression (..)
@@ -141,11 +144,27 @@ data DependentDeclarationHead expression
   | EvaluatedDeclarationHead expression
   deriving (Eq, Ord, Show)
 
+-- | Modifier applications in a declaration are recorded from the innermost
+-- application to the outermost application: the right-to-left order in which
+-- declared syntax is expanded.
+data DeclarationModifier
+  = DeclarationLet
+  | DeclarationDef
+  | DeclarationVal
+  deriving (Eq, Ord, Show)
+
+declarationModifierOperator :: DeclarationModifier -> Operator
+declarationModifierOperator modifier = case modifier of
+  DeclarationLet -> LetOperator
+  DeclarationDef -> DefOperator
+  DeclarationVal -> ValOperator
+
 data DependentDeclaration expression = DependentDeclaration
   { dependentDeclarationHead :: DependentDeclarationHead expression
   , dependentDeclarationIsLet :: Bool
   , dependentDeclarationIsDefinition :: Bool
   , dependentDeclarationIsCanonicalValue :: Bool
+  , dependentDeclarationModifierApplications :: [DeclarationModifier]
   , dependentDeclarationImplementation :: expression
   }
   deriving (Eq, Ord, Show)
@@ -160,6 +179,7 @@ traverseDependentDeclaration visit declaration = DependentDeclaration
   <*> pure (dependentDeclarationIsLet declaration)
   <*> pure (dependentDeclarationIsDefinition declaration)
   <*> pure (dependentDeclarationIsCanonicalValue declaration)
+  <*> pure (dependentDeclarationModifierApplications declaration)
   <*> visit (dependentDeclarationImplementation declaration)
   where
     traverseHead headValue = case headValue of
@@ -180,6 +200,13 @@ mapDependentDeclaration
   -> DependentDeclaration right
 mapDependentDeclaration transform =
   runIdentity . traverseDependentDeclaration (pure . transform)
+
+dependentDeclarationIsValid :: DependentDeclaration expression -> Bool
+dependentDeclarationIsValid declaration = applications == canonical
+  where
+    applications = dependentDeclarationModifierApplications declaration
+    canonical = filter (`elem` applications)
+      [DeclarationVal, DeclarationDef, DeclarationLet]
 
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
 -- later by the type checker and interpreter, not while constructing the AST.
@@ -235,8 +262,6 @@ data Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
   | Coalization Expression
-  | Def Expression
-  | Val Expression
   | Fun Expression
   | GenericIntroductionExpression (GenericIntroduction Expression)
   | GenericReferenceExpression GenericReference
@@ -247,7 +272,6 @@ data Expression
   | FunctionApplication Expression Expression
   | DeclarationExpression (DependentDeclaration Expression)
   | Begin [DependentDeclaration Expression] Expression
-  | Let Expression
   | IdentifierReference IdentifierString
   | Lookup Expression
   | Multiplication Expression Expression
@@ -411,8 +435,6 @@ data OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
   | CoalizationValue OperatorExpression
-  | DefValue OperatorExpression
-  | ValValue OperatorExpression
   | FunValue OperatorExpression
   | GenericIntroductionValue
       (GenericIntroduction OperatorExpression)
@@ -431,7 +453,6 @@ data OperatorExpression
   | BeginValue
       [DependentDeclaration OperatorExpression]
       OperatorExpression
-  | LetValue OperatorExpression
   | IdentifierReferenceValue IdentifierString
   | LookupValue OperatorExpression
   | Multiply OperatorExpression OperatorExpression
@@ -545,10 +566,6 @@ normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
 normalizeExpression (Coalization operand) =
   Coalization (normalizeExpression operand)
-normalizeExpression (Def declaration) =
-  Def (normalizeExpression declaration)
-normalizeExpression (Val declaration) =
-  Val (normalizeExpression declaration)
 normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
 normalizeExpression (GenericIntroductionExpression introduction) =
   GenericIntroductionExpression
@@ -582,7 +599,6 @@ normalizeExpression (Begin bindings result) =
   Begin
     (map (mapDependentDeclaration normalizeExpression) bindings)
     (normalizeExpression result)
-normalizeExpression (Let binding) = Let (normalizeExpression binding)
 normalizeExpression (IdentifierReference name) = IdentifierReference name
 normalizeExpression (Lookup operand) = Lookup (normalizeExpression operand)
 normalizeExpression (Multiplication left right) =
@@ -726,8 +742,6 @@ lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
-lower (Def declaration) = DefValue (lower declaration)
-lower (Val declaration) = ValValue (lower declaration)
 lower (Fun operand) = FunValue (lower operand)
 lower (GenericIntroductionExpression introduction) =
   GenericIntroductionValue
@@ -755,7 +769,6 @@ lower (DeclarationExpression declaration) =
   DeclarationValue (mapDependentDeclaration lower declaration)
 lower (Begin bindings result) = BeginValue
   (map (mapDependentDeclaration lower) bindings) (lower result)
-lower (Let binding) = LetValue (lower binding)
 lower (IdentifierReference name) = IdentifierReferenceValue name
 lower (Lookup operand) = LookupValue (lower operand)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
@@ -929,10 +942,6 @@ prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
 prettyOperator (CoalizationValue operand) =
   prettyUnary CoalizationOperator operand
-prettyOperator (DefValue declaration) =
-  prettyUnary DefOperator declaration
-prettyOperator (ValValue declaration) =
-  prettyUnary ValOperator declaration
 prettyOperator (FunValue operand) = prettyForm "fun" [prettyOperator operand]
 prettyOperator (GenericIntroductionValue introduction) =
   prettyForm "generic-introduction"
@@ -972,7 +981,6 @@ prettyOperator (DeclarationValue declaration) =
 prettyOperator (BeginValue bindings result) =
   prettyForm "begin"
     [prettyForm "bindings" (map prettyDeclaration bindings), prettyOperator result]
-prettyOperator (LetValue binding) = prettyUnary LetOperator binding
 prettyOperator (IdentifierReferenceValue (IdentifierString name)) =
   prettyForm "ref" [pretty (renderAsciiStringLiteral name)]
 prettyOperator (LookupValue operand) =
@@ -1211,14 +1219,11 @@ traverseExpressionChildren visit expression = case expression of
   ArgumentativeMap xs -> ArgumentativeMap <$> traverse visit xs
   MapSequence xs -> MapSequence <$> traverse visit xs
   SyntaxBoundary x -> SyntaxBoundary <$> visit x
-  Def x -> Def <$> visit x
-  Val x -> Val <$> visit x
   Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x
   BooleanNot x -> BooleanNot <$> visit x
   Coalization x -> Coalization <$> visit x
   OptionalType x -> OptionalType <$> visit x
-  Let x -> Let <$> visit x
   SuperEllipsisRangePlus x -> SuperEllipsisRangePlus <$> visit x
   SuperEllipsisRangeMinus x -> SuperEllipsisRangeMinus <$> visit x
   MapExpansion a b -> MapExpansion <$> visit a <*> visit b

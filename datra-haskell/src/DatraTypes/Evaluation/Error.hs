@@ -129,7 +129,6 @@ data InterpretingError
   | LetBindingCannotShadowConsistentIdentifier String
   | UnknownIdentifier String
   | PrivateParameterCannotBeOptional String
-  | InvalidDependentDeclarationModifiers String String
   | GenericIntroductionOutsideFunctionType String
   | DuplicateGenericIdentifier String
   | ForwardGenericBoundReference String String

@@ -114,9 +114,6 @@ import DatraLanguage.AST
       , FunctionTypeExpression
       , FunctionBody
       , FunctionApplication
-      , Let
-      , Def
-      , Val
       , IdentifierReference
       , Lookup
       )
@@ -130,7 +127,11 @@ import DatraLanguage.AST
   , traverseExpressionChildren
   , DependentDeclaration
   )
-import DatraLanguage.DependentDeclaration (dependentDeclaration)
+import DatraLanguage.DependentDeclaration
+  ( DeclarationModifier (..)
+  , applyDeclarationModifier
+  , dependentDeclaration
+  )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST.Reserved.Bootstrap
@@ -787,9 +788,9 @@ astForm =
       , astUnary AST.BooleanNotOperator BooleanNot
       , astUnary AST.CoalizationOperator Coalization
       , astBlock "begin" Begin
-      , astUnary AST.LetOperator Let
-      , astUnary AST.DefOperator Def
-      , astUnary AST.ValOperator Val
+      , astDeclarationModifier AST.LetOperator DeclarationLet
+      , astDeclarationModifier AST.DefOperator DeclarationDef
+      , astDeclarationModifier AST.ValOperator DeclarationVal
       , IdentifierReference . IdentifierString <$>
           (astSymbol "ref" *> astString)
       , astUnary AST.LookupOperator Lookup
@@ -1003,6 +1004,15 @@ astUnary
 astUnary operator constructor = do
   _ <- astOperatorToken operator
   constructor <$> astExpression
+
+astDeclarationModifier
+  :: AST.Operator
+  -> DeclarationModifier
+  -> Parser Expression
+astDeclarationModifier operator modifier = do
+  _ <- astOperatorToken operator
+  operand <- astExpression
+  maybe empty pure (applyDeclarationModifier modifier operand)
 
 astUnaryForm
   :: Text
