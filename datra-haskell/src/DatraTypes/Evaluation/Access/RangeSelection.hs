@@ -106,6 +106,7 @@ accessSource value =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
+    IdentifierExpressionForm _ -> ordinarySource []
     ToStringForm -> ordinarySource []
     TemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
@@ -201,6 +202,7 @@ semanticAccessSource semantics =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
+    IdentifierExpressionSemantics _ -> ordinarySource []
     ToStringSemantics _ -> ordinarySource []
     TemplateSemantics _ -> ordinarySource []
     MapSemantics _ components ->

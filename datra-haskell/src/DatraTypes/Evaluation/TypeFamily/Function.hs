@@ -5,7 +5,7 @@ module Evaluation.TypeFamily.Function
   , decideFunctionSubfederation
   ) where
 
-import DatraLanguage.SyntaxTemplate (FunctionSyntax)
+import DatraLanguage.StringExpression (FunctionSyntax)
 import Evaluation.Error
   ( FunctionFailure (..)
   , InterpretingError (FunctionEvaluationFailed)

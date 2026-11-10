@@ -71,6 +71,7 @@ stringConversionProperties semantics
     IntegerLimitRangeSemantics {} -> numericRange
     IntegerTypeSemantics -> integerNumber
     AsciiStringSemantics {} -> injectiveUnknownAlphabet
+    IdentifierExpressionSemantics {} -> injectiveUnknownAlphabet
     EitherSemantics left right ->
       eitherConversionProperties
         (stringConversionProperties left)

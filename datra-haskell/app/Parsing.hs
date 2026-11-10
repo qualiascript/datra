@@ -18,6 +18,7 @@ module Parsing
   , parseNeutralPhrase
   , neutralExpressionWitnessSources
   , neutralIncompletePrefixOperator
+  , stringInterpolationParser
   , parseDatraRawLocatedWithSourceName
   , parseDatraAst
   , parseDatraAstLocatedWithSourceName
@@ -146,6 +147,7 @@ import DatraLanguage.Diagnostics
   )
 import DatraLanguage.Diagnostics.Application
   ( ParseFailure (NeutralSourceParseFailure) )
+import StringInterpolation.Projection (StringInterpolationParser (..))
 import Numeric.Natural (Natural)
 import Text.Megaparsec
   ( Parsec
@@ -230,7 +232,7 @@ parseNeutralPhrase source =
       (runReaderT
         (fullSpaceConsumer *> expression <* fullSpaceConsumer <* eof)
         (ParserContext 0))
-      "<syntax-template>"
+      "<string-interpolation>"
       (Text.pack source))
 
 neutralExpressionWitnessSources :: String -> String -> [String]
@@ -304,6 +306,16 @@ neutralIncompletePrefixOperator source = case reverse (words source) of
     operandPrefixOperators =
       [AST.LookupOperator]
         <> map fst arithmeticPrefixOperators
+
+stringInterpolationParser :: StringInterpolationParser
+stringInterpolationParser = StringInterpolationParser
+  { parseStringInterpolationExpression =
+      either (const Nothing) Just . parseNeutralPhrase
+  , stringInterpolationExpressionWitnesses =
+      neutralExpressionWitnessSources
+  , incompleteStringInterpolationPrefixOperator =
+      neutralIncompletePrefixOperator
+  }
 
 -- | Outer parentheses select expression mode; every other resource is an
 -- implicit block whose exported result is introduced explicitly by @yield@.
@@ -707,10 +719,8 @@ astForm =
           (astSymbol "argumentative-map" *> many astExpression)
       , astBinary AST.ConcatenationOperator MapConcatenation
       , astNaturalRangeExpression
-      , try (astTemplateDependentArgument AST.AssignmentOperator (Just ()))
-      , try (astTemplateDependentArgument AST.DependentArgumentTypeOperator Nothing)
-      , astSimpleDependentArgument AST.AssignmentOperator (Just ())
-      , astSimpleDependentArgument AST.DependentArgumentTypeOperator Nothing
+      , astDependentArgument AST.AssignmentOperator (Just ())
+      , astDependentArgument AST.DependentArgumentTypeOperator Nothing
       , astBinary AST.ExpansionOperator MapExpansion
       , astBinary AST.RangeOperator SuperEllipsisRange
       , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
@@ -761,7 +771,7 @@ astGenericIntroduction = do
   identifier <- astExpression
   bound <- astExpression
   GenericIntroductionExpression <$> astGenericArgument
-    polarity identifier bound Nothing
+    polarity identifier bound
 
 astFunctionType :: Parser Expression
 astFunctionType = do
@@ -782,7 +792,7 @@ astGenericBinder = between (astSymbol "(") (astSymbol ")") $ do
   polarity <- astGenericPolarity
   identifier <- astExpression
   bound <- astExpression
-  argument <- astGenericArgument polarity identifier bound Nothing
+  argument <- astGenericArgument polarity identifier bound
   pure GenericBinder
     { genericBinderId = identity
     , genericBinderArgument = argument
@@ -798,75 +808,38 @@ astGenericArgument
   :: GenericPolarity
   -> Expression
   -> Expression
-  -> Maybe SourceSpan
   -> Parser (GenericArgument Expression)
-astGenericArgument polarity expressionValue bound source = do
-  (name, optional) <- case expressionValue of
+astGenericArgument polarity expressionValue bound = do
+  (name, optionalName) <- case expressionValue of
     IdentifierReference name -> pure (name, False)
     OptionalType (IdentifierReference name) -> pure (name, True)
     _ -> empty
-  guard (not (optional && isPrivateIdentifier (simpleIdentifierStringText name)))
+  guard (not
+    (optionalName && isPrivateIdentifier (simpleIdentifierStringText name)))
   pure GenericArgument
     { genericArgumentPolarity = polarity
     , genericArgumentName = name
-    , genericArgumentOptional = optional
+    , genericArgumentOptional = optionalName
     , genericArgumentBound = bound
-    , genericArgumentSource = source
     }
 
-astSimpleDependentArgument
+astDependentArgument
   :: AST.Operator
   -> Maybe ()
   -> Parser Expression
-astSimpleDependentArgument operator assignmentMarker = do
+astDependentArgument operator assignmentMarker = do
   _ <- astOperatorToken operator
-  identifierSpelling <- astIdentifierExpression
-  operationIdentifierString <-
-    SimpleIdentifierString <$> validateIdentifierSpelling identifierSpelling
+  name <- astExpression
   typeAnnotation <- astExpression
   case assignmentMarker of
-    Nothing ->
-      pure
-        (DependentArgument
-          (IdentifierReference operationIdentifierString)
-          (Just typeAnnotation))
-    Just () -> do
-      givenValue <- optional astExpression
-      pure
-        (case givenValue of
-          Nothing ->
-            MapSpecification typeAnnotation
-              (DependentArgument
-                (IdentifierReference operationIdentifierString)
-                Nothing)
-          Just given ->
-            MapSpecification given
-              (DependentArgument
-                (IdentifierReference operationIdentifierString)
-                (Just typeAnnotation)))
-
-astTemplateDependentArgument
-  :: AST.Operator
-  -> Maybe ()
-  -> Parser Expression
-astTemplateDependentArgument operator assignmentMarker = do
-  _ <- astOperatorToken operator
-  template <- astLexeme astStringTemplateToken
-  parts <- case template of
-    StringTemplate values -> pure values
-    _ -> empty
-  typeAnnotation <- astExpression
-  case assignmentMarker of
-    Nothing ->
-      pure (DependentArgument (StringTemplate parts) (Just typeAnnotation))
+    Nothing -> pure (DependentArgument name (Just typeAnnotation))
     Just () -> do
       givenValue <- optional astExpression
       pure (case givenValue of
         Nothing -> MapSpecification typeAnnotation
-          (DependentArgument (StringTemplate parts) Nothing)
+          (DependentArgument name Nothing)
         Just given -> MapSpecification given
-          (DependentArgument
-            (StringTemplate parts) (Just typeAnnotation)))
+          (DependentArgument name (Just typeAnnotation)))
 
 astConditional :: Parser Expression
 astConditional = do
@@ -1437,30 +1410,26 @@ termAtom =
 
 genericIntroduction :: Parser Expression
 genericIntroduction = do
-  (sourceSpan, (polarity, name, optional, bound)) <- spanned $ do
-    polarity <- choice
-      [ GenericProduct <$ lexeme (char '&')
-      , GenericSum <$ operatorToken AST.ExponentiationOperator
-      ]
-    spelling <- identifierExpression
-    name <- validateIdentifierSpelling spelling
-    optionalName <- maybe False (const True)
-      <$> optional (operatorToken AST.OptionalOperator)
-    guard (not (optionalName && isPrivateIdentifier name))
-    bound <- maybe
-      (IdentifierReference (SimpleIdentifierString "Any"))
-      id
-      <$> optional
-        (try (continuedSymbol "::" *> identifierValueExpression))
-    pure
-      (polarity, SimpleIdentifierString name, optionalName, bound)
+  polarity <- choice
+    [ GenericProduct <$ lexeme (char '&')
+    , GenericSum <$ operatorToken AST.ExponentiationOperator
+    ]
+  spelling <- identifierExpression
+  name <- validateIdentifierSpelling spelling
+  optionalName <- maybe False (const True)
+    <$> optional (operatorToken AST.OptionalOperator)
+  guard (not (optionalName && isPrivateIdentifier name))
+  bound <- maybe
+    (IdentifierReference (SimpleIdentifierString "Any"))
+    id
+    <$> optional
+      (try (continuedSymbol "::" *> identifierValueExpression))
   pure (GenericIntroductionExpression
     GenericArgument
       { genericArgumentPolarity = polarity
-      , genericArgumentName = name
-      , genericArgumentOptional = optional
+      , genericArgumentName = SimpleIdentifierString name
+      , genericArgumentOptional = optionalName
       , genericArgumentBound = bound
-      , genericArgumentSource = Just sourceSpan
       })
 
 -- Declarative syntax is discovered only after the complete resource has been
@@ -1790,18 +1759,10 @@ ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
 bareIdentifier :: Parser String
 bareIdentifier = lexeme bareIdentifierToken
 
-astBareIdentifier :: Parser String
-astBareIdentifier = astLexeme bareIdentifierToken
-
 identifierExpression :: Parser IdentifierSpelling
 identifierExpression =
   FullStringIdentifier <$> standardString
     <|> BareIdentifier <$> bareIdentifier
-
-astIdentifierExpression :: Parser IdentifierSpelling
-astIdentifierExpression =
-  FullStringIdentifier <$> astStandardString
-    <|> BareIdentifier <$> astBareIdentifier
 
 validateIdentifierSpelling :: IdentifierSpelling -> Parser String
 validateIdentifierSpelling = maybe empty pure . identifierSpellingValue
@@ -1819,9 +1780,6 @@ bareIdentifierToken = do
 -- can also be written using one or two hexadecimal digits.
 standardString :: Parser String
 standardString = lexeme standardStringToken
-
-astStandardString :: Parser String
-astStandardString = astLexeme standardStringToken
 
 astString :: Parser String
 astString = astLexeme

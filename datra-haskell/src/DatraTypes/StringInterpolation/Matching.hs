@@ -1,4 +1,4 @@
--- | Match declared syntax templates against an already parsed AST.
+-- | Match declared string interpolations against an already parsed AST.
 --
 -- Matching is deliberately independent of source layout. The input template
 -- and source have both been lowered by the neutral parser, so core operators
@@ -6,8 +6,8 @@
 -- A caller supplies the
 -- membership decision for each hole so value holes can use Datra's ordinary
 -- string-template/value matching rather than a second parser-side type system.
-module SyntaxTemplateMatching
-  ( SyntaxTemplateMatchFailure (..)
+module StringInterpolation.Matching
+  ( StringInterpolationMatchFailure (..)
   , SyntaxMatch (..)
   , StructuralSyntaxMatch (..)
   , enumerateSyntaxRulesSelections
@@ -19,25 +19,26 @@ module SyntaxTemplateMatching
   ) where
 
 import DatraLanguage.AST (Expression (FunctionApplication))
-import SyntaxDefinitions
-  ( SyntaxHoleKind (..)
+import StringInterpolation
+  ( StringExpression (..)
   , SyntaxRule (..)
   , TemplateSelection (..)
   , expandSyntax
   )
-import SyntaxTemplateProjection
-  ( applicationFrom
+import StringInterpolation.Projection
+  ( StringInterpolationParser
+  , applicationFrom
   , applicationPhrase
   , structuralTemplateCaptures
   )
-data SyntaxTemplateMatchFailure
-  = NoMatchingSyntaxTemplate
+data StringInterpolationMatchFailure
+  = NoMatchingStringInterpolation
   deriving (Eq, Show)
 
-type HoleMatches = SyntaxHoleKind Expression -> Expression -> Bool
+type HoleMatches = StringExpression Expression -> Expression -> Bool
 type CaptureHole =
-  [(SyntaxHoleKind Expression, Expression)]
-  -> SyntaxHoleKind Expression
+  [(StringExpression Expression, Expression)]
+  -> StringExpression Expression
   -> Expression
   -> Maybe Expression
 
@@ -56,21 +57,24 @@ data StructuralSyntaxMatch = StructuralSyntaxMatch
   , structuralSyntaxMatchSelection
       :: TemplateSelection Expression Expression
   , structuralSyntaxMatchCaptures
-      :: [(SyntaxHoleKind Expression, Expression)]
+      :: [(StringExpression Expression, Expression)]
   , structuralSyntaxMatchRemaining :: [Expression]
   }
 
 enumerateSyntaxRuleSelections
-  :: SyntaxRule
+  :: StringInterpolationParser
+  -> SyntaxRule
   -> Expression
   -> [StructuralSyntaxMatch]
-enumerateSyntaxRuleSelections rule = enumerateSyntaxRulesSelections [rule]
+enumerateSyntaxRuleSelections parser rule =
+  enumerateSyntaxRulesSelections parser [rule]
 
 enumerateSyntaxRulesSelections
-  :: [SyntaxRule]
+  :: StringInterpolationParser
+  -> [SyntaxRule]
   -> Expression
   -> [StructuralSyntaxMatch]
-enumerateSyntaxRulesSelections rules expressionValue =
+enumerateSyntaxRulesSelections parser rules expressionValue =
   [ StructuralSyntaxMatch rule
       (TemplateSelection
         (applicationFrom candidate)
@@ -81,8 +85,8 @@ enumerateSyntaxRulesSelections rules expressionValue =
   , consumed <- reverse [1 .. length phrase]
   , let (candidate, remaining) = splitAt consumed phrase
         selected = applicationFrom candidate
-  , captures <- structuralTemplateCaptures
-      (syntaxTemplate rule) selected
+  , captures <- structuralTemplateCaptures parser
+      (stringInterpolationTemplate rule) selected
   ]
   where
     phrase = applicationPhrase expressionValue
@@ -97,29 +101,31 @@ enumerateSyntaxRulesSelections rules expressionValue =
 -- prefix. Matching never descends through another AST node to enlarge the
 -- context.
 matchSyntaxRules
-  :: HoleMatches
+  :: StringInterpolationParser
+  -> HoleMatches
   -> [SyntaxRule]
   -> Expression
-  -> Either SyntaxTemplateMatchFailure Expression
-matchSyntaxRules holeMatches rules expressionValue =
-  matchSyntaxRulesWith
+  -> Either StringInterpolationMatchFailure Expression
+matchSyntaxRules parser holeMatches rules expressionValue =
+  matchSyntaxRulesWith parser
     (\_ kind value ->
       if holeMatches kind value then Just value else Nothing)
     rules expressionValue
 
 matchSyntaxRulesWith
-  :: CaptureHole
+  :: StringInterpolationParser
+  -> CaptureHole
   -> [SyntaxRule]
   -> Expression
-  -> Either SyntaxTemplateMatchFailure Expression
-matchSyntaxRulesWith captureHole rules expressionValue =
+  -> Either StringInterpolationMatchFailure Expression
+matchSyntaxRulesWith parser captureHole rules expressionValue =
   expandSyntaxMatch <$> chooseSuccessful
     [ SyntaxMatch
         (structuralSyntaxMatchRule matched)
         ((structuralSyntaxMatchSelection matched)
           { templateSelectionCaptures = map snd captures })
         (structuralSyntaxMatchRemaining matched)
-    | matched <- enumerateSyntaxRulesSelections rules expressionValue
+    | matched <- enumerateSyntaxRulesSelections parser rules expressionValue
     , captures <- maybeToList
         (validateCaptures captureHole
           (structuralSyntaxMatchCaptures matched))
@@ -127,8 +133,8 @@ matchSyntaxRulesWith captureHole rules expressionValue =
 
 validateCaptures
   :: CaptureHole
-  -> [(SyntaxHoleKind Expression, Expression)]
-  -> Maybe [(SyntaxHoleKind Expression, Expression)]
+  -> [(StringExpression Expression, Expression)]
+  -> Maybe [(StringExpression Expression, Expression)]
 validateCaptures captureHole = go []
   where
     go selected [] = Just selected
@@ -147,17 +153,18 @@ expandSyntaxMatch matched = foldl FunctionApplication expanded
 -- boundary: parsing establishes the contextual AST extent of a phrase, while
 -- this matcher remains solely responsible for interpreting its template.
 matchSyntaxRule
-  :: HoleMatches
+  :: StringInterpolationParser
+  -> HoleMatches
   -> SyntaxRule
   -> Expression
-  -> Either SyntaxTemplateMatchFailure Expression
-matchSyntaxRule holeMatches rule =
-  matchSyntaxRules holeMatches [rule]
+  -> Either StringInterpolationMatchFailure Expression
+matchSyntaxRule parser holeMatches rule =
+  matchSyntaxRules parser holeMatches [rule]
 
 chooseSuccessful
   :: [SyntaxMatch]
-  -> Either SyntaxTemplateMatchFailure SyntaxMatch
-chooseSuccessful [] = Left NoMatchingSyntaxTemplate
+  -> Either StringInterpolationMatchFailure SyntaxMatch
+chooseSuccessful [] = Left NoMatchingStringInterpolation
 chooseSuccessful (matched : _) = Right matched
 
 maybeToList :: Maybe value -> [value]

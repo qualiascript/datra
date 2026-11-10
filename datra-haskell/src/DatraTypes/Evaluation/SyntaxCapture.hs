@@ -1,7 +1,7 @@
 -- | AST capture supplied by explicitly declared syntax-category types.
 module Evaluation.SyntaxCapture
   ( captureSyntaxExpression
-  , specializeSyntaxHoleKind
+  , specializeStringExpression
   ) where
 
 import Control.Applicative ((<|>))
@@ -20,7 +20,7 @@ import DatraLanguage.AST
       )
   )
 import DatraLanguage.DependentDeclaration (dependentDeclarationCandidate)
-import DatraLanguage.SyntaxTemplate (SyntaxHoleKind (..))
+import DatraLanguage.StringExpression (StringExpression (..))
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.IdentifierErasure (stripOuterIdentifierType)
 import Evaluation.Specification.String (valueProducesStrings)
@@ -131,30 +131,30 @@ syntaxCategoryTarget target = case stripOuterIdentifierType target of
 -- | Give a typed interpolation the parser capability owned by its evaluated
 -- target type. Ordinary types remain value captures; AST category types carry
 -- the few structural capabilities required by syntax rewriting.
-specializeSyntaxHoleKind
+specializeStringExpression
   :: InterpretedValue
-  -> SyntaxHoleKind value
-  -> SyntaxHoleKind value
-specializeSyntaxHoleKind target hole =
+  -> StringExpression value
+  -> StringExpression value
+specializeStringExpression target hole =
   case (interpretedForm normalized, hole) of
-  (PrimitiveTypeForm (SyntaxPrimitive ExpressionAST), ValueSyntaxHole value) ->
-    ExpressionSyntaxHole value
-  (PrimitiveTypeForm (SyntaxPrimitive BlockAST), ValueSyntaxHole value) ->
-    BlockSyntaxHole value
-  (PrimitiveTypeForm (SyntaxPrimitive FunctionBodyAST), ValueSyntaxHole value) ->
-    FunctionBodySyntaxHole value
-  (PrimitiveTypeForm (SyntaxPrimitive DeclarationAST), ValueSyntaxHole value) ->
-    DeclarationSyntaxHole value
+  (PrimitiveTypeForm (SyntaxPrimitive ExpressionAST), ValueString value) ->
+    ExpressionString value
+  (PrimitiveTypeForm (SyntaxPrimitive BlockAST), ValueString value) ->
+    BlockString value
+  (PrimitiveTypeForm (SyntaxPrimitive FunctionBodyAST), ValueString value) ->
+    FunctionBodyString value
+  (PrimitiveTypeForm (SyntaxPrimitive DeclarationAST), ValueString value) ->
+    DeclarationString value
   ( PrimitiveTypeForm (SyntaxPrimitive DependentArgumentAST)
-    , ValueSyntaxHole value
-    ) -> DependentArgumentSyntaxHole value
+    , ValueString value
+    ) -> DependentArgumentString value
   ( PrimitiveTypeForm (SyntaxPrimitive IdentifierExpressionAST)
-    , ValueSyntaxHole value
-    ) -> IdentifierExpressionSyntaxHole value
-  (_, ValueSyntaxHole value)
-    | valueProducesStrings normalized -> StringLiteralSyntaxHole value
-  (_, ValueSyntaxHole value)
-    | Just _ <- syntaxListElement normalized -> ExpressionSyntaxHole value
+    , ValueString value
+    ) -> IdentifierExpressionString value
+  (_, ValueString value)
+    | valueProducesStrings normalized -> StringLiteralString value
+  (_, ValueString value)
+    | Just _ <- syntaxListElement normalized -> ExpressionString value
   _ -> hole
   where
     normalized = syntaxCategoryTarget target

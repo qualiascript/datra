@@ -84,13 +84,11 @@ import DatraLanguage.AST
   , mapDependentDeclaration
   )
 import DatraLanguage.ContextualDeclaration
-import DatraLanguage.SyntaxTemplate
+import DatraLanguage.StringExpression
   ( FunctionSyntax (FunctionSyntax)
-  , SyntaxHoleKind (..)
-  , SyntaxPiece (..)
-  , SyntaxTemplate (..)
-  , mapSyntaxHoleKind
-  , traverseSyntaxTemplate
+  , StringExpression (..)
+  , mapStringExpression
+  , traverseStringInterpolationTemplate
   )
 import DatraTypes
 import Parsing
@@ -103,6 +101,7 @@ import Parsing
   , parseDatra
   , parseDatraRawLocatedWithSourceName
   , resolveGenericFunctionTypes
+  , stringInterpolationParser
   , ResourceEnvelope (..)
   )
 import SyntaxRewriting
@@ -116,14 +115,14 @@ import SyntaxRewriting
 import Rendering (renderCanonicalResult, renderInterpretedValue)
 import GenericScopeProtection
 import ScopeProtection
-import SyntaxDefinitions
+import StringInterpolation
   ( SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , declarationRules
   , declarationRuleBranches
   , syntaxApplicationRule
   )
-import SyntaxTemplateProjection (applicationPhrase)
+import StringInterpolation.Projection (applicationPhrase)
 import DatraLanguage.Diagnostics
   ( DatraError
   , Located (Located, locatedValue)
@@ -319,7 +318,7 @@ scopeSyntaxNamespaces source = case source of
   _ -> []
 
 scopeSyntaxRules
-  :: ([Expression] -> SyntaxHoleKind Expression -> SyntaxHoleKind Expression)
+  :: ([Expression] -> StringExpression Expression -> StringExpression Expression)
   -> [(String, [SyntaxRule])]
   -> [Expression]
   -> Expression
@@ -338,7 +337,7 @@ scopeSyntaxRules classify availableRules declarations source =
 -- map, and are specialized against the declarations visible both outside and
 -- inside the map.
 localSyntaxRules
-  :: ([Expression] -> SyntaxHoleKind Expression -> SyntaxHoleKind Expression)
+  :: ([Expression] -> StringExpression Expression -> StringExpression Expression)
   -> [Expression]
   -> Expression
   -> [SyntaxRule]
@@ -358,13 +357,14 @@ localSyntaxRules classify declarations source =
           (null . filter (`elem` names) . bindingNames)
           visible
         retainedRules = filter ((`notElem` names) . syntaxName) rules
-        introduced = map (specialize visible) (declarationRules declaration)
+        introduced = map (specialize visible)
+          (declarationRules stringInterpolationParser declaration)
     specialize visible rule = rule
-      { syntaxTemplate = specializeTemplate visible (syntaxTemplate rule) }
-    specializeTemplate visible (SyntaxTemplate pieces) = SyntaxTemplate
+      { stringInterpolationTemplate = specializeTemplate visible (stringInterpolationTemplate rule) }
+    specializeTemplate visible pieces =
       [ case piece of
-          SyntaxHole kind -> SyntaxHole (classify visible kind)
-          SyntaxLiteral {} -> piece
+          StringTemplateInterpolation kind -> StringTemplateInterpolation (classify visible kind)
+          StringTemplateLiteral {} -> piece
       | piece <- pieces
       ]
 
@@ -405,30 +405,30 @@ captureSyntaxHole
   :: Scope
   -> [(String, ModuleSource)]
   -> [Expression]
-  -> [(SyntaxHoleKind Expression, Expression)]
-  -> SyntaxHoleKind Expression
+  -> [(StringExpression Expression, Expression)]
+  -> StringExpression Expression
   -> Expression
   -> Maybe Expression
 captureSyntaxHole base modules declarations previous kind captured =
   case kind of
-    ExpressionSyntaxHole {} -> Just captured
-    BlockSyntaxHole {} -> case captured of
+    ExpressionString {} -> Just captured
+    BlockString {} -> case captured of
       AtlasMap {} -> Just captured
       _ -> Just (AtlasMap (applicationPhrase captured))
-    FunctionBodySyntaxHole {} -> case captured of
+    FunctionBodyString {} -> case captured of
       FunctionBody {} -> Just captured
       _ -> Nothing
-    DeclarationSyntaxHole {}
+    DeclarationString {}
       | dependentDeclarationCandidate captured -> Just captured
       | otherwise -> Nothing
-    DependentArgumentSyntaxHole {} -> dependentArgumentCapture captured
-    IdentifierExpressionSyntaxHole {} -> case captured of
+    DependentArgumentString {} -> dependentArgumentCapture captured
+    IdentifierExpressionString {} -> case captured of
       IdentifierReference {} -> Just captured
       _ -> Nothing
-    StringLiteralSyntaxHole {} -> case captured of
+    StringLiteralString {} -> case captured of
       AsciiStringLiteral {} -> Just captured
       _ -> Nothing
-    ValueSyntaxHole target ->
+    ValueString target ->
       literalCapture target captured <|> valueEvaluationCapture target
   where
     literalCapture target value
@@ -470,8 +470,8 @@ classifySyntaxHole
   :: Scope
   -> [(String, ModuleSource)]
   -> [Expression]
-  -> SyntaxHoleKind Expression
-  -> (SyntaxHoleKind Expression, Maybe InterpretedValue)
+  -> StringExpression Expression
+  -> (StringExpression Expression, Maybe InterpretedValue)
 classifySyntaxHole base modules declarations kind =
   case classifySyntaxHoles base modules declarations [kind] of
     [classified] -> classified
@@ -481,18 +481,18 @@ classifySyntaxHoles
   :: Scope
   -> [(String, ModuleSource)]
   -> [Expression]
-  -> [SyntaxHoleKind Expression]
-  -> [(SyntaxHoleKind Expression, Maybe InterpretedValue)]
+  -> [StringExpression Expression]
+  -> [(StringExpression Expression, Maybe InterpretedValue)]
 classifySyntaxHoles base modules declarations kinds = map classify kinds
   where
     enclosing = extendModuleCatalog modules base
     declared = declareSyntaxScope enclosing
       (map syntaxValidationDeclaration declarations)
     classify kind = case kind of
-      ValueSyntaxHole target ->
+      ValueString target ->
         case declared >>= \scope -> evalInScope scope [] target of
           Left _ -> (kind, Nothing)
-          Right value -> (specializeSyntaxHoleKind value kind, Just value)
+          Right value -> (specializeStringExpression value kind, Just value)
       _ -> (kind, Nothing)
 
 evaluateSyntaxValue
@@ -709,7 +709,8 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
       { syntaxRuleFamilyNames = bindingNames entry
       , syntaxRuleFamilyRules =
           [ (branch, specialize rule)
-          | (_, branch, rule) <- declarationRuleBranches resolved
+          | (_, branch, rule) <-
+              declarationRuleBranches stringInterpolationParser resolved
           ]
       , syntaxRuleFamilyClassify = classifySyntaxHoles
           currentBase modules visible
@@ -719,11 +720,11 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
       }
       where
         specialize rule = rule
-          { syntaxTemplate = SyntaxTemplate
+          { stringInterpolationTemplate =
               [ case piece of
-                  SyntaxHole kind -> SyntaxHole (fst (classify kind))
-                  SyntaxLiteral {} -> piece
-              | piece <- syntaxTemplatePieces (syntaxTemplate rule)
+                  StringTemplateInterpolation kind -> StringTemplateInterpolation (fst (classify kind))
+                  StringTemplateLiteral {} -> piece
+              | piece <- stringInterpolationTemplate rule
               ]
           }
         classify kind = classifySyntaxHole currentBase modules visible kind
@@ -784,10 +785,10 @@ expandSyntaxExpression expansion = case expansion of
     FunctionBody <$> lowerSyntaxDeclarations entries <*> pure result
 
 binderDeclarations
-  :: [(SyntaxHoleKind Expression, Expression)]
+  :: [(StringExpression Expression, Expression)]
   -> [Expression]
 binderDeclarations
-    ((DependentArgumentSyntaxHole {}, binder) : (_, bound) : remaining) =
+    ((DependentArgumentString {}, binder) : (_, bound) : remaining) =
   maybe id (:) (binderDeclaration binder bound)
     (binderDeclarations remaining)
 binderDeclarations (_ : remaining) = binderDeclarations remaining
@@ -1819,10 +1820,10 @@ contextualFunction role levels@(_ : _) = do
 
     valueSyntax :: FunctionSyntax InterpretedValue
     valueSyntax = FunctionSyntax
-      [SyntaxTemplate [SyntaxLiteral (contextualSurfaceName role)]]
+      [[StringTemplateLiteral (contextualSurfaceName role)]]
     sourceSyntax :: FunctionSyntax String
     sourceSyntax = FunctionSyntax
-      [SyntaxTemplate [SyntaxLiteral (contextualSurfaceName role)]]
+      [[StringTemplateLiteral (contextualSurfaceName role)]]
 contextualFunction role [] = Left
   (UnknownIdentifier (contextualPrivateName role))
 
@@ -4541,37 +4542,39 @@ attachDeclarationSyntax
 attachDeclarationSyntax sourceCaptures template payload =
   case interpretedFunction payload of
     Nothing -> payload
-    Just _ -> withFunctionSyntax
-      (FunctionSyntax [evaluatedTemplate])
-      (FunctionSyntax [sourceTemplate])
-      payload
+    Just _ ->
+      let evaluatedTemplate = concatMap evaluatedPiece
+            (evaluatedStringTemplateSegments template)
+          sourceTemplate = sourcePieces sourceCaptures evaluatedTemplate
+      in withFunctionSyntax
+        (FunctionSyntax [evaluatedTemplate])
+        (FunctionSyntax [sourceTemplate])
+        payload
   where
-    evaluatedTemplate = SyntaxTemplate
-      (concatMap evaluatedPiece (evaluatedStringTemplateSegments template))
-    sourceTemplate = SyntaxTemplate
-      (sourcePieces sourceCaptures (syntaxTemplatePieces evaluatedTemplate))
     evaluatedPiece segment = case segment of
       EvaluatedStringTemplateLiteral literal ->
-        map SyntaxLiteral (words literal)
+        map StringTemplateLiteral (words literal)
       EvaluatedStringTemplateCapture _ schema _ ->
-        [SyntaxHole
-          (specializeSyntaxHoleKind schema (ValueSyntaxHole schema))]
+        let stringFederation = templateValue
+              (stringFederationValue canonicalStringCodec schema)
+        in [StringTemplateInterpolation
+          (specializeStringExpression schema (ValueString stringFederation))]
     sourcePieces Nothing pieces = map fallbackSourcePiece pieces
     sourcePieces (Just captures) pieces = go captures pieces
       where
         go _ [] = []
-        go remaining (SyntaxLiteral literal : rest) =
-          SyntaxLiteral literal : go remaining rest
-        go (capture : remaining) (SyntaxHole kind : rest) =
-          SyntaxHole
-            (mapSyntaxHoleKind
+        go remaining (StringTemplateLiteral literal : rest) =
+          StringTemplateLiteral literal : go remaining rest
+        go (capture : remaining) (StringTemplateInterpolation kind : rest) =
+          StringTemplateInterpolation
+            (mapStringExpression
               (const (renderSourceExpression capture)) kind)
             : go remaining rest
         go [] (piece : rest) = fallbackSourcePiece piece : go [] rest
     fallbackSourcePiece piece = case piece of
-      SyntaxLiteral literal -> SyntaxLiteral literal
-      SyntaxHole kind -> SyntaxHole
-        (mapSyntaxHoleKind renderInterpretedValue kind)
+      StringTemplateLiteral literal -> StringTemplateLiteral literal
+      StringTemplateInterpolation kind -> StringTemplateInterpolation
+        (mapStringExpression renderInterpretedValue kind)
 
 namedDeclarationMember
   :: DependentDeclaration Expression
@@ -6172,15 +6175,15 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
       Nothing -> pure []
       Just (FunctionSyntax templates) -> do
         sourceTemplates <- traverse
-          (traverseSyntaxTemplate parseScopedRuleExpression)
+          (traverseStringInterpolationTemplate parseScopedRuleExpression)
           templates
         pure
           [ case template of
-              SyntaxTemplate [SyntaxLiteral _] ->
+              [StringTemplateLiteral _] ->
                 syntaxApplicationRule name template callable callable
               _ -> SyntaxRule
                 { syntaxName = name
-                , syntaxTemplate = template
+                , stringInterpolationTemplate = template
                 , syntaxSemantics = SyntaxAdapter callable
                 }
           | template <- sourceTemplates
@@ -6555,7 +6558,8 @@ closedSourceExpressionIn definitions text = do
         , scoped <- dependentDeclarationLayerMembers layer
         , Just declaration <- [scopedDependentDeclarationValue scoped]
         ]
-      rules = concatMap declarationRules declarations
+      rules = concatMap
+        (declarationRules stringInterpolationParser) declarations
   rewritten <- Bifunctor.first
     (const NoCanonicalStringConversion)
     (rewriteStandaloneSyntax

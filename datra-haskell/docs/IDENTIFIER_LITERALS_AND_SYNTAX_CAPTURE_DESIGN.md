@@ -1,24 +1,24 @@
-# Identifier Expressions and Structural Syntax Capture
+# Identifier Expressions and String Interpolation
 
 ## Scope
 
-This design covers the unified `$` expression, dependent-declaration heads,
-structural syntax capture, and quoted-string interpolation through the `_show`
-migration.
+This design defines the `$` expression, dependent-declaration heads,
+structural syntax capture, the internal representation of string
+interpolation, and the `_StrExpr`/`_show` boundary for quoted interpolation.
 
-`$` is the only standalone prefix operator in this design. `%` is reserved for
-interpolation inside quoted strings and has no standalone expression form.
+`$` is the only standalone identifier-expression prefix operator. `%` is
+reserved for interpolation inside quoted strings and has no standalone
+expression form.
 
-The internal name is `IdentifierExpression`. The public Datra names are:
+The internal name is `IdentifierExpression`. The public Datra name is:
 
 ```datra
 _IdentifierExpr := datra.IdentifierExpr
-let val _StrExpr := &T? do yield datra.StrExpr T
 ```
 
 ## Identifier expressions
 
-The source forms are structurally distinct:
+The source forms have these meanings:
 
 | Source | AST meaning |
 | --- | --- |
@@ -27,14 +27,13 @@ The source forms are structurally distinct:
 | `$"any string"` | Construct an identifier expression whose name is the quoted payload. |
 | `$(expression)` | Construct an identifier expression from an ordinary expression. |
 | `$($do; _Block; $yield; _Expr)` | Construct a structural identifier expression. |
-| `"text %(value)"` | Parse quoted-string interpolation; `%` has no meaning outside the string. |
+| `"text %(value)"` | Parse quoted-string interpolation. |
 
-`SimpleIdentifierString` is the payload of a lexical identifier reference. Its
-name deliberately states its restriction: identifier expressions may denote
-names containing any string, while a simple identifier must satisfy the bare
-identifier grammar.
+`SimpleIdentifierString` is the payload of a lexical identifier reference.
+Identifier expressions may denote names containing any string, while a simple
+identifier must satisfy the bare identifier grammar.
 
-There is one source AST family for every `$` form:
+Every `$` form uses one AST family:
 
 ```haskell
 newtype IdentifierExpression expression = IdentifierExpressionBody
@@ -47,17 +46,15 @@ data Expression
   | IdentifierExpression (IdentifierExpression Expression)
 ```
 
-The operand remains ordinary expression structure. Static bare and quoted
-operands are not separate AST variants. A sequential operand remains ordinary
-expression structure as well.
-
-Canonical source rendering uses `$name`, `$"..."`, or `$(...)` according to
-the operand. Canonical operator rendering uses the single
+The operand remains ordinary expression structure. Bare, quoted, dynamic, and
+sequential operands are not separate identifier-expression variants.
+Canonical source rendering selects `$name`, `$"..."`, or `$(...)` from the
+operand structure. Canonical operator rendering uses
 `IdentifierExpressionOperator`.
 
 ## Dependent declarations
 
-Every `DependentDeclaration` stores an `IdentifierExpression` as its head:
+Every dependent declaration stores an identifier expression as its head:
 
 ```haskell
 data DependentDeclaration expression = DependentDeclaration
@@ -66,27 +63,20 @@ data DependentDeclaration expression = DependentDeclaration
   }
 ```
 
-A bare declaration:
+A bare declaration such as `a := 123` is parsed with the same head as
+`$a := 123`. The normalized head value is `$a`; the left-hand side is not
+evaluated as a lexical reference.
 
-```datra
-a := 123
-```
+Declaration-head validity is structural. Parenthesized expressions and
+general string templates are not alternate head paths, and prefixing a valid
+head is total. No `Maybe`, sentinel value, or runtime `error` represents an
+invalid declaration head.
 
-is normalized while parsing to the same declaration head as:
-
-```datra
-$a := 123
-```
-
-The normalized value is `$a`; the left-hand side is not evaluated as a lexical
-reference. Parenthesized expressions and general string templates are not
-alternate declaration-head paths. Prefixing a declaration head must be total
-for its type: there is no fallback `error` branch for an invalid head.
-
-Structural declaration heads compile from their `IdentifierExpression` body.
-A singleton simple reference or string contributes a literal syntax token;
-ordinary structural references contribute capture positions. This distinction
-is derived from the head's position and expression structure.
+Declaration rules compile directly from the identifier-expression body. A
+singleton simple reference or string contributes literal syntax. Structural
+members contribute literal or capture positions according to their AST role.
+Modifier application order, block insertion, source-order priority, and
+rejection diagnostics operate on this representation.
 
 ## Structural syntax capture
 
@@ -97,121 +87,111 @@ semicolon separates adjacent fields and requires a source gap:
 $($do; _Block; $yield; _Expr)
 ```
 
-`$do` and `$yield` are literal identifier-expression positions. `_Block` and
-`_Expr` are capture targets. Matching operates on neutral AST structure and
-never renders and reparses either side.
+`$do` and `$yield` are literal positions. `_Block` and `_Expr` are capture
+targets. Structural matching compares neutral AST structure; it does not
+derive behavior from canonical rendering.
 
-The declared `IdentifierExpression` is the syntax pattern. Quoted-string
-interpolation may use parser-local parts before it lowers to ordinary
-expressions; declaration matching and evaluation use ordinary expression
-structure.
+Capture is target-directed. Each capture position retains its ordinary target
+expression. Evaluation of the target determines whether the selected source
+is an identifier expression, a string expression, a block, or another value.
 
-Capture is target-directed. A capture position carries its ordinary target
-expression; evaluation of that target determines whether the selected source
-is an identifier expression, string expression, block, or another value.
+## String interpolation representation
 
-## Current checkpoint
+The shared representation is a source-order concatenation of literal strings
+and typed string expressions:
 
-The executable builds and standard-library loading reaches this exact error:
+```haskell
+data StringExpression value
+  = ExpressionString value
+  | BlockString value
+  | FunctionBodyString value
+  | DeclarationString value
+  | DependentArgumentString value
+  | IdentifierExpressionString value
+  | StringLiteralString value
+  | ValueString value
 
-```text
-module imports could not be scanned
-  module: <command-line>
-  syntax environment could not be constructed
-  ModuleEvaluationFailed (StandardLibraryParseFailure "std.datra" "operation has no effect inside block\n  expression: yield ((^n? :: Nat) do yield (slots[0 .. n]))")
+type StringInterpolationTemplate value =
+  [StringTemplatePart (StringExpression value)]
 ```
 
-Reproduce it with:
+`StringInterpolationTemplate` is a type alias for the concatenation itself.
+It has no wrapper constructor and no parallel template AST. Literal chunks
+use `StringTemplateLiteral`; interpolations use
+`StringTemplateInterpolation` with a `StringExpression`.
 
-```sh
-cabal run datra-haskell -- build --source '()' \
-  --ast-output /tmp/datra-identifier-expr.ast \
-  --output /tmp/datra-identifier-expr.out
+Every evaluated `StringExpression` payload is a subfederation of `String`.
+The source expression determines the capture category, while the stored
+evaluated payload is the corresponding string federation. Conversion is total:
+
+- string-producing values are retained;
+- total non-string values become their canonical string;
+- non-total values become a pointwise string federation.
+
+Attaching declaration syntax is therefore pure. Its type cannot return an
+interpolation-conversion error:
+
+```haskell
+attachDeclarationSyntax
+  :: Maybe [Expression]
+  -> EvaluatedStringTemplate
+  -> InterpretedValue
+  -> InterpretedValue
 ```
 
-## Remaining implementation order
+## Module boundary
 
-### 1. Compile declaration heads directly
+String-interpolation representation, admissibility, projection, matching, and
+evaluation live in DatraTypes. Application parsing remains in `app/Parsing`.
+DatraTypes declares the parser capability it needs, and the application
+supplies that capability:
 
-Compile each declaration rule directly from its `IdentifierExpression` body.
+```haskell
+data StringInterpolationParser = StringInterpolationParser
+  { parseStringInterpolationExpression :: String -> Maybe Expression
+  , stringInterpolationExpressionWitnesses :: String -> String -> [String]
+  , incompleteStringInterpolationPrefixOperator :: String -> Maybe String
+  }
+```
 
-The direct compiler must preserve:
+This dependency direction matches the canonical-string codec: semantic code
+owns the protocol, while the application owns concrete parsing and rendering.
+Projection parses a template and its witnesses through this capability, then
+matching proceeds structurally over the resulting AST.
 
-- literal singleton `$name` and `$"..."` heads;
-- structural sequences and required gaps;
-- identifier-expression capture positions;
-- modifier application order for `let`, `def`, and `val`;
-- insertion of a dependent declaration into `begin` and `do` blocks;
-- source-order rule priority and rejection diagnostics.
+## `_StrExpr` and `_show` boundary
 
-Only the direct expression representation participates in rule compilation,
-matching, and diagnostics.
-
-### 2. Complete identifier-expression capture semantics
-
-`datra.IdentifierExpr` must accept the full identifier-expression value, not
-only an `IdentifierReference`. Complete the value-form, semantics,
-specification, reverse-specification, subfederation, access, result-contract,
-and rendering cases so every dispatch is exhaustive.
-
-Structural matching must return selected source expressions and capture them
-against the evaluated target. It must not infer behavior from rendered names
-or special-case standard-library operators.
-
-The declared expression and evaluated capture target are the only authorities
-for structural selection and capture behavior.
-
-### 3. Introduce `_StrExpr`
-
-Add the host type constructor and the exact standard-library declaration:
+The surface boundary for a string-producing expression of source type `T` is:
 
 ```datra
 let val _StrExpr := &T? do yield datra.StrExpr T
 ```
 
-`_StrExpr T` is the typed boundary for an expression that produces a string
-from a value of source type `T`. Its string result participates in ordinary
-specification and subfederation. Dynamic `$(expression)` uses this boundary;
-static and structural `$` operands do not.
+`_StrExpr T` participates in ordinary specification and subfederation.
+Dynamic `$(expression)` uses this boundary; static and structural `$` operands
+do not.
 
-### 4. Migrate quoted interpolation to `_show`
-
-Define a generic `_show` binding whose result is `_StrExpr T`. Lower every
-quoted template before syntax rewriting to ordinary string literals, function
-application, and concatenation:
+Quoted interpolation lowers before syntax rewriting to ordinary string
+literals, `_show` application, and concatenation. For example:
 
 ```datra
 "%(left) and %(right)"
 ```
 
-becomes the equivalent of:
+lowers to the equivalent of:
 
 ```datra
 (_show left), " and ", (_show right)
 ```
 
-The lowering must address the host binding by identity so source shadowing of
-`_show` cannot change interpolation semantics. Zero parts lower to `""`; one
-part lowers directly; adjacent literal chunks may be coalesced.
+The lowering addresses the host `_show` binding by identity so source
+shadowing cannot change interpolation semantics. Zero parts lower to `""`;
+one part lowers directly; adjacent literal chunks may be coalesced. `%(` is
+only quoted-string parser syntax.
 
-The general AST and runtime contain only the lowered form. `%(` remains only
-quoted-string parser syntax.
-
-## Verification
-
-At each step:
-
-1. Build the executable and affected suites with `-f-liquid -j1`.
-2. Keep the exact standard-library checkpoint above until the code intentionally
-   advances beyond it.
-3. Reject standalone `%` expressions while accepting `%(` inside strings.
-4. Verify canonical and source round trips for every `$` operand shape.
-5. Verify `a := value` and `$a := value` produce the same typed declaration
-   head.
-6. Verify specification, reverse specification, and subfederation for concrete
-   and structural identifier expressions.
-7. Verify interpolation with zero, one, and multiple holes after `_show`
-   lowering.
+The internal string-interpolation representation does not require a surface
+`_StrExpr`, `_show`, or Datra host hook. Those bindings are introduced only
+when the quoted-interpolation lowering boundary is enabled.
 
 ## Required invariants
 
@@ -224,11 +204,28 @@ At each step:
 6. A dependent declaration always has an `IdentifierExpression` head.
 7. A bare left-hand identifier normalizes to the corresponding `$` head.
 8. Structural syntax remains ordinary expression structure.
-9. Matching never renders, reparses, or re-lexes expressions.
-10. No invalid declaration-head state is represented with `Nothing` or a
-    runtime `error` fallback.
-11. `_StrExpr` uses exactly
+9. Declaration matching does not render and reparse identifier expressions.
+10. Invalid declaration heads are unrepresentable.
+11. `StringInterpolationTemplate` is a concatenation, not an AST wrapper.
+12. Every evaluated `StringExpression` is a subfederation of `String`.
+13. `attachDeclarationSyntax` is total and pure.
+14. Parsing remains application-owned behind the DatraTypes parser capability.
+15. `_StrExpr` uses exactly
     `let val _StrExpr := &T? do yield datra.StrExpr T`.
-12. Interpolation lowers to ordinary `_show` application and concatenation.
-13. Declaration matching and string evaluation operate on ordinary expression
-    structure.
+16. Quoted interpolation lowers to ordinary `_show` application and
+    concatenation.
+
+## Verification
+
+1. Build the executable and affected suites with `-f-liquid -j1`.
+2. Reject standalone `%` expressions while accepting `%(` inside strings.
+3. Verify canonical and source round trips for every `$` operand shape.
+4. Verify `a := value` and `$a := value` produce the same typed declaration
+   head.
+5. Verify specification, reverse specification, and subfederation for concrete
+   and structural identifier expressions.
+6. Verify every evaluated string-expression category produces only strings.
+7. Verify interpolation projection and matching use the application parser
+   capability without introducing a second parser in DatraTypes.
+8. Verify interpolation with zero, one, and multiple holes when `_show`
+   lowering is enabled.

@@ -11,8 +11,8 @@ import DatraLanguage.DependentDeclaration
   ( applyDeclarationModifier
   , removeDeclarationModifier
   )
-import DatraLanguage.SyntaxTemplate
-  ( FunctionSyntax (..), SyntaxPiece (..), SyntaxTemplate (..) )
+import DatraLanguage.StringExpression
+  ( FunctionSyntax (..) )
 import DatraTypes
 
 datraHostIdentifier :: String
@@ -156,7 +156,7 @@ datraHostValue = do
         source = datraMemberSource [name]
         simpleSyntax :: FunctionSyntax value
         simpleSyntax = FunctionSyntax
-          [SyntaxTemplate [SyntaxLiteral name]]
+          [[StringTemplateLiteral name]]
     nativeBody namespace name implementation =
       (name, runtimeBody source Nothing invoke)
       where

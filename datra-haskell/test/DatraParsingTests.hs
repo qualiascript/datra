@@ -42,8 +42,8 @@ import DatraLanguage.AST.Syntax
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST.Source (renderSourceExpression)
-import DatraLanguage.SyntaxTemplate qualified as SyntaxTemplate
-import DatraLanguage.SyntaxTemplate (TemplateSelection (..))
+import DatraLanguage.StringExpression qualified as StringExpressions
+import DatraLanguage.StringExpression (TemplateSelection (..))
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
@@ -76,20 +76,20 @@ import Parsing
   , parseDatraAst
   , parseDatraRawLocatedWithSourceName
   , parseNeutralPhrase
+  , stringInterpolationParser
   )
-import SyntaxDefinitions
-  ( SyntaxHoleKind (..)
-  , SyntaxPiece (..)
+import StringInterpolation
+  ( StringExpression (..)
   , SyntaxRule (..)
   , SyntaxRuleSemantics (..)
-  , SyntaxTemplate (..)
+  , StringInterpolationTemplate
   , declarationRuleBranches
   , declarationRules
   , expandSyntax
   )
-import SyntaxTemplateAdmissibility (validateSyntaxTemplate)
-import SyntaxTemplateMatching
-  ( SyntaxTemplateMatchFailure (..)
+import StringInterpolation.Admissibility (validateStringInterpolation)
+import StringInterpolation.Matching
+  ( StringInterpolationMatchFailure (..)
   , matchSyntaxRules
   )
 import Numeric (showHex)
@@ -399,7 +399,6 @@ genericArgument polarity name optionalName bound = GenericArgument
   , genericArgumentName = SimpleIdentifierString name
   , genericArgumentOptional = optionalName
   , genericArgumentBound = bound
-  , genericArgumentSource = Nothing
   }
 
 genericIntroduction :: GenericBinder Expression -> Expression
@@ -457,7 +456,9 @@ testDependentDeclarationPrecedence = do
                   (IdentifierExpressionBody (ref "hello")))
               , ref "Int"
               ])))))
-  case (dependentDeclaration expected, declarationRuleBranches expected) of
+  case ( dependentDeclaration expected
+       , declarationRuleBranches stringInterpolationParser expected
+       ) of
     (Just declaration, branches) ->
       assertEqual
         "compiled syntax branches retain dependent-declaration identity and order"
@@ -535,8 +536,8 @@ regressionTests = do
         == "_this 2"
     )
   assert "literal template text cannot manufacture interpolation holes"
-    ((SyntaxTemplate.literalSyntaxTemplate "%Int++" :: SyntaxTemplate ())
-      == SyntaxTemplate [SyntaxLiteral "%Int++"])
+    ((StringExpressions.literalStringInterpolationTemplate "%Int++" :: StringInterpolationTemplate ())
+      == [StringTemplateLiteral "%Int++"])
   assert "the neutral reader retains an unknown postfix symbolic literal"
     (case parseDatraRawLocatedWithSourceName "<postfix-syntax>" "(2++)" of
       Right (_, Located _ parsed) ->
@@ -544,38 +545,39 @@ regressionTests = do
           (FunctionApplication (natural 2) (ref "++"))
       Left _ -> False)
   let holeKinds =
-        [ ExpressionSyntaxHole (ref "_Expr")
-        , BlockSyntaxHole (ref "_Block")
-        , FunctionBodySyntaxHole (ref "_FunctionBody")
-        , DeclarationSyntaxHole (ref "_DependentDeclaration")
-        , DependentArgumentSyntaxHole (ref "_DependentArgument")
-        , ValueSyntaxHole (ref "Int")
+        [ ExpressionString (ref "_Expr")
+        , BlockString (ref "_Block")
+        , FunctionBodyString (ref "_FunctionBody")
+        , DeclarationString (ref "_DependentDeclaration")
+        , DependentArgumentString (ref "_DependentArgument")
+        , ValueString (ref "Int")
         ]
   assert "admissibility covers every typed hole kind"
     (all
-      (\kind -> validateSyntaxTemplate
-        (SyntaxTemplate [SyntaxHole kind]) == Right ())
+      (\kind -> validateStringInterpolation
+        stringInterpolationParser
+        [StringTemplateInterpolation kind] == Right ())
       holeKinds)
   assert "expression witnesses remain recoverable after a literal prefix"
-    (validateSyntaxTemplate
-      (SyntaxTemplate
-        [ SyntaxLiteral "call"
-        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
-        ]) == Right ())
+    (validateStringInterpolation
+      stringInterpolationParser
+      [ StringTemplateLiteral "call"
+      , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
+      ] == Right ())
   assert "expression witnesses remain recoverable before a literal suffix"
-    (validateSyntaxTemplate
-      (SyntaxTemplate
-        [ SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
-        , SyntaxLiteral "after"
-        ]) == Right ())
+    (validateStringInterpolation
+      stringInterpolationParser
+      [ StringTemplateInterpolation (ExpressionString (ref "_Expr"))
+      , StringTemplateLiteral "after"
+      ] == Right ())
   assert "multiple holes retain both adjacent literal boundaries"
-    (validateSyntaxTemplate
-      (SyntaxTemplate
-        [ SyntaxLiteral "left"
-        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
-        , SyntaxLiteral "middle"
-        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
-        ]) == Right ())
+    (validateStringInterpolation
+      stringInterpolationParser
+      [ StringTemplateLiteral "left"
+      , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
+      , StringTemplateLiteral "middle"
+      , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
+      ] == Right ())
   assert "the parser-owned expression witness inventory remains parseable"
     (all
       (\source -> case parseNeutralPhrase source of
@@ -584,7 +586,7 @@ regressionTests = do
       (neutralExpressionWitnessSources "_witness" "_operand"))
   let zeroCaptureSyntax = SyntaxRule
         { syntaxName = "answer"
-        , syntaxTemplate = SyntaxTemplate []
+        , stringInterpolationTemplate = []
         , syntaxSemantics = SyntaxAdapter (ref "answer")
         }
   assert "zero-hole syntax supplies the empty capture tail"
@@ -595,39 +597,39 @@ regressionTests = do
         (AtlasMap []))
   let syntaxFunction name pieces = SyntaxRule
         { syntaxName = name
-        , syntaxTemplate = SyntaxTemplate (SyntaxLiteral name : pieces)
+        , stringInterpolationTemplate = StringTemplateLiteral name : pieces
         , syntaxSemantics = SyntaxAdapter (ref name)
         }
-      intHole = SyntaxHole (ValueSyntaxHole (ref "Int"))
-      intLimitHole = SyntaxHole (ValueSyntaxHole (ref "IntLimit"))
+      intHole = StringTemplateInterpolation (ValueString (ref "Int"))
+      intLimitHole = StringTemplateInterpolation (ValueString (ref "IntLimit"))
       fromPhrase = foldl FunctionApplication (ref "from")
         [natural 0, ref "to", ref "Infinity"]
       matchesNumericHole kind value = case (kind, value) of
-        (ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "Int")),
+        (ValueString (IdentifierReference (SimpleIdentifierString "Int")),
           EllipsisNatural _) -> True
-        (ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "Int")),
+        (ValueString (IdentifierReference (SimpleIdentifierString "Int")),
           Minus (EllipsisNatural _)) -> True
-        (ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "IntLimit")),
+        (ValueString (IdentifierReference (SimpleIdentifierString "IntLimit")),
           EllipsisNatural _) -> True
-        (ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "IntLimit")),
+        (ValueString (IdentifierReference (SimpleIdentifierString "IntLimit")),
           Minus (EllipsisNatural _)) -> True
-        (ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "IntLimit")),
+        (ValueString (IdentifierReference (SimpleIdentifierString "IntLimit")),
           IdentifierReference
             (SimpleIdentifierString "Infinity")) -> True
         _ -> False
       wrongFrom = syntaxFunction "from"
-        [intHole, SyntaxLiteral "to", intHole]
+        [intHole, StringTemplateLiteral "to", intHole]
       correctFrom = syntaxFunction "from"
-        [intHole, SyntaxLiteral "to", intLimitHole]
+        [intHole, StringTemplateLiteral "to", intLimitHole]
       unrelated = syntaxFunction "unrelated"
         [ intHole
-        , SyntaxLiteral "to"
+        , StringTemplateLiteral "to"
         , intLimitHole
-        , SyntaxLiteral "with-more-template-text"
+        , StringTemplateLiteral "with-more-template-text"
         ]
   assert "Int template holes reject an Infinity AST"
     (matchRules matchesNumericHole [wrongFrom] fromPhrase
-      == Left NoMatchingSyntaxTemplate)
+      == Left NoMatchingStringInterpolation)
   assert "IntLimit template holes accept an Infinity AST"
     (let expected = expandSyntax correctFrom
           (TemplateSelection fromPhrase [natural 0, ref "Infinity"])
@@ -639,9 +641,9 @@ regressionTests = do
         fromPhrase
         == matchRules matchesNumericHole [correctFrom] fromPhrase
     )
-  assert "syntax templates rewrite an AST after it is read"
+  assert "string interpolations rewrite an AST after it is read"
     (case parseSourceLocated False
-        "<syntax-template-test>" "(from 0 to Infinity)" of
+        "<string-interpolation-test>" "(from 0 to Infinity)" of
       Right (Located _ parsedPhrase) ->
         matchRules matchesNumericHole [correctFrom] parsedPhrase
           == matchRules matchesNumericHole [correctFrom] fromPhrase
@@ -650,11 +652,11 @@ regressionTests = do
         [natural 0, AtlasMap [ref "to", ref "Infinity"]]
   assert "matching does not flatten through a nested AST boundary"
     (matchRules matchesNumericHole [correctFrom] nestedTailPhrase
-      == Left NoMatchingSyntaxTemplate)
+      == Left NoMatchingStringInterpolation)
   let greedyRule = syntaxFunction "greedy"
-        [ SyntaxHole (ValueSyntaxHole (ref "Prefix"))
-        , SyntaxLiteral "marker"
-        , SyntaxHole (ValueSyntaxHole (ref "Tail"))
+        [ StringTemplateInterpolation (ValueString (ref "Prefix"))
+        , StringTemplateLiteral "marker"
+        , StringTemplateInterpolation (ValueString (ref "Tail"))
         ]
       greedyPhrase = foldl FunctionApplication (ref "greedy")
         [ natural 1
@@ -666,9 +668,9 @@ regressionTests = do
       greedyPrefix = foldl FunctionApplication (natural 1)
         [ref "marker", natural 2]
       matchesGreedyHole kind value = case kind of
-        ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "Prefix")) ->
+        ValueString (IdentifierReference (SimpleIdentifierString "Prefix")) ->
           True
-        ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "Tail")) ->
+        ValueString (IdentifierReference (SimpleIdentifierString "Tail")) ->
           value == natural 3
         _ -> False
   assert "holes match greedily inside the current AST boundary"
@@ -679,7 +681,7 @@ regressionTests = do
   let contextualShort = syntaxFunction "contextual"
         [intHole]
       contextualLong = syntaxFunction "contextual"
-        [intHole, SyntaxLiteral "marker", intHole]
+        [intHole, StringTemplateLiteral "marker", intHole]
       contextualPhrase = foldl FunctionApplication (ref "contextual")
         [natural 1, ref "marker", natural 2, ref "after"]
   assert "the first declaration wins and leaves its unmatched AST suffix"
@@ -691,11 +693,11 @@ regressionTests = do
           == Right (foldl FunctionApplication expanded
             [ref "marker", natural 2, ref "after"]))
   let rankedShort = syntaxFunction "ranked"
-        [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
+        [StringTemplateInterpolation (ExpressionString (ref "_Expr"))]
       rankedLong = syntaxFunction "ranked"
-        [ SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
-        , SyntaxLiteral "marker"
-        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
+        [ StringTemplateInterpolation (ExpressionString (ref "_Expr"))
+        , StringTemplateLiteral "marker"
+        , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
         ]
       rankedPhrase = foldl FunctionApplication (ref "ranked")
         [natural 1, ref "marker", natural 2]
@@ -2214,12 +2216,13 @@ regressionTests = do
     (natural 1 <:> natural 2)
 
 matchRules
-  :: (SyntaxHoleKind Expression -> Expression -> Bool)
+  :: (StringExpression Expression -> Expression -> Bool)
   -> [SyntaxRule]
   -> Expression
-  -> Either SyntaxTemplateMatchFailure Expression
+  -> Either StringInterpolationMatchFailure Expression
 matchRules holeMatches rules expressionValue =
-  matchSyntaxRules holeMatches rules expressionValue
+  matchSyntaxRules stringInterpolationParser
+    holeMatches rules expressionValue
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
@@ -2469,7 +2472,9 @@ assertStandardSyntaxDeclarationsAdmissible = do
       let declarations = syntaxDeclarations raw
       assert "Std contains syntax declarations" (not (null declarations))
       assert "every Std syntax declaration is admissible"
-        (all (not . null . declarationRules) declarations)
+        (all
+          (not . null . declarationRules stringInterpolationParser)
+          declarations)
   where
     syntaxDeclarations expressionValue = current
       <> concatMap syntaxDeclarations

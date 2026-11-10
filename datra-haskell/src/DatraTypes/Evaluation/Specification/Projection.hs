@@ -6,13 +6,12 @@ module Evaluation.Specification.Projection
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
 import BooleanType (DatraBoolean (..))
-import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError)
 import Evaluation.Identifier (identifierNameFederationFor)
 import Evaluation.Map (makeAtlasMapPreservingSingleton)
 import Evaluation.Specification (specifyValues)
 import Evaluation.Value
-import DatraLanguage.SyntaxTemplate
+import DatraLanguage.StringExpression
   ( TemplateSelection (..)
   , templateSelectionProjection
   )

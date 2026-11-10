@@ -59,13 +59,17 @@ library
         DatraLanguage.DependentDeclaration
         DatraLanguage.ContextualRole
         DatraLanguage.ContextualDeclaration
-        DatraLanguage.SyntaxTemplate
+        DatraLanguage.StringExpression
         DatraLanguage.NeutralLexer
         DatraLanguage.Identifier
         DatraLanguage.Pretty
         DatraLanguage.StringTemplate
         DatraTypes
         DatraTypes.DependentTypes
+        StringInterpolation
+        StringInterpolation.Admissibility
+        StringInterpolation.Matching
+        StringInterpolation.Projection
         AsciiMap
         AsciiString
         MapOperators
@@ -343,16 +347,12 @@ executable datra-haskell
         FunctionClosure
         GenericScopeProtection
         LibraryFiles
-        SyntaxDefinitions
-        SyntaxTemplateAdmissibility
-        SyntaxTemplateMatching
-        SyntaxTemplateProjection
+        Parsing
         SyntaxRewriting
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
         SyntaxRewriting.Diagnostics
         SyntaxRewriting.Stack
-        Parsing
         Rendering
         ScopeProtection
         Paths_datra_haskell
@@ -409,12 +409,8 @@ test-suite datra-parsing-test
         GenericScopeProtection
         Rendering
         ScopeProtection
-        Parsing
         LibraryFiles
-        SyntaxDefinitions
-        SyntaxTemplateAdmissibility
-        SyntaxTemplateMatching
-        SyntaxTemplateProjection
+        Parsing
         SyntaxRewriting
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
@@ -460,16 +456,12 @@ test-suite datra-interpreting-test
         FunctionClosure
         GenericScopeProtection
         LibraryFiles
-        SyntaxDefinitions
-        SyntaxTemplateAdmissibility
-        SyntaxTemplateMatching
-        SyntaxTemplateProjection
+        Parsing
         SyntaxRewriting
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
         SyntaxRewriting.Diagnostics
         SyntaxRewriting.Stack
-        Parsing
         Rendering
         ScopeProtection
         Paths_datra_haskell

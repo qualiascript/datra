@@ -43,7 +43,7 @@ module DatraTypes
   , coalizeMapMemberAt
   , syntaxCategoryTypeValue
   , captureSyntaxExpression
-  , specializeSyntaxHoleKind
+  , specializeStringExpression
   , functionAlternatives
   , isFunctionFamily
   , anyTypeValue
@@ -114,6 +114,8 @@ module DatraTypes
   , listTypeValue
   , streamTypeValue
   , CanonicalStringCodec (..)
+  , stringFederationValue
+  , stringConversionIsIdentity
   , toStringValue
   , templateValue
   , stripOuterIdentifierValue
@@ -305,7 +307,7 @@ import Evaluation.Construction
   )
 import Evaluation.Coalization (coalizeMapMemberAt, coalizeValue)
 import Evaluation.SyntaxCapture
-  ( captureSyntaxExpression, specializeSyntaxHoleKind )
+  ( captureSyntaxExpression, specializeStringExpression )
 import Evaluation.Boolean
   ( booleanAndValues
   , booleanCondition
@@ -346,6 +348,8 @@ import Evaluation.Optional
   )
 import Evaluation.ToString
   ( CanonicalStringCodec (..)
+  , stringConversionIsIdentity
+  , stringFederationValue
   , templateValue
   , toStringValue
   )

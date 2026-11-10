@@ -26,7 +26,7 @@ import DatraLanguage.Diagnostics.Application
   , ModuleLoadFailure (..)
   , ParseFailure (..)
   , SyntaxRewriteFailure (..)
-  , SyntaxTemplateAdmissibilityFailure (..)
+  , StringInterpolationAdmissibilityFailure (..)
   )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import Evaluation.Error
@@ -132,11 +132,11 @@ localizeSyntaxRewriteFailure failure = case failure of
   ExpectedDependentDeclaration expressionValue ->
     LocalizedMessage "operation has no effect inside block"
       ["expression: " <> renderSourceExpression expressionValue]
-  InvalidRewriteSyntaxTemplate template failureReason ->
+  InvalidRewriteStringInterpolation template failureReason ->
     LocalizedMessage
-      (syntaxTemplateFailureSummary template failureReason)
+      (stringInterpolationFailureSummary template failureReason)
       [ "pattern: " <> template
-      , syntaxTemplateFailureDetail failureReason
+      , stringInterpolationFailureDetail failureReason
       ]
   RejectedSyntaxCandidates attempts ->
     LocalizedMessage "syntax candidates were rejected by typing"
@@ -321,11 +321,11 @@ localizeInterpretingError reason =
       LocalizedMessage
         "value does not have a canonical string conversion"
         ["only injective, round-trippable string conversions are accepted"]
-    InvalidSyntaxTemplate template failure ->
+    InvalidStringInterpolation template failure ->
       LocalizedMessage
-        (syntaxTemplateFailureSummary template failure)
+        (stringInterpolationFailureSummary template failure)
         [ "pattern: " <> show template
-        , syntaxTemplateFailureDetail failure
+        , stringInterpolationFailureDetail failure
         ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
@@ -350,27 +350,27 @@ localizeInterpretingError reason =
         "string contains a character outside the ASCII map"
         ["character: " <> show character]
 
-syntaxTemplateFailureSummary
+stringInterpolationFailureSummary
   :: String
-  -> SyntaxTemplateAdmissibilityFailure
+  -> StringInterpolationAdmissibilityFailure
   -> String
-syntaxTemplateFailureSummary _ NeutralSyntaxTemplateParseFailure =
+stringInterpolationFailureSummary _ NeutralStringInterpolationParseFailure =
   "syntax pattern cannot be read by the neutral source parser"
-syntaxTemplateFailureSummary _ (IncompleteCoreSyntaxOperator operator) =
+stringInterpolationFailureSummary _ (IncompleteCoreSyntaxOperator operator) =
   "syntax pattern ends with the incomplete core operator " <> operator
-syntaxTemplateFailureSummary _ SyntaxTemplateProjectionLoss =
+stringInterpolationFailureSummary _ StringInterpolationProjectionLoss =
   "syntax pattern loses a literal or hole during matching"
-syntaxTemplateFailureSummary _ UnstableSyntaxTemplateProjection =
+stringInterpolationFailureSummary _ UnstableStringInterpolationProjection =
   "syntax pattern changes when rendered and parsed again"
 
-syntaxTemplateFailureDetail :: SyntaxTemplateAdmissibilityFailure -> String
-syntaxTemplateFailureDetail NeutralSyntaxTemplateParseFailure =
+stringInterpolationFailureDetail :: StringInterpolationAdmissibilityFailure -> String
+stringInterpolationFailureDetail NeutralStringInterpolationParseFailure =
   "the complete pattern must be parseable before declared syntax is installed"
-syntaxTemplateFailureDetail (IncompleteCoreSyntaxOperator _) =
+stringInterpolationFailureDetail (IncompleteCoreSyntaxOperator _) =
   "the complete pattern must supply the operator's required operand"
-syntaxTemplateFailureDetail SyntaxTemplateProjectionLoss =
+stringInterpolationFailureDetail StringInterpolationProjectionLoss =
   "the matcher cannot recover every pattern boundary from the neutral AST"
-syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
+stringInterpolationFailureDetail UnstableStringInterpolationProjection =
   "the recovered neutral form must survive a canonical round trip"
 
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage

@@ -55,6 +55,7 @@ decideClosedPublicResultContract = go 256
               combine (descend target : map descend branches)
             RangeConcatenationForm _ _ -> eligible
             AsciiStringForm _ -> eligible
+            IdentifierExpressionForm _ -> eligible
             ToStringForm -> eligible
             TemplateForm underlying -> descend underlying
             SpecificationForm specification ->

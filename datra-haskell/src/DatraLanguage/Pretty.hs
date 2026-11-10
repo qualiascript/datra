@@ -46,7 +46,8 @@ prettyOperator :: OperatorExpression -> Doc annotation
 prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
 prettyOperator SkipValue = pretty skipSourceSymbol
-prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
+prettyOperator (AsciiStringValue value) =
+  pretty (renderStandardStringLiteral value)
 prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
 prettyOperator (StringTemplateValue parts) =

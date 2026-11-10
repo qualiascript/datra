@@ -37,7 +37,6 @@ import Data.Functor.Const (Const (..))
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.AST.Operator (Operator (..))
-import DatraLanguage.Diagnostics (SourceSpan)
 import DatraLanguage.StringTemplate (StringTemplatePart (..))
 import Numeric.Natural (Natural)
 
@@ -66,7 +65,6 @@ data GenericArgument expression = GenericArgument
   , genericArgumentName :: SimpleIdentifierString
   , genericArgumentOptional :: Bool
   , genericArgumentBound :: expression
-  , genericArgumentSource :: Maybe SourceSpan
   }
   deriving (Eq, Ord, Show)
 
@@ -79,7 +77,6 @@ mapGenericArgument visit argument = GenericArgument
   , genericArgumentName = genericArgumentName argument
   , genericArgumentOptional = genericArgumentOptional argument
   , genericArgumentBound = visit (genericArgumentBound argument)
-  , genericArgumentSource = genericArgumentSource argument
   }
 
 genericArgumentExpression :: GenericArgument Expression -> Expression

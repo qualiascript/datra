@@ -107,9 +107,9 @@ standardLibraryTests =
             "yield datra.Template"
             (SourceEvaluationFailure (UnknownIdentifier "Template"))
         , programFailureCase
-            "the former SyntaxTemplate host target is unavailable"
-            "yield datra.SyntaxTemplate"
-            (SourceEvaluationFailure (UnknownIdentifier "SyntaxTemplate"))
+            "StringInterpolationTemplate is not a host target"
+            "yield datra.StringInterpolationTemplate"
+            (SourceEvaluationFailure (UnknownIdentifier "StringInterpolationTemplate"))
         ]
     , testGroup "final-page length"
         [ programCase "finite lengths use the final page"

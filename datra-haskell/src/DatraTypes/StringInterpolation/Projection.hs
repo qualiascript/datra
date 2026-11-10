@@ -2,9 +2,10 @@
 -- AST structure. Core operators therefore keep their ordinary AST meaning:
 -- @~name@ is 'Lookup name' and @left, right@ is 'MapConcatenation left right'.
 -- This module never manufactures identifier spellings for operators.
-module SyntaxTemplateProjection
-  ( structuralTemplateCaptures
-  , projectSyntaxTemplate
+module StringInterpolation.Projection
+  ( StringInterpolationParser (..)
+  , structuralTemplateCaptures
+  , projectStringInterpolation
   , applicationPhrase
   , applicationSpine
   , applicationFrom
@@ -18,33 +19,46 @@ import DatraLanguage.AST
   , mapExpressionChildren
   )
 import DatraLanguage.AST.Source (renderSourceExpression)
-import DatraLanguage.SyntaxTemplate
-  ( SyntaxHoleKind
-  , SyntaxPiece (..)
-  , SyntaxTemplate (..)
+import DatraLanguage.StringExpression
+  ( StringExpression
+  , StringTemplatePart (..)
+  , StringInterpolationTemplate
   )
-import Parsing (parseNeutralPhrase)
+
+-- | Parser capabilities supplied by the application. This is the same
+-- dependency-inversion boundary used by evaluated string conversion: the
+-- type operation owns the protocol, while the application owns parsing.
+data StringInterpolationParser = StringInterpolationParser
+  { parseStringInterpolationExpression :: String -> Maybe Expression
+  , stringInterpolationExpressionWitnesses
+      :: String -> String -> [String]
+  , incompleteStringInterpolationPrefixOperator
+      :: String -> Maybe String
+  }
 
 data LoweredTemplate = LoweredTemplate
   { loweredTemplateExpression :: Expression
-  , loweredTemplateHoles :: [(Expression, SyntaxHoleKind Expression)]
+  , loweredTemplateHoles :: [(Expression, StringExpression Expression)]
   }
 
 -- | Lower literal text and holes together. Because the same neutral parser
 -- reads templates and programs, precedence and operator ownership are defined
 -- exactly once.
-lowerTemplate :: SyntaxTemplate Expression -> Maybe LoweredTemplate
-lowerTemplate (SyntaxTemplate pieces) = firstValid [0 ..]
+lowerTemplate
+  :: StringInterpolationParser
+  -> StringInterpolationTemplate Expression
+  -> Maybe LoweredTemplate
+lowerTemplate parser pieces = firstValid [0 ..]
   where
-    kinds = [kind | SyntaxHole kind <- pieces]
+    kinds = [kind | StringTemplateInterpolation kind <- pieces]
     firstValid [] = Nothing
     firstValid (base : remaining) =
       let markers = zipWith (\offset kind ->
             (EllipsisNatural (base + fromIntegral offset), kind))
             [0 :: Int ..] kinds
           source = unwords (render pieces (map fst markers))
-      in case parseNeutralPhrase source of
-          Right expressionValue
+      in case parseStringInterpolationExpression parser source of
+          Just expressionValue
             | all ((== 1) . markerOccurrences expressionValue . fst) markers ->
                 Just LoweredTemplate
                   { loweredTemplateExpression = expressionValue
@@ -52,11 +66,11 @@ lowerTemplate (SyntaxTemplate pieces) = firstValid [0 ..]
                   }
           _ -> firstValid remaining
     render [] _ = []
-    render (SyntaxLiteral literal : remaining) markers =
+    render (StringTemplateLiteral literal : remaining) markers =
       literal : render remaining markers
-    render (SyntaxHole {} : remaining) (marker : markers) =
+    render (StringTemplateInterpolation {} : remaining) (marker : markers) =
       renderSourceExpression marker : render remaining markers
-    render (SyntaxHole {} : _) [] = []
+    render (StringTemplateInterpolation {} : _) [] = []
 
 markerOccurrences :: Expression -> Expression -> Int
 markerOccurrences source marker = length
@@ -73,10 +87,12 @@ expressionClosure value = value : concatMap expressionClosure
 -- application position may greedily absorb several application members;
 -- elsewhere it captures the exact AST subtree selected by the parser.
 structuralTemplateCaptures
-  :: SyntaxTemplate Expression
+  :: StringInterpolationParser
+  -> StringInterpolationTemplate Expression
   -> Expression
-  -> [[(SyntaxHoleKind Expression, Expression)]]
-structuralTemplateCaptures template source = case lowerTemplate template of
+  -> [[(StringExpression Expression, Expression)]]
+structuralTemplateCaptures parser template source =
+  case lowerTemplate parser template of
   Nothing -> []
   Just lowered ->
     [ zip (map snd holes)
@@ -182,16 +198,17 @@ expressionShape = mapExpressionChildren (const shapeChild)
   where
     shapeChild = EllipsisLiteral
 
-type CaptureHole = SyntaxHoleKind Expression -> Expression -> Maybe Expression
+type CaptureHole = StringExpression Expression -> Expression -> Maybe Expression
 
-projectSyntaxTemplate
-  :: CaptureHole
-  -> SyntaxTemplate Expression
+projectStringInterpolation
+  :: StringInterpolationParser
+  -> CaptureHole
+  -> StringInterpolationTemplate Expression
   -> Expression
   -> Maybe [Expression]
-projectSyntaxTemplate capture template expressionValue = firstJust
+projectStringInterpolation parser capture template expressionValue = firstJust
   [ traverseCaptures structural
-  | structural <- structuralTemplateCaptures template expressionValue
+  | structural <- structuralTemplateCaptures parser template expressionValue
   ]
   where
     traverseCaptures [] = Just []

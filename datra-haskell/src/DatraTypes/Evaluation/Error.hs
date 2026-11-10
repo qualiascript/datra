@@ -16,7 +16,7 @@ module Evaluation.Error
 
 import DatraOrdinal (Ordinal)
 import DatraLanguage.Diagnostics.Application
-  ( SyntaxTemplateAdmissibilityFailure )
+  ( StringInterpolationAdmissibilityFailure )
 import MapOperators.AccessOperator (AccessError)
 import Numeric.Natural (Natural)
 import SuperEllipsisRange
@@ -160,9 +160,9 @@ data InterpretingError
   | AtlasMapFederationOperationUndecidable AtlasMapFederationUncertainty
   | NonInjectiveStringInterpolation
   | NoCanonicalStringConversion
-  | InvalidSyntaxTemplate
+  | InvalidStringInterpolation
       String
-      SyntaxTemplateAdmissibilityFailure
+      StringInterpolationAdmissibilityFailure
   | EitherAlternativesNotDistinct
   | AmbiguousStringTemplate
   | LookupRequiresString InterpretedValueKind

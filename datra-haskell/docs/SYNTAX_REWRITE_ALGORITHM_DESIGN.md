@@ -136,8 +136,8 @@ structuralPatternCaptures
 The first expression is the ordinary structural pattern retained from the
 syntax declaration. Each pair is the declared target expression and the
 neutral source expression selected for that position. Literal positions are
-ordinary `IdentifierLiteral` nodes; hole behavior is not encoded in a parallel
-template representation.
+ordinary `IdentifierExpression` nodes; hole behavior is not encoded in a
+parallel template representation.
 
 Rules are enumerated in declaration order. Structural projections for a rule
 are enumerated in deterministic AST order. Each structural
@@ -240,7 +240,8 @@ When no child remains, finalization returns the expression already stored on
 the node. There is no reconstruction pass.
 
 The traversal is uniform over the AST. The stack has no independent knowledge
-of `SyntaxTemplate` or any other expression constructor.
+of string-interpolation representation or any particular expression
+constructor.
 
 ## Neutral sequences
 
@@ -266,13 +267,11 @@ once. Its unfinished children then follow the same ordinary traversal.
 
 ## Declaration modifiers
 
-Declaration assembly has one name domain: `datra.IdentifierLiteral`. A bare
+Declaration assembly has one name domain: `datra.IdentifierExpr`. A bare
 identifier reference in the complete left-hand-side position is normalized to
-its corresponding static identifier literal; every other left-hand side must
-subtype `datra.IdentifierLiteral`. `SyntaxTemplate` is such a subtype, while
-`Str` is not. Consequently a declaration can use an abstract identifier-literal
-head, but it cannot consume a string as a name without an explicit `$`
-conversion.
+its corresponding identifier expression. Every dependent declaration stores
+an `IdentifierExpression` head, so invalid head states are unrepresentable.
+Strings become names only through an explicit `$` expression.
 
 `let`, `def`, and `val` are standard-library syntax, not expression
 constructors and not projection cases. Their syntax functions operate on a
@@ -367,6 +366,5 @@ acceptable fix.
 17. Root finalization is the only terminal transition.
 18. Declared syntax is stored and matched as ordinary expression structure.
 19. Syntax rewriting uses structural AST data exclusively.
-20. Dependent-declaration heads are identifier references or expressions that
-    subtype `datra.IdentifierLiteral`; `SyntaxTemplate` is in that domain and
-    `Str` is not.
+20. Every dependent-declaration head is an `IdentifierExpression`; a bare
+    left-hand identifier is normalized to that representation while parsing.

@@ -28,8 +28,8 @@ import DatraLanguage.AST (Expression)
 import DatraLanguage.Diagnostics (DatraError, SourceSpan)
 import DatraLanguage.Diagnostics.Application
   ( CandidateRejectionReason (..), SyntaxRewriteFailure )
-import DatraLanguage.SyntaxTemplate
-  ( SyntaxHoleKind
+import DatraLanguage.StringExpression
+  ( StringExpression
   , TemplateSelection
   )
 import DatraTypes
@@ -37,15 +37,15 @@ import DatraTypes
   , SyntaxFunctionExpansion
   , SyntaxFunctionInsertion
   )
-import SyntaxDefinitions (SyntaxRule)
+import StringInterpolation (SyntaxRule)
 
 type ClassifyHoles =
-  [SyntaxHoleKind Expression]
-  -> [(SyntaxHoleKind Expression, Maybe InterpretedValue)]
+  [StringExpression Expression]
+  -> [(StringExpression Expression, Maybe InterpretedValue)]
 
 type CaptureHole =
-  [(SyntaxHoleKind Expression, Expression)]
-  -> SyntaxHoleKind Expression
+  [(StringExpression Expression, Expression)]
+  -> StringExpression Expression
   -> Expression
   -> Maybe Expression
 
@@ -114,7 +114,7 @@ data StructuralCandidate = StructuralCandidate
   , structuralCandidateSelection
       :: TemplateSelection Expression Expression
   , structuralCandidateCaptures
-      :: [(SyntaxHoleKind Expression, Expression)]
+      :: [(StringExpression Expression, Expression)]
   , structuralCandidateRemaining :: [Expression]
   }
 
@@ -146,7 +146,7 @@ data CandidateFrameProgress
   = CandidateFrameNeedsChild
       CandidateFrame
       Int
-      (SyntaxHoleKind Expression)
+      (StringExpression Expression)
       Expression
   | CandidateFrameRejected CandidateRejectionDetails
   | CandidateFrameAccepted

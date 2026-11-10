@@ -193,12 +193,11 @@ import Data.Char (chr)
 import Data.IORef (IORef)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
-import DatraLanguage.SyntaxTemplate
+import DatraLanguage.StringExpression
   ( FunctionSyntax (..)
-  , SyntaxHoleKind (..)
-  , SyntaxPiece (..)
-  , SyntaxTemplate (..)
+  , StringExpression (..)
   )
+import DatraLanguage.StringTemplate (StringTemplatePart (..))
 import DatraLanguage.AST (Expression, SimpleIdentifierString)
 import DatraOrdinal
   ( Ordinal
@@ -459,48 +458,49 @@ functionSyntaxEquivalent
   -> FunctionSyntax InterpretedValue
   -> Bool
 functionSyntaxEquivalent left right =
-  let leftTemplates = functionSyntaxTemplates left
-      rightTemplates = functionSyntaxTemplates right
+  let leftTemplates = functionStringInterpolationTemplates left
+      rightTemplates = functionStringInterpolationTemplates right
   in length leftTemplates == length rightTemplates
     && and (zipWith templateEquivalent leftTemplates rightTemplates)
   where
-    templateEquivalent
-        (SyntaxTemplate leftPieces) (SyntaxTemplate rightPieces) =
+    templateEquivalent leftPieces rightPieces =
       length leftPieces == length rightPieces
         && and (zipWith pieceEquivalent leftPieces rightPieces)
     pieceEquivalent
-        (SyntaxLiteral leftLiteral) (SyntaxLiteral rightLiteral) =
+        (StringTemplateLiteral leftLiteral)
+        (StringTemplateLiteral rightLiteral) =
       leftLiteral == rightLiteral
     pieceEquivalent
-        (SyntaxHole leftHole) (SyntaxHole rightHole) =
+        (StringTemplateInterpolation leftHole)
+        (StringTemplateInterpolation rightHole) =
       holeEquivalent leftHole rightHole
     pieceEquivalent _ _ = False
     holeEquivalent
-        (ExpressionSyntaxHole leftValue)
-        (ExpressionSyntaxHole rightValue) = equivalent leftValue rightValue
+        (ExpressionString leftValue)
+        (ExpressionString rightValue) = equivalent leftValue rightValue
     holeEquivalent
-        (BlockSyntaxHole leftValue)
-        (BlockSyntaxHole rightValue) = equivalent leftValue rightValue
+        (BlockString leftValue)
+        (BlockString rightValue) = equivalent leftValue rightValue
     holeEquivalent
-        (FunctionBodySyntaxHole leftValue)
-        (FunctionBodySyntaxHole rightValue) = equivalent leftValue rightValue
+        (FunctionBodyString leftValue)
+        (FunctionBodyString rightValue) = equivalent leftValue rightValue
     holeEquivalent
-        (DeclarationSyntaxHole leftValue)
-        (DeclarationSyntaxHole rightValue) = equivalent leftValue rightValue
+        (DeclarationString leftValue)
+        (DeclarationString rightValue) = equivalent leftValue rightValue
     holeEquivalent
-        (DependentArgumentSyntaxHole leftValue)
-        (DependentArgumentSyntaxHole rightValue) =
+        (DependentArgumentString leftValue)
+        (DependentArgumentString rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
-        (IdentifierExpressionSyntaxHole leftValue)
-        (IdentifierExpressionSyntaxHole rightValue) =
+        (IdentifierExpressionString leftValue)
+        (IdentifierExpressionString rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
-        (StringLiteralSyntaxHole leftValue)
-        (StringLiteralSyntaxHole rightValue) =
+        (StringLiteralString leftValue)
+        (StringLiteralString rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
-        (ValueSyntaxHole leftValue) (ValueSyntaxHole rightValue) =
+        (ValueString leftValue) (ValueString rightValue) =
       equivalent leftValue rightValue
     holeEquivalent _ _ = False
     equivalent leftValue rightValue =

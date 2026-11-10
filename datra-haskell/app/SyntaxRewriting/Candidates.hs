@@ -7,13 +7,12 @@ module SyntaxRewriting.Candidates
   ) where
 
 import DatraLanguage.AST (Expression (..))
-import DatraLanguage.SyntaxTemplate
-  ( SyntaxHoleKind (..)
-  , SyntaxPiece (..)
-  , SyntaxTemplate (..)
+import DatraLanguage.StringExpression
+  ( StringExpression (..)
+  , StringTemplatePart (..)
   , TemplateSelection (..)
   )
-import SyntaxDefinitions
+import StringInterpolation
   ( SyntaxRule (..) )
 import Data.Map.Strict qualified as Map
 import DatraTypes (InterpretedValue)
@@ -27,11 +26,12 @@ import SyntaxRewriting.Types
   , RewriteRule (..)
   , StructuralCandidate (..)
   )
-import SyntaxTemplateMatching
+import StringInterpolation.Matching
   ( SyntaxMatch (..)
   , StructuralSyntaxMatch (..)
   , enumerateSyntaxRuleSelections
   )
+import Parsing (stringInterpolationParser)
 
 initialCandidateFrame :: StructuralCandidate -> CandidateFrame
 initialCandidateFrame _ = CandidateFrame
@@ -50,8 +50,8 @@ initialCandidateFrame _ = CandidateFrame
 -- type instantiation, finalized-node lookup, and subfederation checking.
 -- Completed captures are retained in the returned frame and never revisited.
 advanceCandidateFrameWith
-  :: ( [(SyntaxHoleKind Expression, Expression)]
-       -> SyntaxHoleKind Expression
+  :: ( [(StringExpression Expression, Expression)]
+       -> StringExpression Expression
        -> Expression
        -> Maybe Expression
      )
@@ -141,8 +141,8 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
               (candidateFramePreparedCaptures frame)]
           ]
 
-        requiresTypedResult ValueSyntaxHole {} _ = True
-        requiresTypedResult StringLiteralSyntaxHole {} _ = True
+        requiresTypedResult ValueString {} _ = True
+        requiresTypedResult StringLiteralString {} _ = True
         requiresTypedResult _ selected = case rewriteResultSelection selected of
           Just _ -> True
           Nothing -> False
@@ -172,12 +172,12 @@ compileRewriteRule rule = RewriteRule
   , rewriteRuleBranch = 0
   , rewriteRuleEvaluation = Nothing
   , rewriteRuleHoleFamilies =
-      [ Nothing | SyntaxHole _ <- pieces ]
+      [ Nothing | StringTemplateInterpolation _ <- pieces ]
   , rewriteRuleSyntaxInsertion = Nothing
   , rewriteRuleReturnType = Nothing
   }
   where
-    pieces = syntaxTemplatePieces (syntaxTemplate rule)
+    pieces = stringInterpolationTemplate rule
 
 enumerateRuleStructuralCandidates
   :: RewriteRule
@@ -197,7 +197,8 @@ enumerateRuleStructuralCandidates compiled projections =
       }
   | (projection, expressionValue) <- zip [0 ..]
       projections
-  , matched <- enumerateSyntaxRuleSelections rule expressionValue
+  , matched <- enumerateSyntaxRuleSelections
+      stringInterpolationParser rule expressionValue
   ]
   where
     rule = rewriteRule compiled

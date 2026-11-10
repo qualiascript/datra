@@ -3,6 +3,7 @@
 module Evaluation.ToString
   ( CanonicalStringCodec (..)
   , toStringValue
+  , stringFederationValue
   , templateValue
   , stringConversionIsIdentity
   , stringFederationConcatenationIsInjective
@@ -35,20 +36,27 @@ toStringValue
   :: CanonicalStringCodec
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-toStringValue codec source =
+toStringValue codec source = Right (stringFederationValue codec source)
+
+-- | Total internal conversion used when constructing a StringExpression.
+-- Every result denotes only strings, including pointwise conversions of
+-- non-total input federations.
+stringFederationValue
+  :: CanonicalStringCodec
+  -> InterpretedValue
+  -> InterpretedValue
+stringFederationValue codec source =
   if stringConversionIsIdentity source
-    then Right source
+    then source
     else if interpretedTypeIsTotal source
       then
-        Right
-          (makeAsciiString
-            (renderCanonicalString codec source))
+        makeAsciiString (renderCanonicalString codec source)
       else
-        Right (pointwiseFederation
+        pointwiseFederation
           (proveInjectiveToString
             (interpretedDatraType source)
             (decodeCanonicalString codec)
-            source))
+            source)
   where
     pointwiseFederation proof =
       makeInterpretedValue

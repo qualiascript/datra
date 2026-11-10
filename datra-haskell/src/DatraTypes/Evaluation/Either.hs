@@ -8,11 +8,11 @@ import AtlasMapFederationExpression
 import Data.List (isPrefixOf, nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
-import DatraLanguage.SyntaxTemplate
+import DatraLanguage.StringExpression
   ( FunctionSyntax (..)
-  , SyntaxPiece (..)
-  , SyntaxTemplate (..)
+  , StringInterpolationTemplate
   )
+import DatraLanguage.StringTemplate (StringTemplatePart (..))
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal, omega)
 import Evaluation.Coalization (valueIsCoalition)
 import Evaluation.Error
@@ -298,8 +298,8 @@ decideSyntaxFunctionAlternatives
           || alternativesAreDistinct
             (functionDomain leftFunction)
             (functionDomain rightFunction)
-      | leftTemplate <- functionSyntaxTemplates leftSyntax
-      , rightTemplate <- functionSyntaxTemplates rightSyntax
+      | leftTemplate <- functionStringInterpolationTemplates leftSyntax
+      , rightTemplate <- functionStringInterpolationTemplates rightSyntax
       ]
     ordinaryRoutesIdentical =
       interpretedSemanticResult (functionDomain leftFunction)
@@ -308,20 +308,20 @@ decideSyntaxFunctionAlternatives
       (functionDomain leftFunction)
       (functionDomain rightFunction))
 
-templatePriority :: SyntaxTemplate value -> Int
-templatePriority (SyntaxTemplate pieces) = length pieces
+templatePriority :: StringInterpolationTemplate value -> Int
+templatePriority = length
 
 alignedLiteralsConflict
-  :: SyntaxTemplate left
-  -> SyntaxTemplate right
+  :: StringInterpolationTemplate left
+  -> StringInterpolationTemplate right
   -> Bool
-alignedLiteralsConflict
-    (SyntaxTemplate leftPieces) (SyntaxTemplate rightPieces) =
+alignedLiteralsConflict leftPieces rightPieces =
   length leftPieces == length rightPieces
     && or (zipWith conflicts leftPieces rightPieces)
   where
     conflicts
-        (SyntaxLiteral leftLiteral) (SyntaxLiteral rightLiteral) =
+        (StringTemplateLiteral leftLiteral)
+        (StringTemplateLiteral rightLiteral) =
       leftLiteral /= rightLiteral
     conflicts _ _ = False
 

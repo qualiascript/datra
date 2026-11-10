@@ -14,8 +14,6 @@ module Evaluation.Construction
 
 import Data.Char (ord)
 import DatraLanguage.AST (SimpleIdentifierString (..))
-import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import Evaluation.Value
 import IntegerRange.Encoding (integerSingletonInsertion)

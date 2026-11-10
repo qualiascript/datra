@@ -1,15 +1,15 @@
 {-# LANGUAGE LambdaCase #-}
 
--- | Declarative AST templates. Syntax function bodies preserve control semantics
+-- | Declarative string interpolations. Syntax function bodies preserve control semantics
 -- without evaluating their captures or interpolating source strings.
-module SyntaxDefinitions
+module StringInterpolation
   ( SyntaxRule (..), DependentSyntaxRule (..)
   , SyntaxRuleSemantics (..), DependentSyntaxInvocation (..)
-  , SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
+  , StringInterpolationTemplate, StringTemplatePart (..), StringExpression (..)
   , TemplateSelection (..)
-  , SyntaxTemplateCompilationFailure (..)
+  , StringInterpolationCompilationFailure (..)
   , declarationRules, declarationRuleBranches, declarationRuleFailures
-  , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
+  , stringInterpolationTemplateFromPattern, stringInterpolationLiteralPrefix
   , syntaxApplicationRule
   , syntaxApplicationImplementation
   , syntaxDependentRule, syntaxRuleAdapter
@@ -22,23 +22,23 @@ import DatraLanguage.DependentDeclaration
   , dependentDeclarationTemplateBranches
   )
 import DatraLanguage.AST
-import DatraLanguage.SyntaxTemplate
-  ( SyntaxHoleKind (..)
-  , SyntaxPiece (..)
-  , SyntaxTemplate (..)
+import DatraLanguage.StringExpression
+  ( StringExpression (..)
+  , StringInterpolationTemplate
   , TemplateSelection (..)
-  , literalSyntaxTemplate
-  , renderSyntaxTemplate
+  , literalStringInterpolationTemplate
+  , renderStringInterpolationTemplate
   )
 import DatraLanguage.Diagnostics.Application
-  ( SyntaxTemplateAdmissibilityFailure )
+  ( StringInterpolationAdmissibilityFailure )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import Data.Either (partitionEithers)
-import SyntaxTemplateAdmissibility (validateStringTemplate)
+import StringInterpolation.Admissibility (validateStringTemplate)
+import StringInterpolation.Projection (StringInterpolationParser)
 
 data SyntaxRule = SyntaxRule
   { syntaxName :: String
-  , syntaxTemplate :: SyntaxTemplate Expression
+  , stringInterpolationTemplate :: StringInterpolationTemplate Expression
   , syntaxSemantics :: SyntaxRuleSemantics
   } deriving (Eq,Show)
 
@@ -77,48 +77,54 @@ syntaxApplicationImplementation rule = case syntaxSemantics rule of
   SyntaxApplication _ implementation -> Just implementation
   _ -> Nothing
 
-data SyntaxTemplateCompilationFailure
-  = InadmissibleSyntaxTemplate
+data StringInterpolationCompilationFailure
+  = InadmissibleStringInterpolation
       String
-      SyntaxTemplateAdmissibilityFailure
+      StringInterpolationAdmissibilityFailure
   deriving (Eq, Show)
 
-declarationRules :: Expression -> [SyntaxRule]
-declarationRules = map third . snd . declarationRuleResults
+declarationRules :: StringInterpolationParser -> Expression -> [SyntaxRule]
+declarationRules parser = map third . snd . declarationRuleResults parser
   where
     third (_, _, rule) = rule
 
 declarationRuleBranches
-  :: Expression
+  :: StringInterpolationParser
+  -> Expression
   -> [(DependentDeclaration Expression, Int, SyntaxRule)]
-declarationRuleBranches = snd . declarationRuleResults
+declarationRuleBranches parser = snd . declarationRuleResults parser
 
-declarationRuleFailures :: Expression -> [SyntaxTemplateCompilationFailure]
-declarationRuleFailures = fst . declarationRuleResults
+declarationRuleFailures
+  :: StringInterpolationParser
+  -> Expression
+  -> [StringInterpolationCompilationFailure]
+declarationRuleFailures parser = fst . declarationRuleResults parser
 
 declarationRuleResults
-  :: Expression
-  -> ( [SyntaxTemplateCompilationFailure]
+  :: StringInterpolationParser
+  -> Expression
+  -> ( [StringInterpolationCompilationFailure]
      , [(DependentDeclaration Expression, Int, SyntaxRule)]
      )
-declarationRuleResults expressionValue =
+declarationRuleResults parser expressionValue =
   case dependentDeclaration expressionValue of
     Nothing -> ([], [])
     Just declaration -> partitionEithers
-      (dependentDeclarationRuleResults declaration)
+      (dependentDeclarationRuleResults parser declaration)
 
 dependentDeclarationRuleResults
-  :: DependentDeclaration Expression
-  -> [Either SyntaxTemplateCompilationFailure
+  :: StringInterpolationParser
+  -> DependentDeclaration Expression
+  -> [Either StringInterpolationCompilationFailure
       (DependentDeclaration Expression, Int, SyntaxRule)]
-dependentDeclarationRuleResults declaration =
+dependentDeclarationRuleResults parser declaration =
   case dependentDeclarationHead declaration of
     IdentifierExpressionBody (IdentifierReference name) ->
       [Right (declaration, 0, simpleApplicationRule declaration name)]
     _ -> zipWith
       (\branch parts ->
         (declaration, branch,) <$>
-          directTemplateRule declaration parts)
+          directTemplateRule parser declaration parts)
       [0 ..]
       (dependentDeclarationSyntaxAlternatives declaration)
 
@@ -129,38 +135,39 @@ simpleApplicationRule
 simpleApplicationRule declaration (SimpleIdentifierString text) =
   syntaxApplicationRule
     text
-    (syntaxTemplateFromPattern text)
+    (stringInterpolationTemplateFromPattern text)
     (dependentLookup [StringTemplateLiteral text] [])
     (dependentDeclarationImplementation declaration)
 
 syntaxApplicationRule
   :: String
-  -> SyntaxTemplate Expression
+  -> StringInterpolationTemplate Expression
   -> Expression
   -> Expression
   -> SyntaxRule
 syntaxApplicationRule name template callable implementation = SyntaxRule
   { syntaxName = name
-  , syntaxTemplate = SyntaxTemplate
-      (syntaxTemplatePieces template <>
-        [SyntaxHole (ExpressionSyntaxHole
-          (IdentifierReference (SimpleIdentifierString "_Expr")))])
+  , stringInterpolationTemplate = template <>
+      [StringTemplateInterpolation (ExpressionString
+        (IdentifierReference (SimpleIdentifierString "_Expr")))]
   , syntaxSemantics = SyntaxApplication callable implementation
   }
 
 directTemplateRule
-  :: DependentDeclaration Expression
+  :: StringInterpolationParser
+  -> DependentDeclaration Expression
   -> [StringTemplatePart Expression]
-  -> Either SyntaxTemplateCompilationFailure SyntaxRule
-directTemplateRule declaration parts = do
-  (template, captures) <- compileDependentDeclarationTemplate parts
+  -> Either StringInterpolationCompilationFailure SyntaxRule
+directTemplateRule parser declaration parts = do
+  (template, captures) <-
+    compileDependentDeclarationTemplate parser parts
   pure SyntaxRule
     { syntaxName = case dependentDeclarationHead declaration of
         IdentifierExpressionBody
             (IdentifierReference (SimpleIdentifierString name)) -> name
         IdentifierExpressionBody (AsciiStringLiteral name) -> name
         _ -> renderSourceExpression (StringTemplate parts)
-    , syntaxTemplate = template
+    , stringInterpolationTemplate = template
     , syntaxSemantics = DependentSyntax (DependentSyntaxRule
         captures
         (dependentDeclarationImplementation declaration)
@@ -174,42 +181,43 @@ dependentDeclarationSyntaxAlternatives declaration =
   maybe [] id (dependentDeclarationTemplateBranches declaration)
 
 compileDependentDeclarationTemplate
-  :: [StringTemplatePart Expression]
-  -> Either SyntaxTemplateCompilationFailure
-      ( SyntaxTemplate Expression
+  :: StringInterpolationParser
+  -> [StringTemplatePart Expression]
+  -> Either StringInterpolationCompilationFailure
+      ( StringInterpolationTemplate Expression
       , [Maybe (SimpleIdentifierString, Expression)]
       )
-compileDependentDeclarationTemplate parts = do
+compileDependentDeclarationTemplate parser parts = do
   let (pieces, captures) = foldMap compilePart parts
-      template = SyntaxTemplate pieces
-  case validateStringTemplate parts template of
-    Left failure -> Left (InadmissibleSyntaxTemplate
-      (renderSyntaxTemplate renderSourceExpression template)
+      template = pieces
+  case validateStringTemplate parser parts template of
+    Left failure -> Left (InadmissibleStringInterpolation
+      (renderStringInterpolationTemplate renderSourceExpression template)
       failure)
     Right () -> Right (template, captures)
   where
     compilePart (StringTemplateLiteral literal) =
-      (syntaxTemplatePieces (syntaxTemplateFromPattern literal), [])
+      (stringInterpolationTemplateFromPattern literal, [])
     compilePart (StringTemplateInterpolation expressionValue) =
       let (target, name) = capture expressionValue
-      in ([SyntaxHole (ValueSyntaxHole target)], [name])
+      in ([StringTemplateInterpolation (ValueString target)], [name])
     capture (SyntaxBoundary inner) = capture inner
     capture (DependentArgument
         (IdentifierReference name) (Just annotation)) =
       (annotation, Just (name, annotation))
     capture value = (value, Nothing)
 
-syntaxTemplateFromPattern :: String -> SyntaxTemplate Expression
-syntaxTemplateFromPattern = literalSyntaxTemplate
+stringInterpolationTemplateFromPattern :: String -> StringInterpolationTemplate Expression
+stringInterpolationTemplateFromPattern = literalStringInterpolationTemplate
 
-syntaxTemplateLiteralPrefix :: SyntaxRule -> [String]
-syntaxTemplateLiteralPrefix = foldr prefix []
-  . syntaxTemplatePieces . syntaxTemplate
+stringInterpolationLiteralPrefix :: SyntaxRule -> [String]
+stringInterpolationLiteralPrefix = foldr prefix []
+  . stringInterpolationTemplate
   where
-    prefix (SyntaxLiteral literal) rest = literal : rest
-    prefix (SyntaxHole _) _ = []
+    prefix (StringTemplateLiteral literal) rest = literal : rest
+    prefix (StringTemplateInterpolation _) _ = []
 
--- | Expand captures selected by one declared syntax template.
+-- | Expand captures selected by one declared string interpolation.
 expandSyntax
   :: SyntaxRule
   -> TemplateSelection Expression Expression

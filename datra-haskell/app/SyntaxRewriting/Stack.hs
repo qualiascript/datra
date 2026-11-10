@@ -9,8 +9,8 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import DatraLanguage.AST
   ( Expression, expressionChildren, traverseExpressionChildren )
-import DatraLanguage.SyntaxTemplate
-  ( SyntaxHoleKind, TemplateSelection (..) )
+import DatraLanguage.StringExpression
+  ( StringExpression, TemplateSelection (..) )
 import DatraTypes (InterpretedValue)
 import SyntaxRewriting.Candidates
   ( advanceCandidateFrameWith, initialCandidateFrame )
@@ -39,8 +39,8 @@ data RewriteStackOperations environment failure = RewriteStackOperations
   , stackCaptureHole
       :: environment
       -> StructuralCandidate
-      -> [(SyntaxHoleKind Expression, Expression)]
-      -> SyntaxHoleKind Expression
+      -> [(StringExpression Expression, Expression)]
+      -> StringExpression Expression
       -> Expression
       -> Maybe Expression
   , stackExpectedHole

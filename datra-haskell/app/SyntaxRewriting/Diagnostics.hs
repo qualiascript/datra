@@ -14,7 +14,7 @@ import DatraLanguage.Diagnostics
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Diagnostics.Application
   ( CandidateRejectionReport (..) )
-import SyntaxDefinitions (SyntaxRule (syntaxName))
+import StringInterpolation (SyntaxRule (syntaxName))
 import Rendering (renderInterpretedValue)
 import SyntaxRewriting.Types
   ( CandidateRejection (..)

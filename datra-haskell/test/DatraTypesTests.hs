@@ -82,7 +82,7 @@ import DatraLanguage.Diagnostics
 import DatraLanguage.Diagnostics.Application
   ( ModuleLoadFailure (CyclicModuleImport)
   , ParseFailure (NeutralSourceParseFailure)
-  , SyntaxTemplateAdmissibilityFailure (..)
+  , StringInterpolationAdmissibilityFailure (..)
   )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
@@ -160,6 +160,8 @@ testTree =
         , testCase "collection length disjointness"
             testCollectionLengthDisjointness
         , testCase "evaluation boundary" testEvaluationBoundary
+        , testCase "string-expression federation invariant"
+            testStringExpressionFederationInvariant
         , testCase "map length" testMapLength
         , testCase "ASCII map" testAsciiMap
         , testCase "ASCII string" testAsciiString
@@ -291,6 +293,24 @@ testEvaluationBoundary = do
               start target)) ->
         start == omega && target == finiteOrdinal 2
       _ -> False)
+
+testStringExpressionFederationInvariant :: IO ()
+testStringExpressionFederationInvariant = do
+  let codec = Types.CanonicalStringCodec
+        { Types.renderCanonicalString = const "rendered"
+        , Types.decodeCanonicalString = const []
+        }
+      totalResult = Types.stringFederationValue codec (Types.naturalValue 7)
+      nonTotalResult = Types.stringFederationValue codec Types.anyTypeValue
+  stringResult <- expectRight "construct source string"
+    (Types.asciiStringValue "already a string")
+  let identityResult = Types.stringFederationValue codec stringResult
+  assert "total values become string subfederations"
+    (Types.stringConversionIsIdentity totalResult)
+  assert "non-total values become pointwise string subfederations"
+    (Types.stringConversionIsIdentity nonTotalResult)
+  assert "string inputs remain string subfederations"
+    (Types.stringConversionIsIdentity identityResult)
 
 testMapLength :: IO ()
 testMapLength = do
@@ -532,7 +552,7 @@ testDiagnostics = do
     )
   assert "inadmissible syntax templates have an explicit bilingual diagnostic"
     ( localizeDiagnostic English
-          (Types.InvalidSyntaxTemplate "call ~"
+          (Types.InvalidStringInterpolation "call ~"
             (IncompleteCoreSyntaxOperator "~"))
         == LocalizedMessage
           "syntax pattern ends with the incomplete core operator ~"
@@ -540,7 +560,7 @@ testDiagnostics = do
           , "the complete pattern must supply the operator's required operand"
           ]
       && localizeDiagnostic Romanian
-          (Types.InvalidSyntaxTemplate "call ~"
+          (Types.InvalidStringInterpolation "call ~"
             (IncompleteCoreSyntaxOperator "~"))
         == LocalizedMessage
           "șablonul sintactic se termină cu operatorul nucleu incomplet ~"

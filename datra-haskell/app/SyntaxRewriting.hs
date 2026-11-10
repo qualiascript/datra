@@ -36,20 +36,18 @@ import DatraTypes
   , makeArgumentativeMapPreservingSingleton
   , subfederationValues
   )
-import DatraLanguage.SyntaxTemplate
-  ( SyntaxPiece (..)
-  , SyntaxTemplate (..)
-  , TemplateSelection (..)
+import DatraLanguage.StringExpression
+  ( TemplateSelection (..)
   )
-import SyntaxDefinitions
+import StringInterpolation
   ( SyntaxRule (..)
   , expandSyntax
   , syntaxApplicationImplementation
   , syntaxRuleAdapter
   )
-import SyntaxTemplateMatching
+import StringInterpolation.Matching
   ( SyntaxMatch (..) )
-import SyntaxTemplateProjection
+import StringInterpolation.Projection
   ( applicationFrom
   , applicationSpine
   )
@@ -142,16 +140,16 @@ prepareSelectedSyntaxMatch environment rule matched = PreparedExpansion
     -- evaluating its implementation is unnecessary; only declarations with
     -- captures can provide a syntax-function insertion.
     directExpansion
-      | any isHole (syntaxTemplatePieces
-          (syntaxTemplate (rewriteRule rule))) = do
+      | any isHole
+          (stringInterpolationTemplate (rewriteRule rule)) = do
           implementation <- rewriteRuleImplementation rule
           insertion <- case rewriteRuleEvaluation rule of
             Just _ -> rewriteRuleSyntaxInsertion rule
             Nothing -> syntaxFunctionInsertion evaluate implementation
           applySyntaxFunction insertion (insertionCaptures rule captures)
       | otherwise = Nothing
-    isHole SyntaxHole {} = True
-    isHole SyntaxLiteral {} = False
+    isHole StringTemplateInterpolation {} = True
+    isHole StringTemplateLiteral {} = False
 
 insertionCaptures :: RewriteRule -> [Expression] -> [Expression]
 insertionCaptures rule captures
@@ -183,7 +181,7 @@ compileRuleFamily family =
       , rewriteRuleEvaluation = Just (syntaxRuleFamilyEvaluate family)
       , rewriteRuleHoleFamilies =
           [ selected
-          | SyntaxHole kind <- syntaxTemplatePieces (syntaxTemplate rule)
+          | StringTemplateInterpolation kind <- stringInterpolationTemplate rule
           , let selected = case syntaxRuleFamilyClassify family [kind] of
                   [(_, value)] -> value
                   _ -> Nothing
@@ -304,8 +302,8 @@ directSyntaxFunctionExpansion environment selectedRule application =
       Nothing -> evaluateHere
     captureCount rule = length
       [ ()
-      | SyntaxHole _ <- syntaxTemplatePieces
-          (syntaxTemplate (rewriteRule rule))
+      | StringTemplateInterpolation _ <-
+          stringInterpolationTemplate (rewriteRule rule)
       ]
 -- Inspect the adapter's AST constructor before rewriting a raw block. A
 -- function body already shadows the outer input while its declarations and
