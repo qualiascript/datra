@@ -2,11 +2,18 @@
 
 ## Purpose
 
-This design defines identifier literals, the `$` operator, string
-interpolation, and declared-syntax capture around one shared expression model.
-Identifier values and strings are distinct. String interpolation lowers to
-ordinary function application and concatenation. Declared syntax is stored as
-ordinary expression structure rather than a parallel template language.
+This design defines identifier literals, the unified `$` prefix operator,
+string interpolation, and declared-syntax capture around one shared expression
+model. Identifier values and strings are distinct. String interpolation lowers
+to ordinary function application and concatenation. Declared syntax is stored
+as ordinary expression structure rather than a parallel template language.
+
+`$` is the only prefix operator for constructing identifier-literal
+expressions. Its behavior is determined by the structure of its operand. Bare
+identifiers, strings, and ordinary evaluated expressions produce identifier
+values. A sequential `AtlasMap` operand produces a greedy structural syntax
+pattern. `%` is reserved for interpolation inside quoted strings and is not a
+standalone expression operator.
 
 ## Identifier model
 
@@ -18,12 +25,16 @@ Datra has three distinct source forms:
 | `$name` | `IdentifierLiteral "name"` | Produce the identifier named `name`. |
 | `"name"` | `AsciiStringLiteral "name"` | Produce a list of characters. |
 
-`IdentifierString` is the validated name payload shared by references and
-identifier literals. It is not an expression and is not a string value.
+`IdentifierString` is the identifier payload shared by references and
+identifier literals. It is not an expression and is not a string value. A bare
+identifier spelling must satisfy the compact identifier grammar. A quoted
+identifier spelling may contain any contents admitted by a Datra string, so
+`$"Hello, world!"` is a valid identifier literal even though its payload cannot
+be written as a bare identifier.
 
 The identifier rules have one owner, `DatraLanguage.Identifier`. That module
-defines identifier spelling validation, valid identifier characters, private
-name detection, and the `IdentifierString` boundary. Parsing, rendering, and
+defines bare-identifier characters, private-name detection, quoted identifier
+spelling, and the `IdentifierString` boundary. Parsing, rendering, and
 evaluation use those definitions directly.
 
 The semantic invariants are:
@@ -33,44 +44,94 @@ The semantic invariants are:
 2. `$name` does not resolve `name` in lexical scope.
 3. Identifier literals do not inhabit `Str`.
 4. String literals do not inhabit `datra.IdentifierLiteral`.
-5. Identifier-literal equality compares validated identifier names.
+5. Identifier-literal equality compares identifier payloads.
 6. Specification and subfederation treat identifier literals as identifier
    values without string coercion.
 7. A dependent declaration whose complete left-hand side is an identifier
    reference normalizes through the equivalent static identifier literal.
 
-## The `$` operator
+## The unified `$` operator
 
-`$` is the identifier-literal prefix operator. It accepts either a bare
-identifier operand or an expression whose evaluated value is a string:
+`$` accepts four source shapes:
 
 ```datra
-$abc
+$hello
+$"Hello, world!"
 $(nameExpression)
-$"abc"
+$($do; _Block; $yield; _Expr)
 ```
 
-`$abc` is the static form. Parsing validates `abc` and constructs an
-`IdentifierLiteral` expression directly. It does not construct an
+The first form is static. Parsing validates the bare spelling and constructs an
+`IdentifierLiteral` directly. It does not construct an
 `IdentifierReference` or an `AsciiStringLiteral` as an intermediate semantic
 form.
 
-The expression form evaluates its operand, requires one string value, validates
-that value with the ordinary identifier grammar, and produces the corresponding
-identifier literal. A literal operand may be folded eagerly:
+The second form constructs an identifier literal from the quoted payload. The
+quotes select the full-string spelling and are not part of the payload.
+
+The third form is dynamic. Parentheses retain their ordinary grouping meaning,
+so `$(nameExpression)` evaluates `nameExpression`, requires one string value,
+and constructs the identifier with that string as its payload. A literal
+operand may be folded eagerly:
 
 ```datra
-$abc = $("abc")
+$hello = $("hello")
 ```
 
-Parentheses retain their ordinary grouping meaning. `$abc` quotes the written
-name, while `$(abc)` evaluates the lexical reference `abc` and converts the
-resulting string to an identifier. A non-string operand or invalid identifier
-spelling fails at the first point where it is known.
+Consequently `$hello` quotes the written name, while `$(hello)` resolves the
+lexical reference `hello` and converts its resulting string to an identifier.
+A non-string dynamic operand fails at the first point where its type is known.
+Forms such as `$(Nat)` use this same ordinary dynamic-expression path; grouping
+does not create a special identifier-reference rule.
 
-`$` is represented by the ordinary operator AST and participates in ordinary
-traversal, lowering, rendering, specification, and subfederation. Syntax
-rewriting never recognizes it through source-string comparison.
+The fourth form uses the same operator on a sequential `AtlasMap`. `$` does not
+evaluate that map as a string. It retains the map's fields as a greedy
+structural syntax pattern. This use is unambiguous because ordinary identifier
+construction has no value-level conversion from an `AtlasMap`.
+
+Operand classification is structural and occurs before evaluation:
+
+1. A bare identifier token becomes a static identifier operand.
+2. A quoted string becomes a static full-string identifier operand.
+3. An ordinary grouped expression becomes a dynamic identifier operand.
+4. A grouped sequential `AtlasMap` becomes a structural syntax operand.
+
+There is one `$` operator in the operator vocabulary and one corresponding
+source AST family. Traversal, normalization, lowering, rendering,
+specification, subfederation, and diagnostics handle it through ordinary AST
+dispatch. Syntax rewriting never identifies `$` through rendered source text.
+
+## Sequential syntax fields and gaps
+
+A structural syntax operand consists of one or more ordinary expression
+fields. In source, `;` separates adjacent fields and denotes a required
+whitespace gap:
+
+```datra
+$($do; _Block; $yield; _Expr)
+```
+
+Each gap requires one or more whitespace characters between the corresponding
+fields. The parser retains the field boundary, not the particular amount or
+spelling of the whitespace. When a pattern is matched or materialized as an
+identifier, the gap's canonical value is one ASCII space. In the source
+spelling of the structural operand, the canonical separator is `;` followed by
+that one space:
+
+```datra
+$($do; _Block; $yield; _Expr)
+```
+
+The neutral source parser establishes the same field boundaries in a candidate
+phrase. Structural matching therefore checks application and sequence
+structure without rendering or re-lexing either expression. Comments and
+layout are handled by the source parser's ordinary whitespace rules; they do
+not become syntax-pattern payloads.
+
+A sequential syntax operand may contain prefix, infix, postfix, optional, and
+nested expressions. Literal positions are ordinary identifier literals such as
+`$do` and `$yield`; capture positions are ordinary target expressions such as
+`_Block` and `_Expr`.
 
 ## Dependent declaration names
 
@@ -94,30 +155,28 @@ $abc := 1234
 
 This is a declaration-head normalization rule. It does not perform lexical
 lookup, and it does not make `abc` and `$abc` equivalent in an ordinary
-expression position. The normalized declaration stores the validated
-`IdentifierString` through the same identifier-literal path as the explicit
-form, so implicit and explicit declaration names cannot acquire different
-binding semantics.
+expression position. The normalized declaration stores the same
+`IdentifierString` as the explicit form, so implicit and explicit declaration
+names cannot acquire different binding semantics.
 
-The greedy `SyntaxTemplate` expression subtypes `datra.IdentifierLiteral`.
-This permits a declaration head to describe an identifier through a more
-abstract identifier-literal expression while preserving one declaration-name
-domain.
+A structural `$` expression subtypes `datra.IdentifierLiteral`. This permits a
+declaration head to describe a family of identifiers through an abstract
+identifier-literal expression while preserving one declaration-name domain.
 
 `Str` does not subtype `datra.IdentifierLiteral`, so a string expression cannot
 serve directly as a dependent-declaration head. A string must pass through `$`
-and identifier validation explicitly before it can name a declaration. Thus
-dependent declarations consume identifier literals, including their abstract
-subtypes, but never consume strings as names.
+explicitly before it can name a declaration. Dependent declarations therefore
+consume identifier literals, including structural subtypes, but never consume
+strings as names.
 
 ## AST and evaluated representation
 
-The source AST represents both static and dynamic identifier-literal operands:
+The source AST represents both static and expression operands:
 
 ```haskell
 data IdentifierLiteralOperand expression
   = StaticIdentifier IdentifierString
-  | EvaluatedIdentifier expression
+  | IdentifierExpression expression
 
 data Expression
   = ...
@@ -125,23 +184,33 @@ data Expression
   | IdentifierLiteral (IdentifierLiteralOperand Expression)
 ```
 
+`IdentifierExpression` preserves its operand as ordinary expression structure.
+If that operand is a sequential `AtlasMap`, compilation interprets its members
+as syntax fields and records their capture locations. Every other operand
+follows dynamic string-to-identifier evaluation. There is no separate
+`GreedyStringTemplate` or `%` expression constructor.
+
 The operator and lowered representations retain the distinction between
 lexical references and identifier literals:
 
 ```haskell
 IdentifierReferenceValue IdentifierString
-IdentifierLiteralValue IdentifierString
+IdentifierLiteralValue (IdentifierLiteralOperand OperatorExpression)
 ```
 
-Evaluation produces a dedicated identifier value:
+Evaluation of a concrete identifier produces a dedicated identifier value:
 
 ```haskell
 IdentifierLiteralForm IdentifierString
 ```
 
-Generic expression operations cover identifier literals, including child
-traversal, normalization, source rendering, source-to-operator lowering,
-canonical rendering, diagnostics, generators, shrinkers, and round trips.
+A structural operand carries an evaluated syntax plan derived from its
+ordinary fields. That plan is evaluation metadata for the `$` expression; it
+does not replace the declared expression with a second template-piece AST.
+
+Generic expression operations cover all `$` forms, including child traversal,
+normalization, source rendering, source-to-operator lowering, canonical
+rendering, diagnostics, generators, shrinkers, and round trips.
 
 Optional names remain a binder property. They do not turn an identifier
 literal into a binder or make identifier values optional implicitly.
@@ -154,16 +223,23 @@ Strings always use quoted canonical syntax:
 "abc"
 ```
 
-Identifier literals use `$` syntax:
+Identifier literals always use `$` syntax:
 
 ```datra
 $abc
-$("operator spelling")
+$"Hello, world!"
+$(nameExpression)
+$($do; _Block; $yield; _Expr)
 ```
 
-The renderer chooses the bare `$name` form only when the payload is valid bare
-identifier syntax. Other payloads use an explicitly quoted operand. Canonical
-strings never use `$` as a compact spelling.
+The renderer chooses `$name` only when the payload satisfies bare identifier
+syntax. Other concrete payloads use a quoted operand. Dynamic operands retain
+parentheses. Structural operands render their fields in source order with one
+canonical space after every `;`. Canonical strings never use `$` as a compact
+spelling.
+
+`%` has no canonical standalone expression form. It appears only as the
+interpolation marker within a quoted string.
 
 ## String interpolation lowering
 
@@ -220,6 +296,7 @@ codomain. It returns the canonical string presentation used by interpolation:
 ```datra
 to_string "abc" = "\"abc\""
 to_string $abc = "abc"
+to_string $"Hello, world!" = "Hello, world!"
 ```
 
 Consequently:
@@ -239,10 +316,10 @@ works for any number of holes; it is not a singleton-template rule.
 
 ## Declared syntax representation
 
-A declared syntax pattern is an ordinary `Expression`. For example:
+A declared syntax pattern is an ordinary `$` expression. For example:
 
 ```datra
-%($do; _Block; $yield; _Expr)
+$($do; _Block; $yield; _Expr)
 ```
 
 contains ordinary `IdentifierLiteral` nodes at the `$do` and `$yield` literal
@@ -254,12 +331,11 @@ equivalence, and expansion all consume this structural representation. Rule
 metadata may refer to positions in the pattern, but it does not duplicate the
 pattern as a template-piece tree.
 
-`SyntaxTemplate` is the sole `%` expression construct across the source AST,
-operator AST, evaluated plan, parser, renderer, and diagnostics. It denotes
-ordinary greedy `%` application and subtypes `datra.IdentifierLiteral`. A
-syntax declaration stores that expression structure and its target locations
-directly; it does not introduce a second template-piece representation or a
-host-visible template type.
+The outer and inner `$` forms are the same expression family. Their distinct
+behavior follows only from operand structure: the outer operand is a sequential
+`AtlasMap`, while `$do` and `$yield` have static identifier operands. No
+`SyntaxTemplate`, `GreedyStringTemplate`, or host-visible template value is a
+second expression construct.
 
 ## Structural matching and capture
 
@@ -274,8 +350,8 @@ structuralCaptures
 ```
 
 Each result pair is a declared target expression and the selected neutral
-source expression. Literal identifier positions compare validated
-`IdentifierString` values. Matching does not compare rendered source text.
+source expression. Literal identifier positions compare `IdentifierString`
+values. Matching does not compare rendered source text.
 
 Application spines, prefix operators, infix operators, optional structure,
 and arbitrary arity are matched through neutral AST constructors. Projection
@@ -303,16 +379,18 @@ matching renders, reparses, or re-lexes a pattern.
 
 ## Lexical ownership
 
-- `DatraLanguage.Identifier` owns identifier characters and valid identifier
+- `DatraLanguage.Identifier` owns identifier payloads, bare identifier
+  characters, and quoted identifier spelling.
+- `DatraLanguage.AST.Operator` owns `$` and the other built-in operator
   spellings.
-- `DatraLanguage.AST.Operator` owns built-in operator spellings.
-- The source parser owns mechanical token boundaries.
+- The quoted-string parser owns `%(` interpolation syntax.
+- The source parser owns mechanical token boundaries and whitespace gaps.
 - Rendering uses the AST form and its owning spelling rules.
 
 Declared syntax remains structural throughout matching. Token spelling is
 therefore never reconstructed from rendered expressions.
 
-## Standard-library surface
+## Standard-library and test surface
 
 The standard library exposes the concepts source programs use:
 
@@ -321,23 +399,42 @@ _IdentifierLiteral := datra.IdentifierLiteral
 let val to_string := (Any -> Str) datra.to_string
 ```
 
+All greedy syntax declarations in the standard library use `$` with a
+sequential operand:
+
+```datra
+$($let; _DependentDeclaration) := ...
+$($do; _Block; $yield; _Expr) := ...
+$(Bool; $or; Bool) := ...
+```
+
 Syntax tokens such as `$let`, `$do`, `$yield`, `$or`, and `$to` are identifier
 literals. Holes intended to accept bare source identifiers target
 `_IdentifierLiteral`. Holes intended to accept character data target `Str` and
 require quoted source.
+
+Standard-library declarations, source fixtures, parser expectations,
+interpreter cases, and canonical-rendering assertions use the `$(` form for
+greedy structural syntax. No standalone `%` prefix compatibility form is
+accepted. Quoted interpolation continues to use `%(...)` unchanged.
 
 ## Required tests
 
 Parser and AST tests cover:
 
 - `abc`, `$abc`, and `"abc"` as distinct AST forms;
+- `$"Hello, world!"` as a quoted identifier literal;
+- `$(expression)` as a dynamic identifier expression;
+- `$($do; _Block; $yield; _Expr)` as a structural `$` expression;
+- rejection of standalone `%` prefix expressions;
+- required whitespace at every `;` syntax gap and canonical one-space
+  rendering;
 - identical dependent-declaration structure for `abc := value` and
   `$abc := value`;
 - acceptance of identifier-literal subtypes and rejection of direct `Str`
   expressions as dependent-declaration heads;
-- static and dynamic identifier-literal operands;
-- identifier validation and eager invalid-operand failures;
-- traversal, lowering, source rendering, and canonical round trips;
+- traversal, lowering, source rendering, and canonical round trips for every
+  `$` operand shape;
 - interpolation lowering to string literals, `to_string`, and concatenation;
 - any number of identifier-literal interpolation holes;
 - canonical quoted strings.
@@ -345,45 +442,56 @@ Parser and AST tests cover:
 Interpreter and type tests cover:
 
 - `$abc = $("abc")`;
+- quoted identifier payloads that are not valid bare spellings;
+- non-string rejection for dynamic identifier operands;
 - the quoted-string and identifier interpolation equalities above;
 - `to_string : Any -> Str` through host and standard-library bindings;
 - equivalence between interpolation and its lowered concatenation expression;
 - identifier/string membership distinctions;
-- specification, reverse specification, and subfederation of identifier
-  literals;
+- specification, reverse specification, and subfederation of concrete and
+  structural identifier literals;
 - optional binder names independently of optional identifier values.
 
 Declared-syntax tests cover:
 
 - identifier literals at syntax-token positions;
 - target-directed `Str` and `_IdentifierLiteral` captures;
-- prefix, infix, and multi-piece patterns at arbitrary arity;
+- prefix, infix, and multi-field patterns at arbitrary arity;
+- one-or-more-whitespace gap matching and canonical one-space rendering;
 - generic matching of `do`/`yield`, `if`/`then`/`else`,
   `let`/`def`/`val`, lookup, and comma;
 - stable declaration-order candidate selection and rejection ordering;
-- absence of render/reparse behavior.
+- absence of render/reparse behavior;
+- use of `$(` throughout the standard library, fixtures, and test sources.
 
 ## Required invariants
 
 1. `$abc`, `abc`, and `"abc"` are distinct source, AST, and value categories.
-2. Static identifier payloads are validated `IdentifierString` values.
+2. Bare and quoted identifier spellings produce the same identifier-value
+   domain.
 3. Identifier literals neither perform lexical lookup nor use string storage.
 4. Canonical strings and string reference payloads are quoted.
-5. Every interpolation lowers before syntax rewriting.
-6. `to_string : Any -> Str` is the sole interpolation conversion.
-7. Declared syntax is stored as ordinary expression structure.
-8. Literal syntax positions are `IdentifierLiteral` expression nodes.
-9. Every capture position carries one ordinary target expression.
-10. The evaluated target is the sole authority for capture behavior.
-11. The rewrite stack contains no target-specific capture dispatch.
-12. Structural matching does not render, parse, or re-lex expressions.
-13. Standard-library operations are not re-encoded as projection cases.
-14. Identifier spelling has one owner in `DatraLanguage.Identifier`.
-15. Built-in operator spelling has one owner in the operator AST.
-16. Declared patterns remain ordinary expressions throughout compilation and
+5. `$` has exactly one prefix-operator spelling and `%` is not a standalone
+   expression operator.
+6. A sequential `AtlasMap` operand is the sole structural-syntax form of `$`.
+7. Every structural `;` gap requires one or more whitespace characters and
+   canonically renders with one space.
+8. Every interpolation lowers before syntax rewriting.
+9. `to_string : Any -> Str` is the sole interpolation conversion.
+10. Declared syntax is stored as ordinary expression structure.
+11. Literal syntax positions are `IdentifierLiteral` expression nodes.
+12. Every capture position carries one ordinary target expression.
+13. The evaluated target is the sole authority for capture behavior.
+14. The rewrite stack contains no target-specific capture dispatch.
+15. Structural matching does not render, parse, or re-lex expressions.
+16. Standard-library operations are not re-encoded as projection cases.
+17. Identifier spelling has one owner in `DatraLanguage.Identifier`.
+18. Built-in operator spelling has one owner in the operator AST.
+19. Declared patterns remain ordinary expressions throughout compilation and
     matching.
-17. `SyntaxTemplate` names the greedy `%` expression exclusively.
-18. `abc := value` and `$abc := value` assemble the same dependent declaration.
-19. Every other dependent-declaration head subtypes
+20. `abc := value` and `$abc := value` assemble the same dependent declaration.
+21. Every other dependent-declaration head subtypes
     `datra.IdentifierLiteral`; `Str` is not a declaration-name domain.
-20. `SyntaxTemplate` subtypes `datra.IdentifierLiteral`.
+22. Structural `$` expressions subtype `datra.IdentifierLiteral`.
+23. Standard-library and test syntax declarations use `$(`; quoted string
+    interpolation uses `%(`.
