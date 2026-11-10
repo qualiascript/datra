@@ -5,8 +5,10 @@
 This design defines identifier literals, the unified `$` prefix operator,
 string interpolation, and declared-syntax capture around one shared expression
 model. Identifier values and strings are distinct. String interpolation lowers
-to ordinary function application and concatenation. Declared syntax is stored
-as ordinary expression structure rather than a parallel template language.
+to generic `_show` application and ordinary concatenation. `_StrExpr` provides
+the shared typed string-expression boundary used by interpolation and dynamic
+identifier construction. Declared syntax is stored as ordinary expression
+structure rather than a parallel template language.
 
 `$` is the only prefix operator for constructing identifier-literal
 expressions. Its behavior is determined by the structure of its operand. Bare
@@ -69,20 +71,22 @@ form.
 The second form constructs an identifier literal from the quoted payload. The
 quotes select the full-string spelling and are not part of the payload.
 
-The third form is dynamic. Parentheses retain their ordinary grouping meaning,
-so `$(nameExpression)` evaluates `nameExpression`, requires one string value,
-and constructs the identifier with that string as its payload. A literal
-operand may be folded eagerly:
+The third form is dynamic. Parentheses retain their ordinary grouping meaning.
+The operand is captured against `_StrExpr _T`, with `_T` inferred from the
+operand, and the result is evaluated as a subfederation of `Str`. The resulting
+single string becomes the identifier payload. A literal operand may be folded
+eagerly:
 
 ```datra
 $hello = $("hello")
 ```
 
 Consequently `$hello` quotes the written name, while `$(hello)` resolves the
-lexical reference `hello` and converts its resulting string to an identifier.
-A non-string dynamic operand fails at the first point where its type is known.
-Forms such as `$(Nat)` use this same ordinary dynamic-expression path; grouping
-does not create a special identifier-reference rule.
+lexical reference `hello` and evaluates its string-expression result to
+construct an identifier. An operand that cannot satisfy `_StrExpr _T` fails at
+the first point where its type is known. Forms such as `$(Nat)` use this same
+ordinary dynamic-expression path; grouping does not create a special
+identifier-reference rule.
 
 The fourth form uses the same operator on a sequential `AtlasMap`. `$` does not
 evaluate that map as a string. It retains the map's fields as a greedy
@@ -93,7 +97,8 @@ Operand classification is structural and occurs before evaluation:
 
 1. A bare identifier token becomes a static identifier operand.
 2. A quoted string becomes a static full-string identifier operand.
-3. An ordinary grouped expression becomes a dynamic identifier operand.
+3. An ordinary grouped expression becomes a dynamic `_StrExpr _T` identifier
+   operand.
 4. A grouped sequential `AtlasMap` becomes a structural syntax operand.
 
 There is one `$` operator in the operator vocabulary and one corresponding
@@ -186,9 +191,10 @@ data Expression
 
 `IdentifierExpression` preserves its operand as ordinary expression structure.
 If that operand is a sequential `AtlasMap`, compilation interprets its members
-as syntax fields and records their capture locations. Every other operand
-follows dynamic string-to-identifier evaluation. There is no separate
-`GreedyStringTemplate` or `%` expression constructor.
+as syntax fields and records their capture locations. Every other operand is
+captured against `_StrExpr _T` and evaluated through its `Str` subfederation
+before identifier construction. There is no separate `GreedyStringTemplate`
+or `%` expression constructor.
 
 The operator and lowered representations retain the distinction between
 lexical references and identifier literals:
@@ -247,9 +253,10 @@ interpolation marker within a quoted string.
 enters syntax rewriting or evaluation, every quoted string template lowers to
 ordinary expressions.
 
-Interpolation holes become calls to the host `show` function. Literal
-chunks remain string literals. Multiple parts are joined with the ordinary
-`,` concatenation AST:
+Interpolation holes become calls to the generic host-backed `_show` function.
+For a value of type `_T`, `_show` returns `_StrExpr _T`; that result is evaluated
+as a subfederation of `Str`. Literal chunks remain string literals. Multiple
+parts are joined with the ordinary `,` concatenation AST:
 
 ```datra
 "%(value1)%(value2)"
@@ -258,7 +265,7 @@ chunks remain string literals. Multiple parts are joined with the ordinary
 lowers to:
 
 ```datra
-(show value1), (show value2)
+(_show value1), (_show value2)
 ```
 
 and:
@@ -270,33 +277,39 @@ and:
 lowers to:
 
 ```datra
-(show value1), " and ", (show value2)
+(_show value1), " and ", (_show value2)
 ```
 
 An empty template lowers to `""`. A single part lowers directly to that part.
 Adjacent literal chunks may be coalesced. Lowering refers to the host binding
-by binding identity, so source shadowing of `show` cannot change parsed
+by binding identity, so source shadowing of `_show` cannot change parsed
 interpolation semantics.
 
-There is no post-parser string-template expression, interpolation-hole kind,
-or template evaluator. Function application, concatenation, evaluation, and
-ordinary specification own the lowered expression.
+The lowered tree consists only of ordinary function application,
+concatenation, and string literals. `_StrExpr _T` is an ordinary evaluated
+target, and its evaluation selects a `Str` subfederation without any
+string-specific syntax-hole classification.
 
-## `show`
+## `_StrExpr` and `_show`
 
-The host provides one total function:
+The standard library defines the typed string-expression boundary and the
+generic conversion function as:
 
 ```datra
-datra.show : Any -> Str
+let val _StrExpr := &T? do yield datra.StrExpr_body
+_show := (&_T :: Any; _value :: _T -> _StrExpr _T) datra.show
 ```
 
-The standard library exposes it as `show` with the same domain and
-codomain. It returns the canonical string presentation used by interpolation:
+`_StrExpr T` records the source type `T` of a string-producing expression. For
+every `T`, evaluation of `_StrExpr T` is evaluation as a subfederation of
+`Str`; the type index never changes the resulting string domain. `datra.show`
+returns the canonical string presentation used by interpolation while
+preserving that source type in the result:
 
 ```datra
-show "abc" = "\"abc\""
-show $abc = "abc"
-show $"Hello, world!" = "Hello, world!"
+_show "abc" = "\"abc\""
+_show $abc = "abc"
+_show $"Hello, world!" = "Hello, world!"
 ```
 
 Consequently:
@@ -311,7 +324,7 @@ $abcdef = $("%($abc)%($def)")
 ```
 
 Every identifier-literal interpolation contributes its `IdentifierString`
-payload independently. This follows from ordinary `show` application and
+payload independently. This follows from ordinary `_show` application and
 works for any number of holes; it is not a singleton-template rule.
 
 ## Declared syntax representation
@@ -365,7 +378,8 @@ against its evaluated target:
 1. Syntax-category targets preserve and validate AST structure.
 2. `datra.IdentifierLiteral` accepts a valid bare identifier source token.
 3. `Str` accepts explicit string syntax and rejects bare identifiers and
-   identifier literals.
+   identifier literals. `_StrExpr _T` is evaluated through its `Str`
+   subfederation for every `_T`.
 4. Lists of syntax categories recursively capture their members.
 5. Other targets use ordinary evaluation, specification, and subfederation.
 
@@ -390,13 +404,28 @@ matching renders, reparses, or re-lexes a pattern.
 Declared syntax remains structural throughout matching. Token spelling is
 therefore never reconstructed from rendered expressions.
 
+## Migration order
+
+The unified `$` operator changes land first. This phase establishes the
+identifier-literal AST and value representation, structural operand
+classification, dependent-declaration behavior, canonical rendering, and
+structural syntax matching.
+
+The `_StrExpr` and `_show` migration follows only after that `$` foundation is
+complete. This second phase adds `datra.StrExpr_body`, defines the generic
+`_show` binding, moves interpolation and dynamic `$` onto the shared
+`_StrExpr _T` evaluation boundary, and makes every syntax capture carry only
+its ordinary target expression. The evaluator then derives capture behavior
+from that target; the rewrite pipeline has no separate hole-kind model.
+
 ## Standard-library and test surface
 
 The standard library exposes the concepts source programs use:
 
 ```datra
 _IdentifierLiteral := datra.IdentifierLiteral
-let val show := (Any -> Str) datra.show
+let val _StrExpr := &T? do yield datra.StrExpr_body
+_show := (&_T :: Any; _value :: _T -> _StrExpr _T) datra.show
 ```
 
 All greedy syntax declarations in the standard library use `$` with a
@@ -435,7 +464,8 @@ Parser and AST tests cover:
   expressions as dependent-declaration heads;
 - traversal, lowering, source rendering, and canonical round trips for every
   `$` operand shape;
-- interpolation lowering to string literals, `show`, and concatenation;
+- interpolation lowering to string literals, generic `_show`, and
+  concatenation;
 - any number of identifier-literal interpolation holes;
 - canonical quoted strings.
 
@@ -443,9 +473,11 @@ Interpreter and type tests cover:
 
 - `$abc = $("abc")`;
 - quoted identifier payloads that are not valid bare spellings;
-- non-string rejection for dynamic identifier operands;
+- rejection of dynamic identifier operands that cannot satisfy
+  `_StrExpr _T`;
 - the quoted-string and identifier interpolation equalities above;
-- `show : Any -> Str` through host and standard-library bindings;
+- the generic `_show` signature and `_StrExpr _T` result type;
+- evaluation of `_StrExpr T` as a subfederation of `Str` for every `T`;
 - equivalence between interpolation and its lowered concatenation expression;
 - identifier/string membership distinctions;
 - specification, reverse specification, and subfederation of concrete and
@@ -477,7 +509,8 @@ Declared-syntax tests cover:
 7. Every structural `;` gap requires one or more whitespace characters and
    canonically renders with one space.
 8. Every interpolation lowers before syntax rewriting.
-9. `show : Any -> Str` is the sole interpolation conversion.
+9. `_show := (&_T :: Any; _value :: _T -> _StrExpr _T) datra.show` is the
+   sole interpolation conversion.
 10. Declared syntax is stored as ordinary expression structure.
 11. Literal syntax positions are `IdentifierLiteral` expression nodes.
 12. Every capture position carries one ordinary target expression.
@@ -495,3 +528,5 @@ Declared-syntax tests cover:
 22. Structural `$` expressions subtype `datra.IdentifierLiteral`.
 23. Standard-library and test syntax declarations use `$(`; quoted string
     interpolation uses `%(`.
+24. `_StrExpr T` is evaluated as a subfederation of `Str` for every `T` and is
+    the dynamic string-expression target of `$`.
