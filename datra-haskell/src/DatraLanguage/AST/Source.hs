@@ -103,7 +103,8 @@ source context expression =
     InclusiveValuedIntegerRange start end -> bounded "from" start end
     InclusiveValuedIntegerRangeUpwards start -> open "from" start "up"
     InclusiveValuedIntegerRangeDownwards start -> open "from" start "down"
-    StringTemplateValue parts -> renderStringTemplate (source 0) (const Nothing) parts
+    StringTemplateValue parts -> renderStringTemplate
+      (source 0) stringLiteral (const Nothing) parts
     IdentifierExpressionValue (IdentifierExpressionBody operand) -> case operand of
       IdentifierReferenceValue (SimpleIdentifierString name) ->
         "$" <> renderIdentifierString name
@@ -123,6 +124,8 @@ source context expression =
     BooleanTypeValue -> atom
   where
     atom = renderOperatorExpression expression
+    stringLiteral (AsciiStringValue value) = Just value
+    stringLiteral _ = Nothing
     wrapped precedence text
       | context > precedence = "(" <> text <> ")"
       | otherwise = text

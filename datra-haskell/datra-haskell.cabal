@@ -59,13 +59,13 @@ library
         DatraLanguage.DependentDeclaration
         DatraLanguage.ContextualRole
         DatraLanguage.ContextualDeclaration
-        DatraLanguage.StringExpression
         DatraLanguage.NeutralLexer
         DatraLanguage.Identifier
         DatraLanguage.Pretty
         DatraLanguage.StringTemplate
         DatraTypes
         DatraTypes.DependentTypes
+        StringExpression
         StringInterpolation
         StringInterpolation.Admissibility
         StringInterpolation.Matching

@@ -14,7 +14,7 @@ import DatraLanguage.AST
   , GenericArgument (..)
   , GenericPolarity (..)
   , SimpleIdentifierString (SimpleIdentifierString)
-  , StringTemplatePart (..)
+  , StringTemplateInterpolation (..)
   , pattern FunctionType
   , dependentArgumentExpression
   , expressionChildren
@@ -42,8 +42,8 @@ import DatraLanguage.AST.Syntax
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST.Source (renderSourceExpression)
-import DatraLanguage.StringExpression qualified as StringExpressions
-import DatraLanguage.StringExpression (TemplateSelection (..))
+import StringExpression qualified as StringExpressions
+import StringExpression (TemplateSelection (..))
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
@@ -537,7 +537,7 @@ regressionTests = do
     )
   assert "literal template text cannot manufacture interpolation holes"
     ((StringExpressions.literalStringInterpolationTemplate "%Int++" :: StringInterpolationTemplate ())
-      == [StringTemplateLiteral "%Int++"])
+      == [syntaxLiteral "%Int++"])
   assert "the neutral reader retains an unknown postfix symbolic literal"
     (case parseDatraRawLocatedWithSourceName "<postfix-syntax>" "(2++)" of
       Right (_, Located _ parsed) ->
@@ -561,21 +561,21 @@ regressionTests = do
   assert "expression witnesses remain recoverable after a literal prefix"
     (validateStringInterpolation
       stringInterpolationParser
-      [ StringTemplateLiteral "call"
+      [ syntaxLiteral "call"
       , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
       ] == Right ())
   assert "expression witnesses remain recoverable before a literal suffix"
     (validateStringInterpolation
       stringInterpolationParser
       [ StringTemplateInterpolation (ExpressionString (ref "_Expr"))
-      , StringTemplateLiteral "after"
+      , syntaxLiteral "after"
       ] == Right ())
   assert "multiple holes retain both adjacent literal boundaries"
     (validateStringInterpolation
       stringInterpolationParser
-      [ StringTemplateLiteral "left"
+      [ syntaxLiteral "left"
       , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
-      , StringTemplateLiteral "middle"
+      , syntaxLiteral "middle"
       , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
       ] == Right ())
   assert "the parser-owned expression witness inventory remains parseable"
@@ -597,7 +597,7 @@ regressionTests = do
         (AtlasMap []))
   let syntaxFunction name pieces = SyntaxRule
         { syntaxName = name
-        , stringInterpolationTemplate = StringTemplateLiteral name : pieces
+        , stringInterpolationTemplate = syntaxLiteral name : pieces
         , syntaxSemantics = SyntaxAdapter (ref name)
         }
       intHole = StringTemplateInterpolation (ValueString (ref "Int"))
@@ -618,14 +618,14 @@ regressionTests = do
             (SimpleIdentifierString "Infinity")) -> True
         _ -> False
       wrongFrom = syntaxFunction "from"
-        [intHole, StringTemplateLiteral "to", intHole]
+        [intHole, syntaxLiteral "to", intHole]
       correctFrom = syntaxFunction "from"
-        [intHole, StringTemplateLiteral "to", intLimitHole]
+        [intHole, syntaxLiteral "to", intLimitHole]
       unrelated = syntaxFunction "unrelated"
         [ intHole
-        , StringTemplateLiteral "to"
+        , syntaxLiteral "to"
         , intLimitHole
-        , StringTemplateLiteral "with-more-template-text"
+        , syntaxLiteral "with-more-template-text"
         ]
   assert "Int template holes reject an Infinity AST"
     (matchRules matchesNumericHole [wrongFrom] fromPhrase
@@ -655,7 +655,7 @@ regressionTests = do
       == Left NoMatchingStringInterpolation)
   let greedyRule = syntaxFunction "greedy"
         [ StringTemplateInterpolation (ValueString (ref "Prefix"))
-        , StringTemplateLiteral "marker"
+        , syntaxLiteral "marker"
         , StringTemplateInterpolation (ValueString (ref "Tail"))
         ]
       greedyPhrase = foldl FunctionApplication (ref "greedy")
@@ -681,7 +681,7 @@ regressionTests = do
   let contextualShort = syntaxFunction "contextual"
         [intHole]
       contextualLong = syntaxFunction "contextual"
-        [intHole, StringTemplateLiteral "marker", intHole]
+        [intHole, syntaxLiteral "marker", intHole]
       contextualPhrase = foldl FunctionApplication (ref "contextual")
         [natural 1, ref "marker", natural 2, ref "after"]
   assert "the first declaration wins and leaves its unmatched AST suffix"
@@ -696,7 +696,7 @@ regressionTests = do
         [StringTemplateInterpolation (ExpressionString (ref "_Expr"))]
       rankedLong = syntaxFunction "ranked"
         [ StringTemplateInterpolation (ExpressionString (ref "_Expr"))
-        , StringTemplateLiteral "marker"
+        , syntaxLiteral "marker"
         , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
         ]
       rankedPhrase = foldl FunctionApplication (ref "ranked")
@@ -1009,7 +1009,7 @@ regressionTests = do
         (AtlasMap [ref "x", ref "Int", ref "x"])
     _ -> False
   let dependentArgumentTemplate = StringTemplate
-        [ StringTemplateLiteral "abc"
+        [ templateLiteral "abc"
         , StringTemplateInterpolation
             (ref "it")
         ]
@@ -1664,7 +1664,7 @@ regressionTests = do
     "string template interpolates a compound expression"
     "\"example%(2 + 2)\""
     (StringTemplate
-      [ StringTemplateLiteral "example"
+      [ templateLiteral "example"
       , StringTemplateInterpolation
           (Addition (natural 2) (natural 2))
       ])
@@ -1688,7 +1688,7 @@ regressionTests = do
     "\"%Int?\""
     (StringTemplate
       [ StringTemplateInterpolation (ref "Int")
-      , StringTemplateLiteral "?"
+      , templateLiteral "?"
       ])
   assertParsed
     "Maybe interpolation uses an explicit expression"
@@ -1701,7 +1701,7 @@ regressionTests = do
     "\"%Int\\?\""
     (StringTemplate
       [ StringTemplateInterpolation (ref "Int")
-      , StringTemplateLiteral "?"
+      , templateLiteral "?"
       ])
   assertParsed
     "an escaped question mark is accepted as ordinary string text"
@@ -1726,32 +1726,32 @@ regressionTests = do
     "a nested quoted string is one simple interpolation"
     "\"hello, %\"world\"!\""
     (StringTemplate
-      [ StringTemplateLiteral "hello, "
+      [ templateLiteral "hello, "
       , StringTemplateInterpolation (AsciiStringLiteral "world")
-      , StringTemplateLiteral "!"
+      , templateLiteral "!"
       ])
   assertParsed
     "operators outside parentheses remain template text"
     "\"%2 + 2\""
     (StringTemplate
       [ StringTemplateInterpolation (natural 2)
-      , StringTemplateLiteral " + 2"
+      , templateLiteral " + 2"
       ])
   assertParsed
     "interpolation comments terminate at the closing parenthesis"
     "\"a%(2 # ignored)b\""
     (StringTemplate
-      [ StringTemplateLiteral "a"
+      [ templateLiteral "a"
       , StringTemplateInterpolation (natural 2)
-      , StringTemplateLiteral "b"
+      , templateLiteral "b"
       ])
   assertParsed
     "interpolation comments terminate at newline without emitting it"
     "\"a%(2 # ignored\n)b\""
     (StringTemplate
-      [ StringTemplateLiteral "a"
+      [ templateLiteral "a"
       , StringTemplateInterpolation (natural 2)
-      , StringTemplateLiteral "b"
+      , templateLiteral "b"
       ])
   assertParsed
     "template comments ignore interpolation and retain their newline"
@@ -1761,27 +1761,27 @@ regressionTests = do
     "escaped hashes and percents remain literal template text"
     "\"\\#\\%%4\""
     (StringTemplate
-      [ StringTemplateLiteral "#%"
+      [ templateLiteral "#%"
       , StringTemplateInterpolation (natural 4)
       ])
   assertAstOutput
     "parentheses inside nested strings do not close interpolation"
     "\"x%(\"a)b\")y\""
     (StringTemplate
-      [ StringTemplateLiteral "x"
+      [ templateLiteral "x"
       , StringTemplateInterpolation (AsciiStringLiteral "a)b")
-      , StringTemplateLiteral "y"
+      , templateLiteral "y"
       ])
   assertAstOutput
     "nested grouping composes inside interpolation"
     "\"x%((2 + 3) * 4)y\""
     (StringTemplate
-      [ StringTemplateLiteral "x"
+      [ templateLiteral "x"
       , StringTemplateInterpolation
           (Multiplication
             (Addition (natural 2) (natural 3))
             (natural 4))
-      , StringTemplateLiteral "y"
+      , templateLiteral "y"
       ])
   assertRejected "an empty interpolation is rejected" "\"%()\""
   assertRejected
@@ -1866,7 +1866,7 @@ regressionTests = do
   assertAstOutput "lookup retains a string-template operand"
     "~\"arg%Nat\""
     (Lookup (StringTemplate
-      [ StringTemplateLiteral "arg"
+      [ templateLiteral "arg"
       , StringTemplateInterpolation (ref "Nat")
       ]))
   assertAstOutput "lookup accepts a computed parenthesized operand"
@@ -1875,7 +1875,7 @@ regressionTests = do
     "~\"arg%Nat\"[0]"
     (MapAccess
       (Lookup (StringTemplate
-        [ StringTemplateLiteral "arg"
+        [ templateLiteral "arg"
         , StringTemplateInterpolation (ref "Nat")
         ]))
       (natural 0))
@@ -2155,7 +2155,7 @@ regressionTests = do
     (Subtraction (AsciiStringLiteral "bad") (IdentifierReference (SimpleIdentifierString "name")))
   assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
   assertParsed "percent introduces a lexical interpolation" "\"bad%value\""
-    (StringTemplate [StringTemplateLiteral "bad", StringTemplateInterpolation (IdentifierReference (SimpleIdentifierString "value"))])
+    (StringTemplate [templateLiteral "bad", StringTemplateInterpolation (IdentifierReference (SimpleIdentifierString "value"))])
   assertRejected "StandardString rejects the obsolete dollar escape" "\"bad\\$value\""
   assertRejected "StandardString rejects an unterminated literal" "\"bad"
   assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
@@ -2497,7 +2497,7 @@ assertAstSyntax = do
     ( renderExpression
         (StringTemplate
           [ StringTemplateInterpolation (ref "Int")
-          , StringTemplateLiteral "?"
+          , templateLiteral "?"
           ])
         == "\"%((ref $Int))?\""
     )
@@ -2615,6 +2615,14 @@ containsFunctionBody value = any containsFunctionBody (expressionChildren value)
 -- of the parser's syntax expansion so they can catch changes in that expansion.
 ref :: String -> Expression
 ref = IdentifierReference . SimpleIdentifierString
+
+templateLiteral :: String -> StringTemplateInterpolation Expression
+templateLiteral = StringTemplateInterpolation . AsciiStringLiteral
+
+syntaxLiteral
+  :: String
+  -> StringTemplateInterpolation (StringExpression value)
+syntaxLiteral = StringTemplateInterpolation . LiteralString
 
 declarationEntry :: Expression -> DependentDeclaration Expression
 declarationEntry expressionValue =

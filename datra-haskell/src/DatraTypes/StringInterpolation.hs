@@ -5,7 +5,8 @@
 module StringInterpolation
   ( SyntaxRule (..), DependentSyntaxRule (..)
   , SyntaxRuleSemantics (..), DependentSyntaxInvocation (..)
-  , StringInterpolationTemplate, StringTemplatePart (..), StringExpression (..)
+  , StringInterpolationTemplate, StringTemplateInterpolation (..)
+  , StringExpression (..)
   , TemplateSelection (..)
   , StringInterpolationCompilationFailure (..)
   , declarationRules, declarationRuleBranches, declarationRuleFailures
@@ -22,12 +23,11 @@ import DatraLanguage.DependentDeclaration
   , dependentDeclarationTemplateBranches
   )
 import DatraLanguage.AST
-import DatraLanguage.StringExpression
+import StringExpression
   ( StringExpression (..)
   , StringInterpolationTemplate
   , TemplateSelection (..)
   , literalStringInterpolationTemplate
-  , renderStringInterpolationTemplate
   )
 import DatraLanguage.Diagnostics.Application
   ( StringInterpolationAdmissibilityFailure )
@@ -56,7 +56,7 @@ data DependentSyntaxRule = DependentSyntaxRule
   } deriving (Eq, Show)
 
 data DependentSyntaxInvocation
-  = DependentSyntaxLookup [StringTemplatePart Expression]
+  = DependentSyntaxLookup [StringTemplateInterpolation Expression]
   deriving (Eq, Show)
 
 syntaxDependentRule :: SyntaxRule -> Maybe DependentSyntaxRule
@@ -136,7 +136,7 @@ simpleApplicationRule declaration (SimpleIdentifierString text) =
   syntaxApplicationRule
     text
     (stringInterpolationTemplateFromPattern text)
-    (dependentLookup [StringTemplateLiteral text] [])
+    (dependentLookup [literalInterpolation text] [])
     (dependentDeclarationImplementation declaration)
 
 syntaxApplicationRule
@@ -156,7 +156,7 @@ syntaxApplicationRule name template callable implementation = SyntaxRule
 directTemplateRule
   :: StringInterpolationParser
   -> DependentDeclaration Expression
-  -> [StringTemplatePart Expression]
+  -> [StringTemplateInterpolation Expression]
   -> Either StringInterpolationCompilationFailure SyntaxRule
 directTemplateRule parser declaration parts = do
   (template, captures) <-
@@ -176,13 +176,13 @@ directTemplateRule parser declaration parts = do
 
 dependentDeclarationSyntaxAlternatives
   :: DependentDeclaration Expression
-  -> [[StringTemplatePart Expression]]
+  -> [[StringTemplateInterpolation Expression]]
 dependentDeclarationSyntaxAlternatives declaration =
   maybe [] id (dependentDeclarationTemplateBranches declaration)
 
 compileDependentDeclarationTemplate
   :: StringInterpolationParser
-  -> [StringTemplatePart Expression]
+  -> [StringTemplateInterpolation Expression]
   -> Either StringInterpolationCompilationFailure
       ( StringInterpolationTemplate Expression
       , [Maybe (SimpleIdentifierString, Expression)]
@@ -192,11 +192,13 @@ compileDependentDeclarationTemplate parser parts = do
       template = pieces
   case validateStringTemplate parser parts template of
     Left failure -> Left (InadmissibleStringInterpolation
-      (renderStringInterpolationTemplate renderSourceExpression template)
+      (renderSourceExpression
+        (StringTemplate (map sourceInterpolation template)))
       failure)
     Right () -> Right (template, captures)
   where
-    compilePart (StringTemplateLiteral literal) =
+    compilePart
+        (StringTemplateInterpolation (AsciiStringLiteral literal)) =
       (stringInterpolationTemplateFromPattern literal, [])
     compilePart (StringTemplateInterpolation expressionValue) =
       let (target, name) = capture expressionValue
@@ -207,6 +209,19 @@ compileDependentDeclarationTemplate parser parts = do
       (annotation, Just (name, annotation))
     capture value = (value, Nothing)
 
+    sourceInterpolation (StringTemplateInterpolation expressionValue) =
+      StringTemplateInterpolation (sourceExpression expressionValue)
+    sourceExpression (LiteralString literalValue) =
+      AsciiStringLiteral literalValue
+    sourceExpression (ExpressionString value) = value
+    sourceExpression (BlockString value) = value
+    sourceExpression (FunctionBodyString value) = value
+    sourceExpression (DeclarationString value) = value
+    sourceExpression (DependentArgumentString value) = value
+    sourceExpression (IdentifierExpressionString value) = value
+    sourceExpression (StringLiteralString value) = value
+    sourceExpression (ValueString value) = value
+
 stringInterpolationTemplateFromPattern :: String -> StringInterpolationTemplate Expression
 stringInterpolationTemplateFromPattern = literalStringInterpolationTemplate
 
@@ -214,7 +229,8 @@ stringInterpolationLiteralPrefix :: SyntaxRule -> [String]
 stringInterpolationLiteralPrefix = foldr prefix []
   . stringInterpolationTemplate
   where
-    prefix (StringTemplateLiteral literal) rest = literal : rest
+    prefix (StringTemplateInterpolation (LiteralString literal)) rest =
+      literal : rest
     prefix (StringTemplateInterpolation _) _ = []
 
 -- | Expand captures selected by one declared string interpolation.
@@ -240,7 +256,7 @@ expandSyntax rule selection =
     -- same call path as an ordinary partial argumentative map.
 
 dependentLookup
-  :: [StringTemplatePart Expression]
+  :: [StringTemplateInterpolation Expression]
   -> [Expression]
   -> Expression
 dependentLookup parts values =
@@ -250,7 +266,7 @@ dependentLookup parts values =
 -- lookup query. Evaluation uses them only to preserve deferred fixed points;
 -- the lookup still resolves through the normal named-map interface.
 selectedDependentLookup
-  :: [StringTemplatePart Expression]
+  :: [StringTemplateInterpolation Expression]
   -> [Expression]
   -> Expression
 selectedDependentLookup parts values =
@@ -268,12 +284,16 @@ lookupExpression operand =
     (IdentifierReference (SimpleIdentifierString "value"))
 
 substituteCaptures
-  :: [StringTemplatePart Expression]
+  :: [StringTemplateInterpolation Expression]
   -> [Expression]
-  -> [StringTemplatePart Expression]
+  -> [StringTemplateInterpolation Expression]
 substituteCaptures [] _ = []
-substituteCaptures (StringTemplateLiteral literal : remaining) arguments =
-  StringTemplateLiteral literal : substituteCaptures remaining arguments
+substituteCaptures
+    ( literalPart@(StringTemplateInterpolation (AsciiStringLiteral _))
+      : remaining
+    )
+    arguments =
+  literalPart : substituteCaptures remaining arguments
 substituteCaptures (StringTemplateInterpolation _ : remaining)
     (argument : arguments) =
   StringTemplateInterpolation argument :
@@ -281,6 +301,9 @@ substituteCaptures (StringTemplateInterpolation _ : remaining)
 substituteCaptures
     (interpolation@StringTemplateInterpolation {} : remaining) [] =
   interpolation : substituteCaptures remaining []
+
+literalInterpolation :: String -> StringTemplateInterpolation Expression
+literalInterpolation = StringTemplateInterpolation . AsciiStringLiteral
 
 -- A named subexpression in a condition becomes a condition-local declaration
 -- when its name is used elsewhere in that condition or in either branch.

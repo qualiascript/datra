@@ -217,7 +217,8 @@ prettyDependentArgumentName name = case name of
   IdentifierReferenceValue (SimpleIdentifierString identifierString) ->
     pretty (renderIdentifierString identifierString)
   StringTemplateValue parts ->
-    pretty (renderStringTemplate renderOperatorExpression (const Nothing) parts)
+    pretty (renderStringTemplate
+      renderOperatorExpression operatorStringLiteral (const Nothing) parts)
   _ -> prettyOperator name
 
 prettyDeclaration
@@ -349,25 +350,28 @@ renderStringLiteralContents = foldr escape ""
       0x20 <= ord character && ord character <= 0x7e
 
 renderOperatorStringTemplate
-  :: [StringTemplatePart OperatorExpression]
+  :: [StringTemplateInterpolation OperatorExpression]
   -> String
 renderOperatorStringTemplate =
   renderStringTemplate
     renderOperatorExpression
+    operatorStringLiteral
     compactOperatorStringInterpolation
 
 renderStringTemplate
   :: (expression -> String)
   -> (expression -> Maybe String)
-  -> [StringTemplatePart expression]
+  -> (expression -> Maybe String)
+  -> [StringTemplateInterpolation expression]
   -> String
-renderStringTemplate renderExpressionValue compactInterpolation parts =
+renderStringTemplate renderExpressionValue literalInterpolation
+    compactInterpolation parts =
   '"' : foldr renderPart "\"" parts
   where
-    renderPart (StringTemplateLiteral value) rest =
-      renderStringLiteralContents value <> rest
     renderPart (StringTemplateInterpolation expressionValue) rest =
-      renderInterpolation "%" expressionValue rest
+      case literalInterpolation expressionValue of
+        Just value -> renderStringLiteralContents value <> rest
+        Nothing -> renderInterpolation "%" expressionValue rest
 
     renderInterpolation prefix expressionValue rest =
       case compactInterpolation expressionValue of
@@ -382,6 +386,10 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
     compactInterpolationBoundary [] = True
     compactInterpolationBoundary (character : _) =
       not (isIdentifierCharacter character)
+
+operatorStringLiteral :: OperatorExpression -> Maybe String
+operatorStringLiteral (AsciiStringValue value) = Just value
+operatorStringLiteral _ = Nothing
 
 compactOperatorStringInterpolation
   :: OperatorExpression

@@ -9,14 +9,14 @@ module StringInterpolation.Admissibility
 
 import DatraLanguage.AST
   ( Expression (..)
-  , StringTemplatePart (..)
+  , StringTemplateInterpolation (..)
   , normalizeExpression
   )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Diagnostics.Application
   ( StringInterpolationAdmissibilityFailure (..)
   )
-import DatraLanguage.StringExpression
+import StringExpression
   ( StringExpression (..)
   , StringInterpolationTemplate
   )
@@ -44,7 +44,7 @@ validateStringInterpolation parser template =
 -- changing an exact quoted template with 'unwords'.
 validateStringTemplate
   :: StringInterpolationParser
-  -> [StringTemplatePart Expression]
+  -> [StringTemplateInterpolation Expression]
   -> StringInterpolationTemplate Expression
   -> Either StringInterpolationAdmissibilityFailure ()
 validateStringTemplate parser parts =
@@ -93,11 +93,13 @@ validateStringInterpolationWith parser render template =
       Nothing -> NeutralStringInterpolationParseFailure
 
 renderParts
-  :: [StringTemplatePart Expression]
+  :: [StringTemplateInterpolation Expression]
   -> [Witness]
   -> String
 renderParts [] _ = ""
-renderParts (StringTemplateLiteral literal : remaining) witnesses =
+renderParts
+    (StringTemplateInterpolation (AsciiStringLiteral literal) : remaining)
+    witnesses =
   literal <> renderParts remaining witnesses
 renderParts (StringTemplateInterpolation {} : remaining)
     (witness : witnesses) =
@@ -121,6 +123,7 @@ stringInterpolationRefines parser holeRefines source target =
     sourceKinds =
       [ kind
       | StringTemplateInterpolation kind <- source
+      , not (isLiteral kind)
       ]
     refinesWitness witnesses =
       case parseStringInterpolationExpression parser
@@ -195,6 +198,7 @@ stringInterpolationsOverlap parser holeOverlaps left right =
       | (witness, kind) <- zip witnesses
           [ kind
           | StringTemplateInterpolation kind <- source
+          , not (isLiteral kind)
           ]
       ]
       where
@@ -214,13 +218,17 @@ templateWitnesses
 templateWitnesses parser template = atomic : variants
   where
     holeCount = length
-      [() | StringTemplateInterpolation {} <- template]
+      [ ()
+      | StringTemplateInterpolation kind <- template
+      , not (isLiteral kind)
+      ]
     holes =
       [ ( kind
         , not (null remaining)
             || any isHole preceding
         )
       | (preceding, StringTemplateInterpolation kind, remaining) <- pieceContexts
+      , not (isLiteral kind)
       ]
     pieceContexts = contexts [] template
     neutralValues =
@@ -257,11 +265,10 @@ templateWitnesses parser template = atomic : variants
       take position values <> [replacement] <> drop (position + 1) values
     generalExpressionHole ExpressionString {} = True
     generalExpressionHole _ = False
-    isHole StringTemplateInterpolation {} = True
-    isHole _ = False
+    isHole (StringTemplateInterpolation kind) = not (isLiteral kind)
     literalValues =
       [ normalizeExpression parsed
-      | StringTemplateLiteral literal <- template
+      | StringTemplateInterpolation (LiteralString literal) <- template
       , Just parsed <- [parseStringInterpolationExpression parser literal]
       ]
 
@@ -276,7 +283,9 @@ renderWitness pieces witnesses =
   unwords (go pieces witnesses)
   where
     go [] _ = []
-    go (StringTemplateLiteral literal : remaining) available =
+    go
+        (StringTemplateInterpolation (LiteralString literal) : remaining)
+        available =
       literal : go remaining available
     go (StringTemplateInterpolation {} : remaining) (witness : available) =
       witnessSource witness : go remaining available
@@ -286,3 +295,7 @@ traverse_ :: (value -> Either failure ()) -> [value] -> Either failure ()
 traverse_ _ [] = Right ()
 traverse_ action (value : remaining) =
   action value >> traverse_ action remaining
+
+isLiteral :: StringExpression value -> Bool
+isLiteral LiteralString {} = True
+isLiteral _ = False

@@ -1,23 +1,23 @@
 -- | String-producing expressions used by declared syntax. A declaration is a
 -- source-order concatenation of literal strings and typed string expressions.
-module DatraLanguage.StringExpression
+module StringExpression
   ( StringExpression (..)
   , stringExpressionValue
   , mapStringExpression
-  , StringTemplatePart (..)
+  , StringTemplateInterpolation (..)
   , StringInterpolationTemplate
   , FunctionSyntax (..)
   , TemplateSelection (..)
   , templateSelectionProjection
   , literalStringInterpolationTemplate
   , traverseStringInterpolationTemplate
-  , renderStringInterpolationTemplate
   ) where
 
-import DatraLanguage.StringTemplate (StringTemplatePart (..))
+import DatraLanguage.StringTemplate (StringTemplateInterpolation (..))
 
 data StringExpression value
-  = ExpressionString value
+  = LiteralString String
+  | ExpressionString value
   | BlockString value
   | FunctionBodyString value
   | DeclarationString value
@@ -27,22 +27,24 @@ data StringExpression value
   | ValueString value
   deriving (Eq, Show)
 
-stringExpressionValue :: StringExpression value -> value
+stringExpressionValue :: StringExpression value -> Maybe value
 stringExpressionValue expression = case expression of
-  ExpressionString value -> value
-  BlockString value -> value
-  FunctionBodyString value -> value
-  DeclarationString value -> value
-  DependentArgumentString value -> value
-  IdentifierExpressionString value -> value
-  StringLiteralString value -> value
-  ValueString value -> value
+  LiteralString {} -> Nothing
+  ExpressionString value -> Just value
+  BlockString value -> Just value
+  FunctionBodyString value -> Just value
+  DeclarationString value -> Just value
+  DependentArgumentString value -> Just value
+  IdentifierExpressionString value -> Just value
+  StringLiteralString value -> Just value
+  ValueString value -> Just value
 
 mapStringExpression
   :: (source -> target)
   -> StringExpression source
   -> StringExpression target
 mapStringExpression transform expression = case expression of
+  LiteralString value -> LiteralString value
   ExpressionString value -> ExpressionString (transform value)
   BlockString value -> BlockString (transform value)
   FunctionBodyString value -> FunctionBodyString (transform value)
@@ -54,7 +56,7 @@ mapStringExpression transform expression = case expression of
   ValueString value -> ValueString (transform value)
 
 type StringInterpolationTemplate value =
-  [StringTemplatePart (StringExpression value)]
+  [StringTemplateInterpolation (StringExpression value)]
 
 newtype FunctionSyntax value = FunctionSyntax
   { functionStringInterpolationTemplates
@@ -74,7 +76,8 @@ templateSelectionProjection selection =
   templateSelectionWhole selection : templateSelectionCaptures selection
 
 literalStringInterpolationTemplate :: String -> StringInterpolationTemplate value
-literalStringInterpolationTemplate = map StringTemplateLiteral . words
+literalStringInterpolationTemplate =
+  map (StringTemplateInterpolation . LiteralString) . words
 
 traverseStringInterpolationTemplate
   :: Applicative f
@@ -83,12 +86,11 @@ traverseStringInterpolationTemplate
   -> f (StringInterpolationTemplate target)
 traverseStringInterpolationTemplate transform = traverse traversePart
   where
-    traversePart (StringTemplateLiteral literal) =
-      pure (StringTemplateLiteral literal)
     traversePart (StringTemplateInterpolation expression) =
       StringTemplateInterpolation
         <$> traverseStringExpression expression
     traverseStringExpression expression = case expression of
+      LiteralString value -> pure (LiteralString value)
       ExpressionString value -> ExpressionString <$> transform value
       BlockString value -> BlockString <$> transform value
       FunctionBodyString value -> FunctionBodyString <$> transform value
@@ -99,21 +101,3 @@ traverseStringInterpolationTemplate transform = traverse traversePart
         IdentifierExpressionString <$> transform value
       StringLiteralString value -> StringLiteralString <$> transform value
       ValueString value -> ValueString <$> transform value
-
-renderStringInterpolationTemplate
-  :: (value -> String)
-  -> StringInterpolationTemplate value
-  -> String
-renderStringInterpolationTemplate renderValue = unwords . map renderPart
-  where
-    renderPart (StringTemplateLiteral literal) = literal
-    renderPart (StringTemplateInterpolation expression) =
-      case expression of
-        ExpressionString {} -> "%_Expr"
-        BlockString {} -> "%_Block"
-        FunctionBodyString {} -> "%_FunctionBody"
-        DeclarationString {} -> "%_DependentDeclaration"
-        DependentArgumentString {} -> "%_DependentArgument"
-        IdentifierExpressionString value -> '%' : renderValue value
-        StringLiteralString value -> '%' : renderValue value
-        ValueString value -> '%' : renderValue value

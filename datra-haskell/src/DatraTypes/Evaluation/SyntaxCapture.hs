@@ -20,7 +20,7 @@ import DatraLanguage.AST
       )
   )
 import DatraLanguage.DependentDeclaration (dependentDeclarationCandidate)
-import DatraLanguage.StringExpression (StringExpression (..))
+import StringExpression (StringExpression (..))
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.IdentifierErasure (stripOuterIdentifierType)
 import Evaluation.Specification.String (valueProducesStrings)

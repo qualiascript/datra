@@ -161,13 +161,13 @@ dependentDeclarationWithImplementation implementation declaration = declaration
 -- need the written family expression use 'dependentDeclarationNameExpression'.
 dependentDeclarationTemplateBranches
   :: DependentDeclaration Expression
-  -> Maybe [[StringTemplatePart Expression]]
+  -> Maybe [[StringTemplateInterpolation Expression]]
 dependentDeclarationTemplateBranches declaration = Just $ case
     identifierExpressionBody (dependentDeclarationHead declaration) of
   IdentifierReference (SimpleIdentifierString name) ->
-    [[StringTemplateLiteral name]]
+    [[stringLiteral name]]
   AsciiStringLiteral name ->
-    [[StringTemplateLiteral name]]
+    [[stringLiteral name]]
   body -> identifierBranches body
   where
     -- Within an identifier expression, ordinary sequence, either, and optional
@@ -184,9 +184,9 @@ dependentDeclarationTemplateBranches declaration = Just $ case
     identifierBranches identifier@(IdentifierExpression expressionValue) =
       case identifierExpressionBody expressionValue of
         IdentifierReference (SimpleIdentifierString literal) ->
-          [[StringTemplateLiteral literal]]
+          [[stringLiteral literal]]
         AsciiStringLiteral literal ->
-          [[StringTemplateLiteral literal]]
+          [[stringLiteral literal]]
         _ -> [[StringTemplateInterpolation identifier]]
     identifierBranches expressionValue =
       [[StringTemplateInterpolation expressionValue]]
@@ -200,7 +200,8 @@ dependentDeclarationTemplateBranches declaration = Just $ case
     join [] suffix = suffix
     join prefix [] = prefix
     join prefix suffix =
-      prefix <> [StringTemplateLiteral " "] <> suffix
+      prefix <> [stringLiteral " "] <> suffix
+    stringLiteral = StringTemplateInterpolation . AsciiStringLiteral
 
 -- Lexical binders include dependent arguments and parameters, not only
 -- executable declarations. Keep name extraction independent of declaration
@@ -212,7 +213,9 @@ bindingNames expressionValue = case expressionValue of
     IdentifierExpressionBody (AsciiStringLiteral name) -> [name]
     _ -> []
   DependentArgument (IdentifierReference (SimpleIdentifierString name)) _ -> [name]
-  DependentArgument (StringTemplate [StringTemplateLiteral name]) _ -> [name]
+  DependentArgument
+      (StringTemplate
+        [StringTemplateInterpolation (AsciiStringLiteral name)]) _ -> [name]
   MapSpecification _ target -> bindingNames target
   OptionalType inner -> bindingNames inner
   _ -> []

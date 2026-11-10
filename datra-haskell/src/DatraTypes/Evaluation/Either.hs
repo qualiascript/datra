@@ -8,11 +8,12 @@ import AtlasMapFederationExpression
 import Data.List (isPrefixOf, nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
-import DatraLanguage.StringExpression
+import StringExpression
   ( FunctionSyntax (..)
+  , StringExpression (LiteralString)
   , StringInterpolationTemplate
   )
-import DatraLanguage.StringTemplate (StringTemplatePart (..))
+import DatraLanguage.StringTemplate (StringTemplateInterpolation (..))
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal, omega)
 import Evaluation.Coalization (valueIsCoalition)
 import Evaluation.Error
@@ -320,8 +321,8 @@ alignedLiteralsConflict leftPieces rightPieces =
     && or (zipWith conflicts leftPieces rightPieces)
   where
     conflicts
-        (StringTemplateLiteral leftLiteral)
-        (StringTemplateLiteral rightLiteral) =
+        (StringTemplateInterpolation (LiteralString leftLiteral))
+        (StringTemplateInterpolation (LiteralString rightLiteral)) =
       leftLiteral /= rightLiteral
     conflicts _ _ = False
 

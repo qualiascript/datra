@@ -1,10 +1,11 @@
 module DatraLanguage.StringTemplate
-  ( StringTemplatePart (..)
+  ( StringTemplateInterpolation (..)
   ) where
 
--- | One source-order component of a quoted string template. Literal chunks
--- are decoded by the parser; interpolations retain their expressions.
-data StringTemplatePart expression
-  = StringTemplateLiteral String
-  | StringTemplateInterpolation expression
+-- | One source-order expression in a quoted string template. Literal chunks
+-- are ordinary string-literal expressions, so every component has the same
+-- representation.
+newtype StringTemplateInterpolation expression = StringTemplateInterpolation
+  { stringTemplateInterpolationExpression :: expression
+  }
   deriving (Eq, Ord, Show)

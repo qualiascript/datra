@@ -21,7 +21,7 @@ import DatraLanguage.AST
   , Expression (..)
   , IdentifierExpression (..)
   , SimpleIdentifierString (SimpleIdentifierString)
-  , StringTemplatePart (..)
+  , StringTemplateInterpolation (..)
   , pattern FunctionType
   )
 import DatraLanguage.ContextualDeclaration
@@ -219,6 +219,9 @@ testModuleSyntaxAlias = do
 
 identifierReference :: String -> Expression
 identifierReference = IdentifierReference . SimpleIdentifierString
+
+templateLiteral :: String -> StringTemplateInterpolation Expression
+templateLiteral = StringTemplateInterpolation . AsciiStringLiteral
 
 hostOperator :: String -> [Expression] -> Expression
 hostOperator body arguments =
@@ -1449,7 +1452,7 @@ testStringTemplates = do
     assert "no synthetic Str capture is introduced"
       (renderInterpretedValue value == "$h")
   let template = StringTemplate
-        [ StringTemplateLiteral "example"
+        [ templateLiteral "example"
         , StringTemplateInterpolation
             (Addition (natural 2) (natural 2))
         ]
@@ -1478,18 +1481,18 @@ testStringTemplates = do
   expectValue
       "string interpolation"
       (StringTemplate
-        [ StringTemplateLiteral "hello, "
+        [ templateLiteral "hello, "
         , StringTemplateInterpolation (AsciiStringLiteral "world")
-        , StringTemplateLiteral "!"
+        , templateLiteral "!"
         ]) $ \value ->
     assert "toString strips the interpolated string's source delimiter"
       (renderInterpretedValue value == "\"hello, world!\"")
   expectValue
       "empty string interpolation"
       (StringTemplate
-        [ StringTemplateLiteral "left"
+        [ templateLiteral "left"
         , StringTemplateInterpolation (AsciiStringLiteral "")
-        , StringTemplateLiteral "right"
+        , templateLiteral "right"
         ]) $ \value ->
     assert "empty interpolated strings are concatenation identities"
       (renderInterpretedValue value == "$leftright")
@@ -1518,9 +1521,9 @@ testStringTemplates = do
   expectValue
       "fixed prefix and suffix around a non-total interpolation"
       (StringTemplate
-        [ StringTemplateLiteral "n="
+        [ templateLiteral "n="
         , StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral "."
+        , templateLiteral "."
         ]) $ \value ->
     assert "singletons concatenate with a non-total string federation"
       ( interpretedValueKind value == AsciiStringValueKind
@@ -1530,7 +1533,7 @@ testStringTemplates = do
       "delimiter-separated non-total interpolations"
       (StringTemplate
         [ StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral ":"
+        , templateLiteral ":"
         , StringTemplateInterpolation NaturalType
         ]) $ \value ->
     assert "a delimiter excluded from Nat establishes a unique boundary"
@@ -1540,7 +1543,7 @@ testStringTemplates = do
   let separatedNaturals =
         StringTemplate
           [ StringTemplateInterpolation NaturalType
-          , StringTemplateLiteral ":"
+          , templateLiteral ":"
           , StringTemplateInterpolation NaturalType
           ]
   expectValue
@@ -1607,7 +1610,7 @@ testStringTemplates = do
       "non-digit delimiter between natural interpolations"
       (StringTemplate
         [ StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral "-"
+        , templateLiteral "-"
         , StringTemplateInterpolation NaturalType
         ]) $ \value ->
     assert "a dash also cannot occur in Nat's rendered members"
@@ -1616,7 +1619,7 @@ testStringTemplates = do
       "natural then arbitrary string separated by a delimiter"
       (StringTemplate
         [ StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral ":"
+        , templateLiteral ":"
         , StringTemplateInterpolation AST.stringType
         ]) $ \value ->
     assert "a delimiter excluded from the left side fixes the first split"
@@ -1625,7 +1628,7 @@ testStringTemplates = do
       "arbitrary string then natural separated by a delimiter"
       (StringTemplate
         [ StringTemplateInterpolation AST.stringType
-        , StringTemplateLiteral ":"
+        , templateLiteral ":"
         , StringTemplateInterpolation NaturalType
         ]) $ \value ->
     assert "a delimiter excluded from the right side fixes the final split"
@@ -1634,7 +1637,7 @@ testStringTemplates = do
     (case interpretExpressionReason
         (StringTemplate
           [ StringTemplateInterpolation NaturalType
-          , StringTemplateLiteral "1"
+          , templateLiteral "1"
           , StringTemplateInterpolation NaturalType
           ]) of
       Left AmbiguousStringTemplate -> True
@@ -1643,9 +1646,9 @@ testStringTemplates = do
       "three delimiter-separated non-total interpolations"
       (StringTemplate
         [ StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral ":"
+        , templateLiteral ":"
         , StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral ":"
+        , templateLiteral ":"
         , StringTemplateInterpolation NaturalType
         ]) $ \value ->
     assert "the final-delimiter proof composes for repeated fields"
@@ -1655,7 +1658,7 @@ testStringTemplates = do
       (StringTemplate
         [StringTemplateInterpolation
           (StringTemplate
-            [ StringTemplateLiteral "n="
+            [ templateLiteral "n="
             , StringTemplateInterpolation NaturalType
             ])]) $ \value ->
     assert "toString is identity on an already converted template federation"
@@ -1682,7 +1685,7 @@ testStringTemplates = do
     (case interpretExpressionReason
         (StringTemplate
           [ StringTemplateInterpolation AST.stringType
-          , StringTemplateLiteral ":"
+          , templateLiteral ":"
           , StringTemplateInterpolation AST.stringType
           ]) of
       Left AmbiguousStringTemplate -> True
@@ -3873,7 +3876,7 @@ testIdentifiers = do
   let contextualIt = contextualAccess ContextualIt
       directName = DependentArgument
         (StringTemplate
-          [ StringTemplateLiteral "x"
+          [ templateLiteral "x"
           , StringTemplateInterpolation contextualIt
           ])
         (Just NaturalType)
@@ -3881,7 +3884,7 @@ testIdentifiers = do
         (StringTemplate
           [ StringTemplateInterpolation
             (StringTemplate
-              [ StringTemplateLiteral "x"
+              [ templateLiteral "x"
               , StringTemplateInterpolation contextualIt
               ])
           ])

@@ -193,11 +193,11 @@ import Data.Char (chr)
 import Data.IORef (IORef)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
-import DatraLanguage.StringExpression
+import StringExpression
   ( FunctionSyntax (..)
   , StringExpression (..)
   )
-import DatraLanguage.StringTemplate (StringTemplatePart (..))
+import DatraLanguage.StringTemplate (StringTemplateInterpolation (..))
 import DatraLanguage.AST (Expression, SimpleIdentifierString)
 import DatraOrdinal
   ( Ordinal
@@ -467,14 +467,13 @@ functionSyntaxEquivalent left right =
       length leftPieces == length rightPieces
         && and (zipWith pieceEquivalent leftPieces rightPieces)
     pieceEquivalent
-        (StringTemplateLiteral leftLiteral)
-        (StringTemplateLiteral rightLiteral) =
-      leftLiteral == rightLiteral
-    pieceEquivalent
         (StringTemplateInterpolation leftHole)
         (StringTemplateInterpolation rightHole) =
       holeEquivalent leftHole rightHole
-    pieceEquivalent _ _ = False
+    holeEquivalent
+        (LiteralString leftLiteral)
+        (LiteralString rightLiteral) =
+      leftLiteral == rightLiteral
     holeEquivalent
         (ExpressionString leftValue)
         (ExpressionString rightValue) = equivalent leftValue rightValue

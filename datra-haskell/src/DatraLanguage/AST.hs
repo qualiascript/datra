@@ -8,7 +8,7 @@ module DatraLanguage.AST
   , mapGenericArgument
   , genericArgumentExpression
   , GenericBinder (..)
-  , StringTemplatePart (..)
+  , StringTemplateInterpolation (..)
   , IdentifierExpression (..)
   , DeclarationModifier (..)
   , declarationModifierOperator
@@ -37,7 +37,7 @@ import Data.Functor.Const (Const (..))
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.AST.Operator (Operator (..))
-import DatraLanguage.StringTemplate (StringTemplatePart (..))
+import DatraLanguage.StringTemplate (StringTemplateInterpolation (..))
 import Numeric.Natural (Natural)
 
 newtype SimpleIdentifierString = SimpleIdentifierString
@@ -169,7 +169,7 @@ data Expression
   | Skip
   | AsciiStringLiteral String
   | NothingLiteral
-  | StringTemplate [StringTemplatePart Expression]
+  | StringTemplate [StringTemplateInterpolation Expression]
   | IdentifierExpression (IdentifierExpression Expression)
   | AtlasMap [Expression]
   | ArgumentativeMap [Expression]
@@ -329,7 +329,7 @@ data OperatorExpression
   | SkipValue
   | AsciiStringValue String
   | NothingValue
-  | StringTemplateValue [StringTemplatePart OperatorExpression]
+  | StringTemplateValue [StringTemplateInterpolation OperatorExpression]
   | IdentifierExpressionValue (IdentifierExpression OperatorExpression)
   | EmptyMap
   | Sequential (NonEmpty OperatorExpression)
@@ -412,7 +412,7 @@ normalizeExpression Skip = Skip
 normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
 normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
-  StringTemplate (map normalizeStringTemplatePart parts)
+  StringTemplate (map normalizeStringTemplateInterpolation parts)
 normalizeExpression
     (IdentifierExpression (IdentifierExpressionBody operand)) =
   IdentifierExpression
@@ -550,12 +550,11 @@ normalizeDependentArgumentName :: Expression -> Expression
 normalizeDependentArgumentName name@IdentifierReference {} = name
 normalizeDependentArgumentName name = normalizeExpression name
 
-normalizeStringTemplatePart
-  :: StringTemplatePart Expression
-  -> StringTemplatePart Expression
-normalizeStringTemplatePart (StringTemplateLiteral value) =
-  StringTemplateLiteral value
-normalizeStringTemplatePart (StringTemplateInterpolation expressionValue) =
+normalizeStringTemplateInterpolation
+  :: StringTemplateInterpolation Expression
+  -> StringTemplateInterpolation Expression
+normalizeStringTemplateInterpolation
+    (StringTemplateInterpolation expressionValue) =
   StringTemplateInterpolation (normalizeExpression expressionValue)
 
 -- | Empty maps are neutral sequence members and a one-member sequence adds no
@@ -604,7 +603,7 @@ lower Skip = SkipValue
 lower (AsciiStringLiteral value) = AsciiStringValue value
 lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
-  StringTemplateValue (map lowerStringTemplatePart parts)
+  StringTemplateValue (map lowerStringTemplateInterpolation parts)
 lower (IdentifierExpression (IdentifierExpressionBody operand)) =
   IdentifierExpressionValue (IdentifierExpressionBody (lower operand))
 lower (AtlasMap []) = EmptyMap
@@ -699,12 +698,11 @@ lower (ReverseSafeOverload supplied defaults) =
 lower (DependentArgument name typeAnnotation) =
   DependentArgumentValue (lower name) (lower <$> typeAnnotation)
 
-lowerStringTemplatePart
-  :: StringTemplatePart Expression
-  -> StringTemplatePart OperatorExpression
-lowerStringTemplatePart (StringTemplateLiteral value) =
-  StringTemplateLiteral value
-lowerStringTemplatePart (StringTemplateInterpolation expressionValue) =
+lowerStringTemplateInterpolation
+  :: StringTemplateInterpolation Expression
+  -> StringTemplateInterpolation OperatorExpression
+lowerStringTemplateInterpolation
+    (StringTemplateInterpolation expressionValue) =
   StringTemplateInterpolation (lower expressionValue)
 
 data Segment
@@ -812,8 +810,8 @@ traverseExpressionChildren visit expression = case expression of
             (genericBinderArgument binder) { genericArgumentBound = bound }
         })
         <$> visit (genericArgumentBound (genericBinderArgument binder))
-    part (StringTemplateLiteral text) = pure (StringTemplateLiteral text)
-    part (StringTemplateInterpolation value) = StringTemplateInterpolation <$> visit value
+    part (StringTemplateInterpolation value) =
+      StringTemplateInterpolation <$> visit value
     visitDependentArgumentName name@IdentifierReference {} = pure name
     visitDependentArgumentName name = visit name
 

@@ -73,7 +73,7 @@ import DatraLanguage.AST
   , GenericPolarity (..)
   , IdentifierExpression (..)
   , SimpleIdentifierString (..)
-  , StringTemplatePart (..)
+  , StringTemplateInterpolation (..)
   , attachedFunctionImplementation
   , dependentArgumentExpression
   , namedBeginBlock
@@ -84,7 +84,7 @@ import DatraLanguage.AST
   , mapDependentDeclaration
   )
 import DatraLanguage.ContextualDeclaration
-import DatraLanguage.StringExpression
+import StringExpression
   ( FunctionSyntax (FunctionSyntax)
   , StringExpression (..)
   , mapStringExpression
@@ -363,8 +363,10 @@ localSyntaxRules classify declarations source =
       { stringInterpolationTemplate = specializeTemplate visible (stringInterpolationTemplate rule) }
     specializeTemplate visible pieces =
       [ case piece of
-          StringTemplateInterpolation kind -> StringTemplateInterpolation (classify visible kind)
-          StringTemplateLiteral {} -> piece
+          StringTemplateInterpolation kind -> StringTemplateInterpolation
+            (case kind of
+              LiteralString {} -> kind
+              _ -> classify visible kind)
       | piece <- pieces
       ]
 
@@ -411,6 +413,10 @@ captureSyntaxHole
   -> Maybe Expression
 captureSyntaxHole base modules declarations previous kind captured =
   case kind of
+    LiteralString literal -> case captured of
+      AsciiStringLiteral actual
+        | actual == literal -> Just captured
+      _ -> Nothing
     ExpressionString {} -> Just captured
     BlockString {} -> case captured of
       AtlasMap {} -> Just captured
@@ -722,8 +728,10 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
         specialize rule = rule
           { stringInterpolationTemplate =
               [ case piece of
-                  StringTemplateInterpolation kind -> StringTemplateInterpolation (fst (classify kind))
-                  StringTemplateLiteral {} -> piece
+                  StringTemplateInterpolation kind -> StringTemplateInterpolation
+                    (case kind of
+                      LiteralString {} -> kind
+                      _ -> fst (classify kind))
               | piece <- stringInterpolationTemplate rule
               ]
           }
@@ -1185,7 +1193,7 @@ data ScopedDependentDeclaration
       Scope
       Scope
       (DependentDeclaration Expression)
-      (Maybe [[StringTemplatePart Expression]])
+      (Maybe [[StringTemplateInterpolation Expression]])
       (Maybe RuntimeSingletonPayload)
   | ScopedRuntimeSingletonDeclaration Scope RuntimeSingletonPayload
   | ScopedProjectedDependentDeclaration Scope NamedMapView
@@ -1212,11 +1220,12 @@ scopedDependentDeclarationValue scoped = case scoped of
 
 scopedDependentDeclarationBranches
   :: ScopedDependentDeclaration
-  -> Maybe [[StringTemplatePart Expression]]
+  -> Maybe [[StringTemplateInterpolation Expression]]
 scopedDependentDeclarationBranches scoped = case scoped of
   ScopedDatraDependentDeclaration _ _ _ branches _ -> branches
   ScopedRuntimeSingletonDeclaration _ runtime ->
-    Just [[StringTemplateLiteral (runtimeDeclarationName runtime)]]
+    Just [[StringTemplateInterpolation
+      (AsciiStringLiteral (runtimeDeclarationName runtime))]]
   ScopedProjectedDependentDeclaration {} -> Nothing
 
 scopedDependentDeclarationRuntime
@@ -1372,7 +1381,9 @@ makeDependentDeclarationLayer origin declarations = DependentDeclarationLayer
       prefixes <- traverse leadingLiteral branches
       let prefix = longestCommonPrefix prefixes
       if null prefix then Nothing else Just prefix
-    leadingLiteral (StringTemplateLiteral literal : _) = Just literal
+    leadingLiteral
+        (StringTemplateInterpolation (AsciiStringLiteral literal) : _) =
+      Just literal
     leadingLiteral _ = Nothing
     longestCommonPrefix [] = []
     longestCommonPrefix (first : remaining) = foldl sharedPrefix first remaining
@@ -1820,10 +1831,12 @@ contextualFunction role levels@(_ : _) = do
 
     valueSyntax :: FunctionSyntax InterpretedValue
     valueSyntax = FunctionSyntax
-      [[StringTemplateLiteral (contextualSurfaceName role)]]
+      [[StringTemplateInterpolation
+        (LiteralString (contextualSurfaceName role))]]
     sourceSyntax :: FunctionSyntax String
     sourceSyntax = FunctionSyntax
-      [[StringTemplateLiteral (contextualSurfaceName role)]]
+      [[StringTemplateInterpolation
+        (LiteralString (contextualSurfaceName role))]]
 contextualFunction role [] = Left
   (UnknownIdentifier (contextualPrivateName role))
 
@@ -2769,8 +2782,8 @@ evaluateSelectedLookup
   :: ReductionContext
   -> Scope
   -> ResolutionStack
-  -> [StringTemplatePart Expression]
-  -> [StringTemplatePart Expression]
+  -> [StringTemplateInterpolation Expression]
+  -> [StringTemplateInterpolation Expression]
   -> Either InterpretingError InterpretedValue
 evaluateSelectedLookup reduction scope resolving template selected = do
   query <- evalInScopeWith reduction scope resolving (StringTemplate selected)
@@ -2795,8 +2808,8 @@ evaluateSelectedLookup reduction scope resolving template selected = do
 
 selectedDependentDeclaration
   :: Scope
-  -> [StringTemplatePart Expression]
-  -> [StringTemplatePart Expression]
+  -> [StringTemplateInterpolation Expression]
+  -> [StringTemplateInterpolation Expression]
   -> Maybe
       ( ScopedDependentDeclaration
       , [(Expression, Expression)]
@@ -2819,13 +2832,13 @@ selectedDependentDeclaration scope template selected =
       ]
 
 selectedTemplateCaptures
-  :: [StringTemplatePart Expression]
-  -> [StringTemplatePart Expression]
+  :: [StringTemplateInterpolation Expression]
+  -> [StringTemplateInterpolation Expression]
   -> Maybe [(Expression, Expression)]
 selectedTemplateCaptures [] [] = Just []
 selectedTemplateCaptures
-    (StringTemplateLiteral expected : template)
-    (StringTemplateLiteral actual : selected)
+    ( StringTemplateInterpolation (AsciiStringLiteral expected) : template)
+    ( StringTemplateInterpolation (AsciiStringLiteral actual) : selected)
   | expected == actual = selectedTemplateCaptures template selected
 selectedTemplateCaptures
     (StringTemplateInterpolation schema : template)
@@ -2839,7 +2852,7 @@ selectedDependentDeclarationMember
   -> ResolutionStack
   -> ScopedDependentDeclaration
   -> String
-  -> [StringTemplatePart Expression]
+  -> [StringTemplateInterpolation Expression]
   -> [(Expression, Expression)]
   -> Either InterpretingError NamedMember
 selectedDependentDeclarationMember
@@ -3418,7 +3431,7 @@ dependentDeclarationSingletonName
   -> Maybe String
 dependentDeclarationSingletonName scoped =
   case scopedDependentDeclarationBranches scoped of
-    Just [[StringTemplateLiteral name]] -> Just name
+    Just [[StringTemplateInterpolation (AsciiStringLiteral name)]] -> Just name
     _ -> Nothing
 
 dependentDeclarationHasRecursiveSeed
@@ -3579,7 +3592,9 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
               branches = dependentDeclarationTemplateBranches declaration
               retainedRuntime = do
                 name <- case branches of
-                  Just [[StringTemplateLiteral singleton]] -> Just singleton
+                  Just
+                      [[StringTemplateInterpolation
+                        (AsciiStringLiteral singleton)]] -> Just singleton
                   _ -> Nothing
                 value <- lookup name retained
                 pure RuntimeSingletonPayload
@@ -3724,7 +3739,7 @@ importInvocation expressionValue =
 interpretStringTemplateWith
   :: ScopeActivation
   -> Interpreter
-  -> [StringTemplatePart Expression]
+  -> [StringTemplateInterpolation Expression]
   -> Either InterpretingError InterpretedValue
 interpretStringTemplateWith protection interpret parts = do
   evaluated <- traverse interpretPart parts
@@ -3749,7 +3764,8 @@ interpretStringTemplateWith protection interpret parts = do
                   templated)
           _ -> Right neverValue
   where
-    interpretPart (StringTemplateLiteral value) =
+    interpretPart
+        (StringTemplateInterpolation (AsciiStringLiteral value)) =
       (, Nothing) <$> asciiStringValue value
     interpretPart (StringTemplateInterpolation expressionValue) = do
       value <- interpret expressionValue
@@ -4325,7 +4341,7 @@ prepareDependentDeclarationBranches
   :: ReductionContext
   -> Scope
   -> ResolutionStack
-  -> [[StringTemplatePart Expression]]
+  -> [[StringTemplateInterpolation Expression]]
   -> Either InterpretingError
       [PreparedDependentDeclaration]
 prepareDependentDeclarationBranches reduction captured resolving =
@@ -4335,6 +4351,9 @@ prepareDependentDeclarationBranches reduction captured resolving =
       let captureExpressions =
             [ captureExpression value
             | StringTemplateInterpolation value <- parts
+            , case value of
+                AsciiStringLiteral {} -> False
+                _ -> True
             ]
       evaluatedCaptures <- traverse evaluateCapture captureExpressions
       let segments = dependentTemplateSegments parts evaluatedCaptures
@@ -4351,13 +4370,15 @@ prepareDependentDeclarationBranches reduction captured resolving =
 -- evaluating them for a structurally impossible name recursively re-enters
 -- the same declaration layer.
 templateLiteralSkeletonMatches
-  :: [StringTemplatePart Expression]
+  :: [StringTemplateInterpolation Expression]
   -> String
   -> Bool
 templateLiteralSkeletonMatches = go
   where
     go [] text = null text
-    go (StringTemplateLiteral literal : remaining) text =
+    go
+        (StringTemplateInterpolation (AsciiStringLiteral literal) : remaining)
+        text =
       maybe False (go remaining) (stripPrefix literal text)
     go (StringTemplateInterpolation {} : remaining) text =
       any (\boundary -> go remaining (drop boundary text))
@@ -4553,7 +4574,7 @@ attachDeclarationSyntax sourceCaptures template payload =
   where
     evaluatedPiece segment = case segment of
       EvaluatedStringTemplateLiteral literal ->
-        map StringTemplateLiteral (words literal)
+        map (StringTemplateInterpolation . LiteralString) (words literal)
       EvaluatedStringTemplateCapture _ schema _ ->
         let stringFederation = templateValue
               (stringFederationValue canonicalStringCodec schema)
@@ -4563,8 +4584,12 @@ attachDeclarationSyntax sourceCaptures template payload =
     sourcePieces (Just captures) pieces = go captures pieces
       where
         go _ [] = []
-        go remaining (StringTemplateLiteral literal : rest) =
-          StringTemplateLiteral literal : go remaining rest
+        go remaining
+            ( StringTemplateInterpolation (LiteralString literalValue)
+              : rest
+            ) =
+          StringTemplateInterpolation (LiteralString literalValue)
+            : go remaining rest
         go (capture : remaining) (StringTemplateInterpolation kind : rest) =
           StringTemplateInterpolation
             (mapStringExpression
@@ -4572,7 +4597,6 @@ attachDeclarationSyntax sourceCaptures template payload =
             : go remaining rest
         go [] (piece : rest) = fallbackSourcePiece piece : go [] rest
     fallbackSourcePiece piece = case piece of
-      StringTemplateLiteral literal -> StringTemplateLiteral literal
       StringTemplateInterpolation kind -> StringTemplateInterpolation
         (mapStringExpression renderInterpretedValue kind)
 
@@ -4666,14 +4690,14 @@ appendLiteralSegment literal segments = case reverse segments of
   _ -> segments <> [EvaluatedStringTemplateLiteral literal]
 
 dependentTemplateSegments
-  :: [StringTemplatePart Expression]
+  :: [StringTemplateInterpolation Expression]
   -> [EvaluatedDeclarationCapture]
   -> [EvaluatedStringTemplateSegment]
 dependentTemplateSegments = go 0 []
   where
     go _ segments [] _ = segments
     go index segments
-        (StringTemplateLiteral literal : remaining)
+        (StringTemplateInterpolation (AsciiStringLiteral literal) : remaining)
         captures =
       go index (appendLiteralSegment literal segments) remaining captures
     go index segments
@@ -6179,7 +6203,7 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
           templates
         pure
           [ case template of
-              [StringTemplateLiteral _] ->
+              [StringTemplateInterpolation (LiteralString _)] ->
                 syntaxApplicationRule name template callable callable
               _ -> SyntaxRule
                 { syntaxName = name

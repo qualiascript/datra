@@ -11,7 +11,7 @@ import Evaluation.Identifier (identifierNameFederationFor)
 import Evaluation.Map (makeAtlasMapPreservingSingleton)
 import Evaluation.Specification (specifyValues)
 import Evaluation.Value
-import DatraLanguage.StringExpression
+import StringExpression
   ( TemplateSelection (..)
   , templateSelectionProjection
   )

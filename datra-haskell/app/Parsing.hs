@@ -109,10 +109,7 @@ import DatraLanguage.AST
       , Lookup
       )
   , pattern FunctionType
-  , StringTemplatePart
-      ( StringTemplateInterpolation
-      , StringTemplateLiteral
-      )
+  , StringTemplateInterpolation (StringTemplateInterpolation)
   , expressionChildren
   , mapExpressionChildren
   , traverseExpressionChildren
@@ -1804,7 +1801,8 @@ astStringTemplateToken =
 
 data ParsedStringTemplatePart
   = ParsedStringTemplateCharacter Char
-  | ParsedStringTemplateInterpolation (StringTemplatePart Expression)
+  | ParsedStringTemplateInterpolation
+      (StringTemplateInterpolation Expression)
 
 stringTemplateToken
   :: Parser Expression
@@ -1870,15 +1868,22 @@ buildStringTemplate parsedParts =
       AsciiStringLiteral
         (concat
           [ value
-          | StringTemplateLiteral value <- parts
+          | StringTemplateInterpolation (AsciiStringLiteral value) <- parts
           ])
     (parts, True) -> StringTemplate parts
   where
     collect (ParsedStringTemplateCharacter character) (parts, hasHole) =
       case parts of
-        StringTemplateLiteral value : remaining ->
-          (StringTemplateLiteral (character : value) : remaining, hasHole)
-        _ -> (StringTemplateLiteral [character] : parts, hasHole)
+        StringTemplateInterpolation (AsciiStringLiteral value) : remaining ->
+          ( StringTemplateInterpolation
+              (AsciiStringLiteral (character : value)) : remaining
+          , hasHole
+          )
+        _ ->
+          ( StringTemplateInterpolation
+              (AsciiStringLiteral [character]) : parts
+          , hasHole
+          )
     collect (ParsedStringTemplateInterpolation interpolation)
         (parts, _) =
       (interpolation : parts, True)

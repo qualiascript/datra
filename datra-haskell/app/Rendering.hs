@@ -17,7 +17,7 @@ import DatraLanguage.AST.Operator
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST
-  ( StringTemplatePart (..)
+  ( StringTemplateInterpolation (..)
   )
 import DatraLanguage.Pretty
   ( renderAsciiStringLiteral
@@ -170,6 +170,7 @@ prettyNonKeywordCanonicalResult result =
       pretty
         (renderStringTemplate
           renderCanonicalResult
+          canonicalStringLiteral
           compactCanonicalStringInterpolation
           [StringTemplateInterpolation source])
     CanonicalTemplate template ->
@@ -178,6 +179,7 @@ prettyNonKeywordCanonicalResult result =
           pretty
             (renderStringTemplate
               renderCanonicalResult
+              canonicalStringLiteral
               compactCanonicalStringInterpolation
               parts)
         Nothing -> prettyCanonicalResult template
@@ -272,7 +274,7 @@ prettyArgumentMember member = prettyConcatenationMember member
 
 canonicalStringTemplateParts
   :: CanonicalResult
-  -> Maybe [StringTemplatePart CanonicalResult]
+  -> Maybe [StringTemplateInterpolation CanonicalResult]
 canonicalStringTemplateParts result =
   case result of
       CanonicalReference {} ->
@@ -283,7 +285,8 @@ canonicalStringTemplateParts result =
         Just [StringTemplateInterpolation result]
       CanonicalConcatenation members ->
         concat <$> traverse canonicalStringTemplateParts members
-      CanonicalAsciiString value -> Just [StringTemplateLiteral value]
+      CanonicalAsciiString value ->
+        Just [StringTemplateInterpolation (CanonicalAsciiString value)]
       CanonicalToString source -> Just [StringTemplateInterpolation source]
       CanonicalTemplate nested -> canonicalStringTemplateParts nested
       _ -> Nothing
@@ -300,6 +303,10 @@ compactCanonicalStringInterpolation result
   | otherwise = Nothing
   where
     reserved = Just . Reserved.reservedSymbolIdentifierString
+
+canonicalStringLiteral :: CanonicalResult -> Maybe String
+canonicalStringLiteral (CanonicalAsciiString value) = Just value
+canonicalStringLiteral _ = Nothing
 
 prettySpecificationOperand :: CanonicalResult -> Doc annotation
 prettySpecificationOperand operand =

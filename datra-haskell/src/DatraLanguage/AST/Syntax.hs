@@ -53,7 +53,7 @@ module DatraLanguage.AST.Syntax
 import DatraLanguage.AST
   ( Expression (..)
   , SimpleIdentifierString (SimpleIdentifierString)
-  , StringTemplatePart
+  , StringTemplateInterpolation
   )
 import Numeric.Natural (Natural)
 import Prelude hiding ((+), (-), (*), (^))
@@ -80,7 +80,7 @@ asciiString = AsciiStringLiteral
 nothing :: Expression
 nothing = NothingLiteral
 
-stringTemplate :: [StringTemplatePart Expression] -> Expression
+stringTemplate :: [StringTemplateInterpolation Expression] -> Expression
 stringTemplate = StringTemplate
 
 stringType :: Expression

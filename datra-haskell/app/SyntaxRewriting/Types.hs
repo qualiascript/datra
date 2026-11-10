@@ -28,7 +28,7 @@ import DatraLanguage.AST (Expression)
 import DatraLanguage.Diagnostics (DatraError, SourceSpan)
 import DatraLanguage.Diagnostics.Application
   ( CandidateRejectionReason (..), SyntaxRewriteFailure )
-import DatraLanguage.StringExpression
+import StringExpression
   ( StringExpression
   , TemplateSelection
   )

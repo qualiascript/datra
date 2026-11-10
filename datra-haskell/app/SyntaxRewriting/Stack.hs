@@ -9,7 +9,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import DatraLanguage.AST
   ( Expression, expressionChildren, traverseExpressionChildren )
-import DatraLanguage.StringExpression
+import StringExpression
   ( StringExpression, TemplateSelection (..) )
 import DatraTypes (InterpretedValue)
 import SyntaxRewriting.Candidates

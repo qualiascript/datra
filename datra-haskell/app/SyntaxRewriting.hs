@@ -36,8 +36,9 @@ import DatraTypes
   , makeArgumentativeMapPreservingSingleton
   , subfederationValues
   )
-import DatraLanguage.StringExpression
-  ( TemplateSelection (..)
+import StringExpression
+  ( StringExpression (LiteralString)
+  , TemplateSelection (..)
   )
 import StringInterpolation
   ( SyntaxRule (..)
@@ -148,8 +149,8 @@ prepareSelectedSyntaxMatch environment rule matched = PreparedExpansion
             Nothing -> syntaxFunctionInsertion evaluate implementation
           applySyntaxFunction insertion (insertionCaptures rule captures)
       | otherwise = Nothing
+    isHole (StringTemplateInterpolation (LiteralString _)) = False
     isHole StringTemplateInterpolation {} = True
-    isHole StringTemplateLiteral {} = False
 
 insertionCaptures :: RewriteRule -> [Expression] -> [Expression]
 insertionCaptures rule captures
@@ -182,6 +183,9 @@ compileRuleFamily family =
       , rewriteRuleHoleFamilies =
           [ selected
           | StringTemplateInterpolation kind <- stringInterpolationTemplate rule
+          , case kind of
+              LiteralString {} -> False
+              _ -> True
           , let selected = case syntaxRuleFamilyClassify family [kind] of
                   [(_, value)] -> value
                   _ -> Nothing
@@ -302,8 +306,11 @@ directSyntaxFunctionExpansion environment selectedRule application =
       Nothing -> evaluateHere
     captureCount rule = length
       [ ()
-      | StringTemplateInterpolation _ <-
+      | StringTemplateInterpolation kind <-
           stringInterpolationTemplate (rewriteRule rule)
+      , case kind of
+          LiteralString {} -> False
+          _ -> True
       ]
 -- Inspect the adapter's AST constructor before rewriting a raw block. A
 -- function body already shadows the outer input while its declarations and

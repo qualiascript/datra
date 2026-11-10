@@ -19,9 +19,9 @@ import DatraLanguage.AST
   , mapExpressionChildren
   )
 import DatraLanguage.AST.Source (renderSourceExpression)
-import DatraLanguage.StringExpression
-  ( StringExpression
-  , StringTemplatePart (..)
+import StringExpression
+  ( StringExpression (..)
+  , StringTemplateInterpolation (..)
   , StringInterpolationTemplate
   )
 
@@ -50,7 +50,13 @@ lowerTemplate
   -> Maybe LoweredTemplate
 lowerTemplate parser pieces = firstValid [0 ..]
   where
-    kinds = [kind | StringTemplateInterpolation kind <- pieces]
+    kinds =
+      [ kind
+      | StringTemplateInterpolation kind <- pieces
+      , case kind of
+          LiteralString {} -> False
+          _ -> True
+      ]
     firstValid [] = Nothing
     firstValid (base : remaining) =
       let markers = zipWith (\offset kind ->
@@ -66,7 +72,9 @@ lowerTemplate parser pieces = firstValid [0 ..]
                   }
           _ -> firstValid remaining
     render [] _ = []
-    render (StringTemplateLiteral literal : remaining) markers =
+    render
+        (StringTemplateInterpolation (LiteralString literal) : remaining)
+        markers =
       literal : render remaining markers
     render (StringTemplateInterpolation {} : remaining) (marker : markers) =
       renderSourceExpression marker : render remaining markers

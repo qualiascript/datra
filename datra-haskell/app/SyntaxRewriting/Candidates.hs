@@ -7,9 +7,9 @@ module SyntaxRewriting.Candidates
   ) where
 
 import DatraLanguage.AST (Expression (..))
-import DatraLanguage.StringExpression
+import StringExpression
   ( StringExpression (..)
-  , StringTemplatePart (..)
+  , StringTemplateInterpolation (..)
   , TemplateSelection (..)
   )
 import StringInterpolation
@@ -172,7 +172,12 @@ compileRewriteRule rule = RewriteRule
   , rewriteRuleBranch = 0
   , rewriteRuleEvaluation = Nothing
   , rewriteRuleHoleFamilies =
-      [ Nothing | StringTemplateInterpolation _ <- pieces ]
+      [ Nothing
+      | StringTemplateInterpolation kind <- pieces
+      , case kind of
+          LiteralString {} -> False
+          _ -> True
+      ]
   , rewriteRuleSyntaxInsertion = Nothing
   , rewriteRuleReturnType = Nothing
   }
