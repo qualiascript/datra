@@ -247,7 +247,7 @@ interpolation marker within a quoted string.
 enters syntax rewriting or evaluation, every quoted string template lowers to
 ordinary expressions.
 
-Interpolation holes become calls to the host `to_string` function. Literal
+Interpolation holes become calls to the host `show` function. Literal
 chunks remain string literals. Multiple parts are joined with the ordinary
 `,` concatenation AST:
 
@@ -258,7 +258,7 @@ chunks remain string literals. Multiple parts are joined with the ordinary
 lowers to:
 
 ```datra
-(to_string value1), (to_string value2)
+(show value1), (show value2)
 ```
 
 and:
@@ -270,33 +270,33 @@ and:
 lowers to:
 
 ```datra
-(to_string value1), " and ", (to_string value2)
+(show value1), " and ", (show value2)
 ```
 
 An empty template lowers to `""`. A single part lowers directly to that part.
 Adjacent literal chunks may be coalesced. Lowering refers to the host binding
-by binding identity, so source shadowing of `to_string` cannot change parsed
+by binding identity, so source shadowing of `show` cannot change parsed
 interpolation semantics.
 
 There is no post-parser string-template expression, interpolation-hole kind,
 or template evaluator. Function application, concatenation, evaluation, and
 ordinary specification own the lowered expression.
 
-## `to_string`
+## `show`
 
 The host provides one total function:
 
 ```datra
-datra.to_string : Any -> Str
+datra.show : Any -> Str
 ```
 
-The standard library exposes it as `to_string` with the same domain and
+The standard library exposes it as `show` with the same domain and
 codomain. It returns the canonical string presentation used by interpolation:
 
 ```datra
-to_string "abc" = "\"abc\""
-to_string $abc = "abc"
-to_string $"Hello, world!" = "Hello, world!"
+show "abc" = "\"abc\""
+show $abc = "abc"
+show $"Hello, world!" = "Hello, world!"
 ```
 
 Consequently:
@@ -311,7 +311,7 @@ $abcdef = $("%($abc)%($def)")
 ```
 
 Every identifier-literal interpolation contributes its `IdentifierString`
-payload independently. This follows from ordinary `to_string` application and
+payload independently. This follows from ordinary `show` application and
 works for any number of holes; it is not a singleton-template rule.
 
 ## Declared syntax representation
@@ -396,7 +396,7 @@ The standard library exposes the concepts source programs use:
 
 ```datra
 _IdentifierLiteral := datra.IdentifierLiteral
-let val to_string := (Any -> Str) datra.to_string
+let val show := (Any -> Str) datra.show
 ```
 
 All greedy syntax declarations in the standard library use `$` with a
@@ -435,7 +435,7 @@ Parser and AST tests cover:
   expressions as dependent-declaration heads;
 - traversal, lowering, source rendering, and canonical round trips for every
   `$` operand shape;
-- interpolation lowering to string literals, `to_string`, and concatenation;
+- interpolation lowering to string literals, `show`, and concatenation;
 - any number of identifier-literal interpolation holes;
 - canonical quoted strings.
 
@@ -445,7 +445,7 @@ Interpreter and type tests cover:
 - quoted identifier payloads that are not valid bare spellings;
 - non-string rejection for dynamic identifier operands;
 - the quoted-string and identifier interpolation equalities above;
-- `to_string : Any -> Str` through host and standard-library bindings;
+- `show : Any -> Str` through host and standard-library bindings;
 - equivalence between interpolation and its lowered concatenation expression;
 - identifier/string membership distinctions;
 - specification, reverse specification, and subfederation of concrete and
@@ -477,7 +477,7 @@ Declared-syntax tests cover:
 7. Every structural `;` gap requires one or more whitespace characters and
    canonically renders with one space.
 8. Every interpolation lowers before syntax rewriting.
-9. `to_string : Any -> Str` is the sole interpolation conversion.
+9. `show : Any -> Str` is the sole interpolation conversion.
 10. Declared syntax is stored as ordinary expression structure.
 11. Literal syntax positions are `IdentifierLiteral` expression nodes.
 12. Every capture position carries one ordinary target expression.
