@@ -69,10 +69,10 @@ import DatraLanguage.AST
   , pattern FunctionType
   , GenericBinder (..)
   , GenericBinderId
-  , GenericIdentifier (..)
-  , GenericIntroduction (..)
+  , GenericArgument (..)
   , GenericPolarity (..)
-  , IdentifierString (IdentifierString)
+  , IdentifierExpression (..)
+  , SimpleIdentifierString (..)
   , StringTemplatePart (..)
   , attachedFunctionImplementation
   , dependentArgumentExpression
@@ -314,7 +314,7 @@ discoverImportInvocations base activeRules envelope raw = do
 
 scopeSyntaxNamespaces :: Expression -> [String]
 scopeSyntaxNamespaces source = case source of
-  IdentifierReference (IdentifierString selected) -> [selected]
+  IdentifierReference (SimpleIdentifierString selected) -> [selected]
   ArgumentativeMap modules -> concatMap scopeSyntaxNamespaces modules
   _ -> []
 
@@ -370,13 +370,13 @@ localSyntaxRules classify declarations source =
 
 localScopeName :: Expression -> Maybe String
 localScopeName source = case source of
-  IdentifierReference (IdentifierString name) -> Just name
+  IdentifierReference (SimpleIdentifierString name) -> Just name
   SyntaxBoundary inner -> localScopeName inner
   _ -> Nothing
 
 localScopeDeclarations :: [Expression] -> Expression -> [Expression]
 localScopeDeclarations declarations source = case source of
-  IdentifierReference (IdentifierString name) ->
+  IdentifierReference (SimpleIdentifierString name) ->
     case
         [ dependentDeclarationImplementation binding
         | declaration <- reverse declarations
@@ -422,7 +422,7 @@ captureSyntaxHole base modules declarations previous kind captured =
       | dependentDeclarationCandidate captured -> Just captured
       | otherwise -> Nothing
     DependentArgumentSyntaxHole {} -> dependentArgumentCapture captured
-    IdentifierLiteralSyntaxHole {} -> case captured of
+    IdentifierExpressionSyntaxHole {} -> case captured of
       IdentifierReference {} -> Just captured
       _ -> Nothing
     StringLiteralSyntaxHole {} -> case captured of
@@ -641,7 +641,7 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
       capture declarations previous kind captured
 
     publish currentBase declarations families entry = do
-      let resolved = resolveSyntaxDeclarationHead declarations entry
+      let resolved = entry
       _ <- dependentDeclaration resolved
       let names = bindingNames entry
           retainedDeclarations = retainDeclarations names declarations
@@ -703,7 +703,7 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
                     [declarationFamily currentBase retained entry resolved]
                  )
           where
-            resolved = resolveSyntaxDeclarationHead visible entry
+            resolved = entry
 
     declarationFamily currentBase visible entry resolved = SyntaxRuleFamily
       { syntaxRuleFamilyNames = bindingNames entry
@@ -783,55 +783,6 @@ expandSyntaxExpression expansion = case expansion of
   SyntaxFunctionBody entries result ->
     FunctionBody <$> lowerSyntaxDeclarations entries <*> pure result
 
--- Dependent-name resolution is an interpreter concern. Syntax rewriting sees
--- only the resulting rule family and never inspects a declaration head.
-resolveSyntaxDeclarationHead :: [Expression] -> Expression -> Expression
-resolveSyntaxDeclarationHead declarations expressionValue =
-  case dependentDeclaration expressionValue of
-    Just declaration -> DeclarationExpression declaration
-      { dependentDeclarationHead = resolvedDeclarationHead declaration }
-    Nothing -> expressionValue
-  where
-    resolvedDeclarationHead declaration =
-      case dependentDeclarationHead declaration of
-        SimpleIdentifierDeclarationHead name ->
-          maybe (SimpleIdentifierDeclarationHead name) classify
-            (resolvedHead (IdentifierReference name))
-        StringTemplateDeclarationHead parts ->
-          StringTemplateDeclarationHead parts
-        EvaluatedDeclarationHead value ->
-          maybe (EvaluatedDeclarationHead value) classify
-            (resolvedHead value)
-    classify (IdentifierReference name) =
-      SimpleIdentifierDeclarationHead name
-    classify (StringTemplate parts) = StringTemplateDeclarationHead parts
-    classify value = EvaluatedDeclarationHead value
-    resolvedHead (SyntaxBoundary inner) = resolvedHead inner
-    resolvedHead (GreedyStringTemplate operand) = Just
-      (GreedyStringTemplate (resolveGreedy operand))
-    resolvedHead value@StringTemplate {} = Just value
-    resolvedHead value@AsciiStringLiteral {} = Just value
-    resolvedHead (IdentifierReference (IdentifierString name)) = do
-      declaration <- firstDeclaration name (reverse declarations)
-      resolvedHead (dependentDeclarationImplementation declaration)
-    resolvedHead _ = Nothing
-
-    resolveGreedy greedyPart = case greedyPart of
-      SyntaxBoundary inner -> SyntaxBoundary (resolveGreedy inner)
-      AtlasMap members -> AtlasMap (map resolveGreedy members)
-      MapSequence members -> MapSequence (map resolveGreedy members)
-      EitherType left right ->
-        EitherType (resolveGreedy left) (resolveGreedy right)
-      OptionalType operand -> OptionalType (resolveGreedy operand)
-      atom -> atom
-
-    firstDeclaration _ [] = Nothing
-    firstDeclaration requested (candidate : remaining) =
-      case dependentDeclaration candidate of
-        Just declaration
-          | requested `elem` bindingNames candidate -> Just declaration
-        _ -> firstDeclaration requested remaining
-
 binderDeclarations
   :: [(SyntaxHoleKind Expression, Expression)]
   -> [Expression]
@@ -849,10 +800,10 @@ binderDeclaration binder bound = case binder of
     Just (assigned name)
   AsciiStringLiteral name
     | isIdentifierValue name ->
-        Just (assigned (IdentifierString name))
+        Just (assigned (SimpleIdentifierString name))
   OptionalType (AsciiStringLiteral name)
     | isIdentifierValue name ->
-        Just (assigned (IdentifierString name))
+        Just (assigned (SimpleIdentifierString name))
   _ -> Nothing
   where
     -- Syntax binders are validation-only lexical declarations. Representing
@@ -873,7 +824,7 @@ canonicalValueCapture interpret targetExpression captured = do
     Nothing -> case interpret captured of
       Right value -> captured <$ specifyValues value target
       Left failure -> case captured of
-        IdentifierReference (IdentifierString name) -> do
+        IdentifierReference (SimpleIdentifierString name) -> do
           source <- asciiStringValue name
           _ <- evalValues canonicalStringCodec source target
           Right (AsciiStringLiteral name)
@@ -1849,8 +1800,8 @@ contextualFunction role levels@(_ : _) = do
     signatureSource = renderSourceExpression
       (FunctionType domainExpression
         (ScopeAccess
-          (IdentifierReference (IdentifierString "datra"))
-          (IdentifierReference (IdentifierString "Any"))))
+          (IdentifierReference (SimpleIdentifierString "datra"))
+          (IdentifierReference (SimpleIdentifierString "Any"))))
     innerMap = ContextualMap role levels
 
     -- The surface spelling has no holes and therefore supplies the empty map.
@@ -1978,9 +1929,9 @@ lazyRecursivePrefix :: Scope -> Expression -> Maybe (Scope, RecursivePrefix)
 lazyRecursivePrefix scope expression = case expression of
   Fun value -> (scope,) <$> recursivePrefixFor
     (isContextualDeclarationReference ContextualThis scope) value
-  IdentifierReference (IdentifierString name) -> do
+  IdentifierReference (SimpleIdentifierString name) -> do
     (captured, _, definition) <- declarationDefinitionByName scope name
-    let isSelf value = value == IdentifierReference (IdentifierString name)
+    let isSelf value = value == IdentifierReference (SimpleIdentifierString name)
     prefix <- case definition of
       Fun value -> recursivePrefixFor
         (isContextualAccessOf ContextualThis) value
@@ -2000,7 +1951,7 @@ isContextualDeclarationReference role scope = go []
   where
     go visited expressionValue
       | isContextualAccessOf role expressionValue = True
-      | IdentifierReference (IdentifierString name) <- expressionValue
+      | IdentifierReference (SimpleIdentifierString name) <- expressionValue
       , name `notElem` visited
       , Just (_, _, implementation) <- declarationDefinitionByName scope name =
           go (name : visited) implementation
@@ -2158,11 +2109,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     NothingLiteral -> Right nothingValue
     StringTemplate parts ->
       interpretStringTemplateWith protection interpret parts
-    greedy@(GreedyStringTemplate operand) -> do
-      rendered <- asciiStringValue (renderSourceExpression greedy)
-      Right (withGreedyStringTemplatePlan
-        (EvaluatedGreedyStringTemplate operand)
-        (templateValue rendered))
+    identifier@(IdentifierExpression (IdentifierExpressionBody body)) ->
+      interpretIdentifierExpression identifier body
     AtlasMap expressions -> interpretContainer
       (interpretProtectedAtlasMap makeAtlasMap expressions)
       (AtlasMap expressions)
@@ -2212,7 +2160,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         Just (present, missing) -> binary eitherValue present missing
         Nothing -> interpret
           (FunctionApplication
-            (IdentifierReference (IdentifierString "Maybe"))
+            (IdentifierReference (SimpleIdentifierString "Maybe"))
             operand)
     MaybeThen optional branch -> do
       optionalResult <- interpret optional >>= unconsList
@@ -2288,7 +2236,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           scope resolving operand
     GenericIntroductionExpression introduction ->
       Left (GenericIntroductionOutsideFunctionType
-        (case genericIntroductionPolarity introduction of
+        (case genericArgumentPolarity introduction of
           GenericProduct -> "&"
           GenericSum -> "^"))
     InModule path body -> do
@@ -2370,7 +2318,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (Just (renderSourceExpression expressionValue))
         reduction scope resolving bindings result
     DeclarationExpression _ -> Left OperationHasNoEffect
-    IdentifierReference (IdentifierString name) ->
+    IdentifierReference (SimpleIdentifierString name) ->
       resolveIdentifierWith reduction scope resolving name
     Lookup (ArgumentativeMap
         [ StringTemplate template
@@ -2408,7 +2356,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     -- also permits projections next to recursive function declarations.
     ScopeAccess
         thisValue
-        (IdentifierReference (IdentifierString name))
+        (IdentifierReference (SimpleIdentifierString name))
       | isContextualAccessOf ContextualThis thisValue
       , contextualThisAvailable scope
           -> resolveIdentifierWith reduction scope resolving name
@@ -2429,12 +2377,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       runProtectedOperation protection [source] $ \actuals ->
         case actuals of
           [actual] -> case body of
-            IdentifierReference (IdentifierString name) -> do
+            IdentifierReference (SimpleIdentifierString name) -> do
                   selected <- namedAccessValue actual name
                   validateOpenedBinding actual (name, selected)
                   payload <- accessValues selected (naturalValue 1)
                   let imported = case operand of
-                        IdentifierReference (IdentifierString namespace) ->
+                        IdentifierReference (SimpleIdentifierString namespace) ->
                           do
                             runtime <- runtimeDeclarationByName namespace scope
                             importedModule <- runtimeDeclarationImport runtime
@@ -2512,9 +2460,29 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
   where
     protection = scopeActivation scope
     interpret = evalInScopeWith reduction scope resolving
+    interpretIdentifierExpression identifier body = case body of
+      IdentifierReference name -> Right (makeIdentifierExpression name)
+      AsciiStringLiteral name ->
+        Right (makeIdentifierExpression (SimpleIdentifierString name))
+      _ | structuralIdentifierBody body -> do
+        rendered <- asciiStringValue (renderSourceExpression identifier)
+        Right (withIdentifierExpressionPlan
+          (EvaluatedIdentifierExpression body)
+          (templateValue rendered))
+      _ -> do
+        rendered <- interpret body
+        case asciiStringFromInterpretedMap (interpretedMap rendered) of
+          Just name -> Right
+            (makeIdentifierExpression (SimpleIdentifierString name))
+          Nothing -> Left (LookupRequiresString (interpretedValueKind rendered))
+    structuralIdentifierBody value = case value of
+      SyntaxBoundary inner -> structuralIdentifierBody inner
+      AtlasMap {} -> True
+      MapSequence {} -> True
+      _ -> False
     interpretDependentArgumentName nameExpression typeAnnotation =
       case nameExpression of
-        IdentifierReference (IdentifierString identifierString) ->
+        IdentifierReference (SimpleIdentifierString identifierString) ->
           interpretSimpleDependentArgument identifierString typeAnnotation
         _ -> do
           let familyKey = renderSourceExpression nameExpression
@@ -2646,7 +2614,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         Left failure -> Left failure
     validateShortScopeAccess actual opened selectedBody =
       case selectedBody of
-        IdentifierReference (IdentifierString name)
+        IdentifierReference (SimpleIdentifierString name)
           | name `elem` map fst opened -> Right ()
           | otherwise -> case namedAccessValue actual name of
               Left failure -> Left failure
@@ -2654,7 +2622,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         _ -> Right ()
     validateShortScopeMember actual selectedBody =
       case selectedBody of
-        IdentifierReference (IdentifierString name) ->
+        IdentifierReference (SimpleIdentifierString name) ->
           () <$ namedAccessValue actual name
         _ -> Right ()
     interpretProtectedValues expressions operation = do
@@ -2696,12 +2664,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                 (map (coalizeMapMemberAt 2) [headValue, tailValue])
           standardOptionalValue pair >>= contextuallySpecify pair
     standardNothingValue =
-      interpret (IdentifierReference (IdentifierString "nothing"))
+      interpret (IdentifierReference (SimpleIdentifierString "nothing"))
     isStandardNothing value = do
       target <- standardNothingValue
       subfederationValues value target >>= booleanCondition
     standardOptionalValue value = do
-      constructor <- interpret (IdentifierReference (IdentifierString "Maybe"))
+      constructor <- interpret (IdentifierReference (SimpleIdentifierString "Maybe"))
       runProtectedOperationWithContract
         protection
         genericOperationResultDecision
@@ -2733,6 +2701,17 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               signatureText (Just prepare) Nothing True Nothing))
           _ -> Right neverValue
 
+genericBinderParts
+  :: GenericBinder Expression
+  -> (String, Bool, Expression)
+genericBinderParts binder =
+  ( simpleIdentifierStringText (genericArgumentName argument)
+  , genericArgumentOptional argument
+  , genericArgumentBound argument
+  )
+  where
+    argument = genericBinderArgument binder
+
 duplicateGenericIdentifier
   :: [GenericBinder Expression]
   -> Maybe String
@@ -2743,8 +2722,7 @@ duplicateGenericIdentifier = go []
       | name `elem` seen = Just name
       | otherwise = go (name : seen) remaining
       where
-        GenericIdentifier (IdentifierString name) _ =
-          genericBinderIdentifier binder
+        (name, _, _) = genericBinderParts binder
 
 validateGenericFunctionType
   :: (Expression -> Either InterpretingError InterpretedValue)
@@ -2757,7 +2735,7 @@ validateGenericFunctionType evaluate generics domain codomain = do
     Just name -> Left (DuplicateGenericIdentifier name)
     Nothing -> pure ()
   case forwardGenericBoundReference generics of
-    Just (IdentifierString owner, IdentifierString referenced) ->
+    Just (SimpleIdentifierString owner, SimpleIdentifierString referenced) ->
       Left (ForwardGenericBoundReference owner referenced)
     Nothing -> pure ()
   let introduced =
@@ -2767,11 +2745,10 @@ validateGenericFunctionType evaluate generics domain codomain = do
     validateBinder introduced binder =
       mapM_ (validateIdentifier name) introduced
       where
-        GenericIdentifier (IdentifierString name) _ =
-          genericBinderIdentifier binder
+        (name, _, _) = genericBinderParts binder
     validateIdentifier genericName introduced =
       case introduced of
-        SimpleFunctionTypeIdentifier (IdentifierString name)
+        SimpleFunctionTypeIdentifier (SimpleIdentifierString name)
           | name == genericName -> Left (GenericIdentifierOverlap genericName)
           | otherwise -> pure ()
         DependentFunctionTypeIdentifier expressionValue -> do
@@ -3458,7 +3435,7 @@ productiveRecursiveDeclaration
   -> Bool
 productiveRecursiveDeclaration name scoped =
   case scopedDependentDeclarationValue scoped >>= recursivePrefixFor
-      (== IdentifierReference (IdentifierString name))
+      (== IdentifierReference (SimpleIdentifierString name))
       . dependentDeclarationImplementation of
     Just _ -> True
     Nothing -> False
@@ -4646,7 +4623,7 @@ captureExpression :: Expression -> (Maybe String, Expression)
 captureExpression (SyntaxBoundary inner) = captureExpression inner
 captureExpression
     (DependentArgument
-      (IdentifierReference (IdentifierString name)) (Just annotation)) =
+      (IdentifierReference (SimpleIdentifierString name)) (Just annotation)) =
   (Just name, annotation)
 captureExpression expressionValue = (Nothing, expressionValue)
 
@@ -4658,7 +4635,7 @@ presentCaptureSchema :: Expression -> InterpretedValue -> InterpretedValue
 presentCaptureSchema expressionValue schema =
   case expressionValue of
     SyntaxBoundary inner -> presentCaptureSchema inner schema
-    IdentifierReference (IdentifierString name) ->
+    IdentifierReference (SimpleIdentifierString name) ->
       withCanonicalReference [] name schema
     _ -> schema
 
@@ -4917,17 +4894,15 @@ staticGenericDomain generics expressionValue =
     substitutions = go [] generics
     go prepared [] = reverse prepared
     go prepared (binder : remaining) =
-      let GenericIdentifier (IdentifierString name) _ =
-            genericBinderIdentifier binder
-          bound = prepareGenericExpression generics
-            (genericBinderBound binder)
+      let (name, _, writtenBound) = genericBinderParts binder
+          bound = prepareGenericExpression generics writtenBound
           staticBound = substituteDependent prepared bound
       in go ((name, staticBound) : prepared) remaining
 
 substituteDependent :: [(String, Expression)] -> Expression -> Expression
 substituteDependent substitutions expressionValue =
   case expressionValue of
-    IdentifierReference (IdentifierString name) ->
+    IdentifierReference (SimpleIdentifierString name) ->
       maybe expressionValue id (lookup name substitutions)
     _ -> mapExpressionChildren
       (substituteDependent substitutions)
@@ -4958,18 +4933,13 @@ validateGenericArgumentsExcept
   validateGenerics [] generics
   where
     genericNames =
-      [ name
-      | binder <- generics
-      , let GenericIdentifier (IdentifierString name) _ =
-              genericBinderIdentifier binder
-      ]
+      [ name | binder <- generics
+      , let (name, _, _) = genericBinderParts binder ]
     validateGenerics genericScope [] =
       validateEntries genericScope (domainEntries domain)
     validateGenerics genericScope (binder : remaining) = do
-      let GenericIdentifier (IdentifierString name) _ =
-            genericBinderIdentifier binder
-          bound = prepareGenericExpression generics
-            (genericBinderBound binder)
+      let (name, _, writtenBound) = genericBinderParts binder
+          bound = prepareGenericExpression generics writtenBound
       witness <- maybe (Left (UnknownIdentifier name)) Right
         (lookup name supplied)
       target <- evalInScope
@@ -4998,7 +4968,7 @@ validateGenericArgumentsExcept
       (nameExpression, annotation, _) <- dependentArgumentExpression value
       effective <- annotation <|> givenValue value
       case nameExpression of
-        IdentifierReference (IdentifierString name) -> Just (name, effective)
+        IdentifierReference (SimpleIdentifierString name) -> Just (name, effective)
         _ -> Nothing
       where
         givenValue selected = do
@@ -5024,11 +4994,11 @@ inferGenericArgument
 inferGenericArgument captured resolving generics binder _ evidence prior = do
   boundExpression <- maybe
     (Left (UnknownIdentifier name))
-    (Right . prepareGenericExpression generics . genericBinderBound)
-    (findBinder (genericArgumentBinderId binder) generics)
+    (Right . prepareGenericExpression generics)
+    (findBinder (genericArgumentBinderId binder) generics >>= genericBound)
   let currentBindings =
         [ evaluatedRuntimeDeclaration
-            (genericArgumentName priorBinder) value
+            (genericArgumentBinderName priorBinder) value
         | (priorBinder, value) <- prior
         ]
   bound <- evalInScope
@@ -5038,7 +5008,10 @@ inferGenericArgument captured resolving generics binder _ evidence prior = do
     [] -> Left (OverloadError OverloadNoMatch)
     first : remaining -> foldM combineInferenceEvidence first remaining
   where
-    name = genericArgumentName binder
+    name = genericArgumentBinderName binder
+    genericBound selected =
+      let (_, _, bound) = genericBinderParts selected
+      in Just bound
 
     findBinder _ [] = Nothing
     findBinder binderId (candidate : remaining)
@@ -5155,8 +5128,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
               [ name
               | binder <- generics
               , Just _ <- [lookup (genericBinderId binder) trusted]
-              , let GenericIdentifier (IdentifierString name) _ =
-                      genericBinderIdentifier binder
+              , let (name, _, _) = genericBinderParts binder
               ]
         _ <- validateGenericArgumentsExcept
           (trustedNames <> inferredGenericNames)
@@ -5178,11 +5150,8 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
               preparedCall callerActivation
               genericFunctionReturnHandoff callCaptured
         let genericNames =
-              [ name
-              | binder <- generics
-              , let GenericIdentifier (IdentifierString name) _ =
-                      genericBinderIdentifier binder
-              ]
+              [ name | binder <- generics
+              , let (name, _, _) = genericBinderParts binder ]
         dependentScope <- validateGenericArgumentsExcept
           genericNames callCaptured resolving generics
           writtenDomainExpression imported
@@ -5197,9 +5166,9 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
             codomainScope = ordinaryDependentScope <>
               [ evaluatedRuntimeDeclaration name value
               | binder <- generics
-              , genericBinderPolarity binder == GenericProduct
-              , let GenericIdentifier (IdentifierString name) _ =
-                      genericBinderIdentifier binder
+              , genericArgumentPolarity (genericBinderArgument binder)
+                  == GenericProduct
+              , let (name, _, _) = genericBinderParts binder
               , Just value <- [lookup name protectedDomain]
               , not (valueIsScopeProtected value)
               ]
@@ -5291,7 +5260,11 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
         _ <- specifyValues fibreSource fibre
         pure source
       existentialView
-        | any ((== GenericSum) . genericBinderPolarity) generics =
+        | any
+            ((== GenericSum)
+              . genericArgumentPolarity
+              . genericBinderArgument)
+            generics =
             Just (makeDependentSumValue
               signatureText
               input
@@ -5346,11 +5319,10 @@ splitExistentialRow binders = select [] binders
   where
     select selected [] remaining = Just (reverse selected, remaining)
     select selected (binder : later) remaining = do
-      let GenericIdentifier (IdentifierString name) optional =
-            genericBinderIdentifier binder
+      let (name, optionalName, _) = genericBinderParts binder
       (witness, rest) <-
         removeFirst ((== Just name) . fst . suppliedArgumentValue) remaining
-          <|> if optional
+          <|> if optionalName
             then removeFirst
               ((== Nothing) . fst . suppliedArgumentValue)
               remaining
@@ -5394,15 +5366,14 @@ genericFunctionCoalizedMapView
         (scopeActivation captured) reduction prepared
       pure (Just (functionInvocationValue invocation))
     build selected (binder : remaining) = do
-      let boundExpression = prepareGenericExpression generics
-            (genericBinderBound binder)
+      let (_, _, writtenBound) = genericBinderParts binder
+          boundExpression = prepareGenericExpression generics writtenBound
           selectedScope =
             [ evaluatedRuntimeDeclaration name witness
             | selectedBinder <- generics
             , let identity = genericBinderId selectedBinder
             , Just witness <- [lookup identity selected]
-            , let GenericIdentifier (IdentifierString name) _ =
-                    genericBinderIdentifier selectedBinder
+            , let (name, _, _) = genericBinderParts selectedBinder
             ]
       bound <- evalInScopeWith reduction
         (extendRuntimeDeclarations selectedScope captured) resolving boundExpression
@@ -5500,14 +5471,12 @@ genericUpperBoundWitnesses captured resolving reduction generics =
     go selected [] = Right
       [(identity, value) | (identity, _, value) <- reverse selected]
     go selected (binder : remaining) = do
-      let boundExpression = prepareGenericExpression generics
-            (genericBinderBound binder)
+      let (name, _, writtenBound) = genericBinderParts binder
+          boundExpression = prepareGenericExpression generics writtenBound
           selectedScope =
             [ evaluatedRuntimeDeclaration selectedName value
             | (_, selectedName, value) <- selected
             ]
-          GenericIdentifier (IdentifierString name) _ =
-            genericBinderIdentifier binder
       bound <- evalInScopeWith reduction
         (extendRuntimeDeclarations selectedScope captured) resolving boundExpression
       go ((genericBinderId binder, name, bound) : selected) remaining
@@ -5527,14 +5496,13 @@ genericFamilyEnvelope generics expressionValue =
     sumNames =
       [ name
       | binder <- generics
-      , genericBinderPolarity binder == GenericSum
-      , let GenericIdentifier (IdentifierString name) _ =
-              genericBinderIdentifier binder
+      , genericArgumentPolarity (genericBinderArgument binder) == GenericSum
+      , let (name, _, _) = genericBinderParts binder
       ]
     go current =
       case current of
         SuperEllipsisRange lower
-            (IdentifierReference (IdentifierString name))
+            (IdentifierReference (SimpleIdentifierString name))
           | name `elem` sumNames -> SuperEllipsisRangePlus (go lower)
         _ -> mapExpressionChildren go current
 
@@ -5564,10 +5532,8 @@ prepareProtectedDomain
 
     go prepared [] = Right (reverse prepared)
     go prepared (binder : remaining) = do
-      let GenericIdentifier (IdentifierString name) _ =
-            genericBinderIdentifier binder
-          boundExpression = prepareGenericExpression generics
-            (genericBinderBound binder)
+      let (name, _, writtenBound) = genericBinderParts binder
+          boundExpression = prepareGenericExpression generics writtenBound
           dependentScope =
             [ evaluatedRuntimeDeclaration preparedName value
             | (preparedName, value) <- prepared
@@ -5577,7 +5543,7 @@ prepareProtectedDomain
       target <- evalInScope
         (extendRuntimeDeclarations dependentScope domainScope) resolving boundExpression
       let protectedWitness =
-            case genericBinderPolarity binder of
+            case genericArgumentPolarity (genericBinderArgument binder) of
               GenericSum ->
                 protectGenericExistential domainLabel witness
               GenericProduct -> protectWithPoliciesOf
@@ -5619,7 +5585,7 @@ prepareProtectedDomain
       (nameExpression, annotation, _) <- dependentArgumentExpression value
       effective <- annotation <|> givenValue value
       case nameExpression of
-        IdentifierReference (IdentifierString name) -> Just (name, effective)
+        IdentifierReference (SimpleIdentifierString name) -> Just (name, effective)
         _ -> Nothing
       where
         givenValue selected = do
@@ -5634,8 +5600,7 @@ prepareProtectedDomain
     genericNames =
       [ name
       | binder <- generics
-      , let GenericIdentifier (IdentifierString name) _ =
-              genericBinderIdentifier binder
+      , let (name, _, _) = genericBinderParts binder
       ]
 
 applyFunction
@@ -5888,7 +5853,7 @@ importArgumentDeclaration dependency supplied (identity, binder) = do
     , runtimeDeclarationPresentation =
         ReferencedRuntimePresentation [dependency]
     , runtimeDeclarationOrigin =
-        Just (DependencyAddress [IdentifierString name])
+        Just (DependencyAddress [SimpleIdentifierString name])
     , runtimeDeclarationDefinition = Nothing
     , runtimeDeclarationImport = Just RuntimeImportedModule
         { runtimeImportedModuleIdentity = identity
@@ -5934,7 +5899,7 @@ importLoadedModule scope openMembers source = do
             , runtimeDeclarationPresentation =
                 ReferencedRuntimePresentation [dependency]
             , runtimeDeclarationOrigin =
-                Just (DependencyAddress [IdentifierString name])
+                Just (DependencyAddress [SimpleIdentifierString name])
             , runtimeDeclarationDefinition = Nothing
             , runtimeDeclarationImport = Just RuntimeImportedModule
                 { runtimeImportedModuleIdentity = identity
@@ -5979,7 +5944,7 @@ openedScopeContributionDeclarations
   -> Either InterpretingError [RuntimeSingletonPayload]
 openedScopeContributionDeclarations scope (operand, actual) =
   case operand of
-    IdentifierReference (IdentifierString namespace)
+    IdentifierReference (SimpleIdentifierString namespace)
       | Just runtime <- runtimeDeclarationByName namespace scope
       , Just imported <- runtimeDeclarationImport runtime -> do
           exported <- moduleExportsFromValue actual
@@ -6018,7 +5983,7 @@ moduleExportDeclarations scope namespace identity internal exportedValues =
               ReferencedRuntimePresentation [dependency]
             TransparentImportPresentation -> TransparentRuntimePresentation
         , runtimeDeclarationOrigin = Just (DependencyAddress
-            [IdentifierString namespace, IdentifierString name])
+            [SimpleIdentifierString namespace, SimpleIdentifierString name])
         , runtimeDeclarationDefinition =
             declarationDefinitionByName internal name
         , runtimeDeclarationImport = Nothing
@@ -6091,7 +6056,7 @@ moduleDeclarationScope outer resultExpression name =
 namedDeclarationValueExpression :: String -> Expression -> Maybe Expression
 namedDeclarationValueExpression selected expressionValue = case expressionValue of
   dependent
-    | Just (IdentifierReference (IdentifierString name), annotation, given) <-
+    | Just (IdentifierReference (SimpleIdentifierString name), annotation, given) <-
         dependentArgumentExpression dependent
     , name == selected -> Just (case given of
         Nothing -> maybe expressionValue id annotation
@@ -6140,7 +6105,7 @@ prepareModuleResource
 prepareModuleResource base expressionValue = case expressionValue of
   ScopeAccess source body -> do
     value <- case source of
-      IdentifierReference (IdentifierString namespace)
+      IdentifierReference (SimpleIdentifierString namespace)
         | Just runtime <- runtimeDeclarationByName namespace base
         , Just imported <- runtimeDeclarationImport runtime ->
             Right (runtimeImportedModuleValue imported)
@@ -6219,9 +6184,9 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
                 , syntaxSemantics = SyntaxAdapter callable
                 }
           | template <- sourceTemplates
-          , let member = IdentifierReference (IdentifierString name)
+          , let member = IdentifierReference (SimpleIdentifierString name)
                 callable = ScopeAccess
-                  (IdentifierReference (IdentifierString scopeName))
+                  (IdentifierReference (SimpleIdentifierString scopeName))
                   member
           ]
     parseScopedRuleExpression sourceText = do
@@ -6476,7 +6441,7 @@ closureResolver scope = resolver
       pure Dependency
         { dependencyKey = ContextualDependency role depth expressionValue
         , dependencyAddress = DependencyAddress
-            [IdentifierString dependencyName]
+            [SimpleIdentifierString dependencyName]
         , dependencyDeclaration = singletonDependencyDeclaration
             dependencyName expressionValue
         , dependencyResolver = emptyResolver
@@ -6531,10 +6496,10 @@ closureResolver scope = resolver
                 (valueExpressionIn scope selected)
               pure Dependency
                 { dependencyKey = SelectedDependency
-                    (map IdentifierString (name : fields)) expressionValue
+                    (map SimpleIdentifierString (name : fields)) expressionValue
                 , dependencyAddress = appendDependencyAddress
                     (originAddress name)
-                    (map IdentifierString fields)
+                    (map SimpleIdentifierString fields)
                 , dependencyDeclaration = singletonDependencyDeclaration
                     (last (name : fields)) expressionValue
                 , dependencyResolver = emptyResolver
@@ -6542,7 +6507,7 @@ closureResolver scope = resolver
     originAddress name
       | Just runtime <- runtimeDeclarationByName name scope
       , Just origin <- runtimeDeclarationOrigin runtime = origin
-      | otherwise = DependencyAddress [IdentifierString name]
+      | otherwise = DependencyAddress [SimpleIdentifierString name]
 
     prependDependencyAddress
         (DependencyAddress prefix)
@@ -6555,7 +6520,8 @@ singletonDependencyDeclaration
   -> Expression
   -> DependentDeclaration Expression
 singletonDependencyDeclaration name implementation = DependentDeclaration
-  (SimpleIdentifierDeclarationHead (IdentifierString name))
+  (IdentifierExpressionBody
+    (IdentifierReference (SimpleIdentifierString name)))
   True False False [DeclarationLet] implementation
 
 emptyResolver :: Resolver

@@ -27,7 +27,7 @@ data Operator
   | GreaterThanOrEqualOperator
   | CoalizationOperator
   | LookupOperator
-  | GreedyStringTemplateOperator
+  | IdentifierExpressionOperator
   | BeginOperator
   | LetOperator
   | DefOperator
@@ -69,7 +69,7 @@ operatorCanonicalSymbol GreaterThanOperator = ">"
 operatorCanonicalSymbol GreaterThanOrEqualOperator = ">="
 operatorCanonicalSymbol CoalizationOperator = "><"
 operatorCanonicalSymbol LookupOperator = "~"
-operatorCanonicalSymbol GreedyStringTemplateOperator = "%"
+operatorCanonicalSymbol IdentifierExpressionOperator = "$"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
 operatorCanonicalSymbol DefOperator = "def"
@@ -111,7 +111,7 @@ operatorSourceSymbol GreaterThanOperator = Just ">"
 operatorSourceSymbol GreaterThanOrEqualOperator = Just ">="
 operatorSourceSymbol CoalizationOperator = Just "><"
 operatorSourceSymbol LookupOperator = Just "~"
-operatorSourceSymbol GreedyStringTemplateOperator = Just "%"
+operatorSourceSymbol IdentifierExpressionOperator = Just "$"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"
 operatorSourceSymbol DefOperator = Just "def"

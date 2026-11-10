@@ -611,13 +611,13 @@ testArgumentSchemas = do
   naturalType <- expectRight "construct Nat" Types.naturalTypeValue
   integerType <- expectRight "construct Int" Types.integerTypeValue
   let naturalExpression =
-        AST.IdentifierReference (AST.IdentifierString "Nat")
+        AST.IdentifierReference (AST.SimpleIdentifierString "Nat")
       evaluateNatural expression
         | expression == naturalExpression = Right naturalType
         | otherwise = Left (Types.UnknownIdentifier "unexpected test expression")
       privateOptional = AST.OptionalType
         (AST.DependentArgument
-          (AST.IdentifierReference (AST.IdentifierString "_value"))
+          (AST.IdentifierReference (AST.SimpleIdentifierString "_value"))
           (Just naturalExpression))
   assert "private optional parameters use a structured boundary error"
     (case Types.compileParameters evaluateNatural privateOptional of

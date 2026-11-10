@@ -44,7 +44,7 @@ datraHostValue = do
     , ("Char", Right character)
     , ("Expr", Right expressionType)
     , ("DependentArgument", Right dependentArgumentType)
-    , ("IdentifierLiteral", Right identifierLiteralType)
+    , ("IdentifierExpr", Right identifierExpressionType)
     , ("DependentDeclaration", Right dependentDeclarationType)
     , ("Block", Right blockType)
     , ("FunctionBody", Right functionBodyType)
@@ -130,7 +130,7 @@ datraHostValue = do
       preimage
     expressionType = syntaxCategoryTypeValue ExpressionAST
     dependentArgumentType = syntaxCategoryTypeValue DependentArgumentAST
-    identifierLiteralType = syntaxCategoryTypeValue IdentifierLiteralAST
+    identifierExpressionType = syntaxCategoryTypeValue IdentifierExpressionAST
     dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
@@ -230,17 +230,17 @@ datraHostValue = do
     -- lookup never parses or compares this text.
     datraMemberSource members = renderSourceExpression
       (foldl access
-        (IdentifierReference (IdentifierString datraHostIdentifier))
+        (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
         members)
       where
         access source name = ScopeAccess source
-          (IdentifierReference (IdentifierString name))
+          (IdentifierReference (SimpleIdentifierString name))
     anyFunctionSource = renderSourceExpression
       (FunctionType anyMember anyMember)
       where
         anyMember = ScopeAccess
-          (IdentifierReference (IdentifierString datraHostIdentifier))
-          (IdentifierReference (IdentifierString "Any"))
+          (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
+          (IdentifierReference (SimpleIdentifierString "Any"))
 
 hostMap
   :: [(String, Either InterpretingError InterpretedValue)]

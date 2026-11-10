@@ -4,6 +4,7 @@ module Evaluation.Construction
   , makeNatural
   , makeInteger
   , makeAsciiString
+  , makeIdentifierExpression
   , makeExplicit
   , makeExplicitValue
   , makeFormulation
@@ -12,6 +13,7 @@ module Evaluation.Construction
   ) where
 
 import Data.Char (ord)
+import DatraLanguage.AST (SimpleIdentifierString (..))
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
 import DatraOrdinal (Ordinal, finiteOrdinal)
@@ -80,6 +82,18 @@ makeAsciiString characters = value
         valueMap
         TotalInterpretedMap
         semantics
+
+makeIdentifierExpression :: SimpleIdentifierString -> InterpretedValue
+makeIdentifierExpression identifier@(SimpleIdentifierString name) = value
+  where
+    semantics = IdentifierExpressionSemantics name
+    value = makeSingletonInterpretedValue
+      structuralDatraType
+      (IdentifierExpressionForm identifier)
+      NoInsertion
+      (singletonMap semantics value)
+      TotalInterpretedMap
+      semantics
 
 makeExplicit :: ExplicitOrigin -> Ordinal -> InterpretedValue
 makeExplicit origin = explicitInterpretedValue . makeExplicitValue origin

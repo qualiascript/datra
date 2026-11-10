@@ -48,10 +48,10 @@ compileParametersWithGenerics generics evaluate written static =
         parameter
           | Just (name, annotation, given) <- namedParameter parameter ->
           case genericByName name of
-            Just binder -> do
+            Just (binder, optional) -> do
               annotationValue <- evaluate annotation
               pure (genericArgumentSlotSchema
-                (genericDescriptor binder) annotationValue)
+                (genericDescriptor binder name optional) annotationValue)
             Nothing ->
               genericEvidenceArgumentSchema (genericReferences writtenValue)
                 <$> parameterSlot (Just name) False annotation given
@@ -60,10 +60,11 @@ compileParametersWithGenerics generics evaluate written static =
           , Just (name, annotation, given) <- namedParameter operation -> do
               validateOptionalName allowPrivateOptional name True
               case genericByName name of
-                Just binder -> do
+                Just (binder, genericOptional) -> do
                   annotationValue <- evaluate annotation
                   pure (genericArgumentSlotSchema
-                    (genericDescriptor binder) annotationValue)
+                    (genericDescriptor binder name genericOptional)
+                    annotationValue)
                 Nothing ->
                   genericEvidenceArgumentSchema (genericReferences writtenValue)
                     <$> parameterSlot (Just name) True annotation given
@@ -93,26 +94,19 @@ compileParametersWithGenerics generics evaluate written static =
     genericByName target = findGeneric generics
       where
         findGeneric [] = Nothing
-        findGeneric (binder : remaining) =
-          let GenericIdentifier (IdentifierString name) _ =
-                genericBinderIdentifier binder
-          in if name == target then Just binder else findGeneric remaining
-    genericDescriptor binder =
-      let GenericIdentifier (IdentifierString name) optional =
-            genericBinderIdentifier binder
-      in GenericArgumentBinder
-          { genericArgumentBinderId = genericBinderId binder
-          , genericArgumentPolarity = genericBinderPolarity binder
-          , genericArgumentName = name
-          , genericArgumentOptionalName = optional || not inferenceBoundary
-          , genericArgumentInferred =
-              inferenceBoundary && isPrivateIdentifier name
-          }
+        findGeneric (binder : remaining)
+          | simpleIdentifierStringText (genericArgumentName argument) == target =
+              Just (binder, genericArgumentOptional argument)
+          | otherwise = findGeneric remaining
+          where
+            argument = genericBinderArgument binder
+    genericDescriptor binder _ optional = genericArgumentBinder binder
+      (optional || not inferenceBoundary)
     genericReferences expressionValue = nubBinderIds (go expressionValue)
       where
         go current = case current of
-          IdentifierReference (IdentifierString name) ->
-            maybe [] (pure . genericBinderId) (genericByName name)
+          IdentifierReference (SimpleIdentifierString name) ->
+            maybe [] (pure . genericBinderId . fst) (genericByName name)
           _ -> concatMap go (expressionChildren current)
         nubBinderIds [] = []
         nubBinderIds (binderId : remaining) =
@@ -136,11 +130,11 @@ compileParametersWithGenerics generics evaluate written static =
 
     namedParameter value = case value of
       DependentArgument
-          (IdentifierReference (IdentifierString name)) (Just annotation) ->
+          (IdentifierReference (SimpleIdentifierString name)) (Just annotation) ->
         Just (name, annotation, Nothing)
       MapSpecification given
           (DependentArgument
-            (IdentifierReference (IdentifierString name)) annotation) ->
+            (IdentifierReference (SimpleIdentifierString name)) annotation) ->
         Just (name, maybe given id annotation, Just given)
       _ -> Nothing
 

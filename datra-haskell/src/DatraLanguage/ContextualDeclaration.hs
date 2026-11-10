@@ -13,18 +13,18 @@ module DatraLanguage.ContextualDeclaration
 
 import DatraLanguage.AST
   ( DependentDeclaration (..)
-  , DependentDeclarationHead (..)
+  , IdentifierExpression (..)
   , DeclarationModifier (DeclarationDef)
   , Expression (..)
-  , IdentifierString (..)
+  , SimpleIdentifierString (..)
   )
 import DatraLanguage.ContextualRole
 import Numeric.Natural (Natural)
 
-contextualIdentifier :: ContextualRole -> IdentifierString
-contextualIdentifier = IdentifierString . contextualPrivateName
+contextualIdentifier :: ContextualRole -> SimpleIdentifierString
+contextualIdentifier = SimpleIdentifierString . contextualPrivateName
 
-contextualRoleForIdentifier :: IdentifierString -> Maybe ContextualRole
+contextualRoleForIdentifier :: SimpleIdentifierString -> Maybe ContextualRole
 contextualRoleForIdentifier identifier = case
     [ role
     | role <- [minBound .. maxBound]
@@ -55,7 +55,7 @@ contextualSurfaceDeclaration
   :: ContextualRole
   -> DependentDeclaration Expression
 contextualSurfaceDeclaration role = DependentDeclaration
-  (SimpleIdentifierDeclarationHead
-    (IdentifierString (contextualSurfaceName role)))
+  (IdentifierExpressionBody
+    (IdentifierReference (SimpleIdentifierString (contextualSurfaceName role))))
   False True False [DeclarationDef]
   (contextualAccessAt role 0)

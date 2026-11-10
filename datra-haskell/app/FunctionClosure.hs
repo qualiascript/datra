@@ -25,13 +25,13 @@ import Numeric.Natural (Natural)
 -- Keys identify bindings during this traversal only; they never enter source.
 -- The resolver belongs to the definition's original environment.
 newtype DependencyAddress = DependencyAddress
-  { dependencyAddressSegments :: [IdentifierString]
+  { dependencyAddressSegments :: [SimpleIdentifierString]
   }
   deriving (Eq, Show)
 
 data DependencyKey
   = BindingDependency String Expression
-  | SelectedDependency [IdentifierString] Expression
+  | SelectedDependency [SimpleIdentifierString] Expression
   | ContextualDependency ContextualRole Natural Expression
   | ModuleDependency FilePath DependencyKey
   deriving (Eq, Show)
@@ -160,9 +160,9 @@ rewrite mode inDefinition active resolver bound
       -- unrelated entries of the original scope map.
       _ <- rewrite mode inDefinition active resolver bound index
       value <- rewrite mode inDefinition active resolver bound
-        (IdentifierReference (IdentifierString name))
+        (IdentifierReference (SimpleIdentifierString name))
       pure (DependentArgument
-        (IdentifierReference (IdentifierString name)) (Just value))
+        (IdentifierReference (SimpleIdentifierString name)) (Just value))
 rewrite mode inDefinition active resolver bound expression
   | FunctionApplication
       (IdentifierReference identifier)
@@ -212,9 +212,13 @@ rewrite mode inDefinition active resolver bound expression =
       closedGenerics <- traverse
         (\binder -> do
           closedBound <- rewrite mode inDefinition active resolver bound
-            (genericBinderBound binder)
+            (genericArgumentBound (genericBinderArgument binder))
           pure binder
-            { genericBinderBound = closedBound })
+            { genericBinderArgument =
+                (genericBinderArgument binder)
+                  { genericArgumentBound = closedBound
+                  }
+            })
         generics
       closedDomain <- rewrite mode inDefinition active resolver
         (map LexicalBound parameters <> bound) domain
@@ -234,7 +238,7 @@ rewrite mode inDefinition active resolver bound expression =
       | Nothing <- optionalIdentifierExpression expression ->
           recur
             (FunctionApplication
-              (IdentifierReference (IdentifierString "Maybe"))
+              (IdentifierReference (SimpleIdentifierString "Maybe"))
               operand)
     _ -> traverseExpressionChildren recur expression
   where
@@ -318,14 +322,14 @@ collectDependency mode inDefinition active dependency =
 
 dependencyReference :: DependencyAddress -> Expression
 dependencyReference (DependencyAddress []) =
-  IdentifierReference (IdentifierString "_")
+  IdentifierReference (SimpleIdentifierString "_")
 dependencyReference (DependencyAddress (root : fields)) =
   foldl ScopeAccess
     (IdentifierReference (prependIdentifier root))
     (map IdentifierReference fields)
 
-prependIdentifier :: IdentifierString -> IdentifierString
-prependIdentifier (IdentifierString name) = IdentifierString ('_' : name)
+prependIdentifier :: SimpleIdentifierString -> SimpleIdentifierString
+prependIdentifier (SimpleIdentifierString name) = SimpleIdentifierString ('_' : name)
 
 -- Captured declarations are grouped by their structural origin. Only the
 -- declaration entering the closure gets translated by the injective @_@
@@ -346,7 +350,7 @@ scopeDefinitions prefixHere collected =
       | (_, DependencyAddress (name : _ : _), _) <- collected
       ]
     childDefinition name = DependentDeclaration
-      (SimpleIdentifierDeclarationHead renderedName)
+      (IdentifierExpressionBody (IdentifierReference renderedName))
       True False False [DeclarationLet] childScope
       where
         renderedName = if prefixHere then prependIdentifier name else name
@@ -361,7 +365,7 @@ scopeDefinitions prefixHere collected =
 
 capturedDeclaration
   :: Bool
-  -> IdentifierString
+  -> SimpleIdentifierString
   -> DependentDeclaration Expression
   -> DependentDeclaration Expression
 capturedDeclaration prefixHere _ declaration =
@@ -394,18 +398,18 @@ referencePath :: Expression -> Maybe DependencyPath
 referencePath
     (ScopeAccess
       thisValue
-      (IdentifierReference (IdentifierString name)))
+      (IdentifierReference (SimpleIdentifierString name)))
   | isContextualAccessOf ContextualThis thisValue =
       Just (DependencyPath (ContextualRoot ContextualThis) [name])
 referencePath expression
   | FunctionApplication
-      (IdentifierReference (IdentifierString name))
+      (IdentifierReference (SimpleIdentifierString name))
       (EllipsisNatural 0)
       <- expression = Just (DependencyPath AmbientRoot [name])
-referencePath (IdentifierReference (IdentifierString name)) =
+referencePath (IdentifierReference (SimpleIdentifierString name)) =
   Just (DependencyPath AmbientRoot [name])
 referencePath
-    (ScopeAccess source (IdentifierReference (IdentifierString name))) =
+    (ScopeAccess source (IdentifierReference (SimpleIdentifierString name))) =
   appendPath name <$> referencePath source
   where
     appendPath field path = path
@@ -433,6 +437,7 @@ parameterNames value = concatMap parameterNames (expressionChildren value)
 declarationBindingNames :: DependentDeclaration Expression -> [String]
 declarationBindingNames declaration =
   case dependentDeclarationHead declaration of
-    SimpleIdentifierDeclarationHead (IdentifierString name) -> [name]
-    StringTemplateDeclarationHead [StringTemplateLiteral name] -> [name]
+    IdentifierExpressionBody
+        (IdentifierReference (SimpleIdentifierString name)) -> [name]
+    IdentifierExpressionBody (AsciiStringLiteral name) -> [name]
     _ -> []

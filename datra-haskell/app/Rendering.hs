@@ -164,6 +164,8 @@ prettyNonKeywordCanonicalResult result =
       concatWith (\left right -> left <> ", " <> right)
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
+    CanonicalIdentifierExpression value ->
+      pretty ('$' : renderIdentifierString value)
     CanonicalToString source ->
       pretty
         (renderStringTemplate

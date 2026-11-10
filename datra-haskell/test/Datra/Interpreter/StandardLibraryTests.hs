@@ -134,7 +134,7 @@ standardLibraryTests =
             "2"
         , programCase "direct begin rewrites its result in the block scope"
             ( "yield 'begin ((\n"
-                <> "  \"apply %_Expr\" := (_Expr -> _Expr) datra.fun_body\n"
+                <> "  $($apply; _Expr) := (_Expr -> _Expr) datra.fun_body\n"
                 <> "); apply 7)"
             )
             "7"
@@ -765,18 +765,18 @@ declaredPatternTests =
         )
         "42"
     , programCase "value holes evaluate expressions before selection"
-        ( "\"double %Nat\" := (Nat -> Nat) do yield it * 2\n"
+        ( "$($double; Nat) := (Nat -> Nat) do yield it * 2\n"
             <> "yield double (2 + 2)"
         )
         "8"
     , programCase "dependent captures call ordinary functions through subfederation"
-        ( "\"successor %Nat next\" := ({value?:Int} -> Int)"
+        ( "$($successor; Nat; $next) := ({value?:Int} -> Int)"
             <> " do yield value + 1\n"
             <> "yield successor 4 next"
         )
         "5"
     , programCase "dependent declaration descriptors expose their functions"
-        ( "\"successor %Nat next\" := ({value?:Int} -> Int)"
+        ( "$($successor; Nat; $next) := ({value?:Int} -> Int)"
             <> " do yield value + 1\n"
             <> "yield ((~\"successor Nat next\")[0].value)"
             <> " of ({value?:Nat} -> Int)"
@@ -785,27 +785,27 @@ declaredPatternTests =
     , programCase "syntax pattern call"
         (declaration <> "yield step (1+1) next") "3"
     , programCase "an application spine is one syntax boundary"
-        ( "\"prefix %_Expr\" := ({value?:Any} -> Any)"
+        ( "$($prefix; _Expr) := ({value?:Any} -> Any)"
             <> " do yield value\n"
-            <> "\"%_Expr otherwise %_Expr\" := "
+            <> "$(_Expr; $otherwise; _Expr) := "
             <> "({left?:Any; right?:Any} -> Any) do yield right\n"
             <> "yield prefix 1 otherwise 2"
         )
         "2"
     , programCase "a direct declaration uses its template's surface name"
-        ( "\"def %Nat next\" := ({value?:Nat} -> Int)"
+        ( "$($def; Nat; $next) := ({value?:Nat} -> Int)"
             <> " do yield value+1\n"
             <> "yield def 2 next"
         )
         "3"
     , programCase "the complete literal prefix is matched before its first hole"
-        ( "\"my name is %Nat\" := ({value?:Nat} -> Int)"
+        ( "$($my; $name; $is; Nat) := ({value?:Nat} -> Int)"
             <> " do yield value+1\n"
             <> "yield my name is 2"
         )
         "3"
     , programCase "a template may begin with a postfix operand hole"
-        ( "\"%Int++\" := ({value?:Int} -> Int)"
+        ( "$(Int; $\"++\") := ({value?:Int} -> Int)"
             <> " do yield value+1\n"
             <> "yield 2++"
         )
@@ -817,7 +817,7 @@ declaredPatternTests =
         )
         "7"
     , programCase "a direct declaration accepts a comma-boundary template"
-        ( "\"take,%Int\" := ({value?:Int} -> Int)"
+        ( "$($\"take,\"; Int) := ({value?:Int} -> Int)"
             <> " do yield value+1\n"
             <> "yield (take,2)"
         )
@@ -827,20 +827,20 @@ declaredPatternTests =
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programFailureCase "%Int syntax holes reject Infinity"
-        ( "\"finite %Int\" := ({value?:Int} -> Int)"
+        ( "$($finite; Int) := ({value?:Int} -> Int)"
             <> " do yield value\n"
             <> "yield finite Infinity"
         )
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programCase "%IntLimit syntax holes accept Infinity"
-        ( "\"limit %IntLimit\" := ({value?:IntLimit} -> IntLimit)"
+        ( "$($limit; IntLimit) := ({value?:IntLimit} -> IntLimit)"
             <> " do yield value\n"
             <> "yield limit Infinity"
         )
         "Infinity"
     , programFailureCase "syntax captures must also inhabit the function domain"
-        ( "\"step %Int next\" := ({value?:Nat} -> Int)"
+        ( "$($step; Int; $next) := ({value?:Nat} -> Int)"
             <> " do yield value+1\n"
             <> "yield step (-1) next"
         )
@@ -853,4 +853,4 @@ declaredPatternTests =
     ]
   where
     declaration =
-      "\"step %Nat next\" := ({value?:Nat} -> Int) do yield value+1\n"
+      "$($step; Nat; $next) := ({value?:Nat} -> Int) do yield value+1\n"

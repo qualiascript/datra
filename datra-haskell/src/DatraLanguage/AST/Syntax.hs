@@ -52,7 +52,7 @@ module DatraLanguage.AST.Syntax
 
 import DatraLanguage.AST
   ( Expression (..)
-  , IdentifierString (IdentifierString)
+  , SimpleIdentifierString (SimpleIdentifierString)
   , StringTemplatePart
   )
 import Numeric.Natural (Natural)
@@ -64,14 +64,14 @@ natural = EllipsisNatural
 dependentArgumentType :: String -> Expression -> Expression
 dependentArgumentType identifierString typeAnnotation =
   DependentArgument
-    (IdentifierReference (IdentifierString identifierString))
+    (IdentifierReference (SimpleIdentifierString identifierString))
     (Just typeAnnotation)
 
 assignment :: String -> Expression -> Expression -> Expression
 assignment identifierString typeAnnotation givenValue =
   MapSpecification givenValue
     (DependentArgument
-      (IdentifierReference (IdentifierString identifierString))
+      (IdentifierReference (SimpleIdentifierString identifierString))
       (if typeAnnotation == givenValue then Nothing else Just typeAnnotation))
 
 asciiString :: String -> Expression
@@ -84,7 +84,7 @@ stringTemplate :: [StringTemplatePart Expression] -> Expression
 stringTemplate = StringTemplate
 
 stringType :: Expression
-stringType = IdentifierReference (IdentifierString "Str")
+stringType = IdentifierReference (SimpleIdentifierString "Str")
 
 emptyMap :: Expression
 emptyMap = AtlasMap []

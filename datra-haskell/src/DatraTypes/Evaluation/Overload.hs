@@ -3,7 +3,14 @@
 -- defaults erased, then replaces only the slots it supplies.
 module Evaluation.Overload
   ( ArgumentSchema
-  , GenericArgumentBinder (..)
+  , GenericArgumentBinder
+  , genericArgumentBinder
+  , genericArgumentBinderId
+  , genericArgumentBinderPolarity
+  , genericArgumentBinderNameExpression
+  , genericArgumentBinderName
+  , genericArgumentBinderOptional
+  , genericArgumentBinderIsInferred
   , argumentSchemaFromValue
   , argumentSlotSchema
   , dependentArgumentSlotSchema
@@ -39,7 +46,15 @@ import Control.Applicative ((<|>))
 import Control.Monad (foldM)
 import Data.Foldable (traverse_)
 import Data.List (nub, nubBy, permutations, sortOn)
-import DatraLanguage.AST (GenericBinderId, GenericPolarity)
+import DatraLanguage.AST
+  ( Expression (IdentifierReference, OptionalType)
+  , GenericArgument (..)
+  , GenericBinder (..)
+  , GenericBinderId
+  , GenericPolarity
+  , SimpleIdentifierString (..)
+  )
+import DatraLanguage.AST qualified as AST
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
@@ -91,12 +106,44 @@ import Numeric.Natural (Natural)
 
 data GenericArgumentBinder = GenericArgumentBinder
   { genericArgumentBinderId :: GenericBinderId
-  , genericArgumentPolarity :: GenericPolarity
-  , genericArgumentName :: String
-  , genericArgumentOptionalName :: Bool
-  , genericArgumentInferred :: Bool
+  , validatedGenericArgument :: GenericArgument Expression
   }
   deriving (Eq, Show)
+
+genericArgumentBinder
+  :: GenericBinder Expression
+  -> Bool
+  -> GenericArgumentBinder
+genericArgumentBinder binder optional = GenericArgumentBinder
+  (genericBinderId binder)
+  ((genericBinderArgument binder) { genericArgumentOptional = optional })
+
+genericArgumentBinderPolarity :: GenericArgumentBinder -> GenericPolarity
+genericArgumentBinderPolarity = genericArgumentPolarity
+  . validatedGenericArgument
+
+genericArgumentBinderNameExpression :: GenericArgumentBinder -> Expression
+genericArgumentBinderNameExpression binder =
+  if genericArgumentBinderOptional binder
+    then OptionalType reference
+    else reference
+  where
+    reference = IdentifierReference
+      (AST.genericArgumentName (validatedGenericArgument binder))
+
+genericArgumentBinderName :: GenericArgumentBinder -> String
+genericArgumentBinderName = simpleIdentifierStringText
+  . AST.genericArgumentName
+  . validatedGenericArgument
+
+genericArgumentBinderOptional :: GenericArgumentBinder -> Bool
+genericArgumentBinderOptional = genericArgumentOptional
+  . validatedGenericArgument
+
+genericArgumentBinderIsInferred :: GenericArgumentBinder -> Bool
+genericArgumentBinderIsInferred binder =
+  isPrivateIdentifier (genericArgumentBinderName binder)
+    && not (genericArgumentBinderOptional binder)
 
 data ArgumentSchema
   = ArgumentSlotSchema
@@ -147,7 +194,7 @@ slotRouting slot =
 
 slotIsInferred :: Slot -> Bool
 slotIsInferred slot =
-  maybe False genericArgumentInferred (slotGenericBinder slot)
+  maybe False genericArgumentBinderIsInferred (slotGenericBinder slot)
 
 slotIsPrivatePositional :: Slot -> Bool
 slotIsPrivatePositional slot =
@@ -494,13 +541,13 @@ genericSlot :: Int -> GenericArgumentBinder -> InterpretedValue -> Slot
 genericSlot index binder annotation =
   Slot
     index
-    (Just (genericArgumentName binder))
-    (genericArgumentOptionalName binder)
+    (Just (genericArgumentBinderName binder))
+    (genericArgumentBinderOptional binder)
     True
     (Just binder)
     []
     annotation
-    (if genericArgumentInferred binder then Just annotation else Nothing)
+    (if genericArgumentBinderIsInferred binder then Just annotation else Nothing)
 
 withEvidenceBinders :: [GenericBinderId] -> Slot -> Slot
 withEvidenceBinders binderIds slot =
@@ -534,7 +581,7 @@ templateSlotOrders = orders
       ArgumentSlotSchema index name optional dependent annotation defaultValue ->
         [[argumentSlot index name optional dependent annotation defaultValue]]
       GenericArgumentSlotSchema index binder annotation
-        | genericArgumentInferred binder -> [[]]
+        | genericArgumentBinderIsInferred binder -> [[]]
         | otherwise -> [[genericSlot index binder annotation]]
       GenericEvidenceArgumentSchema binderIds child ->
         [ map (withEvidenceBinders binderIds) childSlots
@@ -738,7 +785,7 @@ argumentSchemaBindings schema =
     ArgumentSlotSchema _ (Just name) _ _ annotation _ -> [(name, annotation)]
     ArgumentSlotSchema _ Nothing _ _ _ _ -> []
     GenericArgumentSlotSchema _ binder annotation ->
-      [(genericArgumentName binder, annotation)]
+      [(genericArgumentBinderName binder, annotation)]
     GenericEvidenceArgumentSchema _ child -> argumentSchemaBindings child
     OrderedArgumentSchema _ children -> concatMap argumentSchemaBindings children
     UnorderedArgumentSchema children -> concatMap argumentSchemaBindings children
@@ -762,8 +809,8 @@ argumentSchemaDomain schema =
       case slotGenericBinder slot of
         Just binder -> do
           let named = simpleIdentifierTypeValue
-                (genericArgumentName binder) (slotAnnotation slot)
-          if genericArgumentOptionalName binder
+                (genericArgumentBinderName binder) (slotAnnotation slot)
+          if genericArgumentBinderOptional binder
             then makeEitherValue named (slotAnnotation slot)
             else pure named
         Nothing -> Left (OverloadError OverloadNoMatch)
@@ -775,8 +822,8 @@ argumentSchemaDomain schema =
           if optional then makeEitherValue named annotation else pure named
         GenericArgumentSlotSchema _ binder annotation -> do
           let named = simpleIdentifierTypeValue
-                (genericArgumentName binder) annotation
-          if genericArgumentOptionalName binder
+                (genericArgumentBinderName binder) annotation
+          if genericArgumentBinderOptional binder
             then makeEitherValue named annotation
             else pure named
         GenericEvidenceArgumentSchema _ child -> argumentSchemaDomain child
@@ -1249,13 +1296,13 @@ completeGenericSlots infer evidence = go []
     go _ [] [] = Right []
     go generics (slot : remainingSlots) (completed : remainingCompleted) =
       case slotGenericBinder slot of
-        Just binder | genericArgumentInferred binder -> do
+        Just binder | genericArgumentBinderIsInferred binder -> do
           witness <- infer binder (slotAnnotation slot)
             (maybe [] id (lookup (genericArgumentBinderId binder) evidence))
             (reverse generics)
           remaining <- go ((binder, witness) : generics)
             remainingSlots remainingCompleted
-          pure ((Just (genericArgumentName binder), witness) : remaining)
+          pure ((Just (genericArgumentBinderName binder), witness) : remaining)
         Just binder -> do
           remaining <- go ((binder, snd completed) : generics)
             remainingSlots remainingCompleted
@@ -1288,10 +1335,10 @@ argumentSchemaHasInferredGenerics = any slotIsInferred . templateSlots
 
 argumentSchemaInferredGenericNames :: ArgumentSchema -> [String]
 argumentSchemaInferredGenericNames schema =
-  [ genericArgumentName binder
+  [ genericArgumentBinderName binder
   | slot <- templateSlots schema
   , Just binder <- [slotGenericBinder slot]
-  , genericArgumentInferred binder
+  , genericArgumentBinderIsInferred binder
   ]
 
 -- Function specifications validate the hidden prefix against its declared
@@ -1404,10 +1451,10 @@ buildTemplate replacements template =
       buildSlot name optional dependent annotation
         (replacementAt index replacements <|> defaultValue)
     GenericArgumentSlotSchema index binder annotation ->
-      buildSlot (Just (genericArgumentName binder))
-        (genericArgumentOptionalName binder) True annotation
+      buildSlot (Just (genericArgumentBinderName binder))
+        (genericArgumentBinderOptional binder) True annotation
         (replacementAt index replacements
-          <|> if genericArgumentInferred binder then Just annotation else Nothing)
+          <|> if genericArgumentBinderIsInferred binder then Just annotation else Nothing)
     GenericEvidenceArgumentSchema _ child -> buildTemplate replacements child
     OrderedArgumentSchema cardinality children ->
       makeAtlasMap cardinality <$> traverse (buildTemplate replacements) children

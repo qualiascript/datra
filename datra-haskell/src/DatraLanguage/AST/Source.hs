@@ -4,7 +4,6 @@ module DatraLanguage.AST.Source (renderSourceExpression) where
 import Data.List (intercalate)
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.AST
-import DatraLanguage.AST.Operator qualified as Operator
 import DatraLanguage.NeutralLexer (isOpaqueSymbolicSyntaxLiteral)
 import DatraLanguage.Pretty
   ( renderAsciiStringLiteral
@@ -25,9 +24,7 @@ source context expression =
     FunValue operand -> wrapped 0 ("fun " <> source 0 operand)
     GenericIntroductionValue introduction -> wrapped 0
       (genericPolarity introduction
-        <> renderGenericIdentifier
-          (genericIntroductionIdentifier introduction)
-        <> genericBound introduction)
+        <> renderGenericArgument introduction)
     InModuleValue _ value -> source context value
     ImportValue paths body -> "import "
       <> intercalate "; " (map renderAsciiStringLiteral paths)
@@ -40,7 +37,7 @@ source context expression =
       sourceDeclaration declaration
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
-    IdentifierReferenceValue (IdentifierString name)
+    IdentifierReferenceValue (SimpleIdentifierString name)
       | renderIdentifierString name == name -> name
       | isOpaqueSymbolicSyntaxLiteral name -> name
       | otherwise -> "this." <> renderIdentifierString name
@@ -85,7 +82,7 @@ source context expression =
       dependentArgument (source 13 name) True annotation (Just given)
     OptionalValue operand -> wrapped 10 (source 10 operand <> "?")
     ScopeAccessValue operand
-        (IdentifierReferenceValue (IdentifierString name)) ->
+        (IdentifierReferenceValue (SimpleIdentifierString name)) ->
       wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
     ScopeAccessValue operand body ->
       wrapped 12 (source 12 operand <> "." <> scopeBody body)
@@ -107,10 +104,12 @@ source context expression =
     InclusiveValuedIntegerRangeUpwards start -> open "from" start "up"
     InclusiveValuedIntegerRangeDownwards start -> open "from" start "down"
     StringTemplateValue parts -> renderStringTemplate (source 0) (const Nothing) parts
-    GreedyStringTemplateValue operand ->
-      maybe "" id
-        (Operator.operatorSourceSymbol Operator.GreedyStringTemplateOperator)
-        <> source 9 operand
+    IdentifierExpressionValue (IdentifierExpressionBody operand) -> case operand of
+      IdentifierReferenceValue (SimpleIdentifierString name) ->
+        "$" <> renderIdentifierString name
+      AsciiStringValue value -> "$" <> renderAsciiStringLiteral value
+      Sequential {} -> "$" <> source 0 operand
+      _ -> "$(" <> source 0 operand <> ")"
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom
@@ -141,18 +140,18 @@ source context expression =
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
     binderName name optional =
       renderIdentifierString name <> if optional then "?" else ""
-    renderGenericIdentifier identifier =
+    renderGenericArgument argument =
       binderName
-        (identifierStringText (genericIdentifierName identifier))
-        (genericIdentifierNameOptional identifier)
+        (simpleIdentifierStringText (genericArgumentName argument))
+        (genericArgumentOptional argument)
+        <> renderGenericBound (genericArgumentBound argument)
     genericPolarity introduction =
-      case genericIntroductionPolarity introduction of
+      case genericArgumentPolarity introduction of
         GenericProduct -> "&"
         GenericSum -> "^"
-    genericBound introduction =
-      case genericIntroductionBound introduction of
-        IdentifierReferenceValue (IdentifierString "Any") -> ""
-        bound -> " :: " <> source 0 bound
+    renderGenericBound bound = case bound of
+      IdentifierReferenceValue (SimpleIdentifierString "Any") -> ""
+      _ -> " :: " <> source 0 bound
     dependentArgument name optional annotation given = wrapped 1
       (name <> (if optional then "?" else "")
         <> maybe "" (\value -> " : " <> source 13 value) annotation
@@ -169,15 +168,10 @@ source context expression =
           <> modifier "def " (dependentDeclarationIsDefinition declaration)
           <> modifier "val "
             (dependentDeclarationIsCanonicalValue declaration)
-          <> declarationHead (dependentDeclarationHead declaration)
+          <> source 0
+            (IdentifierExpressionValue (dependentDeclarationHead declaration))
           <> " := "
           <> assignedValue (dependentDeclarationImplementation declaration)
-    declarationHead headValue = case headValue of
-      SimpleIdentifierDeclarationHead (IdentifierString name) ->
-        renderIdentifierString name
-      StringTemplateDeclarationHead parts ->
-        renderStringTemplate (source 0) (const Nothing) parts
-      EvaluatedDeclarationHead expressionValue -> source 0 expressionValue
     modifier written present = if present then written else ""
     argumentMembers = intercalate "; " . map (source 0)
 

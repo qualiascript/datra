@@ -62,7 +62,7 @@ module Evaluation.Value
   , InterpretedTotalAtlasMap (..)
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
-  , EvaluatedGreedyStringTemplate (..)
+  , EvaluatedIdentifierExpression (..)
   , EvaluatedAtlasMapFederationMember (..)
   , EvaluatedSpecification (..)
   , ValueForm (..)
@@ -151,11 +151,11 @@ module Evaluation.Value
   , withEvaluationSource
   , interpretedValueKind
   , interpretedStringTemplate
-  , interpretedGreedyStringTemplate
+  , interpretedIdentifierExpression
   , interpretedNamedMapView
   , withNamedMapView
   , withStringTemplatePlan
-  , withGreedyStringTemplatePlan
+  , withIdentifierExpressionPlan
   , interpretedExplicitOrdinal
   , interpretedSpecificationSourceValue
   , interpretedSpecificationTargetEvidence
@@ -199,7 +199,7 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   )
-import DatraLanguage.AST (Expression)
+import DatraLanguage.AST (Expression, SimpleIdentifierString)
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
@@ -492,8 +492,8 @@ functionSyntaxEquivalent left right =
         (DependentArgumentSyntaxHole rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
-        (IdentifierLiteralSyntaxHole leftValue)
-        (IdentifierLiteralSyntaxHole rightValue) =
+        (IdentifierExpressionSyntaxHole leftValue)
+        (IdentifierExpressionSyntaxHole rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
         (StringLiteralSyntaxHole leftValue)
@@ -679,6 +679,7 @@ data ValueForm
       [EvaluatedRange]
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
+  | IdentifierExpressionForm SimpleIdentifierString
   | ToStringForm
   | TemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
@@ -971,8 +972,8 @@ data EvaluatedStringTemplateSegment
       InterpretedValue
       InterpretedValue
 
-newtype EvaluatedGreedyStringTemplate = EvaluatedGreedyStringTemplate
-  { evaluatedGreedyStringTemplateOperand :: Expression
+newtype EvaluatedIdentifierExpression = EvaluatedIdentifierExpression
+  { evaluatedIdentifierExpressionBody :: Expression
   }
 
 -- | The partial inverse carried by a proven pointwise string conversion.
@@ -1023,7 +1024,7 @@ data InterpretedValue = InterpretedValue
       :: Maybe (OrdinalOrderedValues InterpretedValue)
   , interpretedCoalizedMapView :: Maybe CoalizedMapView
   , interpretedStringTemplate :: Maybe EvaluatedStringTemplate
-  , interpretedGreedyStringTemplate :: Maybe EvaluatedGreedyStringTemplate
+  , interpretedIdentifierExpression :: Maybe EvaluatedIdentifierExpression
   , interpretedNamedMapView :: Maybe NamedMapView
   }
 
@@ -1079,7 +1080,7 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
     , interpretedOrderedAtlasMapView = Nothing
     , interpretedCoalizedMapView = Nothing
     , interpretedStringTemplate = Nothing
-    , interpretedGreedyStringTemplate = Nothing
+    , interpretedIdentifierExpression = Nothing
     , interpretedNamedMapView = Nothing
     }
 
@@ -1093,12 +1094,12 @@ withStringTemplatePlan
 withStringTemplatePlan plan value =
   value { interpretedStringTemplate = Just plan }
 
-withGreedyStringTemplatePlan
-  :: EvaluatedGreedyStringTemplate
+withIdentifierExpressionPlan
+  :: EvaluatedIdentifierExpression
   -> InterpretedValue
   -> InterpretedValue
-withGreedyStringTemplatePlan plan value =
-  value { interpretedGreedyStringTemplate = Just plan }
+withIdentifierExpressionPlan plan value =
+  value { interpretedIdentifierExpression = Just plan }
 
 neverValue :: InterpretedValue
 neverValue =
@@ -1614,6 +1615,7 @@ interpretedValueKind value =
     FederationSpecificationForm _ _ _ -> SpecificationValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
+    IdentifierExpressionForm _ -> IdentifierExpressionValueKind
     ToStringForm -> AsciiStringValueKind
     TemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind

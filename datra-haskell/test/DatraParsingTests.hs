@@ -8,13 +8,12 @@ import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
   , DependentDeclaration (..)
-  , DependentDeclarationHead (..)
+  , IdentifierExpression (..)
   , GenericBinder (..)
   , GenericBinderId (..)
-  , GenericIdentifier (..)
-  , GenericIntroduction (..)
+  , GenericArgument (..)
   , GenericPolarity (..)
-  , IdentifierString (IdentifierString)
+  , SimpleIdentifierString (SimpleIdentifierString)
   , StringTemplatePart (..)
   , pattern FunctionType
   , dependentArgumentExpression
@@ -144,10 +143,8 @@ testGenericAstRepresentation = do
   let binderIdentity = GenericBinderId 0
       binder = GenericBinder
         { genericBinderId = binderIdentity
-        , genericBinderPolarity = GenericProduct
-        , genericBinderIdentifier = genericIdentifier "_T" False
-        , genericBinderBound = ref "IntLimit"
-        , genericBinderSource = Nothing
+        , genericBinderArgument =
+            genericArgument GenericProduct "_T" False (ref "IntLimit")
         }
       declaration = genericIntroduction binder
       reference = ref "_T"
@@ -155,11 +152,8 @@ testGenericAstRepresentation = do
         [binder]
         (FunctionApplication (ref "Args") declaration)
         reference
-      rawIntroduction = GenericIntroductionExpression (GenericIntroduction
-        GenericSum
-        (genericIdentifier "T" True)
-          (ref "Any")
-          Nothing)
+      rawIntroduction = GenericIntroductionExpression
+        (genericArgument GenericSum "T" True (ref "Any"))
   assert "raw generic introductions retain polarity and optional public names"
     (renderSourceExpression rawIntroduction == "^T?")
   assert "resolved function types reconstruct the declaration anchor"
@@ -184,10 +178,7 @@ testGenericSourceParsing = do
   case unowned of
     GenericIntroductionExpression introduction ->
       assert "an unowned introduction remains a raw AST node"
-        ( genericIntroductionPolarity introduction == GenericProduct
-          && genericIntroductionIdentifier introduction
-            == genericIdentifier "T" True
-        )
+        (introduction == genericArgument GenericProduct "T" True (ref "Any"))
     other -> fail ("unexpected raw generic introduction: " <> show other)
 
   parsed <- parseGenericSource
@@ -197,13 +188,12 @@ testGenericSourceParsing = do
         (ArgumentativeMap
           [OptionalType
             (DependentArgument
-              (IdentifierReference (IdentifierString "value"))
+              (IdentifierReference (SimpleIdentifierString "value"))
               (Just declaration))])
         reference -> do
       assert "optional generic name is stored on the simple identifier"
-        ( genericBinderPolarity binder == GenericProduct
-          && genericBinderIdentifier binder == genericIdentifier "T" True
-        )
+        (genericBinderArgument binder
+          == genericArgument GenericProduct "T" True (ref "Any"))
       assert "the marked occurrence remains the generic introduction"
         (declaration == genericIntroduction binder)
       assert "the codomain occurrence is an ordinary identifier reference"
@@ -217,7 +207,8 @@ testGenericSourceParsing = do
   case privateParsed of
     FunctionTypeExpression [binder] domain reference -> do
       assert "private generic identifiers retain ordinary privacy spelling"
-        (genericBinderIdentifier binder == genericIdentifier "_T" False)
+        (genericBinderArgument binder
+          == genericArgument GenericProduct "_T" False (ref "IntLimit"))
       assert "private generic codomain references stay ordinary"
         (reference == ref "_T")
       case prepareFunctionDomain [binder] domain of
@@ -252,9 +243,9 @@ testGenericSourceParsing = do
         domain@(SyntaxBoundary
           (AtlasMap
             [ DependentArgument
-                (IdentifierReference (IdentifierString "x")) (Just firstUse)
+                (IdentifierReference (SimpleIdentifierString "x")) (Just firstUse)
             , DependentArgument
-                (IdentifierReference (IdentifierString "y")) (Just declaration)
+                (IdentifierReference (SimpleIdentifierString "y")) (Just declaration)
             ])) _ -> do
       assert "ordinary entries may use a generic before its written marker"
         ( firstUse == ref "T"
@@ -271,13 +262,13 @@ testGenericSourceParsing = do
       case prepareFunctionDomainExpression [binder] domain of
         AtlasMap
             [ DependentArgument
-                (IdentifierReference (IdentifierString "T")) (Just _)
+                (IdentifierReference (SimpleIdentifierString "T")) (Just _)
             , DependentArgument
-                (IdentifierReference (IdentifierString "x"))
-                (Just (IdentifierReference (IdentifierString "T")))
+                (IdentifierReference (SimpleIdentifierString "x"))
+                (Just (IdentifierReference (SimpleIdentifierString "T")))
             , DependentArgument
-                (IdentifierReference (IdentifierString "y"))
-                (Just (IdentifierReference (IdentifierString "T")))
+                (IdentifierReference (SimpleIdentifierString "y"))
+                (Just (IdentifierReference (SimpleIdentifierString "T")))
             ] -> pure ()
         prepared -> fail
           ("unexpected lowered forward-use domain: " <> show prepared)
@@ -288,9 +279,8 @@ testGenericSourceParsing = do
   case sumParsed of
     FunctionTypeExpression [binder] _ _ ->
       assert "sum generics use the same optional-name representation"
-        ( genericBinderPolarity binder == GenericSum
-          && genericBinderIdentifier binder == genericIdentifier "T" True
-        )
+        (genericBinderArgument binder
+          == genericArgument GenericSum "T" True (ref "Any"))
     other -> fail ("unexpected sum generic AST: " <> show other)
 
   mixed <- parseGenericSource
@@ -298,7 +288,7 @@ testGenericSourceParsing = do
   case mixed of
     FunctionTypeExpression binders domain _ -> do
       assert "mixed generic prefixes retain source polarity order"
-        (map genericBinderPolarity binders
+        (map (genericArgumentPolarity . genericBinderArgument) binders
           == [GenericSum, GenericProduct, GenericSum])
       case prepareFunctionDomain binders domain of
         PreparedFunctionDomain PreparedArgumentFunctionDomain members ->
@@ -311,11 +301,11 @@ testGenericSourceParsing = do
       case prepareFunctionDomainExpression binders domain of
         ArgumentativeMap
             ( DependentArgument
-                (IdentifierReference (IdentifierString "S")) (Just _)
+                (IdentifierReference (SimpleIdentifierString "S")) (Just _)
             : DependentArgument
-                (IdentifierReference (IdentifierString "T")) (Just _)
+                (IdentifierReference (SimpleIdentifierString "T")) (Just _)
             : DependentArgument
-                (IdentifierReference (IdentifierString "U")) (Just _)
+                (IdentifierReference (SimpleIdentifierString "U")) (Just _)
             : _
             ) -> pure ()
         prepared -> fail ("unexpected lowered mixed domain: " <> show prepared)
@@ -326,7 +316,8 @@ testGenericSourceParsing = do
   case quoted of
     FunctionTypeExpression [binder] _ _ ->
       assert "quoted simple identifiers remain valid generic names"
-        (genericBinderIdentifier binder == genericIdentifier "T-name" True)
+        (genericBinderArgument binder
+          == genericArgument GenericProduct "T-name" True (ref "Any"))
     other -> fail ("unexpected quoted generic AST: " <> show other)
 
   assertGenericRejected "parenthesized generic identifier is rejected"
@@ -340,10 +331,10 @@ testGenericSourceParsing = do
   case duplicate of
     FunctionTypeExpression [first, second] _ _ ->
       assert "duplicate generic declarations remain available to compilation"
-        ( genericBinderIdentifier first == genericIdentifier "T" False
-          && genericBinderIdentifier second == genericIdentifier "T" True
-          && genericBinderPolarity first == GenericProduct
-          && genericBinderPolarity second == GenericSum
+        ( genericBinderArgument first
+            == genericArgument GenericProduct "T" False (ref "Any")
+          && genericBinderArgument second
+            == genericArgument GenericSum "T" True (ref "Any")
           && genericBinderId first /= genericBinderId second
         )
     other -> fail ("duplicate generic declarations were not retained: "
@@ -362,13 +353,13 @@ testGenericSourceParsing = do
           (DependentArgument
             (IdentifierReference codomainName) (Just _))) -> do
       assert "ordinary collision candidates remain declarations for semantic validation"
-        ( domainName == IdentifierString "T"
-          && codomainName == IdentifierString "T"
+        ( domainName == SimpleIdentifierString "T"
+          && codomainName == SimpleIdentifierString "T"
         )
       assertEqual "parsing classifies complete function-type scope identifiers"
-        [ SimpleFunctionTypeIdentifier (IdentifierString "T")
-        , SimpleFunctionTypeIdentifier (IdentifierString "marker")
-        , SimpleFunctionTypeIdentifier (IdentifierString "T")
+        [ SimpleFunctionTypeIdentifier (SimpleIdentifierString "T")
+        , SimpleFunctionTypeIdentifier (SimpleIdentifierString "marker")
+        , SimpleFunctionTypeIdentifier (SimpleIdentifierString "T")
         ]
         (functionTypeIdentifiers domain <> functionTypeIdentifiers codomain)
     other -> fail ("generic collision candidates were not retained: "
@@ -392,23 +383,28 @@ testGenericSourceParsing = do
     preparedPolarity member =
       case member of
         PreparedGenericFunctionDomainMember binder ->
-          Just (genericBinderPolarity binder)
+          Just (genericArgumentPolarity (genericBinderArgument binder))
         PreparedOrdinaryFunctionDomainMember _ -> Nothing
     isOrdinary PreparedOrdinaryFunctionDomainMember {} = True
     isOrdinary _ = False
 
-genericIdentifier :: String -> Bool -> GenericIdentifier
-genericIdentifier name optionalName =
-  GenericIdentifier (IdentifierString name) optionalName
+genericArgument
+  :: GenericPolarity
+  -> String
+  -> Bool
+  -> Expression
+  -> GenericArgument Expression
+genericArgument polarity name optionalName bound = GenericArgument
+  { genericArgumentPolarity = polarity
+  , genericArgumentName = SimpleIdentifierString name
+  , genericArgumentOptional = optionalName
+  , genericArgumentBound = bound
+  , genericArgumentSource = Nothing
+  }
 
 genericIntroduction :: GenericBinder Expression -> Expression
 genericIntroduction binder =
-  GenericIntroductionExpression GenericIntroduction
-    { genericIntroductionPolarity = genericBinderPolarity binder
-    , genericIntroductionIdentifier = genericBinderIdentifier binder
-    , genericIntroductionBound = genericBinderBound binder
-    , genericIntroductionSource = genericBinderSource binder
-    }
+  GenericIntroductionExpression (genericBinderArgument binder)
 
 parseGenericSource :: String -> IO Expression
 parseGenericSource source =
@@ -445,21 +441,22 @@ testBraceSeparatorSemantics = do
 testDependentDeclarationPrecedence :: IO ()
 testDependentDeclarationPrecedence = do
   assertNeutral
-    "template federation binds before dependent declaration assignment"
+    "identifier expression binds before dependent declaration assignment"
     source
     expected
   assertNeutral
-    "string and greedy-template concatenation is one declaration head"
-    "\"_\",%($hello; Int) := body"
-    (MapSpecification (ref "body")
-      (DependentArgument
-        (SyntaxBoundary
-          (MapConcatenation
-            (AST.asciiString "_")
-            (GreedyStringTemplate
-              (SyntaxBoundary
-                (AtlasMap [AST.asciiString "hello", ref "Int"])))))
-        Nothing))
+    "string and identifier-expression concatenation stays an expression"
+    "\"_\",$($hello; Int)"
+    (MapConcatenation
+      (AST.asciiString "_")
+      (IdentifierExpression
+        (IdentifierExpressionBody
+          (SyntaxBoundary
+            (AtlasMap
+              [ SyntaxBoundary (IdentifierExpression
+                  (IdentifierExpressionBody (ref "hello")))
+              , ref "Int"
+              ])))))
   case (dependentDeclaration expected, declarationRuleBranches expected) of
     (Just declaration, branches) ->
       assertEqual
@@ -470,21 +467,22 @@ testDependentDeclarationPrecedence = do
         [ (owner, branch) | (owner, branch, _) <- branches ]
     _ -> assertFailure "dependent declaration did not compile into syntax rules"
   where
-    source = "\"verify %_Expr\" | \"verify %($hard) %_Expr\" := body"
+    source = "$($verify; _Expr | $hard; _Expr) := body"
     expected = MapSpecification (ref "body")
       (DependentArgument
         (SyntaxBoundary
-          (EitherType
-            (StringTemplate
-              [ StringTemplateLiteral "verify "
-              , StringTemplateInterpolation (ref "_Expr")
-              ])
-            (StringTemplate
-              [ StringTemplateLiteral "verify "
-              , StringTemplateInterpolation (AST.asciiString "hard")
-              , StringTemplateLiteral " "
-              , StringTemplateInterpolation (ref "_Expr")
-              ])))
+          (IdentifierExpression
+            (IdentifierExpressionBody
+              (SyntaxBoundary
+                (AtlasMap
+                  [ SyntaxBoundary (IdentifierExpression
+                      (IdentifierExpressionBody (ref "verify")))
+                  , EitherType
+                      (ref "_Expr")
+                      (SyntaxBoundary (IdentifierExpression
+                        (IdentifierExpressionBody (ref "hard"))))
+                  , ref "_Expr"
+                  ])))))
         Nothing)
     assertNeutral label input wanted =
       case parseNeutralPhrase input of
@@ -527,12 +525,12 @@ regressionTests = do
   assertParsed "explicit contextual depth remains an ordinary application"
     "_this 2"
     (FunctionApplication
-      (IdentifierReference (IdentifierString "_this"))
+      (IdentifierReference (SimpleIdentifierString "_this"))
       (EllipsisNatural 2))
   assert "contextual depth renders as an ordinary application"
     ( renderSourceExpression
         (FunctionApplication
-          (IdentifierReference (IdentifierString "_this"))
+          (IdentifierReference (SimpleIdentifierString "_this"))
           (EllipsisNatural 2))
         == "_this 2"
     )
@@ -605,17 +603,17 @@ regressionTests = do
       fromPhrase = foldl FunctionApplication (ref "from")
         [natural 0, ref "to", ref "Infinity"]
       matchesNumericHole kind value = case (kind, value) of
-        (ValueSyntaxHole (IdentifierReference (IdentifierString "Int")),
+        (ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "Int")),
           EllipsisNatural _) -> True
-        (ValueSyntaxHole (IdentifierReference (IdentifierString "Int")),
+        (ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "Int")),
           Minus (EllipsisNatural _)) -> True
-        (ValueSyntaxHole (IdentifierReference (IdentifierString "IntLimit")),
+        (ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "IntLimit")),
           EllipsisNatural _) -> True
-        (ValueSyntaxHole (IdentifierReference (IdentifierString "IntLimit")),
+        (ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "IntLimit")),
           Minus (EllipsisNatural _)) -> True
-        (ValueSyntaxHole (IdentifierReference (IdentifierString "IntLimit")),
+        (ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "IntLimit")),
           IdentifierReference
-            (IdentifierString "Infinity")) -> True
+            (SimpleIdentifierString "Infinity")) -> True
         _ -> False
       wrongFrom = syntaxFunction "from"
         [intHole, SyntaxLiteral "to", intHole]
@@ -668,9 +666,9 @@ regressionTests = do
       greedyPrefix = foldl FunctionApplication (natural 1)
         [ref "marker", natural 2]
       matchesGreedyHole kind value = case kind of
-        ValueSyntaxHole (IdentifierReference (IdentifierString "Prefix")) ->
+        ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "Prefix")) ->
           True
-        ValueSyntaxHole (IdentifierReference (IdentifierString "Tail")) ->
+        ValueSyntaxHole (IdentifierReference (SimpleIdentifierString "Tail")) ->
           value == natural 3
         _ -> False
   assert "holes match greedily inside the current AST boundary"
@@ -714,7 +712,7 @@ regressionTests = do
     "Int -> Int -> Int" (FunctionType (ref "Int") (FunctionType (ref "Int") (ref "Int")))
   assertAstOutput "application associates left before arithmetic"
     "f 2 3 + 4" (Addition
-      (FunctionApplication (FunctionApplication (IdentifierReference (IdentifierString "f")) (natural 2)) (natural 3))
+      (FunctionApplication (FunctionApplication (IdentifierReference (SimpleIdentifierString "f")) (natural 2)) (natural 3))
       (natural 4))
   assertAstOutput "left overload"
     "a << b"
@@ -774,14 +772,14 @@ regressionTests = do
     [ Import ["library_one", "std"] (FunctionBody [] (natural 1))
     , InModule "std" (ref "_this")
     , ScopeAccess (ref "_this") (ref "abc")
-    , FunctionBody [] (IdentifierReference (IdentifierString "x"))
+    , FunctionBody [] (IdentifierReference (SimpleIdentifierString "x"))
     , Overload (natural 1) (natural 2)
     , Coalization (AtlasMap [natural 1, natural 2])
     , datraRef ["add"]
-    , GenericIntroductionExpression (GenericIntroduction
-        GenericProduct (genericIdentifier "T" True) (ref "Any") Nothing)
-    , GenericIntroductionExpression (GenericIntroduction
-        GenericSum (genericIdentifier "T" False) (ref "Any") Nothing)
+    , GenericIntroductionExpression
+        (genericArgument GenericProduct "T" True (ref "Any"))
+    , GenericIntroductionExpression
+        (genericArgument GenericSum "T" False (ref "Any"))
     , Begin []
         (AST.assignment "Example"
           (Begin
@@ -823,7 +821,7 @@ regressionTests = do
   case variadic of
     FunctionTypeExpression [binder]
         (ArgumentativeMap [MapConcatenation
-          (FunctionApplication (IdentifierReference (IdentifierString "Args"))
+          (FunctionApplication (IdentifierReference (SimpleIdentifierString "Args"))
             declaration)
           (AtlasMap [])])
         (OptionalType reference) ->
@@ -853,7 +851,7 @@ regressionTests = do
             (Multiplication (natural 2) (natural 3)))
         , declarationEntry (AST.dependentArgumentType "b" (natural 5))
         ]
-        (Addition (IdentifierReference (IdentifierString "a")) (IdentifierReference (IdentifierString "b")))
+        (Addition (IdentifierReference (SimpleIdentifierString "a")) (IdentifierReference (SimpleIdentifierString "b")))
   assertParsed "begin newline bindings" "begin\n a : 2 * 3\n b : 5\nyield a + b" block
   let assignedBlock = Begin
         [ declarationEntry (AST.assignment "a" (natural 2) (natural 2))
@@ -893,12 +891,12 @@ regressionTests = do
     "begin let x := 10 yield x"
     (Begin [declarationEntry (modified DeclarationLet
         (AST.assignment "x" (natural 10) (natural 10)))]
-      (IdentifierReference (IdentifierString "x")))
+      (IdentifierReference (SimpleIdentifierString "x")))
   assertParsed "references are parsed independently of lexical lookup" "(begin x : 1 yield x), x"
     (MapConcatenation (Begin
         [declarationEntry (AST.dependentArgumentType "x" (natural 1))]
-        (IdentifierReference (IdentifierString "x")))
-      (IdentifierReference (IdentifierString "x")))
+        (IdentifierReference (SimpleIdentifierString "x")))
+      (IdentifierReference (SimpleIdentifierString "x")))
   assertParsed "let accepts an assigned declaration" "let x := 1"
     (modified DeclarationLet (AST.assignment "x" (natural 1) (natural 1)))
   assertParsed "val marks one assigned declaration" "val x := 1"
@@ -948,8 +946,8 @@ regressionTests = do
         (GenericIntroductionExpression introduction) body) ->
       assert "a generic introduction remains an ordinary body application"
         ( body == identityBody
-          && genericIntroductionIdentifier introduction
-            == genericIdentifier "T" True
+          && introduction
+            == genericArgument GenericProduct "T" True (ref "Any")
         )
     result -> fail ("unexpected generic function body: " <> show result)
   assertParsed "function domains accept forward specifications"
@@ -978,7 +976,7 @@ regressionTests = do
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "\"take %_Expr\" := (Int -> Int) datra.fun_body"
+        , "$($take; _Expr) := (Int -> Int) datra.fun_body"
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -989,7 +987,7 @@ regressionTests = do
       parseSource (unlines
         [ "(Capture := datra.Expr"
         , "CaptureAlias := Capture"
-        , "\"take %CaptureAlias\" := (Any -> Any) datra.fun_body"
+        , "$($take; CaptureAlias) := (Any -> Any) datra.fun_body"
         , "take Infinity)"
         ]) of
     Right (AtlasMap values) -> case reverse values of
@@ -1000,7 +998,7 @@ regressionTests = do
       parseSource (unlines
         [ "(_DependentArgument := datra.DependentArgument"
         , "_Expr := datra.Expr"
-        , "\"gate %_DependentArgument bound %_Expr body %Int\" :="
+        , "$($gate; _DependentArgument; $bound; _Expr; $body; Int) :="
             <> " ((Any; Any; Int) -> Int) datra.test.gate"
         , "gate x bound Int body x)"
         ]) of
@@ -1016,7 +1014,7 @@ regressionTests = do
   assert "a dependent argument capture does not introduce contextual it" $ case
       parseSource (unlines
         [ "(_DependentArgument := datra.DependentArgument"
-        , "\"capture %_DependentArgument\" := (Any -> Any) datra.fun_body"
+        , "$($capture; _DependentArgument) := (Any -> Any) datra.fun_body"
         , "capture \"abc%(it)\")"
         ]) of
     Right (AtlasMap [_, _, Fun captured]) ->
@@ -1025,7 +1023,7 @@ regressionTests = do
   assert "an optional dependent argument capture does not introduce contextual it" $
     case parseSource (unlines
       [ "(_DependentArgument := datra.DependentArgument"
-      , "\"capture %_DependentArgument\" := (Any -> Any) datra.fun_body"
+      , "$($capture; _DependentArgument) := (Any -> Any) datra.fun_body"
       , "capture \"abc%(it)\"?)"
       ]) of
       Right (AtlasMap [_, _, Fun captured]) ->
@@ -1034,8 +1032,8 @@ regressionTests = do
   case parseSource (unlines
       [ "(_DependentArgument := datra.DependentArgument"
       , "_DependentDeclaration := datra.DependentDeclaration"
-      , "\"captureId %_DependentArgument\" := (Any -> Any) datra.fun_body"
-      , "\"captureDeclaration %_DependentDeclaration\" := (Any -> Any) datra.fun_body"
+      , "$($captureId; _DependentArgument) := (Any -> Any) datra.fun_body"
+      , "$($captureDeclaration; _DependentDeclaration) := (Any -> Any) datra.fun_body"
       , "captureId x"
       , "captureId (x : Int)"
       , "captureDeclaration x := 1"
@@ -1126,8 +1124,8 @@ regressionTests = do
     "from 2 up"
     (fromUpwards 2)
   assertParsed "unregistered keyword names parse as applications" "within 2 to 5"
-    (foldl FunctionApplication (IdentifierReference (IdentifierString "within"))
-      [natural 2, IdentifierReference (IdentifierString "to"), natural 5])
+    (foldl FunctionApplication (IdentifierReference (SimpleIdentifierString "within"))
+      [natural 2, IdentifierReference (SimpleIdentifierString "to"), natural 5])
   assertParsed "the range library binding is an ordinary name" "range : Nat"
     (AST.dependentArgumentType "range" (ref "Nat"))
   assertAstOutput
@@ -1355,9 +1353,9 @@ regressionTests = do
     "2 ~> Nat"
     (natural 2 ~> ref "Nat")
   assertParsed "unprefixed range words have ordinary application syntax" "2 to 5"
-    (FunctionApplication (FunctionApplication (natural 2) (IdentifierReference (IdentifierString "to"))) (natural 5))
+    (FunctionApplication (FunctionApplication (natural 2) (IdentifierReference (SimpleIdentifierString "to"))) (natural 5))
   assertParsed "unprefixed direction is an ordinary reference" "2 up"
-    (FunctionApplication (natural 2) (IdentifierReference (IdentifierString "up")))
+    (FunctionApplication (natural 2) (IdentifierReference (SimpleIdentifierString "up")))
   assertAstOutput
     "specification binds after access and concatenation"
     "1, 2 @ range 0 up ~> range 0 to 10"
@@ -1534,21 +1532,21 @@ regressionTests = do
   assertRejected
     "dependent arguments reject dollar-prefixed left sides"
     "$x : Nat := 4"
-  assertParsed "bare identifiers are references" "x" (IdentifierReference (IdentifierString "x"))
+  assertParsed "bare identifiers are references" "x" (IdentifierReference (SimpleIdentifierString "x"))
   assertParsed "apostrophe-prefixed identifiers are references"
-    "'x" (IdentifierReference (IdentifierString "'x"))
+    "'x" (IdentifierReference (SimpleIdentifierString "'x"))
   assertParsed "apostrophe prefixes may be followed by a digit"
-    "'2x" (IdentifierReference (IdentifierString "'2x"))
+    "'2x" (IdentifierReference (SimpleIdentifierString "'2x"))
   assertParsed "underscore prefixes may be followed by a digit"
-    "_2x" (IdentifierReference (IdentifierString "_2x"))
+    "_2x" (IdentifierReference (SimpleIdentifierString "_2x"))
   assertParsed "bare identifiers allow separated underscores"
-    "my_pow" (IdentifierReference (IdentifierString "my_pow"))
+    "my_pow" (IdentifierReference (SimpleIdentifierString "my_pow"))
   assertAstOutput "separated-underscore identifiers can be declared"
     "my_pow := 4" (AST.assignment "my_pow" (natural 4) (natural 4))
   assertParsed "bare identifiers allow consecutive underscores"
-    "my__pow" (IdentifierReference (IdentifierString "my__pow"))
+    "my__pow" (IdentifierReference (SimpleIdentifierString "my__pow"))
   assertParsed "bare identifiers allow a trailing underscore"
-    "my_pow_" (IdentifierReference (IdentifierString "my_pow_"))
+    "my_pow_" (IdentifierReference (SimpleIdentifierString "my_pow_"))
   assertParsed "a bare underscore is an identifier"
     "_" (ref "_")
   assertParsed "leading underscores are unrestricted"
@@ -1563,7 +1561,7 @@ regressionTests = do
     "''value" (ref "''value")
   assertRejected "an identifier cannot start with a digit" "345abc"
   assertParsed
-    "IdentifierString produces an ASCII string literal"
+    "SimpleIdentifierString produces an ASCII string literal"
     "$text"
     (AsciiStringLiteral "text")
   assertRejected
@@ -1573,7 +1571,7 @@ regressionTests = do
     "compact strings cannot start with a digit"
     "$345abc"
   assertAstOutput
-    "IdentifierString accepts all canonical continuation characters"
+    "SimpleIdentifierString accepts all canonical continuation characters"
     "$A_0'z"
     (AST.asciiString "A_0'z")
   assertAstOutput
@@ -1605,7 +1603,7 @@ regressionTests = do
     "\"abc_\""
     (AST.asciiString "abc_")
   assertAstOutput
-    "StandardString canonicalizes to IdentifierString when possible"
+    "StandardString canonicalizes to SimpleIdentifierString when possible"
     "\"text\""
     (AST.asciiString "text")
   assertAstOutput
@@ -1708,7 +1706,7 @@ regressionTests = do
     "\"\\?\""
     (AsciiStringLiteral "?")
   assertParsed "simple interpolation can reference the lexical scope" "\"%abc\""
-    (StringTemplate [StringTemplateInterpolation (IdentifierReference (IdentifierString "abc"))])
+    (StringTemplate [StringTemplateInterpolation (IdentifierReference (SimpleIdentifierString "abc"))])
   assertParsed
     "a compact string can itself be interpolated"
     "\"%$abc\""
@@ -2146,16 +2144,16 @@ regressionTests = do
     "(1; 2; # trailing separator\n)"
     (natural 1 <:> natural 2)
   assertRejected "multiple trailing semicolons are rejected" "(1; 2;;)"
-  assertRejected "IdentifierString rejects a missing body" "$"
-  assertAstOutput "IdentifierString accepts a leading apostrophe"
+  assertRejected "SimpleIdentifierString rejects a missing body" "$"
+  assertAstOutput "SimpleIdentifierString accepts a leading apostrophe"
     "$'bad" (AST.asciiString "'bad")
-  assertRejected "IdentifierString rejects an apostrophe without a body" "$'"
-  assertRejected "IdentifierString requires alphanumeric after apostrophe" "$'_bad"
+  assertRejected "SimpleIdentifierString rejects an apostrophe without a body" "$'"
+  assertRejected "SimpleIdentifierString requires alphanumeric after apostrophe" "$'_bad"
   assertParsed "a hyphen terminates a compact string and starts subtraction" "$bad-name"
-    (Subtraction (AsciiStringLiteral "bad") (IdentifierReference (IdentifierString "name")))
+    (Subtraction (AsciiStringLiteral "bad") (IdentifierReference (SimpleIdentifierString "name")))
   assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
   assertParsed "percent introduces a lexical interpolation" "\"bad%value\""
-    (StringTemplate [StringTemplateLiteral "bad", StringTemplateInterpolation (IdentifierReference (IdentifierString "value"))])
+    (StringTemplate [StringTemplateLiteral "bad", StringTemplateInterpolation (IdentifierReference (SimpleIdentifierString "value"))])
   assertRejected "StandardString rejects the obsolete dollar escape" "\"bad\\$value\""
   assertRejected "StandardString rejects an unterminated literal" "\"bad"
   assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
@@ -2175,7 +2173,7 @@ regressionTests = do
   assertParsed "AST range pattern captures a target expression" "range 1 to (2 + 3)"
     (rangeCall "range" (natural 1) (UpperBound (Addition (natural 2) (natural 3))))
   assertParsed "range-like names remain whole references" "range1to2"
-    (IdentifierReference (IdentifierString "range1to2"))
+    (IdentifierReference (SimpleIdentifierString "range1to2"))
   assertAstOutput
     "parentheses permit an explicitly nested range"
     "((1..2)..)"
@@ -2304,7 +2302,7 @@ genRangeExpression = rangeCall
   where
     endpoint = integer <$> Gen.integral (Range.linear (-1000) 1000)
 
-genIdentifierString :: H.Gen IdentifierString
+genIdentifierString :: H.Gen SimpleIdentifierString
 genIdentifierString = do
   prefix <- Gen.choice
     [ (: []) <$> Gen.element (['a' .. 'z'] <> ['A' .. 'Z'])
@@ -2322,7 +2320,7 @@ genIdentifierString = do
           <> ['a' .. 'z']
           <> ['A' .. 'Z']
           <> ['0' .. '9']))
-  pure (IdentifierString (prefix <> rest))
+  pure (SimpleIdentifierString (prefix <> rest))
 
 joinWith :: String -> [String] -> String
 joinWith _ [] = ""
@@ -2401,7 +2399,7 @@ assertResourceEnvelopes = do
       Left message -> fail (renderParseFailure message))
     [ ("a := 6\nyield a", Begin
         [declarationEntry (AST.assignment "a" (natural 6) (natural 6))]
-        (IdentifierReference (IdentifierString "a")))
+        (IdentifierReference (SimpleIdentifierString "a")))
     , ( "yield 5 >> {a? : Nat := 3}"
       , Begin []
           (Overload
@@ -2448,7 +2446,7 @@ assertBundledModuleBlockShape = do
         Right located -> case openedBody (locatedValue located) of
           Begin [] dependent
             | Just
-                ( IdentifierReference (IdentifierString actualName)
+                ( IdentifierReference (SimpleIdentifierString actualName)
                 , annotation
                 , given
                 ) <- dependentArgumentExpression dependent
@@ -2477,14 +2475,11 @@ assertStandardSyntaxDeclarationsAdmissible = do
       <> concatMap syntaxDeclarations
         (expressionChildren expressionValue)
       where
-        current = case expressionValue of
-          declaration
-            | Just (StringTemplate parts, _, _) <-
-                dependentArgumentExpression declaration
-            , any isInterpolation parts -> [declaration]
-          _ -> []
-    isInterpolation StringTemplateInterpolation {} = True
-    isInterpolation StringTemplateLiteral {} = False
+        current = case dependentDeclaration expressionValue of
+          Just declaration -> case dependentDeclarationHead declaration of
+            IdentifierExpressionBody (IdentifierReference {}) -> []
+            _ -> [expressionValue]
+          Nothing -> []
 
 assertAstSyntax :: IO ()
 assertAstSyntax = do
@@ -2614,7 +2609,7 @@ containsFunctionBody value = any containsFunctionBody (expressionChildren value)
 -- Source expectations describe the emitted AST directly. Keep these independent
 -- of the parser's syntax expansion so they can catch changes in that expansion.
 ref :: String -> Expression
-ref = IdentifierReference . IdentifierString
+ref = IdentifierReference . SimpleIdentifierString
 
 declarationEntry :: Expression -> DependentDeclaration Expression
 declarationEntry expressionValue =
@@ -2630,7 +2625,8 @@ modified modifier expressionValue =
 
 generatedDeclaration :: Expression -> DependentDeclaration Expression
 generatedDeclaration = DependentDeclaration
-  (SimpleIdentifierDeclarationHead (IdentifierString "generated"))
+  (IdentifierExpressionBody
+    (IdentifierReference (SimpleIdentifierString "generated")))
   False False False []
 
 datraRef :: [String] -> Expression

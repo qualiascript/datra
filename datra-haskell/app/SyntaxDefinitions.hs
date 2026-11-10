@@ -50,7 +50,7 @@ data SyntaxRuleSemantics
 
 data DependentSyntaxRule = DependentSyntaxRule
   { dependentSyntaxCaptures
-      :: [Maybe (IdentifierString, Expression)]
+      :: [Maybe (SimpleIdentifierString, Expression)]
   , dependentSyntaxImplementation :: Expression
   , dependentSyntaxInvocation :: DependentSyntaxInvocation
   } deriving (Eq, Show)
@@ -113,7 +113,7 @@ dependentDeclarationRuleResults
       (DependentDeclaration Expression, Int, SyntaxRule)]
 dependentDeclarationRuleResults declaration =
   case dependentDeclarationHead declaration of
-    SimpleIdentifierDeclarationHead name ->
+    IdentifierExpressionBody (IdentifierReference name) ->
       [Right (declaration, 0, simpleApplicationRule declaration name)]
     _ -> zipWith
       (\branch parts ->
@@ -124,9 +124,9 @@ dependentDeclarationRuleResults declaration =
 
 simpleApplicationRule
   :: DependentDeclaration Expression
-  -> IdentifierString
+  -> SimpleIdentifierString
   -> SyntaxRule
-simpleApplicationRule declaration (IdentifierString text) =
+simpleApplicationRule declaration (SimpleIdentifierString text) =
   syntaxApplicationRule
     text
     (syntaxTemplateFromPattern text)
@@ -144,7 +144,7 @@ syntaxApplicationRule name template callable implementation = SyntaxRule
   , syntaxTemplate = SyntaxTemplate
       (syntaxTemplatePieces template <>
         [SyntaxHole (ExpressionSyntaxHole
-          (IdentifierReference (IdentifierString "_Expr")))])
+          (IdentifierReference (SimpleIdentifierString "_Expr")))])
   , syntaxSemantics = SyntaxApplication callable implementation
   }
 
@@ -156,7 +156,9 @@ directTemplateRule declaration parts = do
   (template, captures) <- compileDependentDeclarationTemplate parts
   pure SyntaxRule
     { syntaxName = case dependentDeclarationHead declaration of
-        SimpleIdentifierDeclarationHead (IdentifierString name) -> name
+        IdentifierExpressionBody
+            (IdentifierReference (SimpleIdentifierString name)) -> name
+        IdentifierExpressionBody (AsciiStringLiteral name) -> name
         _ -> renderSourceExpression (StringTemplate parts)
     , syntaxTemplate = template
     , syntaxSemantics = DependentSyntax (DependentSyntaxRule
@@ -175,7 +177,7 @@ compileDependentDeclarationTemplate
   :: [StringTemplatePart Expression]
   -> Either SyntaxTemplateCompilationFailure
       ( SyntaxTemplate Expression
-      , [Maybe (IdentifierString, Expression)]
+      , [Maybe (SimpleIdentifierString, Expression)]
       )
 compileDependentDeclarationTemplate parts = do
   let (pieces, captures) = foldMap compilePart parts
@@ -255,7 +257,7 @@ lookupExpression operand =
     (MapAccess
       (Lookup operand)
       (EllipsisNatural 0))
-    (IdentifierReference (IdentifierString "value"))
+    (IdentifierReference (SimpleIdentifierString "value"))
 
 substituteCaptures
   :: [StringTemplatePart Expression]
@@ -307,7 +309,7 @@ lowerConditionAtom condition yes no =
     selectedNames = map fst selected
     declarations =
       [ DependentDeclaration
-          (SimpleIdentifierDeclarationHead name)
+          (IdentifierExpressionBody (IdentifierReference name))
           False False False [] value
       | (name, original) <- selected
       , let value = rewrite original
@@ -322,10 +324,10 @@ selectedConditionBindings
   :: Expression
   -> Expression
   -> Expression
-  -> [(IdentifierString, Expression)]
+  -> [(SimpleIdentifierString, Expression)]
 selectedConditionBindings condition yes no =
   [ (name, value)
-  | (name@(IdentifierString text), value) <- candidates
+  | (name@(SimpleIdentifierString text), value) <- candidates
   , text `elem` referenced
   ]
   where
@@ -339,7 +341,7 @@ selectedConditionBindings condition yes no =
 -- order.
 conditionBindingCandidates
   :: Expression
-  -> [(IdentifierString, Expression)]
+  -> [(SimpleIdentifierString, Expression)]
 conditionBindingCandidates expressionValue =
   concatMap conditionBindingCandidates (expressionChildren expressionValue)
     <> case expressionValue of
@@ -349,7 +351,7 @@ conditionBindingCandidates expressionValue =
 
 identifierReferences :: Expression -> [String]
 identifierReferences expressionValue = case expressionValue of
-  IdentifierReference (IdentifierString name) -> [name]
+  IdentifierReference (SimpleIdentifierString name) -> [name]
   _ -> concatMap identifierReferences (expressionChildren expressionValue)
 
 -- Literal alternatives of a named type can be spelled as keywords in an AST
@@ -359,7 +361,8 @@ declarationLiterals declarations typeName = concatMap declaration declarations
   where
     declaration dependent
       | Just semantic <- dependentDeclaration dependent
-      , SimpleIdentifierDeclarationHead (IdentifierString name) <-
+      , IdentifierExpressionBody
+          (IdentifierReference (SimpleIdentifierString name)) <-
           dependentDeclarationHead semantic
       , name == typeName = literals
           (dependentDeclarationImplementation semantic)

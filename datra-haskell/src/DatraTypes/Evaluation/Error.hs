@@ -35,6 +35,7 @@ data InterpretedValueKind
   | RangeValueKind
   | RangeConcatenationValueKind
   | AsciiStringValueKind
+  | IdentifierExpressionValueKind
   | DependentArgumentTypeValueKind
   | MapValueKind
   | SpecificationValueKind

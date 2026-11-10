@@ -2,7 +2,6 @@
 -- evaluation, and AST-category capture.
 module DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
-  , DependentDeclarationHead (..)
   , DeclarationModifier (..)
   , dependentDeclaration
   , dependentDeclarationCandidate
@@ -30,8 +29,7 @@ dependentDeclaration = declaration
     declaration (SyntaxBoundary value) = declaration value
     declaration
         (MapSpecification given (DependentArgument name Nothing)) =
-      Just (makeDeclaration
-        (classifyHead name) given)
+      makeDeclaration <$> normalizeHead name <*> pure given
     declaration optional
       | Just (named, _) <-
           optionalIdentifierExpression optional =
@@ -42,11 +40,11 @@ dependentDeclaration = declaration
       DependentDeclaration
         headValue False False False [] implementation
 
-    classifyHead name = case name of
-      IdentifierReference identifier -> SimpleIdentifierDeclarationHead identifier
-      StringTemplate parts -> StringTemplateDeclarationHead parts
-      expressionValue -> EvaluatedDeclarationHead
-        (stripBoundaries expressionValue)
+    normalizeHead name = case stripBoundaries name of
+      IdentifierReference identifier ->
+        Just (IdentifierExpressionBody (IdentifierReference identifier))
+      IdentifierExpression identifierExpression -> Just identifierExpression
+      _ -> Nothing
 
     stripBoundaries (SyntaxBoundary expressionValue) =
       stripBoundaries expressionValue
@@ -118,34 +116,17 @@ dependentDeclarationCandidate :: Expression -> Bool
 dependentDeclarationCandidate = maybe False (const True) . dependentDeclaration
 
 
--- A syntax boundary on the sole interpolation marks an evaluated declaration
--- head, whether it was written with parentheses or formed by a tighter
--- operator such as an explicit template federation.  Ordinary quoted
--- templates retain their literal/interpolation structure.
 dependentDeclarationNameExpression
   :: DependentDeclaration Expression
   -> Expression
-dependentDeclarationNameExpression declaration =
-  case dependentDeclarationHead declaration of
-    SimpleIdentifierDeclarationHead (IdentifierString name) ->
-      IdentifierReference (IdentifierString name)
-    StringTemplateDeclarationHead parts -> StringTemplate parts
-    EvaluatedDeclarationHead expressionValue -> expressionValue
+dependentDeclarationNameExpression =
+  identifierExpressionBody . dependentDeclarationHead
 
--- The federation of names introduced by a declaration is not always the
--- value of its written head. In particular, evaluating the written head of a
--- simple declaration resolves that identifier's payload. Represent its name
--- as the same singleton string-template family used by every other
--- declaration so overlap validation can uniformly use federation operations.
 dependentDeclarationNameFamilyExpression
   :: DependentDeclaration Expression
   -> Expression
-dependentDeclarationNameFamilyExpression declaration =
-  case dependentDeclarationHead declaration of
-    SimpleIdentifierDeclarationHead (IdentifierString name) ->
-      StringTemplate [StringTemplateLiteral name]
-    StringTemplateDeclarationHead parts -> StringTemplate parts
-    EvaluatedDeclarationHead expressionValue -> expressionValue
+dependentDeclarationNameFamilyExpression =
+  IdentifierExpression . dependentDeclarationHead
 
 -- | Translate a declaration's complete name family by one literal prefix.
 -- This is one operation for every dependent declaration: the cases below
@@ -157,27 +138,15 @@ prependDependentDeclarationName
   -> DependentDeclaration Expression
   -> DependentDeclaration Expression
 prependDependentDeclarationName prefix declaration = declaration
-  { dependentDeclarationHead = prependHead
-      (dependentDeclarationHead declaration)
+  { dependentDeclarationHead = prependHead (dependentDeclarationHead declaration)
   }
   where
-    prependHead (SimpleIdentifierDeclarationHead (IdentifierString name)) =
-      SimpleIdentifierDeclarationHead (IdentifierString (prefix <> name))
-    prependHead headValue = EvaluatedDeclarationHead
-      (MapConcatenation
-        (AsciiStringLiteral prefix)
-        (headExpression headValue))
-
-    headExpression (SimpleIdentifierDeclarationHead (IdentifierString name)) =
-      StringTemplate [StringTemplateLiteral name]
-    headExpression (StringTemplateDeclarationHead parts) = StringTemplate parts
-    headExpression (EvaluatedDeclarationHead expressionValue) =
-      greedyName expressionValue
-
-    greedyName value@AsciiStringLiteral {} = value
-    greedyName value@StringTemplate {} = value
-    greedyName value@GreedyStringTemplate {} = value
-    greedyName value = GreedyStringTemplate value
+    prependHead
+        (IdentifierExpressionBody
+          (IdentifierReference (SimpleIdentifierString name))) =
+      IdentifierExpressionBody (AsciiStringLiteral (prefix <> name))
+    prependHead (IdentifierExpressionBody operand) = IdentifierExpressionBody
+      (MapConcatenation (AsciiStringLiteral prefix) operand)
 
 dependentDeclarationWithImplementation
   :: Expression
@@ -193,60 +162,36 @@ dependentDeclarationWithImplementation implementation declaration = declaration
 dependentDeclarationTemplateBranches
   :: DependentDeclaration Expression
   -> Maybe [[StringTemplatePart Expression]]
-dependentDeclarationTemplateBranches declaration =
-  case dependentDeclarationHead declaration of
-    SimpleIdentifierDeclarationHead (IdentifierString name) ->
-      Just [[StringTemplateLiteral name]]
-    StringTemplateDeclarationHead parts ->
-      Just (expandOptionalInterpolations parts)
-    EvaluatedDeclarationHead (GreedyStringTemplate operand) ->
-      Just (greedyBranches operand)
-    EvaluatedDeclarationHead expressionValue ->
-      concatMap expandOptionalInterpolations <$> branches expressionValue
+dependentDeclarationTemplateBranches declaration = Just $ case
+    identifierExpressionBody (dependentDeclarationHead declaration) of
+  IdentifierReference (SimpleIdentifierString name) ->
+    [[StringTemplateLiteral name]]
+  AsciiStringLiteral name ->
+    [[StringTemplateLiteral name]]
+  body -> identifierBranches body
   where
-    branches (SyntaxBoundary inner) = branches inner
-    branches (EitherType left right) =
-      (<>) <$> branches left <*> branches right
-    branches (AsciiStringLiteral literal) =
-      Just [[StringTemplateLiteral literal]]
-    branches (StringTemplate parts) = Just [parts]
-    branches _ = Nothing
-
-    expandOptionalInterpolations [] = [[]]
-    expandOptionalInterpolations (part : remaining) =
-      [ selected <> suffix
-      | selected <- alternatives part
-      , suffix <- expandOptionalInterpolations remaining
-      ]
-    alternatives
-        (StringTemplateInterpolation (OptionalType present)) =
-      [ [StringTemplateInterpolation present]
-      , []
-      ]
-    alternatives
-        (StringTemplateInterpolation
-          (SyntaxBoundary (OptionalType present))) =
-      [ [StringTemplateInterpolation (SyntaxBoundary present)]
-      , []
-      ]
-    alternatives part = [[part]]
-
-    -- Within a greedy template, the ordinary sequence, either, and optional
+    -- Within an identifier expression, ordinary sequence, either, and optional
     -- AST nodes describe template structure. Whitespace is structural: every
     -- pair of realized sequence components is separated by one canonical
     -- space, while an absent optional component contributes no stray space.
-    greedyBranches (SyntaxBoundary inner) = greedyBranches inner
-    greedyBranches (AtlasMap members) = greedySequence members
-    greedyBranches (MapSequence members) = greedySequence members
-    greedyBranches (EitherType left right) =
-      greedyBranches left <> greedyBranches right
-    greedyBranches (OptionalType present) = greedyBranches present <> [[]]
-    greedyBranches (AsciiStringLiteral literal) =
-      [[StringTemplateLiteral literal]]
-    greedyBranches expressionValue =
+    identifierBranches (SyntaxBoundary inner) = identifierBranches inner
+    identifierBranches (AtlasMap members) = identifierSequence members
+    identifierBranches (MapSequence members) = identifierSequence members
+    identifierBranches (EitherType left right) =
+      identifierBranches left <> identifierBranches right
+    identifierBranches (OptionalType present) =
+      identifierBranches present <> [[]]
+    identifierBranches identifier@(IdentifierExpression expressionValue) =
+      case identifierExpressionBody expressionValue of
+        IdentifierReference (SimpleIdentifierString literal) ->
+          [[StringTemplateLiteral literal]]
+        AsciiStringLiteral literal ->
+          [[StringTemplateLiteral literal]]
+        _ -> [[StringTemplateInterpolation identifier]]
+    identifierBranches expressionValue =
       [[StringTemplateInterpolation expressionValue]]
 
-    greedySequence = foldl combine [[]] . map greedyBranches
+    identifierSequence = foldl combine [[]] . map identifierBranches
     combine prefixes suffixes =
       [ join prefix suffix
       | prefix <- prefixes
@@ -263,10 +208,10 @@ dependentDeclarationTemplateBranches declaration =
 bindingNames :: Expression -> [String]
 bindingNames expressionValue = case expressionValue of
   DeclarationExpression declaration -> case dependentDeclarationHead declaration of
-    SimpleIdentifierDeclarationHead (IdentifierString name) -> [name]
-    StringTemplateDeclarationHead [StringTemplateLiteral name] -> [name]
+    IdentifierExpressionBody (IdentifierReference (SimpleIdentifierString name)) -> [name]
+    IdentifierExpressionBody (AsciiStringLiteral name) -> [name]
     _ -> []
-  DependentArgument (IdentifierReference (IdentifierString name)) _ -> [name]
+  DependentArgument (IdentifierReference (SimpleIdentifierString name)) _ -> [name]
   DependentArgument (StringTemplate [StringTemplateLiteral name]) _ -> [name]
   MapSpecification _ target -> bindingNames target
   OptionalType inner -> bindingNames inner

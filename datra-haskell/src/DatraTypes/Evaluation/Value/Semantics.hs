@@ -120,6 +120,7 @@ data ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
+  | IdentifierExpressionSemantics String
   | ToStringSemantics ValueSemantics
   | TemplateSemantics ValueSemantics
   | DependentSumSemantics String
@@ -176,6 +177,7 @@ data CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
+  | CanonicalIdentifierExpression String
   | CanonicalToString CanonicalResult
   | CanonicalTemplate CanonicalResult
   | CanonicalDependentSum String
@@ -335,6 +337,8 @@ canonicalResultWith retainPresentation semantics =
     ConcatenationSemantics members ->
       CanonicalConcatenation (map recur members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
+    IdentifierExpressionSemantics identifier ->
+      CanonicalIdentifierExpression identifier
     ToStringSemantics source -> CanonicalToString (recur source)
     TemplateSemantics source ->
       CanonicalTemplate (recur source)

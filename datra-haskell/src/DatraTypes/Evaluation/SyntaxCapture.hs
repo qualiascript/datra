@@ -66,7 +66,7 @@ captureAtomicSyntaxExpression target captured =
       | dependentDeclarationCandidate captured -> Just captured
     PrimitiveTypeForm (SyntaxPrimitive DependentArgumentAST) ->
       dependentArgument captured
-    PrimitiveTypeForm (SyntaxPrimitive IdentifierLiteralAST) ->
+    PrimitiveTypeForm (SyntaxPrimitive IdentifierExpressionAST) ->
       case captured of
         IdentifierReference {} -> Just captured
         _ -> Nothing
@@ -148,9 +148,9 @@ specializeSyntaxHoleKind target hole =
   ( PrimitiveTypeForm (SyntaxPrimitive DependentArgumentAST)
     , ValueSyntaxHole value
     ) -> DependentArgumentSyntaxHole value
-  ( PrimitiveTypeForm (SyntaxPrimitive IdentifierLiteralAST)
+  ( PrimitiveTypeForm (SyntaxPrimitive IdentifierExpressionAST)
     , ValueSyntaxHole value
-    ) -> IdentifierLiteralSyntaxHole value
+    ) -> IdentifierExpressionSyntaxHole value
   (_, ValueSyntaxHole value)
     | valueProducesStrings normalized -> StringLiteralSyntaxHole value
   (_, ValueSyntaxHole value)

@@ -58,7 +58,7 @@ module DatraTypes
   , InterpretedValue
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
-  , EvaluatedGreedyStringTemplate (..)
+  , EvaluatedIdentifierExpression (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
@@ -109,6 +109,7 @@ module DatraTypes
   , optionalUnderlying
   , nothingValue
   , asciiStringValue
+  , makeIdentifierExpression
   , charTypeValue
   , listTypeValue
   , streamTypeValue
@@ -220,7 +221,12 @@ module DatraTypes
   , prepareArguments
   , matchArguments
   , selectFunctionCandidate
-  , GenericArgumentBinder (..)
+  , GenericArgumentBinder
+  , genericArgumentBinderId
+  , genericArgumentBinderPolarity
+  , genericArgumentBinderNameExpression
+  , genericArgumentBinderName
+  , genericArgumentBinderOptional
   , overloadArgumentSchemaComplete
   , overloadArgumentSchemaCompleteWithGenerics
   , overloadArgumentSchemaCompleteWithTrustedGenerics
@@ -240,10 +246,10 @@ module DatraTypes
   , identifierNameDisjointness
   , interpretedValueKind
   , interpretedStringTemplate
-  , interpretedGreedyStringTemplate
+  , interpretedIdentifierExpression
   , interpretedNamedMapView
   , withStringTemplatePlan
-  , withGreedyStringTemplatePlan
+  , withIdentifierExpressionPlan
   , interpretedDatraType
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
@@ -291,6 +297,7 @@ import Evaluation.Error
 import Evaluation.Access (accessValues, namedAccessValue)
 import Evaluation.Construction
   ( makeAsciiString
+  , makeIdentifierExpression
   , makeFormulation
   , makeSkip
   , makeNatural
@@ -358,7 +365,12 @@ import Evaluation.Map
   )
 import Evaluation.Overload
   ( ArgumentSchema
-  , GenericArgumentBinder (..)
+  , GenericArgumentBinder
+  , genericArgumentBinderId
+  , genericArgumentBinderPolarity
+  , genericArgumentBinderNameExpression
+  , genericArgumentBinderName
+  , genericArgumentBinderOptional
   , argumentSchemaFromValue
   , argumentSchemaBindings
   , argumentSchemaDomain
@@ -539,7 +551,7 @@ import Evaluation.Value
   , withNamedMapView
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
-  , EvaluatedGreedyStringTemplate (..)
+  , EvaluatedIdentifierExpression (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
@@ -579,9 +591,9 @@ import Evaluation.Value
   , interpretedTypeIsTotal
   , interpretedValueKind
   , interpretedStringTemplate
-  , interpretedGreedyStringTemplate
+  , interpretedIdentifierExpression
   , withStringTemplatePlan
-  , withGreedyStringTemplatePlan
+  , withIdentifierExpressionPlan
   )
 import Numeric.Natural (Natural)
 import DatraOrdinal

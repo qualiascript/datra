@@ -51,8 +51,9 @@ prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
 prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
-prettyOperator (GreedyStringTemplateValue operand) =
-  prettyUnary GreedyStringTemplateOperator operand
+prettyOperator
+    (IdentifierExpressionValue (IdentifierExpressionBody operand)) =
+  prettyFormFor IdentifierExpressionOperator [prettyOperator operand]
 prettyOperator EmptyMap = "()"
 prettyOperator (Sequential (expressionValue :| [])) =
   prettyOperator expressionValue
@@ -150,12 +151,9 @@ prettyOperator (CoalizationValue operand) =
 prettyOperator (FunValue operand) = prettyForm "fun" [prettyOperator operand]
 prettyOperator (GenericIntroductionValue introduction) =
   prettyForm "generic-introduction"
-    [ pretty (genericPolaritySymbol
-        (genericIntroductionPolarity introduction))
-    , prettyGenericIdentifier
-        (genericIntroductionIdentifier introduction)
-    , prettyOperator (genericIntroductionBound introduction)
-    ]
+    (pretty (genericPolaritySymbol
+      (genericArgumentPolarity introduction))
+      : prettyGenericArgument introduction)
 prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
 prettyOperator (ImportValue paths body) = prettyForm "import"
   [ prettyForm "paths" (map (pretty . renderAsciiStringLiteral) paths)
@@ -179,7 +177,7 @@ prettyOperator (DeclarationValue declaration) =
 prettyOperator (BeginValue bindings result) =
   prettyForm "begin"
     [prettyForm "bindings" (map prettyDeclaration bindings), prettyOperator result]
-prettyOperator (IdentifierReferenceValue (IdentifierString name)) =
+prettyOperator (IdentifierReferenceValue (SimpleIdentifierString name)) =
   prettyForm "ref" [pretty (renderAsciiStringLiteral name)]
 prettyOperator (LookupValue operand) =
   prettyUnary LookupOperator operand
@@ -215,7 +213,7 @@ prettyOperator (DependentArgumentValue name Nothing) =
 
 prettyDependentArgumentName :: OperatorExpression -> Doc annotation
 prettyDependentArgumentName name = case name of
-  IdentifierReferenceValue (IdentifierString identifierString) ->
+  IdentifierReferenceValue (SimpleIdentifierString identifierString) ->
     pretty (renderIdentifierString identifierString)
   StringTemplateValue parts ->
     pretty (renderStringTemplate renderOperatorExpression (const Nothing) parts)
@@ -228,20 +226,12 @@ prettyDeclaration declaration =
   applyLet (applyDefinition (applyCanonical base))
   where
       implementation = dependentDeclarationImplementation declaration
-      base = case dependentDeclarationHead declaration of
-        SimpleIdentifierDeclarationHead name -> prettyOperator
-          (Specify implementation
-            (DependentArgumentValue
-              (IdentifierReferenceValue name)
-              Nothing))
-        StringTemplateDeclarationHead parts -> prettyOperator
-          (Specify implementation
-            (DependentArgumentValue
-              (StringTemplateValue parts)
-              Nothing))
-        EvaluatedDeclarationHead expressionValue -> prettyForm
-          (operatorCanonicalSymbol AssignmentOperator)
-          [prettyOperator expressionValue, prettyOperator implementation]
+      base = prettyForm
+        (operatorCanonicalSymbol AssignmentOperator)
+        [ prettyOperator
+            (IdentifierExpressionValue (dependentDeclarationHead declaration))
+        , prettyOperator implementation
+        ]
       applyCanonical
         | dependentDeclarationIsCanonicalValue declaration =
             prettyFormFor ValOperator . pure
@@ -282,20 +272,24 @@ prettyGenericBinder
   -> Doc annotation
 prettyGenericBinder binder =
   prettyForm "generic-binder"
-    [ pretty (genericBinderIdNatural (genericBinderId binder))
-    , pretty (genericPolaritySymbol (genericBinderPolarity binder))
-    , prettyGenericIdentifier (genericBinderIdentifier binder)
-    , prettyOperator (genericBinderBound binder)
-    ]
+    ( [ pretty (genericBinderIdNatural (genericBinderId binder))
+      , pretty (genericPolaritySymbol
+          (genericArgumentPolarity (genericBinderArgument binder)))
+      ] <> prettyGenericArgument (genericBinderArgument binder)
+    )
 
-prettyGenericIdentifier :: GenericIdentifier -> Doc annotation
-prettyGenericIdentifier identifier =
-  prettyOperator
-    (if genericIdentifierNameOptional identifier
-      then OptionalValue reference
-      else reference)
+prettyGenericArgument
+  :: GenericArgument OperatorExpression
+  -> [Doc annotation]
+prettyGenericArgument argument =
+  [ prettyOperator name
+  , prettyOperator (genericArgumentBound argument)
+  ]
   where
-    reference = IdentifierReferenceValue (genericIdentifierName identifier)
+    reference = IdentifierReferenceValue (genericArgumentName argument)
+    name
+      | genericArgumentOptional argument = OptionalValue reference
+      | otherwise = reference
 
 genericBinderIdNatural :: GenericBinderId -> Natural
 genericBinderIdNatural (GenericBinderId value) = value
