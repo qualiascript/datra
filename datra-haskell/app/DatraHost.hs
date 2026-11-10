@@ -74,6 +74,7 @@ datraHostValue = do
         (\case
           [entries, result] -> Just
             (SyntaxBegin (blockExpressions entries) result)
+          [result] -> Just (SyntaxBegin [] result)
           _ -> Nothing)
         (\case
           Begin entries result -> Just
@@ -83,6 +84,7 @@ datraHostValue = do
         (\case
           [entries, result] -> Just
             (SyntaxFunctionBody (blockExpressions entries) result)
+          [result] -> Just (SyntaxFunctionBody [] result)
           _ -> Nothing)
         (\case
           FunctionBody entries result -> Just

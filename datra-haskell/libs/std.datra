@@ -31,7 +31,7 @@
     val NatValRange := datra.NatValRange
     val IntValRange := datra.IntValRange
 
-    $($begin; _Block; $yield; _Expr) := datra.begin
+    $($begin; _Block?; $yield; _Expr) := datra.begin
     $($fun; _Expr) := (_Expr -> _Expr) datra.fun_body
     $($if; Bool; $then; _Expr; ($else; _Expr)?) :=
       (Bool; _Expr; _Expr? -> _Expr) datra.if_body
@@ -47,8 +47,8 @@
     $(_Expr; $of; _Expr) := (_Expr; _Expr -> _Expr) datra.of_body
     $($not; Bool) := (Bool -> Bool) datra.not_body
 
-    $($do; _Block; $yield; _Expr) :=
-      (_Block; _Expr -> _FunctionBody) datra.do_body
+    $($do; _Block?; $yield; _Expr) :=
+      (_Block?; _Expr -> _FunctionBody) datra.do_body
     let val $($from; Int; ($to; IntLimit) | _Direction) :=
       ({origin : Int; ((target? : IntLimit) | (direction? : _Direction))} -> IntValRange) datra.from_body
     let val $($range; IntLimit; $to; IntLimit) :=
