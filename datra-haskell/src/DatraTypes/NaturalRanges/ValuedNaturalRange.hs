@@ -21,7 +21,6 @@ module ValuedNaturalRange
   , valuedNaturalRangeIsSubfederationOf
   ) where
 
-import Atlas (AtlasWitness, atlasWitness)
 import AtlasConfederation
   ( AtlasConfederationComponent
   , AtlasMergePresentation (AtlasMergeAtom)
@@ -40,11 +39,7 @@ import EllipsisNatural
   , ellipsisNaturalTotal
   )
 import EllipsisRange (EllipsisRange)
-import EmptyAtlas (emptyAtlas)
-import MapOperators.IndexedAtlasMap (indexedAtlasAtlas)
-import MapOperators.OrderedAtlasMap
-  ( OrderedAtlasMap (EmptyOrderedAtlasMap, NonEmptyOrderedAtlasMap)
-  )
+import EllipsisRange.Witness (withRangeAtlasWitness)
 import NaturalRange
   ( NaturalRange
   , NaturalRangeDirection
@@ -64,9 +59,7 @@ import NaturalRange.Interval
   )
 import Numeric.Natural (Natural)
 import SuperEllipsisRange
-  ( SuperEllipsisRangeError
-  , superEllipsisRangeOrderedMap
-  )
+  ( SuperEllipsisRangeError )
 import SuperEllipsisValue (superEllipsisValueRange)
 
 -- | One value-member of a 'ValuedNaturalRange'.  The phantom scope prevents
@@ -213,17 +206,6 @@ valuedNaturalComponent (ValuedNatural value) =
     withRangeAtlasWitness
       (superEllipsisValueRange natural)
       atlasConfederationComponentWitness
-
-withRangeAtlasWitness
-  :: EllipsisRange scope
-  -> (forall atlasObject. AtlasWitness atlasObject -> result)
-  -> result
-withRangeAtlasWitness valueRange useWitness =
-  case superEllipsisRangeOrderedMap valueRange of
-    EmptyOrderedAtlasMap ->
-      emptyAtlas (useWitness . atlasWitness)
-    NonEmptyOrderedAtlasMap valueMap ->
-      useWitness (atlasWitness (indexedAtlasAtlas valueMap))
 
 valuesSeparated
   :: ValuedNatural scope

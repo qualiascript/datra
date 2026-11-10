@@ -216,6 +216,8 @@ library
         NaturalRange.Interval
         IntegerRange.Interval
         IntegerRange.Encoding
+        EllipsisRange.Witness
+        NaturalPairing
         OrdinalSequence
         SuperEllipsisRange.Description
         Evaluation.Access

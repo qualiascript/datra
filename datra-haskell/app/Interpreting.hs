@@ -7,7 +7,6 @@
 module Interpreting
   ( ModuleSource (..)
   , moduleExportNames
-  , moduleSyntaxRules
   , importInvocation
   , StandardLibraryVisibility (..)
   , ParsedDatraSource
@@ -16,18 +15,14 @@ module Interpreting
   , rewriteParsedDatraSourceWithImports
   , parseDatraSourceLocatedWithImportsAndStandardLibrary
   , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-  , interpretLocatedWithImports
-  , interpretLocatedWithImportsAndStandardLibrary
   , interpretLocatedWithImportsAndStandardLibraryVisibility
   , interpretWithImports
-  , interpretWithImportsAndStandardLibrary
   , interpretWithImportsAndStandardLibraryVisibility
   , InterpretedValue
   , CanonicalResult (..)
   , InterpretedValueKind (..)
   , InterpretedMap
   , InterpretingError (..)
-  , interpretExpression
   , interpretLocatedExpression
   , interpretExpressionReason
   , interpretClosedExpression
@@ -148,12 +143,6 @@ import System.FilePath (takeFileName)
 
 data ModuleSource
   = ModuleSource FilePath Expression [(String, ModuleSource)]
-
-interpretExpression
-  :: Expression
-  -> Either (DatraError InterpretingError) InterpretedValue
-interpretExpression =
-  Bifunctor.first withoutSourceSpan . interpretExpressionReason
 
 -- | Production source parsing is deliberately split into two phases. The
 -- lexical parser first reads a neutral AST without consulting declarations;
@@ -870,19 +859,6 @@ interpretLocatedExpression (Located sourceSpan expressionValue) =
   Bifunctor.first (atSourceSpan sourceSpan)
     (interpretExpressionReason expressionValue)
 
-interpretLocatedWithImports :: [(String, ModuleSource)] -> Located Expression -> Either (DatraError InterpretingError) InterpretedValue
-interpretLocatedWithImports =
-  interpretLocatedWithImportsAndStandardLibrary True
-
-interpretLocatedWithImportsAndStandardLibrary
-  :: Bool
-  -> [(String, ModuleSource)]
-  -> Located Expression
-  -> Either (DatraError InterpretingError) InterpretedValue
-interpretLocatedWithImportsAndStandardLibrary includeStandardLibrary =
-  interpretLocatedWithImportsAndStandardLibraryVisibility
-    (if includeStandardLibrary then AllStandardLibrary else NoStandardLibrary)
-
 interpretLocatedWithImportsAndStandardLibraryVisibility
   :: StandardLibraryVisibility
   -> [(String, ModuleSource)]
@@ -912,16 +888,6 @@ interpretWithImports modules expression = do
   evalResourceInScopeWith UnrestrictedReduction
     (extendModuleCatalog modules scope)
     [] expression
-
-interpretWithImportsAndStandardLibrary
-  :: Bool
-  -> [(String, ModuleSource)]
-  -> Expression
-  -> Either InterpretingError InterpretedValue
-interpretWithImportsAndStandardLibrary
-    includeStandardLibrary =
-  interpretWithImportsAndStandardLibraryVisibility
-    (if includeStandardLibrary then AllStandardLibrary else NoStandardLibrary)
 
 interpretWithImportsAndStandardLibraryVisibility
   :: StandardLibraryVisibility
@@ -6158,14 +6124,6 @@ moduleExportNames source = do
     declarationExports binder = do
       exported <- moduleExportsFromValue (loadedModuleDeclarationValue binder)
       pure (map moduleExportName exported)
-
-moduleSyntaxRules
-  :: String
-  -> ModuleSource
-  -> Either InterpretingError [SyntaxRule]
-moduleSyntaxRules requested source = do
-  ruleSets <- moduleSyntaxRuleSets requested source
-  pure (concatMap snd ruleSets)
 
 moduleSyntaxRuleSets
   :: String
