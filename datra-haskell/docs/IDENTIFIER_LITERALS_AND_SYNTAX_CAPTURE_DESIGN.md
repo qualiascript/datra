@@ -296,7 +296,7 @@ The standard library defines the typed string-expression boundary and the
 generic conversion function as:
 
 ```datra
-let val _StrExpr := &T? do yield datra.StrExpr_body
+let val _StrExpr := &T? do yield datra.StrExpr T
 _show := (&_T :: Any; _value :: _T -> _StrExpr _T) datra.show
 ```
 
@@ -412,7 +412,7 @@ classification, dependent-declaration behavior, canonical rendering, and
 structural syntax matching.
 
 The `_StrExpr` and `_show` migration follows only after that `$` foundation is
-complete. This second phase adds `datra.StrExpr_body`, defines the generic
+complete. This second phase adds `datra.StrExpr`, defines the generic
 `_show` binding, moves interpolation and dynamic `$` onto the shared
 `_StrExpr _T` evaluation boundary, and makes every syntax capture carry only
 its ordinary target expression. The evaluator then derives capture behavior
@@ -424,7 +424,7 @@ The standard library exposes the concepts source programs use:
 
 ```datra
 _IdentifierLiteral := datra.IdentifierLiteral
-let val _StrExpr := &T? do yield datra.StrExpr_body
+let val _StrExpr := &T? do yield datra.StrExpr T
 _show := (&_T :: Any; _value :: _T -> _StrExpr _T) datra.show
 ```
 
