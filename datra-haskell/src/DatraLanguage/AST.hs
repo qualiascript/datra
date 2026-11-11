@@ -28,6 +28,8 @@ module DatraLanguage.AST
   , namedBeginBlock
   , dependentArgumentExpression
   , dependentArgumentWithAnnotation
+  , literalIdentifierExpression
+  , literalIdentifierName
   , optionalIdentifierExpression
   , normalizeExpression
   ) where
@@ -86,7 +88,7 @@ genericArgumentExpression argument =
     else dependent
   where
     dependent = DependentArgument
-      (IdentifierReference (genericArgumentName argument))
+      (literalIdentifierExpression (genericArgumentName argument))
       (Just (genericArgumentBound argument))
 
 -- | One entry in a resolved function type's ordered generic telescope.
@@ -270,11 +272,13 @@ yieldedIdentifier (Begin _ result) = yieldedIdentifier result
 yieldedIdentifier (ScopeAccess _ body) = yieldedIdentifier body
 yieldedIdentifier (Import _ (FunctionBody _ result)) = yieldedIdentifier result
 yieldedIdentifier
-    (DependentArgument (IdentifierReference name) (Just annotation)) =
+    (DependentArgument nameExpression (Just annotation))
+      | Just name <- literalIdentifierName nameExpression =
   Just (name, annotation, Nothing)
 yieldedIdentifier
     (MapSpecification given
-      (DependentArgument (IdentifierReference name) annotation)) =
+      (DependentArgument nameExpression annotation))
+      | Just name <- literalIdentifierName nameExpression =
   Just (name, maybe given id annotation, Just given)
 yieldedIdentifier _ = Nothing
 
@@ -308,22 +312,32 @@ dependentArgumentExpression _ = Nothing
 -- | Attach an annotation to a parsed argument name without decoding and
 -- reconstructing optional-name syntax in each caller.
 dependentArgumentWithAnnotation :: Expression -> Expression -> Expression
-dependentArgumentWithAnnotation name annotation = case name of
-  OptionalType present ->
-    OptionalType (DependentArgument present (Just annotation))
-  _ -> DependentArgument name (Just annotation)
+dependentArgumentWithAnnotation name annotation =
+  DependentArgument name (Just annotation)
+
+literalIdentifierExpression :: SimpleIdentifierString -> Expression
+literalIdentifierExpression = IdentifierExpression . IdentifierReference
+
+literalIdentifierName :: Expression -> Maybe SimpleIdentifierString
+literalIdentifierName expressionValue = case expressionValue of
+  IdentifierExpression (IdentifierReference name) -> Just name
+  _ -> Nothing
 
 -- | Recover the present and unnamed alternatives represented by identifier
 -- postfix @?@. Other optional nodes use ordinary @Maybe T@ semantics.
 optionalIdentifierExpression
   :: Expression
   -> Maybe (Expression, Expression)
-optionalIdentifierExpression (OptionalType operation) =
-  case operation of
-    DependentArgument _ (Just annotation) -> Just (operation, annotation)
-    MapSpecification given (DependentArgument _ annotation) ->
-      Just (operation, maybe given id annotation)
-    _ -> Nothing
+optionalIdentifierExpression
+    (DependentArgument (OptionalType present) (Just annotation)) =
+  Just (DependentArgument present (Just annotation), annotation)
+optionalIdentifierExpression
+    (MapSpecification given
+      (DependentArgument (OptionalType present) annotation)) =
+  Just
+    ( MapSpecification given (DependentArgument present annotation)
+    , maybe given id annotation
+    )
 optionalIdentifierExpression _ = Nothing
 
 data OperatorExpression
@@ -551,6 +565,8 @@ normalizeExpression (DependentArgument name typeAnnotation) =
     (normalizeExpression <$> typeAnnotation)
 
 normalizeDependentArgumentName :: Expression -> Expression
+normalizeDependentArgumentName (OptionalType present) =
+  OptionalType (normalizeDependentArgumentName present)
 normalizeDependentArgumentName name@IdentifierReference {} = name
 normalizeDependentArgumentName name = normalizeExpression name
 
@@ -818,7 +834,11 @@ traverseExpressionChildren visit expression = case expression of
         <$> visit (genericArgumentBound (genericBinderArgument binder))
     part (StringTemplateInterpolation value) =
       StringTemplateInterpolation <$> visit value
+    visitDependentArgumentName (OptionalType present) =
+      OptionalType <$> visitDependentArgumentName present
     visitDependentArgumentName name@IdentifierReference {} = pure name
+    visitDependentArgumentName name@(IdentifierExpression
+        (IdentifierReference {})) = pure name
     visitDependentArgumentName name = visit name
 
 mapExpressionChildren :: (Expression -> Expression) -> Expression -> Expression

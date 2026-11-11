@@ -359,6 +359,7 @@ runStructuralCandidates capture environment source =
     captureHole selectedEnvironment _ previous kind captured =
       case contextClassify selectedEnvironment [kind] of
         [(specialized, Just expected)]
+          | null (expressionChildren captured) -> captureStrict specialized
           | Just actual <- contextResultType selectedEnvironment captured
           , isValueSubfederation actual expected -> Just captured
           | otherwise -> captureStrict specialized
@@ -382,8 +383,8 @@ runStructuralCandidates capture environment source =
         listHead (selected : _) = selected
     candidateReturn selectedEnvironment candidate context =
       candidateTypingReturnType context
-        <|> instantiatedReturn
         <|> rewriteRuleReturnType compiled
+        <|> instantiatedReturn
         <|> currentDeclaredReturn
       where
         compiled = structuralCandidateRule candidate

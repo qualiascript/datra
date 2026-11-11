@@ -54,6 +54,7 @@ import DatraLanguage.AST
   ( Expression (..)
   , SimpleIdentifierString (SimpleIdentifierString)
   , StringTemplateInterpolation
+  , literalIdentifierExpression
   )
 import Numeric.Natural (Natural)
 import Prelude hiding ((+), (-), (*), (^))
@@ -64,14 +65,16 @@ natural = EllipsisNatural
 dependentArgumentType :: String -> Expression -> Expression
 dependentArgumentType identifierString typeAnnotation =
   DependentArgument
-    (IdentifierReference (SimpleIdentifierString identifierString))
+    (literalIdentifierExpression
+      (SimpleIdentifierString identifierString))
     (Just typeAnnotation)
 
 assignment :: String -> Expression -> Expression -> Expression
 assignment identifierString typeAnnotation givenValue =
   MapSpecification givenValue
     (DependentArgument
-      (IdentifierReference (SimpleIdentifierString identifierString))
+      (literalIdentifierExpression
+        (SimpleIdentifierString identifierString))
       (if typeAnnotation == givenValue then Nothing else Just typeAnnotation))
 
 asciiString :: String -> Expression

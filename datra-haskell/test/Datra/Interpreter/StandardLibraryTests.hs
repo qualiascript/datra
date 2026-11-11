@@ -249,7 +249,7 @@ standardLibraryTests =
         , programCase "evaluates an identifier operand as a string"
             "begin key := \"x\"; x := 5; yield (~key)[0].value" "5"
         , programCase "resolves a quoted binding"
-            ("begin \"value with spaces\" := 5; "
+            ("begin $\"value with spaces\" := 5; "
               <> "yield (~\"value with spaces\")[0].value")
             "5"
         , programCase "resolves a private binding"
@@ -528,7 +528,7 @@ standardLibraryTests =
             "(arg0 : 3; arg1 : 0)"
         , programCase "source-defined Args supports string-template functions"
             ( "MyArgs := &T? -> Any do\n"
-                <> "  slots := (^_i :: Nat) -> Any do yield \"arg%(_i)\"? : T\n"
+                <> "  slots := (^_i :: Nat) -> Any do yield $\"arg%(_i)\"? : T\n"
                 <> "yield ((^n? :: Nat) -> Any do yield slots[0..n])\n"
                 <> "display := {MyArgs Int,} -> Str do yield \"%(it)\"\n"
                 <> "yield (((arg2 : 10, 4) of {MyArgs Int,}) = false; "
@@ -760,7 +760,7 @@ declaredPatternTests :: TestTree
 declaredPatternTests =
   testGroup "declared patterns"
     [ programCase "zero-hole syntax completes a total domain"
-        ( "\"the answer\" := (42 -> Nat) do yield it\n"
+        ( "$\"the answer\" := (42 -> Nat) do yield it\n"
             <> "yield the answer"
         )
         "42"
@@ -812,7 +812,7 @@ declaredPatternTests =
         "3"
     , programCase
         "a direct declaration accepts a complete value-of literal"
-        ( "\"call ~name\" := (() -> Int) do yield 7\n"
+        ( "$\"call ~name\" := (() -> Int) do yield 7\n"
             <> "yield call ~name"
         )
         "7"

@@ -6,6 +6,7 @@
     _Block := datra.Block
     _FunctionBody := datra.FunctionBody
     _IdentifierExpr := datra.IdentifierExpr
+    _NaturalLiteral := datra.NaturalLiteral
 
     $!($let; _DependentDeclaration) :=
       (_DependentDeclaration -> _DependentDeclaration) datra.let_body
@@ -19,6 +20,7 @@
     val Ordinal := datra.Ordinal
     val Char := datra.Char
 
+    def val $"%(_NaturalLiteral)" := (_NaturalLiteral -> Nat) datra.parse_natural
     val Infinity := datra.Infinity
     val false := (False : 0)
     val true := (True : 1)
@@ -69,7 +71,7 @@
     let val IntLimit := >< (NatLimit; $Complement?)
 
     val Args := &T? do
-      slots := (^_i :: Nat) do yield "arg%(_i)"? : T
+      slots := (^_i :: Nat) do yield $"arg%(_i)"? : T
     yield ((^n? :: Nat) do yield slots[0..n])
 
     val _DeclarationEntry := {_key : InhabitedStr; _value : Any; $def?; $val?}

@@ -314,14 +314,14 @@ moduleTests =
         "true"
     , moduleCase origin "import accepts a dependent argument federation"
         ( "import \"dependent_export\" do\n"
-            <> "yield it = (\"Number%(it)\" : Nat)"
+            <> "yield it = ($\"Number%(it)\" : Nat)"
         )
         "true"
     , moduleCase origin "import accepts mixed simple and dependent binders"
         ( "import \"mixed_export\" do\n"
             <> "yield it"
         )
-        "(Named : Nat; \"Number%(it)\" : Nat)"
+        "(Named : Nat; $\"Number%(it)\" : Nat)"
     ]
   where
     isEvaluationFailure (ModuleEvaluationFailure _) = True

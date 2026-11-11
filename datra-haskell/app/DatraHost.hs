@@ -7,6 +7,7 @@ module DatraHost
 
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
+import DatraLanguage.Identifier (identifierNaturalValue)
 import DatraLanguage.DependentDeclaration
   ( applyDeclarationModifier
   , removeDeclarationModifier
@@ -25,6 +26,7 @@ datraHostValue = do
   natural <- naturalTypeValue
   integer <- integerTypeValue
   character <- charTypeValue
+  let naturalLiteral = naturalLiteralValue natural
   ordinalMembers <- hostMap
     [ ordinalBinaryBody "sum" ordinalSumValues
     , ordinalBinaryBody "prod" ordinalProductValues
@@ -47,6 +49,7 @@ datraHostValue = do
     , ("Expr", Right expressionType)
     , ("DependentArgument", Right dependentArgumentType)
     , ("IdentifierExpr", Right identifierExpressionType)
+    , ("NaturalLiteral", Right naturalLiteral)
     , ("DependentDeclaration", Right dependentDeclarationType)
     , ("Block", Right blockType)
     , ("FunctionBody", Right functionBodyType)
@@ -70,6 +73,7 @@ datraHostValue = do
     , syntaxBody "let_body" (modifierBody DeclarationLet)
     , syntaxBody "def_body" (modifierBody DeclarationDef)
     , syntaxBody "val_body" (modifierBody DeclarationVal)
+    , syntaxBody "parse_natural" parseNaturalBody
     , syntaxFunction "begin" (SyntaxFunctionInsertion
         (\case
           [entries, result] -> Just
@@ -144,9 +148,11 @@ datraHostValue = do
       where
         source = datraMemberSource [name]
     syntaxFunction name insertion =
+      typedSyntaxFunction name anyTypeValue anyTypeValue insertion
+    typedSyntaxFunction name domain codomain insertion =
       (name, Right (makeFunctionValue (EvaluatedFunction
-        anyTypeValue
-        anyTypeValue
+        domain
+        codomain
         (Just simpleSyntax)
         (Just simpleSyntax)
         (Just source)
@@ -228,6 +234,28 @@ datraHostValue = do
           (absorbAssignedConcatenation entry)
         _ -> Nothing)
       (removeDeclarationModifier modifier)
+
+    parseNaturalBody = expressionSyntaxInsertion
+      (\case
+        [AsciiStringLiteral name] ->
+          EllipsisNatural <$> identifierNaturalValue name
+        _ -> Nothing)
+      (\case
+        EllipsisNatural value -> Just
+          [AsciiStringLiteral (show value)]
+        _ -> Nothing)
+
+    naturalLiteralValue natural =
+      stringFederationValue naturalLiteralCodec natural
+
+    naturalLiteralCodec = CanonicalStringCodec
+      { renderCanonicalString = maybe "" show . interpretedInteger
+      , decodeCanonicalString = \characters -> case
+          identifierNaturalValue characters of
+          Just value
+            | show value == characters -> [naturalValue value]
+          _ -> []
+      }
 
     -- Native identities are represented by the same structural access tree
     -- used by the surface language.  Rendering is presentation only; member

@@ -162,7 +162,8 @@ rewrite mode inDefinition active resolver bound
       value <- rewrite mode inDefinition active resolver bound
         (IdentifierReference (SimpleIdentifierString name))
       pure (DependentArgument
-        (IdentifierReference (SimpleIdentifierString name)) (Just value))
+        (literalIdentifierExpression (SimpleIdentifierString name))
+        (Just value))
 rewrite mode inDefinition active resolver bound expression
   | FunctionApplication
       (IdentifierReference identifier)

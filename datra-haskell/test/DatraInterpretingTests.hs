@@ -193,7 +193,7 @@ testModuleSyntaxAlias = do
           (IdentifierReference (SimpleIdentifierString name)))
         False False False [] value
       member name value = DependentArgument
-        (identifierReference name) (Just value)
+        (IdentifierExpression (identifierReference name)) (Just value)
   let isolatedBody = Begin
         [binding "x" (identifierReference "Int")]
         (identifierReference "this")
@@ -995,10 +995,10 @@ parseTestExpression source =
 testBegin :: IO ()
 testBegin = do
   expectSourceValue "retained block canonicalizes strict quoted access"
-    "begin \"value with spaces\" := 5; yield this.\"value with spaces\" + 1" $ \value -> do
+    "begin $\"value with spaces\" := 5; yield this.\"value with spaces\" + 1" $ \value -> do
       let rendered = renderInterpretedValue value
       assert "block keeps explicit current-scope access"
-        (rendered == "6 <~ begin \"value with spaces\" := 5; yield this.\"value with spaces\" + 1")
+        (rendered == "6 <~ begin $\"value with spaces\" := 5; yield this.\"value with spaces\" + 1")
       expectSourceValue "canonical strict-access block round trip" rendered $ \decoded ->
         assert "canonical block remains stable"
           (renderInterpretedValue decoded == rendered)
@@ -1725,12 +1725,12 @@ testStringTemplates = do
 testLookupFoliageTraversal :: IO ()
 testLookupFoliageTraversal =
   case runProgram (unlines
-      [ "\"cell2.0\" := 20"
-      , "\"cell0.2\" := 2"
-      , "\"cell1.1\" := 11"
-      , "\"cell1.0\" := 10"
-      , "\"cell0.1\" := 1"
-      , "\"cell0.0\" := 0"
+      [ "$\"cell2.0\" := 20"
+      , "$\"cell0.2\" := 2"
+      , "$\"cell1.1\" := 11"
+      , "$\"cell1.0\" := 10"
+      , "$\"cell0.1\" := 1"
+      , "$\"cell0.0\" := 0"
       , "rows := ~\"cell%Nat.%Nat\""
       , "yield (rows[0].key; rows[1].key; rows[2].key; "
           <> "rows[3].key; rows[4].key; rows[5].key)"
@@ -1846,7 +1846,7 @@ testDependentDeclarations = do
     "OverlappingDependentDeclarations"
     (unlines
       [ "abc := 1"
-      , "\"abc\" := 2"
+      , "$\"abc\" := 2"
       , "yield abc"
       ])
   where
@@ -3781,113 +3781,115 @@ testIdentifiers = do
       (not (Types.interpretedValueHasTotalMap value))
   expectSourceValue
       "dependent argument matching uses the supplied specification"
-      "(\"abc2..9\" : range 1 to 30) of (\"abc%(it)\" : range 0 up)" $
+      "($\"abc2..9\" : range 1 to 30) of ($\"abc%(it)\" : range 0 up)" $
     \value -> assert "the matching name belongs to the instantiated name fiber"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "one supplied specification can admit another matching identifier"
-      "(\"abc5..20\" : range 1 to 30) of (\"abc%(it)\" : range 0 up)" $
+      "($\"abc5..20\" : range 1 to 30) of ($\"abc%(it)\" : range 0 up)" $
     \value -> assert "the dependent name fiber may contain multiple names"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "a name outside the instantiated dependent fiber is rejected"
-      "(\"abc0..9\" : range 1 to 30) of (\"abc%(it)\" : range 0 up)" $
+      "($\"abc0..9\" : range 1 to 30) of ($\"abc%(it)\" : range 0 up)" $
     \value -> assert "name matching uses the supplied specification's image"
       (renderInterpretedValue value == "false")
   expectSourceValue
       "a dependent argument has a canonical source representation"
-      "\"abc%(it)\" : range 0 up" $ \value ->
+      "$\"abc%(it)\" : range 0 up" $ \value ->
     assert "the canonical form retains the identifier expression and annotation"
-      (renderInterpretedValue value == "\"abc%(it)\" : range 0 up")
+      (renderInterpretedValue value == "$\"abc%(it)\" : range 0 up")
   expectSourceRejection
     "repeated dependent-name holes retain ordinary template ambiguity"
-    "\"%(it)%(it)\" : Nat"
+    "$\"%(it)%(it)\" : Nat"
     (== AmbiguousStringTemplate)
   expectSourceValue
       "dependent argument name access instantiates the name expression"
-      "(\"abc%(it)\" : range 0 up) [0]" $ \value ->
+      "($\"abc%(it)\" : range 0 up) [0]" $ \value ->
     assert "the zero fiber is the name federation at the annotation"
       (renderInterpretedValue value == "\"abc%(range 0 up)\"")
   expectSourceValue
       "a dependent argument assignment renders its selected name"
-      "\"n%(it)\" : Nat := 5" $ \value ->
+      "$\"n%(it)\" : Nat := 5" $ \value ->
     assert "the assignment binds it after validating the given value"
       (renderInterpretedValue value == "n5 : Nat := 5")
   expectSourceValue
       "dependent arguments participate in specification"
-      "(\"n5\" : 5) ~> (\"n%(it)\" : Nat)" $
+      "($\"n5\" : 5) ~> ($\"n%(it)\" : Nat)" $
     \value -> assert "dependent argument specification retains a witness"
       (interpretedValueKind value == SpecificationValueKind)
   expectSourceValue
       "dependent arguments participate in reverse specification"
-      "(\"n%(it)\" : Nat) <~ (\"n5\" : 5)" $
+      "($\"n%(it)\" : Nat) <~ ($\"n5\" : 5)" $
     \value -> assert "reverse specification retains the dependent name witness"
       (interpretedValueKind value == SpecificationValueKind)
   expectSourceValue
       "dependent argument specification index zero is the complete name"
-      "((\"n5\" : 5) ~> (\"n%(it)\" : Nat)) [0]" $ \value ->
+      "(($\"n5\" : 5) ~> ($\"n%(it)\" : Nat)) [0]" $ \value ->
     assert "the name projection uses the retained dependent-name witness"
       (renderInterpretedValue value == "$n5")
   expectSourceValue
       "dependent argument specification index one is the underlying witness"
-      "((\"n5\" : 5) ~> (\"n%(it)\" : Nat)) [1]" $ \value ->
+      "(($\"n5\" : 5) ~> ($\"n%(it)\" : Nat)) [1]" $ \value ->
     assert "the payload projection retains the underlying specification"
       (renderInterpretedValue value == "5 ~> Nat")
   expectSourceValue
       "reverse dependent specification has the same name projection"
-      "((\"n%(it)\" : Nat) <~ (\"n5\" : 5)) [0]" $ \value ->
+      "(($\"n%(it)\" : Nat) <~ ($\"n5\" : 5)) [0]" $ \value ->
     assert "projection is independent of specification spelling direction"
       (renderInterpretedValue value == "$n5")
   expectSourceValue
       "reverse dependent specification has the same payload projection"
-      "((\"n%(it)\" : Nat) <~ (\"n5\" : 5)) [1]" $ \value ->
+      "(($\"n%(it)\" : Nat) <~ ($\"n5\" : 5)) [1]" $ \value ->
     assert "reverse spelling retains the underlying specification"
       (renderInterpretedValue value == "5 ~> Nat")
   expectSourceValue
       "an optional dependent argument accepts its named branch"
-      "(\"abc2..9\" : range 1 to 30) of (\"abc%(it)\"? : range 0 up)" $
+      "($\"abc2..9\" : range 1 to 30) of ($\"abc%(it)\"? : range 0 up)" $
     \value -> assert "the named optional branch matches dependently"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "an optional dependent argument accepts its unnamed branch"
-      "(range 1 to 30) of (\"abc%(it)\"? : range 0 up)" $
+      "(range 1 to 30) of ($\"abc%(it)\"? : range 0 up)" $
     \value -> assert "the unnamed optional branch remains the annotation"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "an optional dependent argument specifies its named branch"
-      "(\"n5\" : 5) ~> (\"n%(it)\"? : Nat)" $
+      "($\"n5\" : 5) ~> ($\"n%(it)\"? : Nat)" $
     \value -> assert "the named optional branch retains a specification witness"
       (interpretedValueKind value == SpecificationValueKind)
   expectSourceValue
       "a named optional dependent specification exposes its complete name"
-      "((\"n5\" : 5) ~> (\"n%(it)\"? : Nat)) [0]" $ \value ->
+      "(($\"n5\" : 5) ~> ($\"n%(it)\"? : Nat)) [0]" $ \value ->
     assert "the selected named branch retains its name witness"
       (renderInterpretedValue value == "$n5")
   expectSourceValue
       "a named optional dependent specification exposes its payload"
-      "((\"n5\" : 5) ~> (\"n%(it)\"? : Nat)) [1]" $ \value ->
+      "(($\"n5\" : 5) ~> ($\"n%(it)\"? : Nat)) [1]" $ \value ->
     assert "the selected named branch retains its underlying witness"
       (renderInterpretedValue value == "5 ~> Nat")
   expectSourceValue
       "an optional dependent argument specifies its unnamed branch"
-      "5 ~> (\"n%(it)\"? : Nat)" $
+      "5 ~> ($\"n%(it)\"? : Nat)" $
     \value -> assert "the unnamed optional branch retains a specification witness"
       (interpretedValueKind value == SpecificationValueKind)
   let contextualIt = contextualAccess ContextualIt
       directName = DependentArgument
-        (StringTemplate
-          [ templateLiteral "x"
-          , StringTemplateInterpolation contextualIt
-          ])
+        (IdentifierExpression
+          (StringTemplate
+            [ templateLiteral "x"
+            , StringTemplateInterpolation contextualIt
+            ]))
         (Just NaturalType)
       nestedEquivalentName = DependentArgument
-        (StringTemplate
-          [ StringTemplateInterpolation
-            (StringTemplate
-              [ templateLiteral "x"
-              , StringTemplateInterpolation contextualIt
-              ])
-          ])
+        (IdentifierExpression
+          (StringTemplate
+            [ StringTemplateInterpolation
+              (StringTemplate
+                [ templateLiteral "x"
+                , StringTemplateInterpolation contextualIt
+                ])
+            ]))
         (Just NaturalType)
   assert "different dependent expressions are not assumed disjoint"
     (case interpretExpressionReason
@@ -3911,12 +3913,12 @@ testIdentifiers = do
     ["abc", "Value", "Nothing"]
   let identifier identifierString typeAnnotation =
         DependentArgument
-          (identifierReference identifierString)
+          (IdentifierExpression (identifierReference identifierString))
           (Just typeAnnotation)
       assignment identifierString typeAnnotation givenValue =
         MapSpecification givenValue
           (DependentArgument
-            (identifierReference identifierString)
+            (IdentifierExpression (identifierReference identifierString))
             (Just typeAnnotation))
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
@@ -4306,7 +4308,8 @@ testLocatedRejection = do
         MapSpecification
           (SuperEllipsisRange (natural 1) (natural 3))
           (DependentArgument
-            (identifierReference "a") (Just NaturalType))
+            (IdentifierExpression (identifierReference "a"))
+            (Just NaturalType))
   assert "assignment mismatches have a concise English diagnostic"
     (case interpretLocatedExpression (Located sourceSpan invalidAssignment) of
       Left valueError ->
@@ -4326,9 +4329,11 @@ testLocatedRejection = do
   let mismatchedIdentifier =
         (~>)
           (DependentArgument
-            (identifierReference "b") (Just (natural 10)))
+            (IdentifierExpression (identifierReference "b"))
+            (Just (natural 10)))
           (DependentArgument
-            (identifierReference "a") (Just NaturalType))
+            (IdentifierExpression (identifierReference "a"))
+            (Just NaturalType))
   assert "identifier mismatches show expected and given identifier strings"
     (case interpretLocatedExpression
         (Located sourceSpan mismatchedIdentifier) of
@@ -4341,9 +4346,10 @@ testLocatedRejection = do
   let valueOutsideIdentifierAnnotation =
         (~>)
           (DependentArgument
-            (identifierReference "x") (Just (natural 12)))
+            (IdentifierExpression (identifierReference "x"))
+            (Just (natural 12)))
           (DependentArgument
-            (identifierReference "x")
+            (IdentifierExpression (identifierReference "x"))
             (Just (ValuedNaturalRange 1 10)))
   assert "identifier membership errors show canonical expected and given values"
     (case interpretLocatedExpression
@@ -4358,12 +4364,13 @@ testLocatedRejection = do
         (~>)
           ((~>)
             (DependentArgument
-              (identifierReference "x") (Just (natural 8)))
+              (IdentifierExpression (identifierReference "x"))
+              (Just (natural 8)))
             (DependentArgument
-              (identifierReference "x")
+              (IdentifierExpression (identifierReference "x"))
               (Just (ValuedNaturalRange 5 20))))
           (DependentArgument
-            (identifierReference "x")
+            (IdentifierExpression (identifierReference "x"))
             (Just (ValuedNaturalRange 1 10)))
   assert "failed annotation widening identifies the intermediate federation"
     (case interpretLocatedExpression

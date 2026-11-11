@@ -129,13 +129,14 @@ compileParametersWithGenerics generics evaluate written static =
         <$> traverse evaluate given
 
     namedParameter value = case value of
-      DependentArgument
-          (IdentifierReference (SimpleIdentifierString name)) (Just annotation) ->
-        Just (name, annotation, Nothing)
-      MapSpecification given
-          (DependentArgument
-            (IdentifierReference (SimpleIdentifierString name)) annotation) ->
-        Just (name, maybe given id annotation, Just given)
+      DependentArgument nameExpression (Just annotation)
+        | Just (SimpleIdentifierString name) <-
+            literalIdentifierName nameExpression ->
+              Just (name, annotation, Nothing)
+      MapSpecification given (DependentArgument nameExpression annotation)
+        | Just (SimpleIdentifierString name) <-
+            literalIdentifierName nameExpression ->
+              Just (name, maybe given id annotation, Just given)
       _ -> Nothing
 
 compileDependentParameter

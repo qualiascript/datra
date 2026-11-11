@@ -114,6 +114,7 @@ import DatraLanguage.AST
   , mapExpressionChildren
   , traverseExpressionChildren
   , genericArgumentExpression
+  , literalIdentifierName
   , DependentDeclaration
   )
 import DatraLanguage.DependentDeclaration
@@ -471,8 +472,9 @@ functionTypeIdentifiers :: Expression -> [FunctionTypeIdentifier]
 functionTypeIdentifiers expressionValue =
   case expressionValue of
     FunctionTypeExpression {} -> []
-    DependentArgument (IdentifierReference name) _ ->
-      [SimpleFunctionTypeIdentifier name]
+    DependentArgument nameExpression _
+      | Just name <- literalIdentifierName (requiredName nameExpression) ->
+          [SimpleFunctionTypeIdentifier name]
     dependent@DependentArgument {} ->
       [DependentFunctionTypeIdentifier dependent]
     SyntaxBoundary value -> functionTypeIdentifiers value
@@ -493,6 +495,8 @@ functionTypeIdentifiers expressionValue =
     entriesOf = concatMap functionTypeIdentifiers
     both left right =
       functionTypeIdentifiers left <> functionTypeIdentifiers right
+    requiredName (OptionalType present) = present
+    requiredName name = name
 
 -- | Materialize the domain order consumed by generic-aware matching. The
 -- generic introduction remains at its written location while the telescope
@@ -678,7 +682,7 @@ astEmptyMap = AtlasMap [] <$ astSymbol "()"
 astAtom :: Parser Expression
 astAtom = astLexeme
   (Skip <$ chunk (Text.pack AST.skipSourceSymbol)
-    <|> atomicExpressionToken astStringTemplateToken
+    <|> astAtomicExpressionToken astStringTemplateToken
     <|> astNamedAtom)
 
 astNamedAtom :: Parser Expression
@@ -690,12 +694,19 @@ astNamedAtom = do
     (find ((== name) . Reserved.reservedSymbolIdentifierString . fst)
       reservedSymbolReplacements))
 
-atomicExpressionToken :: Parser Expression -> Parser Expression
-atomicExpressionToken nestedStringTemplate =
+astAtomicExpressionToken :: Parser Expression -> Parser Expression
+astAtomicExpressionToken nestedStringTemplate =
   choice
     [ EllipsisLiteral <$ chunk (Text.pack AST.ellipsisSymbol)
     , nestedStringTemplate
     , EllipsisNatural <$> Lexer.decimal
+    ]
+
+sourceAtomicExpressionToken :: Parser Expression -> Parser Expression
+sourceAtomicExpressionToken nestedStringTemplate =
+  choice
+    [ EllipsisLiteral <$ chunk (Text.pack AST.ellipsisSymbol)
+    , nestedStringTemplate
     ]
 
 astForm :: Parser Expression
@@ -1133,7 +1144,6 @@ mapExpression :: Parser Expression
 mapExpression =
   makeExprParser
     ( try templateConcatenation
-        <|> try templateDependentArgument
         <|> try simpleDependentArgument
         <|> rangeExpression
     )
@@ -1155,22 +1165,23 @@ templateConcatenation = do
         (infixComma *> templateConcatenationOperand >>= continue))
       pure (maybe left (MapConcatenation left) remaining)
 
--- Only an identifier operation can introduce a non-bare declaration head.
--- Parenthesized expressions remain ordinary terms (or reverse-specification
--- targets) and are never reclassified as declaration names.
+-- A literal-expression operator introduces a direct non-bare name, while
+-- parentheses retain the existing syntax boundary and therefore evaluate the
+-- enclosed expression before its string-family invariant is checked.
 evaluatedDependentArgumentOrExpression :: Parser Expression
 evaluatedDependentArgumentOrExpression =
   try identifierExpressionOrDependentArgument <|> parenthesizedOrReverse
   where
     identifierExpressionOrDependentArgument = do
       identifier <- try atlasIdentifierExpression <|> dollarIdentifierExpression
-      let evaluated = SyntaxBoundary identifier
-      maybe evaluated id <$>
-        optional (try (identifierDependentArgumentFrom evaluated))
+      maybe identifier id <$>
+        optional (try (identifierDependentArgumentFrom identifier))
     parenthesizedOrReverse = do
       evaluated <- parenthesizedExpression
       maybe evaluated id <$>
-        optional (try (reverseSpecificationAfter evaluated))
+        optional
+          (try (identifierDependentArgumentFrom evaluated)
+            <|> try (reverseSpecificationAfter evaluated))
 
 reverseSpecificationAfter :: Expression -> Parser Expression
 reverseSpecificationAfter target = do
@@ -1200,38 +1211,10 @@ identifierDependentArgumentFrom dependentName = do
             (DependentArgument dependentName (Just typeAnnotation))))
     ]
 
-templateDependentArgument :: Parser Expression
-templateDependentArgument = do
-  template <- try stringExpression
-  parts <- case template of
-    StringTemplate values -> pure values
-    _ -> empty
-  isOptional <-
-    maybe False (const True)
-      <$> optional (operatorToken AST.OptionalOperator)
-  choice
-    [ do
-        _ <- continuedOperator AST.AssignmentOperator
-        givenValue <- assignedValueExpression
-        let operation = MapSpecification givenValue
-              (DependentArgument (StringTemplate parts) Nothing)
-        pure (optionalIdentifier isOptional operation)
-    , do
-        _ <- continuedOperator AST.DependentArgumentTypeOperator
-        typeAnnotation <- identifierValueExpression
-        givenValue <- optional (assignedValueFor typeAnnotation)
-        let operation = maybe id MapSpecification givenValue
-              (DependentArgument (StringTemplate parts) (Just typeAnnotation))
-        pure (optionalIdentifier isOptional operation)
-    ]
-
 -- A colon distinguishes a declaration from a bare lexical reference or call.
 simpleDependentArgument :: Parser Expression
 simpleDependentArgument = do
-  identifierSpelling <- try identifierExpression
-  let identifierName = case identifierSpelling of
-        BareIdentifier name -> name
-        FullStringIdentifier name -> name
+  identifierName <- try bareIdentifier
   isOptional <-
     maybe False (const True)
       <$> optional (operatorToken AST.OptionalOperator)
@@ -1241,26 +1224,23 @@ simpleDependentArgument = do
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
-        let name = case identifierSpelling of BareIdentifier value -> value; FullStringIdentifier value -> value
-            operationIdentifierString = SimpleIdentifierString name
         givenValue <- assignedValueExpression
-        void (validateIdentifierSpelling identifierSpelling)
         let operation = MapSpecification givenValue
               (DependentArgument
-                (IdentifierReference operationIdentifierString)
+                (IdentifierExpression
+                  (IdentifierReference
+                    (SimpleIdentifierString identifierName)))
                 Nothing)
         pure (optionalIdentifier isOptional operation)
     , do
         _ <- continuedOperator AST.DependentArgumentTypeOperator
-        operationIdentifierString <-
-          SimpleIdentifierString
-            <$> pure (case identifierSpelling of BareIdentifier name -> name; FullStringIdentifier name -> name)
         typeAnnotation <- identifierValueExpression
-        void (validateIdentifierSpelling identifierSpelling)
         givenValue <- optional (assignedValueFor typeAnnotation)
         let operation = maybe id MapSpecification givenValue
               (DependentArgument
-                (IdentifierReference operationIdentifierString)
+                (IdentifierExpression
+                  (IdentifierReference
+                    (SimpleIdentifierString identifierName)))
                 (Just typeAnnotation))
         pure (optionalIdentifier isOptional operation)
     ]
@@ -1272,7 +1252,13 @@ assignedValueFor _ = do
 
 optionalIdentifier :: Bool -> Expression -> Expression
 optionalIdentifier False operation = operation
-optionalIdentifier True operation = OptionalType operation
+optionalIdentifier True operation = case operation of
+  DependentArgument name annotation ->
+    DependentArgument (OptionalType name) annotation
+  MapSpecification given (DependentArgument name annotation) ->
+    MapSpecification given
+      (DependentArgument (OptionalType name) annotation)
+  _ -> operation
 
 -- Identifier annotations and assigned values may use range, arithmetic, and
 -- access operators directly. Concatenation and specification are deliberately
@@ -1365,13 +1351,12 @@ term = do
     -- remains a block boundary; operator and syntax words cannot be arguments.
     applicationArgument _function = accessedTerm (choice
       [ evaluatedDependentArgumentOrExpression
-      , try templateDependentArgument
       , try simpleDependentArgument
       , argumentativeMap
       , lookupExpression
       , trailingApplicationSkip
       , prefixedApplicationArgument
-      , lexeme (atomicExpressionToken sourceStringTemplateToken)
+      , lexeme (sourceAtomicExpressionToken sourceStringTemplateToken)
       , symbolicSyntaxLiteral
       , identifierReference
       ])
@@ -1403,7 +1388,7 @@ termAtom =
     , evaluatedDependentArgumentOrExpression
     , lookupExpression
     , argumentativeMap
-    , lexeme (atomicExpressionToken sourceStringTemplateToken)
+    , lexeme (sourceAtomicExpressionToken sourceStringTemplateToken)
     , identifierReference
     ]
 
@@ -1488,7 +1473,6 @@ rangeEndpointAtom =
     , atlasIdentifierExpression
     , dollarIdentifierExpression
     , stringExpression
-    , ellipsisNatural
     , identifierReference
     ]
 
@@ -1536,7 +1520,7 @@ lookupExpression = do
       , atlasIdentifierExpression
       , dollarIdentifierExpression
       , parenthesizedExpression
-      , lexeme (atomicExpressionToken sourceStringTemplateToken)
+      , lexeme (sourceAtomicExpressionToken sourceStringTemplateToken)
       , identifierReference
       ]
 
@@ -1594,7 +1578,7 @@ dollarIdentifierExpression = lexeme . try $ do
   notFollowedBy (char '!')
   IdentifierExpression <$> choice
     [ IdentifierReference . SimpleIdentifierString <$> bareIdentifierToken
-    , AsciiStringLiteral <$> standardStringToken
+    , sourceStringTemplateToken
     , try $ do
         body <- parenthesizedExpression
         guard (not (isAtlasIdentifierOperand body))
@@ -1775,9 +1759,6 @@ postfixRangeEnd =
         , symbol reverseSpecificationSymbol
         ])
 
-ellipsisNatural :: Parser Expression
-ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
-
 bareIdentifier :: Parser String
 bareIdentifier = lexeme bareIdentifierToken
 
@@ -1876,7 +1857,7 @@ withInterpolationComments parser = do
 sourceSimpleInterpolation :: Parser Expression
 sourceSimpleInterpolation = simpleInterpolationWith
   ( dollarIdentifierExpression
-      <|> atomicExpressionToken sourceStringTemplateToken
+      <|> sourceAtomicExpressionToken sourceStringTemplateToken
       <|> (IdentifierReference . SimpleIdentifierString <$> bareIdentifierToken)
   )
 

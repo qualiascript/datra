@@ -191,7 +191,8 @@ testGenericSourceParsing = do
         (ArgumentativeMap
           [OptionalType
             (DependentArgument
-              (IdentifierReference (SimpleIdentifierString "value"))
+              (IdentifierExpression
+                (IdentifierReference (SimpleIdentifierString "value")))
               (Just declaration))])
         reference -> do
       assert "optional generic name is stored on the simple identifier"
@@ -246,9 +247,13 @@ testGenericSourceParsing = do
         domain@(SyntaxBoundary
           (AtlasMap
             [ DependentArgument
-                (IdentifierReference (SimpleIdentifierString "x")) (Just firstUse)
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "x")))
+                (Just firstUse)
             , DependentArgument
-                (IdentifierReference (SimpleIdentifierString "y")) (Just declaration)
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "y")))
+                (Just declaration)
             ])) _ -> do
       assert "ordinary entries may use a generic before its written marker"
         ( firstUse == ref "T"
@@ -265,12 +270,16 @@ testGenericSourceParsing = do
       case prepareFunctionDomainExpression [binder] domain of
         AtlasMap
             [ DependentArgument
-                (IdentifierReference (SimpleIdentifierString "T")) (Just _)
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "T")))
+                (Just _)
             , DependentArgument
-                (IdentifierReference (SimpleIdentifierString "x"))
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "x")))
                 (Just (IdentifierReference (SimpleIdentifierString "T")))
             , DependentArgument
-                (IdentifierReference (SimpleIdentifierString "y"))
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "y")))
                 (Just (IdentifierReference (SimpleIdentifierString "T")))
             ] -> pure ()
         prepared -> fail
@@ -304,11 +313,17 @@ testGenericSourceParsing = do
       case prepareFunctionDomainExpression binders domain of
         ArgumentativeMap
             ( DependentArgument
-                (IdentifierReference (SimpleIdentifierString "S")) (Just _)
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "S")))
+                (Just _)
             : DependentArgument
-                (IdentifierReference (SimpleIdentifierString "T")) (Just _)
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "T")))
+                (Just _)
             : DependentArgument
-                (IdentifierReference (SimpleIdentifierString "U")) (Just _)
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "U")))
+                (Just _)
             : _
             ) -> pure ()
         prepared -> fail ("unexpected lowered mixed domain: " <> show prepared)
@@ -349,12 +364,15 @@ testGenericSourceParsing = do
     FunctionTypeExpression [_]
         domain@(ArgumentativeMap
           [ OptionalType
-              (DependentArgument (IdentifierReference domainName) (Just _))
+              (DependentArgument
+                (IdentifierExpression (IdentifierReference domainName))
+                (Just _))
           , OptionalType (DependentArgument _ (Just _))
           ])
         codomain@(SyntaxBoundary
           (DependentArgument
-            (IdentifierReference codomainName) (Just _))) -> do
+            (IdentifierExpression (IdentifierReference codomainName))
+            (Just _))) -> do
       assert "ordinary collision candidates remain declarations for semantic validation"
         ( domainName == SimpleIdentifierString "T"
           && codomainName == SimpleIdentifierString "T"
@@ -1254,8 +1272,8 @@ regressionTests = do
   assertParsed "ordinary library names can name fields" "Str : Nat"
     (AST.dependentArgumentType "Str" (ref "Nat"))
   assertAstOutput
-    "reserved names can be full-string identifier expressions"
-    "\"Str\" : Nat"
+    "reserved names can be explicit string literal expressions"
+    "$\"Str\" : Nat"
     (AST.dependentArgumentType "Str" (ref "Nat"))
   assertAstOutput
     "contextual range words remain bare identifier expressions"
@@ -1271,8 +1289,8 @@ regressionTests = do
     "False : Nat"
     (AST.dependentArgumentType "False" (ref "Nat"))
   assertAstOutput
-    "full-string identifier expressions compose with optional syntax"
-    "\"Abc\"? : Nat"
+    "explicit string literal expressions compose with optional syntax"
+    "$\"Abc\"? : Nat"
     (OptionalType
       (AST.dependentArgumentType "Abc" (ref "Nat")))
   assertAstOutput
@@ -1540,9 +1558,13 @@ regressionTests = do
     "identifier strings share canonical continuation characters"
     "A_0'z : Nat"
     (AST.dependentArgumentType "A_0'z" (ref "Nat"))
-  assertRejected
-    "dependent arguments reject expression left sides"
+  assertAstOutput
+    "parenthesized expression heads are deferred to string-subtype checking"
     "(2 + 2) : Nat := 4"
+    (MapSpecification (natural 4)
+      (DependentArgument
+        (SyntaxBoundary ((AST.+) (natural 2) (natural 2)))
+        (Just (ref "Nat"))))
   assertAstOutput
     "parenthesized names evaluate dependent declaration templates"
     "(abc) := 123"
@@ -1556,9 +1578,13 @@ regressionTests = do
     "bare names remain literal declarations"
     "abc := 123"
     (AST.assignment "abc" (natural 123) (natural 123))
-  assertRejected
-    "dependent arguments reject dollar-prefixed left sides"
+  assertAstOutput
+    "explicit literal-expression heads are accepted"
     "$x : Nat := 4"
+    (MapSpecification (natural 4)
+      (DependentArgument
+        (IdentifierExpression (ref "x"))
+        (Just (ref "Nat"))))
   assertParsed "bare identifiers are references" "x" (IdentifierReference (SimpleIdentifierString "x"))
   assertParsed "apostrophe-prefixed identifiers are references"
     "'x" (IdentifierReference (SimpleIdentifierString "'x"))
@@ -1924,11 +1950,11 @@ regressionTests = do
   assertAstOutput "assignment retains its complete alternative value"
     "x := $up | $down"
     (MapSpecification alternatives
-      (DependentArgument (ref "x") Nothing))
+      (DependentArgument (IdentifierExpression (ref "x")) Nothing))
   assert "assignment rendering does not regroup a federation"
     (renderSourceExpression
       (MapSpecification alternatives
-        (DependentArgument (ref "x") Nothing))
+        (DependentArgument (IdentifierExpression (ref "x")) Nothing))
       == "x := $up | $down")
   assert "quoted identifier references render as strict current-scope access"
     (renderSourceExpression (ref "___Std.Int") == "this.\"___Std.Int\"")
@@ -2320,7 +2346,7 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Overload
     , Gen.subterm2 genExpression genExpression SafeOverload
     , DependentArgument
-        <$> (IdentifierReference <$> genIdentifierString)
+        <$> (IdentifierExpression . IdentifierReference <$> genIdentifierString)
         <*> (Just <$> genExpression)
     ]
 

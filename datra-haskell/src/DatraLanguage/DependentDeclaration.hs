@@ -30,27 +30,27 @@ dependentDeclaration = declaration
     declaration
         (MapSpecification given (DependentArgument name Nothing)) =
       makeDeclaration <$> normalizeHead name <*> pure given
-    declaration optional
-      | Just (named, _) <-
-          optionalIdentifierExpression optional =
-          declaration named
     declaration _ = Nothing
 
     makeDeclaration headValue implementation =
       DependentDeclaration
         headValue False False False [] implementation
 
-    normalizeHead name = case stripBoundaries name of
+    normalizeHead name = case name of
       IdentifierReference identifier ->
         Just (IdentifierExpressionBody (IdentifierReference identifier))
       IdentifierExpression body -> Just (IdentifierExpressionBody body)
+      AtlasIdentifierExpression (SyntaxBoundary body) ->
+        Just (AtlasIdentifierExpressionBody body)
       AtlasIdentifierExpression body ->
         Just (AtlasIdentifierExpressionBody body)
+      SyntaxBoundary (IdentifierExpression body) ->
+        Just (IdentifierExpressionBody body)
+      SyntaxBoundary (AtlasIdentifierExpression body) ->
+        Just (AtlasIdentifierExpressionBody body)
+      boundary@SyntaxBoundary {} ->
+        Just (IdentifierExpressionBody boundary)
       _ -> Nothing
-
-    stripBoundaries (SyntaxBoundary expressionValue) =
-      stripBoundaries expressionValue
-    stripBoundaries expressionValue = expressionValue
 
 -- | Record one modifier in the right-to-left order in which syntax expansion
 -- applies it. Invalid order and repetition remain representable until the
@@ -137,6 +137,7 @@ identifierHeadBody headValue = case headValue of
 
 identifierHeadExpression :: IdentifierExpression Expression -> Expression
 identifierHeadExpression headValue = case headValue of
+  IdentifierExpressionBody body@SyntaxBoundary {} -> body
   IdentifierExpressionBody body -> IdentifierExpression body
   AtlasIdentifierExpressionBody body -> AtlasIdentifierExpression body
 
@@ -179,13 +180,14 @@ dependentDeclarationWithImplementation implementation declaration = declaration
 dependentDeclarationTemplateBranches
   :: DependentDeclaration Expression
   -> Maybe [[StringTemplateInterpolation Expression]]
-dependentDeclarationTemplateBranches declaration = Just $ case
+dependentDeclarationTemplateBranches declaration = case
     identifierHeadBody (dependentDeclarationHead declaration) of
+  SyntaxBoundary {} -> Nothing
   IdentifierReference (SimpleIdentifierString name) ->
-    [[stringLiteral name]]
+    Just [[stringLiteral name]]
   AsciiStringLiteral name ->
-    [[stringLiteral name]]
-  body -> identifierBranches body
+    Just [[stringLiteral name]]
+  body -> Just (identifierBranches body)
   where
     -- Within an identifier expression, ordinary sequence, either, and optional
     -- AST nodes describe template structure. Whitespace is structural: every
@@ -231,7 +233,9 @@ bindingNames expressionValue = case expressionValue of
     IdentifierExpressionBody (IdentifierReference (SimpleIdentifierString name)) -> [name]
     IdentifierExpressionBody (AsciiStringLiteral name) -> [name]
     _ -> []
-  DependentArgument (IdentifierReference (SimpleIdentifierString name)) _ -> [name]
+  DependentArgument nameExpression _
+    | Just (SimpleIdentifierString name) <-
+        literalIdentifierName nameExpression -> [name]
   DependentArgument
       (StringTemplate
         [StringTemplateInterpolation (AsciiStringLiteral name)]) _ -> [name]

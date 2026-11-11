@@ -43,7 +43,8 @@ source context expression =
       | otherwise -> "this." <> renderIdentifierString name
     LookupValue operand -> unary "~" operand
     DependentArgumentValue name (Just annotation) ->
-      dependentArgument (source 13 name) False (Just annotation) Nothing
+      let (writtenName, optionalName) = dependentArgumentNameSource name
+      in dependentArgument writtenName optionalName (Just annotation) Nothing
     DependentArgumentValue name Nothing -> source 13 name
     Sequential members -> "(" <>
       intercalate "; " (map (source 0) (NonEmpty.toList members)) <> ")"
@@ -53,7 +54,8 @@ source context expression =
     Concatenate left EmptyMap -> wrapped 10 (source 10 left <> ",")
     Concatenate left right -> binary 2 "," left right
     Specify given (DependentArgumentValue name annotation) ->
-      dependentArgument (source 13 name) False annotation (Just given)
+      let (writtenName, optionalName) = dependentArgumentNameSource name
+      in dependentArgument writtenName optionalName annotation (Just given)
     Specify left right -> binary 1 "~>" left right
     OverloadValue left right -> binary 1 "<<" left right
     SafeOverloadValue left right -> binary 1 "<<<" left right
@@ -75,11 +77,6 @@ source context expression =
     Positive operand -> unary "+" operand
     Negate operand -> unary "-" operand
     CoalizationValue operand -> unary ">< " operand
-    OptionalValue (DependentArgumentValue name (Just annotation)) ->
-      dependentArgument (source 13 name) True (Just annotation) Nothing
-    OptionalValue
-        (Specify given (DependentArgumentValue name annotation)) ->
-      dependentArgument (source 13 name) True annotation (Just given)
     OptionalValue operand -> wrapped 10 (source 10 operand <> "?")
     ScopeAccessValue operand
         (IdentifierReferenceValue (SimpleIdentifierString name)) ->
@@ -163,6 +160,9 @@ source context expression =
       (name <> (if optional then "?" else "")
         <> maybe "" (\value -> " : " <> source 13 value) annotation
         <> maybe "" (\value -> " := " <> assignedValue value) given)
+    dependentArgumentNameSource name = case name of
+      OptionalValue present -> (source 13 present, True)
+      _ -> (source 13 name, False)
     -- Federation binds inside assignment. Other assignment operands retain
     -- their existing conservative grouping.
     assignedValue value@EitherValue {} = source 3 value

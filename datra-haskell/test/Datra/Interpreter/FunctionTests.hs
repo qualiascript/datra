@@ -118,7 +118,7 @@ functionTests =
             "()"
         , programFailureCase "generic names test every dependent-name fibre"
             (unlines
-              [ "f := ({marker? : &n5; \"n%(it)\"? : Nat} -> Any do yield marker)"
+              [ "f := ({marker? : &n5; $\"n%(it)\"? : Nat} -> Any do yield marker)"
               , "yield f"
               ])
             (SourceEvaluationFailure (GenericIdentifierOverlap "n5"))
@@ -467,7 +467,7 @@ functionTests =
         , programCase "projected schemas retain names inside the body"
             (unlines
               [ "Slots := &T? -> Any do"
-              , "  slots := (^_i :: Nat) -> Any do yield \"field%(_i)\"? : T"
+              , "  slots := (^_i :: Nat) -> Any do yield $\"field%(_i)\"? : T"
               , "yield ((^n? :: Nat) -> Any do yield slots[0..n])"
               , "f := {Slots Nat,} -> Any do yield it"
               , "yield ((f(3; 4))[0][1] = 3; (f(3; 4)).field1 = 4)"

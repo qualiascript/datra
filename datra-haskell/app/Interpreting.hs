@@ -51,7 +51,9 @@ import DatraHost
   ( datraHostIdentifier
   , datraHostValue
   )
-import DatraLanguage.Identifier (isIdentifierValue)
+import DatraLanguage.Identifier
+  ( isIdentifierValue
+  )
 import LibraryFiles
   ( standardLibraryFileName
   , requiredBundledLibrarySource
@@ -71,6 +73,8 @@ import DatraLanguage.AST
   , StringTemplateInterpolation (..)
   , attachedFunctionImplementation
   , dependentArgumentExpression
+  , literalIdentifierExpression
+  , literalIdentifierName
   , namedBeginBlock
   , normalizeExpression
   , optionalIdentifierExpression
@@ -93,7 +97,7 @@ import Parsing
   , inferredFunction
   , prepareFunctionDomainExpression
   , prepareGenericExpression
-  , parseDatra
+  , parseNeutralPhrase
   , parseDatraRawLocatedWithSourceName
   , resolveGenericFunctionTypes
   , stringInterpolationParser
@@ -420,9 +424,8 @@ captureSyntaxHole base modules declarations previous kind captured =
     IdentifierExpressionString {} -> case captured of
       IdentifierReference {} -> Just captured
       _ -> Nothing
-    StringLiteralString {} -> case captured of
-      AsciiStringLiteral {} -> Just captured
-      _ -> Nothing
+    StringLiteralString target ->
+      valueEvaluationCapture target
     ValueString target ->
       literalCapture target captured <|> valueEvaluationCapture target
   where
@@ -808,7 +811,7 @@ binderDeclaration binder bound = case binder of
     -- them as explicit self-valued assignments keeps block declarations
     -- assignment-only without changing the value visible to later holes.
     assigned name = MapSpecification bound
-      (DependentArgument (IdentifierReference name) Nothing)
+      (DependentArgument (literalIdentifierExpression name) Nothing)
 
 canonicalValueCapture
   :: (Expression -> Either InterpretingError InterpretedValue)
@@ -819,14 +822,24 @@ canonicalValueCapture interpret targetExpression captured = do
   target <- interpret targetExpression
   case captureSyntaxExpression target captured of
     Just syntaxCapture -> Right syntaxCapture
-    Nothing -> case interpret captured of
-      Right value -> captured <$ specifyValues value target
-      Left failure -> case captured of
-        IdentifierReference (SimpleIdentifierString name) -> do
-          source <- asciiStringValue name
-          _ <- evalValues canonicalStringCodec source target
-          Right (AsciiStringLiteral name)
-        _ -> Left failure
+    Nothing -> case captured of
+      -- A bare identifier may itself be the lexical member selected by a
+      -- string-valued dependent-name family.  Try that spelling before name
+      -- lookup so a declaration does not recursively resolve the identifier
+      -- whose membership it is currently establishing.
+      IdentifierReference (SimpleIdentifierString name) ->
+        case lexicalIdentifierCapture target name of
+          Right lexical -> Right lexical
+          Left _ -> interpretedCapture target
+      _ -> interpretedCapture target
+  where
+    lexicalIdentifierCapture target name = do
+      source <- asciiStringValue name
+      _ <- evalValues canonicalStringCodec source target
+      Right (AsciiStringLiteral name)
+    interpretedCapture target = do
+      value <- interpret captured
+      captured <$ specifyValues value target
 
 -- A recursive function body is the fixed-point seed already used by ordinary
 -- evaluation while its public signature is being assembled. Syntax-hole
@@ -1032,96 +1045,22 @@ canonicalStringCodec =
   CanonicalStringCodec
     { renderCanonicalString =
         renderInterpretedValue . withoutCanonicalPresentation
-    , decodeCanonicalString = canonicalStringCandidates
+    , decodeCanonicalString = decodeCanonicalExpression
     }
 
-canonicalStringCandidates :: String -> [InterpretedValue]
-canonicalStringCandidates = canonicalStringCandidatesWith interpretExpressionReason
-
--- Canonical decoding is lexical.  Dependent-name discovery must use the
--- declaration family's already-captured scope instead of recursively asking
--- the top-level interpreter to construct Std again.
-canonicalStringCandidatesWith
-  :: Interpreter
-  -> String
-  -> [InterpretedValue]
-canonicalStringCandidatesWith interpret characters =
-  asciiCandidate <> parsedCanonicalCandidate
-  where
-    -- String-valued federations use their contents without source delimiters.
-    asciiCandidate =
-      case asciiStringValue characters of
-        Right value -> [value]
-        Left _ -> []
-    -- Every other value must already use its canonical source spelling.
-    parsedCanonicalCandidate =
-      case parseDatra ("(" <> characters <> "\n)") of
-        Left _ -> []
-        Right expressionValue ->
-          case interpret expressionValue of
-            Right value
-              | canonicalSpelling characters
-                  (renderInterpretedValue value) ->
-                    [ candidate
-                    | candidateExpression <-
-                        canonicalExpressionCandidates
-                          (normalizeExpression expressionValue)
-                    , Right interpreted <-
-                        [interpret candidateExpression]
-                    , candidate <- evaluatedIdentifierCandidates
-                        candidateExpression interpreted
-                    ]
-            _ -> []
-
-    -- A canonical identifier can name a non-total value.  Its parsed AST then
-    -- has no Either node to split, unlike explicit optional/Either syntax.
-    -- Expand only that identifier case: explicit structural expressions
-    -- already retain the selected-branch witness needed by specification.
-    evaluatedIdentifierCandidates (IdentifierReference _) interpreted =
-      case argumentPresentations interpreted of
-        Right alternatives ->
-          [ alternative
-          | alternative <- alternatives
-          , canonicalSpelling characters
-              (renderInterpretedValue alternative)
-          ]
-        Left _ -> []
-    evaluatedIdentifierCandidates _ interpreted = [interpreted]
-
-    -- Parentheses are canonical when a rendered value is embedded as one
-    -- component of a larger expression. No other alternate spelling is
-    -- accepted by the inverse.
-    canonicalSpelling actual rendered =
-      actual == rendered || actual == "(" <> rendered <> ")"
-
--- Canonical Either and map syntax can retain the unselected branches that
--- explain a value's type. Decode those contexts into their concrete member
--- expressions before asking the semantic federation to select one.
-canonicalExpressionCandidates :: Expression -> [Expression]
-canonicalExpressionCandidates expressionValue
-  | Just (present, missing) <- optionalIdentifierExpression expressionValue =
-      canonicalExpressionCandidates present
-        <> canonicalExpressionCandidates missing
-  | otherwise =
-      case expressionValue of
-        EitherType left right ->
-          canonicalExpressionCandidates left
-            <> canonicalExpressionCandidates right
-        AtlasMap members ->
-          AtlasMap <$> traverse canonicalExpressionCandidates members
-        MapSequence members ->
-          MapSequence <$> traverse canonicalExpressionCandidates members
-        ArgumentativeMap members ->
-          ArgumentativeMap <$> traverse canonicalExpressionCandidates members
-        MapExpansion left right ->
-          MapExpansion
-            <$> canonicalExpressionCandidates left
-            <*> canonicalExpressionCandidates right
-        MapConcatenation left right ->
-          MapConcatenation
-            <$> canonicalExpressionCandidates left
-            <*> canonicalExpressionCandidates right
-        _ -> [expressionValue]
+-- Canonical text is Datra source, not a parallel scalar encoding. Parsing it
+-- through the ordinary neutral grammar makes forms such as @-123@ use the
+-- prefix operator and lets dependent declarations assign meanings to
+-- otherwise ordinary identifiers such as @123@.
+decodeCanonicalExpression :: String -> [InterpretedValue]
+decodeCanonicalExpression characters =
+  case do
+      scope <- defaultImportScope
+      expressionValue <- closedSourceExpressionIn scope characters
+      evalInScope scope [] expressionValue
+    of
+      Right value -> [value]
+      Left _ -> []
 
 type Interpreter = Expression -> Either InterpretingError InterpretedValue
 
@@ -2426,6 +2365,10 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           insertion <- interpret insertionOperand
           accessRepeatedPrefix captured resolving prefix insertion
         Nothing -> binary accessValues mapOperand insertionOperand
+    optionalName
+      | Just (present, missing) <-
+          optionalIdentifierExpression optionalName ->
+            binary eitherValue present missing
     MapSpecification sourceOperand (DependentArgument name Nothing) -> do
       source <- interpret sourceOperand
       runProtectedOperation protection [source] $ \actuals ->
@@ -2456,15 +2399,27 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           Nothing -> Left (LookupRequiresString (interpretedValueKind rendered))
     interpretDependentArgumentName nameExpression typeAnnotation =
       case nameExpression of
-        IdentifierReference (SimpleIdentifierString identifierString) ->
+        IdentifierExpression
+            (IdentifierReference (SimpleIdentifierString identifierString)) ->
           interpretSimpleDependentArgument identifierString typeAnnotation
-        _ -> do
+        IdentifierExpression body ->
+          interpretDependentArgumentNameFamily False body
+        AtlasIdentifierExpression body ->
+          interpretDependentArgumentNameFamily False body
+        SyntaxBoundary body ->
+          interpretDependentArgumentNameFamily True body
+        _ -> Left OperationHasNoEffect
+      where
+        interpretDependentArgumentNameFamily evaluated body = do
           let familyKey = renderSourceExpression nameExpression
               nameFamily supplied =
-                evalInContextualContinuationScopeWith nameExpression reduction
+                evalInContextualContinuationScopeWith body reduction
                   (constantContextualDeclarations ContextualIt supplied)
-                  scope resolving nameExpression
+                  scope resolving body
           identifier <- nameFamily typeAnnotation
+          if evaluated
+            then requireDependentNameSubfederation True interpret identifier
+            else Right ()
           case asciiStringFromInterpretedMap (interpretedMap identifier) of
             Just identifierString
               | interpretedValueHasTotalMap identifier
@@ -2883,9 +2838,7 @@ evaluateLookup reduction scope resolving query =
       Just template -> do
         family <- compileLookupCaptureFamily template
         keys <- filterMRight
-          (matchCanonicalTemplate
-            (evalInScopeWith reduction scope resolving)
-            template)
+          (matchCanonicalTemplate template)
           (scopeLookupKeys scope)
         lookupTemplateResult reduction scope resolving template family keys
       Nothing -> Left (LookupRequiresString (interpretedValueKind query))
@@ -3052,25 +3005,23 @@ canonicalCaptureText value = do
       Just text | interpretedValueHasTotalMap rendered -> Just text
       _ -> Nothing
 
--- | Canonical reverse matching mirrors function-domain preparation. Every
--- decoded candidate is completed against its capture schema, identifiers are
--- erased to positional payloads, and the payload must render byte-for-byte to
--- the captured substring.
+-- | Canonical reverse matching mirrors function-domain preparation. The
+-- existing pointwise string specification recovers the selected member of
+-- the capture schema; identifiers are then erased to positional payloads, and
+-- the payload must render byte-for-byte to the captured substring.
 matchCanonicalTemplate
-  :: Interpreter
-  -> EvaluatedStringTemplate
+  :: EvaluatedStringTemplate
   -> String
   -> Either InterpretingError Bool
-matchCanonicalTemplate interpret template input =
+matchCanonicalTemplate template input =
   maybe False (const True) <$>
-    decodeCanonicalTemplateWith interpret template input
+    decodeCanonicalTemplate template input
 
-decodeCanonicalTemplateWith
-  :: Interpreter
-  -> EvaluatedStringTemplate
+decodeCanonicalTemplate
+  :: EvaluatedStringTemplate
   -> String
   -> Either InterpretingError (Maybe [InterpretedValue])
-decodeCanonicalTemplateWith interpret template input = do
+decodeCanonicalTemplate template input = do
   matches <- matchSegments
     (evaluatedStringTemplateSegments template)
     input
@@ -3096,7 +3047,7 @@ decodeCanonicalTemplateWith interpret template input = do
       where
         attempt boundary = do
           let (captured, suffix) = splitAt boundary text
-          prepared <- preparedCaptureCandidatesWith interpret schema captured
+          prepared <- preparedCaptureCandidates schema captured
           tails <- matchSegments remaining suffix
           pure [value : tailValues | value <- prepared, tailValues <- tails]
 
@@ -3113,22 +3064,23 @@ decodeCanonicalTemplateWith interpret template input = do
       ]
     captureBoundaries _ text = [0 .. length text]
 
-preparedCaptureCandidatesWith
-  :: Interpreter
-  -> InterpretedValue
+preparedCaptureCandidates
+  :: InterpretedValue
   -> String
   -> Either InterpretingError [InterpretedValue]
-preparedCaptureCandidatesWith interpret schema captured =
-  pure
-    [ prepared
-    | candidate <- canonicalStringCandidatesWith interpret captured
-    , Right prepared <-
-        [argumentSchemaValuesComplete
-          (argumentSchemaFromValue schema)
-          candidate]
-    , Just rendered <- [canonicalCaptureText prepared]
-    , rendered == captured
-    ]
+preparedCaptureCandidates schema captured = do
+  source <- asciiStringValue captured
+  pure $ case evalValues canonicalStringCodec source schema of
+    Left _ -> []
+    Right selected ->
+      [ prepared
+      | Right prepared <-
+          [argumentSchemaValuesComplete
+            (argumentSchemaFromValue schema)
+            selected]
+      , Just rendered <- [canonicalCaptureText prepared]
+      , rendered == captured
+      ]
 
 naturalListAt :: Natural -> [value] -> Maybe value
 naturalListAt 0 (value : _) = Just value
@@ -3679,6 +3631,13 @@ validateDeclarationFamilies = go []
           family <- evalInScope
             (scopedDependentDeclarationFamilyScope scoped) []
             (dependentDeclarationNameFamilyExpression declaration)
+          case dependentDeclarationNameExpression declaration of
+            SyntaxBoundary {} ->
+              requireDependentNameSubfederation False
+                (evalInScope
+                  (scopedDependentDeclarationFamilyScope scoped) [])
+                family
+            _ -> Right ()
           mapM_ (requireDistinct declaration family) earlier
           go ((declaration, family) : earlier) remaining
 
@@ -3918,8 +3877,7 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
                   . flip (selectPreparedDeclaration decode) prepared
             })
 
-    decode = decodeCanonicalTemplateWith
-      (evalInScopeWith reduction familyCaptured resolving)
+    decode = decodeCanonicalTemplate
     branchView branch = do
       let evaluatedCaptures = preparedDeclarationCaptures branch
           template = preparedDeclarationTemplate branch
@@ -4111,7 +4069,7 @@ dependentDeclarationContainsName reduction resolving scoped name = do
           (const (Right True)) $ \active -> do
             prepared <- prepareCandidates declaration active
             maybe False (const True) <$>
-              selectPreparedDeclaration (decode active) name prepared
+              selectPreparedDeclaration decode name prepared
     staticallyExcluded = case scopedDependentDeclarationBranches scoped of
       Just declared -> null (matching declared)
       Nothing -> False
@@ -4122,8 +4080,7 @@ dependentDeclarationContainsName reduction resolving scoped name = do
       Nothing -> prepareDependentDeclaration
         reduction familyCaptured active declaration
     matching = filter (`templateLiteralSkeletonMatches` name)
-    decode active = decodeCanonicalTemplateWith
-      (evalInScopeWith reduction familyCaptured active)
+    decode = decodeCanonicalTemplate
 
 dependentDeclarationCaptureBound
   :: ReductionContext
@@ -4198,7 +4155,7 @@ dependentDeclarationMemberByName reduction resolving scoped name = do
           (dependentDeclarationImplementation declaration)
           (seedMember declaration) $ \active -> do
             prepared <- prepareCandidates declaration active
-            selected <- selectPreparedDeclaration (decode active) name prepared
+            selected <- selectPreparedDeclaration decode name prepared
             traverse (materialize declaration active) selected
     staticallyExcluded = case scopedDependentDeclarationBranches scoped of
       Just declared -> null (matching declared)
@@ -4210,8 +4167,7 @@ dependentDeclarationMemberByName reduction resolving scoped name = do
       Nothing -> prepareDependentDeclaration
         reduction familyCaptured active declaration
     matching = filter (`templateLiteralSkeletonMatches` name)
-    decode active = decodeCanonicalTemplateWith
-      (evalInScopeWith reduction familyCaptured active)
+    decode = decodeCanonicalTemplate
     seedMember declaration payload =
       Right (Just (namedDeclarationMember declaration name payload))
     materialize declaration active selected =
@@ -4266,6 +4222,9 @@ prepareDependentDeclaration reduction captured resolving declaration =
     Nothing -> do
       evaluated <- evalInScopeWith reduction captured resolving
         (dependentDeclarationNameExpression declaration)
+      requireDependentNameSubfederation False
+        (evalInScopeWith reduction captured resolving)
+        evaluated
       case interpretedStringTemplate evaluated of
         Just template -> pure <$> prepareEvaluatedDeclarationTemplate template
         Nothing -> Left AmbiguousStringTemplate
@@ -4296,6 +4255,23 @@ prepareEvaluatedDeclarationTemplate template = do
               annotation
               (evaluatedDeclarationCaptureBound capture)
         Right (captures <> [capture], segments <> [normalized])
+
+-- Parenthesized dependent names are evaluated expressions rather than
+-- literal-expression syntax. Their result therefore has the same ordinary
+-- inclusion obligation as an explicit @source of Str@ check. Arguments may
+-- use an optional string family; declarations must themselves be strings.
+requireDependentNameSubfederation
+  :: Bool
+  -> Interpreter
+  -> InterpretedValue
+  -> Either InterpretingError ()
+requireDependentNameSubfederation allowOptional interpret value = do
+  stringType <- interpret
+    (IdentifierReference (SimpleIdentifierString "Str"))
+  let checked
+        | allowOptional = maybe value id (optionalUnderlying value)
+        | otherwise = value
+  requireValueSubfederation checked stringType
 
 prepareDependentDeclarationBranches
   :: ReductionContext
@@ -4609,9 +4585,10 @@ markDefinitionEntry declaration value
 captureExpression :: Expression -> (Maybe String, Expression)
 captureExpression (SyntaxBoundary inner) = captureExpression inner
 captureExpression
-    (DependentArgument
-      (IdentifierReference (SimpleIdentifierString name)) (Just annotation)) =
-  (Just name, annotation)
+    (DependentArgument nameExpression (Just annotation))
+      | Just (SimpleIdentifierString name) <-
+          literalIdentifierName nameExpression =
+            (Just name, annotation)
 captureExpression expressionValue = (Nothing, expressionValue)
 
 -- Capture validation uses the evaluated type, while materialized declaration
@@ -6175,7 +6152,7 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
         ScopeAccess {} -> expressionValue
         _ -> InModule requested expressionValue)
     parseRuleExpression sourceText =
-      case parseDatra ("(" <> sourceText <> "\n)") of
+      case parseNeutralPhrase sourceText of
         Right expressionValue -> Right expressionValue
         Left _ -> Left NoCanonicalStringConversion
 
@@ -6526,7 +6503,10 @@ closedSourceExpressionIn
   -> String
   -> Either InterpretingError Expression
 closedSourceExpressionIn definitions text = do
-  expressionValue <- parsedSourceExpression text
+  expressionValue <- either
+    (const (Left NoCanonicalStringConversion))
+    (Right . normalizeExpression)
+    (parseNeutralPhrase text)
   let declarations =
         [ DeclarationExpression declaration
         | layer <- scopeDependentDeclarationLayers definitions
@@ -6541,9 +6521,3 @@ closedSourceExpressionIn definitions text = do
     (rewriteStandaloneSyntax
       (syntaxContext definitions [] [] rules declarations) expressionValue)
   pure (inlineDependencies (closureResolver definitions) rewritten)
-
-parsedSourceExpression :: String -> Either InterpretingError Expression
-parsedSourceExpression text = do
-  expressionValue <- either (const (Left NoCanonicalStringConversion)) Right
-    (parseDatra ("(" <> text <> "\n)"))
-  pure (normalizeExpression expressionValue)

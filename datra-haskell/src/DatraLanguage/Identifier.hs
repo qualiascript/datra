@@ -4,11 +4,13 @@ module DatraLanguage.Identifier
   , identifierSpellingValue
   , isPrivateIdentifier
   , isIdentifierValue
+  , identifierNaturalValue
   , isIdentifierCharacter
   , isAsciiCharacter
   ) where
 
 import Data.Char (ord)
+import Numeric.Natural (Natural)
 
 data IdentifierSpelling
   = BareIdentifier String
@@ -24,12 +26,27 @@ isPrivateIdentifier :: String -> Bool
 isPrivateIdentifier ('_' : _) = True
 isPrivateIdentifier _ = False
 
--- | A bare identifier is nonempty and uses the identifier alphabet without a
--- leading digit.
+-- | A bare identifier is nonempty and uses the identifier alphabet. Numeric
+-- meaning is supplied later by the standard library, so all-numeric spellings
+-- are identifiers at the lexical boundary too.
 isIdentifierValue :: String -> Bool
 isIdentifierValue [] = False
-isIdentifierValue value@(first : _) =
-  not (isAsciiDigit first) && all isIdentifierCharacter value
+isIdentifierValue value = all isIdentifierCharacter value
+
+-- | Decode precisely the all-ASCII-digit identifier language. Using
+-- 'Natural' keeps the conversion total for arbitrarily long spellings.
+identifierNaturalValue :: String -> Maybe Natural
+identifierNaturalValue [] = Nothing
+identifierNaturalValue value = go 0 value
+  where
+    go result [] = Just result
+    go result (character : remaining)
+      | isAsciiDigit character =
+          go
+            (result * 10
+              + fromIntegral (ord character - ord '0'))
+            remaining
+      | otherwise = Nothing
 
 isIdentifierCharacter :: Char -> Bool
 isIdentifierCharacter character =

@@ -144,6 +144,7 @@ module DatraTypes
   , ordinalGTValues
   , ordinalGTEValues
   , subfederationValues
+  , requireValueSubfederation
   , equalValues
   , booleanAndValues
   , booleanOrValues
@@ -481,6 +482,7 @@ import Evaluation.Specification
 import Evaluation.Specification.Subfederation
   ( IdentifierNameDisjointness (..)
   , identifierNameDisjointness
+  , requireValueSubfederation
   )
 import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.ResultContract

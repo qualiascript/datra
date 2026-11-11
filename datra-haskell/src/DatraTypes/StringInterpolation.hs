@@ -204,9 +204,9 @@ compileDependentDeclarationTemplate parser parts = do
       let (target, name) = capture expressionValue
       in ([StringTemplateInterpolation (ValueString target)], [name])
     capture (SyntaxBoundary inner) = capture inner
-    capture (DependentArgument
-        (IdentifierReference name) (Just annotation)) =
-      (annotation, Just (name, annotation))
+    capture (DependentArgument nameExpression (Just annotation))
+      | Just name <- literalIdentifierName nameExpression =
+          (annotation, Just (name, annotation))
     capture value = (value, Nothing)
 
     sourceInterpolation (StringTemplateInterpolation expressionValue) =
@@ -347,8 +347,9 @@ lowerConditionAtom condition yes no =
       ]
     rewrittenCondition = rewrite condition
     rewrite expressionValue = case expressionValue of
-      DependentArgument (IdentifierReference name) (Just _)
-        | name `elem` selectedNames -> IdentifierReference name
+      DependentArgument nameExpression (Just _)
+        | Just name <- literalIdentifierName nameExpression
+        , name `elem` selectedNames -> IdentifierReference name
       _ -> mapExpressionChildren rewrite expressionValue
 
 selectedConditionBindings
@@ -376,8 +377,8 @@ conditionBindingCandidates
 conditionBindingCandidates expressionValue =
   concatMap conditionBindingCandidates (expressionChildren expressionValue)
     <> case expressionValue of
-      DependentArgument
-          (IdentifierReference name) (Just value) -> [(name, value)]
+      DependentArgument nameExpression (Just value)
+        | Just name <- literalIdentifierName nameExpression -> [(name, value)]
       _ -> []
 
 identifierReferences :: Expression -> [String]

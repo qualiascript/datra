@@ -637,7 +637,8 @@ testArgumentSchemas = do
         | otherwise = Left (Types.UnknownIdentifier "unexpected test expression")
       privateOptional = AST.OptionalType
         (AST.DependentArgument
-          (AST.IdentifierReference (AST.SimpleIdentifierString "_value"))
+          (AST.IdentifierExpression
+            (AST.IdentifierReference (AST.SimpleIdentifierString "_value")))
           (Just naturalExpression))
   assert "private optional parameters use a structured boundary error"
     (case Types.compileParameters evaluateNatural privateOptional of

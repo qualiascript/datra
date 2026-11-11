@@ -6,7 +6,7 @@ module SyntaxRewriting.Candidates
   , structuralCandidateMatch
   ) where
 
-import DatraLanguage.AST (Expression (..))
+import DatraLanguage.AST (Expression (..), expressionChildren)
 import StringExpression
   ( StringExpression (..)
   , StringTemplateInterpolation (..)
@@ -84,7 +84,11 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
               (rejectionDetails CandidateReturnMismatch Nothing Nothing frame)
       | otherwise =
           case Map.lookup captureIndex results of
-            Nothing -> CandidateFrameNeedsChild frame captureIndex kind source
+            Nothing
+              | null (expressionChildren source) ->
+                  checkTerminalCapture frame
+              | otherwise ->
+                  CandidateFrameNeedsChild frame captureIndex kind source
             Just result -> checkResult frame result
       where
         captures = structuralCandidateCaptures candidate
@@ -92,12 +96,36 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         context = candidateFrameTypingContext frame
         results = candidateFrameResults frame
         (kind, source) = captures !! captureIndex
+    -- A structural capture is not necessarily an AST child.  When the
+    -- matcher selected an atomic expression there is nothing below it that a
+    -- rewrite could change, so validate the capture itself instead of asking
+    -- the scheduler to rewrite the same node again.
+    checkTerminalCapture frame =
+      case prepareCapture completed kind source of
+        Nothing -> CandidateFrameRejected
+          (rejectionDetails RequiredChildExhausted expected Nothing frame)
+        Just preparedExpression ->
+          acceptPreparedCapture frame
+            RewriteResult
+              { rewriteResultExpression = source
+              , rewriteResultType = expected
+              , rewriteResultSelection = Nothing
+              }
+            preparedExpression
+      where
+        index = candidateFrameNextCapture frame
+        context = candidateFrameTypingContext frame
+        expected = expectedHole context index
+        captures = structuralCandidateCaptures candidate
+        (kind, source) = captures !! index
+        completed = completedCaptures frame index captures
     checkResult frame result = case prepared of
       Nothing -> CandidateFrameRejected
         (rejectionDetails RequiredChildExhausted expected Nothing frame)
       Just preparedExpression ->
         case (requiresTypedResult kind result, expected, rewriteResultType result) of
-          (False, _, _) -> advanceFrame preparedExpression
+          (False, _, _) ->
+            acceptPreparedCapture frame result preparedExpression
           (True, Just wanted, Just actual)
             | not (compatible actual wanted) -> CandidateFrameRejected
                 (rejectionDetails TypedHoleMismatch
@@ -105,16 +133,24 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
           (True, Just wanted, Nothing) -> CandidateFrameRejected
             (rejectionDetails RequiredChildExhausted
               (Just wanted) Nothing frame)
-          _ -> advanceFrame preparedExpression
+          _ -> acceptPreparedCapture frame result preparedExpression
       where
         prepared = prepareCapture completed kind
           (rewriteResultExpression result)
-        advanceFrame preparedExpression = advance frame
+        index = candidateFrameNextCapture frame
+        context = candidateFrameTypingContext frame
+        expected = expectedHole context index
+        captures = structuralCandidateCaptures
+          candidate
+        (kind, _) = captures !! index
+        completed = completedCaptures frame index captures
+
+    acceptPreparedCapture frame result preparedExpression = advance frame
           { candidateFrameNextCapture = index + 1
           , candidateFrameTypingContext = context
               { candidateTypingInputs = maybe
                   (candidateTypingInputs context)
-                  (\actual -> Map.insert index actual
+                  (\selected -> Map.insert index selected
                     (candidateTypingInputs context))
                   (rewriteResultType result)
               , candidateTypingExpectedHoles = maybe
@@ -126,26 +162,27 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
           , candidateFramePreparedCaptures = Map.insert
               index preparedExpression
               (candidateFramePreparedCaptures frame)
+          , candidateFrameResults = Map.insert index result
+              (candidateFrameResults frame)
           }
+      where
         index = candidateFrameNextCapture frame
         context = candidateFrameTypingContext frame
         expected = expectedHole context index
-        captures = structuralCandidateCaptures
-          candidate
-        (kind, _) = captures !! index
-        completed =
-          [ (previousKind, preparedExpression)
-          | previousIndex <- [0 .. index - 1]
-          , let (previousKind, _) = captures !! previousIndex
-          , Just preparedExpression <- [Map.lookup previousIndex
-              (candidateFramePreparedCaptures frame)]
-          ]
 
-        requiresTypedResult ValueString {} _ = True
-        requiresTypedResult StringLiteralString {} _ = True
-        requiresTypedResult _ selected = case rewriteResultSelection selected of
-          Just _ -> True
-          Nothing -> False
+    completedCaptures frame index captures =
+      [ (previousKind, preparedExpression)
+      | previousIndex <- [0 .. index - 1]
+      , let (previousKind, _) = captures !! previousIndex
+      , Just preparedExpression <- [Map.lookup previousIndex
+          (candidateFramePreparedCaptures frame)]
+      ]
+
+    requiresTypedResult ValueString {} _ = True
+    requiresTypedResult StringLiteralString {} _ = True
+    requiresTypedResult _ selected = case rewriteResultSelection selected of
+      Just _ -> True
+      Nothing -> False
 
     rejectionDetails reason expected actual frame =
       CandidateRejectionDetails
