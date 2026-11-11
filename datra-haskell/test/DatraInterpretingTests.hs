@@ -1747,7 +1747,7 @@ testDependentDeclarations = do
   expectProgram
     "dependent declaration binds captures as it"
     (unlines
-      [ "$($pair; (_x : Int); $with; (_y : Int)) := it"
+      [ "$!($pair; (_x : Int); $with; (_y : Int)) := it"
       , "yield pair 1 with 2"
       ])
     "{_x : Int := 1; _y : Int := 2}"
@@ -1755,14 +1755,14 @@ testDependentDeclarations = do
     "let dependent declaration is visible recursively"
     (unlines
       [ "answer := pair 1 with 2"
-      , "let $($pair; (_x : Int); $with; (_y : Int)) := it"
+      , "let $!($pair; (_x : Int); $with; (_y : Int)) := it"
       , "yield answer"
       ])
     "{_x : Int := 1; _y : Int := 2}"
   expectProgram
     "unused let dependent declaration does not force its implementation"
     (unlines
-      [ "let $($unused; (_x : Int)) := missing"
+      [ "let $!($unused; (_x : Int)) := missing"
       , "yield 7"
       ])
     "7"
@@ -1770,7 +1770,7 @@ testDependentDeclarations = do
     "let dependent declaration does not capture later ordinary bindings"
     "UnknownIdentifier \"later\""
     (unlines
-      [ "let $($late; (_x : Int)) := later"
+      [ "let $!($late; (_x : Int)) := later"
       , "later := 9"
       , "yield late 1"
       ])
@@ -1785,14 +1785,14 @@ testDependentDeclarations = do
   expectProgram
     "concrete lookup reaches a dependent declaration"
     (unlines
-      [ "$($pair; (_x : Int); $with; (_y : Int)) := it"
+      [ "$!($pair; (_x : Int); $with; (_y : Int)) := it"
       , "yield (~\"pair 1 with 2\")[0].value"
       ])
     "{_x : Int := 1; _y : Int := 2}"
   expectProgram
     "val accepts an injective dependent declaration"
     (unlines
-      [ "val $($pair; (_x : Int); $with; (_y : Int)) := it"
+      [ "val $!($pair; (_x : Int); $with; (_y : Int)) := it"
       , "yield pair 1 with 2"
       ])
     "{_x : Int := 1; _y : Int := 2}"
@@ -1800,44 +1800,44 @@ testDependentDeclarations = do
     "val rejects a many-to-one dependent declaration"
     "NonInjectiveDependentDeclaration"
     (unlines
-      [ "val $($pair; (_x : Int)) := 1"
+      [ "val $!($pair; (_x : Int)) := 1"
       , "yield pair 2"
       ])
   expectFailure
     "dependent declarations cannot be optional"
     "operation has no effect inside block"
     (unlines
-      [ "$($pair; (_x : Int))? := it"
+      [ "$!($pair; (_x : Int))? := it"
       , "yield 1"
       ])
   expectFailure
     "an unprojectable dependent declaration is reported as overlap"
     "OverlappingDependentDeclarations"
     (unlines
-      [ "$($pair; $\"1\"; (_x : Int)) := it"
+      [ "$!($pair; $\"1\"; (_x : Int)) := it"
       , "yield 1"
       ])
   expectFailure
     "overlapping dependent declarations are rejected"
     "OverlappingDependentDeclarations"
     (unlines
-      [ "$($pair; (_x : Int)) := it"
-      , "$($pair; $\"1\"; (_x : Int)) := it"
+      [ "$!($pair; (_x : Int)) := it"
+      , "$!($pair; $\"1\"; (_x : Int)) := it"
       , "yield 1"
       ])
   expectProgram
     "distinct dependent declaration languages coexist"
     (unlines
-      [ "$($left; (_x : Int)) := it"
-      , "$($right; (_x : Int)) := it"
+      [ "$!($left; (_x : Int)) := it"
+      , "$!($right; (_x : Int)) := it"
       , "yield right 2"
       ])
     "{_x : Int := 2}"
   expectProgram
     "equal template shapes use capture federation disjointness"
     (unlines
-      [ "$($value; (_x : Int)) := 1"
-      , "$($value; (_x : Bool)) := 2"
+      [ "$!($value; (_x : Int)) := 1"
+      , "$!($value; (_x : Bool)) := 2"
       , "yield (value 3; value true)"
       ])
     "(1; 2)"

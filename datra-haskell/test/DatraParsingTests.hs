@@ -5,6 +5,7 @@ module DatraParsingTests (main) where
 
 import Control.Applicative ((<|>))
 import Data.Char (chr, toUpper)
+import Data.Either (isLeft)
 import DatraLanguage.AST
   ( Expression (..)
   , DependentDeclaration (..)
@@ -117,6 +118,8 @@ testTree =
     , testCase "generic source parsing" testGenericSourceParsing
     , testCase "dependent declaration precedence"
         testDependentDeclarationPrecedence
+    , testCase "identifier operator AST syntax"
+        assertIdentifierOperatorAstSyntax
     , testCase "dependent arguments and argumentative maps"
         testRenamedArgumentConcepts
     , testCase "syntax regressions" regressionTests
@@ -445,17 +448,34 @@ testDependentDeclarationPrecedence = do
     expected
   assertNeutral
     "string and identifier-expression concatenation stays an expression"
-    "\"_\",$($hello; Int)"
+    "\"_\",$!($hello; Int)"
     (MapConcatenation
       (AST.asciiString "_")
-      (IdentifierExpression
-        (IdentifierExpressionBody
+      (SyntaxBoundary
+        (AtlasIdentifierExpression
           (SyntaxBoundary
             (AtlasMap
-              [ SyntaxBoundary (IdentifierExpression
-                  (IdentifierExpressionBody (ref "hello")))
+              [ SyntaxBoundary (IdentifierExpression (ref "hello"))
               , ref "Int"
               ])))))
+  assertNeutralRejected
+    "the scalar identifier operator rejects Atlas operands"
+    "$($hello; Int)"
+  assertNeutralNormalized
+    "the scalar identifier operator accepts string expressions"
+    "$($left, $right)"
+    (IdentifierExpression
+      (MapConcatenation
+        (IdentifierExpression (ref "left"))
+        (IdentifierExpression (ref "right"))))
+  assertNeutralNormalized
+    "the Atlas identifier operator accepts singleton compact strings"
+    "$!($hello)"
+    (AtlasIdentifierExpression (IdentifierExpression (ref "hello")))
+  assertNeutralNormalized
+    "the Atlas identifier operator accepts singleton standard strings"
+    "$!(\"hello\")"
+    (AtlasIdentifierExpression (AST.asciiString "hello"))
   case ( dependentDeclaration expected
        , declarationRuleBranches stringInterpolationParser expected
        ) of
@@ -468,27 +488,32 @@ testDependentDeclarationPrecedence = do
         [ (owner, branch) | (owner, branch, _) <- branches ]
     _ -> assertFailure "dependent declaration did not compile into syntax rules"
   where
-    source = "$($verify; _Expr | $hard; _Expr) := body"
+    source = "$!($verify; _Expr | $hard; _Expr) := body"
     expected = MapSpecification (ref "body")
       (DependentArgument
         (SyntaxBoundary
-          (IdentifierExpression
-            (IdentifierExpressionBody
-              (SyntaxBoundary
-                (AtlasMap
-                  [ SyntaxBoundary (IdentifierExpression
-                      (IdentifierExpressionBody (ref "verify")))
-                  , EitherType
-                      (ref "_Expr")
-                      (SyntaxBoundary (IdentifierExpression
-                        (IdentifierExpressionBody (ref "hard"))))
-                  , ref "_Expr"
-                  ])))))
+          (AtlasIdentifierExpression
+            (SyntaxBoundary
+              (AtlasMap
+                [ SyntaxBoundary (IdentifierExpression (ref "verify"))
+                , EitherType
+                    (ref "_Expr")
+                    (SyntaxBoundary (IdentifierExpression (ref "hard")))
+                , ref "_Expr"
+                ]))))
         Nothing)
     assertNeutral label input wanted =
       case parseNeutralPhrase input of
         Left failure -> assertFailure (renderParseFailure failure)
         Right actual -> assertEqual label wanted actual
+    assertNeutralRejected label input =
+      assertBool label (isLeft (parseNeutralPhrase input))
+    assertNeutralNormalized label input wanted =
+      case parseNeutralPhrase input of
+        Left failure -> assertFailure (renderParseFailure failure)
+        Right actual -> assertEqual label
+          (normalizeExpression wanted)
+          (normalizeExpression actual)
 
 regressionTests :: IO ()
 regressionTests = do
@@ -978,7 +1003,7 @@ regressionTests = do
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "$($take; _Expr) := (Int -> Int) datra.fun_body"
+        , "$!($take; _Expr) := (Int -> Int) datra.fun_body"
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -989,7 +1014,7 @@ regressionTests = do
       parseSource (unlines
         [ "(Capture := datra.Expr"
         , "CaptureAlias := Capture"
-        , "$($take; CaptureAlias) := (Any -> Any) datra.fun_body"
+        , "$!($take; CaptureAlias) := (Any -> Any) datra.fun_body"
         , "take Infinity)"
         ]) of
     Right (AtlasMap values) -> case reverse values of
@@ -1000,7 +1025,7 @@ regressionTests = do
       parseSource (unlines
         [ "(_DependentArgument := datra.DependentArgument"
         , "_Expr := datra.Expr"
-        , "$($gate; _DependentArgument; $bound; _Expr; $body; Int) :="
+        , "$!($gate; _DependentArgument; $bound; _Expr; $body; Int) :="
             <> " ((Any; Any; Int) -> Int) datra.test.gate"
         , "gate x bound Int body x)"
         ]) of
@@ -1016,7 +1041,7 @@ regressionTests = do
   assert "a dependent argument capture does not introduce contextual it" $ case
       parseSource (unlines
         [ "(_DependentArgument := datra.DependentArgument"
-        , "$($capture; _DependentArgument) := (Any -> Any) datra.fun_body"
+        , "$!($capture; _DependentArgument) := (Any -> Any) datra.fun_body"
         , "capture \"abc%(it)\")"
         ]) of
     Right (AtlasMap [_, _, Fun captured]) ->
@@ -1025,7 +1050,7 @@ regressionTests = do
   assert "an optional dependent argument capture does not introduce contextual it" $
     case parseSource (unlines
       [ "(_DependentArgument := datra.DependentArgument"
-      , "$($capture; _DependentArgument) := (Any -> Any) datra.fun_body"
+      , "$!($capture; _DependentArgument) := (Any -> Any) datra.fun_body"
       , "capture \"abc%(it)\"?)"
       ]) of
       Right (AtlasMap [_, _, Fun captured]) ->
@@ -1034,8 +1059,8 @@ regressionTests = do
   case parseSource (unlines
       [ "(_DependentArgument := datra.DependentArgument"
       , "_DependentDeclaration := datra.DependentDeclaration"
-      , "$($captureId; _DependentArgument) := (Any -> Any) datra.fun_body"
-      , "$($captureDeclaration; _DependentDeclaration) := (Any -> Any) datra.fun_body"
+      , "$!($captureId; _DependentArgument) := (Any -> Any) datra.fun_body"
+      , "$!($captureDeclaration; _DependentDeclaration) := (Any -> Any) datra.fun_body"
       , "captureId x"
       , "captureId (x : Int)"
       , "captureDeclaration x := 1"
@@ -2274,6 +2299,8 @@ genExpression =
     , Gen.subterm2 genExpression genExpression
         (\binding result -> Begin [generatedDeclaration binding] result)
     , Gen.subterm genExpression (StringTemplate . (:[]) . StringTemplateInterpolation)
+    , Gen.subterm genExpression IdentifierExpression
+    , Gen.subterm genExpression AtlasIdentifierExpression
     , Gen.subterm2 genExpression genExpression MapExpansion
     , Gen.subterm2 genExpression genExpression SuperEllipsisRange
     , Gen.subterm genExpression SuperEllipsisRangePlus
@@ -2533,6 +2560,20 @@ assertAstSyntax = do
     (renderExpression (fromUpwards 2))
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
+
+assertIdentifierOperatorAstSyntax :: IO ()
+assertIdentifierOperatorAstSyntax =
+  assert "scalar and Atlas identifier operations have distinct AST symbols"
+    ( renderExpression (IdentifierExpression (ref "name"))
+        == "($ (ref $name))"
+      && renderExpression
+          (AtlasIdentifierExpression
+            (AtlasMap [IdentifierExpression (ref "hello"), ref "Int"]))
+        == "($! (<:> ($ (ref $hello)) (ref $Int)))"
+      && renderSourceExpression
+          (AtlasIdentifierExpression (IdentifierExpression (ref "hello")))
+        == "$!($hello)"
+    )
 
 assertAstOutput :: String -> String -> Expression -> IO ()
 assertAstOutput label source expected =

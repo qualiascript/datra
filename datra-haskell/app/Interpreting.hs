@@ -2089,8 +2089,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     NothingLiteral -> Right nothingValue
     StringTemplate parts ->
       interpretStringTemplateWith protection interpret parts
-    identifier@(IdentifierExpression (IdentifierExpressionBody body)) ->
-      interpretIdentifierExpression identifier body
+    IdentifierExpression body -> interpretIdentifierExpression body
+    identifier@(AtlasIdentifierExpression body) -> do
+      rendered <- asciiStringValue (renderSourceExpression identifier)
+      Right (withIdentifierExpressionPlan
+        (EvaluatedIdentifierExpression body)
+        (templateValue rendered))
     AtlasMap expressions -> interpretContainer
       (interpretProtectedAtlasMap makeAtlasMap expressions)
       (AtlasMap expressions)
@@ -2440,26 +2444,16 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
   where
     protection = scopeActivation scope
     interpret = evalInScopeWith reduction scope resolving
-    interpretIdentifierExpression identifier body = case body of
+    interpretIdentifierExpression body = case body of
       IdentifierReference name -> Right (makeIdentifierExpression name)
       AsciiStringLiteral name ->
         Right (makeIdentifierExpression (SimpleIdentifierString name))
-      _ | structuralIdentifierBody body -> do
-        rendered <- asciiStringValue (renderSourceExpression identifier)
-        Right (withIdentifierExpressionPlan
-          (EvaluatedIdentifierExpression body)
-          (templateValue rendered))
       _ -> do
         rendered <- interpret body
         case asciiStringFromInterpretedMap (interpretedMap rendered) of
           Just name -> Right
             (makeIdentifierExpression (SimpleIdentifierString name))
           Nothing -> Left (LookupRequiresString (interpretedValueKind rendered))
-    structuralIdentifierBody value = case value of
-      SyntaxBoundary inner -> structuralIdentifierBody inner
-      AtlasMap {} -> True
-      MapSequence {} -> True
-      _ -> False
     interpretDependentArgumentName nameExpression typeAnnotation =
       case nameExpression of
         IdentifierReference (SimpleIdentifierString identifierString) ->

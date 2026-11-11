@@ -105,12 +105,16 @@ source context expression =
     InclusiveValuedIntegerRangeDownwards start -> open "from" start "down"
     StringTemplateValue parts -> renderStringTemplate
       (source 0) stringLiteral (const Nothing) parts
-    IdentifierExpressionValue (IdentifierExpressionBody operand) -> case operand of
+    IdentifierExpressionValue operand -> case operand of
       IdentifierReferenceValue (SimpleIdentifierString name) ->
         "$" <> renderIdentifierString name
       AsciiStringValue value -> "$" <> renderAsciiStringLiteral value
-      Sequential {} -> "$" <> source 0 operand
       _ -> "$(" <> source 0 operand <> ")"
+    AtlasIdentifierExpressionValue operand -> case operand of
+      Sequential {} -> "$!" <> source 0 operand
+      Expansion {} -> "$!" <> source 0 operand
+      EmptyMap -> "$!" <> source 0 operand
+      _ -> "$!(" <> source 0 operand <> ")"
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom
@@ -171,12 +175,17 @@ source context expression =
           <> modifier "def " (dependentDeclarationIsDefinition declaration)
           <> modifier "val "
             (dependentDeclarationIsCanonicalValue declaration)
-          <> source 0
-            (IdentifierExpressionValue (dependentDeclarationHead declaration))
+          <> source 0 (identifierHeadValue
+            (dependentDeclarationHead declaration))
           <> " := "
           <> assignedValue (dependentDeclarationImplementation declaration)
     modifier written present = if present then written else ""
     argumentMembers = intercalate "; " . map (source 0)
+
+identifierHeadValue :: IdentifierExpression OperatorExpression -> OperatorExpression
+identifierHeadValue headValue = case headValue of
+  IdentifierExpressionBody body -> IdentifierExpressionValue body
+  AtlasIdentifierExpressionBody body -> AtlasIdentifierExpressionValue body
 
 scopeBody :: OperatorExpression -> String
 scopeBody body = case body of

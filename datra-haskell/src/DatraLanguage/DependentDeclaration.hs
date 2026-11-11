@@ -43,7 +43,9 @@ dependentDeclaration = declaration
     normalizeHead name = case stripBoundaries name of
       IdentifierReference identifier ->
         Just (IdentifierExpressionBody (IdentifierReference identifier))
-      IdentifierExpression identifierExpression -> Just identifierExpression
+      IdentifierExpression body -> Just (IdentifierExpressionBody body)
+      AtlasIdentifierExpression body ->
+        Just (AtlasIdentifierExpressionBody body)
       _ -> Nothing
 
     stripBoundaries (SyntaxBoundary expressionValue) =
@@ -120,13 +122,23 @@ dependentDeclarationNameExpression
   :: DependentDeclaration Expression
   -> Expression
 dependentDeclarationNameExpression =
-  identifierExpressionBody . dependentDeclarationHead
+  identifierHeadBody . dependentDeclarationHead
 
 dependentDeclarationNameFamilyExpression
   :: DependentDeclaration Expression
   -> Expression
 dependentDeclarationNameFamilyExpression =
-  IdentifierExpression . dependentDeclarationHead
+  identifierHeadExpression . dependentDeclarationHead
+
+identifierHeadBody :: IdentifierExpression expression -> expression
+identifierHeadBody headValue = case headValue of
+  IdentifierExpressionBody body -> body
+  AtlasIdentifierExpressionBody body -> body
+
+identifierHeadExpression :: IdentifierExpression Expression -> Expression
+identifierHeadExpression headValue = case headValue of
+  IdentifierExpressionBody body -> IdentifierExpression body
+  AtlasIdentifierExpressionBody body -> AtlasIdentifierExpression body
 
 -- | Translate a declaration's complete name family by one literal prefix.
 -- This is one operation for every dependent declaration: the cases below
@@ -147,6 +159,11 @@ prependDependentDeclarationName prefix declaration = declaration
       IdentifierExpressionBody (AsciiStringLiteral (prefix <> name))
     prependHead (IdentifierExpressionBody operand) = IdentifierExpressionBody
       (MapConcatenation (AsciiStringLiteral prefix) operand)
+    prependHead (AtlasIdentifierExpressionBody operand) =
+      IdentifierExpressionBody
+        (MapConcatenation
+          (AsciiStringLiteral prefix)
+          (AtlasIdentifierExpression operand))
 
 dependentDeclarationWithImplementation
   :: Expression
@@ -163,7 +180,7 @@ dependentDeclarationTemplateBranches
   :: DependentDeclaration Expression
   -> Maybe [[StringTemplateInterpolation Expression]]
 dependentDeclarationTemplateBranches declaration = Just $ case
-    identifierExpressionBody (dependentDeclarationHead declaration) of
+    identifierHeadBody (dependentDeclarationHead declaration) of
   IdentifierReference (SimpleIdentifierString name) ->
     [[stringLiteral name]]
   AsciiStringLiteral name ->
@@ -182,12 +199,14 @@ dependentDeclarationTemplateBranches declaration = Just $ case
     identifierBranches (OptionalType present) =
       identifierBranches present <> [[]]
     identifierBranches identifier@(IdentifierExpression expressionValue) =
-      case identifierExpressionBody expressionValue of
+      case expressionValue of
         IdentifierReference (SimpleIdentifierString literal) ->
           [[stringLiteral literal]]
         AsciiStringLiteral literal ->
           [[stringLiteral literal]]
         _ -> [[StringTemplateInterpolation identifier]]
+    identifierBranches identifier@AtlasIdentifierExpression {} =
+      [[StringTemplateInterpolation identifier]]
     identifierBranches expressionValue =
       [[StringTemplateInterpolation expressionValue]]
 

@@ -96,12 +96,12 @@ data GenericBinder expression = GenericBinder
   }
   deriving (Eq, Ord, Show)
 
--- | The one expression family that can name a dependent declaration. The
--- wrapper makes declaration-head validity structural instead of a runtime
--- predicate while preserving its body as an ordinary expression.
-newtype IdentifierExpression expression = IdentifierExpressionBody
-  { identifierExpressionBody :: expression
-  }
+-- | The two expression families that can name a dependent declaration.
+-- Keeping scalar string conversion and Atlas template conversion distinct
+-- prevents either operator from silently accepting the other's operand kind.
+data IdentifierExpression expression
+  = IdentifierExpressionBody expression
+  | AtlasIdentifierExpressionBody expression
   deriving (Eq, Ord, Show)
 
 -- | A declaration is semantic block structure, not an expression which must
@@ -144,8 +144,10 @@ traverseDependentDeclaration visit declaration = DependentDeclaration
   <*> pure (dependentDeclarationModifierApplications declaration)
   <*> visit (dependentDeclarationImplementation declaration)
   where
-    traverseHead (IdentifierExpressionBody body) =
-      IdentifierExpressionBody <$> visit body
+    traverseHead headValue = case headValue of
+      IdentifierExpressionBody body -> IdentifierExpressionBody <$> visit body
+      AtlasIdentifierExpressionBody body ->
+        AtlasIdentifierExpressionBody <$> visit body
 
 mapDependentDeclaration
   :: (left -> right)
@@ -170,7 +172,8 @@ data Expression
   | AsciiStringLiteral String
   | NothingLiteral
   | StringTemplate [StringTemplateInterpolation Expression]
-  | IdentifierExpression (IdentifierExpression Expression)
+  | IdentifierExpression Expression
+  | AtlasIdentifierExpression Expression
   | AtlasMap [Expression]
   | ArgumentativeMap [Expression]
   | MapSequence [Expression]
@@ -330,7 +333,8 @@ data OperatorExpression
   | AsciiStringValue String
   | NothingValue
   | StringTemplateValue [StringTemplateInterpolation OperatorExpression]
-  | IdentifierExpressionValue (IdentifierExpression OperatorExpression)
+  | IdentifierExpressionValue OperatorExpression
+  | AtlasIdentifierExpressionValue OperatorExpression
   | EmptyMap
   | Sequential (NonEmpty OperatorExpression)
   | ArgumentativeMapValue [OperatorExpression]
@@ -413,10 +417,10 @@ normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
 normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplateInterpolation parts)
-normalizeExpression
-    (IdentifierExpression (IdentifierExpressionBody operand)) =
-  IdentifierExpression
-    (IdentifierExpressionBody (normalizeExpression operand))
+normalizeExpression (IdentifierExpression operand) =
+  IdentifierExpression (normalizeExpression operand)
+normalizeExpression (AtlasIdentifierExpression operand) =
+  AtlasIdentifierExpression (normalizeExpression operand)
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (ArgumentativeMap expressions) =
@@ -604,8 +608,9 @@ lower (AsciiStringLiteral value) = AsciiStringValue value
 lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplateInterpolation parts)
-lower (IdentifierExpression (IdentifierExpressionBody operand)) =
-  IdentifierExpressionValue (IdentifierExpressionBody (lower operand))
+lower (IdentifierExpression operand) = IdentifierExpressionValue (lower operand)
+lower (AtlasIdentifierExpression operand) =
+  AtlasIdentifierExpressionValue (lower operand)
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
@@ -800,8 +805,9 @@ traverseExpressionChildren visit expression = case expression of
       <$> visitDependentArgumentName name
       <*> traverse visit annotation
   StringTemplate parts -> StringTemplate <$> traverse part parts
-  IdentifierExpression (IdentifierExpressionBody operand) ->
-    IdentifierExpression . IdentifierExpressionBody <$> visit operand
+  IdentifierExpression operand -> IdentifierExpression <$> visit operand
+  AtlasIdentifierExpression operand ->
+    AtlasIdentifierExpression <$> visit operand
   _ -> pure expression
   where
     visitBinder binder =

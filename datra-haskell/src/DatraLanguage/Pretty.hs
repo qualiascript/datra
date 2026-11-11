@@ -52,9 +52,10 @@ prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
 prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
-prettyOperator
-    (IdentifierExpressionValue (IdentifierExpressionBody operand)) =
+prettyOperator (IdentifierExpressionValue operand) =
   prettyFormFor IdentifierExpressionOperator [prettyOperator operand]
+prettyOperator (AtlasIdentifierExpressionValue operand) =
+  prettyFormFor AtlasIdentifierExpressionOperator [prettyOperator operand]
 prettyOperator EmptyMap = "()"
 prettyOperator (Sequential (expressionValue :| [])) =
   prettyOperator expressionValue
@@ -230,8 +231,8 @@ prettyDeclaration declaration =
       implementation = dependentDeclarationImplementation declaration
       base = prettyForm
         (operatorCanonicalSymbol AssignmentOperator)
-        [ prettyOperator
-            (IdentifierExpressionValue (dependentDeclarationHead declaration))
+        [ prettyOperator (identifierHeadValue
+            (dependentDeclarationHead declaration))
         , prettyOperator implementation
         ]
       applyCanonical
@@ -246,6 +247,11 @@ prettyDeclaration declaration =
         | dependentDeclarationIsLet declaration =
             prettyFormFor LetOperator . pure
         | otherwise = id
+
+identifierHeadValue :: IdentifierExpression OperatorExpression -> OperatorExpression
+identifierHeadValue headValue = case headValue of
+  IdentifierExpressionBody body -> IdentifierExpressionValue body
+  AtlasIdentifierExpressionBody body -> AtlasIdentifierExpressionValue body
 
 prettyUnary
   :: Operator

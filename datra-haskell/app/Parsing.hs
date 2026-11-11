@@ -40,7 +40,6 @@ import Data.Text qualified as Text
 import Data.Void (Void)
 import DatraLanguage.AST
   ( SimpleIdentifierString (..)
-  , IdentifierExpression (IdentifierExpressionBody)
   , GenericPolarity (GenericProduct, GenericSum)
   , GenericBinderId (..)
   , GenericArgument (..)
@@ -50,6 +49,7 @@ import DatraLanguage.AST
       , AsciiStringLiteral
       , StringTemplate
       , IdentifierExpression
+      , AtlasIdentifierExpression
       , AtlasMap
       , ArgumentativeMap
       , Skip
@@ -705,7 +705,9 @@ astForm =
       [ InModule <$> (astSymbol "in-module" *> astString) <*> astExpression
       , astImport
       , astUnary AST.IdentifierExpressionOperator
-          (IdentifierExpression . IdentifierExpressionBody)
+          IdentifierExpression
+      , astUnary AST.AtlasIdentifierExpressionOperator
+          AtlasIdentifierExpression
       , astUnaryForm "fun" Fun
       , astGenericIntroduction
       , astFunctionType
@@ -1153,7 +1155,7 @@ templateConcatenation = do
         (infixComma *> templateConcatenationOperand >>= continue))
       pure (maybe left (MapConcatenation left) remaining)
 
--- Only an identifier expression can introduce a non-bare declaration head.
+-- Only an identifier operation can introduce a non-bare declaration head.
 -- Parenthesized expressions remain ordinary terms (or reverse-specification
 -- targets) and are never reclassified as declaration names.
 evaluatedDependentArgumentOrExpression :: Parser Expression
@@ -1161,7 +1163,7 @@ evaluatedDependentArgumentOrExpression =
   try identifierExpressionOrDependentArgument <|> parenthesizedOrReverse
   where
     identifierExpressionOrDependentArgument = do
-      identifier <- dollarIdentifierExpression
+      identifier <- try atlasIdentifierExpression <|> dollarIdentifierExpression
       let evaluated = SyntaxBoundary identifier
       maybe evaluated id <$>
         optional (try (identifierDependentArgumentFrom evaluated))
@@ -1483,6 +1485,7 @@ rangeEndpointAtom :: Parser Expression
 rangeEndpointAtom =
   choice
     [ parenthesizedExpression
+    , atlasIdentifierExpression
     , dollarIdentifierExpression
     , stringExpression
     , ellipsisNatural
@@ -1530,6 +1533,7 @@ lookupExpression = do
     lookupOperand = choice
       [ lookupExpression
       , argumentativeMap
+      , atlasIdentifierExpression
       , dollarIdentifierExpression
       , parenthesizedExpression
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
@@ -1582,17 +1586,38 @@ parenthesizedExpression =
     (lineSpaceConsumer *> symbol ")")
     (SyntaxBoundary . parenthesizedSequenceExpression <$> elements)
 
--- The outer constructor supplies identifier-literal semantics. Its child is
--- always an ordinary expression: a bare reference, a quoted string, or a
--- grouped dynamic/structural operand.
+-- Scalar identifier conversion accepts literal names and parenthesized string
+-- expressions. Atlas templates use the distinct @$!@ operator below.
 dollarIdentifierExpression :: Parser Expression
 dollarIdentifierExpression = lexeme . try $ do
   _ <- char '$'
-  IdentifierExpression . IdentifierExpressionBody <$> choice
+  notFollowedBy (char '!')
+  IdentifierExpression <$> choice
     [ IdentifierReference . SimpleIdentifierString <$> bareIdentifierToken
     , AsciiStringLiteral <$> standardStringToken
-    , parenthesizedExpression
+    , try $ do
+        body <- parenthesizedExpression
+        guard (not (isAtlasIdentifierOperand body))
+        pure body
     ]
+
+-- Atlas identifier conversion is intentionally syntax-directed: parentheses
+-- establish an Atlas literal, including empty and singleton literals. The
+-- dedicated AST node preserves that choice even when a singleton's body has
+-- no sequence node of its own.
+atlasIdentifierExpression :: Parser Expression
+atlasIdentifierExpression = lexeme . try $ do
+  _ <- chunk "$!"
+  body <- parenthesizedExpression
+  pure (AtlasIdentifierExpression body)
+
+isAtlasIdentifierOperand :: Expression -> Bool
+isAtlasIdentifierOperand expressionValue = case expressionValue of
+  SyntaxBoundary body -> isAtlasIdentifierOperand body
+  AtlasMap {} -> True
+  MapSequence {} -> True
+  MapExpansion {} -> True
+  _ -> False
 
 -- An ungrouped arrow in the final member owns the complete semicolon domain.
 -- Explicit parentheses around that final function retain it as a sequence

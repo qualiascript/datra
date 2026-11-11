@@ -48,7 +48,7 @@ recursiveDefaultProgram = unlines
 
 templateBackedProgram :: String
 templateBackedProgram = unlines
-  [ "$($successor; Nat; $next) := ({value? : Int} -> Int) do"
+  [ "$!($successor; Nat; $next) := ({value? : Int} -> Int) do"
   , "  yield value + 1"
   , "successorResultCheck := successor 4 next = 5"
   , "successorTypeCheck := ((~\"successor Nat next\")[0].value) of ({value? : Nat} -> Int)"
