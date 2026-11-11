@@ -258,6 +258,165 @@ after consuming a structural introducer. A malformed capture or group is
 therefore diagnosed as that construct; it is never reconsidered as literal
 text.
 
+## Relationship to `$` string-expression templates
+
+Backtick templates and `$` string-expression templates share one capture
+model but deliberately have different literal-matching models.
+
+Both forms are ordered compositions of literal constraints and `%`
+interpolations. In both forms:
+
+- only interpolation nodes produce captures;
+- literal nodes constrain the match and are never supplied to the function;
+- captures retain their ordinary `_StrExpr T` provenance;
+- capture order is left-to-right structural source order;
+- optional, either/federation, and dependent-argument behavior reuse the
+  existing language abstractions; and
+- a successful match consumes the complete candidate presentation selected
+  by the enclosing parser.
+
+The difference is how literal constraints and their boundaries are read.
+
+| Property | `$` string-expression template | Backtick template |
+| --- | --- | --- |
+| Literal domain | Arbitrary decoded ASCII string data | Typed identifier or symbolic literals |
+| Literal matching | Exact decoded characters | Exact literal characters plus derived boundary whitespace |
+| Spaces and newlines | Exact literal data | Template layout; never symbolic literal data |
+| Mixed identifier/symbol text | Valid literal text | Invalid as one literal part |
+| `%` interpolation | Quoted-string interpolation grammar | The same simple and compound interpolation grammar |
+| `?`, `|`, parentheses | Literal unless part of an interpolated Datra expression | Structural template composition unless escaped |
+| Captured values | Interpolation parts only | Interpolation parts only |
+| Compiler | Exact string-expression concatenation | Typed component and boundary compiler |
+| Matcher | Character-exact presentation matcher | Component matcher with lexical-edge constraints |
+
+### Exact `$` literal matching
+
+A `$` template literal consumes exactly the decoded characters written in its
+string-expression literal component. Escape spelling and comments are resolved
+by quoted-string parsing first; the resulting character sequence is what must
+match. No tokenization, whitespace normalization, AST parsing, or lexical-edge
+rule is applied to that literal sequence.
+
+The direct quoted operand of `$` is parsed by the ordinary quoted
+string-expression parser, including interpolation. Thus `$"literal"` is a
+zero-capture exact template and `$"%Nat + %Nat"` is an interpolated exact
+template. Parenthesized `$(expression)` remains available for a general string
+expression; it is not required merely to enable quoted interpolation.
+
+For example:
+
+```datra
+$"%Nat+%Nat"         # matches the presentation 2+2, not 2 + 2
+
+$"%Nat + %Nat"       # matches the presentation 2 + 2, not 2+2
+
+`%Nat + %Nat`        # matches both presentations
+```
+
+Inside each quoted string, every decoded space is an exact literal constraint.
+Multiple spaces, tabs, and newlines are distinct and must not be collapsed. An
+escaped literal `%` is exact literal data; an unescaped interpolation `%` is a
+capture.
+
+“Exact” refers to the candidate presentation supplied by its `_StrExpr`
+codec. It does not require retention of incidental original source trivia when
+that codec defines a canonical presentation. For direct string candidates,
+the presentation is the string value itself. For syntax-category candidates,
+the category's canonical-string codec defines the presentation. The matcher
+must not independently render or parse an AST to choose a different notion of
+exactness.
+
+### Backtick boundary matching
+
+Backtick source whitespace separates typed components rather than contributing
+literal string data. The matcher uses the lexical-edge rule defined below, so
+word-to-symbol and symbol-to-word boundaries may omit candidate whitespace,
+while equal-class boundaries require it. This is why `%Nat + %Nat` accepts
+both `2+2` and `2 + 2` without weakening the exact semantics of `$` templates.
+
+### Required `$` implementation correction
+
+The `$` declarative-template compiler must retain each decoded literal chunk
+exactly. In particular, it must not:
+
+- send a direct quoted operand through a literal-only parser which suppresses
+  interpolation;
+- split a literal with `words` or another whitespace tokenizer;
+- join template components with `unwords` or inserted separators;
+- parse literal text through the neutral Datra parser and match only the
+  resulting AST shape; or
+- include a literal component in the projected dependent arguments.
+
+Adjacent literal chunks may be coalesced only by lossless string
+concatenation. The compiled matcher is the ordinary exact concatenation of
+singleton literal-string components and typed `_StrExpr T` capture components
+described in [GENERIC_STRING_EXPRESSIONS.md](./GENERIC_STRING_EXPRESSIONS.md).
+This exact matcher is not shared with backticks. The implementations share
+only the generic capture-selection interface and typed evidence after their
+respective literal and boundary matchers have succeeded.
+
+### Compiler-path separation
+
+The two forms have distinct declaration-head AST variants and distinct
+compiled matcher plans:
+
+```haskell
+data DeclarativeIdentifier expression
+  = ExactStringIdentifier expression
+  | BacktickIdentifier (BacktickTemplate expression)
+
+data DeclarativeMatcher expression
+  = ExactStringMatcher (ExactStringTemplate expression)
+  | BacktickMatcher (CompiledBacktickTemplate expression)
+```
+
+The names are schematic, but the sum types and separation are normative.
+Neither variant is represented as an Atlas expression, and neither compiler
+discovers its variant by inspecting an untyped expression after parsing.
+The `ExactStringIdentifier` payload remains the ordinary string-producing
+expression and retained concatenation provenance defined by the generic
+string-expression design; this sketch does not reintroduce a closed semantic
+`StringExpression` AST.
+
+The paths may share:
+
+- the quoted-string interpolation parser used after `%`;
+- generic `_StrExpr T` inverse selection for a capture;
+- typed match evidence and capture ordering;
+- existing optional, either/federation, and specification machinery; and
+- existing dependent-argument packaging after matching.
+
+They must not share:
+
+- a declaration-head AST constructor;
+- literal tokenization or normalization;
+- a lowered neutral-AST pattern;
+- whitespace or boundary semantics; or
+- a matcher plan which erases whether it came from `$` or backticks.
+
+The common result of matching is typed selection evidence, not a common
+pre-match template representation. The exact `$` compiler preserves decoded
+string chunks. The backtick compiler preserves typed literals, structural
+composition, and boundary constraints. Only after either matcher succeeds may
+their capture selections enter the shared dependent-argument path.
+
+### Removal of the Atlas-template operator
+
+`$!` is not a compatibility spelling for backticks and has no place in the
+resulting parser, AST, evaluator, prettier, source renderer, declaration-head
+model, or matcher dispatch. The implementation must remove:
+
+- `AtlasIdentifierExpression` and `AtlasIdentifierExpressionBody`;
+- `AtlasIdentifierExpressionOperator` and the `$!` token;
+- evaluated Atlas-identifier plans and their renderer branches;
+- declaration branching which treats an Atlas operand as a template; and
+- tests, fixtures, or standard-library declarations which retain `$!`.
+
+Backtick templates are parsed directly into `BacktickTemplate`. They must not
+be lowered to the former Atlas operand shape or routed through a compatibility
+adapter. Likewise, exact `$` templates must not be routed through the backtick
+compiler merely because both forms contain interpolation captures.
+
 ## Template whitespace
 
 Horizontal whitespace may delimit any two sibling parts. A source line break
@@ -504,8 +663,9 @@ not semantic data, and canonical output normalizes them to spaces.
    empty part or loop without progress.
 8. Layout is validated once at AST construction. Later phases do not inspect
    source text to rediscover separators.
-9. Simple captures call the exact parser used by quoted-string simple
-   interpolation.
+9. Backtick simple captures call the exact parser used by quoted-string simple
+   interpolation, and direct quoted `$` operands call the full quoted
+   string-expression parser.
 10. Postfix `?` may wrap every completed template atom.
 11. Unescaped `|` is parsed by ordinary either/federation composition before
     symbolic literal fallback.
@@ -516,46 +676,57 @@ not semantic data, and canonical output normalizes them to spaces.
 13. No Atlas expression is used as an intermediate encoding of a template.
 14. No `$!` operator, compatibility constructor, or dual matching path exists.
 15. `$` retains only its scalar literal-expression meaning.
-16. Literal lexical class, grouping, optionality, and capture identity remain
+16. A `$` string-expression template retains every decoded literal chunk
+    exactly, including all whitespace and punctuation.
+17. `$` and backtick declaration heads have distinct typed AST variants,
+    compilers, and matcher plans.
+18. The two paths meet only at typed match evidence, generic capture
+    selection, and existing dependent-argument packaging.
+19. Literal lexical class, grouping, optionality, and capture identity remain
     explicit until matcher compilation.
-17. Either/federation, optionality, and dependent-argument packaging reuse the
+20. Either/federation, optionality, and dependent-argument packaging reuse the
     existing language abstractions and decision procedures.
-18. No semantic decision is made by comparing rendered source, diagnostic
+21. No semantic decision is made by comparing rendered source, diagnostic
     text, or type-name strings.
-19. The Datra prettier is the only semantic source renderer, and parsing its
+22. The Datra prettier is the only semantic source renderer, and parsing its
     canonical output reconstructs the same template tree.
 
 ### Matching invariants
 
-20. A successful match consumes the complete candidate extent.
-21. Every candidate position is consumed at most once along a selected branch.
-22. Captures cannot consume leading or trailing template-separator trivia.
-23. Literal parts constrain matching but never contribute function arguments.
-24. Every capture node contributes exactly one stable, typed capture position.
-25. Capture order is structural source order and is independent of optional
+23. A successful match consumes the complete candidate extent.
+24. Every candidate position is consumed at most once along a selected branch.
+25. Captures cannot consume leading or trailing template-separator trivia.
+26. Literal parts in both template forms constrain matching but never
+    contribute function arguments.
+27. Every capture node contributes exactly one stable, typed capture position.
+28. Capture order is structural source order and is independent of optional
     branch selection.
-26. Whitespace requirements are computed solely from adjacent realized edge
-    classes.
-27. Equal edge classes require whitespace; unequal edge classes do not.
-28. Empty and absent components are removed before adjacency is computed.
-29. Capture selection, `of`, optional values, aliases, and subfederation use
+29. `$` literal components match exact decoded character sequences and never
+    use lexical-edge whitespace rules.
+30. Backtick whitespace requirements are computed solely from adjacent
+    realized edge classes.
+31. Equal backtick edge classes require whitespace; unequal edge classes do
+    not.
+32. Empty and absent backtick components are removed before adjacency is
+    computed.
+33. Capture selection, `of`, optional values, aliases, and subfederation use
     the ordinary specification machinery.
-30. Candidate comments are handled before matching and never interpreted by
+34. Candidate comments are handled before matching and never interpreted by
     the template matcher.
-31. Ambiguous decompositions are rejected during declaration validation rather
+35. Ambiguous decompositions are rejected during declaration validation rather
     than resolved by parser order or longest-match accidents.
-32. Matching and admissibility terminate by structural descent and existing
+36. Matching and admissibility terminate by structural descent and existing
     specification cycle detection; they never render and reparse candidates.
 
 ### Diagnostic invariants
 
-33. Every rejected structural form has a typed diagnostic and a precise
+37. Every rejected structural form has a typed diagnostic and a precise
     source span.
-34. Once a structural introducer is consumed, failures remain attributed to
+38. Once a structural introducer is consumed, failures remain attributed to
     that structure and cannot fall back to a misleading literal diagnostic.
-35. Diagnostic tests compare structured failures. Rendered wording is tested
+39. Diagnostic tests compare structured failures. Rendered wording is tested
     only in the diagnostic-renderer suite.
-36. Failed parsing or matching never leaves a partially constructed semantic
+40. Failed parsing or matching never leaves a partially constructed semantic
     template or dependent-argument projection observable.
 
 ## Verification
@@ -565,30 +736,40 @@ unit tests and end-to-end declaration tests:
 
 1. identifier and symbolic literal construction, including digit-leading
    identifiers, invalid symbolic characters, and mixed runs;
-2. shared-parser tests proving that simple captures have exactly the same
-   interpolation boundaries as quoted strings;
+2. shared-parser tests proving that `$` and backtick simple captures have
+   exactly the same interpolation boundaries as quoted strings;
 3. postfix optionality on literals, simple captures, compound captures, and
    nested groups;
 4. horizontal separators and every allowed and forbidden line-break boundary;
 5. escapes and comments, including escaped structural punctuation and
    rejection of escaped spaces and newlines as literal data;
-6. full-consumption failures and trailing candidate text;
-7. `2+2`, `2 + 2`, `do yield`, `doyield`, and consecutive symbolic cases;
-8. parenthesized `|` composition, escaped literal `\|`, and equivalence with
+6. exact `$` literal tests covering zero, one, and multiple spaces, tabs,
+   newlines, punctuation, escaped `%`, and adjacent literal chunks;
+7. paired tests proving that `$` templates distinguish `2+2` from `2 + 2`
+   while `` `%Nat + %Nat` `` accepts both presentations;
+8. paired capture tests proving that both forms pass only interpolation
+   selections and never their literal constraints;
+9. full-consumption failures and trailing candidate text in both matcher
+   paths;
+10. `2+2`, `2 + 2`, `do yield`, `doyield`, and consecutive symbolic
+    backtick cases;
+11. parenthesized `|` composition, escaped literal `\|`, and equivalence with
    the ordinary either/federation evaluator;
-9. ambiguity from adjacent or empty-producing captures;
-10. optional captures, aliases, optional names, `of`, specification, and
+12. ambiguity from adjacent or empty-producing captures;
+13. optional captures, aliases, optional names, `of`, specification, and
     subfederation interaction through the existing implementations;
-11. equivalence with existing dependent-argument packaging for zero, one, and
+14. equivalence with existing dependent-argument packaging for zero, one, and
     many captures, including named and duplicate-name cases;
-12. parser/prettier round trips for every template constructor and normalized
+15. parser/prettier round trips for every template constructor and normalized
     spacing around `|` and `?`;
-13. property tests that mixed literals cannot be constructed through any
+16. property tests that mixed literals cannot be constructed through any
     public smart constructor;
-14. property tests that successful matching consumes the candidate exactly
+17. property tests that successful matching consumes the candidate exactly
     once and returns only the structurally declared captures;
-15. diagnostics asserted by constructor and span rather than rendered text;
-16. standard-library and fixture declarations expressed exclusively with
+18. tests showing that exact `$` compilation never calls the neutral structural
+    parser and backtick compilation never constructs an exact-string matcher;
+19. diagnostics asserted by constructor and span rather than rendered text;
+20. standard-library and fixture declarations expressed exclusively with
     backtick syntax; and
-17. source-wide checks proving that `$!` and its AST/operator constructors no
-    longer exist.
+21. source-wide checks proving that `$!`, its AST/operator constructors, and
+    the shared `$`/Atlas-template lowering path no longer exist.
