@@ -32,9 +32,6 @@ main = defaultMain $ testGroup "Datra CLI"
   , testCase "interpret consumes the golden AST" testInterpretGolden
   , testCase "build writes the same AST and interpreted value" testBuildGolden
   , testCase "build reports a forward-reference error" testBuildFailure
-  , testCase "production mode omits soft assertions" testProductionAssertions
-  , testCase "production mode keeps hard assertions" testHardProductionAssertion
-  , testCase "invalid mode uses a structured diagnostic" testInvalidMode
   , testCase "invalid locale uses a structured diagnostic" testInvalidLocale
   , testCase "qualified-std runs a self-contained program" testQualifiedStandardLibrary
   , testCase "qualified-std does not expose bare names" testQualifiedStandardLibraryNames
@@ -96,52 +93,6 @@ testBuildFailure = do
       assertBool ("unexpected diagnostic: " <> errors)
         ("identifier is not imported in this scope" `isInfixOf` errors
           && "identifier: b" `isInfixOf` errors)
-
-testProductionAssertions :: Assertion
-testProductionAssertions =
-  withTemporaryPath "datra-cli-mode.ast" $ \astPath -> do
-    (status, output, errors) <- runDatra
-      [ "build"
-      , "--source", "assert false"
-      , "--mode", "prod"
-      , "--ast-output", astPath
-      , "--output", "-"
-      ]
-    assertEqual "exit status" ExitSuccess status
-    assertEqual "implicit unit result" "()\n" output
-    assertEqual "stderr" "" errors
-
-testHardProductionAssertion :: Assertion
-testHardProductionAssertion =
-  withTemporaryPath "datra-cli-hard-mode.ast" $ \astPath -> do
-    (status, _, errors) <- runDatra
-      [ "build"
-      , "--source", "assert hard false"
-      , "--mode", "prod"
-      , "--ast-output", astPath
-      , "--output", "-"
-      ]
-    case status of
-      ExitSuccess -> assertFailure "hard production assertion unexpectedly succeeded"
-      ExitFailure _ ->
-        assertBool ("unexpected diagnostic: " <> errors)
-          ("assertion failed" `isInfixOf` errors)
-
-testInvalidMode :: Assertion
-testInvalidMode = do
-  (status, _, errors) <- runDatra
-    [ "build"
-    , "--source", "yield 1"
-    , "--mode", "fast"
-    , "--ast-output", "-"
-    , "--output", "-"
-    ]
-  case status of
-    ExitSuccess -> assertFailure "invalid evaluation mode unexpectedly succeeded"
-    ExitFailure _ ->
-      assertBool ("unexpected diagnostic: " <> errors)
-        ("evaluation mode is not supported" `isInfixOf` errors
-          && "given mode: fast" `isInfixOf` errors)
 
 testInvalidLocale :: Assertion
 testInvalidLocale = do

@@ -4,7 +4,7 @@ module Evaluation.Construction
   , makeNatural
   , makeInteger
   , makeAsciiString
-  , makeIdentifierValueType
+  , makeIdentifierExpression
   , makeExplicit
   , makeExplicitValue
   , makeFormulation
@@ -13,8 +13,7 @@ module Evaluation.Construction
   ) where
 
 import Data.Char (ord)
-import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
+import DatraLanguage.AST (SimpleIdentifierString (..))
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import Evaluation.Value
 import IntegerRange.Encoding (integerSingletonInsertion)
@@ -82,17 +81,17 @@ makeAsciiString characters = value
         TotalInterpretedMap
         semantics
 
--- | The federation of strings accepted by compact @$...@ syntax.
-makeIdentifierValueType :: InterpretedValue
-makeIdentifierValueType =
-  makeInterpretedValue
-    structuralDatraType
-    IdentifierValueTypeForm
-    NoInsertion
-    emptyInterpretedMap
-    (PrimitiveAtlasMapFederation IdentifierValueTypeAtlasMapFederation)
-    NonTotalInterpretedMap
-    IdentifierValueTypeSemantics
+makeIdentifierExpression :: SimpleIdentifierString -> InterpretedValue
+makeIdentifierExpression identifier@(SimpleIdentifierString name) = value
+  where
+    semantics = IdentifierExpressionSemantics name
+    value = makeSingletonInterpretedValue
+      structuralDatraType
+      (IdentifierExpressionForm identifier)
+      NoInsertion
+      (singletonMap semantics value)
+      TotalInterpretedMap
+      semantics
 
 makeExplicit :: ExplicitOrigin -> Ordinal -> InterpretedValue
 makeExplicit origin = explicitInterpretedValue . makeExplicitValue origin
@@ -188,7 +187,7 @@ makeNothing = value
   where
     unitSemantics = MapSemantics 0 []
     semantics =
-      DependentIdentifierTypeSemantics
+      DependentArgumentTypeSemantics
         (SimpleIdentifierDependency "Nothing")
         unitSemantics
         True

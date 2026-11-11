@@ -29,7 +29,6 @@ reservedWordText DownwardsWord = "down"
 data ReservedSymbol
   = BooleanTypeSymbol
   | StringTypeSymbol
-  | IdentifierValueTypeSymbol
   | IntegerTypeSymbol
   | NaturalTypeSymbol
   | IfSymbol
@@ -49,7 +48,6 @@ reservedSymbols
 reservedSymbolIdentifierString :: ReservedSymbol -> String
 reservedSymbolIdentifierString BooleanTypeSymbol = "Bool"
 reservedSymbolIdentifierString StringTypeSymbol = "Str"
-reservedSymbolIdentifierString IdentifierValueTypeSymbol = "IdenStr"
 reservedSymbolIdentifierString IntegerTypeSymbol = "Int"
 reservedSymbolIdentifierString NaturalTypeSymbol = "Nat"
 reservedSymbolIdentifierString IfSymbol = "if"

@@ -13,14 +13,14 @@ import Data.Bifunctor qualified as Bifunctor
 import System.Directory (canonicalizePath)
 import System.FilePath ((</>), takeDirectory, takeExtension, takeFileName)
 import Interpreting
-  ( StandardLibraryVisibility (..)
+  ( ModuleSource (..)
+  , StandardLibraryVisibility (..)
   , ParsedDatraSource
   , importInvocation
   , parseDatraSourceSyntax
   , parsedSourceImportInvocations
   , rewriteParsedDatraSourceWithImports
   )
-import RuntimeModules (ModuleSource (..))
 import DatraLanguage.AST
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Application

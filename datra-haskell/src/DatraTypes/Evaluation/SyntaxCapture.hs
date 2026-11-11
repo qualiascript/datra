@@ -1,7 +1,7 @@
 -- | AST capture supplied by explicitly declared syntax-category types.
 module Evaluation.SyntaxCapture
   ( captureSyntaxExpression
-  , specializeSyntaxHoleKind
+  , specializeStringExpression
   ) where
 
 import Control.Applicative ((<|>))
@@ -10,26 +10,26 @@ import DatraLanguage.AST
       ( AsciiStringLiteral
       , AtlasMap
       , FunctionBody
-      , IdentifierOperation
+      , DependentArgument
       , IdentifierReference
-      , IdentifierTemplateOperation
       , MapConcatenation
       , MapSequence
       , OptionalType
       , StringTemplate
       , SyntaxBoundary
       )
-  , isDeclarationExpression
   )
-import DatraLanguage.SyntaxTemplate (SyntaxHoleKind (..))
+import DatraLanguage.DependentDeclaration (dependentDeclarationCandidate)
+import StringExpression (StringExpression (..))
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.IdentifierErasure (stripOuterIdentifierType)
+import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.Value
-  ( ASTMetaCategory (..)
-  , BuiltinMetaType (ASTMetaType)
+  ( SyntaxCategory (..)
+  , PrimitiveType (SyntaxPrimitive)
   , EvaluatedEither (..)
   , InterpretedValue
-  , ValueForm (BuiltinMetaTypeForm, EitherForm)
+  , ValueForm (PrimitiveTypeForm, EitherForm)
   , interpretedForm
   , interpretedMap
   , interpretedMapFinalOrderType
@@ -53,28 +53,31 @@ captureAtomicSyntaxExpression
   -> Maybe Expression
 captureAtomicSyntaxExpression target captured =
   case interpretedForm target of
-    BuiltinMetaTypeForm (ASTMetaType ExpressionAST) -> Just captured
-    BuiltinMetaTypeForm (ASTMetaType BlockAST) ->
+    PrimitiveTypeForm (SyntaxPrimitive ExpressionAST) -> Just captured
+    PrimitiveTypeForm (SyntaxPrimitive BlockAST) ->
       case captured of
         AtlasMap {} -> Just captured
         _ -> Nothing
-    BuiltinMetaTypeForm (ASTMetaType FunctionBodyAST) ->
+    PrimitiveTypeForm (SyntaxPrimitive FunctionBodyAST) ->
       case captured of
         FunctionBody {} -> Just captured
         _ -> Nothing
-    BuiltinMetaTypeForm (ASTMetaType DeclarationAST)
-      | isDeclarationExpression captured -> Just captured
-    BuiltinMetaTypeForm (ASTMetaType DependentIdentifierAST) ->
-      dependentIdentifier captured
+    PrimitiveTypeForm (SyntaxPrimitive DeclarationAST)
+      | dependentDeclarationCandidate captured -> Just captured
+    PrimitiveTypeForm (SyntaxPrimitive DependentArgumentAST) ->
+      dependentArgument captured
+    PrimitiveTypeForm (SyntaxPrimitive IdentifierExpressionAST) ->
+      case captured of
+        IdentifierReference {} -> Just captured
+        _ -> Nothing
     _ -> Nothing
   where
-    dependentIdentifier value = case value of
+    dependentArgument value = case value of
       IdentifierReference {} -> Just value
       AsciiStringLiteral {} -> Just value
       StringTemplate {} -> Just value
-      IdentifierOperation _ _ Nothing -> Just value
-      IdentifierTemplateOperation _ _ Nothing -> Just value
-      OptionalType inner -> OptionalType <$> dependentIdentifier inner
+      DependentArgument {} -> Just value
+      OptionalType inner -> OptionalType <$> dependentArgument inner
       _ -> Nothing
 
 captureSyntaxList
@@ -114,7 +117,7 @@ syntaxListElement target = direct target <|> do
     emptyBranch branch =
       interpretedMapFinalOrderType (interpretedMap branch) == finiteOrdinal 0
     syntaxElement value = case interpretedForm value of
-      BuiltinMetaTypeForm (ASTMetaType _) -> Just value
+      PrimitiveTypeForm (SyntaxPrimitive _) -> Just value
       _ -> syntaxListElement value <|> do
         unwrapped <- either
           (const Nothing) Just (stripOuterIdentifierType value)
@@ -128,25 +131,30 @@ syntaxCategoryTarget target = case stripOuterIdentifierType target of
 -- | Give a typed interpolation the parser capability owned by its evaluated
 -- target type. Ordinary types remain value captures; AST category types carry
 -- the few structural capabilities required by syntax rewriting.
-specializeSyntaxHoleKind
+specializeStringExpression
   :: InterpretedValue
-  -> SyntaxHoleKind value
-  -> SyntaxHoleKind value
-specializeSyntaxHoleKind target hole =
+  -> StringExpression value
+  -> StringExpression value
+specializeStringExpression target hole =
   case (interpretedForm normalized, hole) of
-  (BuiltinMetaTypeForm (ASTMetaType ExpressionAST), ValueSyntaxHole value) ->
-    ExpressionSyntaxHole value
-  (BuiltinMetaTypeForm (ASTMetaType BlockAST), ValueSyntaxHole value) ->
-    BlockSyntaxHole value
-  (BuiltinMetaTypeForm (ASTMetaType FunctionBodyAST), ValueSyntaxHole value) ->
-    FunctionBodySyntaxHole value
-  (BuiltinMetaTypeForm (ASTMetaType DeclarationAST), ValueSyntaxHole value) ->
-    DeclarationSyntaxHole value
-  ( BuiltinMetaTypeForm (ASTMetaType DependentIdentifierAST)
-    , ValueSyntaxHole value
-    ) -> DependentIdentifierSyntaxHole value
-  (_, ValueSyntaxHole value)
-    | Just _ <- syntaxListElement normalized -> ExpressionSyntaxHole value
+  (PrimitiveTypeForm (SyntaxPrimitive ExpressionAST), ValueString value) ->
+    ExpressionString value
+  (PrimitiveTypeForm (SyntaxPrimitive BlockAST), ValueString value) ->
+    BlockString value
+  (PrimitiveTypeForm (SyntaxPrimitive FunctionBodyAST), ValueString value) ->
+    FunctionBodyString value
+  (PrimitiveTypeForm (SyntaxPrimitive DeclarationAST), ValueString value) ->
+    DeclarationString value
+  ( PrimitiveTypeForm (SyntaxPrimitive DependentArgumentAST)
+    , ValueString value
+    ) -> DependentArgumentString value
+  ( PrimitiveTypeForm (SyntaxPrimitive IdentifierExpressionAST)
+    , ValueString value
+    ) -> IdentifierExpressionString value
+  (_, ValueString value)
+    | valueProducesStrings normalized -> StringLiteralString value
+  (_, ValueString value)
+    | Just _ <- syntaxListElement normalized -> ExpressionString value
   _ -> hole
   where
     normalized = syntaxCategoryTarget target

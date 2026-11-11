@@ -9,7 +9,6 @@ module DatraLanguage.AST.Operator
 
 data Operator
   = FunctionTypeOperator
-  | SyntaxTypeOperator
   | ApplicationOperator
   | DoOperator
   | SequentialOperator
@@ -20,25 +19,22 @@ data Operator
   | AdditionOperator
   | SubtractionOperator
   | MinusOperator
-  | SubfederationOperator
   | EqualityOperator
   | InequalityOperator
   | LessThanOperator
   | LessThanOrEqualOperator
   | GreaterThanOperator
   | GreaterThanOrEqualOperator
-  | BooleanAndOperator
-  | BooleanOrOperator
-  | BooleanNotOperator
   | CoalizationOperator
   | LookupOperator
-  | AssertOperator
+  | IdentifierExpressionOperator
+  | AtlasIdentifierExpressionOperator
   | BeginOperator
   | LetOperator
+  | DefOperator
   | ValOperator
   | EitherOperator
   | OptionalOperator
-  | InOperator
   | MaybeThenOperator
   | MultiplicationOperator
   | ExponentiationOperator
@@ -49,14 +45,13 @@ data Operator
   | ReverseOverloadOperator
   | SafeOverloadOperator
   | ReverseSafeOverloadOperator
-  | DependentIdentifierTypeOperator
+  | DependentArgumentTypeOperator
   | AssignmentOperator
   deriving (Bounded, Enum, Eq, Show)
 
 -- | Canonical notation used when rendering an AST.
 operatorCanonicalSymbol :: Operator -> String
 operatorCanonicalSymbol FunctionTypeOperator = "->"
-operatorCanonicalSymbol SyntaxTypeOperator = "%"
 operatorCanonicalSymbol ApplicationOperator = "apply-func"
 operatorCanonicalSymbol DoOperator = "do"
 operatorCanonicalSymbol SequentialOperator = "<:>"
@@ -67,25 +62,22 @@ operatorCanonicalSymbol RangeMinusOperator = "..-"
 operatorCanonicalSymbol AdditionOperator = "+"
 operatorCanonicalSymbol SubtractionOperator = "-"
 operatorCanonicalSymbol MinusOperator = "-"
-operatorCanonicalSymbol SubfederationOperator = "of"
 operatorCanonicalSymbol EqualityOperator = "="
 operatorCanonicalSymbol InequalityOperator = "=/="
 operatorCanonicalSymbol LessThanOperator = "<"
 operatorCanonicalSymbol LessThanOrEqualOperator = "<="
 operatorCanonicalSymbol GreaterThanOperator = ">"
 operatorCanonicalSymbol GreaterThanOrEqualOperator = ">="
-operatorCanonicalSymbol BooleanAndOperator = "and"
-operatorCanonicalSymbol BooleanOrOperator = "or"
-operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol CoalizationOperator = "><"
 operatorCanonicalSymbol LookupOperator = "~"
-operatorCanonicalSymbol AssertOperator = "assert"
+operatorCanonicalSymbol IdentifierExpressionOperator = "$"
+operatorCanonicalSymbol AtlasIdentifierExpressionOperator = "$!"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
+operatorCanonicalSymbol DefOperator = "def"
 operatorCanonicalSymbol ValOperator = "val"
 operatorCanonicalSymbol EitherOperator = "|"
 operatorCanonicalSymbol OptionalOperator = "?"
-operatorCanonicalSymbol InOperator = "in"
 operatorCanonicalSymbol MaybeThenOperator = "maybe-then"
 operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
@@ -96,14 +88,13 @@ operatorCanonicalSymbol OverloadOperator = "<<"
 operatorCanonicalSymbol ReverseOverloadOperator = ">>"
 operatorCanonicalSymbol SafeOverloadOperator = "<<<"
 operatorCanonicalSymbol ReverseSafeOverloadOperator = ">>>"
-operatorCanonicalSymbol DependentIdentifierTypeOperator = ":"
+operatorCanonicalSymbol DependentArgumentTypeOperator = ":"
 operatorCanonicalSymbol AssignmentOperator = ":="
 
 -- | Concrete source spelling, when an operator is represented by one token.
 -- Sequential and expansion structure comes from map separators and nesting.
 operatorSourceSymbol :: Operator -> Maybe String
 operatorSourceSymbol FunctionTypeOperator = Just "->"
-operatorSourceSymbol SyntaxTypeOperator = Just "%"
 operatorSourceSymbol ApplicationOperator = Nothing
 operatorSourceSymbol DoOperator = Just "do"
 operatorSourceSymbol SequentialOperator = Nothing
@@ -114,25 +105,22 @@ operatorSourceSymbol RangeMinusOperator = Just "..-"
 operatorSourceSymbol AdditionOperator = Just "+"
 operatorSourceSymbol SubtractionOperator = Just "-"
 operatorSourceSymbol MinusOperator = Just "-"
-operatorSourceSymbol SubfederationOperator = Just "of"
 operatorSourceSymbol EqualityOperator = Just "="
 operatorSourceSymbol InequalityOperator = Just "=/="
 operatorSourceSymbol LessThanOperator = Just "<"
 operatorSourceSymbol LessThanOrEqualOperator = Just "<="
 operatorSourceSymbol GreaterThanOperator = Just ">"
 operatorSourceSymbol GreaterThanOrEqualOperator = Just ">="
-operatorSourceSymbol BooleanAndOperator = Just "and"
-operatorSourceSymbol BooleanOrOperator = Just "or"
-operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol CoalizationOperator = Just "><"
 operatorSourceSymbol LookupOperator = Just "~"
-operatorSourceSymbol AssertOperator = Just "assert"
+operatorSourceSymbol IdentifierExpressionOperator = Just "$"
+operatorSourceSymbol AtlasIdentifierExpressionOperator = Just "$!"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"
+operatorSourceSymbol DefOperator = Just "def"
 operatorSourceSymbol ValOperator = Just "val"
 operatorSourceSymbol EitherOperator = Just "|"
 operatorSourceSymbol OptionalOperator = Just "?"
-operatorSourceSymbol InOperator = Just "in"
 operatorSourceSymbol MaybeThenOperator = Just "!?"
 operatorSourceSymbol MultiplicationOperator = Just skipSourceSymbol
 operatorSourceSymbol ExponentiationOperator = Just "^"
@@ -143,7 +131,7 @@ operatorSourceSymbol OverloadOperator = Just "<<"
 operatorSourceSymbol ReverseOverloadOperator = Just ">>"
 operatorSourceSymbol SafeOverloadOperator = Just "<<<"
 operatorSourceSymbol ReverseSafeOverloadOperator = Just ">>>"
-operatorSourceSymbol DependentIdentifierTypeOperator = Just ":"
+operatorSourceSymbol DependentArgumentTypeOperator = Just ":"
 operatorSourceSymbol AssignmentOperator = Just ":="
 
 ellipsisSymbol :: String

@@ -3,13 +3,20 @@
 module DatraLanguage.Diagnostics.Application
   ( ParseFailure (..)
   , ModuleLoadFailure (..)
-  , SyntaxExpansionFailure (..)
-  , SyntaxTemplateAdmissibilityFailure (..)
+  , StringInterpolationAdmissibilityFailure (..)
+  , CandidateRejectionReason (..)
+  , CandidateRejectionReport (..)
+  , SyntaxRewriteFailure (..)
   , CommandLineOptionFailure (..)
   ) where
 
-data ParseFailure = ParseFailure
-  { parseFailureMessage :: String }
+import DatraLanguage.AST (Expression)
+import DatraLanguage.Diagnostics (DatraError)
+
+data ParseFailure
+  = NeutralSourceParseFailure String
+  | SyntaxEnvironmentParseFailure String
+  | SyntaxRewriteParseFailure SyntaxRewriteFailure
   deriving (Eq, Show)
 
 data ModuleLoadFailure
@@ -20,19 +27,42 @@ data ModuleLoadFailure
   | ImportedModuleParseFailed FilePath ParseFailure
   deriving (Eq, Show)
 
-data SyntaxExpansionFailure
-  = UnknownSyntaxControlAdapter String
+data StringInterpolationAdmissibilityFailure
+  = NeutralStringInterpolationParseFailure
+  | IncompleteCoreSyntaxOperator String
+  | StringInterpolationProjectionLoss
+  | UnstableStringInterpolationProjection
   deriving (Eq, Show)
 
-data SyntaxTemplateAdmissibilityFailure
-  = NeutralSyntaxTemplateParseFailure
-  | IncompleteCoreSyntaxOperator String
-  | SyntaxTemplateProjectionLoss
-  | SyntaxTemplateProjectionOrderMismatch
-  | UnstableSyntaxTemplateProjection
+data CandidateRejectionReason
+  = TypedHoleMismatch
+  | GenericBoundMismatch
+  | CandidateReturnMismatch
+  | RequiredChildExhausted
+  deriving (Eq, Ord, Show)
+
+data CandidateRejectionReport = CandidateRejectionReport
+  { rejectedCandidateRule :: String
+  , rejectedCandidateBranch :: Int
+  , rejectedCandidateCapture :: Int
+  , rejectedCandidateSource :: String
+  , rejectedCandidateExpected :: Maybe String
+  , rejectedCandidateActual :: Maybe String
+  , rejectedCandidateInputs :: [(Int, String)]
+  , rejectedCandidateReason :: CandidateRejectionReason
+  }
+  deriving (Eq, Show)
+
+data SyntaxRewriteFailure
+  = AmbiguousBareSkipApplication
+  | OverlappingDependentDeclarations String String
+  | NonInjectiveDependentDeclaration String
+  | InvalidDependentDeclarationModifiers [String] [String]
+  | ExpectedDependentDeclaration Expression
+  | InvalidRewriteStringInterpolation String StringInterpolationAdmissibilityFailure
+  | RejectedSyntaxCandidates [DatraError CandidateRejectionReport]
   deriving (Eq, Show)
 
 data CommandLineOptionFailure
   = UnsupportedDiagnosticLocale String
-  | UnsupportedEvaluationMode String
   deriving (Eq, Show)

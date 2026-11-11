@@ -3,34 +3,36 @@
 module DatraHost
   ( datraHostIdentifier
   , datraHostValue
-  , namedMembers
-  , publicValue
   ) where
 
 import DatraLanguage.AST
-import DatraLanguage.Diagnostics.Application
-  ( SyntaxExpansionFailure (UnknownSyntaxControlAdapter) )
-import DatraLanguage.Identifier (public)
+import DatraLanguage.AST.Source (renderSourceExpression)
+import DatraLanguage.Identifier (identifierNaturalValue)
+import DatraLanguage.DependentDeclaration
+  ( applyDeclarationModifier
+  , removeDeclarationModifier
+  )
+import StringExpression
+  ( FunctionSyntax (..)
+  , StringExpression (LiteralString)
+  )
 import DatraTypes
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
-import SyntaxDefinitions (absorbFunSequence)
 
 datraHostIdentifier :: String
-datraHostIdentifier = "'datra"
+datraHostIdentifier = "datra"
 
 datraHostValue :: Either InterpretingError InterpretedValue
 datraHostValue = do
   natural <- naturalTypeValue
   integer <- integerTypeValue
   character <- charTypeValue
+  let naturalLiteral = naturalLiteralValue natural
   ordinalMembers <- hostMap
     [ ordinalBinaryBody "sum" ordinalSumValues
     , ordinalBinaryBody "prod" ordinalProductValues
     , ordinalBinaryBody "minus" ordinalMinusValues
-    , nativeBody "'datra.ordinal" "exp" $ \arguments -> do
-        ordinalValue <- lookupArgument "x" arguments
-        power <- lookupArgument "power" arguments
-        ordinalExponentValues ordinalValue power
+    , nativeBody ["ordinal"] "exp"
+        (binaryArgument ordinalExponentValues)
     , ordinalComparisonBody "lt" ordinalLTValues
     , ordinalComparisonBody "lte" ordinalLTEValues
     , ordinalComparisonBody "gt" ordinalGTValues
@@ -42,146 +44,168 @@ datraHostValue = do
     , ("Ordinal", Right ordinalTypeValue)
     , ("Nat", Right natural)
     , ("Int", Right integer)
+    , ("Infinity", Right (makeIntegerLimit PositiveInfinity))
     , ("Char", Right character)
-    , ("IdenStr", Right identifierValueTypeValue)
     , ("Expr", Right expressionType)
-    , ("DependentIdentifier", Right dependentIdentifierType)
-    , ("Declaration", Right declarationType)
+    , ("DependentArgument", Right dependentArgumentType)
+    , ("IdentifierExpr", Right identifierExpressionType)
+    , ("NaturalLiteral", Right naturalLiteral)
+    , ("DependentDeclaration", Right dependentDeclarationType)
     , ("Block", Right blockType)
     , ("FunctionBody", Right functionBodyType)
-    , ("Template", Right templateTypeValue)
-    , ("SyntaxTemplate", Right syntaxTemplateTypeValue)
     , ("NatRange", Right naturalRangeTypeValue)
     , ("IntRange", Right integerRangeTypeValue)
     , ("NatValRange", Right naturalValuedRangeTypeValue)
     , ("IntValRange", Right integerValuedRangeTypeValue)
-    , ("public", Right publicFunction)
-    , suppliedBody "len" mapLengthValue
-    , suppliedBody "from" (nativeRange ValuedIntegerRangeKind)
-    , suppliedBody "range" (nativeRange IntegerRangeKind)
-    , nativeBody "'datra" "add" $ \arguments -> do
-        a <- lookupArgument "a" arguments
-        b <- lookupArgument "b" arguments
-        addValues a b
-    , nativeBody "'datra" "abs" $ \arguments -> do
-        value <- lookupArgument "value" arguments
-        number <- requireFiniteInteger LeftOperand value
+    , suppliedBody "len_body" mapLengthValue
+    , suppliedInsertionBody "from_body" valuedIntegerRangeInsertion
+    , suppliedInsertionBody "range_body" boundedIntegerRangeInsertion
+    , nativeBody [] "add" (binaryArgument addValues)
+    , nativeBody [] "of_body" (binaryArgument subfederationValues)
+    , nativeBody [] "and_body" (binaryArgument booleanAndValues)
+    , nativeBody [] "or_body" (binaryArgument booleanOrValues)
+    , nativeBody [] "not_body" (unaryArgument booleanNotValue)
+    , nativeBody [] "abs" $ \argument -> do
+        value <- argumentAt 0 argument
+        number <- requireFiniteInteger value
         pure (integerValue (abs number))
     , ("ordinal", Right ordinalMembers)
-    , syntaxBody "let" $ \case
-        [entry] -> Just (Let (absorbAssignedConcatenation entry))
-        _ -> Nothing
-    , syntaxBody "val" $ \case
-        [entry] -> Just (Val (absorbAssignedConcatenation entry))
-        _ -> Nothing
-    , syntaxBody "assert" $ \case
-        [condition] -> Just (Assert False condition)
-        _ -> Nothing
-    , syntaxBody "assertHard" $ \case
-        [_, condition] -> Just (Assert True condition)
-        _ -> Nothing
-    , syntaxBody "begin" $ \case
-        [entries, result] -> Just (Begin (blockEntries entries) result)
-        _ -> Nothing
-    , syntaxBody "do" $ \case
-        [entries, result] -> Just (FunctionBody (blockEntries entries) result)
-        _ -> Nothing
-    , syntaxBody "fun" $ \case
-        [entry] -> Just (Fun (absorbFunSequence entry))
-        _ -> Nothing
-    , syntaxBody "if" $ \case
-        [condition, yes, no] -> Just (Conditional condition yes no)
-        _ -> Nothing
-    , syntaxBody "ifThen" $ \case
-        [condition, yes] -> Just (Conditional condition yes (AtlasMap []))
-        _ -> Nothing
-    , syntaxBody "import" $ \case
-        [paths, body@FunctionBody {}]
-          | Just requested <- importPaths paths
-          , not (null requested) -> Just (Import requested body)
-        _ -> Nothing
-    , syntaxBody "with" $ \case
-        [modules, FunctionBody bindings result] -> Just
-          (ScopeAccess
-            (ArgumentMap (withModuleOperands modules))
-            (Begin bindings result))
-        _ -> Nothing
-    , syntaxBody "in" $ \case
-        [value, body] -> Just (In value body)
-        _ -> Nothing
-    , syntaxBody "of" $ \case
-        [source, target] -> Just (Subfederation source target)
-        _ -> Nothing
-    , syntaxBody "and" $ \case
-        [left, right] -> Just (BooleanAnd left right)
-        _ -> Nothing
-    , syntaxBody "or" $ \case
-        [left, right] -> Just (BooleanOr left right)
-        _ -> Nothing
-    , syntaxBody "not" $ \case
-        [value] -> Just (BooleanNot value)
-        _ -> Nothing
+    , syntaxBody "let_body" (modifierBody DeclarationLet)
+    , syntaxBody "def_body" (modifierBody DeclarationDef)
+    , syntaxBody "val_body" (modifierBody DeclarationVal)
+    , syntaxBody "parse_natural" parseNaturalBody
+    , syntaxFunction "begin" (SyntaxFunctionInsertion
+        (\case
+          [entries, result] -> Just
+            (SyntaxBegin (blockExpressions entries) result)
+          [result] -> Just (SyntaxBegin [] result)
+          _ -> Nothing)
+        (\case
+          Begin entries result -> Just
+            [AtlasMap (map DeclarationExpression entries), result]
+          _ -> Nothing))
+    , syntaxBody "do_body" (SyntaxFunctionInsertion
+        (\case
+          [entries, result] -> Just
+            (SyntaxFunctionBody (blockExpressions entries) result)
+          [result] -> Just (SyntaxFunctionBody [] result)
+          _ -> Nothing)
+        (\case
+          FunctionBody entries result -> Just
+            [AtlasMap (map DeclarationExpression entries), result]
+          _ -> Nothing))
+    , syntaxBody "fun_body" (expressionSyntaxInsertion
+        (\case
+          [entry] -> Just (Fun entry)
+          _ -> Nothing)
+        (\case
+          Fun entry -> Just [entry]
+          _ -> Nothing))
+    , syntaxBody "if_body" (expressionSyntaxInsertion
+        (\case
+          [condition, yes, no] -> Just (Conditional condition yes no)
+          [condition, yes] -> Just
+            (Conditional condition yes (AtlasMap []))
+          _ -> Nothing)
+        (\case
+          Conditional condition yes no -> Just [condition, yes, no]
+          _ -> Nothing))
+    , syntaxBody "import_body" (expressionSyntaxInsertion
+        (\case
+          [paths, body@FunctionBody {}]
+            | Just requested <- importPaths paths
+            , not (null requested) -> Just (Import requested body)
+          _ -> Nothing)
+        (\case
+          Import paths body -> Just
+            [AtlasMap (map AsciiStringLiteral paths), body]
+          _ -> Nothing))
+    , syntaxBody "with_body" (expressionSyntaxInsertion
+        (\case
+          [modules, FunctionBody bindings result] -> Just
+            (ScopeAccess
+              (ArgumentativeMap (withModuleOperands modules))
+              (Begin bindings result))
+          _ -> Nothing)
+        (\case
+          ScopeAccess (ArgumentativeMap modules) (Begin bindings result) -> Just
+            [ArgumentativeMap modules, FunctionBody bindings result]
+          _ -> Nothing))
     ]
   where
+    expressionSyntaxInsertion apply preimage = SyntaxFunctionInsertion
+      (fmap SyntaxExpression . apply)
+      preimage
     expressionType = syntaxCategoryTypeValue ExpressionAST
-    dependentIdentifierType = syntaxCategoryTypeValue DependentIdentifierAST
-    declarationType = syntaxCategoryTypeValue DeclarationAST
+    dependentArgumentType = syntaxCategoryTypeValue DependentArgumentAST
+    identifierExpressionType = syntaxCategoryTypeValue IdentifierExpressionAST
+    dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
-    syntaxBody name expand =
+    syntaxBody name insertion =
       (name, Right (makeFunctionBodyValue
-        (EvaluatedSyntaxFunctionBody source apply)))
+        (EvaluatedSyntaxFunctionBody source insertion)))
       where
-        source = "'datra." <> name
-        apply captures = maybe
-          (Left (UnknownSyntaxControlAdapter source))
-          Right
-          (expand captures)
+        source = datraMemberSource [name]
+    syntaxFunction name insertion =
+      typedSyntaxFunction name anyTypeValue anyTypeValue insertion
+    typedSyntaxFunction name domain codomain insertion =
+      (name, Right (makeFunctionValue (EvaluatedFunction
+        domain
+        codomain
+        (Just simpleSyntax)
+        (Just simpleSyntax)
+        (Just source)
+        (Just (EvaluatedSyntaxFunctionBody source insertion))
+        anyFunctionSource
+        Nothing
+        Nothing
+        True
+        Nothing)))
+      where
+        source = datraMemberSource [name]
+        simpleSyntax :: FunctionSyntax value
+        simpleSyntax = FunctionSyntax
+          [[StringTemplateInterpolation (LiteralString name)]]
     nativeBody namespace name implementation =
-      (name, runtimeBody source invoke)
+      (name, runtimeBody source Nothing invoke)
       where
-        source = namespace <> "." <> name
+        source = datraMemberSource (namespace <> [name])
         invoke _ _ preparedCall = do
-          result <- implementation (functionPreparedBindings preparedCall)
+          result <- implementation (functionPreparedArgument preparedCall)
           pure (EvaluatedFunctionInvocation result Nothing)
     suppliedBody name implementation =
-      (name, runtimeBody source invoke)
+      suppliedFunctionBody name implementation Nothing
+    suppliedInsertionBody name insertion =
+      suppliedFunctionBody name
+        (applyRuntimeFunction insertion) (Just insertion)
+    suppliedFunctionBody name implementation insertion =
+      (name, runtimeBody source insertion invoke)
       where
-        source = "'datra." <> name
+        source = datraMemberSource [name]
         invoke _ _ preparedCall = do
           result <- implementation (functionSuppliedArgument preparedCall)
           pure (EvaluatedFunctionInvocation result Nothing)
-    runtimeBody source invoke = Right (makeFunctionBodyValue
+    runtimeBody source insertion invoke = Right (makeFunctionBodyValue
       (EvaluatedRuntimeFunctionBody source (EvaluatedFunction
         anyTypeValue anyTypeValue Nothing Nothing (Just source) Nothing
-        "Any -> Any" Nothing (Just invoke) True)))
-    publicFunction = makeFunctionValue (EvaluatedFunction
-      anyTypeValue anyTypeValue Nothing Nothing (Just "'datra.public") Nothing
-      "Any -> Any"
-      (Just (\argument -> Right
-        (PreparedFunctionArgument argument argument [])))
-      (Just (\_ _ preparedCall -> do
-        value <- publicValue (functionPreparedArgument preparedCall)
-        pure (EvaluatedFunctionInvocation value Nothing))) False)
-    nativeRange kind argument = do
-      startValue <- accessValues argument (naturalValue 0)
-      endValue <- accessValues argument (naturalValue 1)
-      integerLimitRangeValue kind startValue endValue
-    lookupArgument name values = maybe
-      (Left (FunctionEvaluationFailed (MissingNativeArgument name)))
-      Right
-      (lookup name values)
+        anyFunctionSource Nothing (Just invoke) True insertion)))
+    argumentAt position argument =
+      accessValues argument (naturalValue position)
+    binaryArgument operation argument = do
+      left <- argumentAt 0 argument
+      right <- argumentAt 1 argument
+      operation left right
+    unaryArgument operation argument =
+      argumentAt 0 argument >>= operation
     ordinalBinaryBody name operation = nativeBody
-      "'datra.ordinal" name $ \arguments -> do
-        left <- lookupArgument "x" arguments
-        right <- lookupArgument "y" arguments
-        operation left right
+      ["ordinal"] name (binaryArgument operation)
     ordinalComparisonBody name operation =
       ordinalBinaryBody name $ \left right ->
         booleanValue <$> operation left right
-    blockEntries (AtlasMap entries) = entries
-    blockEntries (SyntaxBoundary inner) = blockEntries inner
-    blockEntries value = [value]
+    blockExpressions (AtlasMap entries) = entries
+    blockExpressions (SyntaxBoundary inner) = blockExpressions inner
+    blockExpressions value = [value]
     importPaths value = case value of
       AsciiStringLiteral path -> Just [path]
       AtlasMap paths -> concat <$> traverse importPaths paths
@@ -199,11 +223,56 @@ datraHostValue = do
       _ -> [value]
     absorbAssignedConcatenation value = case value of
       MapConcatenation
-          (IdentifierOperation name annotation (Just given)) right
-        | annotation == given ->
+          (MapSpecification given (DependentArgument name Nothing)) right ->
             let assignedValue = MapConcatenation given right
-            in IdentifierOperation name assignedValue (Just assignedValue)
+            in MapSpecification assignedValue
+              (DependentArgument name Nothing)
       _ -> value
+    modifierBody modifier = expressionSyntaxInsertion
+      (\case
+        [entry] -> applyDeclarationModifier modifier
+          (absorbAssignedConcatenation entry)
+        _ -> Nothing)
+      (removeDeclarationModifier modifier)
+
+    parseNaturalBody = expressionSyntaxInsertion
+      (\case
+        [AsciiStringLiteral name] ->
+          EllipsisNatural <$> identifierNaturalValue name
+        _ -> Nothing)
+      (\case
+        EllipsisNatural value -> Just
+          [AsciiStringLiteral (show value)]
+        _ -> Nothing)
+
+    naturalLiteralValue natural =
+      stringFederationValue naturalLiteralCodec natural
+
+    naturalLiteralCodec = CanonicalStringCodec
+      { renderCanonicalString = maybe "" show . interpretedInteger
+      , decodeCanonicalString = \characters -> case
+          identifierNaturalValue characters of
+          Just value
+            | show value == characters -> [naturalValue value]
+          _ -> []
+      }
+
+    -- Native identities are represented by the same structural access tree
+    -- used by the surface language.  Rendering is presentation only; member
+    -- lookup never parses or compares this text.
+    datraMemberSource members = renderSourceExpression
+      (foldl access
+        (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
+        members)
+      where
+        access source name = ScopeAccess source
+          (IdentifierReference (SimpleIdentifierString name))
+    anyFunctionSource = renderSourceExpression
+      (FunctionType anyMember anyMember)
+      where
+        anyMember = ScopeAccess
+          (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
+          (IdentifierReference (SimpleIdentifierString "Any"))
 
 hostMap
   :: [(String, Either InterpretingError InterpretedValue)]
@@ -216,34 +285,3 @@ hostMap entries = do
       underlying <- value
       pure (withTrailingIdentifierMarker canonicalValueMarker
         (inferredIdentifierAssignmentValue name underlying))
-
-publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
-publicValue value = do
-  members <- namedMembers value
-  pure (makeAtlasMap 2 (map snd (public members)))
-
-namedMembers
-  :: InterpretedValue
-  -> Either InterpretingError [(String, InterpretedValue)]
-namedMembers value =
-  case argumentMapMembers value of
-    Just members
-      | Right named <- traverse field members -> Right named
-    _ -> projectedMembers
-  where
-    projectedMembers = case simpleIdentifierName value of
-      Just name -> Right [(name, value)]
-      Nothing -> do
-        count <- maybe invalid Right
-          (naturalAtOrdinal
-            (interpretedMapFinalOrderType (interpretedMap value)))
-        members <- traverse memberAt
-          (if count == 0 then [] else [0 .. count - 1])
-        traverse field members
-    invalid = Left (ModuleEvaluationFailed
-      ImportedModuleRequiresNamedExports)
-    memberAt index = maybe invalid Right
-      (interpretedMapValueAt (interpretedMap value) (finiteOrdinal index))
-    field member = case simpleIdentifierName member of
-      Just name -> Right (name, member)
-      Nothing -> Left (ModuleEvaluationFailed ModuleExportRequiresIdentifier)

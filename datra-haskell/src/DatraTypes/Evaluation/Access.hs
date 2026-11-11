@@ -7,6 +7,7 @@ module Evaluation.Access
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
+  , naturalsBelow
   , omegaPower
   , ordinalLT
   )
@@ -15,7 +16,6 @@ import Control.Monad (foldM)
 import Evaluation.Error
   ( InterpretingError (..)
   , NamedAccessFailure (..)
-  , OperandSide (LeftOperand)
   )
 import Evaluation.Access.Composition
   ( FederationAccess (..)
@@ -28,8 +28,11 @@ import Evaluation.Coalization
   , coalizeValue
   , valueIsCoalition
   )
-import Evaluation.Access.Specification (accessSpecification)
-import Evaluation.Access.Identifier (accessDependentIdentifierType)
+import Evaluation.Access.Specification
+  ( accessSpecification
+  , specificationTargetPresentation
+  )
+import Evaluation.Access.Identifier (accessDependentArgumentType)
 import Evaluation.Identifier (simpleIdentifierName)
 import Evaluation.Map
   ( concatenateValues
@@ -37,7 +40,7 @@ import Evaluation.Map
   , makeAtlasMap
   )
 import Evaluation.Construction (makeAsciiString, makeExplicit, makeFormulation)
-import Evaluation.Numerical (IntegerLimit (..), requireIntegerLimit)
+import Evaluation.Numerical (requireIntegerLimit)
 import Evaluation.Access.RangeSelection
   ( AccessSource (..)
   , DescribedRange (..)
@@ -54,7 +57,7 @@ import Evaluation.Range qualified as RangeEvaluation
 import Evaluation.Value
 import Evaluation.Arguments
   ( argumentAlternatives
-  , makeArgumentMap
+  , makeArgumentativeMap
   , makeDistinctUnion
   )
 import Evaluation.Specification (specifyValues)
@@ -73,7 +76,7 @@ accessValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
-  case requireIntegerLimit LeftOperand insertionValue of
+  case requireIntegerLimit insertionValue of
     Right PositiveInfinity ->
       accessValues mapValue (makeExplicit ComputedOrigin (omegaPower 1))
     _ -> accessUncoerced mapValue insertionValue
@@ -103,8 +106,8 @@ accessUncoerced mapValue insertionValue =
         concatenateValues selectedLeft selectedRight
       RangeConcatenationForm ranges _ ->
         accessRangeConcatenation mapValue insertionValue ranges
-      ArgumentMapForm members _ ->
-        traverse (accessValues mapValue) members >>= makeArgumentMap
+      ArgumentativeMapForm members _ ->
+        traverse (accessValues mapValue) members >>= makeArgumentativeMap
       _ -> accessSingleValue mapValue insertionValue
 
 isWholeSourceSelector :: InterpretedValue -> Bool
@@ -167,7 +170,7 @@ finiteMapMembers value = do
     (interpretedMapFinalOrderType (interpretedMap value))
   traverse
     (interpretedMapValueAt (interpretedMap value) . finiteOrdinal)
-    (if count == 0 then [] else [0 .. count - 1])
+    (naturalsBelow count)
 
 accessSingleValue
   :: InterpretedValue
@@ -193,7 +196,7 @@ accessSingleValue mapValue insertionValue =
           Left failure : _ -> Left failure
           _ -> accessFederationValues mapValue insertionValue
         values -> makeDistinctUnion values
-    ArgumentMapForm _ underlying ->
+    ArgumentativeMapForm _ underlying ->
       traverse (`accessValues` insertionValue) (argumentAlternatives underlying)
         >>= makeDistinctUnion
     FederationSpecificationForm _ _ branches -> do
@@ -205,8 +208,8 @@ accessSingleValue mapValue insertionValue =
       accessSpecification accessValues specification insertionValue
     AssignmentForm specification ->
       accessSpecification accessValues specification insertionValue
-    DependentIdentifierTypeForm identifier ->
-      accessDependentIdentifierType mapValue identifier insertionValue
+    DependentArgumentTypeForm identifier ->
+      accessDependentArgumentType mapValue identifier insertionValue
     _ -> accessFederationValues mapValue insertionValue
   where
     emptyMapValue value =
@@ -435,11 +438,10 @@ finishAccess mapValue selected = do
           (asciiStringFromInterpretedMap selected)
       _ -> ordinaryResult)
   where
-    selectedValueList 0 = Right (Just [])
     selectedValueList cardinality =
       fmap sequence . traverse
         (interpretedMapValueAtChecked selected . finiteOrdinal)
-        $ [0 .. cardinality - 1]
+        $ naturalsBelow cardinality
 
 rangeAccessResult
   :: Bool
@@ -532,10 +534,10 @@ accessMap sourceMap insertion
               (interpretedMapComponents . interpretedMap)
               . ordinalOrderedValueAt selectedValues
               . finiteOrdinal)
-            [0 .. cardinality - 1]
+            (naturalsBelow cardinality)
 
 -- | Select a named page without discarding its identifier or specification.
--- Inspect argument-map slots directly: permutation expansion is unnecessary
+-- Inspect argumentative-map slots directly: permutation expansion is unnecessary
 -- when selection is by name, and optional names retain their named branch.
 namedAccessValue :: InterpretedValue -> String -> Either InterpretingError InterpretedValue
 namedAccessValue source name = do
@@ -546,13 +548,24 @@ namedAccessValue source name = do
     _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
   where
     candidates value
+      | SpecificationForm specification <- interpretedForm value =
+          specificationCandidates specification
+      | Just named <- interpretedNamedMapView value =
+          maybe [] ((: []) . namedMemberValue)
+            <$> namedMapMemberByName named name
+      | Just target <- interpretedSpecificationTargetEvidence value
+      , ArgumentativeMapForm members _ <- interpretedForm target =
+          argumentEvidenceCandidates value members
+      | Just named <- namedMapViewForValue value =
+          maybe [] ((: []) . namedMemberValue)
+            <$> namedMapMemberByName named name
       | Just actual <- simpleIdentifierName value =
           Right [value | actual == name]
       | matchesName (interpretedSemanticResult value) = Right [value]
       | otherwise = case interpretedForm value of
-          DependentIdentifierTypeForm _ -> Right []
+          DependentArgumentTypeForm _ -> Right []
           AssignmentForm _ -> Right []
-          ArgumentMapForm members _ -> concat <$> traverse candidates members
+          ArgumentativeMapForm members _ -> concat <$> traverse candidates members
           EitherForm alternatives -> do
             values <- concat <$> traverse candidates
               [evaluatedEitherLeft alternatives, evaluatedEitherRight alternatives]
@@ -562,23 +575,56 @@ namedAccessValue source name = do
           FederationSpecificationForm _ _ branches -> do
             values <- traverse (`namedAccessValue` name) branches
             (:[]) <$> makeDistinctUnion values
-          SpecificationForm specification -> do
-            let original = evaluatedSpecificationSourceValue specification
-                target = evaluatedSpecificationTarget specification
-            originalField <- namedAccessValue original name
-            targetFields <- candidates target
-            case targetFields of
-              [] -> pure [originalField]
-              [targetField] -> (:[]) <$> specifyValues originalField targetField
-              _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
           ConcatenatedMapForm left right -> (<>) <$> candidates left <*> candidates right
           SequentialMapForm -> pages value
           MapForm -> pages value
           _ -> Right []
+    specificationCandidates specification = do
+      projected <- positionalSpecificationCandidates specification
+      case projected of
+        [] -> do
+          let original = evaluatedSpecificationSourceValue specification
+              target = evaluatedSpecificationTarget specification
+          originalField <- namedAccessValue original name
+          targetFields <- candidates target
+          case targetFields of
+            [] -> pure [originalField]
+            [targetField] -> (:[]) <$> specifyValues originalField targetField
+            _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
+        _ -> Right projected
+    positionalSpecificationCandidates specification =
+      case naturalAtOrdinal (interpretedMapFinalOrderType targetMap) of
+        Nothing -> Right []
+        Just count -> concat <$> traverse project (naturalsBelow count)
+      where
+        target = specificationTargetPresentation
+          (evaluatedSpecificationTarget specification)
+          (evaluatedSpecificationMember specification)
+        targetMap = interpretedMap target
+        project index = case interpretedMapValueAt targetMap (finiteOrdinal index) of
+          Nothing -> Left (NamedAccessFailed NamedFieldMapNotInspectable)
+          Just targetField -> do
+            matches <- candidates targetField
+            if null matches
+              then Right []
+              else (:[]) <$> accessSpecification
+                accessValues specification
+                (makeExplicit ComputedOrigin (finiteOrdinal index))
+    argumentEvidenceCandidates value targetMembers =
+      concat <$> traverse project (zip [0 ..] targetMembers)
+      where
+        sourceMap = interpretedMap value
+        project (index, targetField) = do
+          matches <- candidates targetField
+          if null matches
+            then Right []
+            else case interpretedMapValueAt sourceMap (finiteOrdinal index) of
+              Nothing -> Right []
+              Just sourceField -> Right [sourceField]
     pages value = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
       Just count -> concat <$> traverse (\index -> case interpretedMapValueAt (interpretedMap value) (finiteOrdinal index) of
           Nothing -> Left (NamedAccessFailed NamedFieldMapNotInspectable)
-          Just field -> candidates field) (if count == 0 then [] else [0 .. count - 1])
+          Just field -> candidates field) (naturalsBelow count)
       Nothing -> Left (NamedAccessFailed NamedAccessRequiresFiniteMap)
     matchesName canonical = case canonical of
       CanonicalSimpleIdentifierType actual _ -> actual == name

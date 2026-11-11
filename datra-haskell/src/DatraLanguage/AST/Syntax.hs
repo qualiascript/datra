@@ -3,7 +3,7 @@
 -- | Symbolic Haskell constructors for Datra ASTs.
 module DatraLanguage.AST.Syntax
   ( natural
-  , dependentIdentifierType
+  , dependentArgumentType
   , assignment
   , asciiString
   , nothing
@@ -34,15 +34,11 @@ module DatraLanguage.AST.Syntax
   , optional
   , conditional
   , conditionalWithoutElse
-  , subfederation
   , equal
   , less
   , lessOrEqual
   , greater
   , greaterOrEqual
-  , and
-  , or
-  , not
   , plus
   , minus
   , (-)
@@ -56,28 +52,30 @@ module DatraLanguage.AST.Syntax
 
 import DatraLanguage.AST
   ( Expression (..)
-  , IdentifierString (IdentifierString)
-  , StringTemplatePart
+  , SimpleIdentifierString (SimpleIdentifierString)
+  , StringTemplateInterpolation
+  , literalIdentifierExpression
   )
 import Numeric.Natural (Natural)
-import Prelude hiding (and, not, or, (+), (-), (*), (^))
+import Prelude hiding ((+), (-), (*), (^))
 
 natural :: Natural -> Expression
 natural = EllipsisNatural
 
-dependentIdentifierType :: String -> Expression -> Expression
-dependentIdentifierType identifierString typeAnnotation =
-  IdentifierOperation
-    (IdentifierString identifierString)
-    typeAnnotation
-    Nothing
+dependentArgumentType :: String -> Expression -> Expression
+dependentArgumentType identifierString typeAnnotation =
+  DependentArgument
+    (literalIdentifierExpression
+      (SimpleIdentifierString identifierString))
+    (Just typeAnnotation)
 
 assignment :: String -> Expression -> Expression -> Expression
 assignment identifierString typeAnnotation givenValue =
-  IdentifierOperation
-    (IdentifierString identifierString)
-    typeAnnotation
-    (Just givenValue)
+  MapSpecification givenValue
+    (DependentArgument
+      (literalIdentifierExpression
+        (SimpleIdentifierString identifierString))
+      (if typeAnnotation == givenValue then Nothing else Just typeAnnotation))
 
 asciiString :: String -> Expression
 asciiString = AsciiStringLiteral
@@ -85,11 +83,11 @@ asciiString = AsciiStringLiteral
 nothing :: Expression
 nothing = NothingLiteral
 
-stringTemplate :: [StringTemplatePart Expression] -> Expression
+stringTemplate :: [StringTemplateInterpolation Expression] -> Expression
 stringTemplate = StringTemplate
 
 stringType :: Expression
-stringType = IdentifierReference (IdentifierString "Str")
+stringType = IdentifierReference (SimpleIdentifierString "Str")
 
 emptyMap :: Expression
 emptyMap = AtlasMap []
@@ -192,18 +190,6 @@ greater = GreaterThan
 
 greaterOrEqual :: Expression -> Expression -> Expression
 greaterOrEqual = GreaterThanOrEqual
-
-subfederation :: Expression -> Expression -> Expression
-subfederation = Subfederation
-
-and :: Expression -> Expression -> Expression
-and = BooleanAnd
-
-or :: Expression -> Expression -> Expression
-or = BooleanOr
-
-not :: Expression -> Expression
-not = BooleanNot
 
 plus :: Expression -> Expression
 plus = Plus

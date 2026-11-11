@@ -1,37 +1,16 @@
 -- | Shared lexical facts about Datra identifier names.
 module DatraLanguage.Identifier
   ( IdentifierSpelling (..)
-  , IdentifierPolicy (..)
-  , ShadowingConsistency (..)
   , identifierSpellingValue
-  , identifierPolicy
-  , public
   , isPrivateIdentifier
-  , requiresShadowingConsistency
-  , isLeadingIdentifierCharacter
+  , isIdentifierValue
+  , identifierNaturalValue
   , isIdentifierCharacter
   , isAsciiCharacter
   ) where
 
 import Data.Char (ord)
-
--- | Private names are never assigned a public shadowing policy. Keeping these
--- cases in a sum makes "private and shadowing-consistent" unrepresentable.
-data IdentifierPolicy
-  = PrivateIdentifier
-  | PublicIdentifier ShadowingConsistency
-  deriving (Eq, Show)
-
-data ShadowingConsistency
-  = UnrestrictedShadowing
-  | ConsistentShadowing
-  deriving (Eq, Show)
-
--- | Keep exactly the named bindings whose identifiers are externally visible.
--- Module export maps and function argument routing share this operation so a
--- leading underscore has one meaning throughout the language.
-public :: [(String, value)] -> [(String, value)]
-public = filter (not . isPrivateIdentifier . fst)
+import Numeric.Natural (Natural)
 
 data IdentifierSpelling
   = BareIdentifier String
@@ -44,34 +23,36 @@ identifierSpellingValue (BareIdentifier value) = Just value
 -- | Leading underscores make a binding private to its defining scope or turn
 -- a function parameter name into a positional-only implementation detail.
 isPrivateIdentifier :: String -> Bool
-isPrivateIdentifier name =
-  case identifierPolicy name of
-    PrivateIdentifier -> True
-    PublicIdentifier _ -> False
+isPrivateIdentifier ('_' : _) = True
+isPrivateIdentifier _ = False
 
--- | An apostrophe-prefixed name requires every later binding under the same
--- name to reduce to the value already denoted by that name. This classification
--- applies to quoted names as well as compact identifiers.
-requiresShadowingConsistency :: String -> Bool
-requiresShadowingConsistency name =
-  case identifierPolicy name of
-    PublicIdentifier ConsistentShadowing -> True
-    PrivateIdentifier -> False
-    PublicIdentifier UnrestrictedShadowing -> False
+-- | A bare identifier is nonempty and uses the identifier alphabet. Numeric
+-- meaning is supplied later by the standard library, so all-numeric spellings
+-- are identifiers at the lexical boundary too.
+isIdentifierValue :: String -> Bool
+isIdentifierValue [] = False
+isIdentifierValue value = all isIdentifierCharacter value
 
-identifierPolicy :: String -> IdentifierPolicy
-identifierPolicy ('_' : _) = PrivateIdentifier
-identifierPolicy ('\'' : _) = PublicIdentifier ConsistentShadowing
-identifierPolicy _ = PublicIdentifier UnrestrictedShadowing
-
-isLeadingIdentifierCharacter :: Char -> Bool
-isLeadingIdentifierCharacter character =
-  isAsciiLetter character || character == '_' || character == '\''
+-- | Decode precisely the all-ASCII-digit identifier language. Using
+-- 'Natural' keeps the conversion total for arbitrarily long spellings.
+identifierNaturalValue :: String -> Maybe Natural
+identifierNaturalValue [] = Nothing
+identifierNaturalValue value = go 0 value
+  where
+    go result [] = Just result
+    go result (character : remaining)
+      | isAsciiDigit character =
+          go
+            (result * 10
+              + fromIntegral (ord character - ord '0'))
+            remaining
+      | otherwise = Nothing
 
 isIdentifierCharacter :: Char -> Bool
 isIdentifierCharacter character =
-  isLeadingIdentifierCharacter character
+  isAsciiLetter character
     || isAsciiDigit character
+    || character == '_'
     || character == '\''
 
 isAsciiLetter :: Char -> Bool

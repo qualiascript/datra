@@ -5,7 +5,7 @@ module Evaluation.TypeFamily.Function
   , decideFunctionSubfederation
   ) where
 
-import DatraLanguage.SyntaxTemplate (FunctionSyntax)
+import StringExpression (FunctionSyntax)
 import Evaluation.Error
   ( FunctionFailure (..)
   , InterpretingError (FunctionEvaluationFailed)
@@ -100,7 +100,7 @@ decideFunctionSubfederation decideSubfederation source target
               (functionCodomain targetFunction)
           ])
   | interpretedSemanticResult source == interpretedSemanticResult target = DecisionProved ()
-  | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
+  | PrimitiveTypeForm _ <- interpretedForm source = DecisionRefuted
   | otherwise = DecisionRefuted
 
 patternCompatible

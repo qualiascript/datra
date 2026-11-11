@@ -3,6 +3,7 @@
 module Evaluation.ToString
   ( CanonicalStringCodec (..)
   , toStringValue
+  , stringFederationValue
   , templateValue
   , stringConversionIsIdentity
   , stringFederationConcatenationIsInjective
@@ -17,7 +18,6 @@ import Evaluation.Error (InterpretingError)
 import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.ToString.Injectivity (proveInjectiveToString)
 import Evaluation.Value
-import IdentifierValueType (identifierValueCharacterAlphabet)
 
 -- | The canonical presentation is a codec, not merely a pretty-printer.
 -- Decoding returns every value interpretation of the text; selection against
@@ -36,20 +36,27 @@ toStringValue
   :: CanonicalStringCodec
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-toStringValue codec source =
+toStringValue codec source = Right (stringFederationValue codec source)
+
+-- | Total internal conversion used when constructing a StringExpression.
+-- Every result denotes only strings, including pointwise conversions of
+-- non-total input federations.
+stringFederationValue
+  :: CanonicalStringCodec
+  -> InterpretedValue
+  -> InterpretedValue
+stringFederationValue codec source =
   if stringConversionIsIdentity source
-    then Right source
+    then source
     else if interpretedTypeIsTotal source
       then
-        Right
-          (makeAsciiString
-            (renderCanonicalString codec source))
+        makeAsciiString (renderCanonicalString codec source)
       else
-        Right (pointwiseFederation
+        pointwiseFederation
           (proveInjectiveToString
             (interpretedDatraType source)
             (decodeCanonicalString codec)
-            source))
+            source)
   where
     pointwiseFederation proof =
       makeInterpretedValue
@@ -195,8 +202,6 @@ stringFederationExcludes delimiter federation =
             || case injectiveToStringCharacterAlphabet proof of
               Nothing -> False
               Just alphabet -> any (`notElem` alphabet) delimiter
-        IdentifierValueTypeAtlasMapFederation ->
-          any (`notElem` identifierValueCharacterAlphabet) delimiter
         _ -> False
     CoalizedAtlasMapFederation operand ->
       stringFederationExcludes delimiter operand

@@ -9,7 +9,7 @@ import Datra.Interpreter.FunctionTests (functionTests)
 import Datra.Interpreter.DatraTypeLawTests (datraTypeLawTests)
 import Datra.Interpreter.IntegrationTests (integrationTests)
 import Datra.Interpreter.ModuleTests (moduleTests)
-import Datra.Interpreter.OverloadAssertionTests (overloadAssertionTests)
+import Datra.Interpreter.OverloadTests (overloadTests)
 import Datra.Interpreter.ScopeTests (scopeTests)
 import Datra.Interpreter.StandardLibraryTests (standardLibraryTests)
 import Datra.TestSupport
@@ -17,12 +17,14 @@ import Datra.TestSupport
   , runProgram
   )
 import DatraLanguage.AST
-  ( Expression (..)
-  , IdentifierString (IdentifierString)
-  , StringTemplatePart (..)
+  ( DependentDeclaration (..)
+  , Expression (..)
+  , IdentifierExpression (..)
+  , SimpleIdentifierString (SimpleIdentifierString)
+  , StringTemplateInterpolation (..)
   , pattern FunctionType
-  , contextualAccess
   )
+import DatraLanguage.ContextualDeclaration
 import DatraLanguage.AST.Syntax
   ( natural
   , (...)
@@ -36,15 +38,12 @@ import DatraLanguage.AST.Syntax
   , (~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
-import DatraLanguage.SyntaxTemplate
-  ( FunctionSyntax (FunctionSyntax) )
 import DatraTypes qualified as Types
 import Interpreting
   ( ModuleSource (..)
   , InterpretedValue
   , InterpretedValueKind (..)
   , InterpretingError (..)
-  , OperandSide (..)
   , interpretExpressionReason
   , interpretWithImports
   , interpretLocatedExpression
@@ -59,13 +58,13 @@ import Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   , moduleExportNames
-  , moduleSyntaxRules
   , parseDatraSourceLocatedWithImportsAndStandardLibrary
   )
 import DatraLanguage.Diagnostics.Interpreter
   ( AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
+  , FunctionFailure (..)
   )
 import Rendering
   ( renderInterpretedValue
@@ -84,9 +83,10 @@ import DatraLanguage.Diagnostics
   , locatedValue
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
+  , withoutSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (parseFailureMessage) )
+  ( ParseFailure )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
   , renderDatraError
@@ -97,12 +97,6 @@ import MapOperators.AccessOperator
   )
 import ModuleLoading (loadSourceImports)
 import Numeric.Natural (Natural)
-import SyntaxDefinitions
-  ( SyntaxHoleKind (..)
-  , SyntaxPiece (SyntaxHole, SyntaxLiteral)
-  , SyntaxRule (..)
-  , SyntaxTemplate (SyntaxTemplate)
-  )
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -118,6 +112,9 @@ import Test.Tasty.HUnit (assertBool, assertEqual, assertFailure, testCase)
 main :: IO ()
 main = defaultMain testTree
 
+renderParseFailure :: ParseFailure -> String
+renderParseFailure = renderDatraError English . withoutSourceSpan
+
 testTree :: TestTree
 testTree =
   testGroup "Datra interpreter"
@@ -127,12 +124,13 @@ testTree =
         , testCase "generic product ordinal indexing"
             testGenericProductOrdinalIndexing
         , testCase "string templates" testStringTemplates
+        , testCase "dependent declarations" testDependentDeclarations
         , testCase "lookup follows transfinite foliage traversal"
             testLookupFoliageTraversal
         , testCase "named field access" testNamedAccess
-        , testCase "argument maps" testArgumentMaps
-        , testCase "argument maps in concatenation" testArgumentMapConcatenation
-        , testCase "argument maps in string templates" testArgumentMapTemplates
+        , testCase "argumentative maps" testArgumentativeMaps
+        , testCase "argumentative maps in concatenation" testArgumentativeMapConcatenation
+        , testCase "argumentative maps in string templates" testArgumentativeMapTemplates
         , testCase "internal typed decoding" testEval
         , testCase "template-backed keyword forms" testEvalBackedKeywords
         , testCase "begin/yield scope and provenance" testBegin
@@ -163,7 +161,7 @@ testTree =
     , integrationTests
     , scopeTests
     , moduleTests
-    , overloadAssertionTests
+        , overloadTests
     , standardLibraryTests
     , testGroup "properties"
         [ testProperty "natural addition agrees with Haskell" propNaturalAddition
@@ -190,115 +188,15 @@ assert = assertBool
 
 testModuleSyntaxAlias :: IO ()
 testModuleSyntaxAlias = do
-  let expressionType = hostReference "Expr"
-      blockType = hostReference "Block"
-      beginValue = SyntaxType
-        (StringTemplate
-          [ StringTemplateLiteral "begin "
-          , StringTemplateInterpolation (identifierReference "_Block")
-          , StringTemplateLiteral " yield "
-          , StringTemplateInterpolation (identifierReference "_Expr")
-          ])
-        (FunctionType
-          (AtlasMap [blockType, expressionType]) expressionType)
-      binding name value = IdentifierOperation
-        (IdentifierString name) value (Just value)
-      member name value = IdentifierOperation
-        (IdentifierString name) value Nothing
-      moduleBody = Begin
-        [binding "begin" (identifierReference "begin")]
-        (contextualAccess (IdentifierString "_this"))
-      source = ModuleSource "alias-module.datra"
-        (Begin
-          [ binding "_Expr" expressionType
-          , binding "_Block" blockType
-          , binding "begin" beginValue
-          , binding "outerOnly" (natural 7)
-          ]
-          (member "AliasModule" moduleBody))
-        []
-  case moduleExportNames source of
-    Right names -> assert "only inner declarations are module members"
-      (names == ["begin"])
-    Left failure -> assertFailure
-      ("module export discovery failed: " <> show failure)
-  case moduleSyntaxRules "alias-module" source of
-    Right [rule] -> do
-      assert "the inner alias retains the outer function's syntax"
-        (syntaxName rule == "begin")
-      assert "the retained rule keeps its declared literal"
-        (syntaxTemplate rule == SyntaxTemplate
-          [ SyntaxLiteral "begin"
-          , SyntaxHole (BlockSyntaxHole
-              (InModule "alias-module" (identifierReference "_Block")))
-          , SyntaxLiteral "yield"
-          , SyntaxHole (ExpressionSyntaxHole
-              (InModule "alias-module" (identifierReference "_Expr")))
-          ])
-    Right rules -> assertFailure
-      ("expected one exported syntax rule, got: " <> show rules)
-    Left failure -> assertFailure
-      ("module syntax discovery failed: " <> show failure)
-  let shadowingSource = ModuleSource "shadowing-module.datra"
-        (Begin
-          [ binding "_Expr" expressionType
-          , binding "_Block" blockType
-          , binding "begin" beginValue
-          ]
-          (member "ShadowingModule" (Begin
-            [binding "begin" (natural 123)]
-            (contextualAccess (IdentifierString "_this")))))
-        []
-  case moduleSyntaxRules "shadowing-module" shadowingSource of
-    Right [] -> pure ()
-    Right rules -> assertFailure
-      ("a non-function shadow retained syntax rules: " <> show rules)
-    Left failure -> assertFailure
-      ("shadowing module syntax discovery failed: " <> show failure)
-  let preservingSource = ModuleSource "preserving-module.datra"
-        (Begin
-          [ binding "_Expr" expressionType
-          , binding "_Block" blockType
-          , binding "begin" beginValue
-          ]
-          (member "PreservingModule" (Begin
-            [ binding "_begin" (identifierReference "begin")
-            , binding "begin" (natural 123)
-            ]
-            (contextualAccess (IdentifierString "_this")))))
-        []
-  case moduleSyntaxRules "preserving-module" preservingSource of
-    Right [rule] -> assert
-      "an alias made before shadowing retains the original syntax rules"
-      (syntaxName rule == "_begin"
-        && syntaxTemplate rule == SyntaxTemplate
-          [ SyntaxLiteral "begin"
-          , SyntaxHole (BlockSyntaxHole
-              (InModule "preserving-module"
-                (identifierReference "_Block")))
-          , SyntaxLiteral "yield"
-          , SyntaxHole (ExpressionSyntaxHole
-              (InModule "preserving-module"
-                (identifierReference "_Expr")))
-          ])
-    Right rules -> assertFailure
-      ("expected only the preserved alias rule, got: " <> show rules)
-    Left failure -> assertFailure
-      ("syntax-preserving shadow failed: " <> show failure)
-  let duplicateSource = ModuleSource "duplicate-module.datra"
-        (Begin [] (member "DuplicateModule" (Begin
-          [ binding "abc" (natural 123)
-          , binding "abc" (natural 456)
-          ]
-          (contextualAccess (IdentifierString "_this")))))
-        []
-  case moduleExportNames duplicateSource of
-    Left (IdentifierStringOverlap "abc") -> pure ()
-    result -> assertFailure
-      ("same-block redeclaration was not rejected: " <> show result)
+  let binding name value = DependentDeclaration
+        (IdentifierExpressionBody
+          (IdentifierReference (SimpleIdentifierString name)))
+        False False False [] value
+      member name value = DependentArgument
+        (IdentifierExpression (identifierReference name)) (Just value)
   let isolatedBody = Begin
         [binding "x" (identifierReference "Int")]
-        (contextualAccess (IdentifierString "_this"))
+        (identifierReference "this")
       isolatedSource = ModuleSource "isolated-module.datra"
         (Begin [] (member "IsolatedModule" isolatedBody)) []
   case moduleExportNames isolatedSource of
@@ -308,7 +206,7 @@ testModuleSyntaxAlias = do
   let explicitStd = ModuleSource "std.datra"
         (Begin [] (member "Std" (Begin
           [binding "Int" (natural 7)]
-          (contextualAccess (IdentifierString "_this")))))
+          (identifierReference "this"))))
         []
       importingSource = ModuleSource "importing-module.datra"
         (ScopeAccess (identifierReference "Std")
@@ -320,12 +218,39 @@ testModuleSyntaxAlias = do
       ("an explicit Std scope did not supply module bindings: " <> show result)
 
 identifierReference :: String -> Expression
-identifierReference = IdentifierReference . IdentifierString
+identifierReference = IdentifierReference . SimpleIdentifierString
 
-hostReference :: String -> Expression
-hostReference name = ScopeAccess
-  (identifierReference "'datra")
-  (identifierReference name)
+templateLiteral :: String -> StringTemplateInterpolation Expression
+templateLiteral = StringTemplateInterpolation . AsciiStringLiteral
+
+hostOperator :: String -> [Expression] -> Expression
+hostOperator body arguments =
+  FunctionApplication
+    (FunctionApplication
+      (FunctionType domain (identifierReference "Any"))
+      (ScopeAccess
+        (identifierReference "datra")
+        (identifierReference body)))
+    supplied
+  where
+    domain = case arguments of
+      [_] -> identifierReference "Any"
+      _ -> AtlasMap (map (const (identifierReference "Any")) arguments)
+    supplied = case arguments of
+      [argument] -> argument
+      _ -> AtlasMap arguments
+
+subfederation :: Expression -> Expression -> Expression
+subfederation left right = hostOperator "of_body" [left, right]
+
+booleanAnd :: Expression -> Expression -> Expression
+booleanAnd left right = hostOperator "and_body" [left, right]
+
+booleanOr :: Expression -> Expression -> Expression
+booleanOr left right = hostOperator "or_body" [left, right]
+
+booleanNot :: Expression -> Expression
+booleanNot value = hostOperator "not_body" [value]
 
 sourceNatType :: String
 sourceNatType = "Nat"
@@ -335,18 +260,18 @@ sourceIntType = "Int"
 
 maybeType :: Expression -> Expression
 maybeType = FunctionApplication
-  (IdentifierReference (IdentifierString "Maybe"))
+  (IdentifierReference (SimpleIdentifierString "Maybe"))
 
 justValue :: Expression -> Expression
-justValue value = AST.dependentIdentifierType "Just" value
+justValue value = AST.dependentArgumentType "Just" value
 
 maybeExpansion :: Expression -> Expression
 maybeExpansion value =
   AST.eitherType
     (AST.eitherType
-      (AST.dependentIdentifierType "Nothing" AST.emptyMap)
+      (AST.dependentArgumentType "Nothing" AST.emptyMap)
       AST.emptyMap)
-    (AST.dependentIdentifierType "Just" value)
+    (AST.dependentArgumentType "Just" value)
 
 ordinalCall :: String -> [Expression] -> Expression
 ordinalCall name arguments =
@@ -450,7 +375,7 @@ propConditionalArithmeticRange = H.property $ do
       selectedResult =
         (AST.-) (integerExpression left) (integerExpression right)
       rejectedDeadBranch =
-        AST.and (natural 1) (AST.boolean True)
+        booleanAnd (natural 1) (AST.boolean True)
       expressionValue =
         AST.conditional
           commutativeCondition
@@ -466,7 +391,7 @@ propOptionalIntegerRangeBranches = H.property $ do
   selectValue <- H.forAll Gen.bool
   selected <- H.forAll (Gen.integral (Range.linear (-25) 25))
   let nothingValue =
-        AST.dependentIdentifierType "Nothing" AST.emptyMap
+        AST.dependentArgumentType "Nothing" AST.emptyMap
       expressionValue =
         AST.conditional
           (AST.boolean selectValue)
@@ -536,7 +461,7 @@ expectSourceValue :: String -> String -> (InterpretedValue -> IO ()) -> IO ()
 expectSourceValue label source check =
   case parseProductionSource ("(" <> source <> "\n)") of
     Left message -> fail
-      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
+      (label <> ": unexpected parse failure: " <> renderParseFailure message)
     Right expressionValue -> expectValue label expressionValue check
 
 expectSourceRejection
@@ -547,7 +472,7 @@ expectSourceRejection
 expectSourceRejection label source matches =
   case parseProductionSource ("(" <> source <> "\n)") of
     Left message -> fail
-      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
+      (label <> ": unexpected parse failure: " <> renderParseFailure message)
     Right expressionValue ->
       case interpretExpressionReason expressionValue of
         Left rejection
@@ -664,13 +589,22 @@ testIntegers = do
       _ -> False)
 
 testClosedInfiniteValuedRange :: IO ()
-testClosedInfiniteValuedRange =
+testClosedInfiniteValuedRange = do
+  let positiveInfinity = Types.makeIntegerLimit Types.PositiveInfinity
+      negativeInfinity = Types.makeIntegerLimit Types.NegativeInfinity
+  assert "positive infinity has typed integer-limit semantics"
+    (Types.interpretedSemanticResult positiveInfinity
+      == Types.CanonicalIntegerLimit Types.PositiveInfinity)
+  assert "negative infinity has typed integer-limit semantics"
+    (Types.interpretedSemanticResult negativeInfinity
+      == Types.CanonicalIntegerLimit Types.NegativeInfinity)
+  assert "negative infinity retains the IntLimit complement structure"
+    (interpretedMapCardinality (interpretedMap negativeInfinity) == 2)
   case do
-      infinity <- Types.asciiStringValue "PosInf"
       Types.integerLimitRangeValue
         Types.ValuedIntegerRangeKind
         (Types.naturalValue 0)
-        infinity of
+        positiveInfinity of
     Left failure ->
       assertFailure ("closed infinite valued range construction failed: " <> show failure)
     Right closed -> do
@@ -737,7 +671,7 @@ testLiteralsAndArithmetic = do
   expectValue
       "string membership"
       (AST.equal
-        (AST.subfederation (AST.asciiString "my_string") AST.stringType)
+        (subfederation (AST.asciiString "my_string") AST.stringType)
         (AST.boolean True)) $ \value ->
     assert "a string literal is a member of Str"
       (renderInterpretedValue value == "true")
@@ -780,10 +714,10 @@ testLiteralsAndArithmetic = do
       (renderInterpretedValue value == "Infinity")
   testRemainingLiterals
 
-testArgumentMaps :: IO ()
-testArgumentMaps = do
+testArgumentativeMaps :: IO ()
+testArgumentativeMaps = do
   mapM_ (\source -> expectSourceValue source source $ \value ->
-    assert "argument-map relation holds" (renderInterpretedValue value == "true"))
+    assert "argumentative-map relation holds" (renderInterpretedValue value == "true"))
     [ "{} = ()"
     , "{2} = 2"
     , "{1; 2} = ((1; 2) | (2; 1))"
@@ -806,7 +740,7 @@ testArgumentMaps = do
     , "\"(b : 8; 2)\" of \"%({a? : Nat; b? : Nat})\""
     ]
   mapM_ (\source -> expectSourceValue source source $ \value ->
-    assert "invalid argument-map relation is rejected"
+    assert "invalid argumentative-map relation is rejected"
       (renderInterpretedValue value == "false"))
     [ "{b : $wrong; 2} of {a? : Nat; b? : Nat}"
     , "{1; 2; 3} of {a? : Nat; b? : Nat}"
@@ -828,7 +762,7 @@ testArgumentMaps = do
         == "($a; 5) ~> {x : " <> sourceIntType <> "; y : IdenStr}")
   let example = "{b : 8; 2} ~> {a? : Nat := 2; b? : Nat}"
   expectSourceValue "argument specification preserves written source" example $ \value ->
-    assert "argument-map source order and partial names survive"
+    assert "argumentative-map source order and partial names survive"
       (renderInterpretedValue value
         == "{b : 8; 2} ~> {a? : " <> sourceNatType
           <> " := 2; b? : " <> sourceNatType <> "}")
@@ -838,11 +772,11 @@ testArgumentMaps = do
       (renderInterpretedValue value
         == "{2; b : 8} ~> {a? : " <> sourceNatType
           <> "; b? : " <> sourceNatType <> "}")
-  expectSourceValue "ordered source can select an argument-map presentation"
+  expectSourceValue "ordered source can select an argumentative-map presentation"
       "((b : 8; 2) ~> {a? : Nat; b? : Nat})[1] * 5" $ \value ->
     assert "access follows the selected target permutation"
       (renderInterpretedValue value == "10")
-  expectSourceValue "argument-map reverse specification"
+  expectSourceValue "argumentative-map reverse specification"
       "{a? : Nat; b? : Nat} <~ {b : 8; 2}" $ \value ->
     assert "reverse specification preserves the same source"
       (renderInterpretedValue value
@@ -884,8 +818,8 @@ testArgumentMaps = do
         == "{b : 8; b : 2} ~> {a? : " <> sourceNatType
           <> "; b? : " <> sourceNatType <> "}")
 
-testArgumentMapConcatenation :: IO ()
-testArgumentMapConcatenation = do
+testArgumentativeMapConcatenation :: IO ()
+testArgumentativeMapConcatenation = do
   let source = "x : 3, {b : 8; 2}"
       target = "x : 3, {a? : Nat := 2; b? : Nat}"
       example = source <> " ~> " <> target
@@ -901,7 +835,7 @@ testArgumentMapConcatenation = do
           (renderInterpretedValue roundTrip == renderedExample))
     [ example, target <> " <~ " <> source ]
   mapM_ (\expression -> expectSourceValue expression expression $ \value ->
-    assert "concatenated argument-map inclusion holds"
+    assert "concatenated argumentative-map inclusion holds"
       (renderInterpretedValue value == "true"))
     [ source <> " of " <> target
     , "({b : 8; 2}, x : 3) of ({a? : Nat; b? : Nat}, x : 3)"
@@ -933,8 +867,8 @@ testArgumentMapConcatenation = do
     , source <> " ~> x : 3, (b : Nat; Nat)"
     ]
 
-testArgumentMapTemplates :: IO ()
-testArgumentMapTemplates = do
+testArgumentativeMapTemplates :: IO ()
+testArgumentativeMapTemplates = do
   let template = "\"%({a? : Nat; b? : Nat})\""
   mapM_ (\member -> expectSourceValue "template accepts an argument ordering"
     (show member <> " of " <> template) $ \value ->
@@ -955,9 +889,9 @@ testArgumentMapTemplates = do
       assert "forward and reverse template specifications agree"
         (renderInterpretedValue value == renderedSpecification))
     [ specification, template <> " <~ " <> member ]
-  expectSourceValue "template captures the typed argument map"
+  expectSourceValue "template captures the typed argumentative map"
     ("(" <> specification <> ")[1]") $ \value ->
-      assert "capture retains the source ordering and target argument map"
+      assert "capture retains the source ordering and target argumentative map"
         (renderInterpretedValue value
           == "(b : 8; 2) ~> "
             <> "{a? : Nat; b? : Nat}")
@@ -967,7 +901,7 @@ testArgumentMapTemplates = do
         (renderInterpretedValue value == "10")
   expectSourceValue "literal-delimited argument template"
     "\"args=(2; b : 8)!\" of \"args=%({a? : Nat; b? : Nat})!\"" $ \value ->
-      assert "template literals surround the whole argument-map capture"
+      assert "template literals surround the whole argumentative-map capture"
         (renderInterpretedValue value == "true")
   expectSourceValue "argument template assigns required names positionally"
     "\"(2; 8)\" of \"%({a : Nat; b : Nat})\"" $ \value ->
@@ -1055,16 +989,16 @@ parseTestExpression :: String -> IO Expression
 parseTestExpression source =
   case parseProductionSource ("(" <> source <> "\n)") of
     Left message -> fail
-      ("test expression failed to parse: " <> parseFailureMessage message)
+      ("test expression failed to parse: " <> renderParseFailure message)
     Right expressionValue -> pure expressionValue
 
 testBegin :: IO ()
 testBegin = do
   expectSourceValue "retained block canonicalizes strict quoted access"
-    "begin \"value with spaces\" := 5; yield this.\"value with spaces\" + 1" $ \value -> do
+    "begin $\"value with spaces\" := 5; yield this.\"value with spaces\" + 1" $ \value -> do
       let rendered = renderInterpretedValue value
       assert "block keeps explicit current-scope access"
-        (rendered == "6 <~ begin \"value with spaces\" := 5; yield this.\"value with spaces\" + 1")
+        (rendered == "6 <~ begin $\"value with spaces\" := 5; yield this.\"value with spaces\" + 1")
       expectSourceValue "canonical strict-access block round trip" rendered $ \decoded ->
         assert "canonical block remains stable"
           (renderInterpretedValue decoded == rendered)
@@ -1143,18 +1077,16 @@ testCanonicalTypes = do
     , "begin yield 11"
     , "Nat -> Nat"
     , "Nat | (Nat -> Nat)"
-    , "Template"
-    , "'datra.Expr"
-    , "'datra.DependentIdentifier"
-    , "'datra.Declaration"
-    , "'datra.Block"
-    , "'datra.FunctionBody"
-    , "(Nat; 'datra.Expr)"
+    , "datra.Expr"
+    , "datra.DependentArgument"
+    , "datra.DependentDeclaration"
+    , "datra.Block"
+    , "datra.FunctionBody"
+    , "(Nat; datra.Expr)"
     , "NatRange"
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
-    , "'datra.SyntaxTemplate"
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
     case Types.toStringValue canonicalStringCodec value of
@@ -1180,7 +1112,7 @@ testPrograms :: IO ()
 testPrograms = do
   mapM_ (\(source, expected) ->
     case parseProductionSource source of
-      Left message -> fail (parseFailureMessage message)
+      Left message -> fail (renderParseFailure message)
       Right expression -> case interpretWithImports [] expression of
         Left rejection -> fail
           (source <> ": unexpected rejection: " <> show rejection)
@@ -1208,7 +1140,7 @@ testPrograms = do
 testBeginRejections :: IO ()
 testBeginRejections = do
   mapM_ (\source -> expectSourceRejection source source
-    (\case IdentifierStringOverlap "a" -> True; _ -> False))
+    (\case OverlappingBindings "a" -> True; _ -> False))
     [ "begin a := 1; a := 2 yield a"
     , "begin a := 1; let a := 2 yield a"
     , "begin a? := 1; a := 2 yield a"
@@ -1370,27 +1302,6 @@ testGenericProductOrdinalIndexing = do
 
 testStringTemplates :: IO ()
 testStringTemplates = do
-  case interpretExpressionReason
-      (SyntaxType (StringTemplate
-        [ StringTemplateLiteral "choose "
-        , StringTemplateInterpolation (identifierReference "Int")
-        , StringTemplateLiteral " mark"
-        ])
-        (FunctionType IntegerType IntegerType)) of
-    Right value -> do
-      assert "syntax annotations are erased from canonical function rendering"
-        (renderInterpretedValue value == "(Int -> Int)")
-      assert "evaluated function types retain their structured syntax attachment"
-        (case Types.interpretedFunction value >>= Types.functionSyntax of
-          Just (FunctionSyntax
-            [ SyntaxTemplate
-                [ SyntaxLiteral "choose"
-                , SyntaxHole (ValueSyntaxHole _)
-                , SyntaxLiteral "mark"
-                ]]) -> True
-          _ -> False)
-    Left failure -> assertFailure
-      ("syntax function type failed to evaluate: " <> show failure)
   expectSourceValue
       "Int template excludes Infinity"
       "\"Infinity\" of \"%Int\"" $ \value ->
@@ -1427,11 +1338,13 @@ testStringTemplates = do
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
       _ -> False)
-  expectSourceValue
-      "IdenStr accepts a digit-leading alphanumeric value"
-      "\"345abc\" ~> \"%IdenStr\"" $ \value ->
-    assert "a digit-leading nonnumeric compact string matches IdenStr"
-      (interpretedValueKind value == SpecificationValueKind)
+  expectSourceRejection
+    "IdenStr rejects a digit-leading alphanumeric string"
+    "\"345abc\" ~> \"%IdenStr\""
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
   expectSourceRejection
     "IdenStr rejects an entirely numeric string"
     "\"12\" ~> \"%IdenStr\""
@@ -1481,19 +1394,6 @@ testStringTemplates = do
       "simple identifier type has an injective string conversion"
       "\"ie : 12\" of \"%(ie : Nat)\"" $ \value ->
     assert "a direct simple identifier member is decoded canonically"
-      (renderInterpretedValue value == "true")
-  expectValue
-      "map containing a simple identifier type is injective"
-      (AST.subfederation
-        (AsciiStringLiteral "(ie : 12; $alco)")
-        (StringTemplate
-          [StringTemplateInterpolation
-            (MapSequence
-              [ IdentifierOperation
-                  (IdentifierString "ie") NaturalType Nothing
-              , IdentifierValueType
-              ])])) $ \value ->
-    assert "the canonical map member is decoded componentwise"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "Either containing a simple identifier type is injective"
@@ -1552,7 +1452,7 @@ testStringTemplates = do
     assert "no synthetic Str capture is introduced"
       (renderInterpretedValue value == "$h")
   let template = StringTemplate
-        [ StringTemplateLiteral "example"
+        [ templateLiteral "example"
         , StringTemplateInterpolation
             (Addition (natural 2) (natural 2))
         ]
@@ -1581,18 +1481,18 @@ testStringTemplates = do
   expectValue
       "string interpolation"
       (StringTemplate
-        [ StringTemplateLiteral "hello, "
+        [ templateLiteral "hello, "
         , StringTemplateInterpolation (AsciiStringLiteral "world")
-        , StringTemplateLiteral "!"
+        , templateLiteral "!"
         ]) $ \value ->
     assert "toString strips the interpolated string's source delimiter"
       (renderInterpretedValue value == "\"hello, world!\"")
   expectValue
       "empty string interpolation"
       (StringTemplate
-        [ StringTemplateLiteral "left"
+        [ templateLiteral "left"
         , StringTemplateInterpolation (AsciiStringLiteral "")
-        , StringTemplateLiteral "right"
+        , templateLiteral "right"
         ]) $ \value ->
     assert "empty interpolated strings are concatenation identities"
       (renderInterpretedValue value == "$leftright")
@@ -1621,9 +1521,9 @@ testStringTemplates = do
   expectValue
       "fixed prefix and suffix around a non-total interpolation"
       (StringTemplate
-        [ StringTemplateLiteral "n="
+        [ templateLiteral "n="
         , StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral "."
+        , templateLiteral "."
         ]) $ \value ->
     assert "singletons concatenate with a non-total string federation"
       ( interpretedValueKind value == AsciiStringValueKind
@@ -1633,7 +1533,7 @@ testStringTemplates = do
       "delimiter-separated non-total interpolations"
       (StringTemplate
         [ StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral ":"
+        , templateLiteral ":"
         , StringTemplateInterpolation NaturalType
         ]) $ \value ->
     assert "a delimiter excluded from Nat establishes a unique boundary"
@@ -1643,7 +1543,7 @@ testStringTemplates = do
   let separatedNaturals =
         StringTemplate
           [ StringTemplateInterpolation NaturalType
-          , StringTemplateLiteral ":"
+          , templateLiteral ":"
           , StringTemplateInterpolation NaturalType
           ]
   expectValue
@@ -1663,12 +1563,12 @@ testStringTemplates = do
       _ -> False)
   expectValue
       "matching delimited string-template subfederation"
-      (AST.subfederation separatedNaturals separatedNaturals) $ \value ->
+      (subfederation separatedNaturals separatedNaturals) $ \value ->
     assert "string-template inclusion follows the same component structure"
       (renderInterpretedValue value == "true")
   expectValue
       "delimited string template is a Str subfederation"
-      (AST.subfederation separatedNaturals AST.stringType) $ \value ->
+      (subfederation separatedNaturals AST.stringType) $ \value ->
     assert "every member produced by the template is a string"
       (renderInterpretedValue value == "true")
   let booleanTemplate =
@@ -1710,7 +1610,7 @@ testStringTemplates = do
       "non-digit delimiter between natural interpolations"
       (StringTemplate
         [ StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral "-"
+        , templateLiteral "-"
         , StringTemplateInterpolation NaturalType
         ]) $ \value ->
     assert "a dash also cannot occur in Nat's rendered members"
@@ -1719,7 +1619,7 @@ testStringTemplates = do
       "natural then arbitrary string separated by a delimiter"
       (StringTemplate
         [ StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral ":"
+        , templateLiteral ":"
         , StringTemplateInterpolation AST.stringType
         ]) $ \value ->
     assert "a delimiter excluded from the left side fixes the first split"
@@ -1728,7 +1628,7 @@ testStringTemplates = do
       "arbitrary string then natural separated by a delimiter"
       (StringTemplate
         [ StringTemplateInterpolation AST.stringType
-        , StringTemplateLiteral ":"
+        , templateLiteral ":"
         , StringTemplateInterpolation NaturalType
         ]) $ \value ->
     assert "a delimiter excluded from the right side fixes the final split"
@@ -1737,7 +1637,7 @@ testStringTemplates = do
     (case interpretExpressionReason
         (StringTemplate
           [ StringTemplateInterpolation NaturalType
-          , StringTemplateLiteral "1"
+          , templateLiteral "1"
           , StringTemplateInterpolation NaturalType
           ]) of
       Left AmbiguousStringTemplate -> True
@@ -1746,9 +1646,9 @@ testStringTemplates = do
       "three delimiter-separated non-total interpolations"
       (StringTemplate
         [ StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral ":"
+        , templateLiteral ":"
         , StringTemplateInterpolation NaturalType
-        , StringTemplateLiteral ":"
+        , templateLiteral ":"
         , StringTemplateInterpolation NaturalType
         ]) $ \value ->
     assert "the final-delimiter proof composes for repeated fields"
@@ -1758,7 +1658,7 @@ testStringTemplates = do
       (StringTemplate
         [StringTemplateInterpolation
           (StringTemplate
-            [ StringTemplateLiteral "n="
+            [ templateLiteral "n="
             , StringTemplateInterpolation NaturalType
             ])]) $ \value ->
     assert "toString is identity on an already converted template federation"
@@ -1785,18 +1685,18 @@ testStringTemplates = do
     (case interpretExpressionReason
         (StringTemplate
           [ StringTemplateInterpolation AST.stringType
-          , StringTemplateLiteral ":"
+          , templateLiteral ":"
           , StringTemplateInterpolation AST.stringType
           ]) of
       Left AmbiguousStringTemplate -> True
       _ -> False)
   case Types.naturalTypeValue of
     Right naturals -> do
-      let dependentIdentifier =
-            Types.dependentIdentifierTypeValue "n" (const "same") naturals
-      assert "dependent identifier type carries an injective toString proof"
+      let dependentArgument =
+            Types.dependentArgumentTypeValue "n" (const "same") naturals
+      assert "dependent argument type carries an injective toString proof"
         (case Types.toStringValue
-            canonicalStringCodec dependentIdentifier of
+            canonicalStringCodec dependentArgument of
           Right _ -> True
           Left _ -> False)
     Left rejection ->
@@ -1819,18 +1719,18 @@ testStringTemplates = do
         (StringTemplate
           [StringTemplateInterpolation
             (Addition (AsciiStringLiteral "x") (natural 1))]) of
-      Left (ExpectedFiniteIntegerOperand LeftOperand AsciiStringValueKind) -> True
+      Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
 
 testLookupFoliageTraversal :: IO ()
 testLookupFoliageTraversal =
   case runProgram (unlines
-      [ "\"cell2.0\" := 20"
-      , "\"cell0.2\" := 2"
-      , "\"cell1.1\" := 11"
-      , "\"cell1.0\" := 10"
-      , "\"cell0.1\" := 1"
-      , "\"cell0.0\" := 0"
+      [ "$\"cell2.0\" := 20"
+      , "$\"cell0.2\" := 2"
+      , "$\"cell1.1\" := 11"
+      , "$\"cell1.0\" := 10"
+      , "$\"cell0.1\" := 1"
+      , "$\"cell0.0\" := 0"
       , "rows := ~\"cell%Nat.%Nat\""
       , "yield (rows[0].key; rows[1].key; rows[2].key; "
           <> "rows[3].key; rows[4].key; rows[5].key)"
@@ -1841,6 +1741,135 @@ testLookupFoliageTraversal =
       "omega-squared captures use Cantor-diagonal foliage order"
       "(\"cell0.0\"; \"cell0.1\"; \"cell1.0\"; \"cell0.2\"; \"cell1.1\"; \"cell2.0\")"
       (renderInterpretedValue value)
+
+testDependentDeclarations :: IO ()
+testDependentDeclarations = do
+  expectProgram
+    "dependent declaration binds captures as it"
+    (unlines
+      [ "$!($pair; (_x : Int); $with; (_y : Int)) := it"
+      , "yield pair 1 with 2"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "let dependent declaration is visible recursively"
+    (unlines
+      [ "answer := pair 1 with 2"
+      , "let $!($pair; (_x : Int); $with; (_y : Int)) := it"
+      , "yield answer"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "unused let dependent declaration does not force its implementation"
+    (unlines
+      [ "let $!($unused; (_x : Int)) := missing"
+      , "yield 7"
+      ])
+    "7"
+  expectFailure
+    "let dependent declaration does not capture later ordinary bindings"
+    "UnknownIdentifier \"later\""
+    (unlines
+      [ "let $!($late; (_x : Int)) := later"
+      , "later := 9"
+      , "yield late 1"
+      ])
+  expectProgram
+    "parenthesized declaration head evaluates its template binding"
+    (unlines
+      [ "pattern := \"pair %(_x : Int) with %(_y : Int)\""
+      , "(pattern) := it"
+      , "yield pair 1 with 2"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "concrete lookup reaches a dependent declaration"
+    (unlines
+      [ "$!($pair; (_x : Int); $with; (_y : Int)) := it"
+      , "yield (~\"pair 1 with 2\")[0].value"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "val accepts an injective dependent declaration"
+    (unlines
+      [ "val $!($pair; (_x : Int); $with; (_y : Int)) := it"
+      , "yield pair 1 with 2"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectFailure
+    "val rejects a many-to-one dependent declaration"
+    "NonInjectiveDependentDeclaration"
+    (unlines
+      [ "val $!($pair; (_x : Int)) := 1"
+      , "yield pair 2"
+      ])
+  expectFailure
+    "dependent declarations cannot be optional"
+    "operation has no effect inside block"
+    (unlines
+      [ "$!($pair; (_x : Int))? := it"
+      , "yield 1"
+      ])
+  expectFailure
+    "an unprojectable dependent declaration is reported as overlap"
+    "OverlappingDependentDeclarations"
+    (unlines
+      [ "$!($pair; $\"1\"; (_x : Int)) := it"
+      , "yield 1"
+      ])
+  expectFailure
+    "overlapping dependent declarations are rejected"
+    "OverlappingDependentDeclarations"
+    (unlines
+      [ "$!($pair; (_x : Int)) := it"
+      , "$!($pair; $\"1\"; (_x : Int)) := it"
+      , "yield 1"
+      ])
+  expectProgram
+    "distinct dependent declaration languages coexist"
+    (unlines
+      [ "$!($left; (_x : Int)) := it"
+      , "$!($right; (_x : Int)) := it"
+      , "yield right 2"
+      ])
+    "{_x : Int := 2}"
+  expectProgram
+    "equal template shapes use capture federation disjointness"
+    (unlines
+      [ "$!($value; (_x : Int)) := 1"
+      , "$!($value; (_x : Bool)) := 2"
+      , "yield (value 3; value true)"
+      ])
+    "(1; 2)"
+  expectFailure
+    "ordinary declarations share dependent name-family admission"
+    "OverlappingDependentDeclarations"
+    (unlines
+      [ "abc := 1"
+      , "$\"abc\" := 2"
+      , "yield abc"
+      ])
+  where
+    expectProgram label source expected =
+      case runProgram source of
+        Left failure -> assertFailure
+          (label <> ": unexpected failure: " <> show failure)
+        Right value -> assertEqual label expected
+          (renderInterpretedValue value)
+    expectFailure label expected source =
+      case runProgram source of
+        Left failure -> assert
+          (label <> ": " <> show failure)
+          (expected `contains` show failure)
+        Right value -> assertFailure
+          (label <> ": unexpectedly produced " <> renderInterpretedValue value)
+    contains needle haystack = any (needle `prefixOf`) (tails haystack)
+    prefixOf [] _ = True
+    prefixOf _ [] = False
+    prefixOf (left : lefts) (right : rights) =
+      left == right && prefixOf lefts rights
+    tails [] = [[]]
+    tails value@(_ : rest) = value : tails rest
 
 testRemainingLiterals :: IO ()
 testRemainingLiterals = do
@@ -1888,8 +1917,8 @@ testBooleansAndEither = do
       (AST.equal
         AST.booleanType
         (AST.eitherType
-          (AST.dependentIdentifierType "False" (natural 0))
-          (AST.dependentIdentifierType "True" (natural 1)))) $ \value ->
+          (AST.dependentArgumentType "False" (natural 0))
+          (AST.dependentArgumentType "True" (natural 1)))) $ \value ->
     assert "Bool is definitionally False : 0 | True : 1"
       (renderInterpretedValue value == "true")
   expectValue
@@ -1900,22 +1929,22 @@ testBooleansAndEither = do
         == "false ~> Bool")
   expectValue
       "Boolean conjunction"
-      (AST.and (AST.boolean True) (AST.boolean False)) $ \value ->
+      (booleanAnd (AST.boolean True) (AST.boolean False)) $ \value ->
     assert "True and False is False"
       (renderInterpretedValue value == "false")
   expectValue
       "Boolean disjunction"
-      (AST.or (AST.boolean False) (AST.boolean True)) $ \value ->
+      (booleanOr (AST.boolean False) (AST.boolean True)) $ \value ->
     assert "False or True is True"
       (renderInterpretedValue value == "true")
-  expectValue "Boolean negation" (AST.not (AST.boolean False)) $ \value ->
+  expectValue "Boolean negation" (booleanNot (AST.boolean False)) $ \value ->
     assert "not False is True"
       (renderInterpretedValue value == "true")
   expectValue
       "canonical Boolean identifier values"
-      (AST.and
-        (AST.dependentIdentifierType "True" (natural 1))
-        (AST.dependentIdentifierType "False" (natural 0))) $ \value ->
+      (booleanAnd
+        (AST.dependentArgumentType "True" (natural 1))
+        (AST.dependentArgumentType "False" (natural 0))) $ \value ->
     assert "True : 1 and False : 0 retain Boolean behavior"
       (renderInterpretedValue value == "false")
   expectValue
@@ -1952,8 +1981,8 @@ testBooleansAndEither = do
   expectValue
       "identifier alternatives distinguish otherwise equal types"
       (AST.eitherType
-        (AST.dependentIdentifierType "x" AST.naturalType)
-        (AST.dependentIdentifierType "y" AST.naturalType)) $ \value ->
+        (AST.dependentArgumentType "x" AST.naturalType)
+        (AST.dependentArgumentType "y" AST.naturalType)) $ \value ->
     assert "identifier Atlas maps remain distinct federation members"
       (renderInterpretedValue value
         == "x : from 0 up | y : from 0 up")
@@ -1964,8 +1993,8 @@ testBooleansAndEither = do
       (renderInterpretedValue value == "from 0 up | Str")
   case interpretExpressionReason
       (AST.eitherType
-        (AST.dependentIdentifierType "x" (natural 0))
-        (AST.dependentIdentifierType "x" AST.naturalType)) of
+        (AST.dependentArgumentType "x" (natural 0))
+        (AST.dependentArgumentType "x" AST.naturalType)) of
     Left failure -> assertEqual
       "the same identifier does not distinguish overlapping alternatives"
       EitherAlternativesNotDistinct failure
@@ -1974,7 +2003,7 @@ testBooleansAndEither = do
         <> renderInterpretedValue value)
   expectValue
       "Either source branches are included as federation members"
-      (AST.subfederation
+      (subfederation
         (AST.eitherType (natural 0) (natural 1))
         AST.naturalType) $ \value ->
     assert "a union is included when each alternative is in the target"
@@ -2002,29 +2031,29 @@ testBooleansAndEither = do
       (renderInterpretedValue value == "1 ~> (0 | 1 | 2)")
   assert "Boolean operators reject non-Booleans"
     (case interpretExpressionReason
-        (AST.and (natural 1) (AST.boolean True)) of
-      Left (ExpectedBooleanOperand LeftOperand NaturalValueKind) -> True
+        (booleanAnd (natural 1) (AST.boolean True)) of
+      Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
 
 testOptionalsAndConditionals :: IO ()
 testOptionalsAndConditionals = do
   let nothingValue =
-        AST.dependentIdentifierType "Nothing" AST.emptyMap
+        AST.dependentArgumentType "Nothing" AST.emptyMap
       optionalIntegerSlots =
         MapConcatenation
           (AST.eitherType
-            (AST.dependentIdentifierType "a" AST.integerType)
+            (AST.dependentArgumentType "a" AST.integerType)
             AST.integerType)
           (AST.eitherType
-            (AST.dependentIdentifierType "b" AST.integerType)
+            (AST.dependentArgumentType "b" AST.integerType)
             AST.integerType)
       optionalIntegerSequence =
         MapSequence
           [ AST.eitherType
-              (AST.dependentIdentifierType "a" AST.integerType)
+              (AST.dependentArgumentType "a" AST.integerType)
               AST.integerType
           , AST.eitherType
-              (AST.dependentIdentifierType "b" AST.integerType)
+              (AST.dependentArgumentType "b" AST.integerType)
               AST.integerType
           ]
       optionalAssigned identifierString value =
@@ -2034,12 +2063,12 @@ testOptionalsAndConditionals = do
           AST.integerType
       optionalIdentifier identifierString =
         AST.eitherType
-          (AST.dependentIdentifierType identifierString AST.integerType)
+          (AST.dependentArgumentType identifierString AST.integerType)
           AST.integerType
   expectSourceValue
-      "a total dependent identifier belongs to an optional IdenStr slot"
+      "a total dependent argument belongs to an optional IdenStr slot"
       "(ie : $alco) of (ie? : IdenStr)" $ \value ->
-    assert "the dependent identifier widens through its identifier target"
+    assert "the dependent argument widens through its identifier target"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "canonical optional assignment belongs to its optional IdenStr slot"
@@ -2069,7 +2098,7 @@ testOptionalsAndConditionals = do
         == "nothing ~> Maybe (from 0 up)")
   expectValue
       "canonical Nothing identifier"
-      (AST.dependentIdentifierType "Nothing" AST.emptyMap
+      (AST.dependentArgumentType "Nothing" AST.emptyMap
         ~> maybeType AST.naturalType) $ \value ->
     assert "Nothing : () round-trips as the distinguished absence"
       (renderInterpretedValue value
@@ -2077,7 +2106,7 @@ testOptionalsAndConditionals = do
   expectValue
       "optional identifier"
       (AST.eitherType
-        (AST.dependentIdentifierType "a" AST.naturalType)
+        (AST.dependentArgumentType "a" AST.naturalType)
         AST.naturalType) $ \value ->
     assert "a? : Nat includes the missing-identifier Nat branch"
       (renderInterpretedValue value == "a? : from 0 up")
@@ -2093,7 +2122,7 @@ testOptionalsAndConditionals = do
       "named value specifies into its matching optional identifier slot"
       ( MapConcatenation
           (natural 12)
-          (AST.dependentIdentifierType "b" (natural 23))
+          (AST.dependentArgumentType "b" (natural 23))
           ~> optionalIntegerSlots
       ) $ \value ->
     assert "named and positional values share assignment canonicalization"
@@ -2112,7 +2141,7 @@ testOptionalsAndConditionals = do
       (AST.equal
         ( MapConcatenation
             (natural 12)
-            (AST.dependentIdentifierType "b" (natural 23))
+            (AST.dependentArgumentType "b" (natural 23))
             ~> optionalIntegerSlots
         )
         (MapConcatenation
@@ -2141,10 +2170,10 @@ testOptionalsAndConditionals = do
       (renderInterpretedValue value == "false")
   expectValue
       "optional identifier specification morphism exists"
-      (AST.subfederation
+      (subfederation
         (MapConcatenation
           (natural 2)
-          (AST.dependentIdentifierType "b" (natural 5)))
+          (AST.dependentArgumentType "b" (natural 5)))
         (MapConcatenation
           (optionalAssigned "a" 2)
           (optionalIdentifier "b"))) $ \value ->
@@ -2152,16 +2181,16 @@ testOptionalsAndConditionals = do
       (renderInterpretedValue value == "true")
   expectValue
       "optional identifier range subfederation morphism exists"
-      (AST.subfederation
+      (subfederation
         (MapConcatenation
           (natural 2)
-          (AST.dependentIdentifierType "b" (natural 5)))
+          (AST.dependentArgumentType "b" (natural 5)))
         (MapConcatenation
           (AST.eitherType
-            (AST.dependentIdentifierType "a" AST.integerType)
+            (AST.dependentArgumentType "a" AST.integerType)
             AST.integerType)
           (AST.eitherType
-            (AST.dependentIdentifierType "b" (AST.withinTo 3 8))
+            (AST.dependentArgumentType "b" (AST.withinTo 3 8))
             (AST.withinTo 3 8)))) $ \value ->
     assert "2 and b : 5 inhabit their optional integer range slots"
       (renderInterpretedValue value == "true")
@@ -2183,27 +2212,27 @@ testOptionalsAndConditionals = do
       (AST.conditional
         (AST.boolean True)
         (natural 7)
-        (AST.and (natural 1) (AST.boolean False))) $ \value ->
+        (booleanAnd (natural 1) (AST.boolean False))) $ \value ->
     assert "an unselected ill-typed branch is not evaluated"
       (renderInterpretedValue value == "7")
   assert "if rejects a non-Boolean condition"
     (case interpretExpressionReason
         (AST.conditional (natural 1) (natural 2) (natural 3)) of
-      Left (ExpectedBooleanCondition NaturalValueKind) -> True
+      Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
 
 testCombinedTypeSystems :: IO ()
 testCombinedTypeSystems = do
   let nothingValue =
-        AST.dependentIdentifierType "Nothing" AST.emptyMap
+        AST.dependentArgumentType "Nothing" AST.emptyMap
       expandedBool =
         AST.eitherType
-          (AST.dependentIdentifierType "False" (natural 0))
-          (AST.dependentIdentifierType "True" (natural 1))
+          (AST.dependentArgumentType "False" (natural 0))
+          (AST.dependentArgumentType "True" (natural 1))
       condition =
-        AST.and
+        booleanAnd
           (AST.equal AST.booleanType expandedBool)
-          (AST.not (AST.boolean False))
+          (booleanNot (AST.boolean False))
       computedInteger =
         (AST.+) (AST.minus (natural 6)) (natural 2)
   expectValue
@@ -2217,7 +2246,7 @@ testCombinedTypeSystems = do
   expectValue
       "false branch optional specification"
       ( AST.conditional
-          (AST.and (AST.boolean True) (AST.boolean False))
+          (booleanAnd (AST.boolean True) (AST.boolean False))
           (justValue computedInteger)
           nothingValue
           ~> maybeType AST.integerType
@@ -2234,7 +2263,7 @@ testCombinedTypeSystems = do
           (natural 12)
           (natural 99)
           ~> AST.eitherType
-                (AST.dependentIdentifierType "a" AST.naturalType)
+                (AST.dependentArgumentType "a" AST.naturalType)
                 AST.naturalType
       ) $ \value ->
     assert "conditional results canonicalize as optional assignments"
@@ -2245,7 +2274,7 @@ testCombinatorialNumericalSystems = do
   let smallRange = AST.integerWithinTo (-2) 2
       largeRange = AST.integerWithinTo (-5) 5
       nothingValue =
-        AST.dependentIdentifierType "Nothing" AST.emptyMap
+        AST.dependentArgumentType "Nothing" AST.emptyMap
       optionalIdentifierRange =
         AST.eitherType
           (AST.assignment "x" largeRange (AST.minus (natural 3)))
@@ -2262,12 +2291,12 @@ testCombinatorialNumericalSystems = do
       (renderInterpretedValue value == "false")
   expectValue
       "proper signed range subfederation"
-      (AST.subfederation smallRange largeRange) $ \value ->
+      (subfederation smallRange largeRange) $ \value ->
     assert "of proves an existing inclusion morphism"
       (renderInterpretedValue value == "true")
   expectValue
       "missing reverse signed range subfederation"
-      (AST.subfederation largeRange smallRange) $ \value ->
+      (subfederation largeRange smallRange) $ \value ->
     assert "of is false when the inclusion morphism does not exist"
       (renderInterpretedValue value == "false")
   expectValue
@@ -2530,7 +2559,7 @@ testRendering = do
               Left message ->
                 fail
                   ("canonical map did not parse: "
-                    <> parseFailureMessage message)
+                    <> renderParseFailure message)
               Right roundTripExpression ->
                 case interpretExpressionReason roundTripExpression of
                   Left rejection ->
@@ -3742,7 +3771,7 @@ testIdentifiers :: IO ()
 testIdentifiers = do
   ordinalImports <- requireOrdinalLibraryImports
   expectSourceRejection
-    "an inferred assignment cannot duplicate a total dependent identifier"
+    "an inferred assignment cannot duplicate a total dependent argument"
     "x := 5"
     (== RedundantAssignment)
   expectSourceValue
@@ -3751,115 +3780,117 @@ testIdentifiers = do
     assert "the non-total assignment remains a federation"
       (not (Types.interpretedValueHasTotalMap value))
   expectSourceValue
-      "dependent identifier matching uses the supplied specification"
-      "(\"abc2..9\" : range 1 to 30) of (\"abc%(it)\" : range 0 up)" $
+      "dependent argument matching uses the supplied specification"
+      "($\"abc2..9\" : range 1 to 30) of ($\"abc%(it)\" : range 0 up)" $
     \value -> assert "the matching name belongs to the instantiated name fiber"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "one supplied specification can admit another matching identifier"
-      "(\"abc5..20\" : range 1 to 30) of (\"abc%(it)\" : range 0 up)" $
+      "($\"abc5..20\" : range 1 to 30) of ($\"abc%(it)\" : range 0 up)" $
     \value -> assert "the dependent name fiber may contain multiple names"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "a name outside the instantiated dependent fiber is rejected"
-      "(\"abc0..9\" : range 1 to 30) of (\"abc%(it)\" : range 0 up)" $
+      "($\"abc0..9\" : range 1 to 30) of ($\"abc%(it)\" : range 0 up)" $
     \value -> assert "name matching uses the supplied specification's image"
       (renderInterpretedValue value == "false")
   expectSourceValue
-      "a dependent identifier has a canonical source representation"
-      "\"abc%(it)\" : range 0 up" $ \value ->
+      "a dependent argument has a canonical source representation"
+      "$\"abc%(it)\" : range 0 up" $ \value ->
     assert "the canonical form retains the identifier expression and annotation"
-      (renderInterpretedValue value == "\"abc%(it)\" : range 0 up")
+      (renderInterpretedValue value == "$\"abc%(it)\" : range 0 up")
   expectSourceRejection
     "repeated dependent-name holes retain ordinary template ambiguity"
-    "\"%(it)%(it)\" : Nat"
+    "$\"%(it)%(it)\" : Nat"
     (== AmbiguousStringTemplate)
   expectSourceValue
-      "dependent identifier name access instantiates the name expression"
-      "(\"abc%(it)\" : range 0 up) [0]" $ \value ->
+      "dependent argument name access instantiates the name expression"
+      "($\"abc%(it)\" : range 0 up) [0]" $ \value ->
     assert "the zero fiber is the name federation at the annotation"
       (renderInterpretedValue value == "\"abc%(range 0 up)\"")
   expectSourceValue
-      "a dependent identifier assignment renders its selected name"
-      "\"n%(it)\" : Nat := 5" $ \value ->
+      "a dependent argument assignment renders its selected name"
+      "$\"n%(it)\" : Nat := 5" $ \value ->
     assert "the assignment binds it after validating the given value"
       (renderInterpretedValue value == "n5 : Nat := 5")
   expectSourceValue
-      "dependent identifiers participate in specification"
-      "(\"n5\" : 5) ~> (\"n%(it)\" : Nat)" $
-    \value -> assert "dependent identifier specification retains a witness"
+      "dependent arguments participate in specification"
+      "($\"n5\" : 5) ~> ($\"n%(it)\" : Nat)" $
+    \value -> assert "dependent argument specification retains a witness"
       (interpretedValueKind value == SpecificationValueKind)
   expectSourceValue
-      "dependent identifiers participate in reverse specification"
-      "(\"n%(it)\" : Nat) <~ (\"n5\" : 5)" $
+      "dependent arguments participate in reverse specification"
+      "($\"n%(it)\" : Nat) <~ ($\"n5\" : 5)" $
     \value -> assert "reverse specification retains the dependent name witness"
       (interpretedValueKind value == SpecificationValueKind)
   expectSourceValue
-      "dependent identifier specification index zero is the complete name"
-      "((\"n5\" : 5) ~> (\"n%(it)\" : Nat)) [0]" $ \value ->
+      "dependent argument specification index zero is the complete name"
+      "(($\"n5\" : 5) ~> ($\"n%(it)\" : Nat)) [0]" $ \value ->
     assert "the name projection uses the retained dependent-name witness"
       (renderInterpretedValue value == "$n5")
   expectSourceValue
-      "dependent identifier specification index one is the underlying witness"
-      "((\"n5\" : 5) ~> (\"n%(it)\" : Nat)) [1]" $ \value ->
+      "dependent argument specification index one is the underlying witness"
+      "(($\"n5\" : 5) ~> ($\"n%(it)\" : Nat)) [1]" $ \value ->
     assert "the payload projection retains the underlying specification"
       (renderInterpretedValue value == "5 ~> Nat")
   expectSourceValue
       "reverse dependent specification has the same name projection"
-      "((\"n%(it)\" : Nat) <~ (\"n5\" : 5)) [0]" $ \value ->
+      "(($\"n%(it)\" : Nat) <~ ($\"n5\" : 5)) [0]" $ \value ->
     assert "projection is independent of specification spelling direction"
       (renderInterpretedValue value == "$n5")
   expectSourceValue
       "reverse dependent specification has the same payload projection"
-      "((\"n%(it)\" : Nat) <~ (\"n5\" : 5)) [1]" $ \value ->
+      "(($\"n%(it)\" : Nat) <~ ($\"n5\" : 5)) [1]" $ \value ->
     assert "reverse spelling retains the underlying specification"
       (renderInterpretedValue value == "5 ~> Nat")
   expectSourceValue
-      "an optional dependent identifier accepts its named branch"
-      "(\"abc2..9\" : range 1 to 30) of (\"abc%(it)\"? : range 0 up)" $
+      "an optional dependent argument accepts its named branch"
+      "($\"abc2..9\" : range 1 to 30) of ($\"abc%(it)\"? : range 0 up)" $
     \value -> assert "the named optional branch matches dependently"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "an optional dependent identifier accepts its unnamed branch"
-      "(range 1 to 30) of (\"abc%(it)\"? : range 0 up)" $
+      "an optional dependent argument accepts its unnamed branch"
+      "(range 1 to 30) of ($\"abc%(it)\"? : range 0 up)" $
     \value -> assert "the unnamed optional branch remains the annotation"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "an optional dependent identifier specifies its named branch"
-      "(\"n5\" : 5) ~> (\"n%(it)\"? : Nat)" $
+      "an optional dependent argument specifies its named branch"
+      "($\"n5\" : 5) ~> ($\"n%(it)\"? : Nat)" $
     \value -> assert "the named optional branch retains a specification witness"
       (interpretedValueKind value == SpecificationValueKind)
   expectSourceValue
       "a named optional dependent specification exposes its complete name"
-      "((\"n5\" : 5) ~> (\"n%(it)\"? : Nat)) [0]" $ \value ->
+      "(($\"n5\" : 5) ~> ($\"n%(it)\"? : Nat)) [0]" $ \value ->
     assert "the selected named branch retains its name witness"
       (renderInterpretedValue value == "$n5")
   expectSourceValue
       "a named optional dependent specification exposes its payload"
-      "((\"n5\" : 5) ~> (\"n%(it)\"? : Nat)) [1]" $ \value ->
+      "(($\"n5\" : 5) ~> ($\"n%(it)\"? : Nat)) [1]" $ \value ->
     assert "the selected named branch retains its underlying witness"
       (renderInterpretedValue value == "5 ~> Nat")
   expectSourceValue
-      "an optional dependent identifier specifies its unnamed branch"
-      "5 ~> (\"n%(it)\"? : Nat)" $
+      "an optional dependent argument specifies its unnamed branch"
+      "5 ~> ($\"n%(it)\"? : Nat)" $
     \value -> assert "the unnamed optional branch retains a specification witness"
       (interpretedValueKind value == SpecificationValueKind)
-  let contextualIt = contextualAccess (IdentifierString "_it")
-      directName = IdentifierTemplateOperation
-        [ StringTemplateLiteral "x"
-        , StringTemplateInterpolation contextualIt
-        ]
-        NaturalType
-        Nothing
-      nestedEquivalentName = IdentifierTemplateOperation
-        [ StringTemplateInterpolation
-            (StringTemplate
-              [ StringTemplateLiteral "x"
-              , StringTemplateInterpolation contextualIt
-              ])
-        ]
-        NaturalType
-        Nothing
+  let contextualIt = contextualAccess ContextualIt
+      directName = DependentArgument
+        (IdentifierExpression
+          (StringTemplate
+            [ templateLiteral "x"
+            , StringTemplateInterpolation contextualIt
+            ]))
+        (Just NaturalType)
+      nestedEquivalentName = DependentArgument
+        (IdentifierExpression
+          (StringTemplate
+            [ StringTemplateInterpolation
+              (StringTemplate
+                [ templateLiteral "x"
+                , StringTemplateInterpolation contextualIt
+                ])
+            ]))
+        (Just NaturalType)
   assert "different dependent expressions are not assumed disjoint"
     (case interpretExpressionReason
         (AST.eitherType directName nestedEquivalentName) of
@@ -3881,15 +3912,14 @@ testIdentifiers = do
         assert source (renderInterpretedValue value == "true"))
     ["abc", "Value", "Nothing"]
   let identifier identifierString typeAnnotation =
-        IdentifierOperation
-          (IdentifierString identifierString)
-          typeAnnotation
-          Nothing
+        DependentArgument
+          (IdentifierExpression (identifierReference identifierString))
+          (Just typeAnnotation)
       assignment identifierString typeAnnotation givenValue =
-        IdentifierOperation
-          (IdentifierString identifierString)
-          typeAnnotation
-          (Just givenValue)
+        MapSpecification givenValue
+          (DependentArgument
+            (IdentifierExpression (identifierReference identifierString))
+            (Just typeAnnotation))
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
       valueUnit = identifier "Value" (AtlasMap [])
@@ -3931,7 +3961,7 @@ testIdentifiers = do
       (renderInterpretedValue value == "true")
   expectValue "simple identifier type" xNatural $ \value ->
     assert "identifier types retain their two-position map view"
-      ( interpretedValueKind value == DependentIdentifierTypeValueKind
+      ( interpretedValueKind value == DependentArgumentTypeValueKind
         && interpretedMapCardinality (interpretedMap value) == 2
         && interpretedMapFinalOrderType (interpretedMap value)
           == finiteOrdinal 2
@@ -3940,7 +3970,7 @@ testIdentifiers = do
   let xFive = identifier "x" (natural 5)
   expectValue "total simple identifier type" xFive $ \value ->
     assert "a simple identifier over a total map keeps canonical type syntax"
-      ( interpretedValueKind value == DependentIdentifierTypeValueKind
+      ( interpretedValueKind value == DependentArgumentTypeValueKind
         && renderInterpretedValue value == "x : 5"
       )
   expectValue
@@ -4117,20 +4147,20 @@ testIdentifiers = do
        , interpretExpressionReason NaturalType
        ) of
     (Right five, Right naturals) -> do
-      let dependentIdentifierString canonical =
+      let dependentArgumentString canonical =
             case canonical of
               Types.CanonicalExplicit _ ordinalValue ->
                 maybe "transfinite" (("n" <>) . show)
                   (naturalAtOrdinal ordinalValue)
               _ -> "natural"
           source =
-            Types.dependentIdentifierTypeValue "n" dependentIdentifierString five
+            Types.dependentArgumentTypeValue "n" dependentArgumentString five
           target =
-            Types.dependentIdentifierTypeValue "n" dependentIdentifierString naturals
+            Types.dependentArgumentTypeValue "n" dependentArgumentString naturals
       case Types.accessValues source (Types.naturalValue 0) of
         Left rejection ->
           fail
-            ("dependent identifier string access was rejected: "
+            ("dependent argument string access was rejected: "
               <> show rejection)
         Right value ->
           assert "dependent string access evaluates the selected identifier string"
@@ -4138,22 +4168,22 @@ testIdentifiers = do
       case Types.specifyValues source target of
         Left rejection ->
           fail
-            ("dependent identifier specification was rejected: "
+            ("dependent argument specification was rejected: "
               <> show rejection)
         Right specification -> do
-          assert "dependent identifiers use the root specification rule"
+          assert "dependent arguments use the root specification rule"
             (interpretedValueKind specification == SpecificationValueKind)
           case Types.accessValues specification (Types.naturalValue 0) of
             Left rejection ->
               fail
-                ("dependent identifier specification access was rejected: "
+                ("dependent argument specification access was rejected: "
                   <> show rejection)
             Right identifierStringFiber ->
-              assert "dependent identifier-string fibers remain specifications"
+              assert "dependent argument-string fibers remain specifications"
                 ( interpretedValueKind identifierStringFiber
                     == SpecificationValueKind
                 )
-    _ -> fail "dependent identifier setup failed"
+    _ -> fail "dependent argument setup failed"
 
 testTypedRejections :: IO ()
 testTypedRejections = do
@@ -4165,14 +4195,12 @@ testTypedRejections = do
   assert "maps are rejected as numerical operands with a specific side"
     (case interpretExpressionReason
         ((AST.+) (AtlasMap [natural 0, natural 1]) (natural 1)) of
-      Left (ExpectedFiniteIntegerOperand LeftOperand MapValueKind) -> True
+      Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
   assert "non-total identifiers are rejected as numerical operands"
     (case interpretExpressionReason
-        ((AST.+) (AST.dependentIdentifierType "x" NaturalType) (natural 1)) of
-      Left
-          (ExpectedFiniteIntegerOperand
-            LeftOperand DependentIdentifierTypeValueKind) -> True
+        ((AST.+) (AST.dependentArgumentType "x" NaturalType) (natural 1)) of
+      Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
   assert "computed non-natural values are rejected as exponents"
     (case interpretWithImports ordinalImports
@@ -4238,7 +4266,7 @@ testLocatedRejection = do
       Left
           (DatraError
             (Just actualSpan)
-            (ExpectedFiniteIntegerOperand LeftOperand MapValueKind)) ->
+            (FunctionEvaluationFailed NoApplicableFunctionAlternative)) ->
         actualSpan == sourceSpan
       _ -> False)
   assert "English interpretation errors are localized only at display time"
@@ -4277,10 +4305,11 @@ testLocatedRejection = do
               <> "  șablonul nu mapează fiecare configurație sursă la un șir unic"
       Right _ -> False)
   let invalidAssignment =
-        IdentifierOperation
-          (IdentifierString "a")
-          NaturalType
-          (Just (SuperEllipsisRange (natural 1) (natural 3)))
+        MapSpecification
+          (SuperEllipsisRange (natural 1) (natural 3))
+          (DependentArgument
+            (IdentifierExpression (identifierReference "a"))
+            (Just NaturalType))
   assert "assignment mismatches have a concise English diagnostic"
     (case interpretLocatedExpression (Located sourceSpan invalidAssignment) of
       Left valueError ->
@@ -4299,11 +4328,12 @@ testLocatedRejection = do
       Right _ -> False)
   let mismatchedIdentifier =
         (~>)
-          (IdentifierOperation
-            (IdentifierString "b")
-            (natural 10)
-            Nothing)
-          (IdentifierOperation (IdentifierString "a") NaturalType Nothing)
+          (DependentArgument
+            (IdentifierExpression (identifierReference "b"))
+            (Just (natural 10)))
+          (DependentArgument
+            (IdentifierExpression (identifierReference "a"))
+            (Just NaturalType))
   assert "identifier mismatches show expected and given identifier strings"
     (case interpretLocatedExpression
         (Located sourceSpan mismatchedIdentifier) of
@@ -4315,11 +4345,12 @@ testLocatedRejection = do
       Right _ -> False)
   let valueOutsideIdentifierAnnotation =
         (~>)
-          (IdentifierOperation (IdentifierString "x") (natural 12) Nothing)
-          (IdentifierOperation
-            (IdentifierString "x")
-            (ValuedNaturalRange 1 10)
-            Nothing)
+          (DependentArgument
+            (IdentifierExpression (identifierReference "x"))
+            (Just (natural 12)))
+          (DependentArgument
+            (IdentifierExpression (identifierReference "x"))
+            (Just (ValuedNaturalRange 1 10)))
   assert "identifier membership errors show canonical expected and given values"
     (case interpretLocatedExpression
         (Located sourceSpan valueOutsideIdentifierAnnotation) of
@@ -4332,18 +4363,15 @@ testLocatedRejection = do
   let incompatibleIntermediateAnnotation =
         (~>)
           ((~>)
-            (IdentifierOperation
-              (IdentifierString "x")
-              (natural 8)
-              Nothing)
-            (IdentifierOperation
-              (IdentifierString "x")
-              (ValuedNaturalRange 5 20)
-              Nothing))
-          (IdentifierOperation
-            (IdentifierString "x")
-            (ValuedNaturalRange 1 10)
-            Nothing)
+            (DependentArgument
+              (IdentifierExpression (identifierReference "x"))
+              (Just (natural 8)))
+            (DependentArgument
+              (IdentifierExpression (identifierReference "x"))
+              (Just (ValuedNaturalRange 5 20))))
+          (DependentArgument
+            (IdentifierExpression (identifierReference "x"))
+            (Just (ValuedNaturalRange 1 10)))
   assert "failed annotation widening identifies the intermediate federation"
     (case interpretLocatedExpression
         (Located sourceSpan incompatibleIntermediateAnnotation) of

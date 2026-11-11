@@ -13,7 +13,6 @@ import DatraOrdinal (naturalAtOrdinal)
 import Evaluation.Value
 import Evaluation.Numerical
   ( complementedIntegerTypeIncludesInfinity )
-import IdentifierValueType (identifierValueCharacterAlphabet)
 
 data StringConversionProperties = StringConversionProperties
   { conversionCharacterAlphabet :: Maybe String
@@ -40,8 +39,7 @@ proveInjectiveToString datraType decodeCanonical source =
     properties = case canonicalStringImplementation datraType of
       StructuralCanonicalString -> stringConversionProperties semantics
       FunctionCanonicalString -> unknownAlphabetProperties
-      BuiltinMetaCanonicalString kind ->
-        exactStrings [builtinMetaTypeCanonicalString kind]
+      PrimitiveCanonicalString _ -> unknownAlphabetProperties
       TotalBlockCanonicalString -> stringConversionProperties semantics
     semantics = interpretedSemanticSemantics source
 
@@ -56,20 +54,24 @@ stringConversionProperties semantics
       complementedIntegerProperties includesInfinity
   | otherwise = case semantics of
     NeverSemantics -> exactStrings ["Never"]
-    BuiltinMetaTypeSemantics _ -> unknownConversion
+    PrimitiveTypeSemantics _ -> unknownConversion
     FunctionSemantics {} -> injectiveUnknownAlphabet
     FunctionBodySemantics {} -> injectiveUnknownAlphabet
     ExplicitSemantics {} -> knownAlphabet "0123456789"
     IntegerSemantics {} -> knownAlphabet "-0123456789"
+    IntegerLimitSemantics limit -> case limit of
+      NegativeInfinity -> exactStrings ["-Infinity"]
+      FiniteInteger integer -> exactStrings [show integer]
+      PositiveInfinity -> exactStrings ["Infinity"]
     NaturalRangeSemantics {} -> numericRange
     ValuedNaturalRangeSemantics {} -> naturalNumber
     NaturalTypeSemantics -> naturalNumber
     IntegerRangeSemantics {} -> numericRange
     ValuedIntegerRangeSemantics {} -> integerNumber
+    IntegerLimitRangeSemantics {} -> numericRange
     IntegerTypeSemantics -> integerNumber
     AsciiStringSemantics {} -> injectiveUnknownAlphabet
-    IdentifierValueTypeSemantics ->
-      knownAlphabet identifierValueCharacterAlphabet
+    IdentifierExpressionSemantics {} -> injectiveUnknownAlphabet
     EitherSemantics left right ->
       eitherConversionProperties
         (stringConversionProperties left)
@@ -77,17 +79,17 @@ stringConversionProperties semantics
     SkipSemantics _ -> exactStrings ["*"]
     RangeConcatenationSemantics {} -> injectiveUnknownAlphabet
     ConcatenationSemantics members -> compositeProperties members
-    DependentIdentifierTypeSemantics dependency underlying True _
+    DependentArgumentTypeSemantics dependency underlying True _
       | Just rendered <- reservedConstructorString dependency underlying ->
           exactStrings [rendered]
-    DependentIdentifierTypeSemantics
+    DependentArgumentTypeSemantics
         (SimpleIdentifierDependency _) underlying _ _ ->
       structuralWrapperProperties underlying
-    DependentIdentifierTypeSemantics
-        (DependentIdentifierDependency {}) underlying _ True ->
+    DependentArgumentTypeSemantics
+        (DependentArgumentDependency {}) underlying _ True ->
       structuralWrapperProperties underlying
-    DependentIdentifierTypeSemantics
-        (DependentIdentifierDependency {}) _ _ False ->
+    DependentArgumentTypeSemantics
+        (DependentArgumentDependency {}) _ _ False ->
       unknownConversion
     -- A projection may erase the underlying member entirely: a constant
     -- identifier family maps every member to the same string, and a dependent
@@ -100,7 +102,7 @@ stringConversionProperties semantics
       compositeProperties [typeAnnotation, givenValue]
     CoalizationSemantics operand -> structuralWrapperProperties operand
     MapSemantics _ components -> compositeProperties components
-    ArgumentMapSemantics _ components -> compositeProperties components
+    ArgumentativeMapSemantics _ components -> compositeProperties components
     SpecificationSemantics source target ->
       compositeProperties [source, target]
     FormulationSemantics {} -> injectiveUnknownAlphabet

@@ -17,14 +17,16 @@ import DatraLanguage.AST.Operator
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST
-  ( StringTemplatePart (..)
-  , renderAsciiStringLiteral
+  ( StringTemplateInterpolation (..)
+  )
+import DatraLanguage.Pretty
+  ( renderAsciiStringLiteral
   , renderIdentifierString
   , renderStringTemplate
   )
 import DatraTypes
   ( CanonicalResult (..)
-  , builtinMetaTypeCanonicalString
+  , IntegerLimit (..)
   , InterpretedValue
   , interpretedCanonicalResult
   , interpretedEvaluationSource
@@ -108,9 +110,6 @@ terminateBeforeNewline (component : remaining) =
 
 prettyCanonicalResult :: CanonicalResult -> Doc annotation
 prettyCanonicalResult result
-  | result == CanonicalAsciiString "PosInf" = "Infinity"
-  | result == CanonicalAsciiString "NegInf" =
-      prettySourceSymbol MinusOperator <> "Infinity"
   | isBooleanValue "False" 0 result =
       pretty (Reserved.reservedSymbolIdentifierString Reserved.FalseSymbol)
   | isBooleanValue "True" 1 result =
@@ -130,8 +129,7 @@ prettyNonKeywordCanonicalResult result =
     CanonicalApplication function argument ->
       prettyCanonicalApplicationOperand function
         <+> prettyCanonicalApplicationArgument argument
-    CanonicalBuiltinMetaType kind ->
-      pretty (builtinMetaTypeCanonicalString kind)
+    CanonicalPrimitiveType kind -> pretty (show kind)
     CanonicalFunction input output body ->
       let signature = parens (prettyCanonicalResult input) <+> "->" <+> parens (prettyCanonicalResult output)
       in case body of
@@ -140,6 +138,10 @@ prettyNonKeywordCanonicalResult result =
     CanonicalExplicit _ value -> prettyExplicit value
     CanonicalInteger value ->
       prettySourceSymbol MinusOperator <> pretty (negate value)
+    CanonicalIntegerLimit value -> case value of
+      NegativeInfinity -> prettySourceSymbol MinusOperator <> "Infinity"
+      FiniteInteger integer -> pretty integer
+      PositiveInfinity -> "Infinity"
     CanonicalFormulation level -> prettyFormulation level
     CanonicalSkip _ -> pretty skipSourceSymbol
     CanonicalRange description -> prettyRange description
@@ -150,6 +152,9 @@ prettyNonKeywordCanonicalResult result =
     CanonicalIntegerRange origin target -> prettyIntegerRange origin target
     CanonicalValuedIntegerRange origin target ->
       prettyValuedIntegerRange origin target
+    CanonicalIntegerLimitRange origin target ->
+      rangeWord <+> prettyIntegerLimit origin
+        <+> toWord <+> prettyIntegerLimit target
     CanonicalIntegerType -> reservedSymbolDoc Reserved.IntegerTypeSymbol
     CanonicalEither left right -> prettyEither result left right
     CanonicalRangeConcatenation descriptions ->
@@ -159,12 +164,13 @@ prettyNonKeywordCanonicalResult result =
       concatWith (\left right -> left <> ", " <> right)
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
-    CanonicalIdentifierValueType ->
-      reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
+    CanonicalIdentifierExpression value ->
+      pretty ('$' : renderIdentifierString value)
     CanonicalToString source ->
       pretty
         (renderStringTemplate
           renderCanonicalResult
+          canonicalStringLiteral
           compactCanonicalStringInterpolation
           [StringTemplateInterpolation source])
     CanonicalTemplate template ->
@@ -173,22 +179,23 @@ prettyNonKeywordCanonicalResult result =
           pretty
             (renderStringTemplate
               renderCanonicalResult
+              canonicalStringLiteral
               compactCanonicalStringInterpolation
               parts)
         Nothing -> prettyCanonicalResult template
     CanonicalDependentSum source -> pretty source
     CanonicalSimpleIdentifierType identifierString typeAnnotation ->
       pretty (renderIdentifierString identifierString)
-        <+> prettySourceSymbol DependentIdentifierTypeOperator
+        <+> prettySourceSymbol DependentArgumentTypeOperator
         <+> prettyCanonicalResult typeAnnotation
-    CanonicalDependentIdentifierType familyKey typeAnnotation ->
+    CanonicalDependentArgumentType familyKey typeAnnotation ->
       pretty familyKey
-        <+> prettySourceSymbol DependentIdentifierTypeOperator
+        <+> prettySourceSymbol DependentArgumentTypeOperator
         <+> prettyCanonicalResult typeAnnotation
     CanonicalIdentifierStringProjection familyKey typeAnnotation ->
       parens
         (pretty familyKey
-          <+> prettySourceSymbol DependentIdentifierTypeOperator
+          <+> prettySourceSymbol DependentArgumentTypeOperator
           <+> prettyCanonicalResult typeAnnotation)
         <+> prettySourceSymbol AccessOperator
         <+> "0"
@@ -200,7 +207,7 @@ prettyNonKeywordCanonicalResult result =
         <> prettyCoalizationOperand operand
     CanonicalMap cardinality components ->
       prettyMap cardinality components
-    CanonicalArgumentMap _ components ->
+    CanonicalArgumentativeMap _ components ->
       "{" <> concatWith (\left right -> left <> "; " <> right)
         (map prettyArgumentMember components) <> "}"
     CanonicalSpecification source target ->
@@ -240,16 +247,15 @@ prettyCanonicalApplicationArgument argument =
   case argument of
     CanonicalReference {} -> prettyCanonicalResult argument
     CanonicalNamedAccess {} -> prettyCanonicalResult argument
-    CanonicalBuiltinMetaType {} -> prettyCanonicalResult argument
+    CanonicalPrimitiveType {} -> prettyCanonicalResult argument
     CanonicalExplicit {} -> prettyCanonicalResult argument
     CanonicalInteger {} -> prettyCanonicalResult argument
     CanonicalFormulation {} -> prettyCanonicalResult argument
     CanonicalNaturalType -> prettyCanonicalResult argument
     CanonicalIntegerType -> prettyCanonicalResult argument
-    CanonicalIdentifierValueType -> prettyCanonicalResult argument
     CanonicalDependentSum {} -> prettyCanonicalResult argument
     CanonicalAsciiString {} -> prettyCanonicalResult argument
-    CanonicalArgumentMap {} -> prettyCanonicalResult argument
+    CanonicalArgumentativeMap {} -> prettyCanonicalResult argument
     _ -> parens (prettyCanonicalResult argument)
 
 prettyConcatenationMember :: CanonicalResult -> Doc annotation
@@ -268,7 +274,7 @@ prettyArgumentMember member = prettyConcatenationMember member
 
 canonicalStringTemplateParts
   :: CanonicalResult
-  -> Maybe [StringTemplatePart CanonicalResult]
+  -> Maybe [StringTemplateInterpolation CanonicalResult]
 canonicalStringTemplateParts result =
   case result of
       CanonicalReference {} ->
@@ -279,9 +285,8 @@ canonicalStringTemplateParts result =
         Just [StringTemplateInterpolation result]
       CanonicalConcatenation members ->
         concat <$> traverse canonicalStringTemplateParts members
-      CanonicalAsciiString value -> Just [StringTemplateLiteral value]
-      CanonicalIdentifierValueType ->
-        Just [StringTemplateInterpolation result]
+      CanonicalAsciiString value ->
+        Just [StringTemplateInterpolation (CanonicalAsciiString value)]
       CanonicalToString source -> Just [StringTemplateInterpolation source]
       CanonicalTemplate nested -> canonicalStringTemplateParts nested
       _ -> Nothing
@@ -289,8 +294,6 @@ canonicalStringTemplateParts result =
 compactCanonicalStringInterpolation :: CanonicalResult -> Maybe String
 compactCanonicalStringInterpolation result
   | CanonicalReference name <- result = Just name
-  | result == CanonicalIdentifierValueType =
-      reserved Reserved.IdentifierValueTypeSymbol
   | result == CanonicalNaturalType = reserved Reserved.NaturalTypeSymbol
   | result == CanonicalIntegerType = reserved Reserved.IntegerTypeSymbol
   | isBooleanValue "False" 0 result = reserved Reserved.FalseSymbol
@@ -300,6 +303,10 @@ compactCanonicalStringInterpolation result
   | otherwise = Nothing
   where
     reserved = Just . Reserved.reservedSymbolIdentifierString
+
+canonicalStringLiteral :: CanonicalResult -> Maybe String
+canonicalStringLiteral (CanonicalAsciiString value) = Just value
+canonicalStringLiteral _ = Nothing
 
 prettySpecificationOperand :: CanonicalResult -> Doc annotation
 prettySpecificationOperand operand =
@@ -355,7 +362,6 @@ isAtomicOptionalOperand CanonicalReference {} = True
 isAtomicOptionalOperand CanonicalNamedAccess {} = True
 isAtomicOptionalOperand CanonicalNaturalType = True
 isAtomicOptionalOperand CanonicalIntegerType = True
-isAtomicOptionalOperand CanonicalIdentifierValueType = True
 isAtomicOptionalOperand operand = isBooleanType operand
 
 optionalIdentifierParts
@@ -369,7 +375,7 @@ optionalIdentifierParts left right =
           Just
             (pretty (renderIdentifierString identifierString)
               <> prettySourceSymbol OptionalOperator
-              <+> prettySourceSymbol DependentIdentifierTypeOperator
+              <+> prettySourceSymbol DependentArgumentTypeOperator
               <+> prettyCanonicalResult typeAnnotation)
     CanonicalAssignment identifierString typeAnnotation givenValue
       | typeAnnotation == right ->
@@ -378,10 +384,10 @@ optionalIdentifierParts left right =
               <> prettySourceSymbol OptionalOperator
               <+> if typeAnnotation == givenValue
                 then
-                  prettySourceSymbol DependentIdentifierTypeOperator
+                  prettySourceSymbol DependentArgumentTypeOperator
                     <+> prettyCanonicalResult givenValue
                 else
-                  prettySourceSymbol DependentIdentifierTypeOperator
+                  prettySourceSymbol DependentArgumentTypeOperator
                     <+> prettyCanonicalResult typeAnnotation
                     <+> prettySourceSymbol AssignmentOperator
                     <+> prettyCanonicalResult givenValue)
@@ -440,11 +446,11 @@ prettyAssignment identifierString typeAnnotation givenValue =
   if typeAnnotation == givenValue
     then
       pretty (renderIdentifierString identifierString)
-        <+> prettySourceSymbol DependentIdentifierTypeOperator
+        <+> prettySourceSymbol DependentArgumentTypeOperator
         <+> prettyCanonicalResult givenValue
     else
       pretty (renderIdentifierString identifierString)
-        <+> prettySourceSymbol DependentIdentifierTypeOperator
+        <+> prettySourceSymbol DependentArgumentTypeOperator
         <+> prettyCanonicalResult typeAnnotation
         <+> prettySourceSymbol AssignmentOperator
         <+> prettyCanonicalResult givenValue
@@ -502,6 +508,12 @@ prettyValuedIntegerRange origin target =
       fromWord <> " " <> pretty origin <> " " <> downwardsWord
     AllIntegersTarget -> reservedSymbolDoc Reserved.IntegerTypeSymbol
 
+prettyIntegerLimit :: IntegerLimit -> Doc annotation
+prettyIntegerLimit limit = case limit of
+  NegativeInfinity -> "-Infinity"
+  FiniteInteger value -> pretty value
+  PositiveInfinity -> "Infinity"
+
 rangeWord, fromWord, toWord, upwardsWord, downwardsWord :: Doc annotation
 rangeWord = reservedSymbolDoc Reserved.RangeSymbol
 fromWord = reservedSymbolDoc Reserved.FromSymbol
@@ -540,7 +552,7 @@ coalizationOperandNeedsParens operand =
     CanonicalTemplate {} -> True
     CanonicalDependentSum {} -> True
     CanonicalSimpleIdentifierType {} -> True
-    CanonicalDependentIdentifierType {} -> True
+    CanonicalDependentArgumentType {} -> True
     CanonicalIdentifierStringProjection {} -> True
     CanonicalAssignment {} -> True
     CanonicalSpecification {} -> True

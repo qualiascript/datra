@@ -14,3 +14,4 @@ input.datra
 output.datra
 output.datra.ast
 output.datra.error
+/dist-prof-focused/

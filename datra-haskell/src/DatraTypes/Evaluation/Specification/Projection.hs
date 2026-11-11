@@ -6,20 +6,19 @@ module Evaluation.Specification.Projection
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
 import BooleanType (DatraBoolean (..))
-import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError)
 import Evaluation.Identifier (identifierNameFederationFor)
 import Evaluation.Map (makeAtlasMapPreservingSingleton)
 import Evaluation.Specification (specifyValues)
 import Evaluation.Value
-import DatraLanguage.SyntaxTemplate
+import StringExpression
   ( TemplateSelection (..)
   , templateSelectionProjection
   )
 
 -- | Present retained matching evidence as an ordinary finite map. String
 -- templates expose the complete source string followed by their interpolation
--- selections. Dependent identifiers expose their selected name followed by
+-- selections. Dependent arguments expose their selected name followed by
 -- the specification of their underlying values.
 specificationProjection
   :: EvaluatedSpecification
@@ -38,9 +37,9 @@ projectionFor
   -> Either InterpretingError (Maybe InterpretedValue)
 projectionFor source target member =
   case (interpretedForm source, interpretedForm target, member) of
-    ( DependentIdentifierTypeForm sourceIdentifier
-      , DependentIdentifierTypeForm targetIdentifier
-      , EvaluatedDependentIdentifierTypeMember
+    ( DependentArgumentTypeForm sourceIdentifier
+      , DependentArgumentTypeForm targetIdentifier
+      , EvaluatedDependentArgumentTypeMember
           (Just _)
           _
       ) -> do
@@ -51,9 +50,9 @@ projectionFor source target member =
           (evaluatedIdentifierUnderlying targetIdentifier)
         pure (Just (selectionProjection
           (TemplateSelection sourceName [underlying])))
-    ( DependentIdentifierTypeForm sourceIdentifier
-      , DependentIdentifierTypeForm targetIdentifier
-      , EvaluatedDependentIdentifierTypeMember
+    ( DependentArgumentTypeForm sourceIdentifier
+      , DependentArgumentTypeForm targetIdentifier
+      , EvaluatedDependentArgumentTypeMember
           Nothing
           underlyingMember
       ) ->
@@ -92,7 +91,7 @@ concreteString value =
       concreteString (evaluatedSpecificationSourceValue specification)
     AssignmentForm specification ->
       concreteString (evaluatedSpecificationSourceValue specification)
-    DependentIdentifierTypeForm identifier ->
+    DependentArgumentTypeForm identifier ->
       concreteString (evaluatedIdentifierUnderlying identifier)
     _ -> Nothing
 
@@ -121,11 +120,6 @@ templateHoles target member =
             <*> templateHoles right rightMember
         _ -> pure Nothing
     AsciiStringForm _ -> pure (Just [])
-    IdentifierValueTypeForm ->
-      case member of
-        EvaluatedAsciiStringMember characters ->
-          Just . pure <$> specifyValues (makeAsciiString characters) target
-        _ -> pure Nothing
     ToStringForm ->
       case (interpretedAtlasMapFederation target, member) of
         ( PrimitiveAtlasMapFederation

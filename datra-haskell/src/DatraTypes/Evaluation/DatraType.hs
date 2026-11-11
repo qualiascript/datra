@@ -6,14 +6,14 @@
 -- tying the runtime representation to the current Haskell evaluator: a future
 -- self-hosted standard library can select the same capabilities declaratively.
 module Evaluation.DatraType
-  ( ASTMetaCategory (..)
-  , BuiltinMetaType (..)
+  ( SyntaxCategory (..)
+  , PrimitiveType (..)
   , CanonicalStringImplementation (..)
   , DatraType
   , DatraTypeFamily (..)
   , structuralDatraType
   , functionDatraType
-  , builtinMetaDatraType
+  , primitiveDatraType
   , totalBlockDatraType
   , composedStructuralDatraType
   , datraTypeFamily
@@ -23,24 +23,23 @@ module Evaluation.DatraType
 -- | Host-provided primitive families exposed through declarations in
 -- @libs/std.datra@.  These names are capabilities, not language-level
 -- bindings; the standard library remains responsible for publishing them.
-data ASTMetaCategory
+data SyntaxCategory
   = ExpressionAST
   | BlockAST
   | FunctionBodyAST
   | DeclarationAST
-  | DependentIdentifierAST
+  | DependentArgumentAST
+  | IdentifierExpressionAST
   deriving (Eq, Show)
 
-data BuiltinMetaType
-  = AnyMetaType
-  | OrdinalMetaType
-  | ASTMetaType ASTMetaCategory
-  | NatRangeMetaType
-  | IntRangeMetaType
-  | NatValRangeMetaType
-  | IntValRangeMetaType
-  | TemplateMetaType
-  | SyntaxTemplateMetaType
+data PrimitiveType
+  = AnyPrimitive
+  | OrdinalPrimitive
+  | SyntaxPrimitive SyntaxCategory
+  | NatRangePrimitive
+  | IntRangePrimitive
+  | NatValRangePrimitive
+  | IntValRangePrimitive
   deriving (Eq, Show)
 
 -- | One family owns both fundamental typing operations. Keeping this as one
@@ -49,7 +48,7 @@ data BuiltinMetaType
 data DatraTypeFamily
   = StructuralTypeFamily
   | FunctionTypeFamily
-  | BuiltinMetaTypeFamily BuiltinMetaType
+  | PrimitiveTypeFamily PrimitiveType
   | TotalBlockTypeFamily
   deriving (Eq, Show)
 
@@ -61,7 +60,7 @@ newtype TypeImplementations = TypeImplementations
 data CanonicalStringImplementation
   = StructuralCanonicalString
   | FunctionCanonicalString
-  | BuiltinMetaCanonicalString BuiltinMetaType
+  | PrimitiveCanonicalString PrimitiveType
   | TotalBlockCanonicalString
   deriving (Eq, Show)
 
@@ -83,10 +82,10 @@ functionDatraType :: DatraType
 functionDatraType = makeDatraType
   FunctionTypeFamily FunctionCanonicalString
 
-builtinMetaDatraType :: BuiltinMetaType -> DatraType
-builtinMetaDatraType kind =
+primitiveDatraType :: PrimitiveType -> DatraType
+primitiveDatraType kind =
   makeDatraType
-    (BuiltinMetaTypeFamily kind) (BuiltinMetaCanonicalString kind)
+    (PrimitiveTypeFamily kind) (PrimitiveCanonicalString kind)
 
 -- | An evaluated begin/yield block is a total singleton type.  Its sole
 -- member is the yielded value; block source is retained separately as

@@ -32,7 +32,7 @@ module NaturalRange
   , naturalSubrangeEllipsisRange
   ) where
 
-import Atlas (AtlasWitness, atlasWitness)
+import Atlas (atlasWitness)
 import AtlasConfederation
   ( AtlasConfederationComponent
   , AtlasMergePresentation (AtlasMergeAtom)
@@ -51,10 +51,13 @@ import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import Dominion (Dominion, dominion)
 import EllipsisNatural (EllipsisNatural)
 import EllipsisRange (EllipsisRange)
+import EllipsisRange.Witness (withRangeAtlasWitness)
 import EmptyAtlas (emptyAtlas)
-import MapOperators.IndexedAtlasMap (indexedAtlasAtlas)
-import MapOperators.OrderedAtlasMap
-  ( OrderedAtlasMap (EmptyOrderedAtlasMap, NonEmptyOrderedAtlasMap)
+import NaturalPairing
+  ( pairNaturals
+  , triangularPrefix
+  , unpairNaturals
+  , unrankFinitePair
   )
 import Numeric.Natural (Natural)
 import NaturalRange.Interval
@@ -78,7 +81,6 @@ import SuperEllipsisRange
   , SuperEllipsisRangeTarget (GivenTarget)
   , superEllipsisRange
   , superEllipsisRangeEither
-  , superEllipsisRangeOrderedMap
   )
 import SuperEllipsisValue (superEllipsisValueOrdinal)
 
@@ -405,17 +407,6 @@ emptyRangeComponent :: AtlasConfederationComponent
 emptyRangeComponent =
   emptyAtlas (atlasConfederationComponentWitness . atlasWitness)
 
-withRangeAtlasWitness
-  :: EllipsisRange scope
-  -> (forall atlasObject. AtlasWitness atlasObject -> result)
-  -> result
-withRangeAtlasWitness valueRange useWitness =
-  case superEllipsisRangeOrderedMap valueRange of
-    EmptyOrderedAtlasMap ->
-      emptyAtlas (useWitness . atlasWitness)
-    NonEmptyOrderedAtlasMap valueMap ->
-      useWitness (atlasWitness (indexedAtlasAtlas valueMap))
-
 subrangesSeparated
   :: NaturalSubrange scope
   -> NaturalSubrange scope
@@ -485,20 +476,6 @@ unrankFiniteSubrange outerStart outerTarget valueRank = do
   where
     width = distance outerStart outerTarget + 1
 
-triangularPrefix :: Natural -> Natural -> Natural
-triangularPrefix width offset =
-  offset * (2 * width - offset + 1) `div` 2
-
-unrankFinitePair :: Natural -> Natural -> Maybe (Natural, Natural)
-unrankFinitePair width = go 0
-  where
-    go offset remainder
-      | offset >= width = Nothing
-      | remainder < rowSize = Just (offset, offset + remainder)
-      | otherwise = go (offset + 1) (remainder - rowSize)
-      where
-        rowSize = width - offset
-
 rankUpwardsSubrange :: Natural -> NaturalSubrange scope -> Natural
 rankUpwardsSubrange _ EmptySubrange = 0
 rankUpwardsSubrange outerStart (FiniteSubrange start target) =
@@ -519,21 +496,6 @@ unrankUpwardsSubrange outerStart valueRank
       pure (FiniteSubrange start (start + lengthOffset))
   | otherwise =
       Just (UpwardsSubrange (outerStart + (valueRank - 2) `div` 2))
-
-pairNaturals :: Natural -> Natural -> Natural
-pairNaturals left right =
-  triangular (left + right) + right
-
-unpairNaturals :: Natural -> Maybe (Natural, Natural)
-unpairNaturals = go 0
-  where
-    go diagonal remainder
-      | remainder < diagonal + 1 =
-          Just (diagonal - remainder, remainder)
-      | otherwise = go (diagonal + 1) (remainder - diagonal - 1)
-
-triangular :: Natural -> Natural
-triangular value = value * (value + 1) `div` 2
 
 distance :: Natural -> Natural -> Natural
 distance left right

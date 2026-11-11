@@ -14,7 +14,6 @@ import Evaluation.Specification.Decision
   , mapDecision
   )
 import Evaluation.Value
-import IdentifierValueType (isIdentifierValue)
 
 -- | Whether a value denotes only strings.  Most cases are visible directly
 -- in the federation expression.  A source-defined string type additionally
@@ -36,23 +35,8 @@ valueProducesStrings value =
       _ -> False
   where
     coalizedCharacterList operand =
-      case interpretedForm operand of
-        DependentSumForm dependent ->
-          case evaluatedDependentSumStructure dependent of
-            ListDependentSum elementType -> isCharacterType elementType
-            _ -> False
-        _ -> False
-    isCharacterType elementType =
-      case interpretedForm elementType of
-        DependentSumForm dependent ->
-          case evaluatedDependentSumStructure dependent of
-            CharacterDependentSum -> True
-            _ -> False
-        SpecificationForm specification ->
-          isCharacterType (evaluatedSpecificationTarget specification)
-        AssignmentForm specification ->
-          isCharacterType (evaluatedSpecificationTarget specification)
-        _ -> False
+      maybe False (isCharacterType . snd)
+        (finiteDependentSumView operand)
 
 -- | Whether every member described by a federation is an ASCII string.
 federationProducesStrings :: InterpretedAtlasMapFederation -> Bool
@@ -64,7 +48,6 @@ federationProducesStrings federation =
         _ -> False
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
-        IdentifierValueTypeAtlasMapFederation -> True
         ToStringAtlasMapFederation _ _ -> True
         _ -> False
     CoalizedAtlasMapFederation operand ->
@@ -87,8 +70,29 @@ selectStringFederationMember selectMember source target = do
     case interpretedSemanticResult source of
       CanonicalAsciiString value -> Just value
       _ -> Nothing
-  selectCharacters
-    selectMember characters (interpretedAtlasMapFederation target)
+  case finiteDependentSumView target of
+    Just (minimumLength, elementType)
+      | isCharacterType elementType ->
+          Just (if fromIntegral (length characters) >= minimumLength
+            then DecisionProved
+              (EvaluatedSingletonAtlasMapMember
+                (interpretedSemanticResult source))
+            else DecisionRefuted)
+    _ -> selectCharacters
+      selectMember characters (interpretedAtlasMapFederation target)
+
+isCharacterType :: InterpretedValue -> Bool
+isCharacterType elementType =
+  case interpretedForm elementType of
+    DependentSumForm dependent ->
+      case evaluatedDependentSumStructure dependent of
+        CharacterDependentSum -> True
+        _ -> False
+    SpecificationForm specification ->
+      isCharacterType (evaluatedSpecificationTarget specification)
+    AssignmentForm specification ->
+      isCharacterType (evaluatedSpecificationTarget specification)
+    _ -> False
 
 selectCharacters
   :: SelectMember
@@ -110,11 +114,6 @@ selectCharacters selectMember characters federation =
         _ -> Nothing
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
-        IdentifierValueTypeAtlasMapFederation ->
-          Just
-            (if isIdentifierValue characters
-              then DecisionProved (EvaluatedAsciiStringMember characters)
-              else DecisionRefuted)
         ToStringAtlasMapFederation source proof ->
           Just
             (case invertInjectiveToString proof characters of
