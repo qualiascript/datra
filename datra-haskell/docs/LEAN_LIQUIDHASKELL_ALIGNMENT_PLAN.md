@@ -49,7 +49,27 @@ under `Datra.Semantics`. This denotational layer is mostly extensional:
 The `datra-lean/Executable` modules model the executable representations and
 prove their interpretations into this denotational layer. Derived construction
 bridges and the Yoneda packaging boundary still need work; the correspondence
-manifest records their coverage separately.
+manifest records their coverage separately. The executable coalition-to-inclusion
+arrow and inclusion action on insertions have interpretation theorems, including
+identity and composition in the stable-transversal category. The full Dominion
+inclusion adjunction remains partial. The Charter object has an executable
+coverage-enumeration Dominion, guarded data-arrow inverses, and an isomorphism
+to the written covered-subtype Atlas. The complete-action helper preserves
+the dependent cell and both directions of its insertion, including under
+padding normalization. Charter's runtime arrow action restricts that complete
+action and uses checked source-inclusion inverse evidence. The complete Charter
+arrow, unit, counit, lift, and lower operations have semantic bridges. Its full
+identity, composition, inverse, and naturality laws follow through a transported
+hom equivalence. The Atlas-map and transversal-map wrappers preserve their
+stored arrows, and their inclusion actions agree with the semantic full
+subcategories. Charter coverage witnesses reuse the original Atlas search's
+region and recompute the charted caches, matching the Haskell algorithm.
+
+The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
+ranking round trip, charted witness caches, and propagation of coverage and
+inverse certificates across public entry points still need checked contracts.
+The checked insertion helpers alone do not discharge those assembly obligations;
+these modules remain partially aligned.
 
 ### Haskell and LiquidHaskell
 
@@ -74,6 +94,25 @@ The current `DatraCore` representation is executable and intensional:
   full-spine coherence, and pagewise-disjointness witnesses.
 - Primitive Atlas morphisms normalize at source and target and carry page-arrow
   preservation and data-naturality witnesses.
+- Primitive Atlas transversals certify coverage of the actual mapped source datum.
+  Their callback receives only the covered source; the shared image operation
+  supplies the dependent target datum used by the coverage predicate.
+- Primitive stable Atlas transversals carry an explicit coalition inverse and
+  its left-inverse certificate for the actual forward coalition action.
+  Identity and composition derive the insertion and its certificate
+  structurally; coverage preservation alone does not supply an executable inverse.
+- The executable coalition-to-inclusion construction additionally takes a component
+  inverse on target cell data, with a checked left-inverse certificate for the
+  transported coalition action. Uncovered target data need no coverage search.
+- Charter counits and the lowering hom map take an explicit inverse on original
+  cell data, with a checked left-inverse certificate. `chartCellData` constructs
+  a charted datum from checked coverage evidence.
+- Charter data arrows verify inverse candidates against the target Dominion's
+  rank before retaining them. Their origin-image equation then reflects target
+  coverage back to the source cell.
+- `chartMap` and `charterFunctorHom` take the source's covered-inclusion inverse
+  and left-inverse certificate. Complete components use this inverse to retain
+  source coverage. `chartLift` derives it from its source Atlas-map evidence.
 - `AtlasMorphism` and `AtlasHom` explicitly represent identity and composition.
   A materialized identity is the Atlas normalization/coherence idempotent, and
   composite evaluation inserts the middle Atlas coherence.
@@ -310,6 +349,9 @@ unexplained semantic/executable mismatch.
 
 - Implement the GADT-equivalent folio and padded page lookup.
 - Implement traces and trace-derived arrows.
+- Retain genuine-page identity in the phantom cell index: equal chain/value
+  payloads on different genuine pages may have different covered sub-dominions.
+  Padding normalization must preserve this identity.
 - Prove page-element category laws and all normalization lemmas.
 - Build the equivalence with the semantic category of elements.
 - Model pagination ownership and morphisms as object maps with an arrow witness.
@@ -409,7 +451,9 @@ and Haskell modules in this order:
 
 1. Atlas extent, territory, and covered page elements.
 2. Atlas transposals, ordered transposals, transversals, and stable transversals.
-3. Dominion inclusion, charter, coalition, and cartography.
+3. Dominion inclusion, charter, coalition, and cartography. Charter must restrict
+   the complete transversal action; arbitrary intermediate Atlas morphisms need
+   not preserve coverage. Its inverse candidates must retain source coverage.
 4. Empty Atlas, merge, sequence, confederation, federation, and horizontal sum.
 5. Data transversals, stable data transversals, navigation, expedition, and
    Data Transformation Maps.

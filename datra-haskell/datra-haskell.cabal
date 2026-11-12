@@ -178,6 +178,7 @@ library
         Charter.Internal
         Charter.LiquidInternal
         Coalition.Internal
+        Coalition.Element.Internal
         DomanialInclusion.Internal
         DomanialInclusion.LiquidInternal
         StableAtlasTransversal.Internal

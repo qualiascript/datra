@@ -1,4 +1,5 @@
 {-# LANGUAGE QualifiedDo #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Main (main) where
@@ -22,6 +23,7 @@ import Charter
 import Coalition
 import Consolidation
 import qualified Control.Category as Category
+import qualified Control.Exception as Exception
 import DataTransformation
 import DataTransformationMap
 import DataTransversal
@@ -51,6 +53,7 @@ import Data.Void (Void, absurd)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import System.Timeout (timeout)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testProperty)
 import Test.Tasty.HUnit (assertBool, testCase)
@@ -87,11 +90,14 @@ testTree =
         , testCase "stable confederal Kleisli syntax" testStableConfederalKleisliSyntax
         , testCase "charter" testCharter
         , testCase "charter rejects false inverse candidates" testCharterPartialInverse
+        , testCase "charter counit rejects uncovered inverse" testCharterCounitUncoveredInverse
+        , testCase "charter map rejects uncovered source inverse" testCharterMapUncoveredInverse
         , testCase "ordered atlas transposal" testOrderedAtlasTransposal
         , testCase "atlas transversal" testAtlasTransversal
         , testCase "stable atlas transversal" testStableAtlasTransversal
         , testCase "coalition" testCoalition
         , testCase "domanial inclusion" testDomanialInclusion
+        , testCase "domanial inclusion rejects uncovered inverse" testDomanialInclusionUncoveredInverse
         ]
     , testGroup "properties"
         [ testProperty "finite ordinals round-trip naturals" propFiniteOrdinalRoundTrip
@@ -249,6 +255,19 @@ testRankedDominionAtlas = do
       sourceElement = dominionCoalitionElement naturals 7
   assert "coalition inverses recover images across different folio depths"
     (preimage coalitionMap (applyInsertion coalitionMap sourceElement) == Just sourceElement)
+  let double = domanialInsertion (* 2)
+        (\value -> if even value then Just (value `div` 2) else Nothing)
+        (const ())
+      composed = composeStableAtlasTransversals traversal
+        (dominionMap naturals naturals double)
+      composedMap = stableCoalitionMap
+        (atlasWitness included) (atlasWitness valueAtlas) composed
+      targetElement = applyInsertion composedMap sourceElement
+  assert "composed coalition maps preserve their supplied inverses"
+    (coalitionElementRank targetElement == 14
+      && preimage composedMap targetElement == Just sourceElement)
+  assert "composed coalition inverses reject values outside the image"
+    (isNothing (preimage composedMap (rankedDominionCoalitionElement naturals 3)))
 
 testChainedDominionAtlas :: IO ()
 testChainedDominionAtlas = do
@@ -1869,14 +1888,7 @@ testAtlasMap =
                   valueAtlas
                   valueAtlas
                   ordered
-                  (\_ targetOccurrence targetDatum ->
-                    atlasCoverageWitness
-                      valueAtlas
-                      targetOccurrence
-                      targetDatum
-                      targetOccurrence
-                      targetDatum
-                      ())
+                  atlasCoveredPageElementWitness
               transversalMap = atlasTransversalMap transversal
               composedTransversalMap =
                 Category.id Category.. transversalMap
@@ -2253,6 +2265,15 @@ testForgetStableConfederalData =
             "Atlas federation forgetting composes Yoneda, restriction, and Lan"
             (federationArrow `seq` True)
 
+onePageChartInverse
+  :: Atlas atlasScope scope TestCellData () ()
+  -> PageElement scope object
+  -> TestCellData object
+  -> Maybe (ChartedCellData (AtlasObject atlasScope scope TestCellData) object)
+onePageChartInverse valueAtlas occurrence datum =
+  Just (chartCellData valueAtlas occurrence datum
+    (atlasCoverageWitness valueAtlas occurrence datum occurrence datum ()) ())
+
 testCharter :: IO ()
 testCharter =
   pagination (singletonFolio unitChain) $ \valuePagination ->
@@ -2276,18 +2297,11 @@ testCharter =
                 valueAtlas
                 valueAtlas
                 ordered
-                (\_ targetOccurrence targetDatum ->
-                  atlasCoverageWitness
-                    valueAtlas
-                    targetOccurrence
-                    targetDatum
-                    targetOccurrence
-                    targetDatum
-                    ())
+                atlasCoveredPageElementWitness
             chartedMap = charterFunctorObject valueAtlas
-            mapped = charterFunctorHom witness witness transversal
+            mapped = charterFunctorHom witness witness transversal (onePageChartInverse valueAtlas) (\_ _ -> ())
             lifted = chartLift valueMap witness transversal
-            lowered = chartLower valueAtlas lifted
+            lowered = chartLower valueAtlas (onePageChartInverse valueAtlas) (\_ _ -> ()) lifted
         in withAtlasMapExtent chartedMap $ \extent chartedDom covers ->
           case
             [ candidate
@@ -2315,7 +2329,7 @@ testCharter =
               withAtlasMorphismImage
                 (mapAtlasTransversalData
                   (atlasWitness (chartAtlas valueAtlas))
-                  (chartCounit valueAtlas)
+                  (chartCounit valueAtlas (onePageChartInverse valueAtlas) (\_ _ -> ()))
                   extent) $ \target component ->
                     let TestCellData counitValue =
                           applyInsertion component charted
@@ -2350,17 +2364,23 @@ testCharter =
 coverageTestMapData
   :: PageElementArrow scope source target
   -> DomanialInsertion (TestCellData source) (TestCellData target)
-coverageTestMapData pageArrow =
+coverageTestMapData = coverageTestMapDataWithFinalMultiplier 2
+
+coverageTestMapDataWithFinalMultiplier
+  :: Natural
+  -> PageElementArrow scope source target
+  -> DomanialInsertion (TestCellData source) (TestCellData target)
+coverageTestMapDataWithFinalMultiplier finalMultiplier pageArrow =
   let source = arrowSource pageArrow
       target = arrowTarget pageArrow
       evenBranch = pageElementPosition source == finiteOrdinal 0
       (multiplier, offset)
         | pageElementPage target == 0 && pageElementPage source > 0 =
             if evenBranch
-              then (if pageElementPage source == 2 then 4 else 2, 0)
+              then (if pageElementPage source == 2 then 2 * finalMultiplier else 2, 0)
               else (2, 1)
         | pageElementPage target == 1 && pageElementPage source == 2
-            && evenBranch = (2, 0)
+            && evenBranch = (finalMultiplier, 0)
         | otherwise = (1, 0)
   in domanialInsertion
       (\(TestCellData value) -> TestCellData (multiplier * value + offset))
@@ -2370,8 +2390,10 @@ coverageTestMapData pageArrow =
           else 1)))
       (const ())
 
-testCharterPartialInverse :: IO ()
-testCharterPartialInverse =
+withPartialCoverageAtlas
+  :: (forall atlasScope scope. Atlas atlasScope scope TestCellData () Bool -> IO ())
+  -> IO ()
+withPartialCoverageAtlas useAtlas =
   let pages = appendPage
         (appendPage (singletonFolio unitChain) boolChain (Consolidation.op collapseBool))
         boolChain
@@ -2383,7 +2405,89 @@ testCharterPartialInverse =
   in pagination pages $ \valuePagination ->
     atlas valuePagination (atlasDataAction dataAt coverageTestMapData)
       testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw
-      testAtlasDisjointLaw $ \valueAtlas ->
+      testAtlasDisjointLaw useAtlas
+
+wideCoverageWitness
+  :: Atlas atlasScope scope TestCellData () Bool
+  -> PageElement scope object
+  -> TestCellData object
+  -> AtlasCoverageWitness (AtlasObject atlasScope scope TestCellData)
+wideCoverageWitness valueAtlas occurrence datum@(TestCellData value) =
+  let (position, regionValue)
+        | pageElementPage occurrence == 0 =
+            if even value then (0, value `div` 2) else (1, (value - 1) `div` 2)
+        | otherwise = (if pageElementPosition occurrence == finiteOrdinal 0 then 0 else 1, value)
+  in case pageElementIndex (atlasPageElements valueAtlas) 2 (finiteOrdinal position) of
+    Nothing -> error "missing final region in wide coverage fixture"
+    Just index -> withPageElement (pageElement index) $ \region ->
+      atlasCoverageWitness valueAtlas occurrence datum region (TestCellData regionValue) ()
+
+coverageWideningComponent
+  :: PageElement scope object
+  -> DomanialInsertion (TestCellData object) (TestCellData object)
+coverageWideningComponent occurrence
+  | pageElementPage occurrence == 2 && pageElementPosition occurrence == finiteOrdinal 0 =
+      domanialInsertion
+        (\(TestCellData value) -> TestCellData (2 * value))
+        (\(TestCellData value) ->
+          if even value then Just (TestCellData (value `div` 2)) else Nothing)
+        (const ())
+  | otherwise = identityInsertion
+
+testCharterMapUncoveredInverse :: IO ()
+testCharterMapUncoveredInverse =
+  withPartialCoverageAtlas $ \sourceAtlas ->
+    atlas (atlasPagination sourceAtlas)
+      (atlasDataAction testAtlasDataAt (coverageTestMapDataWithFinalMultiplier 1))
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \targetAtlas ->
+        let sourceWitness = atlasWitness sourceAtlas
+            targetWitness = atlasWitness targetAtlas
+            rawHom = atlasHom (atlasMorphism (atlasMorphismAction identityAtlasObjectMap
+              sourceAtlas targetAtlas id coverageWideningComponent (\_ _ -> ()) (\_ _ -> ())))
+            -- Exercise complete-action materialization through both identity
+            -- and composite syntax, including its inverse composition.
+            hom = composeAtlasHoms identityAtlasHom (composeAtlasHoms rawHom identityAtlasHom)
+            transposal = atlasTransposal sourceWitness hom
+              (\element -> withAtlasTransposalElement element $ \occurrence ->
+                Just (atlasTransposalElement sourceWitness occurrence)) (const ())
+            ordered = orderedAtlasTransposal transposal (\_ _ -> ())
+            transversal = atlasTransversal sourceAtlas targetAtlas ordered $ \covered ->
+              withTransversalImage sourceAtlas ordered covered (wideCoverageWitness targetAtlas)
+            sourceChart = chartAtlasMap sourceAtlas
+            mapped = chartMap sourceWitness targetWitness transversal
+              (partialChartInverse sourceAtlas) (\_ _ -> ())
+        in case pageElementIndex (atlasPageElements sourceAtlas) 0 (finiteOrdinal 0) of
+          Nothing -> fail "missing source origin"
+          Just index -> withPageElement (pageElement index) $ \origin ->
+            withAtlasMorphismImage (mapAtlasTransversalMapData sourceChart mapped origin) $ \target component -> do
+              let targetDatum = chartCellData targetAtlas target (TestCellData 2)
+                    (wideCoverageWitness targetAtlas target (TestCellData 2)) ()
+              assert "a covered target does not justify an uncovered source preimage"
+                (isNothing (preimage component targetDatum))
+              case partialChartInverse sourceAtlas origin (TestCellData 7) of
+                Nothing -> fail "missing covered source datum"
+                Just sourceDatum ->
+                  assert "the complete charted component recovers its source"
+                    (fmap chartedCellDataValue (preimage component (applyInsertion component sourceDatum))
+                      == Just (TestCellData 7))
+              case pageElementIndex (atlasPageElements sourceAtlas) 5 (finiteOrdinal 0) of
+                Nothing -> fail "missing padded final cell"
+                Just paddedCellIndex -> withPageElement (pageElement paddedCellIndex) $ \padded ->
+                  case partialChartInverse sourceAtlas padded (TestCellData 1) of
+                    Nothing -> fail "missing covered padded datum"
+                    Just paddedDatum ->
+                      withAtlasMorphismImage (mapAtlasTransversalMapData sourceChart mapped padded) $
+                        \paddedTarget paddedComponent -> do
+                          assert "the complete charted action normalizes padding"
+                            (pageElementPage paddedTarget == 2
+                              && chartedCellDataValue (applyInsertion paddedComponent paddedDatum) == TestCellData 2)
+                          assert "the complete charted inverse recovers padded data"
+                            (fmap chartedCellDataValue
+                              (preimage paddedComponent (applyInsertion paddedComponent paddedDatum)) == Just (TestCellData 1))
+
+testCharterPartialInverse :: IO ()
+testCharterPartialInverse =
+  withPartialCoverageAtlas $ \valueAtlas ->
         let charted = chartAtlas valueAtlas
         in case pageElementIndex (atlasPageElements valueAtlas) 1 (finiteOrdinal 0) of
           Nothing -> fail "missing intermediate even cell"
@@ -2397,6 +2501,107 @@ testCharterPartialInverse =
             assert "covered intermediate values are enumerated" (0 `elem` decoded && 2 `elem` decoded)
             assert "an arbitrary inverse result does not fabricate coverage"
               (all even decoded && 1 `notElem` decoded)
+            case pageElementIndex (atlasPageElements valueAtlas) 0 (finiteOrdinal 0) of
+              Nothing -> fail "missing origin cell"
+              Just originIndex -> withPageElement (pageElement originIndex) $ \origin ->
+                case partialChartInverse valueAtlas origin (TestCellData 1) of
+                  Nothing -> fail "missing covered odd origin datum"
+                  Just target -> do
+                    let component = mapAtlasData charted (pageElementArrow source origin)
+                    assert "charted insertion rejects a false preimage of covered target data"
+                      (isNothing (preimage component target))
+                    mapM_ (\datum ->
+                      assert "charted insertion recovers covered source data"
+                        (fmap chartedCellDataValue (preimage component (applyInsertion component datum))
+                          == Just (chartedCellDataValue datum)))
+                      [datum | candidate <- [0 .. 50],
+                        Just datum <- [unrank (atlasDataAt charted source) candidate]]
+
+-- A total inverse for the test atlas's covered sub-dominion, with explicit
+-- final-region evidence for every accepted value.
+partialChartInverse
+  :: Atlas atlasScope scope TestCellData () Bool
+  -> PageElement scope object
+  -> TestCellData object
+  -> Maybe (ChartedCellData (AtlasObject atlasScope scope TestCellData) object)
+partialChartInverse valueAtlas occurrence datum@(TestCellData value) = do
+  (position, regionValue) <- selectedRegion
+  regionIndex <- pageElementIndex (atlasPageElements valueAtlas) 2 (finiteOrdinal position)
+  withPageElement (pageElement regionIndex) $ \region ->
+    Just (chartCellData valueAtlas occurrence datum
+      (atlasCoverageWitness valueAtlas occurrence datum region (TestCellData regionValue) ()) ())
+  where
+    evenBranch = pageElementPosition occurrence == finiteOrdinal 0
+    selectedRegion
+      | pageElementPage occurrence == 0 =
+          if value `mod` 4 == 0 then Just (0, value `div` 4)
+          else if odd value then Just (1, (value - 1) `div` 2)
+          else Nothing
+      | pageElementPage occurrence == 1 && evenBranch =
+          if even value then Just (0, value `div` 2) else Nothing
+      | otherwise = Just (if evenBranch then 0 else 1, value)
+
+testCharterCounitUncoveredInverse :: IO ()
+testCharterCounitUncoveredInverse =
+  withPartialCoverageAtlas $ \valueAtlas ->
+    withPageElement (atlasOriginCell valueAtlas) $ \origin ->
+      withAtlasMorphismImage
+        (mapAtlasTransversalData (atlasWitness (chartAtlas valueAtlas))
+          (chartCounit valueAtlas (partialChartInverse valueAtlas) (\_ _ -> ())) origin) $ \target component ->
+        case unrank (atlasDataAt valueAtlas target) 2 of
+          Nothing -> fail "missing uncovered origin datum"
+          Just uncovered -> do
+            let coveredValues =
+                  [ datum
+                  | candidate <- [0 .. 100]
+                  , Just datum <- [unrank (atlasDataAt (chartAtlas valueAtlas) origin) candidate]
+                  ]
+            assert "the counit regression contains covered data" (not (null coveredValues))
+            mapM_ (\datum -> assert "the chart counit inverse recovers covered images"
+              (fmap chartedCellDataValue (preimage component (applyInsertion component datum))
+                == Just (chartedCellDataValue datum))) coveredValues
+            rejected <- timeout 200000 (Exception.evaluate (isNothing (preimage component uncovered)))
+            assert "the chart counit inverse terminates outside the covered image"
+              (rejected == Just True)
+
+testDomanialInclusionUncoveredInverse :: IO ()
+testDomanialInclusionUncoveredInverse =
+  withPartialCoverageAtlas $ \targetAtlas ->
+    let targetCoalition = coalition targetAtlas
+        coveredZero =
+          [ element
+          | candidate <- [0 .. 50]
+          , Just element <- [unrank targetCoalition candidate]
+          , coalitionElementRank element == 0
+          ]
+        unitDominion = dominion (const 0)
+          (\n -> if n == 0 then Just () else Nothing) (const ())
+        sourceAtlas = dominionAtlas unitDominion
+    in case coveredZero of
+      [] -> fail "missing covered origin zero"
+      zero : _ -> do
+        let insertion = domanialInsertion (const zero)
+              (\element -> if coalitionElementRank element == 0 then Just () else Nothing)
+              (const ())
+            arrow = coaToDomInc unitDominion (atlasWitness targetAtlas) insertion
+              (\_ (TestCellData value) -> if value == 0 then Just () else Nothing)
+              (\_ _ -> ())
+        withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
+          withAtlasMorphismImage
+            (mapStableAtlasTransversalData (atlasWitness sourceAtlas) arrow sourceOrigin) $
+              \targetOrigin component ->
+                case unrank (atlasDataAt targetAtlas targetOrigin) 2 of
+                  Nothing -> fail "missing uncovered origin datum"
+                  Just uncovered -> do
+                    case unrank (atlasDataAt sourceAtlas sourceOrigin) 0 of
+                      Nothing -> fail "missing source unit datum"
+                      Just sourceDatum ->
+                        assert "the adjunction component recovers its covered image"
+                          (fmap dominionCellDataValue
+                            (preimage component (applyInsertion component sourceDatum)) == Just ())
+                    rejected <- timeout 200000 (Exception.evaluate (isNothing (preimage component uncovered)))
+                    assert "the adjunction inverse terminates outside the covered image"
+                      (rejected == Just True)
 
 testOrderedAtlasTransposal :: IO ()
 testOrderedAtlasTransposal =
@@ -2478,14 +2683,7 @@ testAtlasTransversal =
                         valueAtlas
                         valueAtlas
                         ordered
-                        (\_ targetOccurrence targetDatum ->
-                          atlasCoverageWitness
-                            valueAtlas
-                            targetOccurrence
-                            targetDatum
-                            targetOccurrence
-                            targetDatum
-                            ())
+                        atlasCoveredPageElementWitness
                     composed = transversal Category.. transversal
                     covered =
                       atlasCoveredPageElement
@@ -2523,17 +2721,10 @@ testStableAtlasTransversal =
                   valueAtlas
                   valueAtlas
                   ordered
-                  (\_ targetOccurrence targetDatum ->
-                    atlasCoverageWitness
-                      valueAtlas
-                      targetOccurrence
-                      targetDatum
-                      targetOccurrence
-                      targetDatum
-                      ())
+                  atlasCoveredPageElementWitness
               stable =
                 stableAtlasTransversal
-                  valueAtlas valueAtlas transversal ()
+                  valueAtlas valueAtlas transversal () Just (const ())
               composed = stable Category.. stable
               originElement = atlasTransposalElement witness origin
               mappedOrigin =
@@ -2561,17 +2752,10 @@ testCoalition =
                 valueAtlas
                 valueAtlas
                 ordered
-                (\_ targetOccurrence targetDatum ->
-                  atlasCoverageWitness
-                    valueAtlas
-                    targetOccurrence
-                    targetDatum
-                    targetOccurrence
-                    targetDatum
-                    ())
+                atlasCoveredPageElementWitness
             stable =
               stableAtlasTransversal
-                valueAtlas valueAtlas transversal ()
+                valueAtlas valueAtlas transversal () Just (const ())
             doublingAction =
               atlasMorphismAction
                 identityAtlasObjectMap
@@ -2587,23 +2771,27 @@ testCoalition =
                 (atlasHom (atlasMorphism doublingAction))
                 Just
                 (const ())
+            doublingOrdered = orderedAtlasTransposal doublingTransposal (\_ _ -> ())
             doublingTransversal =
               atlasTransversal
                 valueAtlas
                 valueAtlas
-                (orderedAtlasTransposal
-                  doublingTransposal (\_ _ -> ()))
-                (\_ targetOccurrence targetDatum ->
-                  atlasCoverageWitness
-                    valueAtlas
-                    targetOccurrence
-                    targetDatum
-                    targetOccurrence
-                    targetDatum
-                    ())
+                doublingOrdered
+                (\covered -> withTransversalImage valueAtlas doublingOrdered covered $
+                  \occurrence datum -> atlasCoverageWitness valueAtlas occurrence datum occurrence datum ())
             doublingStable =
               stableAtlasTransversal
                 valueAtlas valueAtlas doublingTransversal ()
+                recoverHalvedCoalition (const ())
+            recoverHalvedCoalition target
+              | odd (coalitionElementRank target) = Nothing
+              | otherwise = seek 0
+              where
+                wanted = coalitionElementRank target `div` 2
+                seek candidate =
+                  case unrank valueCoalition candidate of
+                    Just source | coalitionElementRank source == wanted -> Just source
+                    _ -> seek (candidate + 1)
             valueCoalition = coalition valueAtlas
         in case
           [ candidate
@@ -2679,6 +2867,7 @@ testDomanialInclusion = do
         domIncCoaHomEquivTo naturals includedWitness includedIdentity
       restoredArrow =
         domIncCoaHomEquivFrom naturals includedWitness adjointArrow
+          (\_ -> Just . dominionCellDataValue) (\_ _ -> ())
       mappedSeven = applyInsertion adjointArrow 7
 
   assert "the forward adjunction map lands in the target coalition"

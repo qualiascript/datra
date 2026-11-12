@@ -31,13 +31,24 @@ theorem CertifiedCoveredElement.fromSemantics_data {X : Atlas}
 theorem CertifiedCoveredElement.covered {X : Atlas} (c : X.CertifiedCoveredElement) :
     c.data.Covered := CoveredPageElement.covered c.property
 
-/-- The primitive callback retains the full LiquidHaskell contract: every
-supplied target occurrence and datum must receive a valid coverage witness. -/
+-- ALIGN: ATLAS-TRANSVERSAL-IMAGE.
+def withTransversalImage {X Y : Atlas} {Result : Sort*} (ordered : OrderedTransposal X Y)
+    (covered : X.CertifiedCoveredElement)
+    (useImage : (target : Y.Element) → Y.cellData target.val.cell → Result) : Result :=
+  let image := ordered.underlying.hom.mapData covered.data
+  useImage image.1 image.2
+
+-- ALIGN: ATLAS-TRANSVERSAL-IMAGE-COVERAGE.
+def transversalImageCovered {X Y : Atlas} (ordered : OrderedTransposal X Y)
+    (covered : X.CertifiedCoveredElement) (witness : Y.CoverageWitness) : Bool :=
+  withTransversalImage ordered covered (fun target datum => Y.coverageWitnessCovers target datum witness)
+
+/-- The primitive callback certifies the exact image computed by the ordered
+transposal, for each covered source datum. -/
 inductive Transversal : Atlas → Atlas → Type 2
   | primitive {X Y} (ordered : OrderedTransposal X Y)
-      (preserves : X.CertifiedCoveredElement → (target : Y.Element) →
-        (datum : Y.cellData target.val.cell) →
-        {w : Y.CoverageWitness // w.Valid ∧ Y.coverageWitnessCovers target datum w = true}) :
+      (preserves : (c : X.CertifiedCoveredElement) →
+        {w : Y.CoverageWitness // w.Valid ∧ transversalImageCovered ordered c w = true}) :
       Transversal X Y
   | identity {X} : Transversal X X
   | composite {X Y Z} : Transversal Y Z → Transversal X Y → Transversal X Z
@@ -53,9 +64,8 @@ def mapCovered {X Y : Atlas} : Transversal X Y → X.CertifiedCoveredElement →
   | .identity, c => c
   | .composite second first, c => second.mapCovered (first.mapCovered c)
   | .primitive ordered preserves, c =>
-      let image := ordered.underlying.hom.mapData c.data
-      let witness := preserves c image.1 image.2
-      ⟨⟨image.1, image.2, witness.val⟩, witness.property⟩
+      let witness := preserves c
+      ⟨withTransversalImage ordered c (fun target datum => ⟨target, datum, witness.val⟩), witness.property⟩
 
 theorem underlying_composite {X Y Z : Atlas} (second : Transversal Y Z) (first : Transversal X Y) :
     (composite second first).underlying.underlying.hom.finiteSemantics =
@@ -101,6 +111,24 @@ theorem semantic_preservesCoverage {X Y : Atlas} (f : Transversal X Y) :
   intro c
   exact f.mapCovered_covers_semantic (CertifiedCoveredElement.fromSemantics c)
     ⟨c.pageElement, c.datum⟩ (CertifiedCoveredElement.fromSemantics_data c)
+
+/-- The coverage contract applies to the complete executable component at
+every occurrence, including padding. No factorwise coverage is required. -/
+theorem preservesData {X Y : Atlas} (f : Transversal X Y) (source : X.DataElement)
+    (covered : source.Covered) : (f.underlying.underlying.hom.mapData source).Covered := by
+  have sourceCovered : Datra.Semantics.Covered X.toSemantics
+      (toSemanticData X source).1 (toSemanticData X source).2 := by
+    apply (fromSemanticData_covered X (toSemanticData X source)).mp
+    rw [fromSemanticData_toSemanticData]
+    exact (X.covered_normalize_iff source.1 source.2).mpr covered
+  have imageCovered := f.semantic_preservesCoverage
+    ⟨(toSemanticData X source).1, (toSemanticData X source).2, sourceCovered⟩
+  have executable := (fromSemanticData_covered Y
+    (mapSemanticData f.underlying.underlying.hom.finiteSemantics (toSemanticData X source))).mpr imageCovered
+  rw [Hom.mapData_interpretation, fromSemanticData_toSemanticData] at executable
+  change (f.underlying.underlying.hom.materialize.mapData ⟨source.1.normalize, source.2⟩).Covered at executable
+  rw [Morphism.mapData_normalize] at executable
+  exact executable
 
 -- ALIGN: ATLAS-TRANSVERSAL-INTERPRETATION.
 theorem semantic_transversal {X Y : Atlas} (f : Transversal X Y) :

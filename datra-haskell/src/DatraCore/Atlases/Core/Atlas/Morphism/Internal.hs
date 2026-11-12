@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | Hidden runtime representation of the LiquidHaskell-checked Atlas category.
 module Atlas.Morphism.Internal
@@ -22,6 +23,8 @@ module Atlas.Morphism.Internal
   , mapAtlasMorphismActionComponent
   , atlasMorphismObjectMapWitness
   , atlasMorphism
+  , withAtlasMorphismAction
+  , normalizeAtlasMorphismAction
   , withAtlasMorphismImage
   , atlasMorphismPagination
   , mapAtlasMorphismElement
@@ -49,8 +52,10 @@ module Atlas.Morphism.Internal
 
 import Atlas.Internal
   ( Atlas
+  , atlasCardinality
   , atlasCoherence
   , normalizeAtlasElement
+  , normalizeAtlasArrow
   )
 import Atlas.Morphism.LiquidInternal
   ( AtlasMorphismAction
@@ -74,14 +79,19 @@ import Data.Kind (Type)
 import Data.Type.Equality ((:~:) (Refl))
 import DomanialInsertion
   ( DomanialInsertion
+  , applyInsertion
   , composeInsertions
   , identityInsertion
   )
 import PageElements
   ( PageElement
   , PageElementArrow
+  , arrowSource
+  , arrowTarget
+  , pageElementArrow
   )
 import PageElements.Internal (SomePageElement (..))
+import PageElements.LiquidInternal (normalizeSomePageElementPreservesArrowAt)
 import Pagination
   ( PaginationMorphism
   , SomePageElementArrow
@@ -166,6 +176,98 @@ atlasMorphism
        sourceScope targetScope sourceCellData targetCellData
 atlasMorphism = PrimitiveAtlasMorphism
 
+-- | The object identity of a complete composite retains both component
+-- symbols. Normalization preserves these phantom identities.
+data CompositeAtlasObjectMap first second
+
+type instance AtlasMappedObject (CompositeAtlasObjectMap first second) source =
+  AtlasMappedObject second (AtlasMappedObject first source)
+
+normalizedActionObject
+  :: AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
+       sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
+  -> PageElement sourceScope sourceObject
+  -> PageElement targetScope (AtlasMappedObject objectMap sourceObject)
+normalizedActionObject action source =
+  normalizeAtlasElement (atlasMorphismTarget action)
+    (mapAtlasMorphismActionObject action
+      (normalizeAtlasElement (atlasMorphismSource action) source))
+
+-- | Make all callbacks valid on padded occurrences as well as genuine cells.
+-- ALIGN: ATLAS-NORMALIZED-ACTION.
+normalizeAtlasMorphismAction
+  :: AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
+       sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
+  -> AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
+       sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
+normalizeAtlasMorphismAction action =
+  atlasMorphismAction (atlasMorphismObjectMapWitness action)
+    (atlasMorphismSource action) (atlasMorphismTarget action)
+    (normalizedActionObject action)
+    (\source -> mapAtlasMorphismActionComponent action
+      (normalizeAtlasElement (atlasMorphismSource action) source))
+    (atlasMorphismActionPreservesArrow action)
+    (\arrow datum -> atlasMorphismActionNaturality action
+      (normalizeAtlasArrow (atlasMorphismSource action) arrow) datum)
+
+composeAtlasMorphismActions
+  :: AtlasMorphismAction second middleAtlasScope targetAtlasScope middleScope targetScope
+       middleCellData targetCellData middleOrigin middleFinal targetOrigin targetFinal
+  -> AtlasMorphismAction first sourceAtlasScope middleAtlasScope sourceScope middleScope
+       sourceCellData middleCellData sourceOrigin sourceFinal middleOrigin' middleFinal'
+  -> AtlasMorphismAction (CompositeAtlasObjectMap first second)
+       sourceAtlasScope targetAtlasScope sourceScope targetScope sourceCellData targetCellData
+       sourceOrigin sourceFinal targetOrigin targetFinal
+composeAtlasMorphismActions second first =
+  atlasMorphismAction atlasObjectMap
+    (atlasMorphismSource first) (atlasMorphismTarget second)
+    (\source -> mapAtlasMorphismActionObject second
+      (normalizeAtlasElement (atlasMorphismSource second)
+        (normalizeAtlasElement (atlasMorphismTarget first) (mapAtlasMorphismActionObject first source))))
+    (\source ->
+      composeInsertions
+        (mapAtlasMorphismActionComponent second
+          (normalizeAtlasElement (atlasMorphismSource second)
+            (normalizeAtlasElement (atlasMorphismTarget first) (mapAtlasMorphismActionObject first source))))
+        (mapAtlasMorphismActionComponent first source))
+    (\source target ->
+      atlasMorphismActionPreservesArrow first source target `seq`
+        atlasMorphismActionPreservesArrow second
+          (mapAtlasMorphismActionElement first source)
+          (mapAtlasMorphismActionElement first target))
+    (\arrow datum ->
+      atlasMorphismActionNaturality first arrow datum `seq`
+        atlasMorphismActionNaturality second
+          (pageElementArrow
+            (normalizedActionObject first (arrowSource arrow))
+            (normalizedActionObject first (arrowTarget arrow)))
+          (applyInsertion
+            (mapAtlasMorphismActionComponent first
+              (normalizeAtlasElement (atlasMorphismSource first) (arrowSource arrow))) datum))
+
+-- | Expose one action for the complete morphism, preserving its normalized
+-- object map and composed data insertion. Restrictions such as Charter must
+-- be applied here: intermediate factors need not preserve the restricted data.
+-- ALIGN: ATLAS-COMPLETE-ACTION.
+withAtlasMorphismAction
+  :: AtlasMorphism sourceAtlasScope targetAtlasScope sourceScope targetScope sourceCellData targetCellData
+  -> (forall objectMap sourceOrigin sourceFinal targetOrigin targetFinal.
+        AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
+          sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
+        -> result)
+  -> result
+withAtlasMorphismAction (PrimitiveAtlasMorphism action) useAction = useAction action
+withAtlasMorphismAction (IdentityAtlasMorphism valueAtlas) useAction =
+  useAction (atlasMorphismAction identityAtlasObjectMap valueAtlas valueAtlas id
+    (const identityInsertion)
+    (normalizeSomePageElementPreservesArrowAt
+      (atlasCardinality valueAtlas - 1) (fromIntegral (atlasCardinality valueAtlas)))
+    (\_ _ -> ()))
+withAtlasMorphismAction (CompositeAtlasMorphism second first) useAction =
+  withAtlasMorphismAction first $ \firstAction ->
+    withAtlasMorphismAction second $ \secondAction ->
+      useAction (composeAtlasMorphismActions secondAction firstAction)
+
 -- | Apply an Atlas morphism to a cell and its attached data carrier.
 -- Primitive maps normalize at both boundaries. Identity is coherence;
 -- composition recursively inserts the middle object's coherence.
@@ -179,11 +281,9 @@ mapAtlasMorphismData
        targetScope sourceCellData targetCellData sourceObject
 mapAtlasMorphismData (PrimitiveAtlasMorphism action) source =
   let sourceAtlas = atlasMorphismSource action
-      targetAtlas = atlasMorphismTarget action
       normalizedSource = normalizeAtlasElement sourceAtlas source
   in AtlasMorphismImage
-      (normalizeAtlasElement targetAtlas
-        (mapAtlasMorphismActionObject action normalizedSource))
+      (normalizedActionObject action source)
       (mapAtlasMorphismActionComponent action normalizedSource)
 mapAtlasMorphismData (IdentityAtlasMorphism valueAtlas) source =
   AtlasMorphismImage

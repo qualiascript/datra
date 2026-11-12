@@ -30,6 +30,27 @@ def CoverageRegion.witness {X : Atlas} (region : X.CoverageRegion) : X.CoverageW
 def CoverageWitness.Valid {X : Atlas} (witness : X.CoverageWitness) : Prop :=
   ∃ region : X.CoverageRegion, witness = region.witness
 
+theorem CoverageWitness.Valid.covered {X : Atlas} {witness : X.CoverageWitness}
+    (valid : witness.Valid) : X.Covered witness.region witness.datum := by
+  obtain ⟨⟨index, datum⟩, rfl⟩ := valid
+  exact ⟨index, datum, rfl⟩
+
+theorem CoverageWitness.Valid.finalPage {X : Atlas} {witness : X.CoverageWitness}
+    (valid : witness.Valid) : witness.region.normalize.val.page = X.coverageFinalPage := by
+  obtain ⟨⟨index, datum⟩, rfl⟩ := valid
+  change (FolioData.ValidElement.lastElement X.pages index).normalize.val.page = _
+  rw [FolioData.ValidElement.lastElement_interpretation,
+    FolioData.ValidElement.normalize_fromFinite]
+  rfl
+
+theorem CoverageWitness.Valid.originImage_eq {X : Atlas} {source : X.Element}
+    {datum : X.cellData source.val.cell} {witness : X.CoverageWitness}
+    (valid : witness.Valid) (covers : X.coverageWitnessCovers source datum witness = true) :
+    X.originImage source datum = X.originImage witness.region witness.datum := by
+  obtain ⟨⟨index, regionDatum⟩, rfl⟩ := valid
+  apply (X.originImageRank_eq_iff _ _ _ _).mp
+  simpa [coverageWitnessCovers, CoverageRegion.witness] using covers
+
 -- ALIGN: ATLAS-COVERAGE-WITNESS-SOUND.
 theorem coverageWitnessCovers_sound {X : Atlas} {source : X.Element}
     {datum : X.cellData source.val.cell} {witness : X.CoverageWitness}
@@ -72,6 +93,10 @@ structure CoveredPageElement (X : Atlas) where
   source : X.Element
   datum : X.cellData source.val.cell
   witness : X.CoverageWitness
+
+-- ALIGN: ATLAS-COVERED-WITNESS.
+def atlasCoveredPageElementWitness {X : Atlas} (covered : X.CoveredPageElement) : X.CoverageWitness :=
+  covered.witness
 
 def CoveredPageElement.Valid {X : Atlas} (covered : X.CoveredPageElement) : Prop :=
   covered.witness.Valid ∧ X.coverageWitnessCovers covered.source covered.datum covered.witness = true

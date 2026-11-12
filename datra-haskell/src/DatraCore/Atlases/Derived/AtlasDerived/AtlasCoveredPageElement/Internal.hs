@@ -23,6 +23,7 @@ module AtlasCoveredPageElement.Internal
   , atlasCoveredPageElementAt
   , atlasCoveredPageElement
   , withAtlasCoveredPageElement
+  , atlasCoveredPageElementWitness
   ) where
 
 import Atlas
@@ -235,6 +236,12 @@ withAtlasCoveredPageElement
 withAtlasCoveredPageElement
   (AtlasCoveredPageElement occurrence datum _)
   useCovered = useCovered occurrence datum
+
+-- | Recover the evidence already carried by a covered datum.
+-- ALIGN: ATLAS-COVERED-WITNESS.
+atlasCoveredPageElementWitness
+  :: AtlasCoveredPageElement atlasObject -> AtlasCoverageWitness atlasObject
+atlasCoveredPageElementWitness (AtlasCoveredPageElement _ _ witness) = witness
 
 -- | Search the countable final territory for a coverage witness. This is the
 -- executable counterpart needed because Haskell's 'Dominion' carries an

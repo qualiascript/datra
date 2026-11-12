@@ -121,6 +121,54 @@ theorem component_normalized (f : PrimitiveAtlasMorphism X Y) (x : X.Element) :
     HEq (f.component x.normalize.normalize) (f.component x.normalize) := by
   rw [FolioData.ValidElement.normalize_idempotent]
 
+def identity (X : Atlas) : PrimitiveAtlasMorphism X X where
+  object := id
+  component _ := DomanialInsertion.identity _
+  arrow := fun arrow => FolioData.ValidElement.normalizeArrow
+    (FolioData.ValidElement.normalizeArrow arrow)
+  naturality := by
+    intro source target arrow datum
+    change (X.data.action.normalizedMap arrow).map datum =
+      (X.data.action.normalizedMap (FolioData.ValidElement.normalizeArrow
+        (FolioData.ValidElement.normalizeArrow arrow))).map datum
+    rw [AtlasAction.normalizedMap_normalizeArrow, AtlasAction.normalizedMap_normalizeArrow]
+
+/-- Evaluate every raw callback at the same normalized source used by public
+morphism application. This also gives restrictions valid callbacks on padding. -/
+def normalized (operation : PrimitiveAtlasMorphism X Y) : PrimitiveAtlasMorphism X Y where
+  object := normalizedObject operation.object
+  component source := operation.component source.normalize
+  arrow := fun arrow => FolioData.ValidElement.normalizeArrow
+    (operation.arrow (FolioData.ValidElement.normalizeArrow arrow))
+  naturality := by
+    intro source target arrow datum
+    have law := operation.naturality (FolioData.ValidElement.normalizeArrow arrow) datum
+    rw [AtlasAction.normalizedMap_normalizeArrow] at law
+    change (operation.component target.normalize.normalize).map
+        ((X.data.action.normalizedMap arrow).map datum) =
+      (Y.data.action.normalizedMap (FolioData.ValidElement.normalizeArrow
+        (operation.arrow (FolioData.ValidElement.normalizeArrow arrow)))).map
+          ((operation.component source.normalize.normalize).map datum)
+    rw [AtlasAction.normalizedMap_normalizeArrow]
+    exact law
+
+/-- Collapse a composition only after retaining the complete, normalized
+object action and both partial inverses. No coverage condition is imposed on
+the intermediate Atlas or either factor. -/
+def comp {Z : Atlas} (second : PrimitiveAtlasMorphism Y Z) (first : PrimitiveAtlasMorphism X Y) :
+    PrimitiveAtlasMorphism X Z where
+  object source := second.object (first.object source).normalize.normalize
+  component source := (first.component source).comp
+    (second.component (first.object source).normalize.normalize)
+  arrow := fun arrow => second.arrow (first.arrow arrow)
+  naturality := by
+    intro source target arrow datum
+    have firstStep := congrArg
+      (second.component (first.object target.normalize).normalize.normalize).map
+      (first.naturality arrow datum)
+    have secondStep := second.naturality (first.arrow arrow) ((first.component source.normalize).map datum)
+    exact firstStep.trans secondStep
+
 noncomputable def finitePageFunctor (f : PrimitiveAtlasMorphism X Y) :
     X.toSemantics.El ⥤ Y.toSemantics.El :=
   FolioData.ValidElement.fromFinite X.pages ⋙ f.pageFunctor ⋙
@@ -326,18 +374,119 @@ def Morphism.component {X Y : Atlas} : (f : Morphism X Y) → (x : X.Element) �
       (Morphism.component first x).comp
         (Morphism.component second (Morphism.mapObject first x))
 
+/-- A complete action retains both maps of every component insertion. -/
+def Morphism.action {X Y : Atlas} : Morphism X Y → PrimitiveAtlasMorphism X Y
+  | .primitive operation => operation
+  | .identity => PrimitiveAtlasMorphism.identity X
+  | .composite second first => PrimitiveAtlasMorphism.comp (Morphism.action second) (Morphism.action first)
+
+abbrev Morphism.Image (X Y : Atlas) (source : X.Element) :=
+  (target : Y.Element) × DomanialInsertion (X.cellData source.val.cell) (Y.cellData target.val.cell)
+
+def Morphism.image {X Y : Atlas} (f : Morphism X Y) (source : X.Element) : Morphism.Image X Y source :=
+  ⟨f.mapObject source, f.component source⟩
+
+private def Morphism.composeImage {X Y Z : Atlas} (second : Morphism Y Z) {source : X.Element}
+    (first : Morphism.Image X Y source) : Morphism.Image X Z source :=
+  ⟨second.mapObject first.1, first.2.comp (second.component first.1)⟩
+
+theorem Morphism.image_normalize {X Y : Atlas} (f : Morphism X Y) (source : X.Element) :
+    f.image source.normalize = f.image source := by
+  induction f with
+  | primitive operation =>
+      apply Sigma.ext
+      · exact operation.source_normalized source
+      · exact operation.component_normalized source
+  | identity =>
+      apply Sigma.ext
+      · exact source.normalize_idempotent
+      · rfl
+  | composite second first _ ihFirst =>
+      exact congrArg (Morphism.composeImage second) (ihFirst source)
+
+-- ALIGN: ATLAS-NORMALIZED-ACTION.
+theorem Morphism.normalized_action_image {X Y : Atlas}
+    (operation : Datra.Executable.PrimitiveAtlasMorphism X Y) (source : X.Element) :
+    Morphism.image (.primitive operation.normalized) source = Morphism.image (.primitive operation) source := by
+  have normal : Morphism.image (.primitive operation.normalized) source =
+      Morphism.image (.primitive operation) source.normalize := by
+    apply Sigma.ext
+    · exact operation.target_normalized source.normalize
+    · rfl
+  exact normal.trans (Morphism.image_normalize (.primitive operation) source)
+
+-- ALIGN: ATLAS-COMPLETE-ACTION.
+theorem Morphism.action_image {X Y : Atlas} (f : Morphism X Y) (source : X.Element) :
+    Morphism.image (.primitive f.action) source = f.image source := by
+  induction f with
+  | primitive => rfl
+  | identity =>
+      apply Sigma.ext
+      · exact source.normalize_idempotent
+      · rfl
+  | @composite A B C second first ihSecond ihFirst =>
+      change Morphism.composeImage (.primitive (Morphism.action second))
+        (Morphism.image (.primitive (Morphism.action first)) source) =
+        Morphism.composeImage second (Morphism.image first source)
+      rw [ihFirst]
+      exact congrArg (fun result : Morphism.Image B C (Morphism.mapObject first source) =>
+        (⟨result.1, (Morphism.component first source).comp result.2⟩ : Morphism.Image A C source))
+        (ihSecond (Morphism.mapObject first source))
+
 abbrev DataElement (X : Atlas) := (x : X.Element) × X.cellData x.val.cell
 abbrev SemanticDataElement (X : Atlas) := (x : X.toSemantics.El) × X.toSemantics.Da.obj x
 
 def Morphism.mapData {X Y : Atlas} (f : Morphism X Y) (source : X.DataElement) : Y.DataElement :=
   ⟨f.mapObject source.1, (f.component source.1).map source.2⟩
 
+theorem Morphism.mapData_normalize {X Y : Atlas} (f : Morphism X Y) (source : X.DataElement) :
+    f.mapData ⟨source.1.normalize, source.2⟩ = f.mapData source :=
+  congrArg (fun image : Morphism.Image X Y source.1 =>
+    (⟨image.1, image.2.map source.2⟩ : Y.DataElement)) (f.image_normalize source.1)
+
 noncomputable def fromSemanticData (X : Atlas) (source : X.SemanticDataElement) : X.DataElement :=
   ⟨(FolioData.ValidElement.fromFinite X.pages).obj source.1, source.2⟩
+
+noncomputable def toSemanticData (X : Atlas) (source : X.DataElement) : X.SemanticDataElement :=
+  ⟨(X.transposalElement source.1).toSemantics, (X.transposalElement source.1).dataToSemantics source.2⟩
+
+theorem fromSemanticData_toSemanticData (X : Atlas) (source : X.DataElement) :
+    fromSemanticData X (toSemanticData X source) = ⟨source.1.normalize, source.2⟩ := by
+  apply Sigma.ext
+  · exact (X.transposalElement source.1).fromFinite_toSemantics
+  · exact cast_heq _ _
 
 def mapSemanticData {X Y : Atlas} (f : X.toSemantics ⟶ Y.toSemantics)
     (source : X.SemanticDataElement) : Y.SemanticDataElement :=
   ⟨f.Pa.obj source.1, f.Da.app source.1 source.2⟩
+
+/-- The finite-to-executable conversion retains both the cell and its datum. -/
+theorem fromSemanticData_injective (X : Atlas) : Function.Injective (fromSemanticData X) := by
+  rintro ⟨source, datum⟩ ⟨target, other⟩ h
+  have cells := FolioData.ValidElement.fromFinite_injective X.pages (congrArg Sigma.fst h)
+  change source = target at cells
+  subst target
+  have values := eq_of_heq (Sigma.mk.inj h).2
+  change datum = other at values
+  subst other
+  rfl
+
+/-- Equality of page actions and dependent data images determines an Atlas
+arrow. This avoids exposing implementation-specific equality transports. -/
+theorem semanticHom_ext {X Y : Atlas} (f g : Datra.Semantics.AtlHom X.toSemantics Y.toSemantics)
+    (pages : f.Pa = g.Pa)
+    (data : ∀ source, mapSemanticData f source = mapSemanticData g source) : f = g := by
+  cases f with
+  | mk fp fd =>
+    cases g with
+    | mk gp gd =>
+      dsimp at pages
+      subst gp
+      have components : fd = gd := by
+        ext source datum
+        exact eq_of_heq (Sigma.mk.inj (data ⟨source, datum⟩)).2
+      cases components
+      rfl
 
 noncomputable def Morphism.finiteSemantics {X Y : Atlas} : Morphism X Y → (X.toSemantics ⟶ Y.toSemantics)
   | .primitive operation => operation.toSemantics

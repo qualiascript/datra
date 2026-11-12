@@ -6,11 +6,15 @@ open CategoryTheory
 
 universe s t
 
-/-- The existential cell payload is preserved literally by normalization. -/
+/-- The cell index includes the genuine page, modeling Haskell's phantom object
+identity as well as its existential payload. Distinct genuine pages can have
+different data families even when their chain and value coincide. Padding
+normalization preserves this index literally. -/
 structure PageElementCell where
   Carrier : Type
   chain : Chain Carrier
   value : Carrier
+  genuinePage : Nat
 
 /-- The owner is a value index; arrows cannot connect different owners.
 Validity against a folio is an additional invariant of the public constructors. -/
@@ -162,7 +166,8 @@ def Occurrence.toRaw {pages : FolioData origin final} (x : pages.Occurrence) : P
   page := x.page
   position := (pages.pageAt x.page).chain.position x.value
   trace := pages.traceAt x.page x.value
-  cell := ⟨(pages.pageAt x.page).Carrier, (pages.pageAt x.page).chain, x.value⟩
+  cell := ⟨(pages.pageAt x.page).Carrier, (pages.pageAt x.page).chain, x.value,
+    min x.page (pages.depth - 1)⟩
 
 -- ALIGN: PE-TRACE-TRANSPORT.
 theorem traceAt_drop (pages : FolioData origin final) (source target : Nat) (h : target ≤ source)
@@ -264,8 +269,8 @@ private theorem interval_cell_eq (pages : FolioData origin final) (source target
     (h : pages.indexNumber target ≤ pages.indexNumber source) (e : source = target)
     (x : (pages.page source).Carrier) :
     (⟨(pages.page target).Carrier, (pages.page target).chain,
-      (pages.interval source target h).map x⟩ : PageElementCell) =
-      ⟨(pages.page source).Carrier, (pages.page source).chain, x⟩ := by
+      (pages.interval source target h).map x, pages.indexNumber target⟩ : PageElementCell) =
+      ⟨(pages.page source).Carrier, (pages.page source).chain, x, pages.indexNumber source⟩ := by
   subst target
   simp [interval_identity, Consolidation.identity]
 
@@ -306,7 +311,8 @@ theorem normalize_toRaw (x : pages.Occurrence) :
       omega
     rw [hn, traceAt_drop]
   simp only [normalize, toRaw, PageElement.normalize, PageElement.mk.injEq]
-  exact ⟨True.intro, hp, ht, hc⟩
+  exact ⟨True.intro, hp, ht, by
+    simpa only [indexEquivFin_symm_number, paddedIndex] using hc⟩
 
 theorem toRaw_injective : Function.Injective (toRaw (pages := pages)) := by
   intro x y he
@@ -424,6 +430,38 @@ theorem eq_of_page_position {x y : pages.ValidElement}
   have := (pages.pageAt n).chain.positionInjective hv
   subst y
   rfl
+
+@[simp] theorem cell_genuinePage (x : pages.ValidElement) :
+    x.val.cell.genuinePage = x.normalize.val.page := by
+  rcases x with ⟨_, ⟨occurrence, rfl⟩⟩
+  rfl
+
+@[simp] theorem cell_position (x : pages.ValidElement) :
+    x.val.cell.chain.position x.val.cell.value = x.val.position := by
+  rcases x with ⟨_, ⟨occurrence, rfl⟩⟩
+  rfl
+
+/-- The data-family index identifies exactly a genuine cell. Padded copies
+share that index; distinct genuine pages do not, even with equal payloads. -/
+theorem cell_eq_iff_normalize_eq (x y : pages.ValidElement) :
+    x.val.cell = y.val.cell ↔ x.normalize = y.normalize := by
+  constructor
+  · intro h
+    apply eq_of_page_position
+    · simpa only [cell_genuinePage] using congrArg PageElementCell.genuinePage h
+    · have positions := congrArg (fun cell : PageElementCell => cell.chain.position cell.value) h
+      simpa only [cell_position] using positions
+  · intro h
+    have cells := congrArg (fun value : pages.ValidElement => value.val.cell) h
+    exact cells
+
+theorem cell_ne_of_genuine_pages_ne {x y : pages.ValidElement}
+    (hx : x.normalize = x) (hy : y.normalize = y) (different : x.val.page ≠ y.val.page) :
+    x.val.cell ≠ y.val.cell := by
+  intro equal
+  have same := (cell_eq_iff_normalize_eq x y).mp equal
+  rw [hx, hy] at same
+  exact different (congrArg (fun value : pages.ValidElement => value.val.page) same)
 
 @[simp] theorem trace_length (x : pages.ValidElement) : x.val.trace.length = x.val.page + 1 := by
   rcases x with ⟨_, ⟨occurrence, rfl⟩⟩

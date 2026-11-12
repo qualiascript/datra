@@ -111,6 +111,36 @@ theorem Atlas.covered_normalize_iff (X : Atlas) (x : X.Element)
     (datum : X.cellData x.val.cell) : X.Covered x.normalize datum ↔ X.Covered x datum := by
   simp only [Atlas.Covered, X.originImageRank_normalize]
 
+/-- Coverage depends on the genuine cell index, independently of which padded
+occurrence presents it. This permits a covered subtype as an Atlas data family. -/
+theorem Atlas.covered_cast_iff (X : Atlas) {source target : X.Element}
+    (sameCell : source.val.cell = target.val.cell) (datum : X.cellData source.val.cell) :
+    X.Covered target (cast (congrArg X.cellData sameCell) datum) ↔ X.Covered source datum := by
+  have transfer (a b : X.Element) (h : a = b) (value : X.cellData a.val.cell) :
+      X.Covered b (cast (congrArg (fun x : X.Element => X.cellData x.val.cell) h) value) ↔
+        X.Covered a value := by
+    cases h
+    rfl
+  rw [← X.covered_normalize_iff target, ← X.covered_normalize_iff source]
+  exact transfer source.normalize target.normalize
+    ((FolioData.ValidElement.cell_eq_iff_normalize_eq source target).mp sameCell) datum
+
+theorem Atlas.originImage_map (X : Atlas) {source target : X.Element} (arrow : source ⟶ target)
+    (datum : X.cellData source.val.cell) :
+    X.originImage target ((X.data.action.normalizedMap arrow).map datum) =
+      X.originImage source datum := by
+  have composition := X.data.composition arrow target.toOrigin datum
+  have same : arrow ≫ target.toOrigin = source.toOrigin := Subsingleton.elim _ _
+  rw [same] at composition
+  exact composition.symm
+
+/-- Atlas data arrows preserve and reflect coverage, since they preserve the
+origin image. Arbitrary transversal components need only preserve coverage. -/
+theorem Atlas.covered_map_iff (X : Atlas) {source target : X.Element} (arrow : source ⟶ target)
+    (datum : X.cellData source.val.cell) :
+    X.Covered target ((X.data.action.normalizedMap arrow).map datum) ↔ X.Covered source datum := by
+  simp only [Atlas.Covered, Atlas.originImageRank, X.originImage_map]
+
 -- ALIGN: ATLAS-COVERAGE-INTERPRETATION.
 theorem Atlas.covered_interpretation (X : Atlas) (x : X.toSemantics.El)
     (datum : X.toSemantics.Da.obj x) :

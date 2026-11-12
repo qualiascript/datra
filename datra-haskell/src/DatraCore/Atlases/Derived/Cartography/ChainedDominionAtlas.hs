@@ -73,6 +73,10 @@ data ChainedDominionCellData value object
   | ChainedDominionRegionDatum value
   deriving (Eq, Show)
 
+cellValue :: ChainedDominionCellData value object -> value
+cellValue (ChainedDominionExtentDatum value) = value
+cellValue (ChainedDominionRegionDatum value) = value
+
 data ChainedDominionAtlasScope value
 data ChainedDominionPaginationScope value
 
@@ -148,8 +152,6 @@ chainedDominionAt firstValue valueChain valueDominion occurrence
   where
     selectedValue = chainValueAt firstValue valueChain occurrence
 
-    cellValue (ChainedDominionExtentDatum value) = value
-    cellValue (ChainedDominionRegionDatum value) = value
 
 chainedDominionDataMap
   :: value
@@ -235,9 +237,6 @@ chainedDominionCoverage firstValue valueChain valueDominion source datum =
     valueAtlas =
       chainedDominionAtlas firstValue valueChain valueDominion
 
-    cellValue (ChainedDominionExtentDatum value) = value
-    cellValue (ChainedDominionRegionDatum value) = value
-
 -- | Restrict a chained dominion Atlas to its canonical coverage map.
 chainedDominionAtlasMap
   :: value
@@ -285,6 +284,8 @@ chainedDominionInsertionTraversal
     (atlasWitness
       (chainedDominionAtlas firstValue valueChain targetDominion))
     coalitionInsertion
+    (\_ datum -> preimage insertion (cellValue datum))
+    (\_ -> insertionLeftInverse insertion)
   where
     coalitionInsertion =
       domanialInsertion

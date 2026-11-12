@@ -5,7 +5,8 @@ namespace Datra.Executable
 open CategoryTheory
 
 /-- The two dependent operations carried by AtlasAction. The family is indexed
-by the cell payload, so normalization has exactly the same data type. -/
+by the genuine cell identity and payload, so normalization has exactly the
+same data type. -/
 structure AtlasAction {origin final : Page} (pages : FolioData origin final)
     (cellData : PageElementCell → Type) where
   dataAt : (x : pages.ValidElement) → Dominion (cellData x.val.cell)

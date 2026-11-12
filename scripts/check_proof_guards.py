@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require LiquidHaskell to reject false laws beside the real Atlas proofs.
+"""Require LiquidHaskell to reject false Atlas, coverage, and inverse laws.
 
 Each check compiles an isolated copy of the production module using the built
 library's interfaces. No failed proof or expected-failure directive enters the
@@ -8,6 +8,7 @@ Run after `make -C datra-haskell verify-liquid`.
 """
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -41,6 +42,105 @@ proofGuard (CompositeAtlasHom _ _) = ()
 """,
 }
 
+STABLE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs"
+STABLE_GUARDS = {
+    "stable transversals reject an inverse that drops every image": """
+{-@
+proofGuard
+  :: sourceAtlas:Atlas sa ss sd so sf
+  -> targetAtlas:Atlas ta ts td to tf
+  -> transversal:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> { proof:() | stableOriginPreserved sourceAtlas targetAtlas transversal }
+  -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+@-}
+proofGuard
+  :: Atlas sa ss sd so sf
+  -> Atlas ta ts td to tf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> ()
+  -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+proofGuard sourceAtlas targetAtlas transversal originProof =
+  stableAtlasTransversal sourceAtlas targetAtlas transversal originProof
+    (const Nothing) (const ())
+""",
+}
+
+
+DOMINC_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs"
+DOMINC_GUARDS = {
+    "coalition components reject an inverse that drops every image": """
+proofGuard
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> (a -> CoalitionElement (AtlasObject atlasScope scope cellData))
+  -> DomanialInsertion (DominionCellData a sourceObject) (cellData object)
+proofGuard targetAtlas targetOccurrence forward =
+  coalitionComponentInsertion targetAtlas targetOccurrence forward
+    (const Nothing) (const ())
+""",
+}
+
+
+TRANSVERSAL_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransversal/Internal.hs"
+TRANSVERSAL_GUARDS = {
+    "transversals reject coverage evidence for the wrong image": """
+{-@
+proofGuard
+  :: sourceAtlas:Atlas sa ss sd so sf
+  -> targetAtlas:Atlas ta ts td to tf
+  -> ordered:OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> badCoverage:(covered:AtlasCoveredPageElement (AtlasObject sa ss sd)
+       -> {w:AtlasCoverageWitness (AtlasObject ta ts td) |
+         not (transversalImageCovered sourceAtlas targetAtlas ordered covered w)})
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+@-}
+proofGuard
+  :: Atlas sa ss sd so sf
+  -> Atlas ta ts td to tf
+  -> OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> (AtlasCoveredPageElement (AtlasObject sa ss sd)
+       -> AtlasCoverageWitness (AtlasObject ta ts td))
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+proofGuard sourceAtlas targetAtlas ordered badCoverage =
+  atlasTransversal sourceAtlas targetAtlas ordered badCoverage
+""",
+}
+
+
+CHARTER_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs"
+CHARTER_GUARDS = {
+    "charted components reject a source inverse that drops every covered value": """
+proofGuard
+  :: DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
+  -> DomanialInsertion (ChartedCellData source sourceObject) (ChartedCellData target targetObject)
+proofGuard original = chartMapInsertion original (const Nothing) (const ())
+""",
+    "chart counits reject an inverse that drops every covered value": """
+proofGuard
+  :: DomanialInsertion (ChartedCellData atlasObject object) (AtlasObjectCellData atlasObject object)
+proofGuard = chartCounitInsertion (const Nothing) (const ())
+""",
+    "charted data rejects a witness that does not cover the datum": """
+{-@
+proofGuard
+  :: valueAtlas:Atlas atlasScope scope cellData origin final
+  -> occurrence:PageElement scope object
+  -> datum:cellData object
+  -> witness:{w:AtlasCoverageWitness (AtlasObject atlasScope scope cellData) |
+       not (coverageWitnessCovers valueAtlas occurrence datum w)}
+  -> ChartedCellData (AtlasObject atlasScope scope cellData) object
+@-}
+proofGuard
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> cellData object
+  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+  -> ChartedCellData (AtlasObject atlasScope scope cellData) object
+proofGuard valueAtlas occurrence datum witness =
+  chartCellData valueAtlas occurrence datum witness ()
+""",
+}
+
 
 def run():
     plan = json.loads((HASKELL / "dist-newstyle/cache/plan.json").read_text())
@@ -49,9 +149,6 @@ def run():
                    and unit.get("component-name") == "lib")
     if not any(dep.startswith("liquidhaskell-") for dep in library["depends"]):
         raise SystemExit("Build the library with -fliquid before checking proof guards")
-    source = SOURCE.read_text().replace(
-        '#include "../../../LiquidPlugin.h"',
-        f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"')
     project = os.environ.get("CABAL_PROJECT", "cabal.project")
     with tempfile.TemporaryDirectory(prefix="datra-proof-guards-") as directory:
         temporary = Path(directory)
@@ -63,15 +160,23 @@ def run():
                    "-i" + str(Path(library["dist-dir"]) / "build")]
         for dependency in library["depends"]:
             command.extend(["-package-id", dependency])
-        for description, guard in GUARDS.items():
-            target.write_text(source + "\n" + guard)
-            result = subprocess.run(command + [str(target)], cwd=HASKELL,
-                                    text=True, capture_output=True)
-            output = result.stdout + result.stderr
-            if (result.returncode == 0 or "Liquid Type Mismatch" not in output
-                    or "proofGuard" not in output):
-                raise SystemExit(f"Proof guard did not produce the required rejection: {description}\n{output}")
-            print(f"Rejected false law: {description}")
+        for source_path, guards in [(SOURCE, GUARDS), (STABLE_SOURCE, STABLE_GUARDS),
+                                    (DOMINC_SOURCE, DOMINC_GUARDS),
+                                    (TRANSVERSAL_SOURCE, TRANSVERSAL_GUARDS),
+                                    (CHARTER_SOURCE, CHARTER_GUARDS)]:
+            source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
+                            f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
+                            source_path.read_text())
+            for description, guard in guards.items():
+                target.write_text(source + "\n" + guard)
+                result = subprocess.run(command + [str(target)], cwd=HASKELL,
+                                        text=True, capture_output=True)
+                output = result.stdout + result.stderr
+                error_lines = re.findall(re.escape(str(target)) + r":(\d+):\d+: error:", output)
+                if (result.returncode == 0 or "Liquid Type Mismatch" not in output
+                        or not any(int(line) > source.count("\n") for line in error_lines)):
+                    raise SystemExit(f"Proof guard did not produce the required rejection: {description}\n{output}")
+                print(f"Rejected false law: {description}")
 
 
 if __name__ == "__main__":

@@ -48,12 +48,12 @@ LEAN_ASCII = str.maketrans({
     "▸": "transport",
     "⟨": "<|",
     "⟩": "|>",
-    "⟶": "-->",
+    "⟶": "~>",  # Keep category arrows distinct from Lean line comments.
     "⥤": "==>",
     "⦃": "{{",
     "⦄": "}}",
     "𝟙": "Id",
-    "𝟭": "Unit",
+    "𝟭": "IdFunctor",
 })
 
 
@@ -100,8 +100,7 @@ LISTINGS_PREAMBLE = r"""
   columns=fullflexible,
   keepspaces=true,
   showstringspaces=false,
-  tabsize=2,
-  captionpos=b
+  tabsize=2
 }
 """
 
@@ -116,11 +115,7 @@ Unicode surface notation solely for portable typesetting; the checked source
 modules are imported by \texttt{datra.lean}. Source-file labels identify each
 module in dependency order.
 
-\lstinputlisting[
-  style=leanSource,
-  caption={Complete Lean formalization of DaTra},
-  label={lst:datra-lean}
-]{datra_code_ascii.lean}
+\lstinputlisting[style=leanSource]{datra_code_ascii.lean}
 """
 
 

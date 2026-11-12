@@ -819,6 +819,594 @@
       "haskell_declaration": "composeAtlasTransversals",
       "lean_namespace": "Datra.Executable.Atlas.Transversal",
       "lean_declaration": "toSemantics_comp"
+    },
+    {
+      "id": "ATLAS-STABLE-ORIGIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "stableAtlasOrigin",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "stableOrigin_interpretation"
+    },
+    {
+      "id": "ATLAS-STABLE-PREDICATE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "stableOriginPreserved",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "stableOriginPreserved_interpretation"
+    },
+    {
+      "id": "ATLAS-STABLE-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "stableAtlasTransversal",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "semantic_stable"
+    },
+    {
+      "id": "ATLAS-STABLE-EXTENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "stableAtlasTransversalPreservesExtent",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "preservesExtent"
+    },
+    {
+      "id": "ATLAS-STABLE-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "identityStableAtlasTransversal",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "toSemantics_identity"
+    },
+    {
+      "id": "ATLAS-STABLE-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "composeStableAtlasTransversals",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "toSemantics_comp"
+    },
+    {
+      "id": "ATLAS-STABLE-COVERED",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "mapStableAtlasTransversalCoveredPageElement",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "mapCovered_interpretation"
+    },
+    {
+      "id": "COALITION-LEFT-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Internal.hs",
+      "haskell_declaration": "stableCoalitionMap",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "coalition_leftInverse"
+    },
+    {
+      "id": "COALITION-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Internal.hs",
+      "haskell_declaration": "coalizingFunctorIdentity",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "coalitionInsertion_identity"
+    },
+    {
+      "id": "COALITION-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Internal.hs",
+      "haskell_declaration": "coalizingFunctorComposition",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "coalitionInsertion_comp"
+    },
+    {
+      "id": "COALITION-CONSTRUCTOR-ELIM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
+      "haskell_declaration": "withCoalitionElement",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionElement_eliminate"
+    },
+    {
+      "id": "COALITION-DATUM-TRANSPORT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
+      "haskell_declaration": "coalitionElementAt",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionElementAt_originImage"
+    },
+    {
+      "id": "COALITION-COVERAGE-TRANSPORT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
+      "haskell_declaration": "coalitionElementCoverageAt",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionElementAt_coverage"
+    },
+    {
+      "id": "COALITION-CACHED-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
+      "haskell_declaration": "coalitionElementRank",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "CertifiedCoalitionElement.rank_spec"
+    },
+    {
+      "id": "COALITION-EQUALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
+      "haskell_declaration": "coalitionElementsEqual",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "CertifiedCoalitionElement.equal_iff"
+    },
+    {
+      "id": "COALITION-CARRIER-EQUIVALENCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
+      "haskell_declaration": "coalition",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionSemanticsEquiv"
+    },
+    {
+      "id": "COALITION-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
+      "haskell_declaration": "coalition",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalition_roundtrip"
+    },
+    {
+      "id": "COALITION-FORWARD-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
+      "haskell_declaration": "mapCoalitionElement",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "mapCoalitionValue_interpretation"
+    },
+    {
+      "id": "COALITION-STABLE-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Internal.hs",
+      "haskell_declaration": "stableCoalitionMap",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "coalitionInsertion_interpretation"
+    },
+    {
+      "id": "DOMINC-FUNCTOR-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "dominionFunctorIdentityValue",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "mapCellData_identity"
+    },
+    {
+      "id": "DOMINC-FUNCTOR-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "dominionFunctorCompositionValue",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "mapCellData_composition"
+    },
+    {
+      "id": "DOMINC-HOM-LEFT-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "domIncHomLeftInverseValue",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "homLeftInverse"
+    },
+    {
+      "id": "DOMINC-HOM-RIGHT-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "domIncHomRightInverseValue",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "homRightInverse"
+    },
+    {
+      "id": "DOMINC-HOM-NATURALITY-LEFT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "domIncHomNaturalityLeftValue",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "homNaturalityLeft"
+    },
+    {
+      "id": "DOMINC-HOM-NATURALITY-RIGHT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "domIncHomNaturalityRightValue",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "homNaturalityRight"
+    },
+    {
+      "id": "DOMINC-CONSTANT-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "constantDominion",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantDominion"
+    },
+    {
+      "id": "DOMINC-ATLAS-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "dominionAtlas",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "interpretationIso"
+    },
+    {
+      "id": "DOMINC-COVERAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "dominionCoverage",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionAtlas_covered"
+    },
+    {
+      "id": "DOMINC-COALITION-EQUIVALENCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "coaDomIncIso",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "coalitionValueEquiv"
+    },
+    {
+      "id": "DOMINC-COALITION-LEFT-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "coaDomIncIsoLeftInverse",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "coaDomInc_leftInverse"
+    },
+    {
+      "id": "DOMINC-COALITION-RIGHT-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "coaDomIncIsoRightInverse",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "coaDomInc_rightInverse"
+    },
+    {
+      "id": "DOMINC-COMPONENT-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "coalitionComponentInsertion",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "coalitionComponentInsertion"
+    },
+    {
+      "id": "ATLAS-TRANSVERSAL-IMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransversal/Internal.hs",
+      "haskell_declaration": "withTransversalImage",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "withTransversalImage"
+    },
+    {
+      "id": "ATLAS-TRANSVERSAL-IMAGE-COVERAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransversal/Internal.hs",
+      "haskell_declaration": "transversalImageCovered",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "transversalImageCovered"
+    },
+    {
+      "id": "ATLAS-COVERED-WITNESS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "atlasCoveredPageElementWitness",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "atlasCoveredPageElementWitness"
+    },
+    {
+      "id": "DOMINC-HOM-TO",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "domIncToCoa",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "domIncToCoa"
+    },
+    {
+      "id": "DOMINC-HOM-FROM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "coaToDomInc",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "coaToDomInc_interpretation"
+    },
+    {
+      "id": "DOMINC-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "dominionMap",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionMap_interpretation"
+    },
+    {
+      "id": "DOMINC-MAP-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "dominionMap",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionMap_identity"
+    },
+    {
+      "id": "DOMINC-MAP-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "dominionMap",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionMap_composition"
+    },
+    {
+      "id": "CHARTER-CELL-CONSTRUCTOR",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartCellData",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartCellData"
+    },
+    {
+      "id": "CHARTER-COUNIT-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartCounitInsertion",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "counitInsertion"
+    },
+    {
+      "id": "CHARTER-FUNCTOR-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "charterIdentityValue",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "mapCellData_identity"
+    },
+    {
+      "id": "CHARTER-FUNCTOR-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "charterCompositionValue",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "mapCellData_composition"
+    },
+    {
+      "id": "CHARTER-HOM-LEFT-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartHomLeftInverseValue",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "homLeftInverse"
+    },
+    {
+      "id": "CHARTER-HOM-RIGHT-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartHomRightInverseValue",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "homRightInverse"
+    },
+    {
+      "id": "CHARTER-HOM-NATURALITY-LEFT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartHomNaturalityLeftValue",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "homNaturalityLeft"
+    },
+    {
+      "id": "CHARTER-HOM-NATURALITY-RIGHT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartHomNaturalityRightValue",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "homNaturalityRight"
+    },
+    {
+      "id": "CHARTER-COUNIT-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartCounitInsertion",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "counitInsertion_interpretation"
+    },
+    {
+      "id": "CHARTER-DOMINION-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartedDominion",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartedDominion_roundtrip"
+    },
+    {
+      "id": "CHARTER-DATA-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartedInsertion",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartedInsertion"
+    },
+    {
+      "id": "CHARTER-DATA-INVERSE-SOUND",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartedInsertion",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartedPreimage_sound"
+    },
+    {
+      "id": "CHARTER-ATLAS-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartAtlas",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "interpretationIso"
+    },
+    {
+      "id": "CHARTER-ATLAS-COVERED",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartAtlasMap",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartAtlas_covered"
+    },
+    {
+      "id": "ATLAS-COMPLETE-ACTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/Internal.hs",
+      "haskell_declaration": "withAtlasMorphismAction",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "Morphism.action_image"
+    },
+    {
+      "id": "ATLAS-NORMALIZED-ACTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/Internal.hs",
+      "haskell_declaration": "normalizeAtlasMorphismAction",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "Morphism.normalized_action_image"
+    },
+    {
+      "id": "CHARTER-MAP-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartMapInsertion",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartMapInsertion"
+    },
+    {
+      "id": "CHARTER-MAP-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartMapInsertion",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartMapInsertion_preimage"
+    },
+    {
+      "id": "ATLAS-MAP-COVERAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs",
+      "haskell_declaration": "atlasMapCoversDatum",
+      "lean_namespace": "Datra.Executable.AtlasMap",
+      "lean_declaration": "coversDatum_spec"
+    },
+    {
+      "id": "ATLAS-MAP-OBJECT-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs",
+      "haskell_declaration": "atlasMap",
+      "lean_namespace": "Datra.Executable.AtlasMap",
+      "lean_declaration": "isAtlasMap"
+    },
+    {
+      "id": "CHARTER-MAP-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartMap",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartMap_interpretation"
+    },
+    {
+      "id": "CHARTER-COUNIT-ARROW",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartCounit",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartCounit_interpretation"
+    },
+    {
+      "id": "CHARTER-UNIT-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartUnit",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartUnit_interpretation"
+    },
+    {
+      "id": "CHARTER-LIFT-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartLift",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartLift_interpretation"
+    },
+    {
+      "id": "CHARTER-LOWER-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartLower",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartLower_interpretation"
+    },
+    {
+      "id": "CHARTER-ARROW-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "charterFunctorHom",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartMap_identity"
+    },
+    {
+      "id": "CHARTER-ARROW-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "charterFunctorHom",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartMap_composition"
+    },
+    {
+      "id": "CHARTER-HOM-LEFT-INVERSE-FULL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartHomEquivLeftInverse",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartLower_chartLift"
+    },
+    {
+      "id": "CHARTER-HOM-RIGHT-INVERSE-FULL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartHomEquivRightInverse",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartLift_chartLower"
+    },
+    {
+      "id": "CHARTER-HOM-NATURALITY-LEFT-FULL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartHomEquivNaturalityLeft",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartLift_naturality_left"
+    },
+    {
+      "id": "CHARTER-HOM-NATURALITY-RIGHT-FULL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartHomEquivNaturalityRight",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartLift_naturality_right"
+    },
+    {
+      "id": "CHARTER-HOM-EQUIV-TO",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartHomEquivTo",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cartographyHomEquiv_to"
+    },
+    {
+      "id": "CHARTER-HOM-EQUIV-FROM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartHomEquivFrom",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cartographyHomEquiv_from"
+    },
+    {
+      "id": "CHARTER-COVERAGE-WITNESS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartCoverageWitness",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartCoverageWitness"
+    },
+    {
+      "id": "ATLAS-MAP-HOM-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs",
+      "haskell_declaration": "identityAtlasMapHom",
+      "lean_namespace": "Datra.Executable.AtlasMap.Hom",
+      "lean_declaration": "toSemantics_identity"
+    },
+    {
+      "id": "ATLAS-MAP-HOM-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs",
+      "haskell_declaration": "composeAtlasMapHoms",
+      "lean_namespace": "Datra.Executable.AtlasMap.Hom",
+      "lean_declaration": "toSemantics_comp"
+    },
+    {
+      "id": "ATLAS-MAP-HOM-DATA",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs",
+      "haskell_declaration": "mapAtlasMapHomData",
+      "lean_namespace": "Datra.Executable.AtlasMap.Hom",
+      "lean_declaration": "mapData_interpretation"
+    },
+    {
+      "id": "ATLAS-MAP-INCLUSION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs",
+      "haskell_declaration": "atlasMapInclusionFunctor",
+      "lean_namespace": "Datra.Executable.AtlasMap",
+      "lean_declaration": "inclusion_interpretation"
+    },
+    {
+      "id": "ATLAS-TRANSVERSAL-MAP-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap/Internal.hs",
+      "haskell_declaration": "identityAtlasTransversalMap",
+      "lean_namespace": "Datra.Executable.AtlasTransversalMap",
+      "lean_declaration": "toSemantics_identity"
+    },
+    {
+      "id": "ATLAS-TRANSVERSAL-MAP-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap/Internal.hs",
+      "haskell_declaration": "composeAtlasTransversalMaps",
+      "lean_namespace": "Datra.Executable.AtlasTransversalMap",
+      "lean_declaration": "toSemantics_comp"
+    },
+    {
+      "id": "ATLAS-TRANSVERSAL-MAP-INCLUSION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap/Internal.hs",
+      "haskell_declaration": "atlasTransversalMapInclusionFunctor",
+      "lean_namespace": "Datra.Executable.AtlasTransversalMap",
+      "lean_declaration": "inclusion_interpretation"
+    },
+    {
+      "id": "CHARTER-MAP-FULL-SUBCATEGORY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartMap",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartMap_subcategory"
+    },
+    {
+      "id": "CHARTER-LIFT-FULL-SUBCATEGORY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartLift",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartLift_subcategory"
+    },
+    {
+      "id": "CHARTER-LOWER-FULL-SUBCATEGORY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_declaration": "chartLower",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartLower_subcategory"
     }
   ],
   "modules": [
@@ -870,6 +1458,7 @@
       "types": [
         "AtlasMorphismImage",
         "AtlasMorphism",
+        "CompositeAtlasObjectMap",
         "AtlasObject",
         "AtlasWitness",
         "AtlasEquality",
@@ -1441,8 +2030,12 @@
       "types": [
         "AtlasTransversal"
       ],
-      "reflected": [],
+      "reflected": [
+        "withTransversalImage",
+        "transversalImageCovered"
+      ],
       "refinements": [
+        "checkedTransversalWitness",
         "atlasTransversal"
       ],
       "lean_target": "Datra.Executable.Atlas.Transversal",
@@ -1478,14 +2071,15 @@
         "stableAtlasOrigin",
         "stableElementPage",
         "stableElementPosition",
-        "stableOriginPreserved"
+        "stableOriginPreserved",
+        "mapCoalitionElement"
       ],
       "refinements": [
         "checkedStableOrigin",
         "stableAtlasTransversal"
       ],
-      "lean_target": "Datra.Executable.StableAtlasTransversal",
-      "coverage": "pending",
+      "lean_target": "Datra.Executable.Atlas.StableTransversal",
+      "coverage": "partial",
       "aliases": [],
       "embeddings": []
     },
@@ -1502,7 +2096,7 @@
         "atlasMap"
       ],
       "lean_target": "Datra.Executable.AtlasMap",
-      "coverage": "pending",
+      "coverage": "partial",
       "aliases": [],
       "embeddings": []
     },
@@ -1516,7 +2110,7 @@
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.AtlasTransversalMap",
-      "coverage": "pending",
+      "coverage": "partial",
       "aliases": [],
       "embeddings": []
     },
@@ -1554,6 +2148,9 @@
         "chartHomFromValue"
       ],
       "refinements": [
+        "chartCellData",
+        "chartCounitInsertion",
+        "chartMapInsertion",
         "charterIdentityValue",
         "charterCompositionValue",
         "chartHomLeftInverseValue",
@@ -1562,7 +2159,7 @@
         "chartHomNaturalityRightValue"
       ],
       "lean_target": "Datra.Executable.Charter",
-      "coverage": "pending",
+      "coverage": "partial",
       "aliases": [],
       "embeddings": []
     },
@@ -1603,15 +2200,15 @@
       "embeddings": []
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Internal.hs",
-      "module": "Coalition.Internal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
+      "module": "Coalition.Element.Internal",
       "types": [
         "CoalitionElement"
       ],
       "reflected": [],
       "refinements": [],
-      "lean_target": "Datra.Executable.Coalition",
-      "coverage": "pending",
+      "lean_target": "Datra.Executable.Atlas.CoalitionElement",
+      "coverage": "partial",
       "aliases": [],
       "embeddings": []
     },
@@ -1626,7 +2223,7 @@
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.DomanialInclusion",
-      "coverage": "pending",
+      "coverage": "partial",
       "aliases": [
         "DominionAtlasObject"
       ],
@@ -1645,7 +2242,8 @@
         "composeValues",
         "identityValue",
         "domIncHomToValue",
-        "domIncHomFromValue"
+        "domIncHomFromValue",
+        "coalitionElementAt"
       ],
       "refinements": [
         "dominionFunctorIdentityValue",
@@ -1653,10 +2251,11 @@
         "domIncHomLeftInverseValue",
         "domIncHomRightInverseValue",
         "domIncHomNaturalityLeftValue",
-        "domIncHomNaturalityRightValue"
+        "domIncHomNaturalityRightValue",
+        "coalitionComponentInsertion"
       ],
       "lean_target": "Datra.Executable.DomanialInclusion",
-      "coverage": "pending",
+      "coverage": "partial",
       "aliases": [],
       "embeddings": []
     },
@@ -1935,7 +2534,7 @@
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.Charter",
-      "coverage": "pending",
+      "coverage": "partial",
       "aliases": [
         "ChartedAtlasObject"
       ],

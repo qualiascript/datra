@@ -5,6 +5,7 @@ module AtlasCoveredPageElement
   , atlasCoverageWitness
   , atlasCoveredPageElement
   , withAtlasCoveredPageElement
+  , atlasCoveredPageElementWitness
   ) where
 
 import AtlasCoveredPageElement.Internal
@@ -13,4 +14,5 @@ import AtlasCoveredPageElement.Internal
   , atlasCoverageWitness
   , atlasCoveredPageElement
   , withAtlasCoveredPageElement
+  , atlasCoveredPageElementWitness
   )
