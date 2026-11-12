@@ -13,6 +13,7 @@ import EmptyAtlas
 import AtlasCoveredPageElement
 import AtlasMap
 import AtlasMerge
+import AtlasSequence
 import AtlasTransposal
 import AtlasTransversal
 import AtlasTransversalMap
@@ -49,6 +50,7 @@ import StableConfederalDataMonoidal
 import StableDataTransversal
 
 import Data.Maybe (isJust, isNothing)
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Void (Void, absurd)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -80,6 +82,9 @@ testTree =
         , testCase "atlas" testAtlas
         , testCase "empty atlas" testEmptyAtlas
         , testCase "atlas merge" testAtlasMerge
+        , testCase "atlas merge origin ranks" testAtlasMergeOriginRanks
+        , testCase "atlas merge rejects off-image unranking" testAtlasMergeOffImageUnrank
+        , testCase "atlas sequence merge origin ranks" testAtlasSequenceOriginRanks
         , testCase "atlas confederation" testAtlasConfederation
         , testCase "atlas federation" testAtlasFederation
         , testCase "atlas map" testAtlasMap
@@ -1458,6 +1463,105 @@ testAtlas =
                                     "Yoneda embeds AtlasHom by postcomposition"
                                     (pageElementPage mapped == 0)
             _ -> fail "test setup failed: expected atlas elements"
+
+-- The source cell ranks its data locally, while a merge stores their ranks
+-- after transport to the origin. Its inverse deliberately returns candidates
+-- outside its image, so membership must check the candidate's forward image.
+checkMergeOriginRanks
+  :: Atlas sourceAtlasScope sourceScope TestCellData () Bool
+  -> Atlas targetAtlasScope targetScope targetData targetOrigin targetFinal
+  -> OrderedAtlasTransposal
+       (AtlasObject sourceAtlasScope sourceScope TestCellData)
+       (AtlasObject targetAtlasScope targetScope targetData)
+  -> (Natural -> Natural)
+  -> IO ()
+checkMergeOriginRanks sourceAtlas targetAtlas inclusion encodeRank =
+  case pageElementIndex (atlasPageElements sourceAtlas) 1 (finiteOrdinal 0) of
+    Nothing -> fail "missing intermediate source cell"
+    Just sourceIndex -> withPageElement (pageElement sourceIndex) $ \source ->
+      withAtlasMorphismImage
+        (mapOrderedAtlasTransposalData (atlasWitness sourceAtlas) inclusion source) $
+          \target component -> do
+            let targetDominion = atlasDataAt targetAtlas target
+                sourceDatum = TestCellData 3
+                image = applyInsertion component sourceDatum
+            assert "merge inclusion stores the transported origin rank"
+              (rank targetDominion image == encodeRank 6)
+            assert "merge inclusion recovers data from their origin ranks"
+              (preimage component image == Just sourceDatum)
+            assert "merge membership rejects a false inverse candidate"
+              (isNothing (unrank targetDominion (encodeRank 1)))
+            withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
+              withAtlasMorphismImage
+                (mapOrderedAtlasTransposalData (atlasWitness sourceAtlas) inclusion sourceOrigin) $
+                  \targetOrigin originComponent -> do
+                    let sourceTransport = mapAtlasData sourceAtlas (pageElementArrow source sourceOrigin)
+                        targetTransport = mapAtlasData targetAtlas (pageElementArrow target targetOrigin)
+                        targetOriginDominion = atlasDataAt targetAtlas targetOrigin
+                    assert "merge inclusion commutes with transport to the extent"
+                      (rank targetOriginDominion (applyInsertion targetTransport image)
+                        == rank targetOriginDominion
+                          (applyInsertion originComponent (applyInsertion sourceTransport sourceDatum)))
+
+testAtlasMergeOriginRanks :: IO ()
+testAtlasMergeOriginRanks = withPartialCoverageAtlas $ \input ->
+  atlasMerge input input $ \merged -> do
+    checkMergeOriginRanks input merged
+      (atlasMergeLeftOrderedTransposal input input merged) (2 *)
+    checkMergeOriginRanks input merged
+      (atlasMergeRightOrderedTransposal input input merged) (\n -> 2 * n + 1)
+
+testAtlasSequenceOriginRanks :: IO ()
+testAtlasSequenceOriginRanks = withPartialCoverageAtlas $ \input ->
+  let member = atlasSequenceMember input
+      members = member :| [member]
+  in atlasSequence members $ \merged -> do
+    checkMergeOriginRanks input merged
+      (atlasSequenceMemberOrderedTransposal members 0 input merged) (2 *)
+    checkMergeOriginRanks input merged
+      (atlasSequenceMemberOrderedTransposal members 1 input merged) (\n -> 2 * n + 1)
+
+-- This Dominion obeys its round trip but also decodes odd ranks. Both the
+-- merged extent and the included cells must reject those off-image decodings.
+testAtlasMergeOffImageUnrank :: IO ()
+testAtlasMergeOffImageUnrank =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    let dataAt _ = dominion
+          (\(TestCellData value) -> 2 * value)
+          (\valueRank -> Just (TestCellData (valueRank `div` 2)))
+          (const ())
+    in atlas valuePagination (atlasDataAction dataAt testAtlasMapData)
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \input -> do
+        atlasMerge input input checkMerged
+        let member = atlasSequenceMember input
+        atlasSequence (member :| [member]) checkMerged
+  where
+    checkMerged
+      :: Atlas atlasScope scope cellData origin final
+      -> IO ()
+    checkMerged merged = do
+      withPageElement (atlasOriginCell merged) $ \origin -> do
+        let valueDominion = atlasDataAt merged origin
+        assert "merged extent rejects off-image ranks from either member"
+          (all (isNothing . unrank valueDominion) [2, 3])
+        assert "merged extent retains genuine ranks from either member"
+          (all (isJust . unrank valueDominion) [0, 1, 4, 5])
+      mapM_ (checkCell merged) [(0, 2, 4), (1, 3, 5)]
+
+    checkCell
+      :: Atlas atlasScope scope cellData origin final
+      -> (Natural, Natural, Natural)
+      -> IO ()
+    checkCell merged (position, rejectedRank, retainedRank) =
+      case pageElementIndex (atlasPageElements merged) 1 (finiteOrdinal position) of
+        Nothing -> fail "missing merged member cell"
+        Just index -> withPageElement (pageElement index) $ \cell -> do
+          let valueDominion = atlasDataAt merged cell
+          assert "merged cell rejects off-image unranking"
+            (isNothing (unrank valueDominion rejectedRank))
+          assert "merged cell retains an in-image rank"
+            (isJust (unrank valueDominion retainedRank))
 
 testAtlasMerge :: IO ()
 testAtlasMerge = do

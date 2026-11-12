@@ -3,14 +3,6 @@ import Executable.Atlas.Transversal
 namespace Datra.Executable.Atlas
 open CategoryTheory
 
-theorem originImage_origin (X : Atlas)
-    (datum : X.cellData (FolioData.ValidElement.originElement X.pages).val.cell) :
-    X.originImage (FolioData.ValidElement.originElement X.pages) datum = datum := by
-  unfold Atlas.originImage
-  rw [show (FolioData.ValidElement.originElement X.pages).toOrigin =
-    𝟙 (FolioData.ValidElement.originElement X.pages) from Subsingleton.elim _ _]
-  exact X.data.identity _ datum
-
 theorem covered_originImage {X : Atlas} {source : X.Element}
     {datum : X.cellData source.val.cell} (h : X.Covered source datum) :
     X.Covered (FolioData.ValidElement.originElement X.pages) (X.originImage source datum) := by

@@ -353,6 +353,7 @@ def domIncToCoa {A : Type} (D : Dominion A) {X : Atlas}
 
 /-- The forward hom map recovers the supplied insertion, including its
 observable partial inverse on every covered target value. -/
+-- ALIGN: DOMINC-HOM-RIGHT-INVERSE-FULL.
 theorem domIncToCoa_coaToDomInc {A : Type} (D : Dominion A) (X : Atlas)
     (insertion : DomanialInsertion A X.CoalitionValue)
     (backward : X.cellData (FolioData.ValidElement.originElement X.pages).val.cell → Option A)
@@ -476,5 +477,168 @@ theorem dominionMap_composition {A B C : Type} (source : Dominion A) (middle : D
     (interpretationIso middle).inv_hom_id
   simp only [Category.assoc]
   rw [← Category.assoc (interpretationInv middle) (interpretationHom middle), cancel, Category.id_comp]
+
+theorem semanticElementLT_false {A : Type} (D : Dominion A)
+    (x y : (dominionAtlas D).toSemantics.El) :
+    ¬ Datra.Semantics.elementLT (dominionAtlas D).toSemantics x y := by
+  intro h
+  have same := (semanticElement_unique D x).trans (semanticElement_unique D y).symm
+  subst y
+  let m := (dominionAtlas D).toSemantics.Fo.commonBase x.1 x.1
+  letI : LinearOrder ((dominionAtlas D).toSemantics.Fo.Cell m) :=
+    (((dominionAtlas D).toSemantics.Fo.core.obj m.unop).unop).linearOrder
+  exact lt_irrefl _ h
+
+/-- The one-page interpretation is an isomorphism in the stable-transversal
+category, retaining the object restrictions used by the inclusion adjunction. -/
+-- ALIGN: DOMINC-STABLE-ISOMORPHISM.
+noncomputable def interpretationStableIso {A : Type} (D : Dominion A) :
+    (WideSubcategory.mk (WideSubcategory.mk (dominionAtlas D).toSemantics) :
+      Datra.Semantics.StaAtlTrav) ≅ Datra.Semantics.DomInc.obj ⟨D.toSemantics⟩ where
+  hom := ⟨⟨interpretationHom D, ⟨⟨
+    (fun x y _ => (semanticElement_unique D x).trans (semanticElement_unique D y).symm),
+    (fun x y h => (semanticElementLT_false D x y h).elim)⟩,
+    (fun _ => Datra.Semantics.atlasMap_all_covered
+      (Datra.Semantics.dominionAtlas_isMap ⟨D.toSemantics⟩) _ _)⟩⟩, rfl⟩
+  inv := ⟨⟨interpretationInv D, ⟨⟨
+    (fun x y _ => (Datra.Semantics.onePage_cell_unique x).trans
+      (Datra.Semantics.onePage_cell_unique y).symm),
+    (fun x y h => (Datra.Semantics.onePage_elementLT_false ⟨D.toSemantics⟩ x y h).elim)⟩,
+    (fun c => ((dominionAtlas D).covered_interpretation _ _).mp
+      (dominionAtlas_covered D _ _))⟩⟩, rfl⟩
+  hom_inv_id := by
+    apply Subtype.ext
+    apply Subtype.ext
+    exact (interpretationIso D).hom_inv_id
+  inv_hom_id := by
+    apply Subtype.ext
+    apply Subtype.ext
+    exact (interpretationIso D).inv_hom_id
+
+theorem coalitionUnit_interpretation {A : Type} (D : Dominion A) (value : A) :
+    Atlas.CoalitionValue.semanticsEquiv (dominionAtlas D) (dominionCoalitionValue D value) =
+      Datra.Semantics.Coa.map (interpretationStableIso D).inv
+        ((Datra.Semantics.coaDomIncIso ⟨D.toSemantics⟩).inv value) := by
+  apply Subtype.ext
+  rfl
+
+-- ALIGN: DOMINC-HOM-TO-INTERPRETATION.
+theorem domIncToCoa_interpretation {A : Type} (D : Dominion A) {X : Atlas}
+    (f : Atlas.StableTransversal (dominionAtlas D) X) :
+    coalitionInsertionToSemantics D X (domIncToCoa D f) =
+      Datra.Semantics.domIncToCoa ((interpretationStableIso D).inv ≫ f.toSemantics) := by
+  apply Function.Embedding.ext
+  intro value
+  change Atlas.CoalitionValue.semanticsEquiv X
+      (f.coalitionInsertion.map (dominionCoalitionValue D value)) =
+    Datra.Semantics.Coa.map ((interpretationStableIso D).inv ≫ f.toSemantics)
+      ((Datra.Semantics.coaDomIncIso ⟨D.toSemantics⟩).inv value)
+  rw [f.coalitionInsertion_interpretation, coalitionUnit_interpretation,
+    Datra.Semantics.Coa.map_comp]
+  rfl
+
+theorem coaToDomInc_semantics {A : Type} (D : Dominion A) (X : Atlas)
+    (insertion : DomanialInsertion A X.CoalitionValue)
+    (backward : X.cellData (FolioData.ValidElement.originElement X.pages).val.cell → Option A)
+    (leftInverse : ∀ value, backward (insertion.map value).val = some value) :
+    (coaToDomInc D X insertion backward leftInverse).toSemantics =
+      (interpretationStableIso D).hom ≫
+        Datra.Semantics.coaToDomInc (coalitionInsertionToSemantics D X insertion) := by
+  apply Subtype.ext
+  apply Subtype.ext
+  exact coaToDomInc_interpretation D X insertion backward leftInverse
+
+theorem dominionMap_semantics {A B : Type} (source : Dominion A) (target : Dominion B)
+    (insertion : DomanialInsertion A B) :
+    (dominionMap source target insertion).toSemantics =
+      (interpretationStableIso source).hom ≫ Datra.Semantics.DomInc.map insertion.toSemantics ≫
+        (interpretationStableIso target).inv := by
+  apply Subtype.ext
+  apply Subtype.ext
+  exact dominionMap_interpretation source target insertion
+
+/-- Transport the written adjunction along the proved one-page isomorphism.
+Its inverse is implemented on the executable side when a component inverse
+on all target origin data is supplied. -/
+noncomputable def dominionHomEquiv {A : Type} (D : Dominion A) (X : Atlas) :
+    ((WideSubcategory.mk (WideSubcategory.mk (dominionAtlas D).toSemantics) :
+      Datra.Semantics.StaAtlTrav) ⟶ WideSubcategory.mk (WideSubcategory.mk X.toSemantics)) ≃
+    ((⟨D.toSemantics⟩ : Datra.Semantics.DomIns) ⟶ Datra.Semantics.Coa.obj
+      (WideSubcategory.mk (WideSubcategory.mk X.toSemantics))) :=
+  ((interpretationStableIso D).homCongr (Iso.refl _)).trans
+    (Datra.Semantics.domIncCoaHomEquiv ⟨D.toSemantics⟩
+      (WideSubcategory.mk (WideSubcategory.mk X.toSemantics)))
+
+-- ALIGN: DOMINC-HOM-EQUIV-TO.
+theorem dominionHomEquiv_to {A : Type} (D : Dominion A) {X : Atlas}
+    (f : Atlas.StableTransversal (dominionAtlas D) X) :
+    dominionHomEquiv D X f.toSemantics = coalitionInsertionToSemantics D X (domIncToCoa D f) := by
+  change Datra.Semantics.domIncToCoa ((interpretationStableIso D).inv ≫ f.toSemantics ≫ 𝟙 _) = _
+  rw [Category.comp_id]
+  exact (domIncToCoa_interpretation D f).symm
+
+-- ALIGN: DOMINC-HOM-EQUIV-FROM.
+theorem dominionHomEquiv_from {A : Type} (D : Dominion A) (X : Atlas)
+    (insertion : DomanialInsertion A X.CoalitionValue)
+    (backward : X.cellData (FolioData.ValidElement.originElement X.pages).val.cell → Option A)
+    (leftInverse : ∀ value, backward (insertion.map value).val = some value) :
+    (dominionHomEquiv D X).symm (coalitionInsertionToSemantics D X insertion) =
+      (coaToDomInc D X insertion backward leftInverse).toSemantics := by
+  change (interpretationStableIso D).hom ≫
+    Datra.Semantics.coaToDomInc (coalitionInsertionToSemantics D X insertion) ≫ 𝟙 _ = _
+  rw [Category.comp_id]
+  exact (coaToDomInc_semantics D X insertion backward leftInverse).symm
+
+/-- Reconstructing an executable stable arrow recovers its full semantic
+arrow. Off-image inverse choices are not part of the written hom-set. -/
+-- ALIGN: DOMINC-HOM-LEFT-INVERSE-FULL.
+theorem coaToDomInc_domIncToCoa {A : Type} (D : Dominion A) {X : Atlas}
+    (f : Atlas.StableTransversal (dominionAtlas D) X)
+    (backward : X.cellData (FolioData.ValidElement.originElement X.pages).val.cell → Option A)
+    (leftInverse : ∀ value, backward ((domIncToCoa D f).map value).val = some value) :
+    (coaToDomInc D X (domIncToCoa D f) backward leftInverse).toSemantics = f.toSemantics := by
+  rw [← dominionHomEquiv_from, ← dominionHomEquiv_to]
+  exact (dominionHomEquiv D X).symm_apply_apply f.toSemantics
+
+theorem domIncToCoa_naturality_right {A : Type} (D : Dominion A) {X Y : Atlas}
+    (first : Atlas.StableTransversal (dominionAtlas D) X)
+    (second : Atlas.StableTransversal X Y) :
+    domIncToCoa D (Atlas.StableTransversal.comp second first) =
+      (domIncToCoa D first).comp second.coalitionInsertion := by
+  unfold domIncToCoa
+  rw [Atlas.StableTransversal.coalitionInsertion_comp]
+  exact (DomanialInsertion.comp_assoc _ _ _).symm
+
+theorem domIncToCoa_naturality_left {A B : Type} (source : Dominion A) (middle : Dominion B)
+    (insertion : DomanialInsertion A B) {X : Atlas}
+    (f : Atlas.StableTransversal (dominionAtlas middle) X) :
+    domIncToCoa source (Atlas.StableTransversal.comp f (dominionMap source middle insertion)) =
+      insertion.comp (domIncToCoa middle f) := by
+  rw [domIncToCoa_naturality_right]
+  unfold dominionMap
+  rw [domIncToCoa_coaToDomInc]
+  exact DomanialInsertion.comp_assoc _ _ _
+
+-- ALIGN: DOMINC-HOM-NATURALITY-LEFT-FULL.
+theorem dominionHomEquiv_naturality_left {A B : Type} (source : Dominion A) (middle : Dominion B)
+    (insertion : DomanialInsertion A B) {X : Atlas}
+    (f : Atlas.StableTransversal (dominionAtlas middle) X) :
+    dominionHomEquiv source X ((dominionMap source middle insertion).toSemantics ≫ f.toSemantics) =
+      insertion.toSemantics ≫ dominionHomEquiv middle X f.toSemantics := by
+  rw [← Atlas.StableTransversal.toSemantics_comp, dominionHomEquiv_to,
+    domIncToCoa_naturality_left, dominionHomEquiv_to]
+  rfl
+
+-- ALIGN: DOMINC-HOM-NATURALITY-RIGHT-FULL.
+theorem dominionHomEquiv_naturality_right {A : Type} (D : Dominion A) {X Y : Atlas}
+    (first : Atlas.StableTransversal (dominionAtlas D) X)
+    (second : Atlas.StableTransversal X Y) :
+    dominionHomEquiv D Y (first.toSemantics ≫ second.toSemantics) =
+      dominionHomEquiv D X first.toSemantics ≫ Datra.Semantics.Coa.map second.toSemantics := by
+  rw [← Atlas.StableTransversal.toSemantics_comp, dominionHomEquiv_to,
+    domIncToCoa_naturality_right, dominionHomEquiv_to]
+  apply Function.Embedding.ext
+  intro value
+  exact second.coalitionInsertion_interpretation ((domIncToCoa D first).map value)
 
 end Datra.Executable.DomanialInclusion

@@ -9,17 +9,26 @@ module AtlasExtent.Internal
   , AtlasCellDominionHandler
   , atlasExtent
   , withAtlasCellDominion
+  , atlasCellOriginRankInsertion
+  , extentContainsRank
+  , cellContainsRank
   ) where
 
 import Atlas.Internal
   ( Atlas
   , atlasDataAt
   , atlasPageElements
+  , mapAtlasData
   )
 import Data.Kind (Type)
 import Dominion (Dominion)
+import DomanialInsertion (DomanialInsertion, preimage)
+import DomanialInsertion.LiquidInternal (rankImageInsertion)
+import Data.Maybe (isJust)
+import Numeric.Natural (Natural)
 import PageElements
   ( PageElement
+  , pageElementArrow
   )
 import PageElements.LiquidInternal
   ( SomePageElement (..)
@@ -63,3 +72,33 @@ atlasExtent valueAtlas =
   case Elements.originPageElement (atlasPageElements valueAtlas) of
     SomePageElement origin ->
       AtlasCellDominion origin (atlasDataAt valueAtlas origin)
+
+-- | Use the extent's ranking for a cell's image, with a checked inverse on
+-- all natural ranks, including ranks outside the cell's image.
+-- ALIGN: ATLAS-CELL-ORIGIN-RANK-INSERTION.
+atlasCellOriginRankInsertion
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> DomanialInsertion (cellData object) Natural
+atlasCellOriginRankInsertion valueAtlas source =
+  withAtlasCellDominion (atlasExtent valueAtlas) $ \origin originDominion ->
+    rankImageInsertion originDominion
+      (mapAtlasData valueAtlas (pageElementArrow source origin))
+
+-- ALIGN: ATLAS-CELL-CONTAINS-RANK.
+cellContainsRank
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> Natural
+  -> Bool
+cellContainsRank valueAtlas source valueRank =
+  isJust (preimage (atlasCellOriginRankInsertion valueAtlas source) valueRank)
+
+-- ALIGN: ATLAS-EXTENT-CONTAINS-RANK.
+extentContainsRank
+  :: Atlas atlasScope scope cellData origin final
+  -> Natural
+  -> Bool
+extentContainsRank valueAtlas valueRank =
+  withAtlasCellDominion (atlasExtent valueAtlas) $ \origin _ ->
+    cellContainsRank valueAtlas origin valueRank

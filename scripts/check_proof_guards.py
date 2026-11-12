@@ -142,6 +142,34 @@ proofGuard valueAtlas occurrence datum witness =
 }
 
 
+RANK_IMAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs"
+RANK_IMAGE_GUARDS = {
+    "unranking does not certify a rank outside the Dominion image": """
+{-@
+proofGuard
+  :: valueDominion:Dominion a
+  -> valueRank:Natural
+  -> {value:a | unrank valueDominion valueRank == Just value}
+  -> {proof:() | rank valueDominion value == valueRank}
+@-}
+proofGuard :: Dominion a -> Natural -> a -> ()
+proofGuard _ _ _ = ()
+""",
+    "a partial inverse does not certify a candidate outside the insertion image": """
+{-@
+proofGuard
+  :: valueDominion:Dominion b
+  -> insertion:DomanialInsertion a b
+  -> root:b
+  -> {value:a | preimage insertion root == Just value}
+  -> {proof:() | rankImage valueDominion insertion value == rank valueDominion root}
+@-}
+proofGuard :: Dominion b -> DomanialInsertion a b -> b -> a -> ()
+proofGuard _ _ _ _ = ()
+""",
+}
+
+
 def run():
     plan = json.loads((HASKELL / "dist-newstyle/cache/plan.json").read_text())
     library = next(unit for unit in plan["install-plan"]
@@ -163,7 +191,8 @@ def run():
         for source_path, guards in [(SOURCE, GUARDS), (STABLE_SOURCE, STABLE_GUARDS),
                                     (DOMINC_SOURCE, DOMINC_GUARDS),
                                     (TRANSVERSAL_SOURCE, TRANSVERSAL_GUARDS),
-                                    (CHARTER_SOURCE, CHARTER_GUARDS)]:
+                                    (CHARTER_SOURCE, CHARTER_GUARDS),
+                                    (RANK_IMAGE_SOURCE, RANK_IMAGE_GUARDS)]:
             source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
                             f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
                             source_path.read_text())

@@ -25,17 +25,15 @@ import Atlas
   , atlas
   , atlasCardinality
   , atlasDataAction
-  , atlasDataAt
   , atlasFolio
   , atlasHom
   , atlasMorphism
   , atlasMorphismAction
   , atlasObjectMap
-  , atlasOriginCell
   , atlasPageElements
   , atlasWitness
-  , mapAtlasData
   )
+import AtlasExtent.Internal (atlasCellOriginRankInsertion, extentContainsRank, cellContainsRank)
 import AtlasTransposal
   ( AtlasTransposalElement
   , atlasTransposal
@@ -66,10 +64,12 @@ import DatraOrdinal
 import DatraOrdinal.Internal (subtractOrdinal)
 import DomanialInsertion
   ( DomanialInsertion
+  , applyInsertion
+  , insertionLeftInverse
   , domanialInsertion
   , preimage
   )
-import Dominion (Dominion, dominion, rank, unrank)
+import Dominion (Dominion, dominion)
 import Folio
   ( Folio
   , appendPage
@@ -86,7 +86,6 @@ import PageElements
   , PageElementArrow
   , arrowSource
   , pageElement
-  , pageElementArrow
   , pageElementIndex
   , withPageElement
   )
@@ -351,32 +350,6 @@ mergeSourceCell left right occurrence
                   (atlasPageElements right) componentPage rightPosition
                 pure (withPageElement (pageElement index) MergeRightSourceCell)
 
-extentContainsRank
-  :: Atlas atlasScope scope cellData origin final
-  -> Natural
-  -> Bool
-extentContainsRank valueAtlas valueRank =
-  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
-    case unrank (atlasDataAt valueAtlas origin) valueRank of
-      Just _ -> True
-      Nothing -> False
-
-cellContainsRank
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> Natural
-  -> Bool
-cellContainsRank valueAtlas source valueRank =
-  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
-    case unrank (atlasDataAt valueAtlas origin) valueRank of
-      Nothing -> False
-      Just rootDatum ->
-        case preimage
-          (mapAtlasData valueAtlas (pageElementArrow source origin))
-          rootDatum of
-          Just _ -> True
-          Nothing -> False
-
 mergeCellContains
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -530,14 +503,14 @@ leftMergeComponent
        (AtlasMergeDatum AtlasMergePageCell)
 leftMergeComponent leftAtlas source =
   domanialInsertion
-    (AtlasMergeLeftDatum . rank sourceDominion)
+    (AtlasMergeLeftDatum . applyInsertion sourceInsertion)
     leftPreimage
-    (const ())
+    (insertionLeftInverse sourceInsertion)
   where
-    sourceDominion = atlasDataAt leftAtlas source
+    sourceInsertion = atlasCellOriginRankInsertion leftAtlas source
 
     leftPreimage (AtlasMergeLeftDatum valueRank) =
-      unrank sourceDominion valueRank
+      preimage sourceInsertion valueRank
     leftPreimage (AtlasMergeRightDatum _) = Nothing
 
 rightMergeComponent
@@ -548,15 +521,15 @@ rightMergeComponent
        (AtlasMergeDatum AtlasMergePageCell)
 rightMergeComponent rightAtlas source =
   domanialInsertion
-    (AtlasMergeRightDatum . rank sourceDominion)
+    (AtlasMergeRightDatum . applyInsertion sourceInsertion)
     rightPreimage
-    (const ())
+    (insertionLeftInverse sourceInsertion)
   where
-    sourceDominion = atlasDataAt rightAtlas source
+    sourceInsertion = atlasCellOriginRankInsertion rightAtlas source
 
     rightPreimage (AtlasMergeLeftDatum _) = Nothing
     rightPreimage (AtlasMergeRightDatum valueRank) =
-      unrank sourceDominion valueRank
+      preimage sourceInsertion valueRank
 
 leftMergeObjectPreimage
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal

@@ -1,5 +1,7 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE RankNTypes #-}
+#include "../../../../LiquidPlugin.h"
 
 -- | Hidden implementation of the canonical empty Atlas.
 module EmptyAtlas.Internal
@@ -31,6 +33,11 @@ unitChain =
 data EmptyAtlasDatum object
 
 -- | Introduce the canonical Atlas whose only page has no data.
+-- ALIGN: EMPTY-ATLAS-CONSTRUCTOR.
+-- ALIGN: EMPTY-ATLAS-UNRANK.
+-- ALIGN: EMPTY-ATLAS-PREIMAGE.
+-- ALIGN: EMPTY-ATLAS-INTERPRETATION.
+-- ALIGN: EMPTY-ATLAS-STABLE-INTERPRETATION.
 emptyAtlas
   :: (forall atlasScope paginationScope.
        Atlas atlasScope paginationScope EmptyAtlasDatum () ()
@@ -64,5 +71,6 @@ emptyAtlas useAtlas =
         (const Nothing)
         absurdEmptyDatum
 
+-- ALIGN: EMPTY-ATLAS-NO-DATA.
 absurdEmptyDatum :: EmptyAtlasDatum object -> result
 absurdEmptyDatum impossible = case impossible of {}

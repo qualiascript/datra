@@ -25,17 +25,15 @@ import Atlas
   , atlas
   , atlasCardinality
   , atlasDataAction
-  , atlasDataAt
   , atlasFolio
   , atlasHom
   , atlasMorphism
   , atlasMorphismAction
   , atlasObjectMap
-  , atlasOriginCell
   , atlasPageElements
   , atlasWitness
-  , mapAtlasData
   )
+import AtlasExtent.Internal (atlasCellOriginRankInsertion, extentContainsRank, cellContainsRank)
 import AtlasTransposal
   ( AtlasTransposalElement
   , atlasTransposal
@@ -67,10 +65,12 @@ import DatraOrdinal
   )
 import DomanialInsertion
   ( DomanialInsertion
+  , applyInsertion
+  , insertionLeftInverse
   , domanialInsertion
   , preimage
   )
-import Dominion (Dominion, dominion, rank, unrank)
+import Dominion (Dominion, dominion)
 import Folio
   ( Folio
   , appendPage
@@ -91,7 +91,6 @@ import PageElements
   , PageElementArrow
   , arrowSource
   , pageElement
-  , pageElementArrow
   , pageElementIndex
   , withPageElement
   )
@@ -396,32 +395,6 @@ sequenceSourceCell members occurrence
             pure $ withPageElement (pageElement index) $
               SequenceMemberSourceCell memberIndex valueAtlas
 
-extentContainsRank
-  :: Atlas atlasScope scope cellData origin final
-  -> Natural
-  -> Bool
-extentContainsRank valueAtlas valueRank =
-  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
-    case unrank (atlasDataAt valueAtlas origin) valueRank of
-      Just _ -> True
-      Nothing -> False
-
-cellContainsRank
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> Natural
-  -> Bool
-cellContainsRank valueAtlas source valueRank =
-  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
-    case unrank (atlasDataAt valueAtlas origin) valueRank of
-      Nothing -> False
-      Just rootDatum ->
-        case preimage
-          (mapAtlasData valueAtlas (pageElementArrow source origin))
-          rootDatum of
-          Just _ -> True
-          Nothing -> False
-
 sequenceCellContains
   :: NonEmpty AtlasSequenceMember
   -> PageElement mergeScope object
@@ -570,14 +543,14 @@ sequenceMemberComponent
        (AtlasSequenceDatum AtlasSequencePageCell)
 sequenceMemberComponent memberIndex sourceAtlas source =
   domanialInsertion
-    (AtlasSequenceDatum memberIndex . rank sourceDominion)
+    (AtlasSequenceDatum memberIndex . applyInsertion sourceInsertion)
     sourcePreimage
-    (const ())
+    (insertionLeftInverse sourceInsertion)
   where
-    sourceDominion = atlasDataAt sourceAtlas source
+    sourceInsertion = atlasCellOriginRankInsertion sourceAtlas source
 
     sourcePreimage (AtlasSequenceDatum targetMember valueRank)
-      | targetMember == memberIndex = unrank sourceDominion valueRank
+      | targetMember == memberIndex = preimage sourceInsertion valueRank
       | otherwise = Nothing
 
 sequenceMemberObjectPreimage

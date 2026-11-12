@@ -171,6 +171,7 @@ constantDominion valueDominion =
 
 -- | Regard a dominion as the constant data assignment on a one-page atlas.
 -- ALIGN: DOMINC-ATLAS-INTERPRETATION.
+-- ALIGN: DOMINC-STABLE-ISOMORPHISM.
 dominionAtlas
   :: forall a.
      Dominion a
@@ -283,6 +284,7 @@ coaDomIncIsoRightInverse valueDominion =
 
 -- | Forward half of the adjunction hom equivalence.
 -- ALIGN: DOMINC-HOM-TO.
+-- ALIGN: DOMINC-HOM-TO-INTERPRETATION.
 domIncToCoa
   :: Dominion a
   -> AtlasWitness target
@@ -428,6 +430,7 @@ domanialInclusionFunctorComposition
   -> ()
 domanialInclusionFunctorComposition = dominionFunctorCompositionValue
 
+-- ALIGN: DOMINC-HOM-EQUIV-TO.
 domIncCoaHomEquivTo
   :: Dominion a
   -> AtlasWitness target
@@ -435,6 +438,7 @@ domIncCoaHomEquivTo
   -> DomanialInsertion a (CoalitionElement target)
 domIncCoaHomEquivTo = domIncToCoa
 
+-- ALIGN: DOMINC-HOM-EQUIV-FROM.
 domIncCoaHomEquivFrom
   :: Dominion a
   -> AtlasWitness target
@@ -448,15 +452,18 @@ domIncCoaHomEquivFrom = coaToDomInc
 
 -- The following four LiquidHaskell-checked equations are the pointwise
 -- extensionality proofs used by Lean for the inverse and naturality laws.
+-- ALIGN: DOMINC-HOM-LEFT-INVERSE-FULL.
 domIncCoaHomEquivLeftInverse
   :: (DominionCellData a object -> b)
   -> DominionCellData a object
   -> ()
 domIncCoaHomEquivLeftInverse = domIncHomLeftInverseValue
 
+-- ALIGN: DOMINC-HOM-RIGHT-INVERSE-FULL.
 domIncCoaHomEquivRightInverse :: (a -> b) -> a -> ()
 domIncCoaHomEquivRightInverse = domIncHomRightInverseValue
 
+-- ALIGN: DOMINC-HOM-NATURALITY-LEFT-FULL.
 domIncCoaHomEquivNaturalityLeft
   :: (a' -> a)
   -> (DominionCellData a object -> b)
@@ -464,6 +471,7 @@ domIncCoaHomEquivNaturalityLeft
   -> ()
 domIncCoaHomEquivNaturalityLeft = domIncHomNaturalityLeftValue
 
+-- ALIGN: DOMINC-HOM-NATURALITY-RIGHT-FULL.
 domIncCoaHomEquivNaturalityRight
   :: (DominionCellData a object -> b)
   -> (b -> c)

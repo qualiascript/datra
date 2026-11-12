@@ -43,6 +43,14 @@ def Atlas.originImage (X : Atlas) (x : X.Element) (datum : X.cellData x.val.cell
     X.cellData (FolioData.ValidElement.originElement X.pages).val.cell :=
   (X.data.action.normalizedMap x.toOrigin).map datum
 
+theorem Atlas.originImage_origin (X : Atlas)
+    (datum : X.cellData (FolioData.ValidElement.originElement X.pages).val.cell) :
+    X.originImage (FolioData.ValidElement.originElement X.pages) datum = datum := by
+  unfold Atlas.originImage
+  rw [show (FolioData.ValidElement.originElement X.pages).toOrigin =
+    𝟙 (FolioData.ValidElement.originElement X.pages) from Subsingleton.elim _ _]
+  exact X.data.identity _ datum
+
 def Atlas.originImageRank (X : Atlas) (x : X.Element) (datum : X.cellData x.val.cell) : Nat :=
   (X.dataAt (FolioData.ValidElement.originElement X.pages)).rank (X.originImage x datum)
 
@@ -175,5 +183,35 @@ theorem Atlas.covered_interpretation (X : Atlas) (x : X.toSemantics.El)
     have he : X.territoryIndexToSemantics i = index := hi
     subst index
     exact ⟨i, value, h⟩
+
+/-- The common origin-rank insertion used by merge and sequence membership
+and by their dependent data components. -/
+-- ALIGN: ATLAS-CELL-ORIGIN-RANK-INSERTION.
+def Atlas.cellOriginRankInsertion (X : Atlas) (source : X.Element) :
+    DomanialInsertion (X.cellData source.val.cell) Nat :=
+  DomanialInsertion.rankImageInsertion (X.dataAt (FolioData.ValidElement.originElement X.pages))
+    (X.data.action.normalizedMap source.toOrigin)
+
+theorem Atlas.cellOriginRankInsertion_map (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) :
+    (X.cellOriginRankInsertion source).map datum = X.originImageRank source datum := rfl
+
+def Atlas.cellContainsRank (X : Atlas) (source : X.Element) (valueRank : Nat) : Bool :=
+  ((X.cellOriginRankInsertion source).preimage valueRank).isSome
+
+-- ALIGN: ATLAS-CELL-CONTAINS-RANK.
+theorem Atlas.cellContainsRank_iff (X : Atlas) (source : X.Element) (valueRank : Nat) :
+    X.cellContainsRank source valueRank = true ↔ ∃ datum, X.originImageRank source datum = valueRank :=
+  DomanialInsertion.rankImagePreimage_exists_iff _ _ _
+
+def Atlas.extentContainsRank (X : Atlas) (valueRank : Nat) : Bool :=
+  X.cellContainsRank (FolioData.ValidElement.originElement X.pages) valueRank
+
+-- ALIGN: ATLAS-EXTENT-CONTAINS-RANK.
+theorem Atlas.extentContainsRank_iff (X : Atlas) (valueRank : Nat) :
+    X.extentContainsRank valueRank = true ↔
+      ∃ datum, (X.dataAt (FolioData.ValidElement.originElement X.pages)).rank datum = valueRank := by
+  rw [Atlas.extentContainsRank, X.cellContainsRank_iff]
+  simp only [Atlas.originImageRank, X.originImage_origin]
 
 end Datra.Executable

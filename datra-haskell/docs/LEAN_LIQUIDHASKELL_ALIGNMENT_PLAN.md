@@ -51,8 +51,12 @@ prove their interpretations into this denotational layer. Derived construction
 bridges and the Yoneda packaging boundary still need work; the correspondence
 manifest records their coverage separately. The executable coalition-to-inclusion
 arrow and inclusion action on insertions have interpretation theorems, including
-identity and composition in the stable-transversal category. The full Dominion
-inclusion adjunction remains partial. The Charter object has an executable
+identity and composition in the stable-transversal category. The one-page
+interpretation lifts to a stable-transversal isomorphism. It transports the
+written Dominion-inclusion hom equivalence, and both executable hom maps have
+full interpretation and inverse laws. The forward naturality laws also preserve
+the stored partial inverses. Haskell assembly certificates still need checking.
+The Charter object has an executable
 coverage-enumeration Dominion, guarded data-arrow inverses, and an isomorphism
 to the written covered-subtype Atlas. The complete-action helper preserves
 the dependent cell and both directions of its insertion, including under
@@ -64,6 +68,17 @@ hom equivalence. The Atlas-map and transversal-map wrappers preserve their
 stored arrows, and their inclusion actions agree with the semantic full
 subcategories. Charter coverage witnesses reuse the original Atlas search's
 region and recompute the charted caches, matching the Haskell algorithm.
+
+Merge and sequence components use a shared origin-rank insertion. Its inverse
+checks the candidate's forward rank, because Dominion unranking and insertion
+preimages may return arbitrary candidates outside their images. LiquidHaskell
+checks the rank insertion's round trip and inverse soundness. Lean identifies
+its accepted ranks with the semantic image Dominion and proves rank preservation;
+Atlas cell and extent membership use this operation. Identity, composition,
+and induced source rankings are checked in the insertion implementation module;
+the public Category instances delegate to those operations. Lean also models
+the opposite insertion wrapper and its reversed composition. The complete merge and
+sequence folio, data action, and assembly certificates remain to be bridged.
 
 The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
 ranking round trip, charted witness caches, and propagation of coverage and

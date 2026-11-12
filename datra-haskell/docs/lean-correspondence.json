@@ -1407,6 +1407,251 @@
       "haskell_declaration": "chartLower",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "chartLower_subcategory"
+    },
+    {
+      "id": "DOMINC-STABLE-ISOMORPHISM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "dominionAtlas",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "interpretationStableIso"
+    },
+    {
+      "id": "DOMINC-HOM-TO-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "domIncToCoa",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "domIncToCoa_interpretation"
+    },
+    {
+      "id": "DOMINC-HOM-EQUIV-TO",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "domIncCoaHomEquivTo",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionHomEquiv_to"
+    },
+    {
+      "id": "DOMINC-HOM-EQUIV-FROM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "domIncCoaHomEquivFrom",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionHomEquiv_from"
+    },
+    {
+      "id": "DOMINC-HOM-LEFT-INVERSE-FULL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "domIncCoaHomEquivLeftInverse",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "coaToDomInc_domIncToCoa"
+    },
+    {
+      "id": "DOMINC-HOM-RIGHT-INVERSE-FULL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "domIncCoaHomEquivRightInverse",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "domIncToCoa_coaToDomInc"
+    },
+    {
+      "id": "DOMINC-HOM-NATURALITY-LEFT-FULL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "domIncCoaHomEquivNaturalityLeft",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionHomEquiv_naturality_left"
+    },
+    {
+      "id": "DOMINC-HOM-NATURALITY-RIGHT-FULL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_declaration": "domIncCoaHomEquivNaturalityRight",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionHomEquiv_naturality_right"
+    },
+    {
+      "id": "EMPTY-ATLAS-CONSTRUCTOR",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/EmptyAtlas/Internal.hs",
+      "haskell_declaration": "emptyAtlas",
+      "lean_namespace": "Datra.Executable.EmptyAtlas",
+      "lean_declaration": "withEmptyAtlas"
+    },
+    {
+      "id": "EMPTY-ATLAS-NO-DATA",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/EmptyAtlas/Internal.hs",
+      "haskell_declaration": "absurdEmptyDatum",
+      "lean_namespace": "Datra.Executable.EmptyAtlas",
+      "lean_declaration": "emptyAtlas_noData"
+    },
+    {
+      "id": "EMPTY-ATLAS-UNRANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/EmptyAtlas/Internal.hs",
+      "haskell_declaration": "emptyAtlas",
+      "lean_namespace": "Datra.Executable.EmptyAtlas",
+      "lean_declaration": "emptyAtlas_unrank"
+    },
+    {
+      "id": "EMPTY-ATLAS-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/EmptyAtlas/Internal.hs",
+      "haskell_declaration": "emptyAtlas",
+      "lean_namespace": "Datra.Executable.EmptyAtlas",
+      "lean_declaration": "emptyAtlas_preimage"
+    },
+    {
+      "id": "EMPTY-ATLAS-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/EmptyAtlas/Internal.hs",
+      "haskell_declaration": "emptyAtlas",
+      "lean_namespace": "Datra.Executable.EmptyAtlas",
+      "lean_declaration": "interpretationIso"
+    },
+    {
+      "id": "EMPTY-ATLAS-STABLE-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/EmptyAtlas/Internal.hs",
+      "haskell_declaration": "emptyAtlas",
+      "lean_namespace": "Datra.Executable.EmptyAtlas",
+      "lean_declaration": "interpretationStableIso"
+    },
+    {
+      "id": "INSERTION-RANK-IMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "rankImage",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "rankImage"
+    },
+    {
+      "id": "INSERTION-RANK-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "rankImagePreimage",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "rankImagePreimage"
+    },
+    {
+      "id": "INSERTION-RANK-PACKAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "rankImageInsertion",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "rankImageInsertion"
+    },
+    {
+      "id": "INSERTION-RANK-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "rankImageRoundTrip",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "rankImagePreimage_roundtrip"
+    },
+    {
+      "id": "INSERTION-RANK-SOUND",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "rankImagePreimageSound",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "rankImagePreimage_sound"
+    },
+    {
+      "id": "INSERTION-RANK-IMAGE-EQUIV",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "rankImageInsertion",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "rankImageSemanticsEquiv"
+    },
+    {
+      "id": "INSERTION-RANK-IMAGE-EQUIV-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "rankImageInsertion",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "rankImageSemanticsEquiv_rank"
+    },
+    {
+      "id": "ATLAS-CELL-ORIGIN-RANK-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
+      "haskell_declaration": "atlasCellOriginRankInsertion",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.cellOriginRankInsertion"
+    },
+    {
+      "id": "ATLAS-CELL-CONTAINS-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
+      "haskell_declaration": "cellContainsRank",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.cellContainsRank_iff"
+    },
+    {
+      "id": "ATLAS-EXTENT-CONTAINS-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
+      "haskell_declaration": "extentContainsRank",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.extentContainsRank_iff"
+    },
+    {
+      "id": "INSERTION-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "identityInsertion",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "identity"
+    },
+    {
+      "id": "INSERTION-IDENTITY-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "identityRoundTrip",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "identity_roundtrip"
+    },
+    {
+      "id": "INSERTION-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "composeInsertions",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "comp"
+    },
+    {
+      "id": "INSERTION-COMPOSITION-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "composeInsertionRoundTrip",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "comp_roundtrip"
+    },
+    {
+      "id": "INSERTION-COMPOSITION-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "composeInsertions",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "comp_toSemantics"
+    },
+    {
+      "id": "INSERTION-PULLBACK-UNRANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "pullbackUnrank",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "pullbackUnrank"
+    },
+    {
+      "id": "INSERTION-PULLBACK-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "pullbackRoundTrip",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "pullbackRoundTrip"
+    },
+    {
+      "id": "INSERTION-PULLBACK-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "pullbackDominion",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "pullbackDominion"
+    },
+    {
+      "id": "INSERTION-PULLBACK-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_declaration": "pullbackDominion",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "pullbackDominion_interpretation"
+    },
+    {
+      "id": "CODOMANIAL-OP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Internal.hs",
+      "haskell_declaration": "op",
+      "lean_namespace": "Datra.Executable.CodomanialInsertion",
+      "lean_declaration": "unop_op"
+    },
+    {
+      "id": "CODOMANIAL-UNOP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Internal.hs",
+      "haskell_declaration": "unop",
+      "lean_namespace": "Datra.Executable.CodomanialInsertion",
+      "lean_declaration": "op_unop"
     }
   ],
   "modules": [
@@ -1674,7 +1919,7 @@
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.DomanialInsertion",
-      "coverage": "pending",
+      "coverage": "aligned",
       "aliases": [],
       "embeddings": []
     },
@@ -1685,12 +1930,25 @@
         "DomanialInsertion",
         "DomanialInsertion"
       ],
-      "reflected": [],
+      "reflected": [
+        "composeInsertionMap",
+        "composeInsertionPreimage",
+        "identityMap",
+        "identityPreimage",
+        "pullbackUnrank",
+        "rankImage",
+        "rankImagePreimage"
+      ],
       "refinements": [
-        "domanialInsertion"
+        "domanialInsertion",
+        "composeInsertionRoundTrip",
+        "identityRoundTrip",
+        "pullbackRoundTrip",
+        "rankImageRoundTrip",
+        "rankImagePreimageSound"
       ],
       "lean_target": "Datra.Executable.DomanialInsertion",
-      "coverage": "pending",
+      "coverage": "aligned",
       "aliases": [],
       "embeddings": []
     },
@@ -2000,7 +2258,7 @@
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.EmptyAtlas",
-      "coverage": "pending",
+      "coverage": "aligned",
       "aliases": [],
       "embeddings": []
     },
