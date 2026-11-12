@@ -129,6 +129,9 @@ pageElementsWithScope = PageElements
 -- | Refine a page number and ordinal to an index of this folio's page-element
 -- category.  Pages after the finite presentation repeat its final chain, so
 -- this fails exactly when 'chainIndex' rejects the ordinal.
+-- ALIGN: PE-CHECKED-LOOKUP-ROUNDTRIP.
+-- ALIGN: PE-CHECKED-LOOKUP-BOUNDS.
+-- ALIGN: PE-CHECKED-LOOKUP-POSITION.
 pageElementIndex
   :: PageElements scope origin final
   -> Natural

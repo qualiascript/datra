@@ -527,6 +527,8 @@ mergePageElementAt mergedAtlas pageNumber position =
 -- ALIGN: MERGE-LEFT-PAGE.
 -- ALIGN: MERGE-LEFT-POSITION.
 -- ALIGN: MERGE-LEFT-RESOLVED.
+-- ALIGN: MERGE-LEFT-CHECKED-LOOKUP.
+-- ALIGN: MERGE-LEFT-OBJECT-INTERPRETATION.
 leftMergeElement
   :: Atlas mergeAtlasScope mergeScope AtlasMergeDatum () AtlasMergePageCell
   -> PageElement leftScope sourceObject
@@ -541,6 +543,8 @@ leftMergeElement mergedAtlas source =
 -- ALIGN: MERGE-RIGHT-PAGE.
 -- ALIGN: MERGE-RIGHT-POSITION.
 -- ALIGN: MERGE-RIGHT-RESOLVED.
+-- ALIGN: MERGE-RIGHT-CHECKED-LOOKUP.
+-- ALIGN: MERGE-RIGHT-OBJECT-INTERPRETATION.
 rightMergeElement
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas mergeAtlasScope mergeScope AtlasMergeDatum () AtlasMergePageCell
@@ -557,6 +561,8 @@ rightMergeElement leftAtlas mergedAtlas source =
 
 -- ALIGN: MERGE-LEFT-COMPONENT.
 -- ALIGN: MERGE-LEFT-NATURALITY.
+-- ALIGN: MERGE-LEFT-INDEXED-MEMBERSHIP.
+-- ALIGN: MERGE-LEFT-INDEXED-COMPONENT.
 leftMergeComponent
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> PageElement leftScope sourceObject
@@ -577,6 +583,8 @@ leftMergeComponent leftAtlas source =
 
 -- ALIGN: MERGE-RIGHT-COMPONENT.
 -- ALIGN: MERGE-RIGHT-NATURALITY.
+-- ALIGN: MERGE-RIGHT-INDEXED-MEMBERSHIP.
+-- ALIGN: MERGE-RIGHT-INDEXED-COMPONENT.
 rightMergeComponent
   :: Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
   -> PageElement rightScope sourceObject
@@ -595,6 +603,10 @@ rightMergeComponent rightAtlas source =
     rightPreimage (AtlasMergeRightDatum valueRank) =
       preimage sourceInsertion valueRank
 
+-- ALIGN: MERGE-LEFT-OBJECT-ROUNDTRIP.
+-- ALIGN: MERGE-LEFT-OBJECT-INVERSE-SOUND.
+-- ALIGN: MERGE-LEFT-OBJECT-OPPOSITE-REJECT.
+-- ALIGN: MERGE-LEFT-NORMALIZED-OBJECT-ROUNDTRIP.
 leftMergeObjectPreimage
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> AtlasTransposalElement
@@ -614,6 +626,10 @@ leftMergeObjectPreimage leftAtlas target =
         pure $ withPageElement (pageElement index) $
           atlasTransposalElement (atlasWitness leftAtlas)
 
+-- ALIGN: MERGE-RIGHT-OBJECT-ROUNDTRIP.
+-- ALIGN: MERGE-RIGHT-OBJECT-INVERSE-SOUND.
+-- ALIGN: MERGE-RIGHT-OBJECT-OPPOSITE-REJECT.
+-- ALIGN: MERGE-RIGHT-NORMALIZED-OBJECT-ROUNDTRIP.
 rightMergeObjectPreimage
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -641,6 +657,12 @@ rightMergeObjectPreimage leftAtlas rightAtlas target =
 
 -- | The canonical order-preserving inclusion of the left Atlas into its
 -- merge. Its extent is sent to element 0 of merge page 1.
+-- ALIGN: MERGE-LEFT-OBJECT-INSERTION.
+-- ALIGN: MERGE-LEFT-ARROW.
+-- ALIGN: MERGE-LEFT-MORPHISM.
+-- ALIGN: MERGE-LEFT-TRANSPOSAL.
+-- ALIGN: MERGE-LEFT-ORDER.
+-- ALIGN: MERGE-LEFT-ORDERED-TRANSPOSAL.
 atlasMergeLeftOrderedTransposal
   :: forall leftAtlasScope leftScope leftData leftOrigin leftFinal
       rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -676,6 +698,12 @@ atlasMergeLeftOrderedTransposal leftAtlas _ mergedAtlas =
 -- | The canonical order-preserving inclusion of the right Atlas into its
 -- merge. Its extent is sent to element 1 of merge page 1, after the left
 -- extent.
+-- ALIGN: MERGE-RIGHT-OBJECT-INSERTION.
+-- ALIGN: MERGE-RIGHT-ARROW.
+-- ALIGN: MERGE-RIGHT-MORPHISM.
+-- ALIGN: MERGE-RIGHT-TRANSPOSAL.
+-- ALIGN: MERGE-RIGHT-ORDER.
+-- ALIGN: MERGE-RIGHT-ORDERED-TRANSPOSAL.
 atlasMergeRightOrderedTransposal
   :: forall leftAtlasScope leftScope leftData leftOrigin leftFinal
       rightAtlasScope rightScope rightData rightOrigin rightFinal

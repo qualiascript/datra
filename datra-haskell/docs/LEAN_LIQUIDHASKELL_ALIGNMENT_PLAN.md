@@ -102,9 +102,19 @@ inverse functors between the finite element categories. Runtime membership
 accepts exactly the ranks in the corresponding written bouquet data fibre;
 the resulting rank-preserving data equivalences are natural. Together these
 give an isomorphism from the complete executable merge Atlas to the written
-bouquet Atlas, including both inverse laws. Derived inclusion transversals,
-Haskell assembly certificates, and the full sequence construction remain to
-be bridged.
+bouquet Atlas, including both inverse laws. The canonical inclusion object
+maps use checked full-spine page lookup, with proved normalized object
+insertions. Their optional inverse decoders have round-trip and inverse-soundness
+laws and reject the opposite component. Prefix ordinal subtraction has an
+exact coefficient model and a checked relation to sum-interval subtraction.
+Both inclusion object maps agree with the written finite inclusions and have
+normalized arrow certificates. Their dependent data insertions accept exactly
+the source cell ranks, including padding pages inside a deeper merge, and
+satisfy normalized naturality. The resulting executable morphisms and checked
+object inverses assemble into complete transposals. A common-page transport
+argument proves strict-order preservation for both inclusions, giving executable
+ordered transposals. Haskell assembly certificates and the full sequence
+construction remain to be bridged.
 
 The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
 ranking round trip, charted witness caches, and propagation of coverage and

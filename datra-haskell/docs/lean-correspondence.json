@@ -2121,6 +2121,251 @@
       "haskell_declaration": "atlasMerge",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "interpretationIso"
+    },
+    {
+      "id": "ORDINAL-PREFIX-COEFFICIENTS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Internal.hs",
+      "haskell_declaration": "subtractCoefficients",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "subtractCoefficients_equal_length"
+    },
+    {
+      "id": "ORDINAL-PREFIX-SUBTRACTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Internal.hs",
+      "haskell_declaration": "subtractOrdinal",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "subtractOrdinal_eq"
+    },
+    {
+      "id": "ORDINAL-PREFIX-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Internal.hs",
+      "haskell_declaration": "subtractOrdinal",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "subtractOrdinal_add"
+    },
+    {
+      "id": "ORDINAL-PREFIX-INVERSE-SOUND",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Internal.hs",
+      "haskell_declaration": "subtractOrdinal",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "subtractOrdinal_sound"
+    },
+    {
+      "id": "PE-CHECKED-LOOKUP-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementIndex",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "elementAt_roundtrip"
+    },
+    {
+      "id": "PE-CHECKED-LOOKUP-BOUNDS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementIndex",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "elementAt_isSome"
+    },
+    {
+      "id": "PE-CHECKED-LOOKUP-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementIndex",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "elementAt_page_position"
+    },
+    {
+      "id": "MERGE-LEFT-CHECKED-LOOKUP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "leftMergeElement",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftElement_lookup"
+    },
+    {
+      "id": "MERGE-LEFT-OBJECT-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "leftMergeObjectPreimage",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftObjectPreimage_roundtrip"
+    },
+    {
+      "id": "MERGE-LEFT-OBJECT-INVERSE-SOUND",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "leftMergeObjectPreimage",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftObjectPreimage_sound"
+    },
+    {
+      "id": "MERGE-LEFT-OBJECT-OPPOSITE-REJECT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "leftMergeObjectPreimage",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftObjectPreimage_right"
+    },
+    {
+      "id": "MERGE-LEFT-NORMALIZED-OBJECT-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "leftMergeObjectPreimage",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftTransposalPreimage_roundtrip"
+    },
+    {
+      "id": "MERGE-LEFT-OBJECT-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeLeftOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftObjectInsertion"
+    },
+    {
+      "id": "MERGE-LEFT-OBJECT-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "leftMergeElement",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftElement_fromFinite"
+    },
+    {
+      "id": "MERGE-LEFT-ARROW",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeLeftOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftArrow"
+    },
+    {
+      "id": "MERGE-RIGHT-CHECKED-LOOKUP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "rightMergeElement",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightElement_lookup"
+    },
+    {
+      "id": "MERGE-RIGHT-OBJECT-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "rightMergeObjectPreimage",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightObjectPreimage_roundtrip"
+    },
+    {
+      "id": "MERGE-RIGHT-OBJECT-INVERSE-SOUND",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "rightMergeObjectPreimage",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightObjectPreimage_sound"
+    },
+    {
+      "id": "MERGE-RIGHT-OBJECT-OPPOSITE-REJECT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "rightMergeObjectPreimage",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightObjectPreimage_left"
+    },
+    {
+      "id": "MERGE-RIGHT-NORMALIZED-OBJECT-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "rightMergeObjectPreimage",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightTransposalPreimage_roundtrip"
+    },
+    {
+      "id": "MERGE-RIGHT-OBJECT-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeRightOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightObjectInsertion"
+    },
+    {
+      "id": "MERGE-RIGHT-OBJECT-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "rightMergeElement",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightElement_fromFinite"
+    },
+    {
+      "id": "MERGE-RIGHT-ARROW",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeRightOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightArrow"
+    },
+    {
+      "id": "MERGE-LEFT-INDEXED-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "leftMergeComponent",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftDatum_valid_iff"
+    },
+    {
+      "id": "MERGE-LEFT-INDEXED-COMPONENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "leftMergeComponent",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftIndexedComponent"
+    },
+    {
+      "id": "MERGE-LEFT-MORPHISM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeLeftOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftMorphism"
+    },
+    {
+      "id": "MERGE-RIGHT-INDEXED-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "rightMergeComponent",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightDatum_valid_iff"
+    },
+    {
+      "id": "MERGE-RIGHT-INDEXED-COMPONENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "rightMergeComponent",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightIndexedComponent"
+    },
+    {
+      "id": "MERGE-RIGHT-MORPHISM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeRightOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightMorphism"
+    },
+    {
+      "id": "MERGE-LEFT-TRANSPOSAL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeLeftOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftTransposal"
+    },
+    {
+      "id": "MERGE-LEFT-ORDER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeLeftOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "left_preservesOrder"
+    },
+    {
+      "id": "MERGE-LEFT-ORDERED-TRANSPOSAL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeLeftOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "leftOrderedTransposal"
+    },
+    {
+      "id": "MERGE-RIGHT-TRANSPOSAL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeRightOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightTransposal"
+    },
+    {
+      "id": "MERGE-RIGHT-ORDER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeRightOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "right_preservesOrder"
+    },
+    {
+      "id": "MERGE-RIGHT-ORDERED-TRANSPOSAL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeRightOrderedTransposal",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rightOrderedTransposal"
     }
   ],
   "modules": [

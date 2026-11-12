@@ -204,6 +204,12 @@ theorem Atlas.cellContainsRank_iff (X : Atlas) (source : X.Element) (valueRank :
     X.cellContainsRank source valueRank = true ↔ ∃ datum, X.originImageRank source datum = valueRank :=
   DomanialInsertion.rankImagePreimage_exists_iff _ _ _
 
+theorem Atlas.cellContainsRank_normalize (X : Atlas) (source : X.Element) (valueRank : Nat) :
+    X.cellContainsRank source.normalize valueRank = X.cellContainsRank source valueRank := by
+  apply Bool.eq_iff_iff.mpr
+  simp only [X.cellContainsRank_iff, X.originImageRank_normalize]
+  rfl
+
 /-- A shared origin rank identifies at most one cell on any full-spine page,
 including a repeated padding page. -/
 theorem Atlas.cellContainsRank_samePage (X : Atlas) (left right : X.Element)

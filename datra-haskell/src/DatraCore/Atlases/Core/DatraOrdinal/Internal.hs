@@ -154,12 +154,16 @@ addCoefficients left@(leftHead : leftTail) right@(rightHead : rightTail)
 
 -- | Remove a left ordinal prefix when the value lies at or after it.
 {-@ reflect subtractOrdinal @-}
+-- ALIGN: ORDINAL-PREFIX-SUBTRACTION.
+-- ALIGN: ORDINAL-PREFIX-ROUNDTRIP.
+-- ALIGN: ORDINAL-PREFIX-INVERSE-SOUND.
 subtractOrdinal :: Ordinal -> Ordinal -> Maybe Ordinal
 subtractOrdinal (Ordinal left) (Ordinal value)
   | listLength value < listLength left = Nothing
   | listLength value > listLength left = Just (ordinal value)
   | otherwise = ordinal <$> subtractCoefficients left value
 
+-- ALIGN: ORDINAL-PREFIX-COEFFICIENTS.
 subtractCoefficients
   :: [Natural]
   -> [Natural]
