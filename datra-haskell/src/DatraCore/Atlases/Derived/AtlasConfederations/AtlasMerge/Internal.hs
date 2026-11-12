@@ -189,6 +189,7 @@ mergeCellPosition _ = finiteOrdinal 0
 -- ALIGN: MERGE-PAGE-LOOKUP-BOUNDS.
 -- ALIGN: MERGE-PAGE-TRACE-ENCODING.
 -- ALIGN: MERGE-PAGE-ORDER-INTERPRETATION.
+-- ALIGN: MERGE-FINITE-PAGE-EQUIVALENCE.
 atlasMergePageChain
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -320,6 +321,8 @@ appendRemainingPages left right pageNumber depth pages
 -- | The finite bouquet folio underlying an Atlas merge.
 -- ALIGN: MERGE-FOLIO.
 -- ALIGN: MERGE-COMPONENT-PAGE-INDEX.
+-- ALIGN: MERGE-FINITE-INDEX-INTERPRETATION.
+-- ALIGN: MERGE-FINITE-INTERVAL-INTERPRETATION.
 atlasMergeFolio
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -373,6 +376,7 @@ mergeSourceCell left right occurrence
 
 -- ALIGN: MERGE-CELL-MEMBERSHIP.
 -- ALIGN: MERGE-RESOLVED-CELL.
+-- ALIGN: MERGE-BOUQUET-MEMBERSHIP.
 mergeCellContains
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -394,6 +398,7 @@ mergeCellContains left right occurrence datum =
 
 -- ALIGN: MERGE-DATUM-DECODE.
 -- ALIGN: MERGE-UNRANK-SOUND.
+-- ALIGN: MERGE-BOUQUET-DATA-DECODE.
 mergeDatumAt
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -414,6 +419,8 @@ mergeDatumAt left right occurrence combinedRank =
 -- ALIGN: MERGE-INDEXED-DOMINION.
 -- ALIGN: MERGE-INDEXED-INTERPRETATION.
 -- ALIGN: MERGE-ATLAS-RANK-INTERPRETATION.
+-- ALIGN: MERGE-BOUQUET-DATA-EQUIVALENCE.
+-- ALIGN: MERGE-BOUQUET-DATA-RANK.
 mergeDominionAt
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -431,6 +438,7 @@ mergeDominionAt left right occurrence =
 -- ALIGN: MERGE-DATA-COMPOSITION.
 -- ALIGN: MERGE-RESOLVED-ARROW.
 -- ALIGN: MERGE-ATLAS-DATA-INTERPRETATION.
+-- ALIGN: MERGE-BOUQUET-DATA-NATURALITY.
 mergeDataMap
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -456,6 +464,8 @@ mergeDataMap left right pageArrow =
 -- ALIGN: MERGE-ATLAS-COHERENCE.
 -- ALIGN: MERGE-ATLAS-DISJOINT.
 -- ALIGN: MERGE-ATLAS-CONSTRUCTION.
+-- ALIGN: MERGE-FINITE-ELEMENTS-EQUIVALENCE.
+-- ALIGN: MERGE-BOUQUET-ATLAS-ISOMORPHISM.
 atlasMerge
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal

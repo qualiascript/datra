@@ -97,8 +97,14 @@ Checked position lookup recovers valid occurrences without choice. The merge
 Atlas has a computable genuine-cell data family and checked identity,
 composition, coherence, and pagewise-disjointness laws. Its normalized data
 action commutes with the semantic root-image interpretation and preserves ranks.
-The full bouquet Atlas isomorphism, derived inclusion transversals, Haskell
-assembly certificates, and the full sequence construction remain to be bridged.
+The finite page equivalences intertwine every interval map and induce mutually
+inverse functors between the finite element categories. Runtime membership
+accepts exactly the ranks in the corresponding written bouquet data fibre;
+the resulting rank-preserving data equivalences are natural. Together these
+give an isomorphism from the complete executable merge Atlas to the written
+bouquet Atlas, including both inverse laws. Derived inclusion transversals,
+Haskell assembly certificates, and the full sequence construction remain to
+be bridged.
 
 The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
 ranking round trip, charted witness caches, and propagation of coverage and

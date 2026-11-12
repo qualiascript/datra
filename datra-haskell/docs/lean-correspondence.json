@@ -2051,6 +2051,76 @@
       "haskell_declaration": "mergeDominionAt",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "atlasMerge_rank_interpretation"
+    },
+    {
+      "id": "MERGE-FINITE-INDEX-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeFolio",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "finiteIndexOrderIso"
+    },
+    {
+      "id": "MERGE-FINITE-PAGE-EQUIVALENCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergePageChain",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "finitePageEquiv"
+    },
+    {
+      "id": "MERGE-FINITE-INTERVAL-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMergeFolio",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "finitePageEquiv_interval"
+    },
+    {
+      "id": "MERGE-FINITE-ELEMENTS-EQUIVALENCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMerge",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "finiteElementsEquivalence"
+    },
+    {
+      "id": "MERGE-BOUQUET-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "mergeCellContains",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "contains_finite_interpretation"
+    },
+    {
+      "id": "MERGE-BOUQUET-DATA-DECODE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "mergeDatumAt",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "finiteDataDecode"
+    },
+    {
+      "id": "MERGE-BOUQUET-DATA-EQUIVALENCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "mergeDominionAt",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "finiteDataEquiv"
+    },
+    {
+      "id": "MERGE-BOUQUET-DATA-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "mergeDominionAt",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "finiteDataEquiv_rank"
+    },
+    {
+      "id": "MERGE-BOUQUET-DATA-NATURALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "mergeDataMap",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "finiteDataEquiv_naturality"
+    },
+    {
+      "id": "MERGE-BOUQUET-ATLAS-ISOMORPHISM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_declaration": "atlasMerge",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "interpretationIso"
     }
   ],
   "modules": [
