@@ -21,12 +21,7 @@ theorem componentContainsRank_interpretation (X : Atlas) (n : Nat)
       ∃ datum : X.toSemantics.Da.obj ⟨op (X.toSemantics.Fo.paddedIndex n), value⟩,
         (Datra.Semantics.extent X.toSemantics).toDom.rank
           (Datra.Semantics.originImage X.toSemantics _ datum) = valueRank := by
-  have normalized : ∀ source : X.Element,
-      X.cellContainsRank source.normalize valueRank = true ↔ X.cellContainsRank source valueRank = true := by
-    intro source
-    simp only [X.cellContainsRank_iff, X.originImageRank_normalize]
-    rfl
-  rw [← normalized, ← componentFinite_normalize, X.cellContainsRank_iff]
+  rw [← X.cellContainsRank_normalize, ← componentFinite_normalize, X.cellContainsRank_iff]
   simp only [X.originImageRank_interpretation]
   rfl
 
@@ -299,7 +294,7 @@ noncomputable def interpretationInv (X Y : Atlas) :
         rw [interpretationInvData_rank, finiteMap_rank]
         exact (bouquetMap_rank X Y arrow datum).trans (interpretationInvData_rank X Y source datum).symm }
 
-private theorem hom_eq_of_page_rank {A B : Datra.Semantics.Atl} (f g : Datra.Semantics.AtlHom A B)
+theorem hom_eq_of_page_rank {A B : Datra.Semantics.Atl} (f g : Datra.Semantics.AtlHom A B)
     (pages : f.Pa = g.Pa)
     (ranks : ∀ source datum,
       (B.Da.obj (f.Pa.obj source)).toDom.rank (f.Da.app source datum) =

@@ -3,12 +3,22 @@ import Executable.Atlas.Merge.Folio
 namespace Datra.Executable.AtlasMerge
 open CategoryTheory
 
+inductive Side where
+  | left
+  | right
+  deriving DecidableEq
+
 /-- The runtime tags retain the member's origin rank and the phantom merge
 cell. Membership is an additional invariant, not a property of arbitrary tags. -/
 inductive Datum (_cell : PageElementCell) where
   | left (valueRank : Nat)
   | right (valueRank : Nat)
   deriving DecidableEq
+
+-- ALIGN: MERGE-DATUM-SIDE.
+def datumSide {cell : PageElementCell} : Datum cell → Side
+  | .left _ => .left
+  | .right _ => .right
 
 -- ALIGN: MERGE-DATUM-RANK.
 def datumRank {cell : PageElementCell} : Datum cell → Nat
@@ -27,6 +37,7 @@ def decode (cell : PageElementCell) (n : Nat) : Datum cell :=
     decode cell (datumRank datum) = datum := by
   cases datum <;> simp [decode, datumRank, Nat.add_div]
 
+-- ALIGN: MERGE-DATUM-ENCODE.
 @[simp] theorem rank_decode (cell : PageElementCell) (n : Nat) :
     datumRank (decode cell n) = n := by
   unfold decode
@@ -37,6 +48,7 @@ theorem datumRank_injective (cell : PageElementCell) : Function.Injective (@datu
   have := congrArg (decode cell) same
   simpa using this
 
+-- ALIGN: MERGE-DATUM-RETAG-RANK.
 @[simp] theorem retag_rank {source target : PageElementCell} (datum : Datum source) :
     datumRank (retag (target := target) datum) = datumRank datum := by cases datum <;> rfl
 
@@ -45,6 +57,11 @@ theorem datumRank_injective (cell : PageElementCell) : Function.Injective (@datu
 
 @[simp] theorem retag_self {cell : PageElementCell} (datum : Datum cell) : retag datum = datum := by
   cases datum <;> rfl
+
+-- ALIGN: MERGE-DATUM-RETAG-ROUNDTRIP.
+theorem retag_roundtrip {source middle : PageElementCell} (datum : Datum source) :
+    retag (retag (target := middle) datum) = datum := by
+  rw [retag_retag, retag_self]
 
 /-- The three successful branches of the runtime merge cell resolver. The
 folio bridge must establish which branch a valid merge occurrence selects. -/
@@ -69,30 +86,48 @@ def contains {X Y : Atlas} (source : SourceCell X Y) {cell : PageElementCell} : 
     (datum : Datum a) : contains source (retag (target := b) datum) = contains source datum := by
   cases source <;> cases datum <;> rfl
 
+/-- Decode the parity rank and retain it exactly when the supplied cell
+membership predicate accepts it. -/
+-- ALIGN: MERGE-DATUM-LOOKUP.
+def lookupDatum {cell : PageElementCell} (accepts : Datum cell → Bool) (n : Nat) : Option (Datum cell) :=
+  if accepts (decode cell n) then some (decode cell n) else none
+
+-- ALIGN: MERGE-DATUM-LOOKUP-ROUNDTRIP.
+theorem lookupDatum_roundtrip {cell : PageElementCell} (accepts : Datum cell → Bool)
+    (datum : Datum cell) (valid : accepts datum = true) :
+    lookupDatum accepts (datumRank datum) = some datum := by
+  simp [lookupDatum, valid]
+
+-- ALIGN: MERGE-DATUM-LOOKUP-SOUND.
+theorem lookupDatum_sound {cell : PageElementCell} (accepts : Datum cell → Bool)
+    (n : Nat) (datum : Datum cell) (found : lookupDatum accepts n = some datum) :
+    accepts datum = true ∧ datumRank datum = n := by
+  unfold lookupDatum at found
+  split at found
+  · rename_i valid
+    cases Option.some.inj found
+    exact ⟨valid, rank_decode cell n⟩
+  · contradiction
+
 /-- Invalid resolved occurrences have no data; valid occurrences use exactly
 the selected component's membership test. -/
 def datumAt {X Y : Atlas} (source : Option (SourceCell X Y)) (cell : PageElementCell)
     (n : Nat) : Option (Datum cell) :=
   match source with
   | none => none
-  | some source => if contains source (decode cell n) then some (decode cell n) else none
+  | some source => lookupDatum (contains source) n
 
 -- ALIGN: MERGE-DOMINION-ROUNDTRIP.
 theorem datumAt_roundtrip {X Y : Atlas} (source : SourceCell X Y) {cell : PageElementCell}
     (datum : Datum cell) (valid : contains source datum = true) :
     datumAt (some source) cell (datumRank datum) = some datum := by
-  simp [datumAt, valid]
+  exact lookupDatum_roundtrip (contains source) datum valid
 
 -- ALIGN: MERGE-UNRANK-SOUND.
 theorem datumAt_sound {X Y : Atlas} (source : SourceCell X Y) (cell : PageElementCell)
     (n : Nat) (datum : Datum cell) (found : datumAt (some source) cell n = some datum) :
     contains source datum = true ∧ datumRank datum = n := by
-  simp only [datumAt] at found
-  split at found
-  · rename_i valid
-    cases Option.some.inj found
-    exact ⟨valid, rank_decode cell n⟩
-  · contradiction
+  exact lookupDatum_sound (contains source) n datum found
 
 abbrev CertifiedDatum {X Y : Atlas} (source : SourceCell X Y) (cell : PageElementCell) :=
   {datum : Datum cell // contains source datum = true}

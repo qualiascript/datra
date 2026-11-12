@@ -162,6 +162,7 @@ library
         AtlasTerritory.Internal
         EmptyAtlas.Internal
         AtlasMerge.Internal
+        AtlasMerge.LiquidInternal
         AtlasConfederation.Internal
         AtlasFederation.Internal
         AtlasMapFederation.Internal

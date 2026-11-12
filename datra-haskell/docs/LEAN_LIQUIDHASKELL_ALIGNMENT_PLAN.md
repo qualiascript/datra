@@ -113,8 +113,15 @@ the source cell ranks, including padding pages inside a deeper merge, and
 satisfy normalized naturality. The resulting executable morphisms and checked
 object inverses assemble into complete transposals. A common-page transport
 argument proves strict-order preservation for both inclusions, giving executable
-ordered transposals. Haskell assembly certificates and the full sequence
-construction remain to be bridged.
+ordered transposals. The written bouquet has canonical inclusion morphisms
+whose data components are the tagged origin images. Both complete executable
+inclusion morphisms, including the ordered wrappers, commute with the merge
+interpretation isomorphism and these written inclusions. Haskell assembly
+certificates and the full sequence construction remain to be bridged. The merge's
+shared datum module is LiquidHaskell-checked: parity decoding and retagging
+preserve ranks, retagging round trips, and membership-filtered unranking is
+sound and round-trips accepted data. The Atlas assembly still needs to establish
+those membership preconditions for its dependent data family.
 
 The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
 ranking round trip, charted witness caches, and propagation of coverage and

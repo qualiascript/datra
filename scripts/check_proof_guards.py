@@ -170,6 +170,21 @@ proofGuard _ _ _ _ = ()
 }
 
 
+MERGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs"
+MERGE_GUARDS = {
+    "merge unranking requires the datum's cell membership": """
+{-@
+proofGuard
+  :: contains:(AtlasMergeDatum object -> Bool)
+  -> datum:AtlasMergeDatum object
+  -> { mergeDatumLookup contains (atlasMergeDatumRank datum) == Just datum }
+@-}
+proofGuard :: (AtlasMergeDatum object -> Bool) -> AtlasMergeDatum object -> ()
+proofGuard contains datum = mergeDatumLookupRoundTrip contains datum
+""",
+}
+
+
 def run():
     plan = json.loads((HASKELL / "dist-newstyle/cache/plan.json").read_text())
     library = next(unit for unit in plan["install-plan"]
@@ -192,7 +207,8 @@ def run():
                                     (DOMINC_SOURCE, DOMINC_GUARDS),
                                     (TRANSVERSAL_SOURCE, TRANSVERSAL_GUARDS),
                                     (CHARTER_SOURCE, CHARTER_GUARDS),
-                                    (RANK_IMAGE_SOURCE, RANK_IMAGE_GUARDS)]:
+                                    (RANK_IMAGE_SOURCE, RANK_IMAGE_GUARDS),
+                                    (MERGE_SOURCE, MERGE_GUARDS)]:
             source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
                             f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
                             source_path.read_text())

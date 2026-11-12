@@ -803,6 +803,15 @@ def elementLT (X : Atl) (x y : X.El) : Prop :=
 def originImage (X : Atl) (x : X.El) (t : X.Da.obj x) : extent X :=
   X.Da.map (X.Fo.toOrigin x) t
 
+/-- Mapping to the origin commutes with every data arrow. -/
+theorem originImage_map (X : Atl) {source target : X.El} (arrow : source ⟶ target)
+    (datum : X.Da.obj source) :
+    originImage X target (X.Da.map arrow datum) = originImage X source datum := by
+  have same : arrow ≫ X.Fo.toOrigin target = X.Fo.toOrigin source := Subsingleton.elim _ _
+  have law := X.Da.map_comp arrow (X.Fo.toOrigin target)
+  rw [same] at law
+  exact (congrFun (congrArg Function.Embedding.toFun law) datum).symm
+
 /-- A datum is covered when its image in the extent comes from a final region. -/
 def Covered (X : Atl) (x : X.El) (t : X.Da.obj x) : Prop :=
   ∃ (k : TerritoryIndex X) (l : territory X k),
@@ -3779,6 +3788,63 @@ def bouquetAtlas (X Y : Atl) : Atl where
         change Sum.inr (Y.Da.map (Y.Pa.cellToOrigin _ k) a) =
           Sum.inr (Y.Da.map (Y.Pa.cellToOrigin _ l) b) at hroot
         exact Y.disjoint _ k l hkl a b (Sum.inr.inj hroot)
+
+/-- The canonical left data component is the left-tagged origin image in the
+bouquet's image Dominion. -/
+def bouquetLeftData (X Y : Atl) (source : X.El) :
+    X.Da.obj source ⟶ (bouquetAtlas X Y).Da.obj (bouquetLeftElement X Y source) where
+  toFun datum := ⟨Sum.inl (originImage X source datum), by
+    refine ⟨(bouquetLeftRawDom_eq X Y source).symm ▸ datum, ?_⟩
+    rw [bouquetRootIndex_left]
+    congr 2
+    have cancel {A B : DomIns} (h : A = B) (value : B) :
+        (h ▸ (h.symm ▸ value : A) : B) = value := by
+      cases h
+      rfl
+    exact cancel _ datum⟩
+  inj' := by
+    intro a b same
+    exact (X.Da.map (X.Fo.toOrigin source)).injective
+      (Sum.inl.inj (congrArg Subtype.val same))
+
+/-- The canonical right data component uses the other tagged origin image. -/
+def bouquetRightData (X Y : Atl) (source : Y.El) :
+    Y.Da.obj source ⟶ (bouquetAtlas X Y).Da.obj (bouquetRightElement X Y source) where
+  toFun datum := ⟨Sum.inr (originImage Y source datum), by
+    refine ⟨(bouquetRightRawDom_eq X Y source).symm ▸ datum, ?_⟩
+    rw [bouquetRootIndex_right]
+    congr 2
+    have cancel {A B : DomIns} (h : A = B) (value : B) :
+        (h ▸ (h.symm ▸ value : A) : B) = value := by
+      cases h
+      rfl
+    exact cancel _ datum⟩
+  inj' := by
+    intro a b same
+    exact (Y.Da.map (Y.Fo.toOrigin source)).injective
+      (Sum.inr.inj (congrArg Subtype.val same))
+
+def bouquetLeftHom (X Y : Atl) : X ⟶ bouquetAtlas X Y where
+  Pa := bouquetLeftElements X Y
+  Da :=
+    { app := bouquetLeftData X Y
+      naturality := by
+        intro source target arrow
+        apply Function.Embedding.ext
+        intro datum
+        apply Subtype.ext
+        exact congrArg Sum.inl (originImage_map X arrow datum) }
+
+def bouquetRightHom (X Y : Atl) : Y ⟶ bouquetAtlas X Y where
+  Pa := bouquetRightElements X Y
+  Da :=
+    { app := bouquetRightData X Y
+      naturality := by
+        intro source target arrow
+        apply Function.Embedding.ext
+        intro datum
+        apply Subtype.ext
+        exact congrArg Sum.inr (originImage_map Y arrow datum) }
 
 /-- The object-level atlas merge used by the horizontal construction. -/
 def AtlMerge (X Y : Atl) : Atl := bouquetAtlas X Y

@@ -33,6 +33,14 @@ import Atlas
   , atlasPageElements
   , atlasWitness
   )
+import AtlasMerge.LiquidInternal
+  ( AtlasMergeSide (..)
+  , AtlasMergeDatum (..)
+  , atlasMergeDatumSide
+  , atlasMergeDatumRank
+  , retagMergeDatum
+  , mergeDatumLookup
+  )
 import AtlasExtent.Internal (atlasCellOriginRankInsertion, extentContainsRank, cellContainsRank)
 import AtlasTransposal
   ( AtlasTransposalElement
@@ -98,10 +106,6 @@ import OrderedAtlasTransposal
   , orderedAtlasTransposal
   )
 
--- | Which input Atlas supplied a cell or datum in a merge.
-data AtlasMergeSide = AtlasMergeLeft | AtlasMergeRight
-  deriving (Eq, Show)
-
 -- | A cell in a non-origin page of the merged folio.
 --
 -- The stored list is the component cell's transport trace, beginning at the
@@ -112,33 +116,6 @@ data AtlasMergePageCell
   = AtlasMergeLeftCell [Ordinal]
   | AtlasMergeRightCell [Ordinal]
   deriving (Eq, Show)
-
--- | Data in every merge cell is represented by its tagged rank in the
--- corresponding input extent.  A dominion is isomorphic to its image under
--- its rank embedding, so this is the executable counterpart of Lean's
--- @imageDom@ construction.  The phantom parameter retains the dependent
--- Atlas cell identity expected by 'Atlas'.
-data AtlasMergeDatum object
-  = AtlasMergeLeftDatum Natural
-  | AtlasMergeRightDatum Natural
-  deriving (Eq, Show)
-
-atlasMergeDatumSide :: AtlasMergeDatum object -> AtlasMergeSide
-atlasMergeDatumSide (AtlasMergeLeftDatum _) = AtlasMergeLeft
-atlasMergeDatumSide (AtlasMergeRightDatum _) = AtlasMergeRight
-
--- | Rank in the merged extent.  Even ranks belong to the left extent and odd
--- ranks belong to the right extent, exactly as in Lean's @domSum@.
--- ALIGN: MERGE-DATUM-RANK.
-atlasMergeDatumRank :: AtlasMergeDatum object -> Natural
-atlasMergeDatumRank (AtlasMergeLeftDatum valueRank) = 2 * valueRank
-atlasMergeDatumRank (AtlasMergeRightDatum valueRank) = 2 * valueRank + 1
-
-retagMergeDatum :: AtlasMergeDatum source -> AtlasMergeDatum target
-retagMergeDatum (AtlasMergeLeftDatum valueRank) =
-  AtlasMergeLeftDatum valueRank
-retagMergeDatum (AtlasMergeRightDatum valueRank) =
-  AtlasMergeRightDatum valueRank
 
 -- | The merge has a fresh singleton origin followed by the componentwise
 -- pages of both input atlases.
@@ -396,7 +373,6 @@ mergeCellContains left right occurrence datum =
       AtlasMergeLeftDatum _ -> False
       AtlasMergeRightDatum valueRank -> cellContainsRank right source valueRank
 
--- ALIGN: MERGE-DATUM-DECODE.
 -- ALIGN: MERGE-UNRANK-SOUND.
 -- ALIGN: MERGE-BOUQUET-DATA-DECODE.
 mergeDatumAt
@@ -405,13 +381,8 @@ mergeDatumAt
   -> PageElement mergeScope object
   -> Natural
   -> Maybe (AtlasMergeDatum object)
-mergeDatumAt left right occurrence combinedRank =
-  let candidate
-        | even combinedRank = AtlasMergeLeftDatum (combinedRank `div` 2)
-        | otherwise = AtlasMergeRightDatum (combinedRank `div` 2)
-  in if mergeCellContains left right occurrence candidate
-      then Just candidate
-      else Nothing
+mergeDatumAt left right occurrence =
+  mergeDatumLookup (mergeCellContains left right occurrence)
 
 -- ALIGN: MERGE-DOMINION-ROUNDTRIP.
 -- ALIGN: MERGE-DOMINION-INTERPRETATION.
@@ -663,6 +634,9 @@ rightMergeObjectPreimage leftAtlas rightAtlas target =
 -- ALIGN: MERGE-LEFT-TRANSPOSAL.
 -- ALIGN: MERGE-LEFT-ORDER.
 -- ALIGN: MERGE-LEFT-ORDERED-TRANSPOSAL.
+-- ALIGN: MERGE-LEFT-MORPHISM-RANK.
+-- ALIGN: MERGE-LEFT-MORPHISM-INTERPRETATION.
+-- ALIGN: MERGE-LEFT-ORDERED-INTERPRETATION.
 atlasMergeLeftOrderedTransposal
   :: forall leftAtlasScope leftScope leftData leftOrigin leftFinal
       rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -704,6 +678,9 @@ atlasMergeLeftOrderedTransposal leftAtlas _ mergedAtlas =
 -- ALIGN: MERGE-RIGHT-TRANSPOSAL.
 -- ALIGN: MERGE-RIGHT-ORDER.
 -- ALIGN: MERGE-RIGHT-ORDERED-TRANSPOSAL.
+-- ALIGN: MERGE-RIGHT-MORPHISM-RANK.
+-- ALIGN: MERGE-RIGHT-MORPHISM-INTERPRETATION.
+-- ALIGN: MERGE-RIGHT-ORDERED-INTERPRETATION.
 atlasMergeRightOrderedTransposal
   :: forall leftAtlasScope leftScope leftData leftOrigin leftFinal
       rightAtlasScope rightScope rightData rightOrigin rightFinal
