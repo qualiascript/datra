@@ -103,6 +103,7 @@ orderedAtlasTransposal
               (orderedMapObject transposal right) })
   -> OrderedAtlasTransposal source target
 @-}
+-- ALIGN: ATLAS-ORDERED-INTERPRETATION.
 orderedAtlasTransposal
   :: AtlasTransposal source target
   -> (AtlasTransposalElement source
@@ -138,6 +139,7 @@ orderedAtlasTransposalHom =
   atlasTransposalHom . orderedAtlasTransposalTransposal
 
 -- | Invoke the primitive or derived strict-order preservation proof.
+-- ALIGN: ATLAS-ORDERED-PRESERVATION.
 orderedAtlasTransposalPreservesOrder
   :: OrderedAtlasTransposal source target
   -> AtlasTransposalElement source
@@ -159,11 +161,13 @@ orderedAtlasTransposalPreservesOrder
         (mapOrderedAtlasTransposalObject first right)
 
 -- | The identity transposal preserves strict order unchanged.
+-- ALIGN: ATLAS-ORDERED-IDENTITY.
 identityOrderedAtlasTransposal
   :: OrderedAtlasTransposal object object
 identityOrderedAtlasTransposal = IdentityOrderedAtlasTransposal
 
 -- | Compose ordered transposals in categorical order.
+-- ALIGN: ATLAS-ORDERED-COMPOSITION.
 composeOrderedAtlasTransposals
   :: OrderedAtlasTransposal middle target
   -> OrderedAtlasTransposal source middle

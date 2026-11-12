@@ -41,6 +41,7 @@ dominion
            unrankFunction (rankFunction x) == Just x })
   -> Dominion a
 @-}
+-- ALIGN: DOMINION-RANK-INJECTIVE.
 dominion
   :: (a -> Natural)
   -> (Natural -> Maybe a)

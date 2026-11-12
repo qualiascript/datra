@@ -55,6 +55,7 @@ withAtlasCellDominion
   useDominion = useDominion occurrence valueDominion
 
 -- | The Atlas extent: the dominion attached to its origin cell.
+-- ALIGN: ATLAS-EXTENT-INTERPRETATION.
 atlasExtent
   :: Atlas atlasScope scope cellData origin final
   -> AtlasCellDominion scope cellData

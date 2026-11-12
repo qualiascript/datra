@@ -1,0 +1,10 @@
+[
+  {"initial": [2], "suffix": [3], "value": [4], "difference": [2]},
+  {"initial": [2, 5], "suffix": [1, 3], "value": [3, 1], "difference": [1, 1]},
+  {"initial": [2, 5], "suffix": [1], "value": [2, 5], "difference": []},
+  {"initial": [2, 5], "suffix": [2, 0, 0], "value": [1, 3, 0], "difference": [1, 3, 0]},
+  {"initial": [4, 0, 7], "suffix": [8], "value": [4, 0, 10], "difference": [3]},
+  {"initial": [], "suffix": [1, 0], "value": [9], "difference": [9]},
+  {"initial": [1, 0], "suffix": [1], "value": [1, 0], "difference": []},
+  {"initial": [1, 0], "suffix": [2, 0], "value": [2, 5], "difference": [1, 5]}
+]

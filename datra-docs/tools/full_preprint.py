@@ -25,11 +25,14 @@ LEAN_ASCII = str.maketrans({
     "₃": "_3",
     "←": "<-",
     "→": "->",
+    "↓": "down",
+    "↔": "<->",
     "↪": ">->",
     "∀": "forall ",
     "∃": "exists ",
     "∘": " o ",
     "∧": " /\\ ",
+    "∨": " \\/ ",
     "≃": "Equiv",
     "≅": "Iso",
     "≌": "EquivCat",
@@ -110,7 +113,8 @@ LEAN_APPENDIX = r"""
 The following is an ASCII rendering of the complete Lean source corresponding
 to the mathematical development above.  It replaces Lean's conventional
 Unicode surface notation solely for portable typesetting; the checked source
-file remains \texttt{datra.lean}.
+modules are imported by \texttt{datra.lean}. Source-file labels identify each
+module in dependency order.
 
 \lstinputlisting[
   style=leanSource,

@@ -46,6 +46,18 @@ assert ((arg2 := 10, 4) of ArgsIntMap) = false # missing argument: `arg1`
 See the [Haskell implementation README](datra-haskell/README.md) for Docker
 installation and invocation.
 
+## Lean and the preprint
+
+`datra.lean` imports the complete formalization. The mathematical definitions
+and their literate preprint sections live in [datra-lean/Semantics.lean](datra-lean/Semantics.lean).
+The [datra-lean/Executable](datra-lean/Executable) modules model the Haskell representations
+and prove their relationships to those definitions.
+
+Run `lake build` to check the Lean modules. Run
+`make -C datra-docs preprint_full` to build `preprint_full.pdf`, including the
+complete Lean source appendix. The preprint build follows local Lean imports
+and rebuilds when any included module changes.
+
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE). Datra is authored by

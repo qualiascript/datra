@@ -215,6 +215,8 @@ atlasData
                  rightDatum })
   -> AtlasData scope cellData
 @-}
+-- ALIGN: ATLAS-DATA-FUNCTOR.
+-- ALIGN: ATLAS-DATA-DISJOINT.
 atlasData
   :: Natural
   -> Int

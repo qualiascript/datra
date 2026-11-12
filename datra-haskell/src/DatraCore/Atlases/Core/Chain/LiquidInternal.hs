@@ -34,6 +34,8 @@ import DatraOrdinal.LiquidInternal
   , ordinalSubtractBetween
   )
 
+-- ALIGN: CHAIN-SUM.
+-- ALIGN: CHAIN-SUM-SEMANTICS.
 sumChains :: Chain left -> Chain right -> Chain (Either left right)
 sumChains left right =
   chain

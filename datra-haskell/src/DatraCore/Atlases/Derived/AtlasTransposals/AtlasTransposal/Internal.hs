@@ -90,6 +90,7 @@ instance Show (AtlasTransposalElement atlasObject) where
 
 -- | Turn an occurrence on the padded spine into the corresponding genuine
 -- Atlas element.
+-- ALIGN: ATLAS-TRANSPOSE-ELEMENT-EQUIVALENCE.
 atlasTransposalElement
   :: AtlasWitness atlasObject
   -> PageElement (AtlasObjectPaginationScope atlasObject) object
@@ -113,6 +114,7 @@ withAtlasTransposalElement (AtlasTransposalElement element) useElement =
 -- been normalized, so this is Lean's @elementLT@: transport both cells to
 -- their common earliest page and compare their positions there.
 {-@ reflect atlasTransposalElementLT @-}
+-- ALIGN: ATLAS-ORDER-INTERPRETATION.
 atlasTransposalElementLT
   :: AtlasTransposalElement atlasObject
   -> AtlasTransposalElement atlasObject
@@ -129,16 +131,18 @@ atlasTransposalElementLT
           ordinalLT leftPosition rightPosition
         _ -> False
 
+-- ALIGN: ATLAS-ORDER-TRACE-LOOKUP.
 positionAtPage
   :: Natural
   -> PageElement scope object
   -> Maybe Ordinal
 positionAtPage page occurrence =
-  case drop offset (pageElementTrace occurrence) of
-    position : _ -> Just position
-    [] -> Nothing
+  atOffset (pageElementPage occurrence - page) (pageElementTrace occurrence)
   where
-    offset = fromIntegral (pageElementPage occurrence - page)
+    -- Page numbers are Natural; retain that range when indexing the trace.
+    atOffset _ [] = Nothing
+    atOffset 0 (position : _) = Just position
+    atOffset offset (_ : rest) = atOffset (offset - 1) rest
 
 -- | An arrow in the wide subcategory of Atlas transposals.
 --
@@ -190,6 +194,7 @@ atlasTransposal
               == Just sourceElement })
   -> AtlasTransposal source target
 @-}
+-- ALIGN: ATLAS-TRANSPOSAL-INJECTIVITY.
 atlasTransposal
   :: AtlasWitness source
   -> AtlasHom source target
@@ -229,6 +234,7 @@ atlasTransposalPreimage (AtlasTransposal _ objectInsertion) =
   preimage objectInsertion
 
 -- | Invoke the stored or mechanically derived left-inverse certificate.
+-- ALIGN: ATLAS-TRANSPOSAL-LEFT-INVERSE.
 atlasTransposalLeftInverse
   :: AtlasTransposal source target
   -> AtlasTransposalElement source
@@ -237,6 +243,7 @@ atlasTransposalLeftInverse (AtlasTransposal _ objectInsertion) =
   insertionLeftInverse objectInsertion
 
 -- | The identity Atlas arrow with its identity object preimage.
+-- ALIGN: ATLAS-TRANSPOSAL-IDENTITY.
 identityAtlasTransposal :: AtlasTransposal object object
 identityAtlasTransposal =
   AtlasTransposal identityAtlasHom identityInsertion
@@ -244,6 +251,7 @@ identityAtlasTransposal =
 -- | Compose transposals in categorical order. Their partial preimages compose
 -- in the reverse order, and the two left-inverse certificates establish the
 -- certificate of the composite.
+-- ALIGN: ATLAS-TRANSPOSAL-COMPOSITION.
 composeAtlasTransposals
   :: AtlasTransposal middle target
   -> AtlasTransposal source middle

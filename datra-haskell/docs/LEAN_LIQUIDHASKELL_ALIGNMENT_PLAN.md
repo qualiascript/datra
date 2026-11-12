@@ -27,8 +27,9 @@ and regression oracle; LiquidHaskell remains the checker for the Haskell code.
 
 ### Lean
 
-`datra.lean` is a 4,000-plus-line monolithic formalization. Its foundational
-model is mostly extensional:
+`datra.lean` imports the formalization from `datra-lean`. The written preprint
+sections and their mathematical definitions live in `datra-lean/Semantics.lean`,
+under `Datra.Semantics`. This denotational layer is mostly extensional:
 
 - `Dominion` stores a carrier and an embedding into `Nat`.
 - `Chain` stores a linearly and well-founded ordered carrier with order type
@@ -45,8 +46,10 @@ model is mostly extensional:
   that its coherence map is idempotent and not generally the raw identity.
 - `DaTra` is then the ordinary Mathlib presheaf category `Atl^op -> Type`.
 
-This is a good denotational account, but it does not yet capture several
-implementation choices on which the Haskell proofs depend.
+The `datra-lean/Executable` modules model the executable representations and
+prove their interpretations into this denotational layer. Derived construction
+bridges and the Yoneda packaging boundary still need work; the correspondence
+manifest records their coverage separately.
 
 ### Haskell and LiquidHaskell
 
@@ -80,14 +83,12 @@ The current `DatraCore` representation is executable and intensional:
 
 ### Remaining explicit trust boundary
 
-A repository-wide scan of `DatraCore` currently finds four explicit
+A repository-wide scan of `DatraCore` currently finds two explicit
 LiquidHaskell `assume` declarations, all in
 `DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs`:
 
 | Assumption | Intended fact | Nature of the gap |
 | --- | --- | --- |
-| `presheafRightIdentity` | `presheafCompose arrow presheafIdentity == arrow` | Structural equality of the indexed `AtlasHom` syntax |
-| `presheafAssociativity` | Associativity of `presheafCompose` | Structural induction over the indexed syntax |
 | `yoneda` | The representable action packages as a lawful `DataTransformation` | LiquidHaskell loses verified laws at a rank-N/defunctionalized constructor boundary |
 | `yonedaNatural` | An Atlas arrow packages as the corresponding Yoneda natural transformation | The pointwise naturality lemma is checked, but its rank-N component cannot be stored without an assumption |
 
@@ -109,21 +110,22 @@ LiquidHaskell theorem has a Lean counterpart over the same cases.
 Suggested modules:
 
 ```text
-Datra/Executable/Ordinal.lean
-Datra/Executable/Dominion.lean
-Datra/Executable/Chain.lean
-Datra/Executable/Consolidation.lean
-Datra/Executable/Folio.lean
-Datra/Executable/PageElements.lean
-Datra/Executable/Pagination.lean
-Datra/Executable/Atlas/Data.lean
-Datra/Executable/Atlas/Morphism.lean
-Datra/Executable/DataTransformation.lean
+datra-lean/Executable/Ordinal.lean
+datra-lean/Executable/Dominion.lean
+datra-lean/Executable/Chain.lean
+datra-lean/Executable/Consolidation.lean
+datra-lean/Executable/Folio.lean
+datra-lean/Executable/PageElements.lean
+datra-lean/Executable/Pagination.lean
+datra-lean/Executable/Atlas/Data.lean
+datra-lean/Executable/Atlas/Morphism.lean
+datra-lean/Executable/DataTransformation.lean
 ```
 
-Initially, `datra.lean` can import these modules while retaining the literate
-preprint material and compatibility aliases. Splitting the file is part of the
-work, not a prerequisite for changing the mathematics.
+`datra.lean` is the import entry point. The literate preprint material remains
+beside the corresponding semantic definitions in `datra-lean/Semantics.lean`.
+The preprint extractor follows the local imports and includes every module in
+the full source appendix.
 
 ### 2. Semantic layer
 
@@ -285,7 +287,7 @@ starting lemmas for this step.
   `PE-NORMALIZE-IDEMPOTENT` or `ATLASHOM-ASSOC`.
 - Add a short comment containing that identifier at both the Lean theorem and
   LiquidHaskell proof function.
-- Capture the current four-assumption inventory in CI so new assumptions cannot
+- Track the explicit trust inventory in CI so new assumptions cannot
   be introduced unnoticed.
 
 Exit criterion: every core Haskell representation and every trusted assumption

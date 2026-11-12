@@ -111,6 +111,7 @@ mapAtlasMorphismActionObject
 mapAtlasMorphismActionObject (AtlasMorphismAction _ _ mapObject _ _ _) =
   mapObject
 
+-- ALIGN: ATLAS-PRIMITIVE-DATA-INTERPRETATION.
 mapAtlasMorphismActionComponent
   :: AtlasMorphismAction
        objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
@@ -123,6 +124,7 @@ mapAtlasMorphismActionComponent
 mapAtlasMorphismActionComponent
   (AtlasMorphismAction _ _ _ component _ _) = component
 
+-- ALIGN: ATLAS-PRIMITIVE-PAGE-INTERPRETATION.
 mapAtlasMorphismActionElement
   :: AtlasMorphismAction
        objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
@@ -247,6 +249,9 @@ atlasMorphismAction
        sourceCellData targetCellData
        sourceOrigin sourceFinal targetOrigin targetFinal
 @-}
+-- ALIGN: ATLAS-PRIMITIVE-PAGE-FUNCTOR.
+-- ALIGN: ATLAS-PRIMITIVE-NATURALITY.
+-- ALIGN: ATLAS-PRIMITIVE-INTERPRETATION.
 atlasMorphismAction
   :: AtlasObjectMap objectMap
   -> Atlas sourceAtlasScope sourceScope sourceCellData sourceOrigin sourceFinal

@@ -52,6 +52,8 @@ data Ordinal = Ordinal
 
 -- | Construct a canonical ordinal from descending coefficients.
 {-@ reflect ordinal @-}
+-- ALIGN: ORDINAL-BOUND.
+-- ALIGN: ORDINAL-NORMALIZE-DENOTATION.
 ordinal :: [Natural] -> Ordinal
 ordinal values = Ordinal (dropLeadingZeros values)
 
@@ -88,6 +90,7 @@ instance Ord Ordinal where
       <> compare left right
 
 -- | A reflected strict comparison that agrees with the 'Ord' instance.
+-- ALIGN: ORDINAL-COMPARE.
 {-@ reflect ordinalLT @-}
 ordinalLT :: Ordinal -> Ordinal -> Bool
 ordinalLT (Ordinal left) (Ordinal right) = coefficientsLT left right
@@ -113,6 +116,7 @@ listLength [] = 0
 listLength (_ : values) = 1 + listLength values
 
 {-@ reflect lexicographicLT @-}
+-- ALIGN: ORDINAL-LEX-COMPARE.
 lexicographicLT :: [Natural] -> [Natural] -> Bool
 lexicographicLT [] _ = False
 lexicographicLT _ [] = False
@@ -127,6 +131,7 @@ addOrdinals :: Ordinal -> Ordinal -> Ordinal
 addOrdinals (Ordinal left) (Ordinal right) =
   Ordinal (addCoefficients left right)
 
+-- ALIGN: ORDINAL-ADD.
 {-@ reflect addCoefficients @-}
 {-@
 addCoefficients
@@ -168,6 +173,7 @@ subtractCoefficients _ _ = Nothing
 
 -- | Decode a finite ordinal as a natural number.
 {-@ reflect naturalAtOrdinal @-}
+-- ALIGN: ORDINAL-NATURAL-LOOKUP.
 naturalAtOrdinal :: Ordinal -> Maybe Natural
 naturalAtOrdinal (Ordinal []) = Just 0
 naturalAtOrdinal (Ordinal [value]) = Just value
@@ -176,11 +182,13 @@ naturalAtOrdinal _ = Nothing
 -- | Decode one natural in the canonical enumeration of ordinals below
 -- @omega^width@.  A fixed-width coefficient vector is decoded by iterated
 -- Cantor unpairing, then canonicalized by 'ordinal'.
+-- ALIGN: ORDINAL-ENUMERATION-DECODE.
 ordinalAtNaturalRank :: Natural -> Natural -> Maybe Ordinal
 ordinalAtNaturalRank width code = ordinal <$> coefficientTuple width code
 
 -- | Encode an ordinal below @omega^width@ in the inverse canonical natural
 -- enumeration.  Ordinals outside that bound are rejected.
+-- ALIGN: ORDINAL-ENUMERATION-ENCODE.
 naturalRankOfOrdinal :: Natural -> Ordinal -> Maybe Natural
 naturalRankOfOrdinal width value@(Ordinal values)
   | not (ordinalLT value (omegaPower width)) = Nothing
@@ -217,6 +225,7 @@ pairNatural first second =
   in diagonal * (diagonal + 1) `div` 2 + first
 
 {-@ lazy unpairNatural @-}
+-- ALIGN: ORDINAL-PAIR-UNPAIR.
 unpairNatural :: Natural -> (Natural, Natural)
 unpairNatural = go 0
   where

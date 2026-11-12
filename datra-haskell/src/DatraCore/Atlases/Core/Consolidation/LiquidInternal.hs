@@ -160,6 +160,9 @@ identityPointSurjective _ = ()
      -> first:Consolidation <sourceLe, middleLe> source middle
      -> Consolidation <sourceLe, targetLe> source target
 @-}
+-- ALIGN: CONSOLIDATION-LEFT-IDENTITY.
+-- ALIGN: CONSOLIDATION-RIGHT-IDENTITY.
+-- ALIGN: CONSOLIDATION-ASSOC.
 composeConsolidations
   :: Consolidation middle target
   -> Consolidation source middle

@@ -78,7 +78,11 @@ data AtlasCoveredPageElement atlasObject where
 
 -- | Rank the image of a datum in the Atlas extent. Dominion ranks are
 -- injective, so equality of these ranks is equality of the origin images.
+-- ALIGN: ATLAS-COVERAGE-RANK-EQUALITY.
+-- ALIGN: ATLAS-ORIGIN-IMAGE-INTERPRETATION.
+-- ALIGN: ATLAS-ORIGIN-RANK-INTERPRETATION.
 {-@ reflect atlasOriginImageRank @-}
+-- ALIGN: ATLAS-ORIGIN-RANK-NORMALIZATION.
 atlasOriginImageRank
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -112,7 +116,9 @@ coverageFinalPage valueAtlas = atlasCardinality valueAtlas - 1
 -- | The proposition represented by an 'AtlasCoverageWitness'. The first
 -- conjunct places its witness on the final genuine page and the second is
 -- Lean's equality after both data are transported to the origin.
+-- ALIGN: ATLAS-COVERAGE-INTERPRETATION.
 {-@ reflect coverageWitnessCovers @-}
+-- ALIGN: ATLAS-COVERAGE-WITNESS-SOUND.
 coverageWitnessCovers
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -157,6 +163,7 @@ atlasCoverageWitness
          sourceDatum
          witness }
 @-}
+-- ALIGN: ATLAS-COVERAGE-CONSTRUCTOR.
 atlasCoverageWitness
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -197,6 +204,7 @@ atlasCoveredPageElement
                regionDatum }
   -> AtlasCoveredPageElement (AtlasObject atlasScope scope cellData)
 @-}
+-- ALIGN: ATLAS-COVERED-CONSTRUCTOR.
 atlasCoveredPageElement
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -216,6 +224,7 @@ atlasCoveredPageElement
 
 -- | Eliminate a covered page element while retaining its dependent cell-data
 -- type.
+-- ALIGN: ATLAS-COVERED-SEMANTICS.
 withAtlasCoveredPageElement
   :: AtlasCoveredPageElement atlasObject
   -> (forall object.
@@ -232,6 +241,7 @@ withAtlasCoveredPageElement
 -- @unrank@ operation whereas Lean's dominions only require a rank embedding.
 -- The search terminates exactly on covered page elements, the only domain on
 -- which Charter calls it.
+-- ALIGN: ATLAS-COVERAGE-SEARCH-SPEC.
 findAtlasCoverage
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -243,6 +253,8 @@ findAtlasCoverage valueAtlas source sourceDatum =
 -- | The first enumeration index witnessing coverage of a datum. The search
 -- is total on the abstract covered carrier used by Charter.
 {-@ lazy findAtlasCoverageRank @-}
+-- ALIGN: ATLAS-COVERAGE-RANK-ROUNDTRIP.
+-- ALIGN: ATLAS-COVERAGE-RANK-MINIMAL.
 findAtlasCoverageRank
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -274,6 +286,8 @@ atlasCoveredPageElementAt valueAtlas source candidate =
 -- member of the covered carrier.  Returning the witness alongside the datum
 -- lets downstream dependent carriers stay total instead of reconstructing
 -- evidence with an unchecked search.
+-- ALIGN: ATLAS-COVERAGE-DECODE-SOUND.
+-- ALIGN: ATLAS-COVERAGE-DECODE-COMPLETE.
 atlasCoverageAt
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -308,7 +322,9 @@ atlasCoverageAt valueAtlas source candidate =
                             valueAtlas (pageElementArrow region origin))
                           regionDatum) of
                             Nothing -> Nothing
-                            Just sourceDatum ->
+                            Just sourceDatum
+                              | atlasOriginImageRank valueAtlas source sourceDatum
+                                  == regionOriginRank ->
                               Just
                                 ( sourceDatum
                                 , AtlasCoverageWitness
@@ -317,6 +333,7 @@ atlasCoverageAt valueAtlas source candidate =
                                     (coverageFinalPage valueAtlas)
                                     regionOriginRank
                                 )
+                              | otherwise -> Nothing
 
 {-@ lazy searchAtlasCoverageFrom @-}
 searchAtlasCoverageFrom
@@ -331,6 +348,8 @@ searchAtlasCoverageFrom valueAtlas source sourceDatum candidate =
     Nothing ->
       searchAtlasCoverageFrom valueAtlas source sourceDatum (candidate + 1)
 
+-- ALIGN: ATLAS-COVERAGE-CANDIDATE-SOUND.
+-- ALIGN: ATLAS-COVERAGE-CANDIDATE-COMPLETE.
 coverageCandidate
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -374,6 +393,9 @@ unpairNatural = go 0
       | otherwise = go (diagonal + 1) (remainder - diagonal - 1)
 
 {-@ lazy decodeNaturalList @-}
+-- ALIGN: COVERAGE-LIST-DECODE-ENCODE.
+-- ALIGN: COVERAGE-LIST-ENCODE-DECODE.
+-- ALIGN: COVERAGE-ORDINAL-ENUMERATION.
 decodeNaturalList :: Natural -> [Natural]
 decodeNaturalList 0 = []
 decodeNaturalList code =

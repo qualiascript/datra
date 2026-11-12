@@ -130,6 +130,7 @@ atlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
 @-}
+-- ALIGN: ATLAS-TRANSVERSAL-INTERPRETATION.
 atlasTransversal
   :: Atlas
        sourceAtlasScope sourceScope sourceCellData sourceOrigin sourceFinal
@@ -181,6 +182,7 @@ atlasTransversalHom =
 -- | Map a covered page element and derive coverage of its exact target image. This
 -- is total: malformed preservation callbacks are rejected when the primitive
 -- transversal is compiled, rather than producing a runtime failure here.
+-- ALIGN: ATLAS-TRANSVERSAL-COVERED-IMAGE.
 mapAtlasTransversalCoveredPageElement
   :: AtlasTransversal source target
   -> AtlasCoveredPageElement source
@@ -209,6 +211,7 @@ mapAtlasTransversalCoveredPageElement
 -- | The covered-page-element preservation condition of an Atlas transversal.
 -- This is named separately from the operational mapper so downstream
 -- restrictions can refer directly to the condition they inherit.
+-- ALIGN: ATLAS-TRANSVERSAL-COVERAGE.
 atlasTransversalPreservesCoverage
   :: AtlasTransversal source target
   -> AtlasCoveredPageElement source
@@ -216,10 +219,12 @@ atlasTransversalPreservesCoverage
 atlasTransversalPreservesCoverage = mapAtlasTransversalCoveredPageElement
 
 -- | The identity transversal preserves every covered page element unchanged.
+-- ALIGN: ATLAS-TRANSVERSAL-IDENTITY.
 identityAtlasTransversal :: AtlasTransversal object object
 identityAtlasTransversal = IdentityAtlasTransversal
 
 -- | Compose Atlas transversals in categorical order.
+-- ALIGN: ATLAS-TRANSVERSAL-COMPOSITION.
 composeAtlasTransversals
   :: AtlasTransversal middle target
   -> AtlasTransversal source middle

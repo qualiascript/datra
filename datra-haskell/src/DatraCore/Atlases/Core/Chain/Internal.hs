@@ -141,6 +141,9 @@ chainIndex
        && chainOrdinalLT position (chainOrderType valueChain)
        && chainPosition valueChain (chainIndexObject index) == position })
 @-}
+-- ALIGN: CHAIN-INDEX-LOOKUP.
+-- ALIGN: CHAIN-INDEX-ROUNDTRIP.
+-- ALIGN: CHAIN-INDEX-BOUNDS.
 chainIndex :: Chain object -> Ordinal -> Maybe (ChainIndex object)
 chainIndex valueChain position
   | not (chainOrdinalLT position (chainOrderType valueChain)) = Nothing
@@ -163,6 +166,7 @@ chainIndexOf
             (chainIndexPosition index)
             (chainOrderType valueChain) }
 @-}
+-- ALIGN: CHAIN-LOOKUP-POSITION.
 chainIndexOf :: Chain object -> object -> ChainIndex object
 chainIndexOf valueChain objectValue =
   chainPositionBelow valueChain objectValue `seq`
@@ -183,6 +187,7 @@ hasArrow :: Chain object -> object -> object -> Bool
 hasArrow valueChain source target =
   compareInChain valueChain source target /= GT
 
+-- ALIGN: CHAIN-SPINE.
 spine :: Chain Natural
 spine =
   Chain

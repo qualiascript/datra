@@ -38,6 +38,7 @@ atlasTerritoryChain
 atlasTerritoryChain = lastChain . atlasFolio
 
 -- | The territory member selected by a certified final-page index.
+-- ALIGN: ATLAS-TERRITORY-INTERPRETATION.
 atlasTerritory
   :: Atlas atlasScope scope cellData origin final
   -> AtlasTerritoryIndex final

@@ -30,6 +30,7 @@ extra-source-files:
     test/fixtures/cli/*.out
     test/fixtures/integration/*.datra
     test/fixtures/modules/*.datra
+    test/fixtures/alignment/*.json
     src/DatraCore/LiquidPlugin.h
 
 common warnings

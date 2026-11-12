@@ -33,6 +33,7 @@ domanialInsertion
   -> (x:a -> { proof:() | backward (forward x) == Just x })
   -> DomanialInsertion a b
 @-}
+-- ALIGN: INSERTION-INJECTIVE.
 domanialInsertion
   :: (a -> b)
   -> (b -> Maybe a)

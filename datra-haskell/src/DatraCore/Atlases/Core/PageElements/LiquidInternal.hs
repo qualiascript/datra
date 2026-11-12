@@ -118,6 +118,7 @@ pageElementAt
        pageElementPage elementValue == page
        && pageElementPosition elementValue == pageElementCellPosition cell }
 @-}
+-- ALIGN: PE-ELEMENTS-EQUIVALENCE.
 pageElementAt
   :: Natural
   -> [Ordinal]
@@ -164,6 +165,7 @@ somePageElementPrecedesReflexive (SomePageElement _) = ()
 -- occurrences.  Traces are stored from the current page back to the origin,
 -- so this is precisely the suffix relation.
 {-@ reflect pageElementTransported @-}
+-- ALIGN: PE-ARROW-REPRESENTATION.
 pageElementTransported
   :: PageElement scope source
   -> PageElement scope target
@@ -193,6 +195,7 @@ somePageElementTransportedReflexive (SomePageElement value) =
   pageElementTransportedReflexive value
 
 {-@ reflect traceSuffix @-}
+-- ALIGN: PE-TRACE-SUFFIX.
 traceSuffix :: [Ordinal] -> [Ordinal] -> Bool
 traceSuffix source target
   | source == target = True
@@ -224,6 +227,7 @@ trimTraceIdempotent
   -> { proof:() |
        trimTrace limit (trimTrace limit values) == trimTrace limit values }
 @-}
+-- ALIGN: PE-TRIM-IDEMPOTENT.
 trimTraceIdempotent :: Int -> [Ordinal] -> ()
 trimTraceIdempotent limit values
   | traceLength values <= limit = ()
@@ -238,6 +242,7 @@ trimTraceIsSuffix
   -> values:[Ordinal]
   -> { proof:() | traceSuffix values (trimTrace limit values) }
 @-}
+-- ALIGN: PE-TRIM-SUFFIX.
 trimTraceIsSuffix :: Int -> [Ordinal] -> ()
 trimTraceIsSuffix limit values
   | traceLength values <= limit = ()
@@ -268,6 +273,7 @@ trimTracePreservesSuffix
   -> { proof:() |
        traceSuffix (trimTrace limit source) (trimTrace limit target) }
 @-}
+-- ALIGN: PE-TRIM-PRESERVES-SUFFIX.
 trimTracePreservesSuffix :: Int -> [Ordinal] -> [Ordinal] -> ()
 trimTracePreservesSuffix _ source target
   | source == target = ()
@@ -332,6 +338,7 @@ clampPagePreservesPrecedes finalPage sourcePage targetPage
 -- page is at most the final genuine page.  Traces keep only the suffix from
 -- that page back to the origin.
 {-@ reflect normalizePageElementAt @-}
+-- ALIGN: PE-NORMALIZE-REPRESENTATION.
 normalizePageElementAt
   :: Natural
   -> Int
@@ -366,6 +373,7 @@ normalizePageElementIdempotentAt
          (normalizePageElementAt finalPage traceLimit value)
        == normalizePageElementAt finalPage traceLimit value }
 @-}
+-- ALIGN: PE-NORMALIZE-IDEMPOTENT.
 normalizePageElementIdempotentAt
   :: Natural
   -> Int
@@ -415,6 +423,7 @@ normalizePageElementPreservesArrowAt
          (normalizePageElementAt finalPage traceLimit sourceValue)
          (normalizePageElementAt finalPage traceLimit targetValue) }
 @-}
+-- ALIGN: PE-NORMALIZE-ARROW.
 normalizePageElementPreservesArrowAt
   :: Natural
   -> Int

@@ -107,6 +107,7 @@ withPageAt pages index usePage =
 -- interval on the infinite spine.  The 'PageOrder' argument certifies that the
 -- source index is no later than the target; both indices are automatically
 -- padded past the finite presentation.
+-- ALIGN: FOLIO-SEMANTIC-INTERVAL.
 withFolioMap
   :: Folio origin final
   -> PageOrder
@@ -143,6 +144,8 @@ data SomeMapTo target where
     -> Coconsolidation source target
     -> SomeMapTo target
 
+-- ALIGN: FOLIO-INTERVAL-IDENTITY.
+-- ALIGN: FOLIO-INTERVAL-COMPOSITION.
 mapFromIndex
   :: Folio origin target
   -> Natural

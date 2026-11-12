@@ -172,6 +172,7 @@ pageElement (PageElementIndex page prefix padding index) =
     value = chainObjectAt index
 
 -- | The unique origin cell as an object of the page-element category.
+-- ALIGN: PE-ORIGIN-INTERPRETATION.
 originPageElement
   :: PageElements scope origin final
   -> SomePageElement scope
@@ -183,6 +184,7 @@ originPageElement (PageElements pages) =
       (PageElementCell (originChain pages) (originValue pages)))
 
 -- | A certified cell of the final genuine page as a page element.
+-- ALIGN: PE-LAST-INTERPRETATION.
 lastPageElement
   :: PageElements scope origin final
   -> ChainIndex final
@@ -199,6 +201,8 @@ lastPageElement (PageElements pages) index =
 -- back through every earlier page to the origin.  The head is the requested
 -- occurrence; every following position is computed using the corresponding
 -- coconsolidation in the folio.
+-- ALIGN: FOLIO-PADDED-TRACE-NORMALIZE.
+-- ALIGN: PE-TRACE-TRANSPORT.
 pageElementTraceAt
   :: Folio origin page
   -> Natural
@@ -212,6 +216,7 @@ pageElementTraceAt pages padding value =
 
 -- | Build the trace through the stored finite presentation.  Its input is an
 -- actual cell, rather than an unchecked ordinal, so every transport is total.
+-- ALIGN: FOLIO-TRACE-LENGTH.
 genuinePageElementTrace
   :: Folio origin page
   -> page

@@ -86,6 +86,7 @@ testTree =
         , testCase "forget stable confederal data" testForgetStableConfederalData
         , testCase "stable confederal Kleisli syntax" testStableConfederalKleisliSyntax
         , testCase "charter" testCharter
+        , testCase "charter rejects false inverse candidates" testCharterPartialInverse
         , testCase "ordered atlas transposal" testOrderedAtlasTransposal
         , testCase "atlas transversal" testAtlasTransversal
         , testCase "stable atlas transversal" testStableAtlasTransversal
@@ -241,6 +242,13 @@ testRankedDominionAtlas = do
   assert "ranked dominion coalition elements retain target ranks"
     (coalitionElementRank
       (rankedDominionCoalitionElement naturals 37) == 37)
+  let included = dominionAtlas naturals
+      traversal = rankedDominionInsertionTraversal naturals identityInsertion
+      coalitionMap = stableCoalitionMap
+        (atlasWitness included) (atlasWitness valueAtlas) traversal
+      sourceElement = dominionCoalitionElement naturals 7
+  assert "coalition inverses recover images across different folio depths"
+    (preimage coalitionMap (applyInsertion coalitionMap sourceElement) == Just sourceElement)
 
 testChainedDominionAtlas :: IO ()
 testChainedDominionAtlas = do
@@ -2336,6 +2344,60 @@ testCharter =
                           applyInsertion component (TestCellData 7)
                     in assert "chartLower is inverse to chartLift on data"
                         (loweredValue == 7)
+-- The intermediate even cell contains 2, but its final region contains only
+-- multiples of 4. The other branch contains odd numbers. This inverse obeys
+-- its left-inverse law while returning an arbitrary value outside its image.
+coverageTestMapData
+  :: PageElementArrow scope source target
+  -> DomanialInsertion (TestCellData source) (TestCellData target)
+coverageTestMapData pageArrow =
+  let source = arrowSource pageArrow
+      target = arrowTarget pageArrow
+      evenBranch = pageElementPosition source == finiteOrdinal 0
+      (multiplier, offset)
+        | pageElementPage target == 0 && pageElementPage source > 0 =
+            if evenBranch
+              then (if pageElementPage source == 2 then 4 else 2, 0)
+              else (2, 1)
+        | pageElementPage target == 1 && pageElementPage source == 2
+            && evenBranch = (2, 0)
+        | otherwise = (1, 0)
+  in domanialInsertion
+      (\(TestCellData value) -> TestCellData (multiplier * value + offset))
+      (\(TestCellData value) -> Just (TestCellData
+        (if value >= offset && (value - offset) `mod` multiplier == 0
+          then (value - offset) `div` multiplier
+          else 1)))
+      (const ())
+
+testCharterPartialInverse :: IO ()
+testCharterPartialInverse =
+  let pages = appendPage
+        (appendPage (singletonFolio unitChain) boolChain (Consolidation.op collapseBool))
+        boolChain
+        (Consolidation.op (consolidation id id (\_ _ right -> right) (const ())))
+      dataAt _ = dominion
+        (\(TestCellData value) -> value)
+        (Just . TestCellData)
+        (const ())
+  in pagination pages $ \valuePagination ->
+    atlas valuePagination (atlasDataAction dataAt coverageTestMapData)
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        let charted = chartAtlas valueAtlas
+        in case pageElementIndex (atlasPageElements valueAtlas) 1 (finiteOrdinal 0) of
+          Nothing -> fail "missing intermediate even cell"
+          Just sourceIndex -> withPageElement (pageElement sourceIndex) $ \source -> do
+            let decoded =
+                  [ value
+                  | candidate <- [0 .. 50]
+                  , Just datum <- [unrank (atlasDataAt charted source) candidate]
+                  , let TestCellData value = chartedCellDataValue datum
+                  ]
+            assert "covered intermediate values are enumerated" (0 `elem` decoded && 2 `elem` decoded)
+            assert "an arbitrary inverse result does not fabricate coverage"
+              (all even decoded && 1 `notElem` decoded)
+
 testOrderedAtlasTransposal :: IO ()
 testOrderedAtlasTransposal =
   pagination threePageFolio $ \valuePagination ->

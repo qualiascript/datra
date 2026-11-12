@@ -103,6 +103,7 @@ appendPageData pages = SnocPage (folioLengthData pages + 1) pages
 
 -- | The number of genuine pages.
 {-@ reflect folioLengthData @-}
+-- ALIGN: FOLIO-SEMANTIC-LENGTH.
 folioLengthData :: FolioData page origin final -> Natural
 folioLengthData (OriginFolio count _ _) = count
 folioLengthData (SnocPage count _ _ _) = count
@@ -125,6 +126,7 @@ originUniqueData
   -> value:origin
   -> { proof:() | value == originValueData pages }
 @-}
+-- ALIGN: FOLIO-ORIGIN-UNIQUE.
 originUniqueData :: FolioData page origin final -> origin -> ()
 originUniqueData (OriginFolio _ _ witness) value =
   singletonOriginUnique witness value
