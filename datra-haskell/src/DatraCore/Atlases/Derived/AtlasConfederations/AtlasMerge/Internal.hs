@@ -38,8 +38,8 @@ import AtlasMerge.LiquidInternal
   , AtlasMergeDatum (..)
   , atlasMergeDatumSide
   , atlasMergeDatumRank
-  , retagMergeDatum
-  , mergeDatumLookup
+  , mergeDatumDominion
+  , mergeDatumInsertion
   )
 import AtlasExtent.Internal (atlasCellOriginRankInsertion, extentContainsRank, cellContainsRank)
 import AtlasTransposal
@@ -77,7 +77,7 @@ import DomanialInsertion
   , domanialInsertion
   , preimage
   )
-import Dominion (Dominion, dominion)
+import Dominion (Dominion)
 import Folio
   ( Folio
   , appendPage
@@ -93,6 +93,7 @@ import PageElements
   ( PageElement
   , PageElementArrow
   , arrowSource
+  , arrowTarget
   , pageElement
   , pageElementIndex
   , withPageElement
@@ -375,15 +376,6 @@ mergeCellContains left right occurrence datum =
 
 -- ALIGN: MERGE-UNRANK-SOUND.
 -- ALIGN: MERGE-BOUQUET-DATA-DECODE.
-mergeDatumAt
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> PageElement mergeScope object
-  -> Natural
-  -> Maybe (AtlasMergeDatum object)
-mergeDatumAt left right occurrence =
-  mergeDatumLookup (mergeCellContains left right occurrence)
-
 -- ALIGN: MERGE-DOMINION-ROUNDTRIP.
 -- ALIGN: MERGE-DOMINION-INTERPRETATION.
 -- ALIGN: MERGE-DOMINION-RANK.
@@ -398,10 +390,7 @@ mergeDominionAt
   -> PageElement mergeScope object
   -> Dominion (AtlasMergeDatum object)
 mergeDominionAt left right occurrence =
-  dominion
-    atlasMergeDatumRank
-    (mergeDatumAt left right occurrence)
-    (const ())
+  mergeDatumDominion (mergeCellContains left right occurrence)
 
 -- ALIGN: MERGE-DATA-INSERTION.
 -- ALIGN: MERGE-DATA-INTERPRETATION.
@@ -416,12 +405,9 @@ mergeDataMap
   -> PageElementArrow mergeScope source target
   -> DomanialInsertion (AtlasMergeDatum source) (AtlasMergeDatum target)
 mergeDataMap left right pageArrow =
-  domanialInsertion
-    retagMergeDatum
-    (\datum ->
-      if mergeCellContains left right (arrowSource pageArrow) datum
-        then Just (retagMergeDatum datum)
-        else Nothing)
+  mergeDatumInsertion
+    (mergeCellContains left right (arrowSource pageArrow))
+    (mergeCellContains left right (arrowTarget pageArrow))
     (const ())
 
 -- | Merge two atlases.  The result has a fresh singleton origin whose

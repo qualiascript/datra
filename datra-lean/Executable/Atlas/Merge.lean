@@ -98,6 +98,7 @@ theorem lookupDatum_roundtrip {cell : PageElementCell} (accepts : Datum cell →
     lookupDatum accepts (datumRank datum) = some datum := by
   simp [lookupDatum, valid]
 
+-- ALIGN: MERGE-UNRANK-SOUND.
 -- ALIGN: MERGE-DATUM-LOOKUP-SOUND.
 theorem lookupDatum_sound {cell : PageElementCell} (accepts : Datum cell → Bool)
     (n : Nat) (datum : Datum cell) (found : lookupDatum accepts n = some datum) :
@@ -109,37 +110,67 @@ theorem lookupDatum_sound {cell : PageElementCell} (accepts : Datum cell → Boo
     exact ⟨valid, rank_decode cell n⟩
   · contradiction
 
-/-- Invalid resolved occurrences have no data; valid occurrences use exactly
-the selected component's membership test. -/
-def datumAt {X Y : Atlas} (source : Option (SourceCell X Y)) (cell : PageElementCell)
-    (n : Nat) : Option (Datum cell) :=
-  match source with
-  | none => none
-  | some source => lookupDatum (contains source) n
+/-- The erased Haskell refinement is the subtype of datums accepted by the
+selected cell predicate. -/
+abbrev AcceptedDatum {cell : PageElementCell} (accepts : Datum cell → Bool) :=
+  {datum : Datum cell // accepts datum = true}
 
 -- ALIGN: MERGE-DOMINION-ROUNDTRIP.
-theorem datumAt_roundtrip {X Y : Atlas} (source : SourceCell X Y) {cell : PageElementCell}
-    (datum : Datum cell) (valid : contains source datum = true) :
-    datumAt (some source) cell (datumRank datum) = some datum := by
-  exact lookupDatum_roundtrip (contains source) datum valid
+-- ALIGN: MERGE-ACCEPTED-DOMINION.
+def lookupDominion {cell : PageElementCell} (accepts : Datum cell → Bool) :
+    Dominion (AcceptedDatum accepts) where
+  rank datum := datumRank datum.val
+  unrank n := (lookupDatum accepts n).attach.map
+    (fun datum => ⟨datum.val, (lookupDatum_sound accepts n datum.val datum.property).1⟩)
+  coherence datum := by
+    rw [Option.attach_eq_some _ ⟨datum.val, lookupDatum_roundtrip accepts datum.val datum.property⟩]
+    rfl
 
--- ALIGN: MERGE-UNRANK-SOUND.
-theorem datumAt_sound {X Y : Atlas} (source : SourceCell X Y) (cell : PageElementCell)
-    (n : Nat) (datum : Datum cell) (found : datumAt (some source) cell n = some datum) :
-    contains source datum = true ∧ datumRank datum = n := by
-  exact lookupDatum_sound (contains source) n datum found
+-- ALIGN: MERGE-DATA-PREIMAGE.
+def preimageDatum {source target : PageElementCell} (accepts : Datum source → Bool)
+    (datum : Datum target) : Option (Datum source) :=
+  if accepts (retag datum) then some (retag datum) else none
+
+-- ALIGN: MERGE-DATA-PREIMAGE-ROUNDTRIP.
+theorem preimageDatum_roundtrip {source target : PageElementCell} (accepts : Datum source → Bool)
+    (datum : Datum source) (valid : accepts datum = true) :
+    preimageDatum accepts (retag (target := target) datum) = some datum := by
+  simp [preimageDatum, valid]
+
+-- ALIGN: MERGE-DATA-MEMBERSHIP-MAP.
+def mapDatum {source target : PageElementCell}
+    (sourceContains : Datum source → Bool) (targetContains : Datum target → Bool)
+    (preserves : ∀ datum, sourceContains datum = true → targetContains (retag datum) = true)
+    (datum : AcceptedDatum sourceContains) : AcceptedDatum targetContains :=
+  ⟨retag datum.val, preserves datum.val datum.property⟩
+
+-- ALIGN: MERGE-ACCEPTED-INSERTION.
+def acceptedInsertion {source target : PageElementCell}
+    (sourceContains : Datum source → Bool) (targetContains : Datum target → Bool)
+    (preserves : ∀ datum, sourceContains datum = true → targetContains (retag datum) = true) :
+    DomanialInsertion (AcceptedDatum sourceContains) (AcceptedDatum targetContains) where
+  map := mapDatum sourceContains targetContains preserves
+  preimage datum :=
+    if valid : sourceContains (retag (target := source) datum.val) = true then
+      some ⟨retag datum.val, valid⟩
+    else none
+  leftInverse datum := by simp [mapDatum, datum.property]
+
+-- ALIGN: MERGE-ACCEPTED-INSERTION-PREIMAGE.
+theorem acceptedInsertion_preimage {source target : PageElementCell}
+    (sourceContains : Datum source → Bool) (targetContains : Datum target → Bool)
+    (preserves : ∀ datum, sourceContains datum = true → targetContains (retag datum) = true)
+    (datum : AcceptedDatum targetContains) :
+    ((acceptedInsertion sourceContains targetContains preserves).preimage datum).map Subtype.val =
+      preimageDatum sourceContains datum.val := by
+  unfold acceptedInsertion preimageDatum
+  split <;> simp_all
 
 abbrev CertifiedDatum {X Y : Atlas} (source : SourceCell X Y) (cell : PageElementCell) :=
-  {datum : Datum cell // contains source datum = true}
+  AcceptedDatum (contains source : Datum cell → Bool)
 
 def dominionAt {X Y : Atlas} (source : SourceCell X Y) (cell : PageElementCell) :
-    Dominion (CertifiedDatum source cell) where
-  rank datum := datumRank datum.val
-  unrank n := (datumAt (some source) cell n).attach.map
-    (fun datum => ⟨datum.val, (datumAt_sound source cell n datum.val datum.property).1⟩)
-  coherence datum := by
-    rw [Option.attach_eq_some _ ⟨datum.val, datumAt_roundtrip source datum.val datum.property⟩]
-    rfl
+    Dominion (CertifiedDatum source cell) := lookupDominion (contains source)
 
 /-- Component arrows either remain in that component or enter the fresh
 origin. This relation records the data action's required transport evidence. -/
@@ -189,13 +220,9 @@ theorem contains_transport {X Y : Atlas} {source target : SourceCell X Y}
 -- ALIGN: MERGE-DATA-INSERTION.
 def dataMap {X Y : Atlas} {source target : SourceCell X Y} (arrow : Transport source target)
     (sourceCell targetCell : PageElementCell) :
-    DomanialInsertion (CertifiedDatum source sourceCell) (CertifiedDatum target targetCell) where
-  map datum := ⟨retag datum.val, by simpa using contains_transport arrow datum.val datum.property⟩
-  preimage datum :=
-    if valid : contains source (retag (target := sourceCell) datum.val) = true then
-      some ⟨retag datum.val, valid⟩
-    else none
-  leftInverse datum := by simp [datum.property]
+    DomanialInsertion (CertifiedDatum source sourceCell) (CertifiedDatum target targetCell) :=
+  acceptedInsertion (contains source) (contains target)
+    (fun datum valid => by simpa using contains_transport arrow datum valid)
 
 
 abbrev ExtentData (X : Atlas) := X.cellData (FolioData.ValidElement.originElement X.pages).val.cell
@@ -350,7 +377,7 @@ theorem dataMap_identity {X Y : Atlas} (source : SourceCell X Y) (cell : PageEle
   apply DomanialInsertion.ext
   · funext datum; apply Subtype.ext; exact retag_self datum.val
   · funext datum
-    simp [dataMap, DomanialInsertion.identity, datum.property]
+    simp [dataMap, acceptedInsertion, DomanialInsertion.identity, datum.property]
 
 -- ALIGN: MERGE-DATA-COMPOSITION.
 theorem dataMap_comp {X Y : Atlas} {source middle target : SourceCell X Y}
@@ -361,9 +388,9 @@ theorem dataMap_comp {X Y : Atlas} {source middle target : SourceCell X Y}
   · funext datum
     by_cases hs : contains source datum.val = true
     · have hm := contains_transport first datum.val hs
-      simp [dataMap, DomanialInsertion.comp, hs, hm]
+      simp [dataMap, acceptedInsertion, DomanialInsertion.comp, hs, hm]
     · by_cases hm : contains middle datum.val = true <;>
-        simp [dataMap, DomanialInsertion.comp, hs, hm]
+        simp [dataMap, acceptedInsertion, DomanialInsertion.comp, hs, hm]
 
 -- ALIGN: MERGE-LEFT-COMPONENT.
 def leftComponent (X Y : Atlas) (source : X.Element) (cell : PageElementCell) :

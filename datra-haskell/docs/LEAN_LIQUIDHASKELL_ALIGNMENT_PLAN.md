@@ -120,8 +120,13 @@ interpretation isomorphism and these written inclusions. Haskell assembly
 certificates and the full sequence construction remain to be bridged. The merge's
 shared datum module is LiquidHaskell-checked: parity decoding and retagging
 preserve ranks, retagging round trips, and membership-filtered unranking is
-sound and round-trips accepted data. The Atlas assembly still needs to establish
-those membership preconditions for its dependent data family.
+sound and round-trips accepted data. The checked module packages a Dominion
+on that restricted carrier and an insertion between accepted-data carriers,
+requiring explicit preservation of the target membership predicate. The merge
+assembly uses these constructors. The datum's nominal cell role prevents
+coercion between distinct cell identities. The Atlas assembly still needs to
+establish and retain those membership preconditions for its dependent data
+family, including the membership-preservation witness for each data arrow.
 
 The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
 ranking round trip, charted witness caches, and propagation of coverage and

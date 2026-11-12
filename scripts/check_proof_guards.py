@@ -182,6 +182,10 @@ proofGuard
 proofGuard :: (AtlasMergeDatum object -> Bool) -> AtlasMergeDatum object -> ()
 proofGuard contains datum = mergeDatumLookupRoundTrip contains datum
 """,
+    "merge insertions require target membership preservation": """
+proofGuard :: AtlasMergeDatum source -> AtlasMergeDatum target
+proofGuard = mergeDatumMap (const True) (const False) (const ())
+""",
 }
 
 
@@ -222,6 +226,20 @@ def run():
                         or not any(int(line) > source.count("\n") for line in error_lines)):
                     raise SystemExit(f"Proof guard did not produce the required rejection: {description}\n{output}")
                 print(f"Rejected false law: {description}")
+
+        source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
+                        f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
+                        MERGE_SOURCE.read_text())
+        source = source.replace("import Numeric.Natural", "import Data.Coerce (coerce)\nimport Numeric.Natural")
+        target.write_text(source + "\nproofGuard :: AtlasMergeDatum source -> AtlasMergeDatum target\n"
+                          "proofGuard = coerce\n")
+        result = subprocess.run(command + [str(target)], cwd=HASKELL, text=True, capture_output=True)
+        output = result.stdout + result.stderr
+        error_lines = re.findall(re.escape(str(target)) + r":(\d+):\d+: error:", output)
+        if (result.returncode == 0 or "Couldn't match type" not in output or "coerce" not in output
+                or not any(int(line) > source.count("\n") for line in error_lines)):
+            raise SystemExit("Merge cell-role guard did not produce the required rejection:\n" + output)
+        print("Rejected invalid coercion: merge datums retain their cell identity")
 
 
 if __name__ == "__main__":

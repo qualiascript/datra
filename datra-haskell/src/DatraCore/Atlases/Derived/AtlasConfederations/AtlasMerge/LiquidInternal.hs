@@ -1,8 +1,11 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE RoleAnnotations #-}
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
+-- Retain the cell predicate while inferring packaged function domains.
+{-@ qualif MergeAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | Checked tagged ranks and membership-filtered decoding for Atlas merge.
 module AtlasMerge.LiquidInternal
@@ -17,9 +20,16 @@ module AtlasMerge.LiquidInternal
   , mergeDatumLookup
   , mergeDatumLookupRoundTrip
   , mergeDatumLookupSound
+  , mergeDatumDominion
+  , mergeDatumPreimage
+  , mergeDatumPreimageRoundTrip
+  , mergeDatumMap
+  , mergeDatumInsertion
   ) where
 
 import Numeric.Natural (Natural)
+import Dominion.Internal (Dominion, dominion)
+import DomanialInsertion.LiquidInternal (DomanialInsertion (..))
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
@@ -30,6 +40,7 @@ data AtlasMergeSide = AtlasMergeLeft | AtlasMergeRight
 
 -- | A tagged origin rank. Membership in a particular cell is a separate
 -- predicate checked by 'mergeDatumLookup'. The phantom retains cell identity.
+type role AtlasMergeDatum nominal
 data AtlasMergeDatum object
   = AtlasMergeLeftDatum Natural
   | AtlasMergeRightDatum Natural
@@ -80,7 +91,11 @@ decodeMergeDatumRank :: AtlasMergeDatum object -> ()
 decodeMergeDatumRank (AtlasMergeLeftDatum _) = ()
 decodeMergeDatumRank (AtlasMergeRightDatum _) = ()
 
+{-@ type MergeDatumIn o P = { datum:AtlasMergeDatum o | P datum } @-}
+
 {-@ reflect mergeDatumLookup @-}
+{-@ mergeDatumLookup :: contains:(AtlasMergeDatum object -> Bool)
+      -> Natural -> Maybe (MergeDatumIn object {contains}) @-}
 -- ALIGN: MERGE-DATUM-LOOKUP.
 mergeDatumLookup
   :: (AtlasMergeDatum object -> Bool)
@@ -114,3 +129,75 @@ mergeDatumLookupSound
 mergeDatumLookupSound contains combinedRank _
   | contains (decodeMergeDatum combinedRank) = ()
   | otherwise = ()
+
+-- | The carrier is restricted to ranks accepted by this cell's predicate.
+{-@ mergeDatumDominion :: contains:(AtlasMergeDatum object -> Bool)
+      -> Dominion (MergeDatumIn object {contains}) @-}
+-- ALIGN: MERGE-ACCEPTED-DOMINION.
+mergeDatumDominion :: (AtlasMergeDatum object -> Bool) -> Dominion (AtlasMergeDatum object)
+mergeDatumDominion contains =
+  dominion atlasMergeDatumRank (mergeDatumLookup contains)
+    (mergeDatumLookupRoundTrip contains)
+
+-- | Test membership after retagging back to the source cell.
+{-@ reflect mergeDatumPreimage @-}
+{-@ mergeDatumPreimage :: contains:(AtlasMergeDatum source -> Bool)
+      -> AtlasMergeDatum target -> Maybe (MergeDatumIn source {contains}) @-}
+-- ALIGN: MERGE-DATA-PREIMAGE.
+mergeDatumPreimage
+  :: (AtlasMergeDatum source -> Bool)
+  -> AtlasMergeDatum target
+  -> Maybe (AtlasMergeDatum source)
+mergeDatumPreimage contains datum =
+  let candidate = retagMergeDatum datum
+  in if contains candidate then Just candidate else Nothing
+
+{-@ mergeDatumPreimageRoundTrip :: contains:(AtlasMergeDatum source -> Bool)
+      -> datum:MergeDatumIn source {contains}
+      -> { mergeDatumPreimage contains (retagMergeDatum datum) == Just datum } @-}
+-- ALIGN: MERGE-DATA-PREIMAGE-ROUNDTRIP.
+mergeDatumPreimageRoundTrip
+  :: (AtlasMergeDatum source -> Bool)
+  -> AtlasMergeDatum source
+  -> ()
+mergeDatumPreimageRoundTrip _ datum = retagMergeDatumRoundTrip datum
+
+{-@ reflect mergeDatumMap @-}
+{-@ mergeDatumMap
+      :: sourceContains:(AtlasMergeDatum source -> Bool)
+      -> targetContains:(AtlasMergeDatum target -> Bool)
+      -> preserves:(datum:MergeDatumIn source {sourceContains}
+           -> { targetContains (retagMergeDatum datum) })
+      -> datum:MergeDatumIn source {sourceContains}
+      -> { result:AtlasMergeDatum target |
+           targetContains result && result == retagMergeDatum datum } @-}
+-- ALIGN: MERGE-DATA-MEMBERSHIP-MAP.
+mergeDatumMap
+  :: (AtlasMergeDatum source -> Bool)
+  -> (AtlasMergeDatum target -> Bool)
+  -> (AtlasMergeDatum source -> ())
+  -> AtlasMergeDatum source
+  -> AtlasMergeDatum target
+mergeDatumMap _ _ preserves datum = preserves datum `seq` retagMergeDatum datum
+
+-- | Package the restricted insertion from membership-preservation evidence.
+{-@ mergeDatumInsertion
+      :: sourceContains:(AtlasMergeDatum source -> Bool)
+      -> targetContains:(AtlasMergeDatum target -> Bool)
+      -> preserves:(datum:MergeDatumIn source {sourceContains}
+           -> { targetContains (retagMergeDatum datum) })
+      -> DomanialInsertion (MergeDatumIn source {sourceContains})
+           (MergeDatumIn target {targetContains}) @-}
+-- ALIGN: MERGE-ACCEPTED-INSERTION.
+-- ALIGN: MERGE-ACCEPTED-INSERTION-PREIMAGE.
+mergeDatumInsertion
+  :: (AtlasMergeDatum source -> Bool)
+  -> (AtlasMergeDatum target -> Bool)
+  -> (AtlasMergeDatum source -> ())
+  -> DomanialInsertion (AtlasMergeDatum source) (AtlasMergeDatum target)
+mergeDatumInsertion sourceContains targetContains preserves =
+  DomanialInsertion
+    (mergeDatumMap sourceContains targetContains preserves)
+    (mergeDatumPreimage sourceContains)
+    (\datum -> mergeDatumMap sourceContains targetContains preserves datum `seq`
+      mergeDatumPreimageRoundTrip sourceContains datum)

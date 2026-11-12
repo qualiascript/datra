@@ -1679,14 +1679,14 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
       "haskell_declaration": "mergeDominionAt",
       "lean_namespace": "Datra.Executable.AtlasMerge",
-      "lean_declaration": "datumAt_roundtrip"
+      "lean_declaration": "lookupDominion"
     },
     {
       "id": "MERGE-UNRANK-SOUND",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
-      "haskell_declaration": "mergeDatumAt",
+      "haskell_declaration": "mergeDominionAt",
       "lean_namespace": "Datra.Executable.AtlasMerge",
-      "lean_declaration": "datumAt_sound"
+      "lean_declaration": "lookupDatum_sound"
     },
     {
       "id": "MERGE-DOMINION-INTERPRETATION",
@@ -2090,7 +2090,7 @@
     {
       "id": "MERGE-BOUQUET-DATA-DECODE",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
-      "haskell_declaration": "mergeDatumAt",
+      "haskell_declaration": "mergeDominionAt",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "finiteDataDecode"
     },
@@ -2457,6 +2457,48 @@
       "haskell_declaration": "retagMergeDatumRoundTrip",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "retag_roundtrip"
+    },
+    {
+      "id": "MERGE-ACCEPTED-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_declaration": "mergeDatumDominion",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "lookupDominion"
+    },
+    {
+      "id": "MERGE-DATA-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_declaration": "mergeDatumPreimage",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "preimageDatum"
+    },
+    {
+      "id": "MERGE-DATA-PREIMAGE-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_declaration": "mergeDatumPreimageRoundTrip",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "preimageDatum_roundtrip"
+    },
+    {
+      "id": "MERGE-DATA-MEMBERSHIP-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_declaration": "mergeDatumMap",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "mapDatum"
+    },
+    {
+      "id": "MERGE-ACCEPTED-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_declaration": "mergeDatumInsertion",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "acceptedInsertion"
+    },
+    {
+      "id": "MERGE-ACCEPTED-INSERTION-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_declaration": "mergeDatumInsertion",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "acceptedInsertion_preimage"
     }
   ],
   "modules": [
@@ -3615,15 +3657,23 @@
         "atlasMergeDatumRank",
         "retagMergeDatum",
         "decodeMergeDatum",
-        "mergeDatumLookup"
+        "mergeDatumLookup",
+        "mergeDatumPreimage",
+        "mergeDatumMap"
       ],
       "refinements": [
         "retagMergeDatum",
         "retagMergeDatumRoundTrip",
         "decodeMergeDatum",
         "decodeMergeDatumRank",
+        "mergeDatumLookup",
         "mergeDatumLookupRoundTrip",
-        "mergeDatumLookupSound"
+        "mergeDatumLookupSound",
+        "mergeDatumDominion",
+        "mergeDatumPreimage",
+        "mergeDatumPreimageRoundTrip",
+        "mergeDatumMap",
+        "mergeDatumInsertion"
       ],
       "aliases": [],
       "embeddings": [
