@@ -84,6 +84,7 @@ testTree =
         , testCase "atlas merge" testAtlasMerge
         , testCase "atlas merge origin ranks" testAtlasMergeOriginRanks
         , testCase "atlas merge rejects off-image unranking" testAtlasMergeOffImageUnrank
+        , testCase "atlas merge transfinite pages" testAtlasMergeTransfinitePages
         , testCase "atlas sequence merge origin ranks" testAtlasSequenceOriginRanks
         , testCase "atlas confederation" testAtlasConfederation
         , testCase "atlas federation" testAtlasFederation
@@ -1476,32 +1477,35 @@ checkMergeOriginRanks
   -> (Natural -> Natural)
   -> IO ()
 checkMergeOriginRanks sourceAtlas targetAtlas inclusion encodeRank =
-  case pageElementIndex (atlasPageElements sourceAtlas) 1 (finiteOrdinal 0) of
-    Nothing -> fail "missing intermediate source cell"
-    Just sourceIndex -> withPageElement (pageElement sourceIndex) $ \source ->
-      withAtlasMorphismImage
-        (mapOrderedAtlasTransposalData (atlasWitness sourceAtlas) inclusion source) $
-          \target component -> do
-            let targetDominion = atlasDataAt targetAtlas target
-                sourceDatum = TestCellData 3
-                image = applyInsertion component sourceDatum
-            assert "merge inclusion stores the transported origin rank"
-              (rank targetDominion image == encodeRank 6)
-            assert "merge inclusion recovers data from their origin ranks"
-              (preimage component image == Just sourceDatum)
-            assert "merge membership rejects a false inverse candidate"
-              (isNothing (unrank targetDominion (encodeRank 1)))
-            withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
-              withAtlasMorphismImage
-                (mapOrderedAtlasTransposalData (atlasWitness sourceAtlas) inclusion sourceOrigin) $
-                  \targetOrigin originComponent -> do
-                    let sourceTransport = mapAtlasData sourceAtlas (pageElementArrow source sourceOrigin)
-                        targetTransport = mapAtlasData targetAtlas (pageElementArrow target targetOrigin)
-                        targetOriginDominion = atlasDataAt targetAtlas targetOrigin
-                    assert "merge inclusion commutes with transport to the extent"
-                      (rank targetOriginDominion (applyInsertion targetTransport image)
-                        == rank targetOriginDominion
-                          (applyInsertion originComponent (applyInsertion sourceTransport sourceDatum)))
+  mapM_ check [(1, 6), (2, 12), (5, 12)]
+  where
+    check (pageNumber, expectedRank) =
+      case pageElementIndex (atlasPageElements sourceAtlas) pageNumber (finiteOrdinal 0) of
+        Nothing -> fail "missing source cell"
+        Just sourceIndex -> withPageElement (pageElement sourceIndex) $ \source ->
+          withAtlasMorphismImage
+            (mapOrderedAtlasTransposalData (atlasWitness sourceAtlas) inclusion source) $
+              \target component -> do
+                let targetDominion = atlasDataAt targetAtlas target
+                    sourceDatum = TestCellData 3
+                    image = applyInsertion component sourceDatum
+                assert "merge inclusion stores the transported origin rank"
+                  (rank targetDominion image == encodeRank expectedRank)
+                assert "merge inclusion recovers data from their origin ranks"
+                  (preimage component image == Just sourceDatum)
+                assert "merge membership rejects a false inverse candidate"
+                  (isNothing (unrank targetDominion (encodeRank 1)))
+                withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
+                  withAtlasMorphismImage
+                    (mapOrderedAtlasTransposalData (atlasWitness sourceAtlas) inclusion sourceOrigin) $
+                      \targetOrigin originComponent -> do
+                        let sourceTransport = mapAtlasData sourceAtlas (pageElementArrow source sourceOrigin)
+                            targetTransport = mapAtlasData targetAtlas (pageElementArrow target targetOrigin)
+                            targetOriginDominion = atlasDataAt targetAtlas targetOrigin
+                        assert "merge inclusion commutes with transport to the extent"
+                          (rank targetOriginDominion (applyInsertion targetTransport image)
+                            == rank targetOriginDominion
+                              (applyInsertion originComponent (applyInsertion sourceTransport sourceDatum)))
 
 testAtlasMergeOriginRanks :: IO ()
 testAtlasMergeOriginRanks = withPartialCoverageAtlas $ \input ->
@@ -1567,6 +1571,28 @@ testAtlasMerge :: IO ()
 testAtlasMerge = do
   testSingletonAtlasMerge
   testDeepAtlasMerge
+
+testAtlasMergeTransfinitePages :: IO ()
+testAtlasMergeTransfinitePages =
+  let naturals = dominion id Just (const ())
+      input = rankedDominionAtlas naturals
+  in atlasMerge input input $ \merged ->
+    mapM_ (\page -> do
+      mapM_ (\(position, expectedRank) ->
+        case pageElementIndex (atlasPageElements merged) page position of
+          Nothing -> fail "missing transfinite merge cell"
+          Just index -> withPageElement (pageElement index) $ \cell -> do
+            let valueDominion = atlasDataAt merged cell
+            assert "merge lookup retains the requested full-spine position"
+              (pageElementPage cell == page && pageElementPosition cell == position)
+            assert "transfinite merge cell contains exactly its tagged origin rank"
+              ( fmap (rank valueDominion) (unrank valueDominion expectedRank) == Just expectedRank
+                && isNothing (unrank valueDominion (expectedRank + 2))
+              ))
+        [(finiteOrdinal 7, 14), (addOrdinals omega (finiteOrdinal 7), 15)]
+      assert "merge lookup rejects the ordinal-sum upper bound"
+        (isNothing (pageElementIndex (atlasPageElements merged) page (addOrdinals omega omega))))
+      [2, 5]
 
 testSingletonAtlasMerge :: IO ()
 testSingletonAtlasMerge =

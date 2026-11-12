@@ -77,8 +77,28 @@ its accepted ranks with the semantic image Dominion and proves rank preservation
 Atlas cell and extent membership use this operation. Identity, composition,
 and induced source rankings are checked in the insertion implementation module;
 the public Category instances delegate to those operations. Lean also models
-the opposite insertion wrapper and its reversed composition. The complete merge and
-sequence folio, data action, and assembly certificates remain to be bridged.
+the opposite insertion wrapper and its reversed composition. The merge's tagged
+data, parity decoding, and membership invariant have an executable model for
+each successful cell-resolution branch. Its Dominion is equivalent to the
+semantic root-map image, preserving ranks. Data arrows commute with that
+interpretation, preserve identity and composition including their stored partial
+inverses, and both inclusion components satisfy naturality. The finite merge
+folio stores tagged full traces, builds the component pages by a checked chain
+sum, and appends them behind a fresh singleton origin. Its page order agrees
+with the written bouquet pages; adjacent transports and their chosen preimages
+agree with the component consolidations. Its stored and semantic lengths agree
+with the bouquet length. The cell resolver gives an equivalence between actual full-spine
+merge occurrences and the fresh origin plus left/right component occurrences.
+Both inclusions resolve back to the exact source occurrence, including padding,
+and satisfy their page-number and ordinal-position equations. Stored-page
+resolution preserves every actual page-element arrow, is invariant under
+normalization, and agrees with full-spine resolution on normalized occurrences.
+Checked position lookup recovers valid occurrences without choice. The merge
+Atlas has a computable genuine-cell data family and checked identity,
+composition, coherence, and pagewise-disjointness laws. Its normalized data
+action commutes with the semantic root-image interpretation and preserves ranks.
+The full bouquet Atlas isomorphism, derived inclusion transversals, Haskell
+assembly certificates, and the full sequence construction remain to be bridged.
 
 The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
 ranking round trip, charted witness caches, and propagation of coverage and

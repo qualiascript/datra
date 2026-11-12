@@ -350,10 +350,20 @@ variable {pages : FolioData origin final}
 
 def ofOccurrence (x : pages.Occurrence) : pages.ValidElement := ⟨x.toRaw, x, rfl⟩
 
-noncomputable def occurrence (x : pages.ValidElement) : pages.Occurrence := x.property.choose
+/-- Recover the page value through the same checked position lookup used by
+page-element construction. Validity proves that the decoder succeeds. -/
+def occurrence (x : pages.ValidElement) : pages.Occurrence :=
+  ⟨x.val.page, (((pages.pageAt x.val.page).chain.chainIndex x.val.position).get (by
+    obtain ⟨source, same⟩ := x.property
+    rw [← same]
+    simp only [Occurrence.toRaw, Chain.chainIndex_position, Option.isSome_some])).object⟩
 
 @[simp] theorem occurrence_toRaw (x : pages.ValidElement) : x.occurrence.toRaw = x.val :=
-  x.property.choose_spec
+  by
+    obtain ⟨raw, valid⟩ := x
+    obtain ⟨source, rfl⟩ := valid
+    simp only [occurrence, Occurrence.toRaw, Chain.chainIndex_position, Option.get_some,
+      Chain.chainIndexOf]
 
 @[simp] theorem occurrence_ofOccurrence (x : pages.Occurrence) : (ofOccurrence x).occurrence = x :=
   Occurrence.toRaw_injective (occurrence_toRaw _)

@@ -47,6 +47,7 @@ import Chain
   , chainObjectAt
   , chainOrderType
   , chainPosition
+  , sumChains
   )
 import Consolidation
   ( Coconsolidation
@@ -59,7 +60,6 @@ import DatraOrdinal
   ( Ordinal
   , addOrdinals
   , finiteOrdinal
-  , ordinalLT
   )
 import DatraOrdinal.Internal (subtractOrdinal)
 import DomanialInsertion
@@ -129,6 +129,7 @@ atlasMergeDatumSide (AtlasMergeRightDatum _) = AtlasMergeRight
 
 -- | Rank in the merged extent.  Even ranks belong to the left extent and odd
 -- ranks belong to the right extent, exactly as in Lean's @domSum@.
+-- ALIGN: MERGE-DATUM-RANK.
 atlasMergeDatumRank :: AtlasMergeDatum object -> Natural
 atlasMergeDatumRank (AtlasMergeLeftDatum valueRank) = 2 * valueRank
 atlasMergeDatumRank (AtlasMergeRightDatum valueRank) = 2 * valueRank + 1
@@ -141,6 +142,8 @@ retagMergeDatum (AtlasMergeRightDatum valueRank) =
 
 -- | The merge has a fresh singleton origin followed by the componentwise
 -- pages of both input atlases.
+-- ALIGN: MERGE-FOLIO-LENGTH.
+-- ALIGN: MERGE-FOLIO-LENGTH-INTERPRETATION.
 atlasMergeLength
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -182,6 +185,10 @@ mergeCellPosition _ = finiteOrdinal 0
 
 -- | The tagged componentwise page at source-spine index @n@.  Its ordinal is
 -- the ordinal sum of the two component page ordinals.
+-- ALIGN: MERGE-PAGE-CHAIN.
+-- ALIGN: MERGE-PAGE-LOOKUP-BOUNDS.
+-- ALIGN: MERGE-PAGE-TRACE-ENCODING.
+-- ALIGN: MERGE-PAGE-ORDER-INTERPRETATION.
 atlasMergePageChain
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -191,7 +198,7 @@ atlasMergePageChain left right pageNumber =
   withPageAt (atlasFolio left) pageNumber $ \leftPage ->
     withPageAt (atlasFolio right) pageNumber $ \rightPage ->
       let leftOrder = chainOrderType leftPage
-          rightOrder = chainOrderType rightPage
+          componentSum = sumChains leftPage rightPage
 
           positionInPage (AtlasMergeLeftCell trace) =
             mergeCellPosition (AtlasMergeLeftCell trace)
@@ -199,16 +206,15 @@ atlasMergePageChain left right pageNumber =
             addOrdinals leftOrder
               (mergeCellPosition (AtlasMergeRightCell trace))
 
-          cellAt position
-            | ordinalLT position leftOrder = do
-                trace <- componentTraceAt left pageNumber position
-                pure (AtlasMergeLeftCell trace)
-            | otherwise = do
-                rightPosition <- subtractOrdinal leftOrder position
-                trace <- componentTraceAt right pageNumber rightPosition
-                pure (AtlasMergeRightCell trace)
+          cellAt position = do
+            index <- chainIndex componentSum position
+            case chainObjectAt index of
+              Left value -> AtlasMergeLeftCell <$>
+                componentTraceAt left pageNumber (chainPosition leftPage value)
+              Right value -> AtlasMergeRightCell <$>
+                componentTraceAt right pageNumber (chainPosition rightPage value)
       in chain
-          (addOrdinals leftOrder rightOrder)
+          (chainOrderType componentSum)
           positionInPage
           cellAt
           (const ())
@@ -225,6 +231,7 @@ firstMergeCell valueAtlas =
       Just trace -> AtlasMergeLeftCell trace
       Nothing -> AtlasMergeLeftCell [firstPosition]
 
+-- ALIGN: MERGE-COLLAPSE-ORIGIN.
 collapseToOrigin
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Coconsolidation () AtlasMergePageCell
@@ -235,6 +242,7 @@ collapseToOrigin left =
     (\_ _ _ -> ())
     (const ()))
 
+-- ALIGN: MERGE-PAGE-PREVIOUS.
 previousMergeCell :: AtlasMergePageCell -> AtlasMergePageCell
 previousMergeCell (AtlasMergeLeftCell (_ : rest@(_ : _))) =
   AtlasMergeLeftCell rest
@@ -256,6 +264,7 @@ componentPreimagePosition valueAtlas targetPage sourcePosition = do
           targetCell = consolidationPreimage (unop transition) sourceCell
       pure (chainPosition targetPageChain targetCell)
 
+-- ALIGN: MERGE-PAGE-NEXT.
 nextMergeCell
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -276,6 +285,9 @@ nextMergeCell left right targetPage previous =
          >>= componentTraceAt right targetPage)
     _ -> previous
 
+-- ALIGN: MERGE-PAGE-TRANSITION.
+-- ALIGN: MERGE-PAGE-TRANSITION-INTERPRETATION.
+-- ALIGN: MERGE-PAGE-PREIMAGE.
 mergePageTransition
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -288,6 +300,7 @@ mergePageTransition left right targetPage =
     (\_ _ rightCell -> previousMergeCell rightCell)
     (const ()))
 
+-- ALIGN: MERGE-FOLIO-PREFIX.
 appendRemainingPages
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -305,6 +318,8 @@ appendRemainingPages left right pageNumber depth pages
           (mergePageTransition left right pageNumber))
 
 -- | The finite bouquet folio underlying an Atlas merge.
+-- ALIGN: MERGE-FOLIO.
+-- ALIGN: MERGE-COMPONENT-PAGE-INDEX.
 atlasMergeFolio
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -327,6 +342,12 @@ data MergeSourceCell leftScope rightScope where
     :: PageElement rightScope object
     -> MergeSourceCell leftScope rightScope
 
+-- ALIGN: MERGE-PAGE-RESOLUTION.
+-- ALIGN: MERGE-PADDED-PAGE-RESOLUTION.
+-- ALIGN: MERGE-COMPONENT-DECODER.
+-- ALIGN: MERGE-SOURCE-RESOLUTION.
+-- ALIGN: MERGE-SOURCE-RESOLUTION-EQUIV.
+-- ALIGN: MERGE-NORMALIZED-RESOLUTION.
 mergeSourceCell
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -338,18 +359,20 @@ mergeSourceCell left right occurrence
       let componentPage = pageElementPage occurrence - 1
           position = pageElementPosition occurrence
       in withPageAt (atlasFolio left) componentPage $ \leftPage ->
-          let leftOrder = chainOrderType leftPage
-          in if ordinalLT position leftOrder
-              then do
-                index <- pageElementIndex
-                  (atlasPageElements left) componentPage position
+          withPageAt (atlasFolio right) componentPage $ \rightPage -> do
+            componentIndex <- chainIndex (sumChains leftPage rightPage) position
+            case chainObjectAt componentIndex of
+              Left value -> do
+                index <- pageElementIndex (atlasPageElements left) componentPage
+                  (chainPosition leftPage value)
                 pure (withPageElement (pageElement index) MergeLeftSourceCell)
-              else do
-                rightPosition <- subtractOrdinal leftOrder position
-                index <- pageElementIndex
-                  (atlasPageElements right) componentPage rightPosition
+              Right value -> do
+                index <- pageElementIndex (atlasPageElements right) componentPage
+                  (chainPosition rightPage value)
                 pure (withPageElement (pageElement index) MergeRightSourceCell)
 
+-- ALIGN: MERGE-CELL-MEMBERSHIP.
+-- ALIGN: MERGE-RESOLVED-CELL.
 mergeCellContains
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -369,6 +392,8 @@ mergeCellContains left right occurrence datum =
       AtlasMergeLeftDatum _ -> False
       AtlasMergeRightDatum valueRank -> cellContainsRank right source valueRank
 
+-- ALIGN: MERGE-DATUM-DECODE.
+-- ALIGN: MERGE-UNRANK-SOUND.
 mergeDatumAt
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -383,6 +408,12 @@ mergeDatumAt left right occurrence combinedRank =
       then Just candidate
       else Nothing
 
+-- ALIGN: MERGE-DOMINION-ROUNDTRIP.
+-- ALIGN: MERGE-DOMINION-INTERPRETATION.
+-- ALIGN: MERGE-DOMINION-RANK.
+-- ALIGN: MERGE-INDEXED-DOMINION.
+-- ALIGN: MERGE-INDEXED-INTERPRETATION.
+-- ALIGN: MERGE-ATLAS-RANK-INTERPRETATION.
 mergeDominionAt
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -394,6 +425,12 @@ mergeDominionAt left right occurrence =
     (mergeDatumAt left right occurrence)
     (const ())
 
+-- ALIGN: MERGE-DATA-INSERTION.
+-- ALIGN: MERGE-DATA-INTERPRETATION.
+-- ALIGN: MERGE-DATA-IDENTITY.
+-- ALIGN: MERGE-DATA-COMPOSITION.
+-- ALIGN: MERGE-RESOLVED-ARROW.
+-- ALIGN: MERGE-ATLAS-DATA-INTERPRETATION.
 mergeDataMap
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -414,6 +451,11 @@ mergeDataMap left right pageArrow =
 --
 -- The continuation keeps the freshly generated pagination and Atlas scopes
 -- from escaping, following the construction style of 'Atlas.atlas'.
+-- ALIGN: MERGE-ATLAS-IDENTITY.
+-- ALIGN: MERGE-ATLAS-COMPOSITION.
+-- ALIGN: MERGE-ATLAS-COHERENCE.
+-- ALIGN: MERGE-ATLAS-DISJOINT.
+-- ALIGN: MERGE-ATLAS-CONSTRUCTION.
 atlasMerge
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
@@ -471,6 +513,10 @@ mergePageElementAt mergedAtlas pageNumber position =
         withPageElement (pageElement index) retypePageElement
       Nothing -> error "Atlas merge inclusion produced an invalid cell"
 
+-- ALIGN: MERGE-LEFT-OBJECT.
+-- ALIGN: MERGE-LEFT-PAGE.
+-- ALIGN: MERGE-LEFT-POSITION.
+-- ALIGN: MERGE-LEFT-RESOLVED.
 leftMergeElement
   :: Atlas mergeAtlasScope mergeScope AtlasMergeDatum () AtlasMergePageCell
   -> PageElement leftScope sourceObject
@@ -481,6 +527,10 @@ leftMergeElement mergedAtlas source =
     (pageElementPage source + 1)
     (pageElementPosition source)
 
+-- ALIGN: MERGE-RIGHT-OBJECT.
+-- ALIGN: MERGE-RIGHT-PAGE.
+-- ALIGN: MERGE-RIGHT-POSITION.
+-- ALIGN: MERGE-RIGHT-RESOLVED.
 rightMergeElement
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas mergeAtlasScope mergeScope AtlasMergeDatum () AtlasMergePageCell
@@ -495,6 +545,8 @@ rightMergeElement leftAtlas mergedAtlas source =
         (chainOrderType leftPage)
         (pageElementPosition source))
 
+-- ALIGN: MERGE-LEFT-COMPONENT.
+-- ALIGN: MERGE-LEFT-NATURALITY.
 leftMergeComponent
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> PageElement leftScope sourceObject
@@ -513,6 +565,8 @@ leftMergeComponent leftAtlas source =
       preimage sourceInsertion valueRank
     leftPreimage (AtlasMergeRightDatum _) = Nothing
 
+-- ALIGN: MERGE-RIGHT-COMPONENT.
+-- ALIGN: MERGE-RIGHT-NATURALITY.
 rightMergeComponent
   :: Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
   -> PageElement rightScope sourceObject

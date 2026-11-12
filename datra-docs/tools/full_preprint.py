@@ -31,6 +31,7 @@ LEAN_ASCII = str.maketrans({
     "∀": "forall ",
     "∃": "exists ",
     "∅": "empty",
+    "∈": "in",
     "∘": " o ",
     "∧": " /\\ ",
     "∨": " \\/ ",

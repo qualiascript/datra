@@ -47,5 +47,28 @@ noncomputable def toSemantics (f : Consolidation X Y) : Datra.Semantics.ConHom X
   monotone := f.monotone
   point_surjective := fun y => ⟨f.preimage y, f.rightInverse y⟩
 
+/-- Componentwise transport on an ordinal sum retains the chosen preimages
+from both consolidations, as used by merged pages. -/
+-- ALIGN: CONSOLIDATION-SUM.
+def sum {A' B' : Type} {X' : Chain A'} {Y' : Chain B'}
+    (left : Consolidation X Y) (right : Consolidation X' Y') :
+    Consolidation (Chain.sumChains X X') (Chain.sumChains Y Y') where
+  map := Sum.map left.map right.map
+  preimage := Sum.map left.preimage right.preimage
+  monotone a b h :=
+    (Chain.sumOrderIso Y Y').symm.monotone
+      ((Datra.Semantics.ConHom.sum left.toSemantics right.toSemantics).monotone
+        ((Chain.sumOrderIso X X').monotone h))
+  rightInverse value := by
+    cases value <;> simp [Sum.map, left.rightInverse, right.rightInverse]
+
+-- ALIGN: CONSOLIDATION-SUM-INTERPRETATION.
+theorem sum_interpretation {A' B' : Type} {X' : Chain A'} {Y' : Chain B'}
+    (left : Consolidation X Y) (right : Consolidation X' Y')
+    (value : Sum A A') :
+    Chain.sumOrderIso Y Y' ((sum left right).map value) =
+      (Datra.Semantics.ConHom.sum left.toSemantics right.toSemantics)
+        (Chain.sumOrderIso X X' value) := by cases value <;> rfl
+
 end Consolidation
 end Datra.Executable

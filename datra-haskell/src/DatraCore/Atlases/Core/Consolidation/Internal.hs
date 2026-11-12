@@ -42,6 +42,8 @@ import Prelude hiding ((.), id)
 --
 -- Its full abstract-refinement proof is not yet discharged; the implementation
 -- combines the already law-carrying component witnesses branch by branch.
+-- ALIGN: CONSOLIDATION-SUM.
+-- ALIGN: CONSOLIDATION-SUM-INTERPRETATION.
 sumConsolidations
   :: Consolidation leftSource leftTarget
   -> Consolidation rightSource rightTarget

@@ -204,6 +204,25 @@ theorem Atlas.cellContainsRank_iff (X : Atlas) (source : X.Element) (valueRank :
     X.cellContainsRank source valueRank = true ↔ ∃ datum, X.originImageRank source datum = valueRank :=
   DomanialInsertion.rankImagePreimage_exists_iff _ _ _
 
+/-- A shared origin rank identifies at most one cell on any full-spine page,
+including a repeated padding page. -/
+theorem Atlas.cellContainsRank_samePage (X : Atlas) (left right : X.Element)
+    (samePage : left.val.page = right.val.page) (valueRank : Nat)
+    (inLeft : X.cellContainsRank left valueRank = true)
+    (inRight : X.cellContainsRank right valueRank = true) : left = right := by
+  obtain ⟨a, ha⟩ := (X.cellContainsRank_iff left valueRank).mp inLeft
+  obtain ⟨b, hb⟩ := (X.cellContainsRank_iff right valueRank).mp inRight
+  apply FolioData.ValidElement.eq_of_page_position samePage
+  by_contra different
+  have distinct := X.data.disjoint
+    (left := left.normalize) (right := right.normalize)
+    (congrArg (fun n => min n (X.pages.depth - 1)) samePage) different
+    (min_le_right _ _) rfl left.normalize.toOrigin right.normalize.toOrigin a b
+  apply distinct
+  change X.originImage left.normalize a = X.originImage right.normalize b
+  rw [X.originImage_normalize, X.originImage_normalize]
+  exact (X.originImageRank_eq_iff left right a b).mp (ha.trans hb.symm)
+
 def Atlas.extentContainsRank (X : Atlas) (valueRank : Nat) : Bool :=
   X.cellContainsRank (FolioData.ValidElement.originElement X.pages) valueRank
 
