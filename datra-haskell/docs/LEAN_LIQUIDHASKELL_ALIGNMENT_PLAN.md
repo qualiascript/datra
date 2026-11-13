@@ -69,6 +69,24 @@ stored arrows, and their inclusion actions agree with the semantic full
 subcategories. Charter coverage witnesses reuse the original Atlas search's
 region and recompute the charted caches, matching the Haskell algorithm.
 
+The shared Atlas extent module is LiquidHaskell-checked. Its origin-rank
+insertion requires explicit page-order and trace-transport conditions connecting
+the source to this Atlas's origin. Lean derives these conditions for every valid
+full-spine element. The Haskell module checks that each mapped source datum is
+accepted by cell membership and that every successful inverse has the requested
+rank. Public page lookup retains a typed folio prefix with the original origin
+chain and value. LiquidHaskell checks its padding count, the generated trace's
+length and origin suffix, and the origin arrow for the resulting page element.
+The Atlas lookup wrapper requires the index's origin to match the Atlas and
+preserves that arrow evidence. The cached folio counts are constructor
+invariants: an origin has length one and an append increments the previous
+length. Negative checks reject malformed counts, missing padding, a trace
+that discards the origin, and Atlas lookup without a matching index origin.
+Lean proves the corresponding trace and count laws.
+Unchecked assembly callers still need to carry the validity of their source
+occurrences through their callbacks; generative scope alone does not establish
+these value-dependent conditions.
+
 Merge and sequence components use a shared origin-rank insertion. Its inverse
 checks the candidate's forward rank, because Dominion unranking and insertion
 preimages may return arbitrary candidates outside their images. LiquidHaskell
@@ -117,7 +135,7 @@ ordered transposals. The written bouquet has canonical inclusion morphisms
 whose data components are the tagged origin images. Both complete executable
 inclusion morphisms, including the ordered wrappers, commute with the merge
 interpretation isomorphism and these written inclusions. Haskell assembly
-certificates and the full sequence construction remain to be bridged. The merge's
+certificates remain to be checked. The merge's
 shared datum module is LiquidHaskell-checked: parity decoding and retagging
 preserve ranks, retagging round trips, and membership-filtered unranking is
 sound and round-trips accepted data. The checked module packages a Dominion
@@ -154,8 +172,27 @@ normalization and agrees with full-spine resolution on normalized occurrences.
 The sequence Atlas has a computable genuine-cell data family and checked
 identity, composition, coherence, and pagewise-disjointness laws. Its data
 action commutes with the tagged root-image interpretation and preserves radix
-ranks. Complete inclusion morphisms and the equivalence of the sequence folio
-with the written construction remain unfinished. The runtime Atlas assembly
+ranks. Canonical member inclusions have checked object lookups, optional inverse
+round trips and inverse soundness, and reject objects from other members. Their
+normalized arrow maps preserve the actual sequence intervals. Their dependent
+data insertions accept exactly the source ranks, including padding inside a
+deeper sequence, and satisfy normalized naturality. These assemble into complete
+executable ordered transposals. Merge and sequence share the clamping and
+constant-page-shift order proofs. The semantic finite-family
+folio uses lexicographically ordered tagged member cells, componentwise
+consolidations, and one fresh singleton origin. Its finite sums retain the
+ordinal chain bound. Executable page equivalences preserve order, identify the
+maximum depth, and commute with every finite interval. The resulting element
+functors are mutually inverse. Merge and sequence share the general finite-folio
+comparison construction. The semantic sequence data functor uses images in the
+finite tagged union of member extents. Its identity, composition, and pagewise
+disjointness laws are checked. Bounded executable data membership agrees exactly
+with the ranks in each semantic cell; quotient/remainder decoding gives a
+rank-preserving data equivalence. Together with the folio comparison this proves
+a complete Atlas isomorphism. The canonical member morphisms, including their
+ordered-transposal presentations, commute with this isomorphism. Merge and
+sequence share the rank-preserving Atlas comparison and origin-membership proofs.
+The runtime Atlas assembly
 must also establish the membership conditions and arrow-preservation evidence
 required by its checked helpers.
 

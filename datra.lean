@@ -3,4 +3,4 @@ import Executable.Atlas.DomanialInclusion
 import Executable.Atlas.Charter
 import Executable.Atlas.Empty
 import Executable.Atlas.Merge.InclusionInterpretation
-import Executable.Atlas.Sequence.Data
+import Executable.Atlas.Sequence.InclusionInterpretation

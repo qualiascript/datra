@@ -1,46 +1,9 @@
 import Executable.Atlas.Merge.Interpretation
+import Executable.Atlas.OriginInterpretation
+import Executable.Atlas.Comparison
 
 namespace Datra.Executable.AtlasMerge
 open CategoryTheory Opposite
-
-theorem componentFinite_normalize (X : Atlas) (n : Nat) (value : (componentPage X n).Carrier) :
-    (FolioData.ValidElement.fromFinite X.pages).obj
-      (⟨op (X.toSemantics.Fo.paddedIndex n), value⟩ : X.toSemantics.El) =
-      (FolioData.ValidElement.ofOccurrence (⟨n, value⟩ : X.pages.Occurrence)).normalize := by
-  have result := FolioData.ValidElement.fromFinite_collapse
-    (FolioData.ValidElement.ofOccurrence (⟨n, value⟩ : X.pages.Occurrence))
-  change (FolioData.ValidElement.fromFinite X.pages).obj
-    (X.pages.toSemantics.collapseElements.obj ((FolioData.Occurrence.toSemantics X.pages).obj
-      (FolioData.ValidElement.ofOccurrence (⟨n, value⟩ : X.pages.Occurrence)).occurrence)) = _ at result
-  rw [FolioData.ValidElement.occurrence_ofOccurrence] at result
-  exact result
-
-theorem componentContainsRank_interpretation (X : Atlas) (n : Nat)
-    (value : (componentPage X n).Carrier) (valueRank : Nat) :
-    X.cellContainsRank (FolioData.ValidElement.ofOccurrence ⟨n, value⟩) valueRank = true ↔
-      ∃ datum : X.toSemantics.Da.obj ⟨op (X.toSemantics.Fo.paddedIndex n), value⟩,
-        (Datra.Semantics.extent X.toSemantics).toDom.rank
-          (Datra.Semantics.originImage X.toSemantics _ datum) = valueRank := by
-  rw [← X.cellContainsRank_normalize, ← componentFinite_normalize, X.cellContainsRank_iff]
-  simp only [X.originImageRank_interpretation]
-  rfl
-
-theorem extentContainsRank_interpretation (X : Atlas) (valueRank : Nat) :
-    X.extentContainsRank valueRank = true ↔
-      ∃ datum : Datra.Semantics.extent X.toSemantics,
-        (Datra.Semantics.extent X.toSemantics).toDom.rank datum = valueRank := by
-  rw [← X.extent_interpretation]
-  exact X.extentContainsRank_iff valueRank
-
-theorem imageDom_rank_exists {A R : Datra.Semantics.DomIns} (map : A ⟶ R) (valueRank : Nat) :
-    (∃ value : Datra.Semantics.imageDom map,
-      (Datra.Semantics.imageDom map).toDom.rank value = valueRank) ↔
-    ∃ value : A, R.toDom.rank (map value) = valueRank := by
-  constructor
-  · rintro ⟨⟨value, original, rfl⟩, same⟩
-    exact ⟨original, same⟩
-  · rintro ⟨value, same⟩
-    exact ⟨⟨map value, value, rfl⟩, same⟩
 
 theorem resolve_fromFinite (X Y : Atlas) (source : (atlasMerge X Y).toSemantics.El) :
     resolveStoredElement X Y ((FolioData.ValidElement.fromFinite (pagination X Y).pages).obj source) =
@@ -218,115 +181,27 @@ theorem finiteDataEquiv_rank (X Y : Atlas) (source : (atlasMerge X Y).toSemantic
   exact (finiteDataDecode_rank X Y source (finiteDataEquiv X Y source datum)).symm.trans
     (congrArg ((atlasMerge X Y).toSemantics.Da.obj source).toDom.rank roundtrip)
 
+noncomputable def rankComparison (X Y : Atlas) :
+    (atlasMerge X Y).RankComparison (Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics) where
+  folio := finiteComparison X Y
+  dataEquiv := finiteDataEquiv X Y
+  data_rank := finiteDataEquiv_rank X Y
+  source_map_rank _ datum := retag_rank datum.val
+  target_map_rank _ _ := rfl
+
 -- ALIGN: MERGE-BOUQUET-DATA-NATURALITY.
 theorem finiteDataEquiv_naturality (X Y : Atlas) {source target : (atlasMerge X Y).toSemantics.El}
     (arrow : source ⟶ target) (datum : (atlasMerge X Y).toSemantics.Da.obj source) :
     finiteDataEquiv X Y target ((atlasMerge X Y).toSemantics.Da.map arrow datum) =
       (Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.map
-        ((finiteElements X Y).map arrow) (finiteDataEquiv X Y source datum) := by
-  apply ((Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.obj
-    (finiteElementEquiv X Y target)).toDom.rank.injective
-  rw [finiteDataEquiv_rank]
-  change datumRank (retag datum.val) =
-    ((Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.obj
-      (finiteElementEquiv X Y source)).toDom.rank (finiteDataEquiv X Y source datum)
-  exact (retag_rank datum.val).trans (finiteDataEquiv_rank X Y source datum).symm
-
-/-- The page and data comparisons together give a morphism into the exact
-written bouquet Atlas. -/
-noncomputable def interpretationHom (X Y : Atlas) :
-    (atlasMerge X Y).toSemantics ⟶ Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics where
-  Pa := finiteElements X Y
-  Da :=
-    { app := fun source => (finiteDataEquiv X Y source).toEmbedding
-      naturality := by
-        intro source target arrow
-        apply Function.Embedding.ext
-        intro datum
-        exact finiteDataEquiv_naturality X Y arrow datum }
-
-theorem finiteMap_rank (X Y : Atlas) {source target : (atlasMerge X Y).toSemantics.El}
-    (arrow : source ⟶ target) (datum : (atlasMerge X Y).toSemantics.Da.obj source) :
-    ((atlasMerge X Y).toSemantics.Da.obj target).toDom.rank
-      ((atlasMerge X Y).toSemantics.Da.map arrow datum) =
-      ((atlasMerge X Y).toSemantics.Da.obj source).toDom.rank datum := retag_rank datum.val
-
-theorem bouquetMap_rank (X Y : Atlas)
-    {source target : (Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).El}
-    (arrow : source ⟶ target)
-    (datum : (Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.obj source) :
-    ((Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.obj target).toDom.rank
-      ((Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.map arrow datum) =
-      ((Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.obj source).toDom.rank datum := rfl
-
-noncomputable def interpretationInvData (X Y : Atlas)
-    (target : (Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).El) :
-    (Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.obj target ↪
-      (atlasMerge X Y).toSemantics.Da.obj ((finiteElementEquiv X Y).symm target) :=
-  ((Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.map
-    (eqToHom ((finiteElementEquiv X Y).apply_symm_apply target).symm)).trans
-      (finiteDataEquiv X Y ((finiteElementEquiv X Y).symm target)).symm.toEmbedding
-
-theorem interpretationInvData_rank (X Y : Atlas)
-    (target : (Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).El)
-    (datum : (Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.obj target) :
-    ((atlasMerge X Y).toSemantics.Da.obj ((finiteElementEquiv X Y).symm target)).toDom.rank
-      (interpretationInvData X Y target datum) =
-      ((Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.obj target).toDom.rank datum :=
-  (finiteDataDecode_rank X Y _ _).trans (bouquetMap_rank X Y _ datum)
-
-noncomputable def interpretationInv (X Y : Atlas) :
-    Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics ⟶ (atlasMerge X Y).toSemantics where
-  Pa := finiteElementsInverse X Y
-  Da :=
-    { app := interpretationInvData X Y
-      naturality := by
-        intro source target arrow
-        apply Function.Embedding.ext
-        intro datum
-        apply ((atlasMerge X Y).toSemantics.Da.obj ((finiteElementEquiv X Y).symm target)).toDom.rank.injective
-        change ((atlasMerge X Y).toSemantics.Da.obj ((finiteElementEquiv X Y).symm target)).toDom.rank
-            (interpretationInvData X Y target
-              ((Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics).Da.map arrow datum)) =
-          ((atlasMerge X Y).toSemantics.Da.obj ((finiteElementEquiv X Y).symm target)).toDom.rank
-            ((atlasMerge X Y).toSemantics.Da.map ((finiteElementsInverse X Y).map arrow)
-              (interpretationInvData X Y source datum))
-        rw [interpretationInvData_rank, finiteMap_rank]
-        exact (bouquetMap_rank X Y arrow datum).trans (interpretationInvData_rank X Y source datum).symm }
-
-theorem hom_eq_of_page_rank {A B : Datra.Semantics.Atl} (f g : Datra.Semantics.AtlHom A B)
-    (pages : f.Pa = g.Pa)
-    (ranks : ∀ source datum,
-      (B.Da.obj (f.Pa.obj source)).toDom.rank (f.Da.app source datum) =
-        (B.Da.obj (g.Pa.obj source)).toDom.rank (g.Da.app source datum)) : f = g := by
-  cases f with
-  | mk fp fd =>
-    cases g with
-    | mk gp gd =>
-      dsimp only at pages
-      subst gp
-      apply Datra.Semantics.AtlHom.ext
-      · rfl
-      · apply heq_of_eq
-        ext source datum
-        exact (B.Da.obj (fp.obj source)).toDom.rank.injective (ranks source datum)
+        ((finiteElements X Y).map arrow) (finiteDataEquiv X Y source datum) :=
+  (rankComparison X Y).naturality arrow datum
 
 /-- The executable merge is isomorphic to the written bouquet Atlas, with
-the finite page equivalence and parity-rank data equivalence as its actions. -/
+its finite page equivalence and parity-rank data equivalence as actions. -/
 -- ALIGN: MERGE-BOUQUET-ATLAS-ISOMORPHISM.
 noncomputable def interpretationIso (X Y : Atlas) :
-    (atlasMerge X Y).toSemantics ≅ Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics where
-  hom := interpretationHom X Y
-  inv := interpretationInv X Y
-  hom_inv_id := by
-    apply hom_eq_of_page_rank
-    · exact CategoryTheory.Functor.ext (fun source => (finiteElementEquiv X Y).symm_apply_apply source)
-    · intro source datum
-      exact (interpretationInvData_rank X Y _ _).trans (finiteDataEquiv_rank X Y source datum)
-  inv_hom_id := by
-    apply hom_eq_of_page_rank
-    · exact CategoryTheory.Functor.ext (fun target => (finiteElementEquiv X Y).apply_symm_apply target)
-    · intro target datum
-      exact (finiteDataEquiv_rank X Y _ _).trans (interpretationInvData_rank X Y target datum)
+    (atlasMerge X Y).toSemantics ≅ Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics :=
+  (rankComparison X Y).iso
 
 end Datra.Executable.AtlasMerge

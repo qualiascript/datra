@@ -48,6 +48,7 @@ module PageElements.LiquidInternal
   , trimTraceIsSuffix
   , trimTracePreservesSuffix
   , traceSuffix
+  , traceSuffixTransitive
   , traceTail
   ) where
 

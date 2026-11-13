@@ -210,6 +210,77 @@ proofGuard = sequenceDatumMap (const True) (const False) (const ())
 }
 
 
+EXTENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs"
+EXTENT_GUARDS = {
+    "extent origin insertions require a valid origin arrow": """
+{-@ proofGuard
+      :: valueAtlas:Atlas atlasScope scope cellData origin final
+      -> source:PageElement scope object
+      -> DomanialInsertion (cellData object) Natural @-}
+proofGuard
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object -> DomanialInsertion (cellData object) Natural
+proofGuard = atlasCellOriginRankInsertion
+""",
+    "extent inverse soundness requires a successful lookup": """
+{-@ proofGuard
+      :: valueAtlas:Atlas atlasScope scope cellData origin final
+      -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
+      -> valueRank:Natural
+      -> datum:cellData object
+      -> {applyInsertion (atlasCellOriginRankInsertion valueAtlas source) datum == valueRank} @-}
+proofGuard
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object -> Natural -> cellData object -> ()
+proofGuard = cellOriginRankPreimageSound
+""",
+}
+
+
+FOLIO_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Folio/LiquidInternal.hs"
+FOLIO_GUARDS = {
+    "folio origins reject a zero cached length": """
+proofGuard :: page origin -> SingletonOrigin origin -> FolioData page origin origin
+proofGuard = OriginFolio 0
+""",
+    "folio origins reject a cached length greater than one": """
+proofGuard :: page origin -> SingletonOrigin origin -> FolioData page origin origin
+proofGuard = OriginFolio 2
+""",
+    "folio append rejects an unchanged cached length": """
+proofGuard :: FolioData page origin previous -> page next
+  -> Coconsolidation previous next -> FolioData page origin next
+proofGuard pages = SnocPage (folioLengthData pages) pages
+""",
+}
+
+PAGE_INDEX_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Internal.hs"
+PAGE_INDEX_GUARDS = {
+    "page indices reject a missing padding step": """
+proofGuard :: Folio origin page -> ChainIndex page -> PageElementIndex scope
+proofGuard pages index = PageElementIndex (folioLength pages) pages 0 index
+""",
+    "page traces cannot discard the folio origin": """
+{-@ proofGuard :: pages:Folio origin page -> page
+      -> {positions:[Ordinal] | Trace.traceSuffix positions (folioOriginTrace pages)} @-}
+proofGuard :: Folio origin page -> page -> [Ordinal]
+proofGuard _ _ = []
+""",
+}
+
+
+ATLAS_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Internal.hs"
+ATLAS_GUARDS = {
+    "Atlas lookup requires the index's origin to match": """
+{-@ proofGuard :: Atlas atlasScope scope cellData origin final
+      -> PageElementIndex scope -> SomePageElement scope @-}
+proofGuard :: Atlas atlasScope scope cellData origin final
+  -> PageElementIndex scope -> SomePageElement scope
+proofGuard = atlasPageCell
+""",
+}
+
+
 def run(pattern=None):
     plan = json.loads((HASKELL / "dist-newstyle/cache/plan.json").read_text())
     library = next(unit for unit in plan["install-plan"]
@@ -234,7 +305,11 @@ def run(pattern=None):
                                     (CHARTER_SOURCE, CHARTER_GUARDS),
                                     (RANK_IMAGE_SOURCE, RANK_IMAGE_GUARDS),
                                     (MERGE_SOURCE, MERGE_GUARDS),
-                                    (SEQUENCE_SOURCE, SEQUENCE_GUARDS)]:
+                                    (SEQUENCE_SOURCE, SEQUENCE_GUARDS),
+                                    (EXTENT_SOURCE, EXTENT_GUARDS),
+                                    (FOLIO_SOURCE, FOLIO_GUARDS),
+                                    (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),
+                                    (ATLAS_SOURCE, ATLAS_GUARDS)]:
             source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
                             f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
                             source_path.read_text())

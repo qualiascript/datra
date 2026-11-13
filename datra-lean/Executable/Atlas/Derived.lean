@@ -184,6 +184,15 @@ theorem Atlas.covered_interpretation (X : Atlas) (x : X.toSemantics.El)
     subst index
     exact ⟨i, value, h⟩
 
+/-- The exact raw-arrow conditions needed to act on a cell at the Atlas origin. -/
+-- ALIGN: ATLAS-CELL-HAS-ORIGIN.
+def Atlas.cellHasOrigin (X : Atlas) (source : PageElement X.pages) : Prop :=
+  PageElement.precedes source (FolioData.ValidElement.originElement X.pages).val ∧
+    PageElement.transported source (FolioData.ValidElement.originElement X.pages).val
+
+theorem Atlas.validCell_hasOrigin (X : Atlas) (source : X.Element) : X.cellHasOrigin source.val :=
+  ⟨source.toOrigin.precedes, source.toOrigin.transported⟩
+
 /-- The common origin-rank insertion used by merge and sequence membership
 and by their dependent data components. -/
 -- ALIGN: ATLAS-CELL-ORIGIN-RANK-INSERTION.
@@ -203,6 +212,19 @@ def Atlas.cellContainsRank (X : Atlas) (source : X.Element) (valueRank : Nat) : 
 theorem Atlas.cellContainsRank_iff (X : Atlas) (source : X.Element) (valueRank : Nat) :
     X.cellContainsRank source valueRank = true ↔ ∃ datum, X.originImageRank source datum = valueRank :=
   DomanialInsertion.rankImagePreimage_exists_iff _ _ _
+
+-- ALIGN: ATLAS-CELL-CONTAINS-IMAGE.
+theorem Atlas.cellContainsRank_image (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) :
+    X.cellContainsRank source ((X.cellOriginRankInsertion source).map datum) = true :=
+  (X.cellContainsRank_iff source _).mpr ⟨datum, rfl⟩
+
+-- ALIGN: ATLAS-CELL-RANK-PREIMAGE-SOUND.
+theorem Atlas.cellOriginRankPreimage_sound (X : Atlas) (source : X.Element)
+    (valueRank : Nat) (datum : X.cellData source.val.cell)
+    (found : (X.cellOriginRankInsertion source).preimage valueRank = some datum) :
+    (X.cellOriginRankInsertion source).map datum = valueRank :=
+  DomanialInsertion.rankImagePreimage_sound _ _ _ _ found
 
 theorem Atlas.cellContainsRank_normalize (X : Atlas) (source : X.Element) (valueRank : Nat) :
     X.cellContainsRank source.normalize valueRank = X.cellContainsRank source valueRank := by

@@ -196,6 +196,106 @@ def Chain.sum (X Y : Chain) : Chain where
     exact Ordinal.principal_add_omega0_opow Ordinal.omega0
       X.orderType_lt Y.orderType_lt
 
+/-- Split the first tag from an ordered finite family of chains. -/
+def Chain.finiteSumHead {n : Nat} (members : Fin (n + 1) → Chain) :
+    (Σₗ i, (members i).Obj) ≃ Lex (Sum (members 0).Obj (Σₗ i : Fin n, (members i.succ).Obj)) where
+  toFun value := Fin.cases (fun x => toLex (.inl x))
+    (fun i x => toLex (.inr (toLex ⟨i, x⟩))) value.1 value.2
+  invFun value := match ofLex value with
+    | .inl x => toLex ⟨0, x⟩
+    | .inr x => toLex ⟨x.1.succ, x.2⟩
+  left_inv := by
+    rintro ⟨i, x⟩
+    cases i using Fin.cases <;> rfl
+  right_inv := by
+    intro value
+    rcases h : ofLex value with x | x
+    · have same : value = toLex (.inl x) := ofLex.injective h
+      subst value
+      rfl
+    · have same : value = toLex (.inr x) := ofLex.injective h
+      subst value
+      rfl
+
+theorem Chain.finiteSumHead_monotone {n : Nat} (members : Fin (n + 1) → Chain) :
+    Monotone (finiteSumHead members) := by
+  rintro ⟨i, x⟩ ⟨j, y⟩ ordered
+  cases ordered with
+  | left x y earlier =>
+    cases i using Fin.cases with
+    | zero =>
+      cases j using Fin.cases with
+      | zero => exact False.elim (lt_irrefl _ earlier)
+      | succ j => exact Sum.Lex.sep _ _
+    | succ i =>
+      cases j using Fin.cases with
+      | zero => exact False.elim (Fin.not_lt_zero _ earlier)
+      | succ j => exact Sum.Lex.inr (Sigma.Lex.left _ _ (Fin.succ_lt_succ_iff.mp earlier))
+  | right x y ordered =>
+    cases i using Fin.cases with
+    | zero => exact Sum.Lex.inl ordered
+    | succ i => exact Sum.Lex.inr (Sigma.Lex.right _ _ ordered)
+
+theorem Chain.finiteSumHead_symm_monotone {n : Nat} (members : Fin (n + 1) → Chain) :
+    Monotone (finiteSumHead members).symm := by
+  intro a b ordered
+  cases ordered with
+  | inl ordered => exact Sigma.Lex.right _ _ ordered
+  | sep a b => exact Sigma.Lex.left _ _ (Fin.succ_pos _)
+  | inr ordered =>
+    cases ordered with
+    | left x y earlier => exact Sigma.Lex.left _ _ (Fin.succ_lt_succ_iff.mpr earlier)
+    | right x y ordered => exact Sigma.Lex.right _ _ ordered
+
+def Chain.finiteSumHeadOrderIso {n : Nat} (members : Fin (n + 1) → Chain) :
+    (Σₗ i, (members i).Obj) ≃o Lex (Sum (members 0).Obj (Σₗ i : Fin n, (members i.succ).Obj)) where
+  toEquiv := finiteSumHead members
+  map_rel_iff' := by
+    intro a b
+    constructor
+    · intro ordered
+      simpa only [Equiv.symm_apply_apply] using finiteSumHead_symm_monotone members ordered
+    · intro ordered
+      exact finiteSumHead_monotone members ordered
+
+def Chain.finiteSumWellFounded {n : Nat} (members : Fin n → Chain) :
+    WellFoundedLT (Σₗ i, (members i).Obj) := by
+  induction n with
+  | zero => exact ⟨⟨fun x => Fin.elim0 x.1⟩⟩
+  | succ n ih =>
+    letI := ih (fun i : Fin n => members i.succ)
+    letI : WellFoundedLT (Lex (Sum (members 0).Obj (Σₗ i : Fin n, (members i.succ).Obj))) :=
+      ⟨Sum.lex_wf wellFounded_lt wellFounded_lt⟩
+    exact ⟨(finiteSumHeadOrderIso members).toOrderEmbedding.ltEmbedding.wellFounded wellFounded_lt⟩
+
+theorem Chain.finiteSum_orderType_lt {n : Nat} (members : Fin n → Chain) :
+    letI := finiteSumWellFounded members
+    Ordinal.type (fun x y : Σₗ i, (members i).Obj => x < y) < Ordinal.omega0 ^ Ordinal.omega0 := by
+  letI := finiteSumWellFounded members
+  induction n with
+  | zero =>
+    letI : IsEmpty (Σₗ i, (members i).Obj) := ⟨fun x => Fin.elim0 x.1⟩
+    rw [Ordinal.type_eq_zero_of_empty]
+    exact Ordinal.opow_pos _ Ordinal.omega0_pos
+  | succ n ih =>
+    letI := finiteSumWellFounded (fun i : Fin n => members i.succ)
+    letI : WellFoundedLT (Lex (Sum (members 0).Obj (Σₗ i : Fin n, (members i.succ).Obj))) :=
+      ⟨Sum.lex_wf wellFounded_lt wellFounded_lt⟩
+    rw [(finiteSumHeadOrderIso members).toRelIsoLT.ordinal_type_eq]
+    change Ordinal.type (Sum.Lex (fun x y : (members 0).Obj => x < y)
+      (fun x y : Σₗ i : Fin n, (members i.succ).Obj => x < y)) < _
+    rw [Ordinal.type_sum_lex]
+    exact Ordinal.principal_add_omega0_opow Ordinal.omega0
+      (members 0).orderType_lt (ih (fun i => members i.succ))
+
+/-- A finite ordered sum retains its member tags. Finiteness guarantees that
+its ordinal type remains strictly below the chain bound. -/
+def Chain.finiteSum {n : Nat} (members : Fin n → Chain) : Chain where
+  Obj := Σₗ i, (members i).Obj
+  linearOrder := inferInstance
+  wellFoundedLT := finiteSumWellFounded members
+  orderType_lt := finiteSum_orderType_lt members
+
 end
 end Datra.Semantics
 
@@ -275,6 +375,21 @@ def ConHom.sum {X X' Y Y' : Con} (f : ConHom X Y) (g : ConHom X' Y') :
       refine ⟨toLex (Sum.inr x), ?_⟩
       apply toLex.injective
       simpa using hz.symm
+
+/-- Apply a consolidation independently in each ordered member block. -/
+def ConHom.finiteSum {n : Nat} {source target : Fin n → Con}
+    (maps : ∀ i, ConHom (source i) (target i)) :
+    ConHom (Chain.finiteSum source) (Chain.finiteSum target) where
+  toFun value := toLex ⟨value.1, (maps value.1).toFun value.2⟩
+  monotone := by
+    intro a b ordered
+    cases ordered with
+    | left x y earlier => exact Sigma.Lex.left _ _ earlier
+    | right x y ordered => exact Sigma.Lex.right _ _ ((maps _).monotone ordered)
+  point_surjective := by
+    rintro ⟨index, value⟩
+    obtain ⟨sourceValue, same⟩ := (maps index).point_surjective value
+    exact ⟨toLex ⟨index, sourceValue⟩, congrArg (fun x => (toLex ⟨index, x⟩ : (Chain.finiteSum target).Obj)) same⟩
 
 instance {X Y : Con} : CoeFun (ConHom X Y) (fun _ => X.Obj → Y.Obj) where
   coe f := f.toFun
@@ -2596,6 +2711,108 @@ def bouquetFolio (X Y : Folio) : Folio where
   originEquiv := by
     exact singletonObjEquiv
 
+/-- The flattened finite-family form of the tagged Atlas merge. Its depth is
+one more than the greatest member depth, independently of parenthesization. -/
+def sequenceDepth {count : Nat} (members : Fin count → Folio) : Nat :=
+  Finset.univ.sup (fun i => (members i).length)
+
+def sequenceLength {count : Nat} (members : Fin count → Folio) : Nat := sequenceDepth members + 1
+
+theorem sequenceMember_depth {count : Nat} (members : Fin count → Folio) (i : Fin count) :
+    (members i).length ≤ sequenceDepth members :=
+  Finset.le_sup (f := fun i => (members i).length) (Finset.mem_univ i)
+
+theorem sequenceDepth_pos {count : Nat} (positive : 0 < count) (members : Fin count → Folio) :
+    0 < sequenceDepth members :=
+  (members ⟨0, positive⟩).positive.trans_le (sequenceMember_depth members ⟨0, positive⟩)
+
+instance {count : Nat} (members : Fin count → Folio) : NeZero (sequenceLength members) :=
+  ⟨Nat.ne_of_gt (Nat.succ_pos _)⟩
+
+def sequenceChain {count : Nat} (members : Fin count → Folio) : Fin (sequenceLength members) → Chain :=
+  Fin.cases singletonChain (fun m : Fin (sequenceDepth members) =>
+    Chain.finiteSum (fun i => (members i).pageChain m.val))
+
+def sequenceValue {count : Nat} (positive : 0 < count) (members : Fin count → Folio)
+    (m : Fin (sequenceLength members)) : (sequenceChain members m).Obj :=
+  Fin.cases () (fun n => toLex ⟨⟨0, positive⟩,
+    (members ⟨0, positive⟩).pageValue ((members ⟨0, positive⟩).paddedIndex n.val)⟩) m
+
+def sequenceConMap {count : Nat} (positive : 0 < count) (members : Fin count → Folio)
+    {i j : Fin (sequenceLength members)} (h : i ≤ j) : sequenceChain members j ⟶ sequenceChain members i := by
+  revert j
+  refine Fin.cases ?_ (fun i => ?_) i
+  · rename_i j
+    intro h
+    exact
+      { toFun := fun _ => ()
+        monotone := fun _ _ _ => le_rfl
+        point_surjective := fun z => by
+          refine ⟨sequenceValue positive members j, ?_⟩
+          change (() : Unit) = z
+          exact Subsingleton.elim _ _ }
+  · rename_i j
+    intro h
+    revert h
+    refine Fin.cases (by intro h; change i.val + 1 ≤ 0 at h; omega) (fun j => ?_) j
+    intro h
+    have ordered : i ≤ j := Fin.succ_le_succ_iff.mp h
+    exact ConHom.finiteSum (fun index =>
+      ((members index).core.map (homOfLE ((members index).paddedIndex_mono ordered))).unop)
+
+/-- One fresh singleton origin followed by the ordered finite sum of each
+member's full-spine page, with componentwise consolidations. -/
+def sequenceFolio {count : Nat} (positive : 0 < count) (members : Fin count → Folio) : Folio where
+  length := sequenceLength members
+  positive := Nat.succ_pos _
+  core :=
+    { obj := fun m => op (sequenceChain members m)
+      map := fun f => (sequenceConMap positive members (leOfHom f)).op
+      map_id := by
+        intro m
+        refine Fin.cases ?_ (fun m => ?_) m
+        · apply Quiver.Hom.unop_inj
+          apply ConHom.ext
+          intro z
+          rfl
+        apply Quiver.Hom.unop_inj
+        apply ConHom.ext
+        rintro ⟨index, value⟩
+        simp [sequenceConMap, ConHom.finiteSum]
+        rfl
+      map_comp := by
+        intro i j k f g
+        revert j k
+        refine Fin.cases ?_ (fun i => ?_) i
+        · rename_i j k
+          intro f g
+          apply Quiver.Hom.unop_inj
+          apply ConHom.ext
+          intro z
+          rfl
+        · rename_i iOrig j k
+          intro f g
+          have hj : j ≠ 0 := by
+            intro same
+            have ordered := leOfHom f
+            rw [same] at ordered
+            change i.val + 1 ≤ 0 at ordered
+            omega
+          obtain ⟨j, rfl⟩ := Fin.eq_succ_of_ne_zero hj
+          have hk : k ≠ 0 := by
+            intro same
+            have ordered := leOfHom g
+            rw [same] at ordered
+            change j.val + 1 ≤ 0 at ordered
+            omega
+          obtain ⟨k, rfl⟩ := Fin.eq_succ_of_ne_zero hk
+          apply Quiver.Hom.unop_inj
+          apply ConHom.ext
+          rintro ⟨index, value⟩
+          simpa only [sequenceConMap, ConHom.finiteSum] using congrArg
+            (fun x => (toLex ⟨index, x⟩ : (sequenceChain members i.succ).Obj)) ((members index).map_unop_comp_apply _ _ _ value) }
+  originEquiv := singletonObjEquiv
+
 def domSum (X Y : DomIns) : DomIns where
   toDom :=
     { Carrier := Sum X Y
@@ -2633,6 +2850,31 @@ def domSum.map {X₁ X₂ Y₁ Y₂ : DomIns} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ 
     · exact Sum.noConfusion h
     · exact Sum.noConfusion h
     · exact congrArg Sum.inr (g.injective (Sum.inr.inj h))
+
+/-- A finite tagged union of Dominions, with the radix rank used by sequence data. -/
+def domFiniteSum {count : Nat} (members : Fin count → DomIns) : DomIns where
+  toDom :=
+    { Carrier := (index : Fin count) × members index
+      rank :=
+        { toFun := fun value => count * (members value.1).toDom.rank value.2 + value.1.val
+          inj' := by
+            rintro ⟨i, a⟩ ⟨j, b⟩ same
+            have indexEq : i = j := by
+              apply Fin.ext
+              have := congrArg (fun n => n % count) same
+              simpa [Nat.mod_eq_of_lt i.isLt, Nat.mod_eq_of_lt j.isLt] using this
+            subst j
+            apply congrArg (Sigma.mk i)
+            apply (members i).toDom.rank.injective
+            have := congrArg (fun n => n / count) same
+            simpa [Nat.mul_add_div (Nat.zero_lt_of_lt i.isLt), Nat.div_eq_of_lt i.isLt] using this } }
+
+def domFiniteSum.inclusion {count : Nat} (members : Fin count → DomIns) (index : Fin count) :
+    members index ⟶ domFiniteSum members where
+  toFun := fun value => ⟨index, value⟩
+  inj' := by
+    intro a b same
+    exact eq_of_heq (Sigma.mk.inj same).2
 
 def tallMergePage (X Y : TallAtlas) : Nat → Type
   | 0 => Unit
@@ -3788,6 +4030,202 @@ def bouquetAtlas (X Y : Atl) : Atl where
         change Sum.inr (Y.Da.map (Y.Pa.cellToOrigin _ k) a) =
           Sum.inr (Y.Da.map (Y.Pa.cellToOrigin _ l) b) at hroot
         exact Y.disjoint _ k l hkl a b (Sum.inr.inj hroot)
+
+/-- The finite-family sequence uses the same fresh origin and tagged pages
+as its folio; data at each cell is its image in the tagged member extents. -/
+def sequencePag {count : Nat} (positive : 0 < count) (members : Fin count → Atl) : Pag :=
+  ⟨sequenceFolio positive (fun i => (members i).Fo)⟩
+
+def sequenceRawDomIndex {count : Nat} (positive : 0 < count) (members : Fin count → Atl) :
+    (m : Fin (sequenceLength (fun i => (members i).Fo))) →
+      (sequencePag positive members).Fo.Cell (op m) → DomIns :=
+  Fin.cases (fun _ => domFiniteSum (fun i => extent (members i))) (fun n v =>
+    let cell := ofLex v
+    (members cell.1).Da.obj
+      ((members cell.1).Pa.cell (op ((members cell.1).Fo.paddedIndex n.1)) cell.2))
+
+def sequenceRootIndex {count : Nat} (positive : 0 < count) (members : Fin count → Atl) :
+    ∀ (m : Fin (sequenceLength (fun i => (members i).Fo)))
+      (v : (sequencePag positive members).Fo.Cell (op m)),
+      sequenceRawDomIndex positive members m v ⟶ domFiniteSum (fun i => extent (members i)) := by
+  intro m
+  induction m using Fin.cases with
+  | zero => intro v; exact 𝟙 _
+  | succ n =>
+    intro v
+    exact (members (ofLex v).1).Da.map
+      ((members (ofLex v).1).Pa.cellToOrigin
+        (op ((members (ofLex v).1).Fo.paddedIndex n.1)) (ofLex v).2) ≫
+      domFiniteSum.inclusion (fun i => extent (members i)) (ofLex v).1
+
+def sequenceDom {count : Nat} (positive : 0 < count) (members : Fin count → Atl)
+    (x : (sequencePag positive members).El) : DomIns :=
+  imageDom (sequenceRootIndex positive members x.1.unop x.2)
+
+theorem sequenceRange_mono {count : Nat} (positive : 0 < count) (members : Fin count → Atl)
+    {x y : (sequencePag positive members).El} (f : x ⟶ y) :
+    Set.range (sequenceRootIndex positive members x.1.unop x.2) ⊆
+      Set.range (sequenceRootIndex positive members y.1.unop y.2) := by
+  intro z hz
+  rcases x with ⟨⟨mx⟩, vx⟩
+  rcases y with ⟨⟨my⟩, vy⟩
+  rcases hz with ⟨a, ha⟩
+  rw [← ha]
+  induction mx using Fin.cases with
+  | zero =>
+    induction my using Fin.cases with
+    | zero => exact ⟨a, rfl⟩
+    | succ p =>
+      have h := leOfHom (Quiver.Hom.unop f.val)
+      change p.1 + 1 ≤ 0 at h
+      omega
+  | succ n =>
+    induction my using Fin.cases with
+    | zero => exact ⟨sequenceRootIndex positive members n.succ vx a, rfl⟩
+    | succ p =>
+      have hpn : p ≤ n := Fin.succ_le_succ_iff.mp (leOfHom (Quiver.Hom.unop f.val))
+      rcases hvx : ofLex vx with ⟨index, k⟩
+      have evx : vx = toLex ⟨index, k⟩ := ofLex.injective hvx
+      subst vx
+      let hp := (members index).Fo.paddedIndex_mono hpn
+      let k' := (members index).Fo.cellDiagram.map (homOfLE hp).op k
+      have ef : f.val = (homOfLE (show p.succ ≤ n.succ from
+          Fin.succ_le_succ_iff.mpr hpn)).op := Subsingleton.elim _ _
+      have hfv : (sequencePag positive members).Fo.cellDiagram.map f.val
+          (toLex ⟨index, k⟩) = vy := f.property
+      have hvy : vy = toLex ⟨index, k'⟩ := by
+        rw [← hfv, ef]
+        rfl
+      subst vy
+      let q := CategoryOfElements.homMk
+        ((members index).Pa.cell (op ((members index).Fo.paddedIndex n.1)) k)
+        ((members index).Pa.cell (op ((members index).Fo.paddedIndex p.1)) k')
+        (homOfLE hp).op rfl
+      refine ⟨(members index).Da.map q a, ?_⟩
+      change (Sigma.mk index ((members index).Da.map
+        ((members index).Pa.cellToOrigin _ k') ((members index).Da.map q a)) : domFiniteSum (fun i => extent (members i))) =
+        Sigma.mk index ((members index).Da.map ((members index).Pa.cellToOrigin _ k) a)
+      apply congrArg (Sigma.mk index)
+      have hc : q ≫ (members index).Pa.cellToOrigin _ k' =
+          (members index).Pa.cellToOrigin _ k :=
+        CategoryOfElements.ext (members index).Fo.cellDiagram _ _ (Subsingleton.elim _ _)
+      have hm := (members index).Da.map_comp q ((members index).Pa.cellToOrigin _ k')
+      rw [hc] at hm
+      exact congrFun (congrArg Function.Embedding.toFun hm.symm) a
+
+def sequenceFunctor {count : Nat} (positive : 0 < count) (members : Fin count → Atl) :
+    (sequencePag positive members).El ⥤ DomIns where
+  obj := sequenceDom positive members
+  map f := imageDom.map _ _ (sequenceRange_mono positive members f)
+  map_id := by
+    intro x
+    apply DomIns.hom_ext
+    intro z
+    exact Subtype.ext rfl
+  map_comp := by
+    intro x y z f g
+    apply DomIns.hom_ext
+    intro w
+    exact Subtype.ext rfl
+
+def sequenceAtlas {count : Nat} (positive : 0 < count) (members : Fin count → Atl) : Atl where
+  Pa := sequencePag positive members
+  Da := sequenceFunctor positive members
+  disjoint := by
+    intro m i j hij x y hxy
+    rcases m with ⟨m⟩
+    induction m using Fin.cases with
+    | zero =>
+      exact hij ((sequenceFolio positive (fun i => (members i).Fo)).originEquiv.injective
+        (Subsingleton.elim _ _))
+    | succ n =>
+      rcases x.2 with ⟨a, ha⟩
+      rcases y.2 with ⟨b, hb⟩
+      have huv : x.1 = y.1 := by
+        exact congrArg (fun q => q.1) hxy
+      have hroot : sequenceRootIndex positive members n.succ i a =
+          sequenceRootIndex positive members n.succ j b := ha.trans (huv.trans hb.symm)
+      rcases hi : ofLex i with ⟨left, k⟩
+      rcases hj : ofLex j with ⟨right, l⟩
+      have ei : i = toLex ⟨left, k⟩ := ofLex.injective hi
+      have ej : j = toLex ⟨right, l⟩ := ofLex.injective hj
+      subst i
+      subst j
+      change (Sigma.mk left ((members left).Da.map ((members left).Pa.cellToOrigin _ k) a) :
+        domFiniteSum (fun i => extent (members i))) =
+        Sigma.mk right ((members right).Da.map ((members right).Pa.cellToOrigin _ l) b) at hroot
+      have indices : left = right := congrArg Sigma.fst hroot
+      subst right
+      have hkl : k ≠ l := by
+        intro same
+        subst l
+        exact hij rfl
+      exact (members left).disjoint _ k l hkl a b (eq_of_heq (Sigma.mk.inj hroot).2)
+
+def sequenceMemberPred {count : Nat} (members : Fin count → Atl) (index : Fin count)
+    (m : Fin (members index).Fo.length) : Fin (sequenceDepth (fun i => (members i).Fo)) :=
+  ⟨m.val, m.isLt.trans_le (sequenceMember_depth (fun i => (members i).Fo) index)⟩
+
+def sequenceMemberElement {count : Nat} (positive : 0 < count) (members : Fin count → Atl)
+    (index : Fin count) (x : (members index).El) : (sequencePag positive members).El :=
+  ⟨op (sequenceMemberPred members index x.1.unop).succ,
+    toLex ⟨index, (paddedElement (members index) x).2⟩⟩
+
+def sequenceMemberMapHom {count : Nat} (positive : 0 < count) (members : Fin count → Atl)
+    (index : Fin count) {x y : (members index).El} (q : x ⟶ y) :
+    sequenceMemberElement positive members index x ⟶ sequenceMemberElement positive members index y := by
+  rcases x with ⟨⟨mx⟩, kx⟩
+  rcases y with ⟨⟨my⟩, ky⟩
+  let hxy : my ≤ mx := leOfHom (Quiver.Hom.unop q.val)
+  let h : sequenceMemberPred members index my ≤ sequenceMemberPred members index mx := hxy
+  refine CategoryOfElements.homMk _ _ (homOfLE (Fin.succ_le_succ_iff.mpr h)).op ?_
+  dsimp only [sequenceMemberElement]
+  simp only [sequenceMemberPred, sequencePag, sequenceFolio, Folio.cellDiagram,
+    sequenceChain, sequenceConMap, Fin.cases_succ, ConHom.finiteSum, Functor.leftOp_map,
+    Functor.comp_obj, Functor.comp_map, Quiver.Hom.unop_op, ConTra]
+  apply congrArg toLex
+  apply congrArg (Sigma.mk index)
+  have hqv : (members index).Fo.cellDiagram.map q.val kx = ky := q.property
+  rw [← hqv]
+  let hp := (members index).Fo.paddedIndex_mono hxy
+  change (members index).Fo.cellDiagram.map (homOfLE hp).op
+    ((members index).Fo.cellDiagram.map (eqToHom _) kx) =
+    (members index).Fo.cellDiagram.map (eqToHom _) ((members index).Fo.cellDiagram.map q.val kx)
+  rw [← FunctorToTypes.map_comp_apply, ← FunctorToTypes.map_comp_apply]
+  congr 1
+
+def sequenceMemberElements {count : Nat} (positive : 0 < count) (members : Fin count → Atl)
+    (index : Fin count) : (members index).El ⥤ (sequencePag positive members).El where
+  obj := sequenceMemberElement positive members index
+  map := sequenceMemberMapHom positive members index
+  map_id _ := Subsingleton.elim _ _
+  map_comp _ _ := Subsingleton.elim _ _
+
+/-- A member's datum enters the sequence as its tagged origin image. -/
+def sequenceMemberData {count : Nat} (positive : 0 < count) (members : Fin count → Atl)
+    (index : Fin count) (source : (members index).El) :
+    (members index).Da.obj source ⟶
+      (sequenceAtlas positive members).Da.obj (sequenceMemberElement positive members index source) where
+  toFun datum := ⟨⟨index, originImage (members index) source datum⟩, by
+    refine ⟨(members index).Da.map (eqToHom (paddedElement_eq (members index) source).symm) datum, ?_⟩
+    exact congrArg (Sigma.mk index)
+      (originImage_map (members index) (eqToHom (paddedElement_eq (members index) source).symm) datum)⟩
+  inj' := by
+    intro a b same
+    exact ((members index).Da.map ((members index).Fo.toOrigin source)).injective
+      (eq_of_heq (Sigma.mk.inj (congrArg Subtype.val same)).2)
+
+def sequenceMemberHom {count : Nat} (positive : 0 < count) (members : Fin count → Atl)
+    (index : Fin count) : members index ⟶ sequenceAtlas positive members where
+  Pa := sequenceMemberElements positive members index
+  Da :=
+    { app := sequenceMemberData positive members index
+      naturality := by
+        intro source target arrow
+        apply Function.Embedding.ext
+        intro datum
+        apply Subtype.ext
+        exact congrArg (Sigma.mk index) (originImage_map (members index) arrow datum) }
 
 /-- The canonical left data component is the left-tagged origin image in the
 bouquet's image Dominion. -/

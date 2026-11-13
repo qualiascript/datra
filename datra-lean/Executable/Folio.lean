@@ -54,6 +54,12 @@ theorem length_eq_depth (pages : FolioData origin final) (h : pages.Valid) :
 theorem depth_positive (pages : FolioData origin final) : 0 < pages.depth := by
   cases pages <;> simp [depth]
 
+-- ALIGN: FOLIO-LENGTH-POSITIVE.
+theorem length_positive (pages : FolioData origin final) (valid : pages.Valid) :
+    0 < pages.length := by
+  rw [pages.length_eq_depth valid]
+  exact pages.depth_positive
+
 def originValue {origin final : Page} : FolioData origin final → origin.Carrier
   | .origin _ _ selected _ => selected
   | .snoc _ previous _ _ => previous.originValue
@@ -112,10 +118,29 @@ theorem genuineTrace_length (pages : FolioData origin final) (value : final.Carr
   | origin => rfl
   | snoc _ previous _ _ ih => simp only [genuineTrace, List.length_cons, ih, depth]
 
+-- ALIGN: FOLIO-TRACE-ORIGIN.
+theorem genuineTrace_toOrigin (pages : FolioData origin final) (value : final.Carrier) :
+    Trace.traceSuffix (pages.genuineTrace value)
+      [origin.chain.position pages.originValue] = true := by
+  rw [Trace.traceSuffix_iff]
+  induction pages with
+  | origin count selected unique =>
+      simp only [genuineTrace, originValue, unique value, List.suffix_rfl]
+  | snoc count previous next transition ih =>
+      exact (ih (transition.map value)).trans (List.suffix_cons _ _)
+
 /-- Occurrences after the stored spine repeat the final position in front of
 the genuine transport trace, exactly as prependCopies does in Haskell. -/
 def paddedTrace (pages : FolioData origin final) (padding : Nat) (value : final.Carrier) : List Ordinal :=
   List.replicate padding (final.chain.position value) ++ pages.genuineTrace value
+
+-- ALIGN: FOLIO-PADDED-TRACE-ORIGIN.
+theorem paddedTrace_toOrigin (pages : FolioData origin final) (padding : Nat) (value : final.Carrier) :
+    Trace.traceSuffix (pages.paddedTrace padding value)
+      [origin.chain.position pages.originValue] = true := by
+  rw [Trace.traceSuffix_iff]
+  exact ((Trace.traceSuffix_iff _ _).mp (pages.genuineTrace_toOrigin value)).trans
+    (List.suffix_append _ _)
 
 -- ALIGN: FOLIO-PADDED-TRACE-NORMALIZE.
 theorem paddedTrace_normalize (pages : FolioData origin final) (padding : Nat) (value : final.Carrier) :

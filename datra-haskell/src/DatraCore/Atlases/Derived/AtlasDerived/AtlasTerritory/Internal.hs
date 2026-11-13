@@ -46,7 +46,7 @@ atlasTerritory
 atlasTerritory valueAtlas index =
   case Elements.lastPageElement (atlasPageElements valueAtlas) index of
     SomePageElement occurrence ->
-      AtlasCellDominion occurrence (atlasDataAt valueAtlas occurrence)
+      AtlasCellDominion (occurrence, atlasDataAt valueAtlas occurrence)
 
 -- | The @n@th region of an Atlas. As in Lean, this is definitionally the
 -- corresponding territory member.

@@ -1,4 +1,5 @@
 import Executable.Atlas.Merge.Data
+import Executable.Folio.Comparison
 
 namespace Datra.Executable.AtlasMerge
 open CategoryTheory Opposite
@@ -156,70 +157,29 @@ theorem finitePageEquiv_interval (X Y : Atlas)
       rw [finitePageEquiv_succ_decode, finitePageEquiv_succ_decode]
       exact congrArg toLex decoded
 
+noncomputable def finiteComparison (X Y : Atlas) :
+    FolioData.Comparison (pagination X Y).pages (Datra.Semantics.bouquetFolio X.toSemantics.Fo Y.toSemantics.Fo) where
+  length_eq := folio_length_interpretation X Y
+  cell := finitePageEquiv X Y
+  natural := finitePageEquiv_interval X Y
+
 noncomputable def finiteElementEquiv (X Y : Atlas) :
-    (atlasMerge X Y).toSemantics.El ≃
-      (Datra.Semantics.bouquetPag X.toSemantics Y.toSemantics).El where
-  toFun source :=
-    ⟨op (finiteIndexOrderIso X Y source.1.unop),
-      finitePageEquiv X Y (finiteIndexOrderIso X Y source.1.unop) source.2⟩
-  invFun target :=
-    ⟨op ((finiteIndexOrderIso X Y).symm target.1.unop),
-      (finitePageEquiv X Y target.1.unop).symm target.2⟩
-  left_inv source := by
-    obtain ⟨⟨n⟩, value⟩ := source
-    apply Sigma.ext
-    · rfl
-    · exact heq_of_eq ((finitePageEquiv X Y (finiteIndexOrderIso X Y n)).symm_apply_apply value)
-  right_inv target := by
-    obtain ⟨⟨n⟩, value⟩ := target
-    apply Sigma.ext
-    · rfl
-    · exact heq_of_eq ((finitePageEquiv X Y n).apply_symm_apply value)
+    (atlasMerge X Y).toSemantics.El ≃ (Datra.Semantics.bouquetPag X.toSemantics Y.toSemantics).El :=
+  (finiteComparison X Y).elementEquiv
 
 noncomputable def finiteElements (X Y : Atlas) :
-    (atlasMerge X Y).toSemantics.El ⥤
-      (Datra.Semantics.bouquetPag X.toSemantics Y.toSemantics).El where
-  obj := finiteElementEquiv X Y
-  map {source target} arrow := CategoryOfElements.homMk _ _
-    (homOfLE ((finiteIndexOrderIso X Y).monotone (leOfHom arrow.val.unop))).op (by
-      have natural := finitePageEquiv_interval X Y
-        ((finiteIndexOrderIso X Y).monotone (leOfHom arrow.val.unop)) source.2
-      have transported := arrow.property
-      change ((pagination X Y).pages.interval _ _ _).map source.2 = target.2 at transported
-      exact natural.symm.trans
-        (congrArg (finitePageEquiv X Y (finiteIndexOrderIso X Y target.1.unop)) transported))
-  map_id _ := Subsingleton.elim _ _
-  map_comp _ _ := Subsingleton.elim _ _
+    (atlasMerge X Y).toSemantics.El ⥤ (Datra.Semantics.bouquetPag X.toSemantics Y.toSemantics).El :=
+  (finiteComparison X Y).elements
 
 noncomputable def finiteElementsInverse (X Y : Atlas) :
-    (Datra.Semantics.bouquetPag X.toSemantics Y.toSemantics).El ⥤
-      (atlasMerge X Y).toSemantics.El where
-  obj := (finiteElementEquiv X Y).symm
-  map {source target} arrow := CategoryOfElements.homMk _ _
-    (homOfLE ((finiteIndexOrderIso X Y).symm.monotone (leOfHom arrow.val.unop))).op (by
-      apply (finitePageEquiv X Y target.1.unop).injective
-      have natural := finitePageEquiv_interval X Y (leOfHom arrow.val.unop)
-        ((finitePageEquiv X Y source.1.unop).symm source.2)
-      simp only [Equiv.apply_symm_apply] at natural
-      exact (natural.trans arrow.property).trans
-        ((finitePageEquiv X Y target.1.unop).apply_symm_apply target.2).symm)
-  map_id _ := Subsingleton.elim _ _
-  map_comp _ _ := Subsingleton.elim _ _
+    (Datra.Semantics.bouquetPag X.toSemantics Y.toSemantics).El ⥤ (atlasMerge X Y).toSemantics.El :=
+  (finiteComparison X Y).elementsInverse
 
 /-- The executable finite merge and the written bouquet have equivalent
-element categories, with mutually inverse page and tagged-cell operations. -/
+page-element categories, including all finite intervals. -/
 -- ALIGN: MERGE-FINITE-ELEMENTS-EQUIVALENCE.
 noncomputable def finiteElementsEquivalence (X Y : Atlas) :
-    (atlasMerge X Y).toSemantics.El ≌
-      (Datra.Semantics.bouquetPag X.toSemantics Y.toSemantics).El where
-  functor := finiteElements X Y
-  inverse := finiteElementsInverse X Y
-  unitIso := NatIso.ofComponents
-    (fun source => eqToIso ((finiteElementEquiv X Y).symm_apply_apply source).symm)
-    (fun _ => Subsingleton.elim _ _)
-  counitIso := NatIso.ofComponents
-    (fun target => eqToIso ((finiteElementEquiv X Y).apply_symm_apply target))
-    (fun _ => Subsingleton.elim _ _)
-  functor_unitIso_comp _ := Subsingleton.elim _ _
+    (atlasMerge X Y).toSemantics.El ≌ (Datra.Semantics.bouquetPag X.toSemantics Y.toSemantics).El :=
+  (finiteComparison X Y).elementsEquivalence
 
 end Datra.Executable.AtlasMerge

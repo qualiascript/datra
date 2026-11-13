@@ -1,5 +1,11 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
+
+#include "../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
 
 -- | Hidden representation of folios.
 module Folio.Internal
@@ -43,10 +49,15 @@ import Folio.LiquidInternal
   )
 import Numeric.Natural (Natural)
 
+{-@ embed Natural as int @-}
+{-@ invariant {value:Natural | value >= 0} @-}
+
 -- | Datra folios specialize the verified type-aligned representation to
 -- chains as their page container.
 type Folio origin final = FolioData Chain origin final
 
+{-@ folio :: Chain origin -> selected:origin
+      -> (value:origin -> {value == selected}) -> Folio origin origin @-}
 folio
   :: Chain origin
   -> origin
@@ -55,7 +66,7 @@ folio
 folio = folioData
 
 singletonFolio :: Chain () -> Folio () ()
-singletonFolio origin = folio origin () (const ())
+singletonFolio origin = folio origin () (\() -> ())
 
 appendPage
   :: Folio origin previous
@@ -64,18 +75,24 @@ appendPage
   -> Folio origin next
 appendPage = appendPageData
 
+{-@ reflect folioLength @-}
+{-@ folioLength :: Folio origin final -> {n:Natural | n > 0} @-}
 folioLength :: Folio origin final -> Natural
 folioLength = folioLengthData
 
+{-@ reflect originChain @-}
 originChain :: Folio origin final -> Chain origin
 originChain = originPageData
 
+{-@ reflect originValue @-}
 originValue :: Folio origin final -> origin
 originValue = originValueData
 
+{-@ originUnique :: pages:Folio origin final -> value:origin -> {value == originValue pages} @-}
 originUnique :: Folio origin final -> origin -> ()
 originUnique = originUniqueData
 
+{-@ reflect lastChain @-}
 lastChain :: Folio origin final -> Chain final
 lastChain = lastPageData
 
@@ -119,13 +136,21 @@ withFolioMap
   -> result
 withFolioMap pages (PageOrder sourceIndex targetIndex) useMap =
   withPageDataAt pages targetIndex $ \targetPrefix _ ->
-    case mapFromIndex targetPrefix (paddedIndex pages sourceIndex) of
-      SomeMapTo sourcePage mapToTarget ->
-        useMap sourcePage (lastChain targetPrefix) mapToTarget
+    mapFromIndex targetPrefix (paddedIndex pages sourceIndex) $ \sourcePage mapToTarget ->
+      useMap sourcePage (lastChain targetPrefix) mapToTarget
 
 -- | Internal eliminator retaining the typed prefix behind a padded page.  The
 -- natural supplied to the callback counts how many repeated final pages occur
 -- after that prefix.
+{-@ withPageDataAt
+      :: pages:Folio origin final -> index:Natural
+      -> (forall page. prefix:{Folio origin page |
+            originPageData prefix == originPageData pages
+            && originValueData prefix == originValueData pages
+            && folioLengthData prefix == (if index + 1 < folioLengthData pages then index + 1 else folioLengthData pages)}
+          -> padding:{Natural | padding + folioLengthData prefix == index + 1}
+          -> result)
+      -> result @-}
 withPageDataAt
   :: Folio origin final
   -> Natural
@@ -138,25 +163,18 @@ withPageDataAt pages@(SnocPage _ previous _ _) index usePage
       usePage pages (index - folioLength previous)
   | otherwise = withPageDataAt previous index usePage
 
-data SomeMapTo target where
-  SomeMapTo
-    :: Chain source
-    -> Coconsolidation source target
-    -> SomeMapTo target
-
 -- ALIGN: FOLIO-INTERVAL-IDENTITY.
 -- ALIGN: FOLIO-INTERVAL-COMPOSITION.
 mapFromIndex
   :: Folio origin target
   -> Natural
-  -> SomeMapTo target
-mapFromIndex (OriginFolio _ page _) _ =
-  SomeMapTo page identityFolioMap
-mapFromIndex (SnocPage _ previous page transition) sourceIndex
+  -> (forall source. Chain source -> Coconsolidation source target -> result)
+  -> result
+mapFromIndex (OriginFolio _ page _) _ useMap =
+  useMap page identityFolioMap
+mapFromIndex (SnocPage _ previous page transition) sourceIndex useMap
   | sourceIndex >= folioLength previous =
-      SomeMapTo page identityFolioMap
+      useMap page identityFolioMap
   | otherwise =
-      case mapFromIndex previous sourceIndex of
-        SomeMapTo sourcePage sourceToPrevious ->
-          SomeMapTo sourcePage
-            (composeFolioMaps transition sourceToPrevious)
+      mapFromIndex previous sourceIndex $ \sourcePage sourceToPrevious ->
+        useMap sourcePage (composeFolioMaps transition sourceToPrevious)

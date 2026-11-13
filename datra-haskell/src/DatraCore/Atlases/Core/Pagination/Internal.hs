@@ -90,6 +90,7 @@ paginationFolio :: Pagination scope origin final -> Folio origin final
 paginationFolio (Pagination pages _) = pages
 
 -- | Recover the folio's corresponding category of page elements.
+{-@ reflect paginationPageElements @-}
 paginationPageElements
   :: Pagination scope origin final
   -> PageElements scope origin final

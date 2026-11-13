@@ -91,6 +91,7 @@ def memberArrowOfNormalized (positive : 0 < count) (members : Fin count → Atla
       congrArg FolioData.ValidElement.ofOccurrence occurrences
   rwa [equal] at actual
 
+-- ALIGN: SEQUENCE-MEMBER-ARROW.
 def memberArrow (positive : 0 < count) (members : Fin count → Atlas) (index : Fin count)
     {source target : (members index).Element} (arrow : source ⟶ target) :
     normalizedObject (memberElement positive members index) source ⟶

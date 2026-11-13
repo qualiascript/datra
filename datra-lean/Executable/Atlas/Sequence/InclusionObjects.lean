@@ -29,6 +29,7 @@ theorem memberElement_position (positive : 0 < count) (members : Fin count → A
 
 /-- The runtime inclusion's checked page lookup succeeds, including on
 full-spine padding pages. -/
+-- ALIGN: SEQUENCE-MEMBER-CHECKED-LOOKUP.
 theorem memberElement_lookup (positive : 0 < count) (members : Fin count → Atlas) (index : Fin count)
     (source : (members index).Element) :
     (atlasSequence positive members).pages.elementAt (source.val.page + 1)
@@ -60,6 +61,7 @@ def memberObjectPreimage (positive : 0 < count) (members : Fin count → Atlas) 
         (members index).pages.elementAt (target.val.page - 1) position
       else none)
 
+-- ALIGN: SEQUENCE-MEMBER-OBJECT-ROUNDTRIP.
 theorem memberObjectPreimage_roundtrip (positive : 0 < count) (members : Fin count → Atlas) (index : Fin count)
     (source : (members index).Element) :
     memberObjectPreimage positive members index (memberElement positive members index source) = some source := by
@@ -73,6 +75,7 @@ theorem memberObjectPreimage_roundtrip (positive : 0 < count) (members : Fin cou
   rw [memberElement_page, Nat.add_sub_cancel, below, if_pos rfl]
   exact FolioData.elementAt_roundtrip _ _
 
+-- ALIGN: SEQUENCE-MEMBER-OBJECT-INVERSE-SOUND.
 theorem memberObjectPreimage_sound (positive : 0 < count) (members : Fin count → Atlas) (index : Fin count)
     (target : (atlasSequence positive members).Element) (source : (members index).Element)
     (found : memberObjectPreimage positive members index target = some source) :
@@ -102,6 +105,7 @@ theorem memberElement_distinct (positive : 0 < count) (members : Fin count → A
   cases resolved
   exact different rfl
 
+-- ALIGN: SEQUENCE-MEMBER-OBJECT-OPPOSITE-REJECT.
 theorem memberObjectPreimage_other (positive : 0 < count) (members : Fin count → Atlas)
     (i j : Fin count) (different : i ≠ j) (source : (members j).Element) :
     memberObjectPreimage positive members i (memberElement positive members j source) = none := by
@@ -119,6 +123,7 @@ def memberTransposalPreimage (positive : 0 < count) (members : Fin count → Atl
     (target : (atlasSequence positive members).TransposalElement) : Option (members index).TransposalElement :=
   (memberObjectPreimage positive members index target.val).map (Atlas.transposalElement (members index))
 
+-- ALIGN: SEQUENCE-MEMBER-NORMALIZED-OBJECT-ROUNDTRIP.
 theorem memberTransposalPreimage_roundtrip (positive : 0 < count) (members : Fin count → Atlas) (index : Fin count)
     (source : (members index).TransposalElement) :
     memberTransposalPreimage positive members index (memberTransposalElement positive members index source) = some source := by
@@ -126,6 +131,7 @@ theorem memberTransposalPreimage_roundtrip (positive : 0 < count) (members : Fin
   rw [memberObjectPreimage_roundtrip, Option.map_some]
   exact congrArg some (Subtype.ext source.property)
 
+-- ALIGN: SEQUENCE-MEMBER-OBJECT-INSERTION.
 def memberObjectInsertion (positive : 0 < count) (members : Fin count → Atlas) (index : Fin count) :
     DomanialInsertion (members index).TransposalElement (atlasSequence positive members).TransposalElement where
   map := memberTransposalElement positive members index

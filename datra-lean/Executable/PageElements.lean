@@ -651,6 +651,7 @@ private theorem origin_subsingleton (pages : FolioData origin final) :
   exact ⟨fun x y => (pages.originUnique x).trans (pages.originUnique y).symm⟩
 
 /-- Every valid full-spine occurrence reaches its unique origin cell. -/
+-- ALIGN: PE-CONSTRUCTED-ORIGIN.
 def toOrigin (x : pages.ValidElement) : x ⟶ originElement pages := by
   refine ⟨Nat.zero_le _, ?_⟩
   obtain ⟨a, ha⟩ := x.property

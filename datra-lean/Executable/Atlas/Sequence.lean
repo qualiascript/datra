@@ -279,22 +279,8 @@ theorem dataMap_comp {count : Nat} {members : Fin count → Atlas} {source middl
 
 /-- The finite tagged sum of the member extents. Its rank is the exact
 runtime radix encoding, rather than a nested binary merge's parity encoding. -/
-def rootDomain {count : Nat} (members : Fin count → Atlas) : Datra.Semantics.DomIns where
-  toDom :=
-    { Carrier := (index : Fin count) × (members index).extent.toSemantics
-      rank :=
-        { toFun := fun value => count * (members value.1).extent.dominion.rank value.2 + value.1.val
-          inj' := by
-            rintro ⟨i, a⟩ ⟨j, b⟩ same
-            have indexEq : i = j := by
-              apply Fin.ext
-              have := congrArg (fun n => n % count) same
-              simpa [Nat.mod_eq_of_lt i.isLt, Nat.mod_eq_of_lt j.isLt] using this
-            subst j
-            apply congrArg (Sigma.mk i)
-            apply (members i).extent.dominion.rank_injective
-            have := congrArg (fun n => n / count) same
-            simpa [Nat.mul_add_div (Nat.zero_lt_of_lt i.isLt), Nat.div_eq_of_lt i.isLt] using this } }
+def rootDomain {count : Nat} (members : Fin count → Atlas) : Datra.Semantics.DomIns :=
+  Datra.Semantics.domFiniteSum (fun i => members i |>.extent.toSemantics)
 
 def sourceDomain {count : Nat} {members : Fin count → Atlas} : SourceCell members → Datra.Semantics.DomIns
   | .origin => rootDomain members

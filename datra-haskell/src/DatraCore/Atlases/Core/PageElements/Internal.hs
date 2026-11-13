@@ -1,6 +1,12 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
+
+#include "../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
 
 -- | Hidden representation of the category of cell occurrences.
 module PageElements.Internal
@@ -12,6 +18,7 @@ module PageElements.Internal
   , pageElements
   , pageElementsWithScope
   , pageElementIndex
+  , pageElementIndexOrigin
   , pageElementIndexPage
   , pageElementIndexPosition
   , pageElement
@@ -61,6 +68,7 @@ import Folio.Internal
   , lastChain
   , originChain
   , originValue
+  , originUnique
   , withPageDataAt
   )
 import Folio.LiquidInternal (FolioData (..))
@@ -91,6 +99,11 @@ import PageElements.LiquidInternal
   , somePageElementTransportedReflexive
   )
 
+import qualified PageElements.LiquidInternal as Trace
+
+{-@ embed Natural as int @-}
+{-@ invariant {value:Natural | value >= 0} @-}
+
 -- | A folio viewed as its category of cell occurrences.  The generative
 -- @scope@ prevents occurrences belonging to different folios from being
 -- compared or composed.
@@ -102,6 +115,12 @@ newtype PageElements (scope :: Type) origin final =
 -- infinite spine.  The nominal scope prevents evidence from one folio from
 -- being used to construct an element of another.
 type role PageElementIndex nominal
+{-@ data PageElementIndex scope where
+      PageElementIndex :: page:Natural
+        -> prefix:Folio origin current
+        -> padding:{Natural | padding + folioLength prefix == page + 1}
+        -> index:ChainIndex current
+        -> PageElementIndex scope @-}
 data PageElementIndex (scope :: Type) where
   PageElementIndex
     :: Natural
@@ -132,15 +151,38 @@ pageElementsWithScope = PageElements
 -- ALIGN: PE-CHECKED-LOOKUP-ROUNDTRIP.
 -- ALIGN: PE-CHECKED-LOOKUP-BOUNDS.
 -- ALIGN: PE-CHECKED-LOOKUP-POSITION.
+{-@ pageElementIndex :: category:PageElements scope origin final
+      -> page:Natural -> Ordinal
+      -> Maybe ({index:PageElementIndex scope |
+           pageElementIndexOrigin index == originPageElement category}) @-}
 pageElementIndex
   :: PageElements scope origin final
   -> Natural
   -> Ordinal
   -> Maybe (PageElementIndex scope)
 pageElementIndex (PageElements pages) page position =
-  withPageDataAt pages page $ \prefix padding ->
-    PageElementIndex page prefix padding
-      <$> chainIndex (lastChain prefix) position
+  withPageDataAt pages page (indexFromPrefix pages page position)
+
+{-@ indexFromPrefix :: pages:Folio origin final -> page:Natural -> Ordinal
+      -> prefix:{Folio origin current |
+           originChain prefix == originChain pages
+           && originValue prefix == originValue pages}
+      -> padding:{Natural | padding + folioLength prefix == page + 1}
+      -> Maybe ({index:PageElementIndex scope |
+           pageElementIndexOrigin index == folioOriginElement pages}) @-}
+indexFromPrefix
+  :: Folio origin final -> Natural -> Ordinal -> Folio origin current -> Natural
+  -> Maybe (PageElementIndex scope)
+indexFromPrefix _ page position prefix padding =
+  case chainIndex (lastChain prefix) position of
+    Nothing -> Nothing
+    Just index -> Just (PageElementIndex page prefix padding index)
+
+-- | The origin carried by the typed prefix retained in a checked index.
+{-@ reflect pageElementIndexOrigin @-}
+pageElementIndexOrigin :: PageElementIndex scope -> SomePageElement scope
+pageElementIndexOrigin (PageElementIndex _ prefix _ _) =
+  folioOriginElement prefix
 
 pageElementIndexPage :: PageElementIndex scope -> Natural
 pageElementIndexPage (PageElementIndex page _ _ _) = page
@@ -162,24 +204,35 @@ pageElementIndexPosition (PageElementIndex _ _ _ index) =
 -- Its hidden trace is computed from the folio itself: entry @i@ is the exact
 -- cell obtained by transporting the requested cell to page @page - i@. This is
 -- the runtime fact used by the LiquidHaskell arrow refinement.
+-- ALIGN: PE-CONSTRUCTED-ORIGIN.
+{-@ pageElement :: index:PageElementIndex scope
+      -> {element:SomePageElement scope |
+           somePageElementPrecedes element (pageElementIndexOrigin index)
+           && somePageElementTransported element (pageElementIndexOrigin index)} @-}
 pageElement
   :: PageElementIndex scope
   -> SomePageElement scope
 pageElement (PageElementIndex page prefix padding index) =
   SomePageElement
-    (pageElementAt
+    (PageElement
       page
-      (drop 1 (pageElementTraceAt prefix padding value))
+      (chainPosition (lastChain prefix) value)
+      (pageElementTraceAt prefix padding value)
       (PageElementCell (lastChain prefix) value))
   where
     value = chainObjectAt index
 
 -- | The unique origin cell as an object of the page-element category.
 -- ALIGN: PE-ORIGIN-INTERPRETATION.
+{-@ reflect originPageElement @-}
 originPageElement
   :: PageElements scope origin final
   -> SomePageElement scope
-originPageElement (PageElements pages) =
+originPageElement (PageElements pages) = folioOriginElement pages
+
+{-@ reflect folioOriginElement @-}
+folioOriginElement :: Folio origin final -> SomePageElement scope
+folioOriginElement pages =
   SomePageElement
     (pageElementAt
       0
@@ -200,32 +253,44 @@ lastPageElement (PageElements pages) index =
       0
       index)
 
+-- | The exact trace of the unique origin occurrence.
+{-@ reflect folioOriginTrace @-}
+folioOriginTrace :: Folio origin final -> [Ordinal]
+folioOriginTrace pages = [chainPosition (originChain pages) (originValue pages)]
+
 -- | Build the complete sequence of exact adjacent transports from one cell
 -- back through every earlier page to the origin.  The head is the requested
 -- occurrence; every following position is computed using the corresponding
 -- coconsolidation in the folio.
 -- ALIGN: FOLIO-PADDED-TRACE-NORMALIZE.
 -- ALIGN: PE-TRACE-TRANSPORT.
+-- ALIGN: FOLIO-PADDED-TRACE-ORIGIN.
+{-@ pageElementTraceAt :: pages:Folio origin page -> padding:Natural -> page
+      -> {positions:[Ordinal] | Trace.traceSuffix positions (folioOriginTrace pages)
+           && len positions == padding + folioLength pages} @-}
 pageElementTraceAt
   :: Folio origin page
   -> Natural
   -> page
   -> [Ordinal]
 pageElementTraceAt pages padding value =
-  prependCopies
-    padding
-    (chainPosition (lastChain pages) value)
-    (genuinePageElementTrace pages value)
+  let genuine = genuinePageElementTrace pages value
+      positions = prependCopies padding (chainPosition (lastChain pages) value) genuine
+  in Trace.traceSuffixTransitive positions genuine (folioOriginTrace pages) `seq` positions
 
 -- | Build the trace through the stored finite presentation.  Its input is an
 -- actual cell, rather than an unchecked ordinal, so every transport is total.
 -- ALIGN: FOLIO-TRACE-LENGTH.
+-- ALIGN: FOLIO-TRACE-ORIGIN.
+{-@ genuinePageElementTrace :: pages:Folio origin page -> page
+      -> {positions:[Ordinal] | Trace.traceSuffix positions (folioOriginTrace pages)
+           && len positions == folioLength pages} @-}
 genuinePageElementTrace
   :: Folio origin page
   -> page
   -> [Ordinal]
-genuinePageElementTrace (OriginFolio _ pageChain _) value =
-  [chainPosition pageChain value]
+genuinePageElementTrace pages@(OriginFolio _ pageChain _) value =
+  originUnique pages value `seq` [chainPosition pageChain value]
 genuinePageElementTrace
   (SnocPage _ previous pageChain transition)
   value =
@@ -237,7 +302,9 @@ genuinePageElementTrace
         (transportCoconsolidation transition)
         value
 
-prependCopies :: Natural -> a -> [a] -> [a]
+{-@ prependCopies :: count:Natural -> Ordinal -> values:[Ordinal]
+      -> {positions:[Ordinal] | Trace.traceSuffix positions values && len positions == count + len values} @-}
+prependCopies :: Natural -> Ordinal -> [Ordinal] -> [Ordinal]
 prependCopies 0 _ values = values
 prependCopies count value values =
   value : prependCopies (count - 1) value values
@@ -245,6 +312,9 @@ prependCopies count value values =
 -- | Eliminate the existential object identity of a dynamically looked-up page
 -- element.  The callback receives a fresh @object@ type that can index total
 -- arrow operations without escaping its scope.
+{-@ withPageElement :: selected:SomePageElement scope
+      -> (forall object. occurrence:{PageElement scope object | SomePageElement occurrence == selected} -> result)
+      -> result @-}
 withPageElement
   :: SomePageElement scope
   -> (forall object. PageElement scope object -> result)

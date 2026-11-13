@@ -132,6 +132,7 @@ memberCardinality member =
 
 -- | A sequence has a fresh extent followed by all member pages in parallel.
 -- ALIGN: SEQUENCE-FOLIO-LENGTH.
+-- ALIGN: SEQUENCE-FOLIO-LENGTH-INTERPRETATION.
 atlasSequenceLength :: NonEmpty AtlasSequenceMember -> Natural
 atlasSequenceLength members =
   maximum (fmap memberCardinality members) + 1
@@ -257,6 +258,8 @@ sequenceCellPosition _ _ _ = finiteOrdinal 0
 -- ALIGN: SEQUENCE-PAGE-CHAIN.
 -- ALIGN: SEQUENCE-PAGE-LOOKUP.
 -- ALIGN: SEQUENCE-PAGE-LOOKUP-BOUNDS.
+-- ALIGN: SEQUENCE-PAGE-ORDER-INTERPRETATION.
+-- ALIGN: SEQUENCE-FINITE-PAGE-EQUIVALENCE.
 atlasSequencePageChain
   :: NonEmpty AtlasSequenceMember
   -> Natural
@@ -341,6 +344,7 @@ nextSequenceCell members targetPage previous =
     _ -> previous
 
 -- ALIGN: SEQUENCE-PAGE-TRANSITION.
+-- ALIGN: SEQUENCE-PAGE-TRANSITION-INTERPRETATION.
 sequencePageTransition
   :: NonEmpty AtlasSequenceMember
   -> Natural
@@ -370,6 +374,8 @@ appendRemainingPages members pageNumber depth pages
 
 -- ALIGN: SEQUENCE-FOLIO.
 -- ALIGN: SEQUENCE-PADDED-PAGE-RESOLUTION.
+-- ALIGN: SEQUENCE-FINITE-INDEX-INTERPRETATION.
+-- ALIGN: SEQUENCE-FINITE-INTERVAL-INTERPRETATION.
 atlasSequenceFolio
   :: NonEmpty AtlasSequenceMember
   -> Folio () AtlasSequencePageCell
@@ -412,6 +418,7 @@ sequenceSourceCell members occurrence
 -- ALIGN: SEQUENCE-CELL-MEMBERSHIP.
 -- ALIGN: SEQUENCE-CELL-ROOT-IMAGE.
 -- ALIGN: SEQUENCE-RESOLVED-CELL.
+-- ALIGN: SEQUENCE-FINITE-MEMBERSHIP.
 sequenceCellContains
   :: NonEmpty AtlasSequenceMember
   -> PageElement mergeScope object
@@ -435,6 +442,9 @@ sequenceCellContains members occurrence
 -- ALIGN: SEQUENCE-INDEXED-DOMINION.
 -- ALIGN: SEQUENCE-INDEXED-INTERPRETATION.
 -- ALIGN: SEQUENCE-ATLAS-RANK-INTERPRETATION.
+-- ALIGN: SEQUENCE-FINITE-DATA-DECODE.
+-- ALIGN: SEQUENCE-FINITE-DATA-EQUIVALENCE.
+-- ALIGN: SEQUENCE-FINITE-DATA-RANK.
 sequenceDominionAt
   :: NonEmpty AtlasSequenceMember
   -> PageElement mergeScope object
@@ -446,6 +456,7 @@ sequenceDominionAt members occurrence =
 -- ALIGN: SEQUENCE-DATA-INTERPRETATION.
 -- ALIGN: SEQUENCE-RESOLVED-ARROW.
 -- ALIGN: SEQUENCE-ATLAS-DATA-INTERPRETATION.
+-- ALIGN: SEQUENCE-FINITE-DATA-NATURALITY.
 sequenceDataMap
   :: NonEmpty AtlasSequenceMember
   -> PageElementArrow mergeScope source target
@@ -468,6 +479,8 @@ sequenceDataMap members pageArrow =
 -- ALIGN: SEQUENCE-ATLAS-COHERENCE.
 -- ALIGN: SEQUENCE-ATLAS-DISJOINT.
 -- ALIGN: SEQUENCE-ATLAS-CONSTRUCTION.
+-- ALIGN: SEQUENCE-FINITE-ELEMENTS-EQUIVALENCE.
+-- ALIGN: SEQUENCE-ATLAS-ISOMORPHISM.
 atlasSequence
   :: NonEmpty AtlasSequenceMember
   -> (forall mergeAtlasScope mergeScope.
@@ -525,6 +538,8 @@ sequencePageElementAt sequenceAtlas pageNumber position =
 -- ALIGN: SEQUENCE-MEMBER-RESOLVED.
 -- ALIGN: SEQUENCE-MEMBER-PAGE.
 -- ALIGN: SEQUENCE-MEMBER-POSITION.
+-- ALIGN: SEQUENCE-MEMBER-CHECKED-LOOKUP.
+-- ALIGN: SEQUENCE-MEMBER-OBJECT-INTERPRETATION.
 sequenceMemberElement
   :: [AtlasSequenceMember]
   -> Natural
@@ -546,6 +561,8 @@ sequenceMemberElement members memberIndex sequenceAtlas source =
 
 -- ALIGN: SEQUENCE-MEMBER-COMPONENT.
 -- ALIGN: SEQUENCE-MEMBER-NATURALITY.
+-- ALIGN: SEQUENCE-MEMBER-INDEXED-MEMBERSHIP.
+-- ALIGN: SEQUENCE-MEMBER-INDEXED-COMPONENT.
 sequenceMemberComponent
   :: Natural
   -> Atlas sourceAtlasScope sourceScope sourceData sourceOrigin sourceFinal
@@ -565,6 +582,10 @@ sequenceMemberComponent memberIndex sourceAtlas source =
       | targetMember == memberIndex = preimage sourceInsertion valueRank
       | otherwise = Nothing
 
+-- ALIGN: SEQUENCE-MEMBER-OBJECT-ROUNDTRIP.
+-- ALIGN: SEQUENCE-MEMBER-OBJECT-INVERSE-SOUND.
+-- ALIGN: SEQUENCE-MEMBER-OBJECT-OPPOSITE-REJECT.
+-- ALIGN: SEQUENCE-MEMBER-NORMALIZED-OBJECT-ROUNDTRIP.
 sequenceMemberObjectPreimage
   :: [AtlasSequenceMember]
   -> Natural
@@ -598,6 +619,15 @@ sequenceMemberObjectPreimage members memberIndex sourceAtlas target =
 
 -- | The order-preserving inclusion of one member into a sequence merge.
 -- Its extent lands at the cell whose page-1 position is its member index.
+-- ALIGN: SEQUENCE-MEMBER-OBJECT-INSERTION.
+-- ALIGN: SEQUENCE-MEMBER-ARROW.
+-- ALIGN: SEQUENCE-MEMBER-MORPHISM.
+-- ALIGN: SEQUENCE-MEMBER-TRANSPOSAL.
+-- ALIGN: SEQUENCE-MEMBER-ORDER.
+-- ALIGN: SEQUENCE-MEMBER-ORDERED-TRANSPOSAL.
+-- ALIGN: SEQUENCE-MEMBER-MORPHISM-RANK.
+-- ALIGN: SEQUENCE-MEMBER-MORPHISM-INTERPRETATION.
+-- ALIGN: SEQUENCE-MEMBER-ORDERED-INTERPRETATION.
 atlasSequenceMemberOrderedTransposal
   :: forall sourceAtlasScope sourceScope sourceData sourceOrigin sourceFinal
       mergeAtlasScope mergeScope.

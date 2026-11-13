@@ -27,6 +27,7 @@ import Consolidation.LiquidInternal
 import Numeric.Natural (Natural)
 
 {-@ embed Natural as int @-}
+{-@ invariant {value:Natural | value >= 0} @-}
 
 -- | The selected origin and the evidence that its carrier is a singleton.
 {-@
@@ -63,6 +64,14 @@ pageOrder source target
 -- | A type-aligned, nonempty sequence parameterized by its page container.
 -- GHC checks that every coconsolidation joins the carrier of the preceding
 -- page to the carrier of the next page.
+{-@ data FolioData page origin final where
+      OriginFolio :: count:{Natural | count == 1}
+        -> originPage:page origin -> witness:SingletonOrigin origin
+        -> FolioData page origin origin
+      SnocPage :: count:{Natural | count > 1}
+        -> previous:{FolioData page origin previous | folioLengthData previous + 1 == count}
+        -> nextPage:page final -> transition:Coconsolidation previous final
+        -> FolioData page origin final @-}
 data FolioData page origin final where
   OriginFolio
     :: Natural
@@ -104,11 +113,14 @@ appendPageData pages = SnocPage (folioLengthData pages + 1) pages
 -- | The number of genuine pages.
 {-@ reflect folioLengthData @-}
 -- ALIGN: FOLIO-SEMANTIC-LENGTH.
+-- ALIGN: FOLIO-LENGTH-POSITIVE.
+{-@ folioLengthData :: FolioData page origin final -> {n:Natural | n > 0} @-}
 folioLengthData :: FolioData page origin final -> Natural
 folioLengthData (OriginFolio count _ _) = count
 folioLengthData (SnocPage count _ _ _) = count
 
 -- | The first page.
+{-@ reflect originPageData @-}
 originPageData :: FolioData page origin final -> page origin
 originPageData (OriginFolio _ value _) = value
 originPageData (SnocPage _ pages _ _) = originPageData pages
@@ -133,6 +145,7 @@ originUniqueData (OriginFolio _ _ witness) value =
 originUniqueData (SnocPage _ pages _ _) value = originUniqueData pages value
 
 -- | The final genuine page.
+{-@ reflect lastPageData @-}
 lastPageData :: FolioData page origin final -> page final
 lastPageData (OriginFolio _ value _) = value
 lastPageData (SnocPage _ _ value _) = value

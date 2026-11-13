@@ -87,6 +87,7 @@ testTree =
         , testCase "atlas merge transfinite pages" testAtlasMergeTransfinitePages
         , testCase "atlas sequence merge origin ranks" testAtlasSequenceOriginRanks
         , testCase "atlas sequence transfinite pages" testAtlasSequenceTransfinitePages
+        , testCase "atlas sequence unequal member depths" testAtlasSequenceUnequalDepths
         , testCase "atlas confederation" testAtlasConfederation
         , testCase "atlas federation" testAtlasFederation
         , testCase "atlas map" testAtlasMap
@@ -1466,6 +1467,18 @@ testAtlas =
                                     (pageElementPage mapped == 0)
             _ -> fail "test setup failed: expected atlas elements"
 
+-- Check the raw-arrow precondition used by the verified extent helper,
+-- including for occurrences on the padded spine.
+checkAtlasOriginArrow
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> IO ()
+checkAtlasOriginArrow valueAtlas source =
+  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
+    assert "a checked cell has an arrow to its Atlas origin"
+      (pageElementPage origin <= pageElementPage source
+        && pageElementTransported source origin)
+
 -- The source cell ranks its data locally, while a merge stores their ranks
 -- after transport to the origin. Its inverse deliberately returns candidates
 -- outside its image, so membership must check the candidate's forward image.
@@ -1487,6 +1500,8 @@ checkMergeOriginRanks sourceAtlas targetAtlas inclusion encodeRank =
           withAtlasMorphismImage
             (mapOrderedAtlasTransposalData (atlasWitness sourceAtlas) inclusion source) $
               \target component -> do
+                checkAtlasOriginArrow sourceAtlas source
+                checkAtlasOriginArrow targetAtlas target
                 let targetDominion = atlasDataAt targetAtlas target
                     sourceDatum = TestCellData 3
                     image = applyInsertion component sourceDatum
@@ -1547,11 +1562,76 @@ testAtlasSequenceTransfinitePages =
                 (pageElementPage cell == page && pageElementPosition cell == position)
               assert "sequence cell decodes exactly its member's origin rank"
                 (fmap (rank valueDominion) (unrank valueDominion expectedRank) == Just expectedRank
-                  && isNothing (unrank valueDominion (expectedRank + 3)))) [0, 7])
+                  && isNothing (unrank valueDominion (expectedRank + 3)))
+              case pageElementIndex (atlasPageElements input) (page - 1) (finiteOrdinal valueRank) of
+                Nothing -> fail "missing sequence inclusion source"
+                Just sourceIndex -> withPageElement (pageElement sourceIndex) $ \source -> do
+                  checkAtlasOriginArrow input source
+                  checkAtlasOriginArrow sequenceAtlas cell
+                  let sourceObject = atlasTransposalElement (atlasWitness input) source
+                      targetObject = atlasTransposalElement (atlasWitness sequenceAtlas) cell
+                      inclusion = atlasSequenceMemberOrderedTransposal members memberIndex input sequenceAtlas
+                  assert "sequence inclusion agrees with transfinite page lookup"
+                    (mapOrderedAtlasTransposalObject inclusion sourceObject == targetObject)
+                  assert "sequence inclusion inverse recovers normalized padding objects"
+                    (orderedAtlasTransposalPreimage inclusion targetObject == Just sourceObject)
+                  mapM_ (\otherMember ->
+                    if otherMember == memberIndex then pure () else
+                      assert "sequence inclusion inverse rejects another member"
+                        (isNothing (orderedAtlasTransposalPreimage
+                          (atlasSequenceMemberOrderedTransposal members otherMember input sequenceAtlas)
+                          targetObject))) [0, 1, 2]
+                  case pageElementIndex (atlasPageElements input) (page - 1) (finiteOrdinal (valueRank + 1)) of
+                    Nothing -> fail "missing sequence inclusion order comparison"
+                    Just nextIndex -> withPageElement (pageElement nextIndex) $ \next ->
+                      assert "sequence inclusion preserves order within a transfinite member block"
+                        (atlasTransposalElementLT targetObject
+                          (mapOrderedAtlasTransposalObject inclusion
+                            (atlasTransposalElement (atlasWitness input) next)))) [0, 7])
         (zip [0 ..] starts)
       assert "sequence lookup rejects the complete ordinal-sum upper bound"
         (isNothing (pageElementIndex (atlasPageElements sequenceAtlas) page
           (addOrdinals (addOrdinals omega omega) omega)))) [2, 5]
+
+-- A shallow member is already padded on a genuine page of the deeper sequence.
+-- Its data insertion must retain membership there, not confuse that page with
+-- the source's distinct final cell or another member's cell.
+testAtlasSequenceUnequalDepths :: IO ()
+testAtlasSequenceUnequalDepths = withPartialCoverageAtlas $ \deep ->
+  let shallow = rankedDominionAtlas (dominion id Just (const ()))
+      members = atlasSequenceMember shallow :| [atlasSequenceMember deep, atlasSequenceMember shallow]
+  in atlasSequence members $ \sequenceAtlas -> do
+    checkMergeOriginRanks deep sequenceAtlas
+      (atlasSequenceMemberOrderedTransposal members 1 deep sequenceAtlas) (\n -> 3 * n + 1)
+    mapM_ (\(tag, start) -> do
+      let inclusion = atlasSequenceMemberOrderedTransposal members tag shallow sequenceAtlas
+          position = addOrdinals start (finiteOrdinal 7)
+          expectedRank = 21 + tag
+      mapM_ (\page ->
+        case (pageElementIndex (atlasPageElements shallow) (page - 1) (finiteOrdinal 7),
+              pageElementIndex (atlasPageElements sequenceAtlas) page position) of
+          (Just sourceIndex, Just targetIndex) ->
+            withPageElement (pageElement sourceIndex) $ \source ->
+              withPageElement (pageElement targetIndex) $ \target -> do
+                let targetDominion = atlasDataAt sequenceAtlas target
+                    sourceObject = atlasTransposalElement (atlasWitness shallow) source
+                    included = mapOrderedAtlasTransposalObject inclusion sourceObject
+                assert "sequence padding retains the shallow member's rank"
+                  (fmap (rank targetDominion) (unrank targetDominion expectedRank) == Just expectedRank)
+                assert "sequence inclusion inverse handles unequal member depths"
+                  (orderedAtlasTransposalPreimage inclusion included == Just sourceObject)
+                withAtlasMorphismImage
+                  (mapOrderedAtlasTransposalData (atlasWitness shallow) inclusion source) $
+                    \imageCell component ->
+                      case unrank (atlasDataAt shallow source) 0 of
+                        Nothing -> fail "missing ranked source datum"
+                        Just datum -> do
+                          let image = applyInsertion component datum
+                          assert "sequence padded inclusion retains rank and data inverse"
+                            (rank (atlasDataAt sequenceAtlas imageCell) image == expectedRank
+                              && preimage component image == Just datum)
+          _ -> fail "missing mixed-depth sequence cell") [3, 6])
+      [(0, finiteOrdinal 0), (2, addOrdinals omega (finiteOrdinal 2))]
 
 -- This Dominion obeys its round trip but also decodes odd ranks. Both the
 -- merged extent and the included cells must reject those off-image decodings.

@@ -426,10 +426,11 @@ atlasFolio
 atlasFolio = paginationFolio . atlasPagination
 
 -- | Recover the category of page elements underlying an atlas.
+{-@ reflect atlasPageElements @-}
 atlasPageElements
   :: Atlas atlasScope scope cellData origin final
   -> PageElements scope origin final
-atlasPageElements = paginationPageElements . atlasPagination
+atlasPageElements valueAtlas = paginationPageElements (storedPagination valueAtlas)
 
 -- | The number of genuine pages in the atlas's finite presentation.
 atlasCardinality
@@ -584,6 +585,16 @@ withAtlasPageChain valueAtlas = withPageAt (atlasFolio valueAtlas)
 
 -- | Construct a page cell from an index already certified against this
 -- pagination's page-element spine.
+{-@ atlasPageCell
+      :: valueAtlas:Atlas atlasScope scope cellData origin final
+      -> index:{PageElementIndex scope |
+           Elements.pageElementIndexOrigin index
+             == Elements.originPageElement (atlasPageElements valueAtlas)}
+      -> {element:SomePageElement scope |
+           somePageElementPrecedes element
+             (Elements.originPageElement (atlasPageElements valueAtlas))
+           && somePageElementTransported element
+             (Elements.originPageElement (atlasPageElements valueAtlas))} @-}
 atlasPageCell
   :: Atlas atlasScope scope cellData origin final
   -> PageElementIndex scope
@@ -591,10 +602,14 @@ atlasPageCell
 atlasPageCell _ = Elements.pageElement
 
 -- | The unique origin cell of an Atlas.
+{-@ atlasOriginCell
+      :: valueAtlas:Atlas atlasScope scope cellData origin final
+      -> {element:SomePageElement scope |
+           element == Elements.originPageElement (atlasPageElements valueAtlas)} @-}
 atlasOriginCell
   :: Atlas atlasScope scope cellData origin final
   -> SomePageElement scope
-atlasOriginCell = Elements.originPageElement . atlasPageElements
+atlasOriginCell valueAtlas = Elements.originPageElement (atlasPageElements valueAtlas)
 
 -- | Compare two cells after transporting them to their common earliest page.
 -- Inputs on the padded tail are normalized before comparison.

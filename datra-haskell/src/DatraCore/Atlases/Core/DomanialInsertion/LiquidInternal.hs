@@ -164,14 +164,20 @@ rankImagePreimage valueDominion insertion valueRank =
 -- ALIGN: INSERTION-RANK-PACKAGE.
 -- ALIGN: INSERTION-RANK-IMAGE-EQUIV.
 -- ALIGN: INSERTION-RANK-IMAGE-EQUIV-RANK.
+{-@ reflect rankImageInsertion @-}
+{-@ rankImageInsertion :: valueDominion:Dominion b -> insertion:DomanialInsertion a b
+      -> {result:DomanialInsertion a Natural |
+           applyInsertion result == rankImage valueDominion insertion
+           && preimage result == rankImagePreimage valueDominion insertion} @-}
 rankImageInsertion :: Dominion b -> DomanialInsertion a b -> DomanialInsertion a Natural
 rankImageInsertion valueDominion insertion =
-  domanialInsertion
+  DomanialInsertion
     (rankImage valueDominion insertion)
     (rankImagePreimage valueDominion insertion)
     (rankImageRoundTrip valueDominion insertion)
 
 -- ALIGN: INSERTION-RANK-ROUNDTRIP.
+{-@ reflect rankImageRoundTrip @-}
 {-@
 rankImageRoundTrip
   :: valueDominion:Dominion b
