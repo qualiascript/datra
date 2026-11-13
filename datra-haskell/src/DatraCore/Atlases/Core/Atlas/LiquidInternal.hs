@@ -34,14 +34,26 @@ module Atlas.LiquidInternal
   ) where
 
 import Data.Kind (Type)
-import DomanialInsertion.LiquidInternal
+import DomanialInsertion.Core
+  ( DomanialInsertion (..)
+  )
 import Dominion.Internal (Dominion)
 import Numeric.Natural (Natural)
 import PageElements.Internal
   ( PageElementDomain, pageElementDomainContains
   , pageElementDomainFinalPage, pageElementDomainTraceLimit
   )
-import PageElements.LiquidInternal
+import PageElements.Structure
+  ( PageElementCell (..)
+  , PageElement (..)
+  , SomePageElement (..)
+  , PageElementArrow (..)
+  , SomePageElementArrow (..)
+  , identityPageElementArrow
+  , composePageElementArrows
+  , normalizePageElementAt
+  , normalizePageElementArrowAt
+  )
 
 -- | A first-order membership package keeps the rank-2 predicate's identity
 -- available when checking dependent object and arrow actions.

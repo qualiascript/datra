@@ -42,17 +42,17 @@ import qualified Atlas.Internal as Atlas
 import Data.Kind (Type)
 import DatraOrdinal (Ordinal)
 import Dominion.Internal (MembershipDominion (..), dominionCoherence)
-import DomanialInsertion.LiquidInternal
+import DomanialInsertion.Core
   ( DomanialInsertion (..)
   , rankImageInsertion
   , rankImagePreimageSound
   )
 import Numeric.Natural (Natural)
-import PageElements
+import PageElements.Structure
   ( PageElementArrow
   , pageElementArrow
   )
-import PageElements.LiquidInternal
+import PageElements.Structure
   ( PageElement (..)
   , SomePageElement (..)
   , arrowSource
@@ -62,7 +62,7 @@ import PageElements.LiquidInternal
   , somePageElementTransported
   )
 import qualified PageElements.Internal as Elements
-import qualified PageElements.LiquidInternal as Trace
+import qualified PageElements.Structure as Trace
 
 -- | A dependent Atlas dominion whose page-element identity is hidden. This
 -- is the Haskell presentation of Lean values such as @extent A@ and

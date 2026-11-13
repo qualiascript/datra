@@ -35,7 +35,7 @@ import DatraOrdinal.Internal
   , canonicalCoefficients
   , ordinalLT
   )
-import DatraOrdinal.LiquidInternal (ordinalLongNotBelowOmega)
+import DatraOrdinal.Laws (ordinalLongNotBelowOmega)
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}

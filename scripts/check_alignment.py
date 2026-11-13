@@ -17,6 +17,17 @@ def check(require_complete=False):
     sources = project_sources()
     lean = "\n".join(path.read_text() for path in sources)
     errors = []
+    for source in (ROOT / "datra-haskell/src").rglob("*.hs"):
+        text = source.read_text()
+        module = re.search(r"^module\s+([\w.]+)", text, re.M)
+        if module is None:
+            continue
+        for imported in re.findall(r"^import\s+(?:qualified\s+)?([\w.]+)", text, re.M):
+            if imported.endswith(".LiquidInternal"):
+                owner = imported.removesuffix(".LiquidInternal")
+                if module[1] not in {owner, owner + ".Internal"}:
+                    errors.append(f"{source.relative_to(ROOT)}: import {owner}'s exposed interface "
+                                  f"instead of {imported}")
     unreachable = set((ROOT / "datra-lean").rglob("*.lean")) - set(sources)
     if unreachable:
         errors.append("Lean modules missing from datra.lean imports: " + ", ".join(

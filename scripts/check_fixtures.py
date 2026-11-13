@@ -43,7 +43,7 @@ def trace_position_checks(lean_lines, haskell_lines):
 def run_trace_positions():
     lean_lines = ["import Executable.PageElements", "open Datra.Executable.Ordinal"]
     haskell_lines = ["module Main where", "import DatraOrdinal",
-                     "import qualified PageElements.LiquidInternal as PE",
+                     "import qualified PageElements.Structure as PE",
                      "import qualified Chain as Ch", "main :: IO ()", "main = do"]
     count = trace_position_checks(lean_lines, haskell_lines)
     run_drivers(lean_lines, haskell_lines)
@@ -56,9 +56,9 @@ def run():
     manifest = json.loads((ROOT / "datra-haskell/docs/lean-correspondence.json").read_text())
     lean_lines.extend(f"#check {entry['lean_namespace']}.{entry['lean_declaration']}"
                       for entry in manifest["theorems"])
-    haskell_lines = ["module Main where", "import DatraOrdinal", "import qualified PageElements.LiquidInternal as PE",
+    haskell_lines = ["module Main where", "import DatraOrdinal", "import qualified PageElements.Structure as PE",
                      "import qualified DatraOrdinal.Internal as OI",
-                     "import qualified DatraOrdinal.LiquidInternal as OL",
+                     "import qualified DatraOrdinal.Laws as OL",
                      "import qualified Chain as Ch", "main :: IO ()", "main = do"]
     trace_positions = trace_position_checks(lean_lines, haskell_lines)
     for i, vector in enumerate(vectors):

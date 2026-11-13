@@ -37,6 +37,7 @@ module PageElements.Internal
   , genuinePageElementTrace
   , prependCopies
   , folioTraceLengthPositive
+  , folioOriginTrace
   , traceLookupPresent
   , folioPageOrderType
   , folioTraceLookupBounded
@@ -102,9 +103,9 @@ import Folio.Internal
   , originChain
   , originValue
   )
-import Folio.LiquidInternal (FolioData (..), SingletonOrigin (..))
+import Folio.Presentation (FolioData (..), SingletonOrigin (..))
 import Numeric.Natural (Natural)
-import PageElements.LiquidInternal
+import PageElements.Structure
   ( PageElement (..)
   , PageElementCell (..)
   , PageElementArrow
@@ -130,7 +131,7 @@ import PageElements.LiquidInternal
   , somePageElementTransportedReflexive
   )
 
-import qualified PageElements.LiquidInternal as Trace
+import qualified PageElements.Structure as Trace
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}

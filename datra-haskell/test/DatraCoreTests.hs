@@ -87,6 +87,7 @@ testTree =
         , testCase "atlas merge origin ranks" testAtlasMergeOriginRanks
         , testCase "atlas merge rejects off-image unranking" testAtlasMergeOffImageUnrank
         , testCase "atlas merge transfinite pages" testAtlasMergeTransfinitePages
+        , testCase "atlas merge chosen preimages" testAtlasMergeChosenPreimages
         , testCase "atlas sequence merge origin ranks" testAtlasSequenceOriginRanks
         , testCase "atlas sequence transfinite pages" testAtlasSequenceTransfinitePages
         , testCase "atlas sequence unequal member depths" testAtlasSequenceUnequalDepths
@@ -1742,6 +1743,45 @@ testAtlasMerge :: IO ()
 testAtlasMerge = do
   testSingletonAtlasMerge
   testDeepAtlasMerge
+
+testAtlasMergeChosenPreimages :: IO ()
+testAtlasMergeChosenPreimages =
+  let chooseTrue = consolidation (const ()) (const True) (\_ _ _ -> ()) (const ())
+      chooseSeven = consolidation (> 0) (\value -> if value then 7 else 0)
+        (\_ _ right -> right > 0) (const ())
+      shortPages = appendPage (singletonFolio unitChain) boolChain (Consolidation.op chooseTrue)
+      longPages = appendPage shortPages spine (Consolidation.op chooseSeven)
+  in pagination longPages $ \leftPagination ->
+    atlas leftPagination
+      (atlasDataAction (paginationPageElements leftPagination) testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \left ->
+      pagination shortPages $ \rightPagination ->
+        atlas rightPagination
+          (atlasDataAction (paginationPageElements rightPagination) testAtlasDataAt testAtlasMapData)
+          testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \right ->
+          let pages = atlasMergeFolio left right
+              check (sourcePage, targetPage, sourcePosition, expectedPosition) =
+                case pageOrder sourcePage targetPage of
+                  Nothing -> fail "test setup failed: reversed preimage interval"
+                  Just interval -> withFolioMap pages interval $ \sourceChain targetChain transition ->
+                    case chainIndex sourceChain sourcePosition of
+                      Nothing -> fail "test setup failed: missing preimage source"
+                      Just index -> do
+                        let source = chainObjectAt index
+                            chosen = consolidationPreimage (Consolidation.unop transition) source
+                            returned = applyConsolidation (Consolidation.unop transition) chosen
+                        assert "merge retains the component's chosen preimage"
+                          (chainPosition targetChain chosen == expectedPosition)
+                        assert "merge chosen preimage returns to the original cell"
+                          (chainPosition sourceChain returned == sourcePosition)
+          in mapM_ check
+            [ (1, 2, finiteOrdinal 0, finiteOrdinal 1)
+            , (1, 2, finiteOrdinal 1, finiteOrdinal 3)
+            , (2, 3, finiteOrdinal 1, finiteOrdinal 7)
+            , (2, 3, finiteOrdinal 3, addOrdinals omega (finiteOrdinal 1))
+            , (1, 3, finiteOrdinal 0, finiteOrdinal 7)
+            , (3, 4, addOrdinals omega (finiteOrdinal 1), addOrdinals omega (finiteOrdinal 1))
+            ]
 
 testAtlasMergeTransfinitePages :: IO ()
 testAtlasMergeTransfinitePages =

@@ -81,4 +81,28 @@ theorem nativePrevious_valid (X Y : Atlas) (n : Nat)
       rw [nativeCellEquiv_right]
       exact (nativeCellEquiv_right X Y n (trace.previous Y.pagination.folio.valid n)).symm
 
+-- ALIGN: MERGE-PAGE-NEXT-VALID.
+theorem nativeNext_valid (X Y : Atlas) (n : Nat)
+    (source : Sum (X.pages.TraceCarrier n) (Y.pages.TraceCarrier n)) :
+    nextValidCell X Y n (nativeCellEquiv X Y n source) =
+      nativeCellEquiv X Y (n + 1)
+        (Sum.map (fun trace => trace.next X.pagination.folio.valid n)
+          (fun trace => trace.next Y.pagination.folio.valid n) source) := by
+  apply Subtype.ext
+  cases source with
+  | inl trace =>
+      obtain ⟨value, rfl⟩ := (X.pages.encodeTrace_bijective X.pagination.folio.valid n).2 trace
+      change nextPageCell X Y n (nativeCellEquiv X Y n (.inl _)).val =
+        (nativeCellEquiv X Y (n + 1) (.inl _)).val
+      dsimp only
+      rw [FolioData.next_encodeTrace, nativeCellEquiv_left, nativeCellEquiv_left]
+      exact nextPageCell_encode X Y n (.inl value)
+  | inr trace =>
+      obtain ⟨value, rfl⟩ := (Y.pages.encodeTrace_bijective Y.pagination.folio.valid n).2 trace
+      change nextPageCell X Y n (nativeCellEquiv X Y n (.inr _)).val =
+        (nativeCellEquiv X Y (n + 1) (.inr _)).val
+      dsimp only
+      rw [FolioData.next_encodeTrace, nativeCellEquiv_right, nativeCellEquiv_right]
+      exact nextPageCell_encode X Y n (.inr value)
+
 end Datra.Executable.AtlasMerge

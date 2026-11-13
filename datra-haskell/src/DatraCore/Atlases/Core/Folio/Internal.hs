@@ -31,7 +31,7 @@ module Folio.Internal
 
 import Chain (Chain)
 import Consolidation (Coconsolidation)
-import Folio.LiquidInternal
+import Folio.Presentation
   ( FolioData (..)
   , PageOrder (..)
   , appendPageData

@@ -30,7 +30,7 @@ module Pagination.Internal
 import Control.Category (Category (..))
 import Data.Kind (Type)
 import Folio (Folio)
-import Folio.LiquidInternal
+import Folio.Presentation
   ( folioLengthData
   )
 import Numeric.Natural (Natural)
@@ -39,8 +39,17 @@ import PageElements
   , normalizePageElement
   , normalizePageElementArrow
   )
+import PageElements.Structure (withPageElementArrow)
 import PageElements.Internal (pageElementsWithScope, pageElementsFolio)
-import PageElements.LiquidInternal hiding (withPageElementArrow)
+import PageElements.Structure
+  ( PageElementCell (..)
+  , PageElement (..)
+  , SomePageElement (..)
+  , PageElementArrow (..)
+  , SomePageElementArrow (..)
+  , somePageElementPrecedes
+  , somePageElementTransported
+  )
 import Pagination.LiquidInternal
   ( composePaginationMorphismsData
   , identityPaginationMorphismData
@@ -48,7 +57,6 @@ import Pagination.LiquidInternal
   , mapPaginationElementData
   , normalizationPaginationMorphismData
   , normalizationPaginationMorphismIdempotent
-  , withPageElementArrowData
   )
 import qualified Pagination.LiquidInternal as Liquid
 import Prelude hiding ((.), id)
@@ -188,14 +196,6 @@ mapPaginationArrow
   -> SomePageElementArrow targetScope
 mapPaginationArrow (PaginationMorphism morphism) =
   mapPaginationArrowData morphism
-
--- | Eliminate the hidden endpoint identities of a mapped arrow.
-withPageElementArrow
-  :: SomePageElementArrow scope
-  -> (forall source target.
-        PageElementArrow scope source target -> result)
-  -> result
-withPageElementArrow = withPageElementArrowData
 
 -- | The identity pagination morphism.
 identityPaginationMorphism :: PaginationMorphism scope scope

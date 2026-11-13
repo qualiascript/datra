@@ -11,15 +11,16 @@ module AtlasMerge.Page
   , atlasMergePageChain
   , mergePageContains
   , previousMergeCell
+  , nextMergeCell
   ) where
 
 import Atlas.Internal (Atlas, atlasFolio)
 import Chain.Internal (Chain, reindexChain)
-import Chain.LiquidInternal (sumChains)
+import Chain.Sum (sumChains)
 import DatraOrdinal.Internal (Ordinal)
 import Folio.Internal (Folio)
 import Numeric.Natural (Natural)
-import PageElements.TraceChain (pageTraceChain, pageTraceContains, previousTrace, pageTracePrevious)
+import PageElements.TraceChain (pageTraceChain, pageTraceContains, previousTrace, pageTracePrevious, pageTraceNext)
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -119,3 +120,19 @@ previousMergeCell left _ page (AtlasMergeLeftCell positions) =
 previousMergeCell _ right page (AtlasMergeRightCell positions) =
   pageTracePrevious (atlasFolio right) (page - 1) positions `seq`
     AtlasMergeRightCell (previousTrace positions)
+
+-- ALIGN: MERGE-PAGE-NEXT.
+-- ALIGN: MERGE-PAGE-NEXT-VALID.
+-- ALIGN: MERGE-PAGE-PREIMAGE.
+{-@ nextMergeCell :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0}
+      -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell}
+      -> {result:AtlasMergePageCell |
+           mergePageContains (atlasFolio left) (atlasFolio right) page result
+           && previousMergeCell left right page result == cell} @-}
+nextMergeCell
+  :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> AtlasMergePageCell
+nextMergeCell left _ page (AtlasMergeLeftCell positions) =
+  AtlasMergeLeftCell (pageTraceNext (atlasFolio left) (page - 1) positions)
+nextMergeCell _ right page (AtlasMergeRightCell positions) =
+  AtlasMergeRightCell (pageTraceNext (atlasFolio right) (page - 1) positions)

@@ -70,13 +70,35 @@ import qualified Atlas.LiquidInternal as Action
 import Chain (Chain)
 import Data.Kind (Type)
 import DatraOrdinal (Ordinal, ordinalLT)
-import DomanialInsertion.LiquidInternal
+import DomanialInsertion.Core
+  ( DomanialInsertion (..)
+  , identityInsertion
+  , identityInsertionApply
+  )
 import Dominion (Dominion)
 import Folio (Folio, withPageAt)
 import Numeric.Natural (Natural)
 import PageElements (PageElementIndex, PageElements)
 import qualified PageElements.Internal as Elements
-import PageElements.LiquidInternal
+import PageElements.Structure
+  ( PageElementCell (..)
+  , PageElement (..)
+  , SomePageElement (..)
+  , PageElementArrow (..)
+  , SomePageElementArrow (..)
+  , somePageElementPage
+  , somePageElementPosition
+  , somePageElementTrace
+  , somePageElementPrecedes
+  , somePageElementTransported
+  , identityPageElementArrow
+  , composePageElementArrows
+  , normalizePageElementAt
+  , normalizePageElementArrowAt
+  , normalizePageElementIdempotentAt
+  , traceStartsWith
+  , positionAtPage
+  )
 import Pagination.Internal
   ( Pagination
   , PaginationMorphism
@@ -684,7 +706,7 @@ atlasDataCoherenceAgrees
   -> PageElement scope object -> PageElementArrow scope object object
   -> cellData object -> ()
 atlasDataCoherenceAgrees value occurrence arrow datum =
-  atlasCoherenceWitness value occurrence arrow datum
+  identityInsertionApply datum `seq` atlasCoherenceWitness value occurrence arrow datum
 
 -- | Normalize a datum by applying the data component of Atlas coherence.
 --

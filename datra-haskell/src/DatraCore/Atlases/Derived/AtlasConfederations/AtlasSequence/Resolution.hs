@@ -22,13 +22,13 @@ module AtlasSequence.Resolution
 import Atlas.Internal (Atlas, atlasFolio)
 import qualified AtlasExtent.Internal as Extent hiding
   (atlasCellOriginRankInsertion, cellContainsRankImage, cellOriginRankPreimageSound)
-import AtlasSequence.LiquidInternal (AtlasSequenceDatum (..))
+import AtlasSequence.Data (AtlasSequenceDatum (..))
 import Chain (chainOrderType)
 import Data.List.NonEmpty (NonEmpty, toList)
 import DatraOrdinal (Ordinal, ordinalLT, subtractOrdinal)
 import Folio (withPageAt)
 import Numeric.Natural (Natural)
-import PageElements.LiquidInternal (PageElement (..))
+import PageElements.Structure (PageElement (..))
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}

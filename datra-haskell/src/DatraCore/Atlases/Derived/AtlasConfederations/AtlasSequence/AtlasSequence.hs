@@ -79,7 +79,7 @@ import DomanialInsertion
   , preimage
   )
 import Dominion (Dominion)
-import AtlasSequence.LiquidInternal
+import AtlasSequence.Data
 import Folio
   ( Folio
   , appendPage
@@ -104,7 +104,7 @@ import PageElements
   , pageElementIndex
   , withPageElement
   )
-import PageElements.LiquidInternal (PageElement (..))
+import PageElements.Structure (PageElement (..))
 import qualified Pagination
 
 -- | A non-origin cell tagged by its member and source-cell transport trace.

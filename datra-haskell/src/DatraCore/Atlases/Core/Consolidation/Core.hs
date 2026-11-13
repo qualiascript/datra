@@ -5,7 +5,7 @@
 
 -- | LiquidHaskell-verified consolidation representation, operations, and
 -- carrier transport.
-module Consolidation.LiquidInternal
+module Consolidation.Core
   ( Consolidation (..)
   , consolidationMonotone
   , consolidation
@@ -29,6 +29,8 @@ module Consolidation.LiquidInternal
   , consolidationTransport
   , consolidationTransportIdentity
   , consolidationTransportComposition
+  , transportCoconsolidation
+  , transportCoconsolidationPreimage
   ) where
 
 -- | A monotone, point-surjective map between chain carriers.
@@ -360,6 +362,19 @@ consolidationTransport
   :: Consolidation source target
   -> ConsolidationTransport source target
 consolidationTransport value = ConsolidationTransport (applyConsolidation value)
+
+-- | Carrier transport follows the underlying map in the opposite direction.
+{-@ reflect transportCoconsolidation @-}
+transportCoconsolidation
+  :: Coconsolidation source target -> ConsolidationTransport target source
+transportCoconsolidation value = consolidationTransport (unop value)
+
+{-@ transportCoconsolidationPreimage :: transition:Coconsolidation source target -> value:source
+      -> {runConsolidationTransport (transportCoconsolidation transition)
+            (consolidationPreimage (unop transition) value) == value} @-}
+transportCoconsolidationPreimage :: Coconsolidation source target -> source -> ()
+transportCoconsolidationPreimage transition value =
+  consolidationPointSurjective (unop transition) value
 
 -- | Consolidation transport preserves identity pointwise.
 {-@

@@ -22,7 +22,7 @@ import Chain
   , ChainIndex
   )
 import Folio (lastChain)
-import PageElements.LiquidInternal
+import PageElements.Structure
   ( SomePageElement (..)
   )
 import qualified PageElements.Internal as Elements

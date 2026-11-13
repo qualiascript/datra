@@ -13,7 +13,7 @@ module DomanialInsertion.Internal
   ) where
 
 import Control.Category (Category (..))
-import DomanialInsertion.LiquidInternal
+import DomanialInsertion.Core
   ( DomanialInsertion (..)
   , domanialInsertion
   , identityInsertion

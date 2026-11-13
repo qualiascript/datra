@@ -172,10 +172,22 @@ identifies each native trace chain with its original dependent page. Negative
 checks reject a false carrier equivalence and either trace-chain carrier being
 widened to arbitrary raw traces. The checked predecessor drops one transport
 step and preserves membership in the preceding page of the same component,
-including across genuine and padded pages. Lean identifies this operation with
-the dependent page transport. Full Haskell folio assembly still requires
-checked preimage, transition-order, and data-transport certificates;
+including across genuine and padded pages. Its checked preimage follows the
+stored choice of preimage in each genuine transition and duplicates the final
+position on padded pages. The result belongs to the next page and its
+predecessor is exactly the original trace. Lean identifies both operations with
+the dependent page transport and its chosen preimage. Full Haskell folio
+assembly still requires checked transition-order and data-transport certificates;
 sequence page chains also need the corresponding carrier restriction.
+
+Consumers import exposed interfaces rather than another component's
+`LiquidInternal` module. The primitive interfaces are `DatraOrdinal.Laws`,
+`Chain.Sum`, `Consolidation.Core`, `DomanialInsertion.Core`,
+`Folio.Presentation`, `PageElements.Structure`, `AtlasMerge.Data`, and
+`AtlasSequence.Data`. Their definitions and refinement contracts are checked in
+the exposed modules, including the logical record selectors used by clients.
+The alignment checker enforces this import boundary; remaining private
+implementation imports stay within each interface's owner.
 
 Merge and sequence components use a shared origin-rank insertion. Its inverse
 checks the candidate's forward rank, because Dominion unranking and insertion
@@ -578,7 +590,7 @@ unexplained semantic/executable mismatch.
 - Model pagination ownership and morphisms as object maps with an arrow witness.
 
 Exit criterion: Lean can state and prove the same contracts as
-`Folio.LiquidInternal`, `PageElements.LiquidInternal`, and
+`Folio.Presentation`, `PageElements.Structure`, and
 `Pagination.LiquidInternal` without appealing to the old `Pag` morphism type.
 
 ### Phase 3: Atlas objects and morphisms

@@ -83,7 +83,7 @@ import DomanialInsertion
   , composeInsertions
   , identityInsertion
   )
-import PageElements
+import PageElements.Structure
   ( PageElement
   , PageElementArrow
   , arrowSource
@@ -91,7 +91,7 @@ import PageElements
   , pageElementArrow
   )
 import PageElements.Internal (SomePageElement (..))
-import PageElements.LiquidInternal (normalizeSomePageElementPreservesArrowAt)
+import PageElements.Structure (normalizeSomePageElementPreservesArrowAt)
 import Pagination
   ( PaginationMorphism
   , SomePageElementArrow

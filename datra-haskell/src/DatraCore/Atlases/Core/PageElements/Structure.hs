@@ -5,8 +5,8 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 
--- | LiquidHaskell-verified page-element objects and category operations.
-module PageElements.LiquidInternal
+-- | Page-element objects, arrows, and trace operations.
+module PageElements.Structure
   ( PageElementCell (..)
   , pageElementCellPosition
   , PageElement (..)

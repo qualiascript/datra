@@ -17,10 +17,11 @@ module Consolidation.Internal
   , consolidationTransportIdentity
   , consolidationTransportComposition
   , transportCoconsolidation
+  , transportCoconsolidationPreimage
   ) where
 
 import Control.Category (Category (..))
-import Consolidation.LiquidInternal
+import Consolidation.Core
   ( Coconsolidation (..)
   , Consolidation (..)
   , ConsolidationTransport (..)
@@ -32,6 +33,8 @@ import Consolidation.LiquidInternal
   , consolidationTransportComposition
   , consolidationTransportIdentity
   , identityConsolidation
+  , transportCoconsolidation
+  , transportCoconsolidationPreimage
   , op
   , unop
   )
@@ -81,7 +84,7 @@ sumConsolidations left right =
 
 -- LiquidHaskell 0.9.4 cannot parse declarations for the symbolic Category
 -- method `(.)`. The law-carrying representation, smart constructor, identity,
--- and composition are specified in Consolidation.LiquidInternal. These
+-- and composition are specified in Consolidation.Core. These
 -- instances merely expose those operations through Control.Category.
 instance Category Consolidation where
   id = identityConsolidation
@@ -95,10 +98,3 @@ instance Category ConsolidationTransport where
   id = ConsolidationTransport id
   ConsolidationTransport second . ConsolidationTransport first =
     ConsolidationTransport (second . first)
-
--- | Apply consolidation transport to a morphism in @CoCon@. Its underlying
--- consolidation, and hence its function, runs in the opposite direction.
-transportCoconsolidation
-  :: Coconsolidation source target
-  -> ConsolidationTransport target source
-transportCoconsolidation = consolidationTransport . unop

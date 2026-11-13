@@ -4,11 +4,12 @@
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
 
--- | LiquidHaskell-verified representation used by the hidden implementation.
-module DomanialInsertion.LiquidInternal
+-- | Checked domanial insertions and their rank-image operations.
+module DomanialInsertion.Core
   ( DomanialInsertion (..)
   , domanialInsertion
   , identityInsertion
+  , identityInsertionApply
   , composeInsertions
   , pullbackDominion
   , rankImageInsertion
@@ -109,6 +110,11 @@ identityRoundTrip _ = ()
 {-@ reflect identityInsertion @-}
 identityInsertion :: DomanialInsertion a a
 identityInsertion = DomanialInsertion identityMap identityPreimage identityRoundTrip
+
+-- | The public identity law does not require clients to unfold private helpers.
+{-@ identityInsertionApply :: value:a -> {applyInsertion identityInsertion value == value} @-}
+identityInsertionApply :: a -> ()
+identityInsertionApply _ = ()
 
 {-@ reflect pullbackUnrank @-}
 -- ALIGN: INSERTION-PULLBACK-UNRANK.

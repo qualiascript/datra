@@ -51,6 +51,14 @@ flag liquid
 library
     import:           warnings
     exposed-modules:
+        DatraOrdinal.Laws
+        Chain.Sum
+        Consolidation.Core
+        DomanialInsertion.Core
+        Folio.Presentation
+        PageElements.Structure
+        AtlasMerge.Data
+        AtlasSequence.Data
         DatraLanguage.AST
         DatraLanguage.AST.Source
         DatraLanguage.AST.Operator
@@ -154,7 +162,6 @@ library
     other-modules:
         PageElements.Internal
         PageElements.TraceChain
-        PageElements.LiquidInternal
         Pagination.Internal
         Pagination.LiquidInternal
         Atlas.Internal
@@ -164,9 +171,7 @@ library
         EmptyAtlas.Internal
         AtlasMerge.Internal
         AtlasMerge.Page
-        AtlasMerge.LiquidInternal
         AtlasMerge.Resolution
-        AtlasSequence.LiquidInternal
         AtlasSequence.Resolution
         AtlasConfederation.Internal
         AtlasFederation.Internal
@@ -200,16 +205,11 @@ library
         Expedition.Internal
         DataTransformationMap.Internal
         Chain.Internal
-        Chain.LiquidInternal
         Consolidation.Internal
-        Consolidation.LiquidInternal
         DatraOrdinal.Internal
-        DatraOrdinal.LiquidInternal
         DomanialInsertion.Internal
-        DomanialInsertion.LiquidInternal
         Dominion.Internal
         Folio.Internal
-        Folio.LiquidInternal
         NumericalOperators.Internal
         NumericalOperators.Semantics
         MapOperators.Internal

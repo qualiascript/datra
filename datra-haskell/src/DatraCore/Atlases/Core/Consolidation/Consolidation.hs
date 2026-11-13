@@ -20,6 +20,7 @@ module Consolidation
   , consolidationTransportIdentity
   , consolidationTransportComposition
   , transportCoconsolidation
+  , transportCoconsolidationPreimage
   ) where
 
 import Consolidation.Internal
@@ -41,5 +42,6 @@ import Consolidation.Internal
   , consolidationTransportIdentity
   , sumConsolidations
   , transportCoconsolidation
+  , transportCoconsolidationPreimage
   , unop
   )

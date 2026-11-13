@@ -5,8 +5,8 @@
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--max-case-expand=8" @-}
 
--- | Liquid-only ordinal arithmetic lemmas used by proof-bearing clients.
-module DatraOrdinal.LiquidInternal
+-- | Ordinal arithmetic laws for proof-bearing clients.
+module DatraOrdinal.Laws
   ( ordinalAddLeftBelow
   , ordinalAddRightBelow
   , ordinalAddRightInjective

@@ -41,4 +41,4 @@ import Chain.Internal
   , positionMatches
   , spine
   )
-import Chain.LiquidInternal (sumChains)
+import Chain.Sum (sumChains)

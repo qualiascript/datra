@@ -77,7 +77,7 @@ import PageElements
   , pageElementIndex
   , withPageElement
   )
-import PageElements.LiquidInternal (PageElement (..))
+import PageElements.Structure (PageElement (..))
 import qualified Pagination
 import MapOperators.SequentialOperator
   ( SequentialPresentation

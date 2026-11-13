@@ -33,7 +33,7 @@ import Atlas
   , atlasPageElements
   , atlasWitness
   )
-import AtlasMerge.LiquidInternal
+import AtlasMerge.Data
   ( AtlasMergeSide (..)
   , AtlasMergeDatum (..)
   , atlasMergeDatumSide
@@ -42,7 +42,7 @@ import AtlasMerge.LiquidInternal
   , mergeDatumInsertion
   )
 import AtlasExtent.Internal (atlasCellOriginRankInsertion)
-import AtlasMerge.Page (AtlasMergePageCell (..), atlasMergePageChain, previousMergeCell)
+import AtlasMerge.Page (AtlasMergePageCell (..), atlasMergePageChain, previousMergeCell, nextMergeCell)
 import AtlasMerge.Resolution (mergeCellContains)
 import AtlasTransposal
   ( AtlasTransposalElement
@@ -61,9 +61,7 @@ import Chain
 import Consolidation
   ( Coconsolidation
   , consolidation
-  , consolidationPreimage
   , op
-  , unop
   )
 import DatraOrdinal
   ( Ordinal
@@ -84,9 +82,7 @@ import Folio
   , appendPage
   , originChain
   , originValue
-  , pageOrder
   , singletonFolio
-  , withFolioMap
   , withPageAt
   )
 import Numeric.Natural (Natural)
@@ -100,7 +96,7 @@ import PageElements
   , withPageElement
   )
 import PageElements.Internal (folioTraceLookup)
-import PageElements.LiquidInternal
+import PageElements.Structure
   ( PageElement (..)
   )
 import qualified Pagination
@@ -160,44 +156,8 @@ collapseToOrigin left =
     (\_ _ _ -> ())
     (const ()))
 
-componentPreimagePosition
-  :: Atlas atlasScope scope cellData origin final
-  -> Natural
-  -> Ordinal
-  -> Maybe Ordinal
-componentPreimagePosition valueAtlas targetPage sourcePosition = do
-  interval <- pageOrder (targetPage - 1) targetPage
-  withFolioMap (atlasFolio valueAtlas) interval $
-    \sourcePage targetPageChain transition -> do
-      sourceIndex <- chainIndex sourcePage sourcePosition
-      let sourceCell = chainObjectAt sourceIndex
-          targetCell = consolidationPreimage (unop transition) sourceCell
-      pure (chainPosition targetPageChain targetCell)
-
--- ALIGN: MERGE-PAGE-NEXT.
-nextMergeCell
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> Natural
-  -> AtlasMergePageCell
-  -> AtlasMergePageCell
-nextMergeCell left right targetPage previous =
-  case previous of
-    AtlasMergeLeftCell (sourcePosition : _) ->
-      maybe
-      previous AtlasMergeLeftCell
-      (componentPreimagePosition left targetPage sourcePosition
-         >>= componentTraceAt left targetPage)
-    AtlasMergeRightCell (sourcePosition : _) ->
-      maybe
-      previous AtlasMergeRightCell
-      (componentPreimagePosition right targetPage sourcePosition
-         >>= componentTraceAt right targetPage)
-    _ -> previous
-
 -- ALIGN: MERGE-PAGE-TRANSITION.
 -- ALIGN: MERGE-PAGE-TRANSITION-INTERPRETATION.
--- ALIGN: MERGE-PAGE-PREIMAGE.
 mergePageTransition
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
   -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal

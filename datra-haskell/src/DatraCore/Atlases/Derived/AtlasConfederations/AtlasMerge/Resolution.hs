@@ -15,11 +15,11 @@ module AtlasMerge.Resolution
 import Atlas.Internal (Atlas, atlasFolio)
 import qualified AtlasExtent.Internal as Extent hiding
   (atlasCellOriginRankInsertion, cellContainsRankImage, cellOriginRankPreimageSound)
-import AtlasMerge.LiquidInternal (AtlasMergeDatum (..))
+import AtlasMerge.Data (AtlasMergeDatum (..))
 import Chain (chainIndex, chainObjectAt, chainPosition, sumChains)
 import Folio (withPageAt)
 import Numeric.Natural (Natural)
-import PageElements.LiquidInternal (PageElement (..))
+import PageElements.Structure (PageElement (..))
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}

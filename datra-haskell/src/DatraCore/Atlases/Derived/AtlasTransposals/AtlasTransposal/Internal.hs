@@ -61,7 +61,7 @@ import PageElements
   , withPageElement
   )
 import Pagination (PaginationMorphism, SomePageElementArrow)
-import PageElements.LiquidInternal (positionAtPage)
+import PageElements.Structure (positionAtPage)
 import Prelude hiding ((.), id)
 
 -- | One object of the finite page-element category belonging to an Atlas.

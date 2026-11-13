@@ -8,7 +8,7 @@
 {-@ qualif MergeAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | Checked tagged ranks and membership-filtered decoding for Atlas merge.
-module AtlasMerge.LiquidInternal
+module AtlasMerge.Data
   ( AtlasMergeSide (..)
   , AtlasMergeDatum (..)
   , atlasMergeDatumSide
@@ -29,7 +29,7 @@ module AtlasMerge.LiquidInternal
 
 import Numeric.Natural (Natural)
 import Dominion.Internal (Dominion, dominion)
-import DomanialInsertion.LiquidInternal (DomanialInsertion (..))
+import DomanialInsertion.Core (DomanialInsertion (..))
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}

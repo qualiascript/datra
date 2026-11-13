@@ -53,6 +53,12 @@ proofGuard = reindexChain (const True) spine (const 0) (const 0) (const ()) (con
 
 PAGE_TRACE_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/TraceChain.hs"
 PAGE_TRACE_GUARDS = {
+    "trace preimages require membership in the source page": """
+{-@ proofGuard :: pages:Folio origin final -> page:Natural -> positions:[Ordinal]
+      -> {result:[Ordinal] | pageTraceContains pages (page + 1) result} @-}
+proofGuard :: Folio origin final -> Natural -> [Ordinal] -> [Ordinal]
+proofGuard = pageTraceNext
+""",
     "trace predecessors require membership in the source page": """
 {-@ proofGuard :: pages:Folio origin final -> page:Natural -> positions:[Ordinal]
       -> {pageTraceContains pages page (previousTrace positions)} @-}
@@ -68,6 +74,16 @@ proofGuard = pageTraceChain
 
 MERGE_PAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs"
 MERGE_PAGE_GUARDS = {
+    "merge preimages cannot use the other component as their inverse": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0}
+      -> positions:{[Ordinal] | pageTraceContains (atlasFolio left) (page - 1) positions}
+      -> {cell:AtlasMergePageCell |
+           previousMergeCell left right page cell == AtlasMergeLeftCell positions} @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> [Ordinal] -> AtlasMergePageCell
+proofGuard left _ page positions =
+  AtlasMergeRightCell (pageTraceNext (atlasFolio left) (page - 1) positions)
+""",
     "merge predecessors reject page zero": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) 0 cell}
@@ -193,7 +209,7 @@ proofGuard valueAtlas occurrence datum witness =
 }
 
 
-RANK_IMAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs"
+RANK_IMAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs"
 RANK_IMAGE_GUARDS = {
     "unranking does not certify a rank outside the Dominion image": """
 {-@
@@ -221,7 +237,7 @@ proofGuard _ _ _ _ = ()
 }
 
 
-MERGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs"
+MERGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs"
 MERGE_GUARDS = {
     "merge unranking requires the datum's cell membership": """
 {-@
@@ -239,7 +255,7 @@ proofGuard = mergeDatumMap (const True) (const False) (const ())
 """,
 }
 
-SEQUENCE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs"
+SEQUENCE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs"
 SEQUENCE_GUARDS = {
     "sequence decoding requires a positive member count": """
 proofGuard :: Natural -> AtlasSequenceDatum object
@@ -333,7 +349,7 @@ proofGuard = cellOriginRankPreimageSound
 }
 
 
-FOLIO_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Folio/LiquidInternal.hs"
+FOLIO_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Folio/Presentation.hs"
 FOLIO_GUARDS = {
     "folio origins reject a zero cached length": """
 proofGuard :: page origin -> SingletonOrigin origin -> FolioData page origin origin
@@ -350,7 +366,7 @@ proofGuard pages = SnocPage (folioLengthData pages) pages
 """,
 }
 
-PAGE_ARROW_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs"
+PAGE_ARROW_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Structure.hs"
 PAGE_ARROW_GUARDS = {
     "arrow position requires the source trace shape": """
 {-@ proofGuard :: arrow:{PageElementArrow scope source target |

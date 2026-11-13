@@ -6,7 +6,7 @@
 {-@ LIQUID "--max-case-expand=8" @-}
 
 -- | Liquid-checked construction of ordinal sums of chains.
-module Chain.LiquidInternal
+module Chain.Sum
   ( sumChains
   ) where
 
@@ -26,7 +26,7 @@ import DatraOrdinal.Internal
   ( Ordinal
   , addOrdinals
   )
-import DatraOrdinal.LiquidInternal
+import DatraOrdinal.Laws
   ( ordinalAddLeftBelow
   , ordinalAddRightBelow
   , ordinalAddRightInjective

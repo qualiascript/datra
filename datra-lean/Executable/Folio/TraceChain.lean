@@ -147,4 +147,48 @@ theorem previous_encodeTrace (pages : FolioData origin final) (valid : pages.Val
   apply Subtype.ext
   exact previousTrace_traceAt pages page value
 
+/-- Lookup on the preceding page followed by the stored chosen preimage. -/
+def nextTraceLookup (pages : FolioData origin final) (page : Nat) (position : Ordinal) :
+    Option (List Ordinal) :=
+  ((pages.pageAt page).chain.chainIndex position).map (fun index =>
+    pages.traceAt (page + 1) ((pages.transport (page + 1) page (Nat.le_succ page)).preimage index.object))
+
+theorem nextTraceLookup_position (pages : FolioData origin final) (page : Nat)
+    (value : (pages.pageAt page).Carrier) :
+    pages.nextTraceLookup page ((pages.pageAt page).chain.position value) =
+      some (pages.traceAt (page + 1)
+        ((pages.transport (page + 1) page (Nat.le_succ page)).preimage value)) := by
+  simp [nextTraceLookup, Chain.chainIndex_position, Chain.chainIndexOf]
+
+-- ALIGN: PE-TRACE-NEXT-VALID.
+def TraceCarrier.next {pages : FolioData origin final} (valid : pages.Valid) (page : Nat)
+    (trace : pages.TraceCarrier page) : pages.TraceCarrier (page + 1) :=
+  ⟨(pages.nextTraceLookup page (traceHead trace.val)).getD trace.val, by
+    obtain ⟨value, rfl⟩ := (pages.encodeTrace_bijective valid page).2 trace
+    change pages.traceLookup (page + 1)
+      (traceHead ((pages.nextTraceLookup page (traceHead (pages.traceAt page value))).getD
+        (pages.traceAt page value))) =
+      some ((pages.nextTraceLookup page (traceHead (pages.traceAt page value))).getD
+        (pages.traceAt page value))
+    rw [traceHead_of_head (pages.traceAt_head page value), nextTraceLookup_position]
+    exact (pages.encodeTrace valid (page + 1)
+      ((pages.transport (page + 1) page (Nat.le_succ page)).preimage value)).property⟩
+
+theorem next_encodeTrace (pages : FolioData origin final) (valid : pages.Valid) (page : Nat)
+    (value : (pages.pageAt page).Carrier) :
+    (pages.encodeTrace valid page value).next valid page =
+      pages.encodeTrace valid (page + 1)
+        ((pages.transport (page + 1) page (Nat.le_succ page)).preimage value) := by
+  apply Subtype.ext
+  change (pages.nextTraceLookup page (traceHead (pages.traceAt page value))).getD _ = _
+  rw [traceHead_of_head (pages.traceAt_head page value), nextTraceLookup_position]
+  rfl
+
+-- ALIGN: PE-TRACE-NEXT-INVERSE.
+theorem TraceCarrier.previous_next {pages : FolioData origin final} (valid : pages.Valid)
+    (page : Nat) (trace : pages.TraceCarrier page) :
+    (trace.next valid page).previous valid page = trace := by
+  obtain ⟨value, rfl⟩ := (pages.encodeTrace_bijective valid page).2 trace
+  rw [next_encodeTrace, previous_encodeTrace, Consolidation.rightInverse]
+
 end Datra.Executable.FolioData

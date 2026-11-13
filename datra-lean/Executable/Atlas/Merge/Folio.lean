@@ -125,8 +125,7 @@ theorem previousPageCell_encode (X Y : Atlas) (n : Nat)
   cases value <;> cases n <;> rfl
 
 def componentPreimageTrace (X : Atlas) (n : Nat) (position : Ordinal) : Option (List Ordinal) :=
-  ((componentPage X n).chain.chainIndex position).map (fun index =>
-    X.pages.traceAt (n + 1) ((X.pages.transport (n + 1) n (Nat.le_succ n)).preimage index.object))
+  X.pages.nextTraceLookup n position
 
 def nextPageCell (X Y : Atlas) (n : Nat) (previous : PageCell) : PageCell :=
   match previous with
@@ -140,7 +139,7 @@ theorem nextPageCell_encode (X Y : Atlas) (n : Nat)
     nextPageCell X Y n (pageEncode X Y n value) =
       pageEncode X Y (n + 1) ((componentTransition X Y n).preimage value) := by
   cases value <;> cases n <;>
-    simp [pageEncode, FolioData.traceAt, nextPageCell, componentPreimageTrace,
+    simp [pageEncode, FolioData.traceAt, nextPageCell, componentPreimageTrace, FolioData.nextTraceLookup,
       componentPage, Chain.chainIndex_position, Chain.chainIndexOf,
       componentTransition, Consolidation.sum]
 

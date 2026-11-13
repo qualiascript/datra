@@ -133,12 +133,12 @@ import Dominion
   , rank
   )
 import OrderedAtlasTransposal (orderedAtlasTransposal)
-import PageElements
+import PageElements.Structure
   ( PageElement
   , PageElementArrow
   , arrowTarget
   )
-import PageElements.LiquidInternal
+import PageElements.Structure
   ( somePageElementPrecedesReflexive
   , somePageElementTransportedReflexive
   )

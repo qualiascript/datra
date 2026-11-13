@@ -28,8 +28,19 @@ module Atlas.Morphism.LiquidInternal
 
 import Atlas.Internal
 import Data.Kind (Type)
-import DomanialInsertion.LiquidInternal
-import PageElements.LiquidInternal
+import DomanialInsertion.Core
+  ( DomanialInsertion (..)
+  )
+import PageElements.Structure
+  ( PageElementCell (..)
+  , PageElement (..)
+  , SomePageElement (..)
+  , PageElementArrow (..)
+  , SomePageElementArrow (..)
+  , somePageElementPrecedes
+  , somePageElementTransported
+  , pageElementArrow
+  )
 
 -- | A canonical page functor and the components of its data natural
 -- transformation, checked relative to particular source and target Atlases.

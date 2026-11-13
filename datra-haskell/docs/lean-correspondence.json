@@ -52,28 +52,28 @@
     },
     {
       "id": "PE-TRIM-IDEMPOTENT",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "trimTraceIdempotent",
       "lean_namespace": "Datra.Executable.Trace",
       "lean_declaration": "trimTraceIdempotent"
     },
     {
       "id": "PE-TRIM-SUFFIX",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "trimTraceIsSuffix",
       "lean_namespace": "Datra.Executable.Trace",
       "lean_declaration": "trimTraceIsSuffix"
     },
     {
       "id": "PE-TRIM-PRESERVES-SUFFIX",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "trimTracePreservesSuffix",
       "lean_namespace": "Datra.Executable.Trace",
       "lean_declaration": "trimTracePreservesSuffix"
     },
     {
       "id": "PE-NORMALIZE-IDEMPOTENT",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "normalizePageElementIdempotentAt",
       "lean_namespace": "Datra.Executable.PageElement",
       "lean_declaration": "normalize_idempotent"
@@ -94,35 +94,35 @@
     },
     {
       "id": "PE-NORMALIZE-ARROW",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "normalizePageElementPreservesArrowAt",
       "lean_namespace": "Datra.Executable.PageElement",
       "lean_declaration": "normalizeArrow"
     },
     {
       "id": "PE-NORMALIZE-REPRESENTATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "normalizePageElementAt",
       "lean_namespace": "Datra.Executable.FolioData.Occurrence",
       "lean_declaration": "normalize_toRaw"
     },
     {
       "id": "PE-ARROW-REPRESENTATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "pageElementTransported",
       "lean_namespace": "Datra.Executable.FolioData",
       "lean_declaration": "traceAt_suffix_iff"
     },
     {
       "id": "PE-ELEMENTS-EQUIVALENCE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "pageElementAt",
       "lean_namespace": "Datra.Executable.FolioData.Occurrence",
       "lean_declaration": "elementsEquivalence"
     },
     {
       "id": "FOLIO-SEMANTIC-LENGTH",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/Presentation.hs",
       "haskell_declaration": "folioLengthData",
       "lean_namespace": "Datra.Executable.FolioData",
       "lean_declaration": "toSemantics_length"
@@ -157,56 +157,56 @@
     },
     {
       "id": "ORDINAL-SUBTRACT-EQUAL",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
       "haskell_declaration": "subtractEqualCoefficients",
       "lean_namespace": "Datra.Executable.Ordinal",
       "lean_declaration": "subtractEqualCoefficients_correct"
     },
     {
       "id": "ORDINAL-SUBTRACT-BETWEEN",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
       "haskell_declaration": "ordinalSubtractBetween",
       "lean_namespace": "Datra.Executable.Ordinal",
       "lean_declaration": "ordinalSubtractBetween_correct"
     },
     {
       "id": "ORDINAL-ADD-LEFT-BELOW",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
       "haskell_declaration": "ordinalAddLeftBelow",
       "lean_namespace": "Datra.Executable.Ordinal",
       "lean_declaration": "ordinalAddLeftBelow"
     },
     {
       "id": "ORDINAL-ADD-RIGHT-BELOW",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
       "haskell_declaration": "ordinalAddRightBelow",
       "lean_namespace": "Datra.Executable.Ordinal",
       "lean_declaration": "ordinalAddRightBelow"
     },
     {
       "id": "ORDINAL-ADD-RIGHT-INJECTIVE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
       "haskell_declaration": "ordinalAddRightInjective",
       "lean_namespace": "Datra.Executable.Ordinal",
       "lean_declaration": "ordinalAddRightInjective"
     },
     {
       "id": "ORDINAL-ADD-SEPARATES-LEFT",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
       "haskell_declaration": "ordinalAddSeparatesLeft",
       "lean_namespace": "Datra.Executable.Ordinal",
       "lean_declaration": "ordinalAddSeparatesLeft"
     },
     {
       "id": "CHAIN-SUM",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Sum.hs",
       "haskell_declaration": "sumChains",
       "lean_namespace": "Datra.Executable.Chain",
       "lean_declaration": "sumChains"
     },
     {
       "id": "CHAIN-SUM-SEMANTICS",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Sum.hs",
       "haskell_declaration": "sumChains",
       "lean_namespace": "Datra.Executable.Chain",
       "lean_declaration": "sumOrderIso"
@@ -227,7 +227,7 @@
     },
     {
       "id": "INSERTION-INJECTIVE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "domanialInsertion",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "injective"
@@ -283,35 +283,35 @@
     },
     {
       "id": "CONSOLIDATION-LEFT-IDENTITY",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Core.hs",
       "haskell_declaration": "composeConsolidations",
       "lean_namespace": "Datra.Executable.Consolidation",
       "lean_declaration": "identity_comp"
     },
     {
       "id": "CONSOLIDATION-RIGHT-IDENTITY",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Core.hs",
       "haskell_declaration": "composeConsolidations",
       "lean_namespace": "Datra.Executable.Consolidation",
       "lean_declaration": "comp_identity"
     },
     {
       "id": "CONSOLIDATION-ASSOC",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Core.hs",
       "haskell_declaration": "composeConsolidations",
       "lean_namespace": "Datra.Executable.Consolidation",
       "lean_declaration": "comp_assoc"
     },
     {
       "id": "PE-TRACE-SUFFIX",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "traceSuffix",
       "lean_namespace": "Datra.Executable.Trace",
       "lean_declaration": "traceSuffix_iff"
     },
     {
       "id": "FOLIO-ORIGIN-UNIQUE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/Presentation.hs",
       "haskell_declaration": "originUniqueData",
       "lean_namespace": "Datra.Executable.FolioData",
       "lean_declaration": "originUnique"
@@ -731,7 +731,7 @@
     },
     {
       "id": "ATLAS-ORDER-TRACE-LOOKUP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "positionAtPage",
       "lean_namespace": "Datra.Executable.FolioData.ValidElement",
       "lean_declaration": "positionAtPage_arrow"
@@ -1508,49 +1508,49 @@
     },
     {
       "id": "INSERTION-RANK-IMAGE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "rankImage",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "rankImage"
     },
     {
       "id": "INSERTION-RANK-PREIMAGE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "rankImagePreimage",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "rankImagePreimage"
     },
     {
       "id": "INSERTION-RANK-PACKAGE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "rankImageInsertion",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "rankImageInsertion"
     },
     {
       "id": "INSERTION-RANK-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "rankImageRoundTrip",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "rankImagePreimage_roundtrip"
     },
     {
       "id": "INSERTION-RANK-SOUND",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "rankImagePreimageSound",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "rankImagePreimage_sound"
     },
     {
       "id": "INSERTION-RANK-IMAGE-EQUIV",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "rankImageInsertion",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "rankImageSemanticsEquiv"
     },
     {
       "id": "INSERTION-RANK-IMAGE-EQUIV-RANK",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "rankImageInsertion",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "rankImageSemanticsEquiv_rank"
@@ -1578,63 +1578,63 @@
     },
     {
       "id": "INSERTION-IDENTITY",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "identityInsertion",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "identity"
     },
     {
       "id": "INSERTION-IDENTITY-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "identityRoundTrip",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "identity_roundtrip"
     },
     {
       "id": "INSERTION-COMPOSITION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "composeInsertions",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "comp"
     },
     {
       "id": "INSERTION-COMPOSITION-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "composeInsertionRoundTrip",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "comp_roundtrip"
     },
     {
       "id": "INSERTION-COMPOSITION-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "composeInsertions",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "comp_toSemantics"
     },
     {
       "id": "INSERTION-PULLBACK-UNRANK",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "pullbackUnrank",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "pullbackUnrank"
     },
     {
       "id": "INSERTION-PULLBACK-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "pullbackRoundTrip",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "pullbackRoundTrip"
     },
     {
       "id": "INSERTION-PULLBACK-DOMINION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "pullbackDominion",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "pullbackDominion"
     },
     {
       "id": "INSERTION-PULLBACK-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "pullbackDominion",
       "lean_namespace": "Datra.Executable.DomanialInsertion",
       "lean_declaration": "pullbackDominion_interpretation"
@@ -1655,14 +1655,14 @@
     },
     {
       "id": "MERGE-DATUM-RANK",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "atlasMergeDatumRank",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "datumRank"
     },
     {
       "id": "MERGE-DATUM-DECODE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "decodeMergeDatumRank",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "decode_rank"
@@ -1809,7 +1809,7 @@
     },
     {
       "id": "MERGE-PAGE-NEXT",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
       "haskell_declaration": "nextMergeCell",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "nextPageCell_encode"
@@ -1830,8 +1830,8 @@
     },
     {
       "id": "MERGE-PAGE-PREIMAGE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
-      "haskell_declaration": "mergePageTransition",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
+      "haskell_declaration": "nextMergeCell",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "pageTransition_preimage_encode"
     },
@@ -2411,196 +2411,196 @@
     },
     {
       "id": "MERGE-DATUM-SIDE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "atlasMergeDatumSide",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "datumSide"
     },
     {
       "id": "MERGE-DATUM-ENCODE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "decodeMergeDatum",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "rank_decode"
     },
     {
       "id": "MERGE-DATUM-LOOKUP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "mergeDatumLookup",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "lookupDatum"
     },
     {
       "id": "MERGE-DATUM-LOOKUP-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "mergeDatumLookupRoundTrip",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "lookupDatum_roundtrip"
     },
     {
       "id": "MERGE-DATUM-LOOKUP-SOUND",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "mergeDatumLookupSound",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "lookupDatum_sound"
     },
     {
       "id": "MERGE-DATUM-RETAG-RANK",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "retagMergeDatum",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "retag_rank"
     },
     {
       "id": "MERGE-DATUM-RETAG-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "retagMergeDatumRoundTrip",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "retag_roundtrip"
     },
     {
       "id": "MERGE-ACCEPTED-DOMINION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "mergeDatumDominion",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "lookupDominion"
     },
     {
       "id": "MERGE-DATA-PREIMAGE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "mergeDatumPreimage",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "preimageDatum"
     },
     {
       "id": "MERGE-DATA-PREIMAGE-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "mergeDatumPreimageRoundTrip",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "preimageDatum_roundtrip"
     },
     {
       "id": "MERGE-DATA-MEMBERSHIP-MAP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "mergeDatumMap",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "mapDatum"
     },
     {
       "id": "MERGE-ACCEPTED-INSERTION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "mergeDatumInsertion",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "acceptedInsertion"
     },
     {
       "id": "MERGE-ACCEPTED-INSERTION-PREIMAGE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
       "haskell_declaration": "mergeDatumInsertion",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "acceptedInsertion_preimage"
     },
     {
       "id": "SEQUENCE-DATUM-MEMBER",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "atlasSequenceDatumMember",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "datumMember"
     },
     {
       "id": "SEQUENCE-DATUM-ORIGIN-RANK",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "atlasSequenceDatumRank",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "datumOriginRank"
     },
     {
       "id": "SEQUENCE-DATUM-RANK",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "sequenceDatumRank",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "datumRank"
     },
     {
       "id": "SEQUENCE-DATUM-ENCODE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "decodeSequenceDatum",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "rank_decode"
     },
     {
       "id": "SEQUENCE-DATUM-DECODE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "decodeSequenceDatumRank",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "decode_rank"
     },
     {
       "id": "SEQUENCE-DATUM-LOOKUP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "sequenceDatumLookup",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "lookupDatum"
     },
     {
       "id": "SEQUENCE-DATUM-LOOKUP-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "sequenceDatumLookupRoundTrip",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "lookupDatum_roundtrip"
     },
     {
       "id": "SEQUENCE-DATUM-LOOKUP-SOUND",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "sequenceDatumLookupSound",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "lookupDatum_sound"
     },
     {
       "id": "SEQUENCE-ACCEPTED-DOMINION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "sequenceDatumDominion",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "lookupDominion"
     },
     {
       "id": "SEQUENCE-DATUM-RETAG",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "retagSequenceDatum",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "retag"
     },
     {
       "id": "SEQUENCE-DATUM-RETAG-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "retagSequenceDatumRoundTrip",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "retag_roundtrip"
     },
     {
       "id": "SEQUENCE-DATA-PREIMAGE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "sequenceDatumPreimage",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "preimageDatum"
     },
     {
       "id": "SEQUENCE-DATA-PREIMAGE-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "sequenceDatumPreimageRoundTrip",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "preimageDatum_roundtrip"
     },
     {
       "id": "SEQUENCE-DATA-MEMBERSHIP-MAP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "sequenceDatumMap",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "mapDatum"
     },
     {
       "id": "SEQUENCE-ACCEPTED-INSERTION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
       "haskell_declaration": "sequenceDatumInsertion",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "acceptedInsertion"
@@ -3174,7 +3174,7 @@
     },
     {
       "id": "FOLIO-LENGTH-POSITIVE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/Presentation.hs",
       "haskell_declaration": "folioLengthData",
       "lean_namespace": "Datra.Executable.FolioData",
       "lean_declaration": "length_positive"
@@ -3384,7 +3384,7 @@
     },
     {
       "id": "PE-TRACE-START",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "traceStartsWith",
       "lean_namespace": "Datra.Executable.Trace",
       "lean_declaration": "traceStartsWith_iff_head"
@@ -3454,14 +3454,14 @@
     },
     {
       "id": "PE-TRACE-POSITION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "tracePosition",
       "lean_namespace": "Datra.Executable.Trace",
       "lean_declaration": "tracePosition_eq_drop"
     },
     {
       "id": "PE-SHAPED-ARROW-POSITION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "pageElementArrowPosition",
       "lean_namespace": "Datra.Executable.PageElement",
       "lean_declaration": "Arrow.positionAtPage"
@@ -3482,7 +3482,7 @@
     },
     {
       "id": "PE-TRIM-EXACT-SUFFIX",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
       "haskell_declaration": "trimTraceToSuffix",
       "lean_namespace": "Datra.Executable.Trace",
       "lean_declaration": "trimTraceToSuffix"
@@ -3591,6 +3591,27 @@
       "haskell_declaration": "previousMergeCell",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "nativePrevious_valid"
+    },
+    {
+      "id": "PE-TRACE-NEXT-VALID",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "pageTraceNext",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "TraceCarrier.next"
+    },
+    {
+      "id": "PE-TRACE-NEXT-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "pageTraceNext",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "TraceCarrier.previous_next"
+    },
+    {
+      "id": "MERGE-PAGE-NEXT-VALID",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
+      "haskell_declaration": "nextMergeCell",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "nativeNext_valid"
     }
   ],
   "modules": [
@@ -3772,8 +3793,8 @@
       "refinement_aliases": []
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/LiquidInternal.hs",
-      "module": "Chain.LiquidInternal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Sum.hs",
+      "module": "Chain.Sum",
       "types": [],
       "reflected": [
         "sumChainPosition",
@@ -3794,8 +3815,8 @@
       "refinement_aliases": []
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/LiquidInternal.hs",
-      "module": "Consolidation.LiquidInternal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Core.hs",
+      "module": "Consolidation.Core",
       "types": [
         "Consolidation",
         "Consolidation",
@@ -3816,7 +3837,8 @@
         "composeMonotone",
         "composePointSurjective",
         "composeFunctions",
-        "consolidationTransport"
+        "consolidationTransport",
+        "transportCoconsolidation"
       ],
       "refinements": [
         "consolidation",
@@ -3830,6 +3852,7 @@
         "coconsolidationComposition",
         "composeMonotone",
         "composePointSurjective",
+        "transportCoconsolidationPreimage",
         "consolidationTransportIdentity",
         "consolidationTransportComposition"
       ],
@@ -3880,8 +3903,8 @@
       ]
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/LiquidInternal.hs",
-      "module": "DatraOrdinal.LiquidInternal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
+      "module": "DatraOrdinal.Laws",
       "types": [],
       "reflected": [
         "consNatural",
@@ -3936,8 +3959,8 @@
       "refinement_aliases": []
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/LiquidInternal.hs",
-      "module": "DomanialInsertion.LiquidInternal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
+      "module": "DomanialInsertion.Core",
       "types": [
         "DomanialInsertion",
         "DomanialInsertion"
@@ -3958,6 +3981,7 @@
         "domanialInsertion",
         "composeInsertionRoundTrip",
         "identityRoundTrip",
+        "identityInsertionApply",
         "pullbackRoundTrip",
         "rankImageInsertion",
         "rankImageRoundTrip",
@@ -4021,8 +4045,8 @@
       "refinement_aliases": []
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/LiquidInternal.hs",
-      "module": "Folio.LiquidInternal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/Presentation.hs",
+      "module": "Folio.Presentation",
       "types": [
         "SingletonOrigin",
         "SingletonOrigin",
@@ -4133,8 +4157,8 @@
       "refinement_aliases": []
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
-      "module": "PageElements.LiquidInternal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
+      "module": "PageElements.Structure",
       "types": [
         "PageElementCell",
         "PageElement",
@@ -5009,8 +5033,8 @@
       "refinement_aliases": []
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/LiquidInternal.hs",
-      "module": "AtlasMerge.LiquidInternal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Data.hs",
+      "module": "AtlasMerge.Data",
       "lean_target": "Datra.Executable.AtlasMerge",
       "coverage": "aligned",
       "types": [
@@ -5050,8 +5074,8 @@
       ]
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
-      "module": "AtlasSequence.LiquidInternal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Data.hs",
+      "module": "AtlasSequence.Data",
       "lean_target": "Datra.Executable.AtlasSequence",
       "coverage": "aligned",
       "types": [
@@ -5164,7 +5188,13 @@
         "folioLookupPreviousPadded",
         "paddedLookupPreviousValid",
         "folioLookupPreviousValid",
-        "pageTracePrevious"
+        "pageTracePrevious",
+        "originTraceUnique",
+        "prefixNextLookup",
+        "genuineNextLookup",
+        "paddedNextLookup",
+        "folioNextLookup",
+        "pageTraceNext"
       ]
     },
     {
@@ -5195,7 +5225,8 @@
         "mergeCellRoundTrip",
         "atlasMergePageChain",
         "mergePageChainFromParts",
-        "previousMergeCell"
+        "previousMergeCell",
+        "nextMergeCell"
       ]
     }
   ],

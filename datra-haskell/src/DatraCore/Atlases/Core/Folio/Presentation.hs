@@ -4,8 +4,8 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 
--- | LiquidHaskell-verified folio representation and coherence primitives.
-module Folio.LiquidInternal
+-- | Typed finite folio presentations and their coherence laws.
+module Folio.Presentation
   ( SingletonOrigin (..)
   , PageOrder (..)
   , pageOrder
@@ -23,7 +23,17 @@ module Folio.LiquidInternal
   , folioMapComposition
   ) where
 
-import Consolidation.LiquidInternal
+import Consolidation.Core
+  ( Consolidation (..)
+  , Coconsolidation (..)
+  , applyConsolidation
+  , identityConsolidation
+  , composeCoconsolidations
+  , coconsolidationIdentity
+  , coconsolidationComposition
+  , op
+  , unop
+  )
 import Numeric.Natural (Natural)
 
 {-@ embed Natural as int @-}

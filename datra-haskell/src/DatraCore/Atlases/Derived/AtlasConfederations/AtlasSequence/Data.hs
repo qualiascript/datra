@@ -7,7 +7,7 @@
 {-@ qualif SequenceAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | Checked finite-member rank encoding and cell-restricted decoding.
-module AtlasSequence.LiquidInternal
+module AtlasSequence.Data
   ( AtlasSequenceDatum (..)
   , atlasSequenceDatumMember
   , atlasSequenceDatumRank
@@ -28,7 +28,7 @@ module AtlasSequence.LiquidInternal
 
 import Numeric.Natural (Natural)
 import Dominion.Internal (Dominion, dominion)
-import DomanialInsertion.LiquidInternal (DomanialInsertion (..))
+import DomanialInsertion.Core (DomanialInsertion (..))
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
