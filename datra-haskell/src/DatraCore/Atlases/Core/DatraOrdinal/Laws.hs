@@ -5,8 +5,8 @@
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--max-case-expand=8" @-}
 
--- | Liquid-only ordinal arithmetic lemmas used by proof-bearing clients.
-module DatraOrdinal.LiquidInternal
+-- | Ordinal arithmetic laws for proof-bearing clients.
+module DatraOrdinal.Laws
   ( ordinalAddLeftBelow
   , ordinalAddRightBelow
   , ordinalAddRightInjective
@@ -41,6 +41,7 @@ ordinalAddLeftBelow
   -> value:{Ordinal | ordinalLT value prefix}
   -> { proof:() | ordinalLT value (addOrdinals prefix suffix) }
 @-}
+-- ALIGN: ORDINAL-ADD-LEFT-BELOW.
 ordinalAddLeftBelow :: Ordinal -> Ordinal -> Ordinal -> ()
 ordinalAddLeftBelow (Ordinal prefix) (Ordinal suffix) (Ordinal value) =
   addCoefficientsLeftBelow prefix suffix value
@@ -102,6 +103,7 @@ ordinalAddRightBelow
   -> { proof:() |
        ordinalLT (addOrdinals prefix left) (addOrdinals prefix right) }
 @-}
+-- ALIGN: ORDINAL-ADD-RIGHT-BELOW.
 ordinalAddRightBelow :: Ordinal -> Ordinal -> Ordinal -> ()
 ordinalAddRightBelow (Ordinal prefix) (Ordinal left) (Ordinal right) =
   addCoefficientsRightBelow prefix left right
@@ -248,6 +250,7 @@ ordinalAddRightInjective
        addOrdinals prefix left == addOrdinals prefix right
          => left == right }
 @-}
+-- ALIGN: ORDINAL-ADD-RIGHT-INJECTIVE.
 ordinalAddRightInjective :: Ordinal -> Ordinal -> Ordinal -> ()
 ordinalAddRightInjective (Ordinal prefix) (Ordinal left) (Ordinal right) =
   addCoefficientsRightInjective prefix left right
@@ -311,6 +314,7 @@ ordinalAddSeparatesLeft
   -> { proof:() |
        leftValue /= addOrdinals prefix rightValue }
 @-}
+-- ALIGN: ORDINAL-ADD-SEPARATES-LEFT.
 ordinalAddSeparatesLeft :: Ordinal -> Ordinal -> Ordinal -> ()
 ordinalAddSeparatesLeft prefix leftValue rightValue =
   case ordinalAddLeftBelow prefix rightValue leftValue of
@@ -346,6 +350,7 @@ ordinalSubtractBetween
        ordinalLT difference suffix
        && addOrdinals prefix difference == value }
 @-}
+-- ALIGN: ORDINAL-SUBTRACT-BETWEEN.
 ordinalSubtractBetween :: Ordinal -> Ordinal -> Ordinal -> Ordinal
 ordinalSubtractBetween
   (Ordinal prefix)
@@ -371,6 +376,7 @@ subtractEqualCoefficients
        canonicalCoefficients difference
        && addCoefficients prefix difference == value }
 @-}
+-- ALIGN: ORDINAL-SUBTRACT-EQUAL.
 subtractEqualCoefficients :: [Natural] -> [Natural] -> [Natural]
 subtractEqualCoefficients [] [] = []
 subtractEqualCoefficients [] (_ : _) = []

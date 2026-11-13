@@ -1,9 +1,4 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RoleAnnotations #-}
-{-# LANGUAGE TypeFamilies #-}
-
--- | Hidden implementation of coalitions and the Coalizing functor.
+-- | Coalitions and the Coalizing functor.
 module Coalition.Internal
   ( CoalitionElement
   , coalitionElement
@@ -19,158 +14,15 @@ module Coalition.Internal
   , coalizingFunctorComposition
   ) where
 
-import Atlas
-  ( Atlas
-  , AtlasObject
-  , AtlasObjectCellData
-  , AtlasObjectPaginationScope
-  , AtlasWitness
-  , atlasOriginCell
-  , mapAtlasData
-  , withAtlasMorphismImage
-  )
-import Atlas.Morphism.Internal (AtlasWitness (..))
-import AtlasCoveredPageElement.Internal
-  ( AtlasCoveredPageElement (..)
-  , AtlasCoverageWitness (..)
-  , atlasCoverageAt
-  , atlasCoverageWitness
-  , findAtlasCoverageRank
-  )
-import AtlasTransposal
-  ( atlasTransposalElement
-  , withAtlasTransposalElement
-  )
-import DomanialInsertion
-  ( DomanialInsertion
-  , applyInsertion
-  , composeInsertions
-  , domanialInsertion
-  , insertionLeftInverse
-  , preimage
-  )
-import Dominion (Dominion, dominion)
-import Numeric.Natural (Natural)
-import PageElements
-  ( PageElement
-  , pageElementArrow
-  , withPageElement
-  )
+import Atlas (Atlas, AtlasObject, AtlasWitness)
+import Coalition.Element.Internal
+  ( CoalitionElement, coalitionElement, coalitionElementRank, withCoalitionElement
+  , coalitionElementAt, coalitionElementCoverageAt, coalition )
+import DomanialInsertion (DomanialInsertion, applyInsertion, insertionLeftInverse)
+import Dominion (Dominion)
 import StableAtlasTransversal
-  ( StableAtlasTransversal
-  , composeStableAtlasTransversals
-  , identityStableAtlasTransversal
-  , mapStableAtlasTransversalCoveredPageElement
-  , mapStableAtlasTransversalData
-  , stableAtlasTransversalPreimage
-  )
-
--- | An element of an Atlas coalition.
---
--- Like 'AtlasCoveredPageElement', this is a dependent page element paired with
--- its datum and the witness that it is retained by Charter. Carrying the value
--- makes elimination total: no unchecked rank ever has to be decoded.
-type role CoalitionElement nominal
-data CoalitionElement atlasObject where
-  CoalitionElement
-    :: PageElement
-         (AtlasObjectPaginationScope atlasObject)
-         object
-    -> AtlasObjectCellData atlasObject object
-    -> AtlasCoverageWitness atlasObject
-    -> CoalitionElement atlasObject
-
--- | Internal checked introduction rule.  Public clients obtain coalition
--- elements through 'coalition'; derived constructions may already possess the
--- exact coverage witness and therefore need not search for it again.
-coalitionElement
-  :: PageElement (AtlasObjectPaginationScope atlasObject) object
-  -> AtlasObjectCellData atlasObject object
-  -> AtlasCoverageWitness atlasObject
-  -> CoalitionElement atlasObject
-coalitionElement = CoalitionElement
-
-coalitionCoverageRank :: AtlasCoverageWitness atlasObject -> Natural
-coalitionCoverageRank (AtlasCoverageWitness _ _ _ originRank) = originRank
-
-instance Eq (CoalitionElement atlasObject) where
-  CoalitionElement _ _ left == CoalitionElement _ _ right =
-    coalitionCoverageRank left == coalitionCoverageRank right
-
-instance Show (CoalitionElement atlasObject) where
-  showsPrec _ (CoalitionElement _ _ coverage) =
-    showString "CoalitionElement "
-      . shows (coalitionCoverageRank coverage)
-
--- | The rank of the underlying datum in the uncharted origin dominion.
-coalitionElementRank :: CoalitionElement atlasObject -> Natural
-coalitionElementRank (CoalitionElement _ _ coverage) =
-  coalitionCoverageRank coverage
-
--- | Eliminate a coalition element at its exact dependent origin cell.
-withCoalitionElement
-  :: CoalitionElement atlasObject
-  -> (forall object.
-       PageElement (AtlasObjectPaginationScope atlasObject) object
-       -> AtlasObjectCellData atlasObject object
-       -> result)
-  -> result
-withCoalitionElement (CoalitionElement origin datum _) useElement =
-  useElement origin datum
-
--- | Read a coalition datum at another occurrence of the canonical origin
--- cell.  The Atlas data action supplies the dependent transport, so no cast
--- or partial pattern match is required.
-coalitionElementAt
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope targetObject
-  -> CoalitionElement (AtlasObject atlasScope scope cellData)
-  -> cellData targetObject
-coalitionElementAt valueAtlas target
-    (CoalitionElement source datum _) =
-  applyInsertion
-    (mapAtlasData valueAtlas (pageElementArrow source target))
-    datum
-
--- | Transport a coalition element to an exact origin occurrence while
--- retaining a coverage witness for the transported datum.
-coalitionElementCoverageAt
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope targetObject
-  -> CoalitionElement (AtlasObject atlasScope scope cellData)
-  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
-coalitionElementCoverageAt valueAtlas target
-    element@(CoalitionElement _ _ coverage) =
-  case coverage of
-    AtlasCoverageWitness region regionDatum _ _ ->
-      atlasCoverageWitness
-        valueAtlas
-        target
-        (coalitionElementAt valueAtlas target element)
-        region
-        regionDatum
-        ()
-
--- | The extent of the charted Atlas.  Its carrier consists precisely of the
--- covered page elements in the original Atlas's origin cell.
-coalition
-  :: Atlas atlasScope scope cellData origin final
-  -> Dominion
-       (CoalitionElement (AtlasObject atlasScope scope cellData))
-coalition valueAtlas =
-  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
-    let coalitionRank (CoalitionElement occurrence datum _) =
-          findAtlasCoverageRank valueAtlas occurrence datum
-
-        coalitionUnrank candidate = do
-          (datum, coverage) <-
-            atlasCoverageAt valueAtlas origin candidate
-          pure
-            (CoalitionElement
-              origin
-              datum
-              coverage)
-    in dominion coalitionRank coalitionUnrank (const ())
+  ( StableAtlasTransversal, composeStableAtlasTransversals, identityStableAtlasTransversal )
+import StableAtlasTransversal.Internal (stableAtlasTransversalCoalitionInsertion)
 
 -- | The object action of the Coalizing functor.
 coalizingFunctorObject
@@ -179,115 +31,16 @@ coalizingFunctorObject
        (CoalitionElement (AtlasObject atlasScope scope cellData))
 coalizingFunctorObject = coalition
 
--- | The component at the source origin, followed by transport from its
--- stable image to the target's canonical origin.  This is the executable
--- Haskell form of Lean's @stableCoalitionMap@.
+-- | The checked coalition insertion retained by the stable arrow. Identity
+-- and composition derive both directions from their constituent certificates.
+-- ALIGN: COALITION-LEFT-INVERSE.
+-- ALIGN: COALITION-STABLE-INTERPRETATION.
 stableCoalitionMap
   :: AtlasWitness source
   -> AtlasWitness target
   -> StableAtlasTransversal source target
-  -> DomanialInsertion
-       (CoalitionElement source)
-       (CoalitionElement target)
-stableCoalitionMap
-  sourceWitness@(AtlasWitness sourceAtlas)
-  targetWitness@(AtlasWitness targetAtlas)
-  stable =
-    domanialInsertion mapElement elementPreimage elementLeftInverse
-  where
-    mapElement
-      (CoalitionElement sourceOrigin sourceDatum sourceCoverage) =
-        case mapStableAtlasTransversalCoveredPageElement stable
-          (AtlasCoveredPageElement
-            sourceOrigin sourceDatum sourceCoverage) of
-          AtlasCoveredPageElement mappedOrigin mappedDatum targetCoverage ->
-            withPageElement
-              (atlasOriginCell targetAtlas) $ \targetOrigin ->
-                let toCanonicalOrigin =
-                      mapAtlasData targetAtlas
-                        (pageElementArrow mappedOrigin targetOrigin)
-                    targetDatum =
-                      applyInsertion toCanonicalOrigin mappedDatum
-                in case targetCoverage of
-                    AtlasCoverageWitness
-                      targetRegion targetRegionDatum _ _ ->
-                        CoalitionElement
-                          targetOrigin
-                          targetDatum
-                          (atlasCoverageWitness
-                            targetAtlas
-                            targetOrigin
-                            targetDatum
-                            targetRegion
-                            targetRegionDatum
-                            ())
-
-    elementPreimage
-      (CoalitionElement targetOrigin targetDatum targetCoverage) =
-      withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
-        withAtlasMorphismImage
-          (mapStableAtlasTransversalData
-            sourceWitness stable sourceOrigin) $ \mappedOrigin component ->
-              let toCanonicalOrigin =
-                    mapAtlasData targetAtlas
-                      (pageElementArrow mappedOrigin targetOrigin)
-                  originComponent =
-                    composeInsertions toCanonicalOrigin component
-              in case preimage originComponent targetDatum of
-                  Nothing -> Nothing
-                  Just sourceDatum ->
-                    case targetCoverage of
-                      AtlasCoverageWitness
-                        targetRegion targetRegionDatum _ _ ->
-                          case stableAtlasTransversalPreimage stable
-                            (atlasTransposalElement
-                              targetWitness targetRegion) of
-                              Nothing -> Nothing
-                              Just sourceRegionElement ->
-                                withAtlasTransposalElement
-                                  sourceRegionElement $ \sourceRegion ->
-                                    withAtlasMorphismImage
-                                      (mapStableAtlasTransversalData
-                                        sourceWitness stable sourceRegion) $
-                                          \mappedRegion regionComponent ->
-                                            let toCoverageRegion =
-                                                  mapAtlasData targetAtlas
-                                                    (pageElementArrow
-                                                      mappedRegion
-                                                      targetRegion)
-                                                coverageComponent =
-                                                  composeInsertions
-                                                    toCoverageRegion
-                                                    regionComponent
-                                            in case preimage
-                                              coverageComponent
-                                              targetRegionDatum of
-                                                Nothing -> Nothing
-                                                Just sourceRegionDatum ->
-                                                  Just
-                                                    (CoalitionElement
-                                                      sourceOrigin
-                                                      sourceDatum
-                                                      (atlasCoverageWitness
-                                                        sourceAtlas
-                                                        sourceOrigin
-                                                        sourceDatum
-                                                        sourceRegion
-                                                        sourceRegionDatum
-                                                        ()))
-
-    elementLeftInverse
-      (CoalitionElement sourceOrigin sourceDatum _) =
-        withAtlasMorphismImage
-          (mapStableAtlasTransversalData
-            sourceWitness stable sourceOrigin) $ \mappedOrigin component ->
-              withPageElement
-                (atlasOriginCell targetAtlas) $ \targetOrigin ->
-                  insertionLeftInverse component sourceDatum `seq`
-                  insertionLeftInverse
-                    (mapAtlasData targetAtlas
-                      (pageElementArrow mappedOrigin targetOrigin))
-                    (applyInsertion component sourceDatum)
+  -> DomanialInsertion (CoalitionElement source) (CoalitionElement target)
+stableCoalitionMap _ _ = stableAtlasTransversalCoalitionInsertion
 
 -- | The arrow action of the Coalizing functor.
 coalizingFunctorHom
@@ -300,6 +53,7 @@ coalizingFunctorHom
 coalizingFunctorHom = stableCoalitionMap
 
 -- | Pointwise identity law for the Coalizing functor.
+-- ALIGN: COALITION-IDENTITY.
 coalizingFunctorIdentity
   :: AtlasWitness object
   -> CoalitionElement object
@@ -309,6 +63,7 @@ coalizingFunctorIdentity witness = insertionLeftInverse
         witness witness identityStableAtlasTransversal)
 
 -- | Pointwise composition law for the Coalizing functor.
+-- ALIGN: COALITION-COMPOSITION.
 coalizingFunctorComposition
   :: AtlasWitness source
   -> AtlasWitness middle

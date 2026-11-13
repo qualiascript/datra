@@ -2,6 +2,8 @@
 #include "../../../LiquidPlugin.h"
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+{-@ qualif ReindexAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 {-@ LIQUID "--prune-unsorted" @-}
 
 -- | Hidden chain representation and proof-bearing operations.
@@ -20,6 +22,7 @@ module Chain.Internal
   , chainPositionInjective
   , chainPositionSurjective
   , chain
+  , reindexChain
   , compareInChain
   , hasArrow
   , spine
@@ -32,7 +35,7 @@ import DatraOrdinal.Internal
   , canonicalCoefficients
   , ordinalLT
   )
-import DatraOrdinal.LiquidInternal (ordinalLongNotBelowOmega)
+import DatraOrdinal.Laws (ordinalLongNotBelowOmega)
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
@@ -130,7 +133,64 @@ chain
   -> Chain object
 chain = Chain
 
+-- | Transport a chain along an explicitly checked carrier equivalence.
+-- ALIGN: CHAIN-REINDEX.
+{-@ reindexChain :: targetContains:(b -> Bool) -> source:Chain a -> forward:(a -> {value:b | targetContains value}) -> backward:({value:b | targetContains value} -> a)
+      -> (value:a -> {backward (forward value) == value})
+      -> (value:{b | targetContains value} -> {forward (backward value) == value})
+      -> Chain {value:b | targetContains value} @-}
+reindexChain :: (b -> Bool) -> Chain a -> (a -> b) -> (b -> a) -> (a -> ()) -> (b -> ()) -> Chain b
+reindexChain targetContains source forward backward leftInverse rightInverse =
+  Chain
+    (chainOrderType source)
+    (reindexedPosition targetContains source backward)
+    (reindexedLookup targetContains source forward)
+    (reindexedBelow targetContains source backward)
+    (reindexedInjective targetContains source forward backward rightInverse)
+    (reindexedSurjective targetContains source forward backward leftInverse)
+
+{-@ reindexedBelow :: targetContains:(b -> Bool) -> source:Chain a -> backward:({value:b | targetContains value} -> a) -> value:{b | targetContains value}
+      -> {chainOrdinalLT (reindexedPosition targetContains source backward value) (chainOrderType source)} @-}
+reindexedBelow :: (b -> Bool) -> Chain a -> (b -> a) -> b -> ()
+reindexedBelow targetContains source backward value = chainPositionBelow source (backward value)
+
+{-@ reindexedInjective :: targetContains:(b -> Bool) -> source:Chain a -> forward:(a -> {value:b | targetContains value}) -> backward:({value:b | targetContains value} -> a)
+      -> (value:{b | targetContains value} -> {forward (backward value) == value})
+      -> first:{b | targetContains first} -> second:{b | targetContains second}
+      -> {reindexedPosition targetContains source backward first == reindexedPosition targetContains source backward second
+           => first == second} @-}
+reindexedInjective :: (b -> Bool) -> Chain a -> (a -> b) -> (b -> a) -> (b -> ()) -> b -> b -> ()
+reindexedInjective targetContains source _ backward rightInverse first second =
+  chainPositionInjective source (backward first) (backward second) `seq`
+    rightInverse first `seq` rightInverse second
+
+{-@ reindexedPosition :: targetContains:(b -> Bool) -> source:Chain a -> backward:({value:b | targetContains value} -> a) -> {value:b | targetContains value} -> Ordinal @-}
+{-@ reflect reindexedPosition @-}
+reindexedPosition :: (b -> Bool) -> Chain a -> (b -> a) -> b -> Ordinal
+reindexedPosition targetContains source backward value = chainPosition source (backward value)
+
+{-@ reindexedLookup :: targetContains:(b -> Bool) -> source:Chain a -> forward:(a -> {value:b | targetContains value}) -> Ordinal -> Maybe {value:b | targetContains value} @-}
+{-@ reflect reindexedLookup @-}
+reindexedLookup :: (b -> Bool) -> Chain a -> (a -> b) -> Ordinal -> Maybe b
+reindexedLookup targetContains source forward position = case chainLookup source position of
+  Nothing -> Nothing
+  Just value -> Just (forward value)
+
+{-@ reindexedSurjective :: targetContains:(b -> Bool) -> source:Chain a -> forward:(a -> {value:b | targetContains value}) -> backward:({value:b | targetContains value} -> a)
+      -> (value:a -> {backward (forward value) == value})
+      -> position:Ordinal
+      -> {chainOrdinalLT position (chainOrderType source) =>
+           positionMatches (reindexedPosition targetContains source backward) position
+             (reindexedLookup targetContains source forward position)} @-}
+reindexedSurjective :: (b -> Bool) -> Chain a -> (a -> b) -> (b -> a) -> (a -> ()) -> Ordinal -> ()
+reindexedSurjective targetContains source _ _ leftInverse position =
+  chainPositionSurjective source position `seq`
+    case chainLookup source position of
+      Nothing -> ()
+      Just value -> leftInverse value
+
 -- | Refine an arbitrary ordinal to an in-bounds chain index.
+{-@ reflect chainIndex @-}
 {-@
 chainIndex
   :: valueChain:Chain object
@@ -141,6 +201,9 @@ chainIndex
        && chainOrdinalLT position (chainOrderType valueChain)
        && chainPosition valueChain (chainIndexObject index) == position })
 @-}
+-- ALIGN: CHAIN-INDEX-LOOKUP.
+-- ALIGN: CHAIN-INDEX-ROUNDTRIP.
+-- ALIGN: CHAIN-INDEX-BOUNDS.
 chainIndex :: Chain object -> Ordinal -> Maybe (ChainIndex object)
 chainIndex valueChain position
   | not (chainOrdinalLT position (chainOrderType valueChain)) = Nothing
@@ -163,6 +226,7 @@ chainIndexOf
             (chainIndexPosition index)
             (chainOrderType valueChain) }
 @-}
+-- ALIGN: CHAIN-LOOKUP-POSITION.
 chainIndexOf :: Chain object -> object -> ChainIndex object
 chainIndexOf valueChain objectValue =
   chainPositionBelow valueChain objectValue `seq`
@@ -172,8 +236,9 @@ chainIndexOf valueChain objectValue =
       objectValue
 
 -- | Retrieve the object at a certified chain index.
+{-@ reflect chainObjectAt @-}
 chainObjectAt :: ChainIndex object -> object
-chainObjectAt = chainIndexObject
+chainObjectAt index = chainIndexObject index
 
 compareInChain :: Chain object -> object -> object -> Ordering
 compareInChain valueChain left right =
@@ -183,6 +248,7 @@ hasArrow :: Chain object -> object -> object -> Bool
 hasArrow valueChain source target =
   compareInChain valueChain source target /= GT
 
+-- ALIGN: CHAIN-SPINE.
 spine :: Chain Natural
 spine =
   Chain

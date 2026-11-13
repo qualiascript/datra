@@ -5,6 +5,10 @@ module Dominion
   , unrank
   , dominionCoherence
   , dominion
+  , MembershipDominion
+  , membershipDominion
+  , dominionMembership
+  , memberDominion
   , CountableSet
   , elementAt
   , embed
@@ -14,6 +18,10 @@ import Dominion.Internal
   ( CountableSet
   , Dominion
   , dominion
+  , MembershipDominion
+  , membershipDominion
+  , dominionMembership
+  , memberDominion
   , dominionCoherence
   , elementAt
   , embed

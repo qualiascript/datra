@@ -7,6 +7,7 @@
 module Charter
   ( ChartedCellData
   , ChartedAtlasObject
+  , chartCellData
   , chartedCellDataValue
   , chartAtlas
   , chartAtlasMap

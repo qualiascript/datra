@@ -104,11 +104,13 @@ atlasTransversalMapAtlasMapHom =
   atlasMapHom . atlasTransversalHom . atlasTransversalMapTransversal
 
 -- | Identity in the category of Atlas transversal maps.
+-- ALIGN: ATLAS-TRANSVERSAL-MAP-IDENTITY.
 identityAtlasTransversalMap :: AtlasTransversalMap object object
 identityAtlasTransversalMap =
   AtlasTransversalMap identityAtlasTransversal
 
 -- | Compose Atlas transversal maps in categorical order.
+-- ALIGN: ATLAS-TRANSVERSAL-MAP-COMPOSITION.
 composeAtlasTransversalMaps
   :: AtlasTransversalMap middle target
   -> AtlasTransversalMap source middle
@@ -259,6 +261,7 @@ data AtlasTransversalMapInclusionFunctor =
     }
 
 -- | The Atlas Transversal Map Inclusion Functor from the Lean definition.
+-- ALIGN: ATLAS-TRANSVERSAL-MAP-INCLUSION.
 atlasTransversalMapInclusionFunctor
   :: AtlasTransversalMapInclusionFunctor
 atlasTransversalMapInclusionFunctor =

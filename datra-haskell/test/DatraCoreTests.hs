@@ -1,4 +1,5 @@
 {-# LANGUAGE QualifiedDo #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Main (main) where
@@ -12,6 +13,7 @@ import EmptyAtlas
 import AtlasCoveredPageElement
 import AtlasMap
 import AtlasMerge
+import AtlasSequence
 import AtlasTransposal
 import AtlasTransversal
 import AtlasTransversalMap
@@ -22,6 +24,7 @@ import Charter
 import Coalition
 import Consolidation
 import qualified Control.Category as Category
+import qualified Control.Exception as Exception
 import DataTransformation
 import DataTransformationMap
 import DataTransversal
@@ -47,10 +50,12 @@ import StableConfederalDataMonoidal
 import StableDataTransversal
 
 import Data.Maybe (isJust, isNothing)
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Void (Void, absurd)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import System.Timeout (timeout)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testProperty)
 import Test.Tasty.HUnit (assertBool, testCase)
@@ -73,10 +78,19 @@ testTree =
         , testCase "consolidation transport" testConsolidationTransport
         , testCase "folio" testFolio
         , testCase "page elements" testPageElements
+        , testCase "page lookup owning folio" testPageLookupOwner
         , testCase "pagination" testPagination
         , testCase "atlas" testAtlas
         , testCase "empty atlas" testEmptyAtlas
+        , testCase "atlas cell membership" testAtlasMembership
         , testCase "atlas merge" testAtlasMerge
+        , testCase "atlas merge origin ranks" testAtlasMergeOriginRanks
+        , testCase "atlas merge rejects off-image unranking" testAtlasMergeOffImageUnrank
+        , testCase "atlas merge transfinite pages" testAtlasMergeTransfinitePages
+        , testCase "atlas merge chosen preimages" testAtlasMergeChosenPreimages
+        , testCase "atlas sequence merge origin ranks" testAtlasSequenceOriginRanks
+        , testCase "atlas sequence transfinite pages" testAtlasSequenceTransfinitePages
+        , testCase "atlas sequence unequal member depths" testAtlasSequenceUnequalDepths
         , testCase "atlas confederation" testAtlasConfederation
         , testCase "atlas federation" testAtlasFederation
         , testCase "atlas map" testAtlasMap
@@ -86,11 +100,15 @@ testTree =
         , testCase "forget stable confederal data" testForgetStableConfederalData
         , testCase "stable confederal Kleisli syntax" testStableConfederalKleisliSyntax
         , testCase "charter" testCharter
+        , testCase "charter rejects false inverse candidates" testCharterPartialInverse
+        , testCase "charter counit rejects uncovered inverse" testCharterCounitUncoveredInverse
+        , testCase "charter map rejects uncovered source inverse" testCharterMapUncoveredInverse
         , testCase "ordered atlas transposal" testOrderedAtlasTransposal
         , testCase "atlas transversal" testAtlasTransversal
         , testCase "stable atlas transversal" testStableAtlasTransversal
         , testCase "coalition" testCoalition
         , testCase "domanial inclusion" testDomanialInclusion
+        , testCase "domanial inclusion rejects uncovered inverse" testDomanialInclusionUncoveredInverse
         ]
     , testGroup "properties"
         [ testProperty "finite ordinals round-trip naturals" propFiniteOrdinalRoundTrip
@@ -241,6 +259,26 @@ testRankedDominionAtlas = do
   assert "ranked dominion coalition elements retain target ranks"
     (coalitionElementRank
       (rankedDominionCoalitionElement naturals 37) == 37)
+  let included = dominionAtlas naturals
+      traversal = rankedDominionInsertionTraversal naturals identityInsertion
+      coalitionMap = stableCoalitionMap
+        (atlasWitness included) (atlasWitness valueAtlas) traversal
+      sourceElement = dominionCoalitionElement naturals 7
+  assert "coalition inverses recover images across different folio depths"
+    (preimage coalitionMap (applyInsertion coalitionMap sourceElement) == Just sourceElement)
+  let double = domanialInsertion (* 2)
+        (\value -> if even value then Just (value `div` 2) else Nothing)
+        (const ())
+      composed = composeStableAtlasTransversals traversal
+        (dominionMap naturals naturals double)
+      composedMap = stableCoalitionMap
+        (atlasWitness included) (atlasWitness valueAtlas) composed
+      targetElement = applyInsertion composedMap sourceElement
+  assert "composed coalition maps preserve their supplied inverses"
+    (coalitionElementRank targetElement == 14
+      && preimage composedMap targetElement == Just sourceElement)
+  assert "composed coalition inverses reject values outside the image"
+    (isNothing (preimage composedMap (rankedDominionCoalitionElement naturals 3)))
 
 testChainedDominionAtlas :: IO ()
 testChainedDominionAtlas = do
@@ -579,6 +617,31 @@ testPageElements =
                     "page element arrows compose totally through a typed boundary"
                     (fiveToOrigin == directFiveToOrigin)
       _ -> fail "test setup failed: expected cell occurrences"
+
+testPageLookupOwner :: IO ()
+testPageLookupOwner = do
+  let atLeastTwo = consolidation (>= 2) (\value -> if value then 2 else 0)
+        (\_ _ right -> right >= 2) (const ())
+      alternate = appendPage
+        (appendPage (singletonFolio unitChain) boolChain (Consolidation.op collapseBool))
+        spine (Consolidation.op atLeastTwo)
+      flags pages page = pageElements pages $ \category ->
+        case (pageElementIndex category page (finiteOrdinal 1),
+              pageElementIndex category 1 (finiteOrdinal 1),
+              pageElementIndex category 0 (finiteOrdinal 0)) of
+          (Just sourceIndex, Just targetIndex, Just originIndex) ->
+            withPageElement (pageElement sourceIndex) $ \source ->
+              withPageElement (pageElement targetIndex) $ \target ->
+                withPageElement (pageElement originIndex) $ \origin ->
+                  pure (pageElementTransported source target, pageElementTransported source origin)
+          _ -> fail "test setup failed: expected page lookup indices"
+  assert "owner fixtures have the same number of pages"
+    (folioLength threePageFolio == folioLength alternate)
+  mapM_ (\page -> do
+    original <- flags threePageFolio page
+    changed <- flags alternate page
+    assert "same coordinates and origin retain different owning-folio transports"
+      (original == (True, True) && changed == (False, True))) [2, 3, 100]
 
 testPagination :: IO ()
 testPagination =
@@ -1049,6 +1112,40 @@ testStableConfederalKleisliSyntax = do
   assert "Kleisli syntax composition is associative"
     (evaluate leftAssociated == evaluate rightAssociated)
 
+testAtlasMembership :: IO ()
+testAtlasMembership =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    let membership = atlasMembership (\_ (TestCellData value) -> even value)
+        dataAt _ = dominion
+          (\(TestCellData value) -> value)
+          (\value -> if even value then Just (TestCellData value) else Nothing)
+          (const ())
+        mapData _ = domanialInsertion
+          (\(TestCellData value) -> TestCellData value)
+          (\(TestCellData value) -> Just (TestCellData value))
+          (const ())
+    in atlas valuePagination (atlasRestrictedDataAction (paginationPageElements valuePagination) membership dataAt mapData)
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \valueAtlas -> do
+        mapM_ (\page ->
+          case pageElementIndex (atlasPageElements valueAtlas) page (finiteOrdinal 0) of
+            Nothing -> fail "missing restricted Atlas cell"
+            Just index -> withPageElement (pageElement index) $ \cell -> do
+              assert "Atlas construction retains accepted data"
+                (atlasAcceptsDatum valueAtlas cell (TestCellData 2))
+              assert "Atlas construction retains rejected data under padding"
+                (not (atlasAcceptsDatum valueAtlas cell (TestCellData 3)))
+              assert "restricted data lookup retains its membership filter"
+                (unrank (atlasDataAt valueAtlas cell) 2 == Just (TestCellData 2)
+                  && isNothing (unrank (atlasDataAt valueAtlas cell) 3))
+              assert "coherence preserves accepted data"
+                (normalizeAtlasDatum valueAtlas cell (TestCellData 2) == TestCellData 2)
+          ) [0, 1, 7]
+        withAtlasCellDominion (atlasExtent valueAtlas) $ \_ extent ->
+          assert "existential extent retains its carrier predicate"
+            (dominionMembership extent (TestCellData 2)
+              && not (dominionMembership extent (TestCellData 3))
+              && isNothing (unrank (memberDominion extent) 3))
+
 -- The page offset makes it observable whether 'atlasDataAt' normalized its
 -- input before consulting the canonical data assignment.
 testAtlasDataAt
@@ -1133,7 +1230,7 @@ testAtlasDisjointLaw _ _ _ _ _ _ _ = ()
 testAtlas :: IO ()
 testAtlas =
   pagination (singletonFolio unitChain) $ \valuePagination ->
-    let dataAction = atlasDataAction testAtlasDataAt testAtlasMapData
+    let dataAction = atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData
     in atlas
       valuePagination
       dataAction
@@ -1201,7 +1298,7 @@ testAtlas =
                     \extentCell extentDominion ->
                       assert "atlas extent is the origin dominion"
                         ( pageElementPage extentCell == 0
-                          && rank extentDominion (TestCellData 5) == 5
+                          && rank (memberDominion extentDominion) (TestCellData 5) == 5
                         )
                   case chainIndex
                     (atlasTerritoryChain valueAtlas)
@@ -1214,14 +1311,14 @@ testAtlas =
                           \territoryCell territoryDominion ->
                             assert "atlas territory uses the final genuine page"
                               ( pageElementPage territoryCell == 0
-                                && rank territoryDominion (TestCellData 5) == 5
+                                && rank (memberDominion territoryDominion) (TestCellData 5) == 5
                               )
                       withAtlasCellDominion
                         (atlasRegion valueAtlas territoryIndex) $
                           \regionCell regionDominion ->
                             assert "atlas regions are territory members"
                               ( pageElementPage regionCell == 0
-                                && rank regionDominion (TestCellData 5) == 5
+                                && rank (memberDominion regionDominion) (TestCellData 5) == 5
                               )
                   assert "atlas element ordering compares canonical cells"
                     (not (atlasElementLT valueAtlas padded origin))
@@ -1432,17 +1529,288 @@ testAtlas =
                                     (pageElementPage mapped == 0)
             _ -> fail "test setup failed: expected atlas elements"
 
+-- Check the raw-arrow precondition used by the verified extent helper,
+-- including for occurrences on the padded spine.
+checkAtlasOriginArrow
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> IO ()
+checkAtlasOriginArrow valueAtlas source =
+  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
+    assert "a checked cell has an arrow to its Atlas origin"
+      (pageElementPage origin <= pageElementPage source
+        && pageElementTransported source origin)
+
+-- The source cell ranks its data locally, while a merge stores their ranks
+-- after transport to the origin. Its inverse deliberately returns candidates
+-- outside its image, so membership must check the candidate's forward image.
+checkMergeOriginRanks
+  :: Atlas sourceAtlasScope sourceScope TestCellData () Bool
+  -> Atlas targetAtlasScope targetScope targetData targetOrigin targetFinal
+  -> OrderedAtlasTransposal
+       (AtlasObject sourceAtlasScope sourceScope TestCellData)
+       (AtlasObject targetAtlasScope targetScope targetData)
+  -> (Natural -> Natural)
+  -> IO ()
+checkMergeOriginRanks sourceAtlas targetAtlas inclusion encodeRank =
+  mapM_ check [(1, 6), (2, 12), (5, 12)]
+  where
+    check (pageNumber, expectedRank) =
+      case pageElementIndex (atlasPageElements sourceAtlas) pageNumber (finiteOrdinal 0) of
+        Nothing -> fail "missing source cell"
+        Just sourceIndex -> withPageElement (pageElement sourceIndex) $ \source ->
+          withAtlasMorphismImage
+            (mapOrderedAtlasTransposalData (atlasWitness sourceAtlas) inclusion source) $
+              \target component -> do
+                checkAtlasOriginArrow sourceAtlas source
+                checkAtlasOriginArrow targetAtlas target
+                let targetDominion = atlasDataAt targetAtlas target
+                    sourceDatum = TestCellData 3
+                    image = applyInsertion component sourceDatum
+                assert "merge inclusion stores the transported origin rank"
+                  (rank targetDominion image == encodeRank expectedRank)
+                assert "merge and sequence retain membership at assembly"
+                  (atlasAcceptsDatum targetAtlas target image)
+                assert "merge inclusion recovers data from their origin ranks"
+                  (preimage component image == Just sourceDatum)
+                assert "merge membership rejects a false inverse candidate"
+                  (isNothing (unrank targetDominion (encodeRank 1)))
+                withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
+                  withAtlasMorphismImage
+                    (mapOrderedAtlasTransposalData (atlasWitness sourceAtlas) inclusion sourceOrigin) $
+                      \targetOrigin originComponent -> do
+                        let sourceTransport = mapAtlasData sourceAtlas (pageElementArrow source sourceOrigin)
+                            targetTransport = mapAtlasData targetAtlas (pageElementArrow target targetOrigin)
+                            targetOriginDominion = atlasDataAt targetAtlas targetOrigin
+                        assert "merge inclusion commutes with transport to the extent"
+                          (rank targetOriginDominion (applyInsertion targetTransport image)
+                            == rank targetOriginDominion
+                              (applyInsertion originComponent (applyInsertion sourceTransport sourceDatum)))
+
+testAtlasMergeOriginRanks :: IO ()
+testAtlasMergeOriginRanks = withPartialCoverageAtlas $ \input ->
+  atlasMerge input input $ \merged -> do
+    checkMergeOriginRanks input merged
+      (atlasMergeLeftOrderedTransposal input input merged) (2 *)
+    checkMergeOriginRanks input merged
+      (atlasMergeRightOrderedTransposal input input merged) (\n -> 2 * n + 1)
+
+testAtlasSequenceOriginRanks :: IO ()
+testAtlasSequenceOriginRanks = withPartialCoverageAtlas $ \input ->
+  let member = atlasSequenceMember input
+  in mapM_ (\count ->
+      let members = member :| replicate (fromIntegral count - 1) member
+      in atlasSequence members $ \merged ->
+        mapM_ (\memberIndex -> checkMergeOriginRanks input merged
+          (atlasSequenceMemberOrderedTransposal members memberIndex input merged)
+          (\n -> count * n + memberIndex)) [0 .. count - 1]) [1, 2, 3, 5]
+
+testAtlasSequenceTransfinitePages :: IO ()
+testAtlasSequenceTransfinitePages =
+  let naturals = dominion id Just (const ())
+      input = rankedDominionAtlas naturals
+      member = atlasSequenceMember input
+      members = member :| [member, member]
+      starts = [finiteOrdinal 0, omega, addOrdinals omega omega]
+  in atlasSequence members $ \sequenceAtlas ->
+    mapM_ (\page -> do
+      mapM_ (\(memberIndex, start) ->
+        mapM_ (\valueRank ->
+          let position = addOrdinals start (finiteOrdinal valueRank)
+              expectedRank = 3 * valueRank + memberIndex
+          in case pageElementIndex (atlasPageElements sequenceAtlas) page position of
+            Nothing -> fail "missing transfinite sequence cell"
+            Just index -> withPageElement (pageElement index) $ \cell -> do
+              let valueDominion = atlasDataAt sequenceAtlas cell
+              assert "sequence lookup retains its full-spine position"
+                (pageElementPage cell == page && pageElementPosition cell == position)
+              assert "sequence cell decodes exactly its member's origin rank"
+                (fmap (rank valueDominion) (unrank valueDominion expectedRank) == Just expectedRank
+                  && isNothing (unrank valueDominion (expectedRank + 3)))
+              case pageElementIndex (atlasPageElements input) (page - 1) (finiteOrdinal valueRank) of
+                Nothing -> fail "missing sequence inclusion source"
+                Just sourceIndex -> withPageElement (pageElement sourceIndex) $ \source -> do
+                  checkAtlasOriginArrow input source
+                  checkAtlasOriginArrow sequenceAtlas cell
+                  let sourceObject = atlasTransposalElement (atlasWitness input) source
+                      targetObject = atlasTransposalElement (atlasWitness sequenceAtlas) cell
+                      inclusion = atlasSequenceMemberOrderedTransposal members memberIndex input sequenceAtlas
+                  assert "sequence inclusion agrees with transfinite page lookup"
+                    (mapOrderedAtlasTransposalObject inclusion sourceObject == targetObject)
+                  assert "sequence inclusion inverse recovers normalized padding objects"
+                    (orderedAtlasTransposalPreimage inclusion targetObject == Just sourceObject)
+                  mapM_ (\otherMember ->
+                    if otherMember == memberIndex then pure () else
+                      assert "sequence inclusion inverse rejects another member"
+                        (isNothing (orderedAtlasTransposalPreimage
+                          (atlasSequenceMemberOrderedTransposal members otherMember input sequenceAtlas)
+                          targetObject))) [0, 1, 2]
+                  case pageElementIndex (atlasPageElements input) (page - 1) (finiteOrdinal (valueRank + 1)) of
+                    Nothing -> fail "missing sequence inclusion order comparison"
+                    Just nextIndex -> withPageElement (pageElement nextIndex) $ \next ->
+                      assert "sequence inclusion preserves order within a transfinite member block"
+                        (atlasTransposalElementLT targetObject
+                          (mapOrderedAtlasTransposalObject inclusion
+                            (atlasTransposalElement (atlasWitness input) next)))) [0, 7])
+        (zip [0 ..] starts)
+      assert "sequence lookup rejects the complete ordinal-sum upper bound"
+        (isNothing (pageElementIndex (atlasPageElements sequenceAtlas) page
+          (addOrdinals (addOrdinals omega omega) omega)))) [2, 5]
+
+-- A shallow member is already padded on a genuine page of the deeper sequence.
+-- Its data insertion must retain membership there, not confuse that page with
+-- the source's distinct final cell or another member's cell.
+testAtlasSequenceUnequalDepths :: IO ()
+testAtlasSequenceUnequalDepths = withPartialCoverageAtlas $ \deep ->
+  let shallow = rankedDominionAtlas (dominion id Just (const ()))
+      members = atlasSequenceMember shallow :| [atlasSequenceMember deep, atlasSequenceMember shallow]
+  in atlasSequence members $ \sequenceAtlas -> do
+    checkMergeOriginRanks deep sequenceAtlas
+      (atlasSequenceMemberOrderedTransposal members 1 deep sequenceAtlas) (\n -> 3 * n + 1)
+    mapM_ (\(tag, start) -> do
+      let inclusion = atlasSequenceMemberOrderedTransposal members tag shallow sequenceAtlas
+          position = addOrdinals start (finiteOrdinal 7)
+          expectedRank = 21 + tag
+      mapM_ (\page ->
+        case (pageElementIndex (atlasPageElements shallow) (page - 1) (finiteOrdinal 7),
+              pageElementIndex (atlasPageElements sequenceAtlas) page position) of
+          (Just sourceIndex, Just targetIndex) ->
+            withPageElement (pageElement sourceIndex) $ \source ->
+              withPageElement (pageElement targetIndex) $ \target -> do
+                let targetDominion = atlasDataAt sequenceAtlas target
+                    sourceObject = atlasTransposalElement (atlasWitness shallow) source
+                    included = mapOrderedAtlasTransposalObject inclusion sourceObject
+                assert "sequence padding retains the shallow member's rank"
+                  (fmap (rank targetDominion) (unrank targetDominion expectedRank) == Just expectedRank)
+                assert "sequence inclusion inverse handles unequal member depths"
+                  (orderedAtlasTransposalPreimage inclusion included == Just sourceObject)
+                withAtlasMorphismImage
+                  (mapOrderedAtlasTransposalData (atlasWitness shallow) inclusion source) $
+                    \imageCell component ->
+                      case unrank (atlasDataAt shallow source) 0 of
+                        Nothing -> fail "missing ranked source datum"
+                        Just datum -> do
+                          let image = applyInsertion component datum
+                          assert "sequence padded inclusion retains rank and data inverse"
+                            (rank (atlasDataAt sequenceAtlas imageCell) image == expectedRank
+                              && preimage component image == Just datum)
+          _ -> fail "missing mixed-depth sequence cell") [3, 6])
+      [(0, finiteOrdinal 0), (2, addOrdinals omega (finiteOrdinal 2))]
+
+-- This Dominion obeys its round trip but also decodes odd ranks. Both the
+-- merged extent and the included cells must reject those off-image decodings.
+testAtlasMergeOffImageUnrank :: IO ()
+testAtlasMergeOffImageUnrank =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    let dataAt _ = dominion
+          (\(TestCellData value) -> 2 * value)
+          (\valueRank -> Just (TestCellData (valueRank `div` 2)))
+          (const ())
+    in atlas valuePagination (atlasDataAction (paginationPageElements valuePagination) dataAt testAtlasMapData)
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \input -> do
+        atlasMerge input input checkMerged
+        let member = atlasSequenceMember input
+        atlasSequence (member :| [member]) checkMerged
+  where
+    checkMerged
+      :: Atlas atlasScope scope cellData origin final
+      -> IO ()
+    checkMerged merged = do
+      withPageElement (atlasOriginCell merged) $ \origin -> do
+        let valueDominion = atlasDataAt merged origin
+        assert "merged extent rejects off-image ranks from either member"
+          (all (isNothing . unrank valueDominion) [2, 3])
+        assert "merged extent retains genuine ranks from either member"
+          (all (isJust . unrank valueDominion) [0, 1, 4, 5])
+      mapM_ (checkCell merged) [(0, 2, 4), (1, 3, 5)]
+
+    checkCell
+      :: Atlas atlasScope scope cellData origin final
+      -> (Natural, Natural, Natural)
+      -> IO ()
+    checkCell merged (position, rejectedRank, retainedRank) =
+      case pageElementIndex (atlasPageElements merged) 1 (finiteOrdinal position) of
+        Nothing -> fail "missing merged member cell"
+        Just index -> withPageElement (pageElement index) $ \cell -> do
+          let valueDominion = atlasDataAt merged cell
+          assert "merged cell rejects off-image unranking"
+            (isNothing (unrank valueDominion rejectedRank))
+          assert "merged cell retains an in-image rank"
+            (isJust (unrank valueDominion retainedRank))
+
 testAtlasMerge :: IO ()
 testAtlasMerge = do
   testSingletonAtlasMerge
   testDeepAtlasMerge
+
+testAtlasMergeChosenPreimages :: IO ()
+testAtlasMergeChosenPreimages =
+  let chooseTrue = consolidation (const ()) (const True) (\_ _ _ -> ()) (const ())
+      chooseSeven = consolidation (> 0) (\value -> if value then 7 else 0)
+        (\_ _ right -> right > 0) (const ())
+      shortPages = appendPage (singletonFolio unitChain) boolChain (Consolidation.op chooseTrue)
+      longPages = appendPage shortPages spine (Consolidation.op chooseSeven)
+  in pagination longPages $ \leftPagination ->
+    atlas leftPagination
+      (atlasDataAction (paginationPageElements leftPagination) testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \left ->
+      pagination shortPages $ \rightPagination ->
+        atlas rightPagination
+          (atlasDataAction (paginationPageElements rightPagination) testAtlasDataAt testAtlasMapData)
+          testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \right ->
+          let pages = atlasMergeFolio left right
+              check (sourcePage, targetPage, sourcePosition, expectedPosition) =
+                case pageOrder sourcePage targetPage of
+                  Nothing -> fail "test setup failed: reversed preimage interval"
+                  Just interval -> withFolioMap pages interval $ \sourceChain targetChain transition ->
+                    case chainIndex sourceChain sourcePosition of
+                      Nothing -> fail "test setup failed: missing preimage source"
+                      Just index -> do
+                        let source = chainObjectAt index
+                            chosen = consolidationPreimage (Consolidation.unop transition) source
+                            returned = applyConsolidation (Consolidation.unop transition) chosen
+                        assert "merge retains the component's chosen preimage"
+                          (chainPosition targetChain chosen == expectedPosition)
+                        assert "merge chosen preimage returns to the original cell"
+                          (chainPosition sourceChain returned == sourcePosition)
+          in mapM_ check
+            [ (1, 2, finiteOrdinal 0, finiteOrdinal 1)
+            , (1, 2, finiteOrdinal 1, finiteOrdinal 3)
+            , (2, 3, finiteOrdinal 1, finiteOrdinal 7)
+            , (2, 3, finiteOrdinal 3, addOrdinals omega (finiteOrdinal 1))
+            , (1, 3, finiteOrdinal 0, finiteOrdinal 7)
+            , (3, 4, addOrdinals omega (finiteOrdinal 1), addOrdinals omega (finiteOrdinal 1))
+            ]
+
+testAtlasMergeTransfinitePages :: IO ()
+testAtlasMergeTransfinitePages =
+  let naturals = dominion id Just (const ())
+      input = rankedDominionAtlas naturals
+  in atlasMerge input input $ \merged ->
+    mapM_ (\page -> do
+      mapM_ (\(position, expectedRank) ->
+        case pageElementIndex (atlasPageElements merged) page position of
+          Nothing -> fail "missing transfinite merge cell"
+          Just index -> withPageElement (pageElement index) $ \cell -> do
+            let valueDominion = atlasDataAt merged cell
+            assert "merge lookup retains the requested full-spine position"
+              (pageElementPage cell == page && pageElementPosition cell == position)
+            assert "transfinite merge cell contains exactly its tagged origin rank"
+              ( fmap (rank valueDominion) (unrank valueDominion expectedRank) == Just expectedRank
+                && isNothing (unrank valueDominion (expectedRank + 2))
+              ))
+        [(finiteOrdinal 7, 14), (addOrdinals omega (finiteOrdinal 7), 15)]
+      assert "merge lookup rejects the ordinal-sum upper bound"
+        (isNothing (pageElementIndex (atlasPageElements merged) page (addOrdinals omega omega))))
+      [2, 5]
 
 testSingletonAtlasMerge :: IO ()
 testSingletonAtlasMerge =
   pagination (singletonFolio unitChain) $ \leftPagination ->
     atlas
       leftPagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements leftPagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -1450,7 +1818,7 @@ testSingletonAtlasMerge =
         pagination (singletonFolio unitChain) $ \rightPagination ->
           atlas
             rightPagination
-            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            (atlasDataAction (paginationPageElements rightPagination) testAtlasDataAt testAtlasMapData)
             testAtlasIdentityLaw
             testAtlasCompositionLaw
             testAtlasCoherenceLaw
@@ -1592,7 +1960,7 @@ testDeepAtlasMerge =
   pagination threePageFolio $ \leftPagination ->
     atlas
       leftPagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements leftPagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -1600,7 +1968,7 @@ testDeepAtlasMerge =
         pagination (singletonFolio unitChain) $ \rightPagination ->
           atlas
             rightPagination
-            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            (atlasDataAction (paginationPageElements rightPagination) testAtlasDataAt testAtlasMapData)
             testAtlasIdentityLaw
             testAtlasCompositionLaw
             testAtlasCoherenceLaw
@@ -1637,7 +2005,7 @@ testAtlasConfederation =
   pagination (singletonFolio unitChain) $ \leftPagination ->
     atlas
       leftPagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements leftPagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -1645,7 +2013,7 @@ testAtlasConfederation =
         pagination (singletonFolio unitChain) $ \rightPagination ->
           atlas
             rightPagination
-            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            (atlasDataAction (paginationPageElements rightPagination) testAtlasDataAt testAtlasMapData)
             testAtlasIdentityLaw
             testAtlasCompositionLaw
             testAtlasCoherenceLaw
@@ -1813,7 +2181,7 @@ testAtlasMap =
   pagination (singletonFolio unitChain) $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -1861,14 +2229,7 @@ testAtlasMap =
                   valueAtlas
                   valueAtlas
                   ordered
-                  (\_ targetOccurrence targetDatum ->
-                    atlasCoverageWitness
-                      valueAtlas
-                      targetOccurrence
-                      targetDatum
-                      targetOccurrence
-                      targetDatum
-                      ())
+                  atlasCoveredPageElementWitness
               transversalMap = atlasTransversalMap transversal
               composedTransversalMap =
                 Category.id Category.. transversalMap
@@ -1905,7 +2266,7 @@ testNavigationAndExpedition =
   pagination (singletonFolio unitChain) $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2245,12 +2606,21 @@ testForgetStableConfederalData =
             "Atlas federation forgetting composes Yoneda, restriction, and Lan"
             (federationArrow `seq` True)
 
+onePageChartInverse
+  :: Atlas atlasScope scope TestCellData () ()
+  -> PageElement scope object
+  -> TestCellData object
+  -> Maybe (ChartedCellData (AtlasObject atlasScope scope TestCellData) object)
+onePageChartInverse valueAtlas occurrence datum =
+  Just (chartCellData valueAtlas occurrence datum
+    (atlasCoverageWitness valueAtlas occurrence datum occurrence datum ()) ())
+
 testCharter :: IO ()
 testCharter =
   pagination (singletonFolio unitChain) $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2268,18 +2638,11 @@ testCharter =
                 valueAtlas
                 valueAtlas
                 ordered
-                (\_ targetOccurrence targetDatum ->
-                  atlasCoverageWitness
-                    valueAtlas
-                    targetOccurrence
-                    targetDatum
-                    targetOccurrence
-                    targetDatum
-                    ())
+                atlasCoveredPageElementWitness
             chartedMap = charterFunctorObject valueAtlas
-            mapped = charterFunctorHom witness witness transversal
+            mapped = charterFunctorHom witness witness transversal (onePageChartInverse valueAtlas) (\_ _ -> ())
             lifted = chartLift valueMap witness transversal
-            lowered = chartLower valueAtlas lifted
+            lowered = chartLower valueAtlas (onePageChartInverse valueAtlas) (\_ _ -> ()) lifted
         in withAtlasMapExtent chartedMap $ \extent chartedDom covers ->
           case
             [ candidate
@@ -2307,7 +2670,7 @@ testCharter =
               withAtlasMorphismImage
                 (mapAtlasTransversalData
                   (atlasWitness (chartAtlas valueAtlas))
-                  (chartCounit valueAtlas)
+                  (chartCounit valueAtlas (onePageChartInverse valueAtlas) (\_ _ -> ()))
                   extent) $ \target component ->
                     let TestCellData counitValue =
                           applyInsertion component charted
@@ -2336,12 +2699,257 @@ testCharter =
                           applyInsertion component (TestCellData 7)
                     in assert "chartLower is inverse to chartLift on data"
                         (loweredValue == 7)
+-- The intermediate even cell contains 2, but its final region contains only
+-- multiples of 4. The other branch contains odd numbers. This inverse obeys
+-- its left-inverse law while returning an arbitrary value outside its image.
+coverageTestMapData
+  :: PageElementArrow scope source target
+  -> DomanialInsertion (TestCellData source) (TestCellData target)
+coverageTestMapData = coverageTestMapDataWithFinalMultiplier 2
+
+coverageTestMapDataWithFinalMultiplier
+  :: Natural
+  -> PageElementArrow scope source target
+  -> DomanialInsertion (TestCellData source) (TestCellData target)
+coverageTestMapDataWithFinalMultiplier finalMultiplier pageArrow =
+  let source = arrowSource pageArrow
+      target = arrowTarget pageArrow
+      evenBranch = pageElementPosition source == finiteOrdinal 0
+      (multiplier, offset)
+        | pageElementPage target == 0 && pageElementPage source > 0 =
+            if evenBranch
+              then (if pageElementPage source == 2 then 2 * finalMultiplier else 2, 0)
+              else (2, 1)
+        | pageElementPage target == 1 && pageElementPage source == 2
+            && evenBranch = (finalMultiplier, 0)
+        | otherwise = (1, 0)
+  in domanialInsertion
+      (\(TestCellData value) -> TestCellData (multiplier * value + offset))
+      (\(TestCellData value) -> Just (TestCellData
+        (if value >= offset && (value - offset) `mod` multiplier == 0
+          then (value - offset) `div` multiplier
+          else 1)))
+      (const ())
+
+withPartialCoverageAtlas
+  :: (forall atlasScope scope. Atlas atlasScope scope TestCellData () Bool -> IO ())
+  -> IO ()
+withPartialCoverageAtlas useAtlas =
+  let pages = appendPage
+        (appendPage (singletonFolio unitChain) boolChain (Consolidation.op collapseBool))
+        boolChain
+        (Consolidation.op (consolidation id id (\_ _ right -> right) (const ())))
+      dataAt _ = dominion
+        (\(TestCellData value) -> value)
+        (Just . TestCellData)
+        (const ())
+  in pagination pages $ \valuePagination ->
+    atlas valuePagination (atlasDataAction (paginationPageElements valuePagination) dataAt coverageTestMapData)
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw
+      testAtlasDisjointLaw useAtlas
+
+wideCoverageWitness
+  :: Atlas atlasScope scope TestCellData () Bool
+  -> PageElement scope object
+  -> TestCellData object
+  -> AtlasCoverageWitness (AtlasObject atlasScope scope TestCellData)
+wideCoverageWitness valueAtlas occurrence datum@(TestCellData value) =
+  let (position, regionValue)
+        | pageElementPage occurrence == 0 =
+            if even value then (0, value `div` 2) else (1, (value - 1) `div` 2)
+        | otherwise = (if pageElementPosition occurrence == finiteOrdinal 0 then 0 else 1, value)
+  in case pageElementIndex (atlasPageElements valueAtlas) 2 (finiteOrdinal position) of
+    Nothing -> error "missing final region in wide coverage fixture"
+    Just index -> withPageElement (pageElement index) $ \region ->
+      atlasCoverageWitness valueAtlas occurrence datum region (TestCellData regionValue) ()
+
+coverageWideningComponent
+  :: PageElement scope object
+  -> DomanialInsertion (TestCellData object) (TestCellData object)
+coverageWideningComponent occurrence
+  | pageElementPage occurrence == 2 && pageElementPosition occurrence == finiteOrdinal 0 =
+      domanialInsertion
+        (\(TestCellData value) -> TestCellData (2 * value))
+        (\(TestCellData value) ->
+          if even value then Just (TestCellData (value `div` 2)) else Nothing)
+        (const ())
+  | otherwise = identityInsertion
+
+testCharterMapUncoveredInverse :: IO ()
+testCharterMapUncoveredInverse =
+  withPartialCoverageAtlas $ \sourceAtlas ->
+    atlas (atlasPagination sourceAtlas)
+      (atlasDataAction (atlasPageElements sourceAtlas) testAtlasDataAt (coverageTestMapDataWithFinalMultiplier 1))
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \targetAtlas ->
+        let sourceWitness = atlasWitness sourceAtlas
+            targetWitness = atlasWitness targetAtlas
+            rawHom = atlasHom (atlasMorphism (atlasMorphismAction identityAtlasObjectMap
+              sourceAtlas targetAtlas id coverageWideningComponent (\_ _ -> ()) (\_ _ -> ())))
+            -- Exercise complete-action materialization through both identity
+            -- and composite syntax, including its inverse composition.
+            hom = composeAtlasHoms identityAtlasHom (composeAtlasHoms rawHom identityAtlasHom)
+            transposal = atlasTransposal sourceWitness hom
+              (\element -> withAtlasTransposalElement element $ \occurrence ->
+                Just (atlasTransposalElement sourceWitness occurrence)) (const ())
+            ordered = orderedAtlasTransposal transposal (\_ _ -> ())
+            transversal = atlasTransversal sourceAtlas targetAtlas ordered $ \covered ->
+              withTransversalImage sourceAtlas ordered covered (wideCoverageWitness targetAtlas)
+            sourceChart = chartAtlasMap sourceAtlas
+            mapped = chartMap sourceWitness targetWitness transversal
+              (partialChartInverse sourceAtlas) (\_ _ -> ())
+        in case pageElementIndex (atlasPageElements sourceAtlas) 0 (finiteOrdinal 0) of
+          Nothing -> fail "missing source origin"
+          Just index -> withPageElement (pageElement index) $ \origin ->
+            withAtlasMorphismImage (mapAtlasTransversalMapData sourceChart mapped origin) $ \target component -> do
+              let targetDatum = chartCellData targetAtlas target (TestCellData 2)
+                    (wideCoverageWitness targetAtlas target (TestCellData 2)) ()
+              assert "a covered target does not justify an uncovered source preimage"
+                (isNothing (preimage component targetDatum))
+              case partialChartInverse sourceAtlas origin (TestCellData 7) of
+                Nothing -> fail "missing covered source datum"
+                Just sourceDatum ->
+                  assert "the complete charted component recovers its source"
+                    (fmap chartedCellDataValue (preimage component (applyInsertion component sourceDatum))
+                      == Just (TestCellData 7))
+              case pageElementIndex (atlasPageElements sourceAtlas) 5 (finiteOrdinal 0) of
+                Nothing -> fail "missing padded final cell"
+                Just paddedCellIndex -> withPageElement (pageElement paddedCellIndex) $ \padded ->
+                  case partialChartInverse sourceAtlas padded (TestCellData 1) of
+                    Nothing -> fail "missing covered padded datum"
+                    Just paddedDatum ->
+                      withAtlasMorphismImage (mapAtlasTransversalMapData sourceChart mapped padded) $
+                        \paddedTarget paddedComponent -> do
+                          assert "the complete charted action normalizes padding"
+                            (pageElementPage paddedTarget == 2
+                              && chartedCellDataValue (applyInsertion paddedComponent paddedDatum) == TestCellData 2)
+                          assert "the complete charted inverse recovers padded data"
+                            (fmap chartedCellDataValue
+                              (preimage paddedComponent (applyInsertion paddedComponent paddedDatum)) == Just (TestCellData 1))
+
+testCharterPartialInverse :: IO ()
+testCharterPartialInverse =
+  withPartialCoverageAtlas $ \valueAtlas ->
+        let charted = chartAtlas valueAtlas
+        in case pageElementIndex (atlasPageElements valueAtlas) 1 (finiteOrdinal 0) of
+          Nothing -> fail "missing intermediate even cell"
+          Just sourceIndex -> withPageElement (pageElement sourceIndex) $ \source -> do
+            let decoded =
+                  [ value
+                  | candidate <- [0 .. 50]
+                  , Just datum <- [unrank (atlasDataAt charted source) candidate]
+                  , let TestCellData value = chartedCellDataValue datum
+                  ]
+            assert "covered intermediate values are enumerated" (0 `elem` decoded && 2 `elem` decoded)
+            assert "an arbitrary inverse result does not fabricate coverage"
+              (all even decoded && 1 `notElem` decoded)
+            case pageElementIndex (atlasPageElements valueAtlas) 0 (finiteOrdinal 0) of
+              Nothing -> fail "missing origin cell"
+              Just originIndex -> withPageElement (pageElement originIndex) $ \origin ->
+                case partialChartInverse valueAtlas origin (TestCellData 1) of
+                  Nothing -> fail "missing covered odd origin datum"
+                  Just target -> do
+                    let component = mapAtlasData charted (pageElementArrow source origin)
+                    assert "charted insertion rejects a false preimage of covered target data"
+                      (isNothing (preimage component target))
+                    mapM_ (\datum ->
+                      assert "charted insertion recovers covered source data"
+                        (fmap chartedCellDataValue (preimage component (applyInsertion component datum))
+                          == Just (chartedCellDataValue datum)))
+                      [datum | candidate <- [0 .. 50],
+                        Just datum <- [unrank (atlasDataAt charted source) candidate]]
+
+-- A total inverse for the test atlas's covered sub-dominion, with explicit
+-- final-region evidence for every accepted value.
+partialChartInverse
+  :: Atlas atlasScope scope TestCellData () Bool
+  -> PageElement scope object
+  -> TestCellData object
+  -> Maybe (ChartedCellData (AtlasObject atlasScope scope TestCellData) object)
+partialChartInverse valueAtlas occurrence datum@(TestCellData value) = do
+  (position, regionValue) <- selectedRegion
+  regionIndex <- pageElementIndex (atlasPageElements valueAtlas) 2 (finiteOrdinal position)
+  withPageElement (pageElement regionIndex) $ \region ->
+    Just (chartCellData valueAtlas occurrence datum
+      (atlasCoverageWitness valueAtlas occurrence datum region (TestCellData regionValue) ()) ())
+  where
+    evenBranch = pageElementPosition occurrence == finiteOrdinal 0
+    selectedRegion
+      | pageElementPage occurrence == 0 =
+          if value `mod` 4 == 0 then Just (0, value `div` 4)
+          else if odd value then Just (1, (value - 1) `div` 2)
+          else Nothing
+      | pageElementPage occurrence == 1 && evenBranch =
+          if even value then Just (0, value `div` 2) else Nothing
+      | otherwise = Just (if evenBranch then 0 else 1, value)
+
+testCharterCounitUncoveredInverse :: IO ()
+testCharterCounitUncoveredInverse =
+  withPartialCoverageAtlas $ \valueAtlas ->
+    withPageElement (atlasOriginCell valueAtlas) $ \origin ->
+      withAtlasMorphismImage
+        (mapAtlasTransversalData (atlasWitness (chartAtlas valueAtlas))
+          (chartCounit valueAtlas (partialChartInverse valueAtlas) (\_ _ -> ())) origin) $ \target component ->
+        case unrank (atlasDataAt valueAtlas target) 2 of
+          Nothing -> fail "missing uncovered origin datum"
+          Just uncovered -> do
+            let coveredValues =
+                  [ datum
+                  | candidate <- [0 .. 100]
+                  , Just datum <- [unrank (atlasDataAt (chartAtlas valueAtlas) origin) candidate]
+                  ]
+            assert "the counit regression contains covered data" (not (null coveredValues))
+            mapM_ (\datum -> assert "the chart counit inverse recovers covered images"
+              (fmap chartedCellDataValue (preimage component (applyInsertion component datum))
+                == Just (chartedCellDataValue datum))) coveredValues
+            rejected <- timeout 200000 (Exception.evaluate (isNothing (preimage component uncovered)))
+            assert "the chart counit inverse terminates outside the covered image"
+              (rejected == Just True)
+
+testDomanialInclusionUncoveredInverse :: IO ()
+testDomanialInclusionUncoveredInverse =
+  withPartialCoverageAtlas $ \targetAtlas ->
+    let targetCoalition = coalition targetAtlas
+        coveredZero =
+          [ element
+          | candidate <- [0 .. 50]
+          , Just element <- [unrank targetCoalition candidate]
+          , coalitionElementRank element == 0
+          ]
+        unitDominion = dominion (const 0)
+          (\n -> if n == 0 then Just () else Nothing) (const ())
+        sourceAtlas = dominionAtlas unitDominion
+    in case coveredZero of
+      [] -> fail "missing covered origin zero"
+      zero : _ -> do
+        let insertion = domanialInsertion (const zero)
+              (\element -> if coalitionElementRank element == 0 then Just () else Nothing)
+              (const ())
+            arrow = coaToDomInc unitDominion (atlasWitness targetAtlas) insertion
+              (\_ (TestCellData value) -> if value == 0 then Just () else Nothing)
+              (\_ _ -> ())
+        withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
+          withAtlasMorphismImage
+            (mapStableAtlasTransversalData (atlasWitness sourceAtlas) arrow sourceOrigin) $
+              \targetOrigin component ->
+                case unrank (atlasDataAt targetAtlas targetOrigin) 2 of
+                  Nothing -> fail "missing uncovered origin datum"
+                  Just uncovered -> do
+                    case unrank (atlasDataAt sourceAtlas sourceOrigin) 0 of
+                      Nothing -> fail "missing source unit datum"
+                      Just sourceDatum ->
+                        assert "the adjunction component recovers its covered image"
+                          (fmap dominionCellDataValue
+                            (preimage component (applyInsertion component sourceDatum)) == Just ())
+                    rejected <- timeout 200000 (Exception.evaluate (isNothing (preimage component uncovered)))
+                    assert "the adjunction inverse terminates outside the covered image"
+                      (rejected == Just True)
+
 testOrderedAtlasTransposal :: IO ()
 testOrderedAtlasTransposal =
   pagination threePageFolio $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2390,7 +2998,7 @@ testAtlasTransversal =
   pagination threePageFolio $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2416,14 +3024,7 @@ testAtlasTransversal =
                         valueAtlas
                         valueAtlas
                         ordered
-                        (\_ targetOccurrence targetDatum ->
-                          atlasCoverageWitness
-                            valueAtlas
-                            targetOccurrence
-                            targetDatum
-                            targetOccurrence
-                            targetDatum
-                            ())
+                        atlasCoveredPageElementWitness
                     composed = transversal Category.. transversal
                     covered =
                       atlasCoveredPageElement
@@ -2446,7 +3047,7 @@ testStableAtlasTransversal =
   pagination threePageFolio $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2461,17 +3062,10 @@ testStableAtlasTransversal =
                   valueAtlas
                   valueAtlas
                   ordered
-                  (\_ targetOccurrence targetDatum ->
-                    atlasCoverageWitness
-                      valueAtlas
-                      targetOccurrence
-                      targetDatum
-                      targetOccurrence
-                      targetDatum
-                      ())
+                  atlasCoveredPageElementWitness
               stable =
                 stableAtlasTransversal
-                  valueAtlas valueAtlas transversal ()
+                  valueAtlas valueAtlas transversal () Just (const ())
               composed = stable Category.. stable
               originElement = atlasTransposalElement witness origin
               mappedOrigin =
@@ -2485,7 +3079,7 @@ testCoalition =
   pagination (singletonFolio unitChain) $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2499,17 +3093,10 @@ testCoalition =
                 valueAtlas
                 valueAtlas
                 ordered
-                (\_ targetOccurrence targetDatum ->
-                  atlasCoverageWitness
-                    valueAtlas
-                    targetOccurrence
-                    targetDatum
-                    targetOccurrence
-                    targetDatum
-                    ())
+                atlasCoveredPageElementWitness
             stable =
               stableAtlasTransversal
-                valueAtlas valueAtlas transversal ()
+                valueAtlas valueAtlas transversal () Just (const ())
             doublingAction =
               atlasMorphismAction
                 identityAtlasObjectMap
@@ -2525,23 +3112,27 @@ testCoalition =
                 (atlasHom (atlasMorphism doublingAction))
                 Just
                 (const ())
+            doublingOrdered = orderedAtlasTransposal doublingTransposal (\_ _ -> ())
             doublingTransversal =
               atlasTransversal
                 valueAtlas
                 valueAtlas
-                (orderedAtlasTransposal
-                  doublingTransposal (\_ _ -> ()))
-                (\_ targetOccurrence targetDatum ->
-                  atlasCoverageWitness
-                    valueAtlas
-                    targetOccurrence
-                    targetDatum
-                    targetOccurrence
-                    targetDatum
-                    ())
+                doublingOrdered
+                (\covered -> withTransversalImage valueAtlas doublingOrdered covered $
+                  \occurrence datum -> atlasCoverageWitness valueAtlas occurrence datum occurrence datum ())
             doublingStable =
               stableAtlasTransversal
                 valueAtlas valueAtlas doublingTransversal ()
+                recoverHalvedCoalition (const ())
+            recoverHalvedCoalition target
+              | odd (coalitionElementRank target) = Nothing
+              | otherwise = seek 0
+              where
+                wanted = coalitionElementRank target `div` 2
+                seek candidate =
+                  case unrank valueCoalition candidate of
+                    Just source | coalitionElementRank source == wanted -> Just source
+                    _ -> seek (candidate + 1)
             valueCoalition = coalition valueAtlas
         in case
           [ candidate
@@ -2617,6 +3208,7 @@ testDomanialInclusion = do
         domIncCoaHomEquivTo naturals includedWitness includedIdentity
       restoredArrow =
         domIncCoaHomEquivFrom naturals includedWitness adjointArrow
+          (\_ -> Just . dominionCellDataValue) (\_ _ -> ())
       mappedSeven = applyInsertion adjointArrow 7
 
   assert "the forward adjunction map lands in the target coalition"

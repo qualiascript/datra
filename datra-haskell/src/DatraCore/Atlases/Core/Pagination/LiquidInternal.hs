@@ -12,7 +12,6 @@ module Pagination.LiquidInternal
   , paginationMorphism
   , mapPaginationElementData
   , mapPaginationArrowData
-  , withPageElementArrowData
   , identityPaginationMorphismData
   , composePaginationMorphismsData
   , normalizationPaginationMorphismData
@@ -21,7 +20,20 @@ module Pagination.LiquidInternal
 
 import Data.Kind (Type)
 import Numeric.Natural (Natural)
-import PageElements.LiquidInternal
+import PageElements.Structure
+  ( PageElementCell (..)
+  , PageElement (..)
+  , SomePageElement (..)
+  , PageElementArrow (..)
+  , SomePageElementArrow (..)
+  , somePageElement
+  , somePageElementPrecedes
+  , somePageElementTransported
+  , somePageElementArrow
+  , normalizeSomePageElementAt
+  , normalizePageElementIdempotentAt
+  , normalizeSomePageElementPreservesArrowAt
+  )
 
 -- | A functor between two thin page-element categories. The second field is
 -- the remaining functoriality obligation: the object map must carry every
@@ -152,14 +164,6 @@ mapPaginationArrowData morphism sourceArrow =
       mappedTarget = mapPaginationObject morphism target
   in case paginationMorphismPreservesArrow morphism source target of
       () -> somePageElementArrow mappedSource mappedTarget
-
--- | Eliminate the existential endpoint identities of a mapped arrow.
-withPageElementArrowData
-  :: SomePageElementArrow scope
-  -> (forall source target.
-        PageElementArrow scope source target -> result)
-  -> result
-withPageElementArrowData = withPageElementArrow
 
 -- | The identity object map.
 {-@ reflect identityPaginationObject @-}

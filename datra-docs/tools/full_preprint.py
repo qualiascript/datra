@@ -17,24 +17,32 @@ LEAN_ASCII = str.maketrans({
     "β": "beta",
     "ι": "iota",
     "ω": "omega",
+    "Σ": "Sigma",
     "ᵒ": "o",
     "ᵖ": "p",
     "₀": "_0",
     "₁": "_1",
     "₂": "_2",
     "₃": "_3",
+    "ₗ": "_lex",
     "←": "<-",
     "→": "->",
+    "↓": "down",
+    "↔": "<->",
     "↪": ">->",
     "∀": "forall ",
     "∃": "exists ",
+    "∅": "empty",
+    "∈": "in",
     "∘": " o ",
     "∧": " /\\ ",
+    "∨": " \\/ ",
     "≃": "Equiv",
     "≅": "Iso",
     "≌": "EquivCat",
     "≠": "!=",
     "≤": "<=",
+    "≪": "<<",
     "≫": ">>",
     "⊆": "subset",
     "⊔": "+",
@@ -45,12 +53,12 @@ LEAN_ASCII = str.maketrans({
     "▸": "transport",
     "⟨": "<|",
     "⟩": "|>",
-    "⟶": "-->",
+    "⟶": "~>",  # Keep category arrows distinct from Lean line comments.
     "⥤": "==>",
     "⦃": "{{",
     "⦄": "}}",
     "𝟙": "Id",
-    "𝟭": "Unit",
+    "𝟭": "IdFunctor",
 })
 
 
@@ -91,14 +99,13 @@ LISTINGS_PREAMBLE = r"""
   numberstyle=\tiny\color{gray},
   numbersep=8pt,
   xleftmargin=2.2em,
-  framexleftmargin=1.8em,
+  framexleftmargin=3em,
   breaklines=true,
   breakatwhitespace=false,
   columns=fullflexible,
   keepspaces=true,
   showstringspaces=false,
-  tabsize=2,
-  captionpos=b
+  tabsize=2
 }
 """
 
@@ -110,13 +117,10 @@ LEAN_APPENDIX = r"""
 The following is an ASCII rendering of the complete Lean source corresponding
 to the mathematical development above.  It replaces Lean's conventional
 Unicode surface notation solely for portable typesetting; the checked source
-file remains \texttt{datra.lean}.
+modules are imported by \texttt{datra.lean}. Source-file labels identify each
+module in dependency order.
 
-\lstinputlisting[
-  style=leanSource,
-  caption={Complete Lean formalization of DaTra},
-  label={lst:datra-lean}
-]{datra_code_ascii.lean}
+\lstinputlisting[style=leanSource]{datra_code_ascii.lean}
 """
 
 

@@ -5,7 +5,7 @@
 
 -- | LiquidHaskell-verified consolidation representation, operations, and
 -- carrier transport.
-module Consolidation.LiquidInternal
+module Consolidation.Core
   ( Consolidation (..)
   , consolidationMonotone
   , consolidation
@@ -25,10 +25,13 @@ module Consolidation.LiquidInternal
   , composeCoconsolidations
   , coconsolidationIdentity
   , coconsolidationComposition
+  , coconsolidationMonotone
   , ConsolidationTransport (..)
   , consolidationTransport
   , consolidationTransportIdentity
   , consolidationTransportComposition
+  , transportCoconsolidation
+  , transportCoconsolidationPreimage
   ) where
 
 -- | A monotone, point-surjective map between chain carriers.
@@ -62,14 +65,20 @@ data Consolidation source target = Consolidation
 -- | Apply the monotonicity witness. Its result is definitionally the mapped
 -- right object; LiquidHaskell additionally tracks that it follows the mapped
 -- left object in the target relation.
+{-@ consolidationMonotone :: forall
+       < sourceLe :: source -> source -> Bool
+       , targetLe :: target -> target -> Bool >.
+     value:Consolidation <sourceLe, targetLe> source target
+     -> left:source -> right:source<sourceLe left>
+     -> {result:target<targetLe (applyConsolidation value left)> |
+          result == applyConsolidation value right} @-}
 consolidationMonotone
   :: Consolidation source target
   -> source
   -> source
   -> target
-consolidationMonotone value left = consolidationMonotoneProof value
-    left
-    (applyConsolidation value left)
+consolidationMonotone (Consolidation forward _ monotone _) left right =
+  monotone left (forward left) right
 
 -- | Construct a consolidation from its map, chosen preimages, and proofs.
 {-@
@@ -160,6 +169,9 @@ identityPointSurjective _ = ()
      -> first:Consolidation <sourceLe, middleLe> source middle
      -> Consolidation <sourceLe, targetLe> source target
 @-}
+-- ALIGN: CONSOLIDATION-LEFT-IDENTITY.
+-- ALIGN: CONSOLIDATION-RIGHT-IDENTITY.
+-- ALIGN: CONSOLIDATION-ASSOC.
 composeConsolidations
   :: Consolidation middle target
   -> Consolidation source middle
@@ -200,9 +212,14 @@ composeConsolidationsApply
   _ = ()
 
 -- | The opposite category of consolidations (@CoCon@ in @datra.lean@).
+-- Preserve the nested map's predicates during subtyping: changing either
+-- relation requires new monotonicity evidence.
+{-@ data variance Coconsolidation invariant invariant invariant invariant @-}
 {-@
-data Coconsolidation source target = Coconsolidation
-  { getOppositeConsolidation :: Consolidation target source }
+data Coconsolidation source target
+      < sourceLe :: source -> source -> Bool
+      , targetLe :: target -> target -> Bool > = Coconsolidation
+  { getOppositeConsolidation :: Consolidation <targetLe, sourceLe> target source }
 @-}
 data Coconsolidation source target = Coconsolidation
   { getOppositeConsolidation :: Consolidation target source
@@ -210,22 +227,52 @@ data Coconsolidation source target = Coconsolidation
 
 -- | Reverse the categorical direction of a consolidation.
 {-@ reflect op @-}
+{-@ op :: forall
+       < sourceLe :: source -> source -> Bool
+       , targetLe :: target -> target -> Bool >.
+     Consolidation <sourceLe, targetLe> source target
+     -> Coconsolidation <targetLe, sourceLe> target source @-}
 op :: Consolidation source target -> Coconsolidation target source
 op = Coconsolidation
 
 -- | Recover the underlying consolidation.
 {-@ reflect unop @-}
+{-@ unop :: forall
+       < sourceLe :: source -> source -> Bool
+       , targetLe :: target -> target -> Bool >.
+     Coconsolidation <targetLe, sourceLe> target source
+     -> Consolidation <sourceLe, targetLe> source target @-}
 unop :: Coconsolidation target source -> Consolidation source target
 unop (Coconsolidation value) = value
 
 -- | Compose coconsolidations in categorical order.
 {-@ reflect composeCoconsolidations @-}
+{-@ composeCoconsolidations :: forall
+       < sourceLe :: source -> source -> Bool
+       , middleLe :: middle -> middle -> Bool
+       , targetLe :: target -> target -> Bool >.
+     Coconsolidation <middleLe, targetLe> middle target
+     -> Coconsolidation <sourceLe, middleLe> source middle
+     -> Coconsolidation <sourceLe, targetLe> source target @-}
 composeCoconsolidations
   :: Coconsolidation middle target
   -> Coconsolidation source middle
   -> Coconsolidation source target
 composeCoconsolidations second first =
   op (composeConsolidations (unop first) (unop second))
+
+-- | Opposite transport retains the supplied orders of both carriers.
+-- ALIGN: COCONSOLIDATION-MONOTONE.
+{-@ coconsolidationMonotone :: forall
+       < sourceLe :: source -> source -> Bool
+       , targetLe :: target -> target -> Bool >.
+     transition:Coconsolidation <sourceLe, targetLe> source target
+     -> left:target -> right:target<targetLe left>
+     -> {result:source<sourceLe (applyConsolidation (unop transition) left)> |
+          result == applyConsolidation (unop transition) right} @-}
+coconsolidationMonotone :: Coconsolidation source target -> target -> target -> source
+coconsolidationMonotone transition left right =
+  consolidationMonotone (unop transition) left right
 
 -- | The underlying map of the identity coconsolidation is identity.
 {-@
@@ -357,6 +404,19 @@ consolidationTransport
   :: Consolidation source target
   -> ConsolidationTransport source target
 consolidationTransport value = ConsolidationTransport (applyConsolidation value)
+
+-- | Carrier transport follows the underlying map in the opposite direction.
+{-@ reflect transportCoconsolidation @-}
+transportCoconsolidation
+  :: Coconsolidation source target -> ConsolidationTransport target source
+transportCoconsolidation value = consolidationTransport (unop value)
+
+{-@ transportCoconsolidationPreimage :: transition:Coconsolidation source target -> value:source
+      -> {runConsolidationTransport (transportCoconsolidation transition)
+            (consolidationPreimage (unop transition) value) == value} @-}
+transportCoconsolidationPreimage :: Coconsolidation source target -> source -> ()
+transportCoconsolidationPreimage transition value =
+  consolidationPointSurjective (unop transition) value
 
 -- | Consolidation transport preserves identity pointwise.
 {-@

@@ -1,0 +1,7 @@
+[
+  {"page": 7, "final": 2, "limit": 3, "position": 5, "trace": [5, 5, 5, 4, 0], "normalized_page": 2, "normalized_trace": [5, 4, 0]},
+  {"page": 1, "final": 4, "limit": 5, "position": 9, "trace": [9, 0], "normalized_page": 1, "normalized_trace": [9, 0]},
+  {"page": 4, "final": 0, "limit": 1, "position": 1, "trace": [1, 1, 0], "normalized_page": 0, "normalized_trace": [0]},
+  {"page": 2, "final": 1, "limit": -2, "position": 3, "trace": [3, 0], "normalized_page": 1, "normalized_trace": []},
+  {"page": 5, "final": 2, "limit": 3, "position": 8, "trace": [], "normalized_page": 2, "normalized_trace": []}
+]

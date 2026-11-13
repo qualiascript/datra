@@ -30,6 +30,7 @@ extra-source-files:
     test/fixtures/cli/*.out
     test/fixtures/integration/*.datra
     test/fixtures/modules/*.datra
+    test/fixtures/alignment/*.json
     src/DatraCore/LiquidPlugin.h
 
 common warnings
@@ -50,6 +51,16 @@ flag liquid
 library
     import:           warnings
     exposed-modules:
+        DatraOrdinal.Laws
+        Chain.Sum
+        Chain.Order
+        Consolidation.Core
+        Consolidation.Ordered
+        DomanialInsertion.Core
+        Folio.Presentation
+        PageElements.Structure
+        AtlasMerge.Data
+        AtlasSequence.Data
         DatraLanguage.AST
         DatraLanguage.AST.Source
         DatraLanguage.AST.Operator
@@ -152,7 +163,7 @@ library
         DataTransformationMap
     other-modules:
         PageElements.Internal
-        PageElements.LiquidInternal
+        PageElements.TraceChain
         Pagination.Internal
         Pagination.LiquidInternal
         Atlas.Internal
@@ -161,6 +172,9 @@ library
         AtlasTerritory.Internal
         EmptyAtlas.Internal
         AtlasMerge.Internal
+        AtlasMerge.Page
+        AtlasMerge.Resolution
+        AtlasSequence.Resolution
         AtlasConfederation.Internal
         AtlasFederation.Internal
         AtlasMapFederation.Internal
@@ -177,6 +191,7 @@ library
         Charter.Internal
         Charter.LiquidInternal
         Coalition.Internal
+        Coalition.Element.Internal
         DomanialInclusion.Internal
         DomanialInclusion.LiquidInternal
         StableAtlasTransversal.Internal
@@ -192,16 +207,11 @@ library
         Expedition.Internal
         DataTransformationMap.Internal
         Chain.Internal
-        Chain.LiquidInternal
         Consolidation.Internal
-        Consolidation.LiquidInternal
         DatraOrdinal.Internal
-        DatraOrdinal.LiquidInternal
         DomanialInsertion.Internal
-        DomanialInsertion.LiquidInternal
         Dominion.Internal
         Folio.Internal
-        Folio.LiquidInternal
         NumericalOperators.Internal
         NumericalOperators.Semantics
         MapOperators.Internal

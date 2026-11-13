@@ -7,12 +7,14 @@
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
-{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
 
 -- | Hidden implementation of Atlas transversals using Atlas coverage evidence.
 module AtlasTransversal.Internal
   ( AtlasTransversal
   , atlasTransversal
+  , withTransversalImage
+  , transversalImageCovered
   , atlasTransversalOrderedTransposal
   , atlasTransversalTransposal
   , atlasTransversalHom
@@ -86,11 +88,8 @@ data AtlasTransversal source target where
     -> OrderedAtlasTransposal
          (AtlasObject sourceAtlasScope sourceScope sourceCellData)
          (AtlasObject targetAtlasScope targetScope targetCellData)
-    -> (forall targetObject.
-         AtlasCoveredPageElement
+    -> (AtlasCoveredPageElement
            (AtlasObject sourceAtlasScope sourceScope sourceCellData)
-         -> PageElement targetScope targetObject
-         -> targetCellData targetObject
          -> AtlasCoverageWitness
               (AtlasObject targetAtlasScope targetScope targetCellData))
     -> AtlasTransversal
@@ -103,11 +102,63 @@ data AtlasTransversal source target where
     -> AtlasTransversal source middle
     -> AtlasTransversal source target
 
+-- | Inspect the exact dependent datum produced by an ordered transposal.
+-- Both the preservation contract and the runtime mapper use this operation.
+{-@ reflect withTransversalImage @-}
+-- ALIGN: ATLAS-TRANSVERSAL-IMAGE.
+withTransversalImage
+  :: Atlas sourceAtlasScope sourceScope sourceCellData sourceOrigin sourceFinal
+  -> OrderedAtlasTransposal (AtlasObject sourceAtlasScope sourceScope sourceCellData) target
+  -> AtlasCoveredPageElement (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+  -> (forall object. PageElement (AtlasObjectPaginationScope target) object
+        -> AtlasObjectCellData target object -> result)
+  -> result
+withTransversalImage sourceAtlas ordered
+    (AtlasCoveredPageElement sourceOccurrence sourceDatum _) useImage =
+  withAtlasMorphismImage
+    (mapOrderedAtlasTransposalData (atlasWitness sourceAtlas) ordered sourceOccurrence) $
+      \targetOccurrence insertion ->
+        useImage targetOccurrence (applyInsertion insertion sourceDatum)
+
+-- | Coverage is required for the actual image, not arbitrary target data.
+{-@ reflect transversalImageCovered @-}
+-- ALIGN: ATLAS-TRANSVERSAL-IMAGE-COVERAGE.
+transversalImageCovered
+  :: Atlas sourceAtlasScope sourceScope sourceCellData sourceOrigin sourceFinal
+  -> Atlas targetAtlasScope targetScope targetCellData targetOrigin targetFinal
+  -> OrderedAtlasTransposal
+       (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+       (AtlasObject targetAtlasScope targetScope targetCellData)
+  -> AtlasCoveredPageElement (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+  -> AtlasCoverageWitness (AtlasObject targetAtlasScope targetScope targetCellData)
+  -> Bool
+transversalImageCovered sourceAtlas targetAtlas ordered covered witness =
+  withTransversalImage sourceAtlas ordered covered $ \occurrence datum ->
+    coverageWitnessCovers targetAtlas occurrence datum witness
+
+-- Preserve the exact-image refinement at the hidden constructor boundary.
+{-@
+checkedTransversalWitness
+  :: sourceAtlas:Atlas sa ss sd so sf
+  -> targetAtlas:Atlas ta ts td to tf
+  -> ordered:OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> covered:AtlasCoveredPageElement (AtlasObject sa ss sd)
+  -> witness:{AtlasCoverageWitness (AtlasObject ta ts td) |
+       transversalImageCovered sourceAtlas targetAtlas ordered covered witness}
+  -> {checked:AtlasCoverageWitness (AtlasObject ta ts td) |
+       transversalImageCovered sourceAtlas targetAtlas ordered covered checked}
+@-}
+checkedTransversalWitness
+  :: Atlas sa ss sd so sf
+  -> Atlas ta ts td to tf
+  -> OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> AtlasCoveredPageElement (AtlasObject sa ss sd)
+  -> AtlasCoverageWitness (AtlasObject ta ts td)
+  -> AtlasCoverageWitness (AtlasObject ta ts td)
+checkedTransversalWitness _ _ _ _ witness = witness
+
 -- | Add the covered-page-element clause to an ordered Atlas transposal.
---
--- The callback receives a covered source page element followed by the target
--- element and datum computed by the underlying Atlas morphism. Its result is
--- statically required to witness coverage of those exact values.
+-- The callback supplies evidence for the computed image of each covered source.
 {-@
 atlasTransversal
   :: sourceAtlas:Atlas
@@ -117,19 +168,16 @@ atlasTransversal
   -> ordered:OrderedAtlasTransposal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
-  -> preservesCoverage:(forall targetObject.
-       AtlasCoveredPageElement
+  -> preservesCoverage:(covered:AtlasCoveredPageElement
          (AtlasObject sourceAtlasScope sourceScope sourceCellData)
-       -> targetOccurrence:PageElement targetScope targetObject
-       -> targetDatum:targetCellData targetObject
        -> { witness:AtlasCoverageWitness
               (AtlasObject targetAtlasScope targetScope targetCellData) |
-            coverageWitnessCovers
-              targetAtlas targetOccurrence targetDatum witness })
+            transversalImageCovered sourceAtlas targetAtlas ordered covered witness })
   -> AtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
 @-}
+-- ALIGN: ATLAS-TRANSVERSAL-INTERPRETATION.
 atlasTransversal
   :: Atlas
        sourceAtlasScope sourceScope sourceCellData sourceOrigin sourceFinal
@@ -138,17 +186,16 @@ atlasTransversal
   -> OrderedAtlasTransposal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
-  -> (forall targetObject.
-       AtlasCoveredPageElement
+  -> (AtlasCoveredPageElement
          (AtlasObject sourceAtlasScope sourceScope sourceCellData)
-       -> PageElement targetScope targetObject
-       -> targetCellData targetObject
        -> AtlasCoverageWitness
             (AtlasObject targetAtlasScope targetScope targetCellData))
   -> AtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
-atlasTransversal = PrimitiveAtlasTransversal
+atlasTransversal sourceAtlas targetAtlas ordered preservesCoverage =
+  PrimitiveAtlasTransversal sourceAtlas targetAtlas ordered $ \covered ->
+    checkedTransversalWitness sourceAtlas targetAtlas ordered covered (preservesCoverage covered)
 
 -- | Forget the coverage condition while retaining injectivity and order.
 atlasTransversalOrderedTransposal
@@ -181,6 +228,7 @@ atlasTransversalHom =
 -- | Map a covered page element and derive coverage of its exact target image. This
 -- is total: malformed preservation callbacks are rejected when the primitive
 -- transversal is compiled, rather than producing a runtime failure here.
+-- ALIGN: ATLAS-TRANSVERSAL-COVERED-IMAGE.
 mapAtlasTransversalCoveredPageElement
   :: AtlasTransversal source target
   -> AtlasCoveredPageElement source
@@ -194,21 +242,14 @@ mapAtlasTransversalCoveredPageElement
       (mapAtlasTransversalCoveredPageElement first covered)
 mapAtlasTransversalCoveredPageElement
   (PrimitiveAtlasTransversal sourceAtlas _ ordered preservesCoverage)
-  covered@(AtlasCoveredPageElement sourceOccurrence sourceDatum _) =
-    withAtlasMorphismImage
-      (mapOrderedAtlasTransposalData
-        (atlasWitness sourceAtlas)
-        ordered
-        sourceOccurrence) $ \targetOccurrence insertion ->
-          let targetDatum = applyInsertion insertion sourceDatum
-          in AtlasCoveredPageElement
-              targetOccurrence
-              targetDatum
-              (preservesCoverage covered targetOccurrence targetDatum)
+  covered =
+    withTransversalImage sourceAtlas ordered covered $ \targetOccurrence targetDatum ->
+      AtlasCoveredPageElement targetOccurrence targetDatum (preservesCoverage covered)
 
 -- | The covered-page-element preservation condition of an Atlas transversal.
 -- This is named separately from the operational mapper so downstream
 -- restrictions can refer directly to the condition they inherit.
+-- ALIGN: ATLAS-TRANSVERSAL-COVERAGE.
 atlasTransversalPreservesCoverage
   :: AtlasTransversal source target
   -> AtlasCoveredPageElement source
@@ -216,10 +257,12 @@ atlasTransversalPreservesCoverage
 atlasTransversalPreservesCoverage = mapAtlasTransversalCoveredPageElement
 
 -- | The identity transversal preserves every covered page element unchanged.
+-- ALIGN: ATLAS-TRANSVERSAL-IDENTITY.
 identityAtlasTransversal :: AtlasTransversal object object
 identityAtlasTransversal = IdentityAtlasTransversal
 
 -- | Compose Atlas transversals in categorical order.
+-- ALIGN: ATLAS-TRANSVERSAL-COMPOSITION.
 composeAtlasTransversals
   :: AtlasTransversal middle target
   -> AtlasTransversal source middle

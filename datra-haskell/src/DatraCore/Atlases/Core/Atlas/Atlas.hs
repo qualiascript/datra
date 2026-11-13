@@ -20,6 +20,10 @@ module Atlas
   , identityAtlasHom
   , composeAtlasHoms
   , atlasDataAction
+  , AtlasMembership
+  , atlasMembership
+  , atlasMembershipAccepts
+  , atlasRestrictedDataAction
   , atlas
   , atlasPagination
   , atlasFolio
@@ -29,6 +33,7 @@ module Atlas
   , normalizeAtlasArrow
   , atlasCoherence
   , atlasDataAt
+  , atlasAcceptsDatum
   , mapAtlasData
   , atlasDataCoherence
   , normalizeAtlasDatum
@@ -62,10 +67,15 @@ import Atlas.Internal
   , AtlasDataAction
   , atlas
   , atlasDataAction
+  , AtlasMembership
+  , atlasMembership
+  , atlasMembershipAccepts
+  , atlasRestrictedDataAction
   , atlasCardinality
   , atlasCoherence
   , atlasCoherenceIdempotent
   , atlasDataAt
+  , atlasAcceptsDatum
   , atlasDataCoherence
   , atlasFolio
   , atlasElementLT

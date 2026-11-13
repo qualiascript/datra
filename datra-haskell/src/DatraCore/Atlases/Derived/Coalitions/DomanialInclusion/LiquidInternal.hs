@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
@@ -10,6 +11,7 @@
 -- | Proof-transparent carrier operations for the Domanial Inclusion.
 module DomanialInclusion.LiquidInternal
   ( DominionCellData
+  , coalitionComponentInsertion
   , dominionCellData
   , dominionCellDataValue
   , mapDominionCellData
@@ -24,6 +26,10 @@ module DomanialInclusion.LiquidInternal
   ) where
 
 import Data.Kind (Type)
+import Atlas (Atlas, AtlasObject)
+import Coalition.Element.Internal (CoalitionElement, coalitionElementAt)
+import DomanialInsertion (DomanialInsertion, domanialInsertion)
+import PageElements (PageElement)
 
 -- | The constant data family on the one cell of the included atlas.
 type role DominionCellData nominal nominal
@@ -59,6 +65,7 @@ dominionFunctorIdentityValue
   :: value:DominionCellData a object
   -> { proof:() | mapDominionCellData identityValue value == value }
 @-}
+-- ALIGN: DOMINC-FUNCTOR-IDENTITY.
 dominionFunctorIdentityValue :: DominionCellData a object -> ()
 dominionFunctorIdentityValue (DominionCellData _) = ()
 
@@ -71,6 +78,7 @@ dominionFunctorCompositionValue
        mapDominionCellData second (mapDominionCellData first value)
          == mapDominionCellData (composeValues second first) value }
 @-}
+-- ALIGN: DOMINC-FUNCTOR-COMPOSITION.
 dominionFunctorCompositionValue
   :: (a -> b)
   -> (b -> c)
@@ -95,6 +103,7 @@ domIncHomLeftInverseValue
        domIncHomFromValue (domIncHomToValue function) value
          == function value }
 @-}
+-- ALIGN: DOMINC-HOM-LEFT-INVERSE.
 domIncHomLeftInverseValue
   :: (DominionCellData a object -> b)
   -> DominionCellData a object
@@ -109,6 +118,7 @@ domIncHomRightInverseValue
        domIncHomToValue (domIncHomFromValue function) value
          == function value }
 @-}
+-- ALIGN: DOMINC-HOM-RIGHT-INVERSE.
 domIncHomRightInverseValue :: (a -> b) -> a -> ()
 domIncHomRightInverseValue _ _ = ()
 
@@ -122,6 +132,7 @@ domIncHomNaturalityLeftValue
          (composeValues function (mapDominionCellData before)) value
          == domIncHomToValue function (before value) }
 @-}
+-- ALIGN: DOMINC-HOM-NATURALITY-LEFT.
 domIncHomNaturalityLeftValue
   :: (a' -> a)
   -> (DominionCellData a object -> b)
@@ -138,9 +149,40 @@ domIncHomNaturalityRightValue
        domIncHomToValue (composeValues after function) value
          == after (domIncHomToValue function value) }
 @-}
+-- ALIGN: DOMINC-HOM-NATURALITY-RIGHT.
 domIncHomNaturalityRightValue
   :: (DominionCellData a object -> b)
   -> (b -> c)
   -> a
   -> ()
 domIncHomNaturalityRightValue _ _ _ = ()
+
+-- | A coalition inverse is defined only on covered values. The component
+-- inverse additionally handles arbitrary target data, including uncovered data.
+{-@ reflect coalitionElementAt @-}
+{-@
+coalitionComponentInsertion
+  :: targetAtlas:Atlas atlasScope scope cellData origin final
+  -> targetOccurrence:PageElement scope object
+  -> forward:(a -> CoalitionElement (AtlasObject atlasScope scope cellData))
+  -> backward:(cellData object -> Maybe a)
+  -> (value:a -> { backward (coalitionElementAt targetAtlas targetOccurrence
+                              (forward value)) == Just value })
+  -> DomanialInsertion (DominionCellData a sourceObject) (cellData object)
+@-}
+-- ALIGN: DOMINC-COMPONENT-INVERSE.
+coalitionComponentInsertion
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> (a -> CoalitionElement (AtlasObject atlasScope scope cellData))
+  -> (cellData object -> Maybe a)
+  -> (a -> ())
+  -> DomanialInsertion (DominionCellData a sourceObject) (cellData object)
+coalitionComponentInsertion targetAtlas targetOccurrence forward backward leftInverse =
+  domanialInsertion
+    (\datum -> coalitionElementAt targetAtlas targetOccurrence
+      (forward (dominionCellDataValue datum)))
+    (\datum -> case backward datum of
+      Nothing -> Nothing
+      Just value -> Just (dominionCellData value))
+    (\(DominionCellData value) -> leftInverse value)

@@ -15,6 +15,7 @@ module ChainedDominionAtlas
   , chainedDominionInsertionTraversal
   ) where
 
+import qualified Pagination
 import Atlas
   ( Atlas
   , AtlasObject
@@ -72,6 +73,10 @@ data ChainedDominionCellData value object
   = ChainedDominionExtentDatum value
   | ChainedDominionRegionDatum value
   deriving (Eq, Show)
+
+cellValue :: ChainedDominionCellData value object -> value
+cellValue (ChainedDominionExtentDatum value) = value
+cellValue (ChainedDominionRegionDatum value) = value
 
 data ChainedDominionAtlasScope value
 data ChainedDominionPaginationScope value
@@ -148,8 +153,6 @@ chainedDominionAt firstValue valueChain valueDominion occurrence
   where
     selectedValue = chainValueAt firstValue valueChain occurrence
 
-    cellValue (ChainedDominionExtentDatum value) = value
-    cellValue (ChainedDominionRegionDatum value) = value
 
 chainedDominionDataMap
   :: value
@@ -203,7 +206,7 @@ chainedDominionAtlas
 chainedDominionAtlas firstValue valueChain valueDominion =
   atlasWithScope
     (chainedDominionPagination firstValue valueChain)
-    (atlasDataAction
+    (atlasDataAction (Pagination.paginationPageElements (chainedDominionPagination firstValue valueChain))
       (chainedDominionAt firstValue valueChain valueDominion)
       (chainedDominionDataMap firstValue valueChain))
     (\_ _ -> ())
@@ -234,9 +237,6 @@ chainedDominionCoverage firstValue valueChain valueDominion source datum =
   where
     valueAtlas =
       chainedDominionAtlas firstValue valueChain valueDominion
-
-    cellValue (ChainedDominionExtentDatum value) = value
-    cellValue (ChainedDominionRegionDatum value) = value
 
 -- | Restrict a chained dominion Atlas to its canonical coverage map.
 chainedDominionAtlasMap
@@ -285,6 +285,8 @@ chainedDominionInsertionTraversal
     (atlasWitness
       (chainedDominionAtlas firstValue valueChain targetDominion))
     coalitionInsertion
+    (\_ datum -> preimage insertion (cellValue datum))
+    (\_ -> insertionLeftInverse insertion)
   where
     coalitionInsertion =
       domanialInsertion

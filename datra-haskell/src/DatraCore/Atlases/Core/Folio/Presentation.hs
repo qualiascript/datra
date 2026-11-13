@@ -4,8 +4,8 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 
--- | LiquidHaskell-verified folio representation and coherence primitives.
-module Folio.LiquidInternal
+-- | Typed finite folio presentations and their coherence laws.
+module Folio.Presentation
   ( SingletonOrigin (..)
   , PageOrder (..)
   , pageOrder
@@ -23,10 +23,21 @@ module Folio.LiquidInternal
   , folioMapComposition
   ) where
 
-import Consolidation.LiquidInternal
+import Consolidation.Core
+  ( Consolidation (..)
+  , Coconsolidation (..)
+  , applyConsolidation
+  , identityConsolidation
+  , composeCoconsolidations
+  , coconsolidationIdentity
+  , coconsolidationComposition
+  , op
+  , unop
+  )
 import Numeric.Natural (Natural)
 
 {-@ embed Natural as int @-}
+{-@ invariant {value:Natural | value >= 0} @-}
 
 -- | The selected origin and the evidence that its carrier is a singleton.
 {-@
@@ -63,6 +74,14 @@ pageOrder source target
 -- | A type-aligned, nonempty sequence parameterized by its page container.
 -- GHC checks that every coconsolidation joins the carrier of the preceding
 -- page to the carrier of the next page.
+{-@ data FolioData page origin final where
+      OriginFolio :: count:{Natural | count == 1}
+        -> originPage:page origin -> witness:SingletonOrigin origin
+        -> FolioData page origin origin
+      SnocPage :: count:{Natural | count > 1}
+        -> previous:{FolioData page origin previous | folioLengthData previous + 1 == count}
+        -> nextPage:page final -> transition:Coconsolidation previous final
+        -> FolioData page origin final @-}
 data FolioData page origin final where
   OriginFolio
     :: Natural
@@ -103,11 +122,15 @@ appendPageData pages = SnocPage (folioLengthData pages + 1) pages
 
 -- | The number of genuine pages.
 {-@ reflect folioLengthData @-}
+-- ALIGN: FOLIO-SEMANTIC-LENGTH.
+-- ALIGN: FOLIO-LENGTH-POSITIVE.
+{-@ folioLengthData :: FolioData page origin final -> {n:Natural | n > 0} @-}
 folioLengthData :: FolioData page origin final -> Natural
 folioLengthData (OriginFolio count _ _) = count
 folioLengthData (SnocPage count _ _ _) = count
 
 -- | The first page.
+{-@ reflect originPageData @-}
 originPageData :: FolioData page origin final -> page origin
 originPageData (OriginFolio _ value _) = value
 originPageData (SnocPage _ pages _ _) = originPageData pages
@@ -125,18 +148,22 @@ originUniqueData
   -> value:origin
   -> { proof:() | value == originValueData pages }
 @-}
+-- ALIGN: FOLIO-ORIGIN-UNIQUE.
 originUniqueData :: FolioData page origin final -> origin -> ()
 originUniqueData (OriginFolio _ _ witness) value =
   singletonOriginUnique witness value
 originUniqueData (SnocPage _ pages _ _) value = originUniqueData pages value
 
 -- | The final genuine page.
+{-@ reflect lastPageData @-}
 lastPageData :: FolioData page origin final -> page final
 lastPageData (OriginFolio _ value _) = value
 lastPageData (SnocPage _ _ value _) = value
 
 -- | The identity map used for every identity interval in a folio.
 {-@ reflect identityFolioMap @-}
+{-@ identityFolioMap :: forall <pageLe :: page -> page -> Bool>.
+      Coconsolidation <pageLe, pageLe> page page @-}
 identityFolioMap :: Coconsolidation page page
 identityFolioMap = op identityConsolidation
 
@@ -152,6 +179,13 @@ folioMapIdentity = coconsolidationIdentity
 
 -- | The composition operation used to derive every non-adjacent folio map.
 {-@ reflect composeFolioMaps @-}
+{-@ composeFolioMaps :: forall
+       < sourceLe :: source -> source -> Bool
+       , middleLe :: middle -> middle -> Bool
+       , targetLe :: target -> target -> Bool >.
+      Coconsolidation <middleLe, targetLe> middle target
+      -> Coconsolidation <sourceLe, middleLe> source middle
+      -> Coconsolidation <sourceLe, targetLe> source target @-}
 composeFolioMaps
   :: Coconsolidation middle target
   -> Coconsolidation source middle

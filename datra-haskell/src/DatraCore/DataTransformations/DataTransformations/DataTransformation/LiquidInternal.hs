@@ -8,6 +8,9 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
+-- The endpoints are phantom in this proof-only wrapper. The Lean erasure is
+-- injective at each pair of endpoints; no AtlasHom indices are erased.
+{-@ embed AtlasEquality * as TypeEquality @-}
 
 -- | LiquidHaskell-verified presheaf actions on the Atlas category.
 module DataTransformation.LiquidInternal
@@ -29,7 +32,7 @@ module DataTransformation.LiquidInternal
   , yonedaNatural
   ) where
 
-import Atlas.Morphism.Internal (AtlasHom (..))
+import Atlas.Morphism.Internal (AtlasHom (..), AtlasEquality (..))
 import Data.Kind (Type)
 import Data.Type.Equality ((:~:) (Refl))
 
@@ -51,32 +54,49 @@ type instance
   DataTransformationValue (YonedaPresheaf represented) atlas =
     Yoneda represented atlas
 
-{-@ reflect presheafIdentity @-}
+-- A polymorphic nullary value must be inlined into refinement expressions.
+{-@ inline presheafIdentity @-}
 presheafIdentity :: AtlasHom object object
-presheafIdentity = IdentityAtlasHom Refl
+presheafIdentity = IdentityAtlasHom (AtlasEquality Refl)
 
+-- ALIGN: ATLASHOM-IDENTITY-WITNESS.
 {-@ reflect presheafCompose @-}
 presheafCompose
   :: AtlasHom middle target
   -> AtlasHom source middle
   -> AtlasHom source target
-presheafCompose second (IdentityAtlasHom Refl) = second
+presheafCompose second (IdentityAtlasHom (AtlasEquality Refl)) = second
 presheafCompose second (CompositeAtlasHom middle first) =
   CompositeAtlasHom (presheafCompose second middle) first
 presheafCompose second first@(PrimitiveAtlasHom _ _ _) =
   CompositeAtlasHom second first
 
 {-@
-assume presheafRightIdentity
+presheafRightIdentity
   :: arrow:AtlasHom source target
   -> { proof:() |
        presheafCompose arrow presheafIdentity == arrow }
 @-}
+-- ALIGN: ATLASHOM-RIGHT-IDENTITY.
+
 presheafRightIdentity :: AtlasHom source target -> ()
-presheafRightIdentity _ = ()
+presheafRightIdentity (IdentityAtlasHom (AtlasEquality Refl)) = ()
+presheafRightIdentity (PrimitiveAtlasHom _ _ _) = ()
+presheafRightIdentity (CompositeAtlasHom _ _) = ()
 
 {-@
-assume presheafAssociativity
+equalityUnique
+  :: first:AtlasEquality a b
+  -> second:AtlasEquality c d
+  -> { first == second }
+@-}
+-- ALIGN: ATLAS-EQUALITY-ERASURE-INJECTIVE.
+-- ALIGN: ATLAS-EQUALITY-UNIQUE.
+equalityUnique :: AtlasEquality a b -> AtlasEquality c d -> ()
+equalityUnique (AtlasEquality Refl) (AtlasEquality Refl) = ()
+
+{-@
+presheafAssociativity
   :: third:AtlasHom secondMiddle target
   -> second:AtlasHom firstMiddle secondMiddle
   -> first:AtlasHom source firstMiddle
@@ -84,12 +104,15 @@ assume presheafAssociativity
        presheafCompose third (presheafCompose second first)
        == presheafCompose (presheafCompose third second) first }
 @-}
+-- ALIGN: ATLASHOM-ASSOC.
+
 presheafAssociativity
   :: AtlasHom secondMiddle target
   -> AtlasHom firstMiddle secondMiddle
   -> AtlasHom source firstMiddle
   -> ()
-presheafAssociativity third second (IdentityAtlasHom Refl) =
+presheafAssociativity third second (IdentityAtlasHom equality@(AtlasEquality Refl)) =
+  equalityUnique equality (AtlasEquality Refl :: AtlasEquality () ()) `seq`
   presheafRightIdentity second `seq`
     presheafRightIdentity (presheafCompose third second)
 presheafAssociativity _ _ (PrimitiveAtlasHom _ _ _) = ()
@@ -347,6 +370,7 @@ dataTransformationNaturalNaturality
   (DataTransformationNatural _ _ _ naturality) arrow value =
     naturality arrow value
 
+-- ALIGN: YONEDA-ACTION-INTERPRETATION.
 {-@ reflect mapYoneda @-}
 mapYoneda
   :: AtlasHom source target
@@ -360,6 +384,8 @@ yonedaIdentity
   :: value:Yoneda represented atlas
   -> { proof:() | mapYoneda presheafIdentity value == value }
 @-}
+-- ALIGN: YONEDA-IDENTITY.
+
 yonedaIdentity :: Yoneda represented atlas -> ()
 yonedaIdentity (Yoneda representedArrow) =
   presheafRightIdentity representedArrow
@@ -373,6 +399,8 @@ yonedaComposition
        mapYoneda (presheafCompose second first) value
        == mapYoneda first (mapYoneda second value) }
 @-}
+-- ALIGN: YONEDA-COMPOSITION.
+
 yonedaComposition
   :: AtlasHom middle target
   -> AtlasHom source middle
@@ -395,6 +423,8 @@ assume yoneda
   :: DataTransformation (YonedaPresheaf represented)
 @-}
 {-@ ignore yoneda @-}
+-- ALIGN: YONEDA-PACKAGE.
+
 yoneda :: DataTransformation (YonedaPresheaf represented)
 yoneda =
   DataTransformation
@@ -402,6 +432,7 @@ yoneda =
     yonedaIdentity
     yonedaComposition
 
+-- ALIGN: YONEDA-COMPONENT-INTERPRETATION.
 {-@ reflect mapYonedaNatural @-}
 mapYonedaNatural
   :: AtlasHom representedSource representedTarget
@@ -419,6 +450,8 @@ yonedaNaturality
        mapYonedaNatural representedArrow (mapYoneda arrow value)
        == mapYoneda arrow (mapYonedaNatural representedArrow value) }
 @-}
+-- ALIGN: YONEDA-NATURALITY.
+
 yonedaNaturality
   :: AtlasHom representedSource representedTarget
   -> AtlasHom sourceAtlas targetAtlas
@@ -441,6 +474,8 @@ assume yonedaNatural
        (YonedaPresheaf target)
 @-}
 {-@ ignore yonedaNatural @-}
+-- ALIGN: YONEDA-NATURAL-PACKAGE.
+
 yonedaNatural
   :: AtlasHom source target
   -> DataTransformationNatural

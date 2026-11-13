@@ -9,18 +9,20 @@ module AtlasTerritory.Internal
 import Atlas.Internal
   ( Atlas
   , atlasDataAt
+  , atlasAcceptsDatum
   , atlasFolio
   , atlasPageElements
   )
 import AtlasExtent.Internal
   ( AtlasCellDominion (..)
   )
+import Dominion (membershipDominion)
 import Chain
   ( Chain
   , ChainIndex
   )
 import Folio (lastChain)
-import PageElements.LiquidInternal
+import PageElements.Structure
   ( SomePageElement (..)
   )
 import qualified PageElements.Internal as Elements
@@ -38,6 +40,7 @@ atlasTerritoryChain
 atlasTerritoryChain = lastChain . atlasFolio
 
 -- | The territory member selected by a certified final-page index.
+-- ALIGN: ATLAS-TERRITORY-INTERPRETATION.
 atlasTerritory
   :: Atlas atlasScope scope cellData origin final
   -> AtlasTerritoryIndex final
@@ -45,7 +48,8 @@ atlasTerritory
 atlasTerritory valueAtlas index =
   case Elements.lastPageElement (atlasPageElements valueAtlas) index of
     SomePageElement occurrence ->
-      AtlasCellDominion occurrence (atlasDataAt valueAtlas occurrence)
+      AtlasCellDominion (occurrence, membershipDominion
+        (atlasAcceptsDatum valueAtlas occurrence) (atlasDataAt valueAtlas occurrence))
 
 -- | The @n@th region of an Atlas. As in Lean, this is definitionally the
 -- corresponding territory member.

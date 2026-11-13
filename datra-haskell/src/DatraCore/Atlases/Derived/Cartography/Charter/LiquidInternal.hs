@@ -3,7 +3,8 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -Wno-unused-top-binds #-}
+-- GHC does not count imports referenced only by refinement signatures.
+{-# OPTIONS_GHC -Wno-unused-top-binds -Wno-unused-imports #-}
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
@@ -17,6 +18,9 @@
 -- @chartHomEquiv@.
 module Charter.LiquidInternal
   ( ChartedCellData
+  , chartCellData
+  , chartCounitInsertion
+  , chartMapInsertion
   , chartedCellData
   , chartedCellDataValue
   , mapChartedCellData
@@ -30,13 +34,16 @@ module Charter.LiquidInternal
   , chartHomNaturalityRightValue
   ) where
 
-import Atlas (AtlasObjectCellData)
+import Atlas (Atlas, AtlasObject, AtlasObjectCellData)
+import AtlasCoveredPageElement.Internal (AtlasCoverageWitness, coverageWitnessCovers)
+import DomanialInsertion
+  ( DomanialInsertion, domanialInsertion, applyInsertion, preimage, insertionLeftInverse )
+import PageElements (PageElement)
 import Data.Kind (Type)
 
--- | A datum retained by the charted Atlas. Coverage is enforced by the
--- charted dominion and by the smart operations in "Charter.Internal"; it is
--- proof-irrelevant at runtime, so the representation stores only the original
--- datum, exactly as Lean's subtype coercion does computationally.
+-- | A datum retained by the charted Atlas. Coverage at its selected page
+-- occurrence is a constructor obligation. The hidden wrapper stores only the
+-- original datum; the coverage proof is erased at runtime.
 type role ChartedCellData nominal nominal
 newtype ChartedCellData atlasObject (object :: Type) =
   ChartedCellData (AtlasObjectCellData atlasObject object)
@@ -52,6 +59,70 @@ chartedCellData
   :: AtlasObjectCellData atlasObject object
   -> ChartedCellData atlasObject object
 chartedCellData = ChartedCellData
+
+-- | Introduce a charted datum from checked coverage evidence.
+{-@
+chartCellData
+  :: valueAtlas:Atlas atlasScope scope cellData origin final
+  -> occurrence:PageElement scope object
+  -> datum:cellData object
+  -> witness:AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+  -> {proof:() | coverageWitnessCovers valueAtlas occurrence datum witness}
+  -> ChartedCellData (AtlasObject atlasScope scope cellData) object
+@-}
+-- ALIGN: CHARTER-CELL-CONSTRUCTOR.
+chartCellData
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> cellData object
+  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+  -> ()
+  -> ChartedCellData (AtlasObject atlasScope scope cellData) object
+chartCellData _ _ datum _ proof = proof `seq` chartedCellData datum
+
+-- | The counit needs a partial inverse on every original datum. Searching for
+-- coverage cannot supply that operation on uncovered data.
+{-@
+chartCounitInsertion
+  :: backward:(AtlasObjectCellData atlasObject object -> Maybe (ChartedCellData atlasObject object))
+  -> (charted:ChartedCellData atlasObject object ->
+       {backward (chartedCellDataValue charted) == Just charted})
+  -> DomanialInsertion (ChartedCellData atlasObject object) (AtlasObjectCellData atlasObject object)
+@-}
+-- ALIGN: CHARTER-COUNIT-INSERTION.
+-- ALIGN: CHARTER-COUNIT-INTERPRETATION.
+chartCounitInsertion
+  :: (AtlasObjectCellData atlasObject object -> Maybe (ChartedCellData atlasObject object))
+  -> (ChartedCellData atlasObject object -> ())
+  -> DomanialInsertion (ChartedCellData atlasObject object) (AtlasObjectCellData atlasObject object)
+chartCounitInsertion backward leftInverse =
+  domanialInsertion chartedCellDataValue backward leftInverse
+
+-- | Restrict a complete component to covered data. The source inverse checks
+-- coverage of every candidate, including candidates outside the original image.
+{-@
+chartMapInsertion
+  :: original:DomanialInsertion (AtlasObjectCellData source sourceObject)
+       (AtlasObjectCellData target targetObject)
+  -> backward:(AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
+  -> (charted:ChartedCellData source sourceObject ->
+       {backward (chartedCellDataValue charted) == Just charted})
+  -> DomanialInsertion (ChartedCellData source sourceObject) (ChartedCellData target targetObject)
+@-}
+-- ALIGN: CHARTER-MAP-INSERTION.
+-- ALIGN: CHARTER-MAP-INVERSE.
+chartMapInsertion
+  :: DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
+  -> (AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
+  -> (ChartedCellData source sourceObject -> ())
+  -> DomanialInsertion (ChartedCellData source sourceObject) (ChartedCellData target targetObject)
+chartMapInsertion original backward leftInverse =
+  domanialInsertion
+    (mapChartedCellData (applyInsertion original))
+    (\target -> case preimage original (chartedCellDataValue target) of
+      Nothing -> Nothing
+      Just candidate -> backward candidate)
+    (\source -> insertionLeftInverse original (chartedCellDataValue source) `seq` leftInverse source)
 
 {-@ reflect mapChartedCellData @-}
 mapChartedCellData
@@ -77,6 +148,7 @@ charterIdentityValue
   -> { proof:() |
        mapChartedCellData identityValue value == value }
 @-}
+-- ALIGN: CHARTER-FUNCTOR-IDENTITY.
 charterIdentityValue
   :: ChartedCellData atlasObject object
   -> ()
@@ -94,6 +166,7 @@ charterCompositionValue
        mapChartedCellData second (mapChartedCellData first value)
          == mapChartedCellData (composeValues second first) value }
 @-}
+-- ALIGN: CHARTER-FUNCTOR-COMPOSITION.
 charterCompositionValue
   :: forall source sourceObject middle middleObject target targetObject.
      (AtlasObjectCellData source sourceObject
@@ -131,6 +204,7 @@ chartHomLeftInverseValue
        chartHomFromValue (chartHomToValue function) value
          == function value }
 @-}
+-- ALIGN: CHARTER-HOM-LEFT-INVERSE.
 chartHomLeftInverseValue
   :: forall sourceValue target targetObject.
      (sourceValue -> AtlasObjectCellData target targetObject)
@@ -149,6 +223,7 @@ chartHomRightInverseValue
        chartHomToValue (chartHomFromValue function) value
          == function value }
 @-}
+-- ALIGN: CHARTER-HOM-RIGHT-INVERSE.
 chartHomRightInverseValue
   :: forall sourceValue target targetObject.
      (sourceValue -> ChartedCellData target targetObject)
@@ -167,6 +242,7 @@ chartHomNaturalityLeftValue
        chartHomToValue (composeValues function before) value
          == chartHomToValue function (before value) }
 @-}
+-- ALIGN: CHARTER-HOM-NATURALITY-LEFT.
 chartHomNaturalityLeftValue
   :: forall firstValue secondValue target targetObject.
      (firstValue -> secondValue)
@@ -188,6 +264,7 @@ chartHomNaturalityRightValue
          == mapChartedCellData after
               (chartHomToValue function value) }
 @-}
+-- ALIGN: CHARTER-HOM-NATURALITY-RIGHT.
 chartHomNaturalityRightValue
   :: forall sourceValue middle middleObject target targetObject.
      (sourceValue -> AtlasObjectCellData middle middleObject)

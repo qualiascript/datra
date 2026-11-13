@@ -1,0 +1,11 @@
+[
+  {"source": [3, 2, 1, 0], "target": [1, 0], "limit": 2, "suffix": true, "trimmed_source": [1, 0], "trimmed_target": [1, 0]},
+  {"source": [3, 2, 1, 0], "target": [2, 0], "limit": 2, "suffix": false, "trimmed_source": [1, 0], "trimmed_target": [2, 0]},
+  {"source": [7, 7, 7, 4, 0], "target": [7, 4, 0], "limit": 3, "suffix": true, "trimmed_source": [7, 4, 0], "trimmed_target": [7, 4, 0]},
+  {"source": [2, 1, 0], "target": [2, 1, 0], "limit": 9, "suffix": true, "trimmed_source": [2, 1, 0], "trimmed_target": [2, 1, 0]},
+  {"source": [1, 0], "target": [2, 1, 0], "limit": 1, "suffix": false, "trimmed_source": [0], "trimmed_target": [0]},
+  {"source": [1, 0], "target": [], "limit": 0, "suffix": true, "trimmed_source": [], "trimmed_target": []},
+  {"source": [1, 0], "target": [0], "limit": -3, "suffix": true, "trimmed_source": [], "trimmed_target": []},
+  {"source": [], "target": [], "limit": 2, "suffix": true, "trimmed_source": [], "trimmed_target": []},
+  {"source": [], "target": [0], "limit": 2, "suffix": false, "trimmed_source": [], "trimmed_target": [0]}
+]

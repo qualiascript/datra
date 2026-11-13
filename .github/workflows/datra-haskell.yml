@@ -5,15 +5,73 @@ on:
     paths:
       - ".github/workflows/datra-haskell.yml"
       - "datra-haskell/**"
+      - "datra.lean"
+      - "datra-lean/**"
+      - "lakefile.toml"
+      - "lake-manifest.json"
+      - "lean-toolchain"
+      - "Makefile"
+      - "scripts/**"
   pull_request:
     paths:
       - ".github/workflows/datra-haskell.yml"
       - "datra-haskell/**"
+      - "datra.lean"
+      - "datra-lean/**"
+      - "lakefile.toml"
+      - "lake-manifest.json"
+      - "lean-toolchain"
+      - "Makefile"
+      - "scripts/**"
 
 permissions:
   contents: read
 
 jobs:
+  alignment-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check correspondence and trust inventory
+        run: python3 scripts/check_alignment.py
+
+  formal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      LEAN_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install pinned Lean and Mathlib
+        uses: leanprover/lean-action@v1
+        with:
+          auto-config: false
+          build: false
+          test: false
+          lint: false
+          use-mathlib-cache: true
+      - name: Install GHC and Cabal
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.14.1"
+          cabal-version: "3.18.1.0"
+      - name: Install Z3 4.8.12
+        shell: bash
+        run: |
+          archive="$RUNNER_TEMP/datra-z3.zip"
+          curl --fail --location --retry 3 \
+            https://github.com/Z3Prover/z3/releases/download/z3-4.8.12/z3-4.8.12-x64-glibc-2.31.zip \
+            --output "$archive"
+          unzip -q "$archive" -d "$RUNNER_TEMP/datra-z3"
+          rm "$archive"
+          solver_dir="$RUNNER_TEMP/datra-z3/z3-4.8.12-x64-glibc-2.31/bin"
+          "$solver_dir/z3" --version | grep -F 'Z3 version 4.8.12'
+          echo "$solver_dir" >> "$GITHUB_PATH"
+      - name: Update package index
+        run: cabal update
+      - name: Verify assumption-free alignment
+        run: make verify-formal CABAL_PROJECT=cabal.docker.project
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30

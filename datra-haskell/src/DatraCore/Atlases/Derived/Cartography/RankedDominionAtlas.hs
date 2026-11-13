@@ -15,6 +15,7 @@ module RankedDominionAtlas
   , rankedDominionInsertionTraversal
   ) where
 
+import qualified Pagination
 import Atlas
   ( Atlas
   , AtlasObject
@@ -69,6 +70,10 @@ data RankedDominionCellData value object
   | RankedDominionRegionDatum value
   deriving (Eq, Show)
 
+cellValue :: RankedDominionCellData value object -> value
+cellValue (RankedDominionExtentDatum value) = value
+cellValue (RankedDominionRegionDatum value) = value
+
 data RankedDominionAtlasScope value
 data RankedDominionPaginationScope value
 
@@ -116,9 +121,6 @@ rankedDominionAt valueDominion occurrence
             else Nothing)
         (const ())
   where
-    cellValue (RankedDominionExtentDatum value) = value
-    cellValue (RankedDominionRegionDatum value) = value
-
     occurrenceRank =
       spineRank (pageElementPosition occurrence)
 
@@ -180,7 +182,7 @@ rankedDominionAtlas
 rankedDominionAtlas valueDominion =
   atlasWithScope
     rankedDominionPagination
-    (atlasDataAction
+    (atlasDataAction (Pagination.paginationPageElements rankedDominionPagination)
       (rankedDominionAt valueDominion)
       (rankedDominionDataMap valueDominion))
     (\_ _ -> ())
@@ -208,9 +210,6 @@ rankedDominionCoverage valueDominion source datum =
             ()
   where
     valueAtlas = rankedDominionAtlas valueDominion
-
-    cellValue (RankedDominionExtentDatum value) = value
-    cellValue (RankedDominionRegionDatum value) = value
 
 -- | Restrict the ranked Atlas to the map whose every extent datum is covered
 -- by the final region at its dominion rank.
@@ -252,6 +251,8 @@ rankedDominionInsertionTraversal targetDominion insertion =
     (pullbackDominion targetDominion insertion)
     (atlasWitness (rankedDominionAtlas targetDominion))
     coalitionInsertion
+    (\_ datum -> preimage insertion (cellValue datum))
+    (\_ -> insertionLeftInverse insertion)
   where
     coalitionInsertion =
       domanialInsertion

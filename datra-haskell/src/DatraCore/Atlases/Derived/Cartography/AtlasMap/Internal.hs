@@ -108,6 +108,7 @@ atlasMap
               witness })
   -> AtlasMap (AtlasObject atlasScope scope cellData)
 @-}
+-- ALIGN: ATLAS-MAP-OBJECT-INTERPRETATION.
 atlasMap
   :: Atlas atlasScope scope cellData origin final
   -> (forall extentObject.
@@ -150,6 +151,7 @@ withAtlasMapExtent
 -- | Extend the defining extent-coverage witness to any Atlas cell. The datum
 -- is first transported to the origin, exactly as in Lean's
 -- @atlasMap_all_covered@ proof.
+-- ALIGN: ATLAS-MAP-COVERAGE.
 atlasMapCoversDatum
   :: AtlasMap atlasObject
   -> PageElement
@@ -180,10 +182,12 @@ atlasMapHom :: AtlasHom source target -> AtlasMapHom source target
 atlasMapHom = AtlasMapHom
 
 -- | Identity in the category of Atlas maps.
+-- ALIGN: ATLAS-MAP-HOM-IDENTITY.
 identityAtlasMapHom :: AtlasMapHom object object
 identityAtlasMapHom = AtlasMapHom identityAtlasHom
 
 -- | Compose Atlas-map morphisms in categorical order.
+-- ALIGN: ATLAS-MAP-HOM-COMPOSITION.
 composeAtlasMapHoms
   :: AtlasMapHom middle target
   -> AtlasMapHom source middle
@@ -240,6 +244,7 @@ mapAtlasMapHomArrow sourceMap (AtlasMapHom hom) =
 
 -- | Apply an Atlas-map arrow to a cell and its dependent datum through the
 -- inclusion.
+-- ALIGN: ATLAS-MAP-HOM-DATA.
 mapAtlasMapHomData
   :: AtlasMap source
   -> AtlasMapHom source target
@@ -264,6 +269,7 @@ data AtlasMapInclusionFunctor = AtlasMapInclusionFunctor
   }
 
 -- | The Atlas Map Inclusion Functor from the Lean definition.
+-- ALIGN: ATLAS-MAP-INCLUSION.
 atlasMapInclusionFunctor :: AtlasMapInclusionFunctor
 atlasMapInclusionFunctor =
   AtlasMapInclusionFunctor

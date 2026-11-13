@@ -27,8 +27,9 @@ and regression oracle; LiquidHaskell remains the checker for the Haskell code.
 
 ### Lean
 
-`datra.lean` is a 4,000-plus-line monolithic formalization. Its foundational
-model is mostly extensional:
+`datra.lean` imports the formalization from `datra-lean`. The written preprint
+sections and their mathematical definitions live in `datra-lean/Semantics.lean`,
+under `Datra.Semantics`. This denotational layer is mostly extensional:
 
 - `Dominion` stores a carrier and an embedding into `Nat`.
 - `Chain` stores a linearly and well-founded ordered carrier with order type
@@ -45,8 +46,275 @@ model is mostly extensional:
   that its coherence map is idempotent and not generally the raw identity.
 - `DaTra` is then the ordinary Mathlib presheaf category `Atl^op -> Type`.
 
-This is a good denotational account, but it does not yet capture several
-implementation choices on which the Haskell proofs depend.
+The `datra-lean/Executable` modules model the executable representations and
+prove their interpretations into this denotational layer. Derived construction
+bridges and the Yoneda packaging boundary still need work; the correspondence
+manifest records their coverage separately. The executable coalition-to-inclusion
+arrow and inclusion action on insertions have interpretation theorems, including
+identity and composition in the stable-transversal category. The one-page
+interpretation lifts to a stable-transversal isomorphism. It transports the
+written Dominion-inclusion hom equivalence, and both executable hom maps have
+full interpretation and inverse laws. The forward naturality laws also preserve
+the stored partial inverses. Haskell assembly certificates still need checking.
+The Charter object has an executable
+coverage-enumeration Dominion, guarded data-arrow inverses, and an isomorphism
+to the written covered-subtype Atlas. The complete-action helper preserves
+the dependent cell and both directions of its insertion, including under
+padding normalization. Charter's runtime arrow action restricts that complete
+action and uses checked source-inclusion inverse evidence. The complete Charter
+arrow, unit, counit, lift, and lower operations have semantic bridges. Its full
+identity, composition, inverse, and naturality laws follow through a transported
+hom equivalence. The Atlas-map and transversal-map wrappers preserve their
+stored arrows, and their inclusion actions agree with the semantic full
+subcategories. Charter coverage witnesses reuse the original Atlas search's
+region and recompute the charted caches, matching the Haskell algorithm.
+
+The shared Atlas extent module is LiquidHaskell-checked. Its origin-rank
+insertion requires explicit page-order and trace-transport conditions connecting
+the source to this Atlas's origin. Lean derives these conditions for every valid
+full-spine element. The Haskell module checks that each mapped source datum is
+accepted by cell membership and that every successful inverse has the requested
+rank. Public page lookup retains a typed folio prefix with the original origin
+chain and value. LiquidHaskell checks its padding count, the generated trace's
+length and origin suffix, and the origin arrow for the resulting page element.
+A checked record retains the selected value at its actual position in the
+prefix's final chain before the existential index hides its carrier types.
+The trace is constructed while that carrier is known and stored with its exact
+equality to the prefix's recursively generated padded trace. Its checked
+invariants retain the requested page and position, exact trace length, starting
+position, and origin suffix through the Atlas lookup callback. The Lean index
+record models the stored trace and its equality to that computation. Lookup
+walks the owning folio and retains an equation between the returned trace and
+that folio's canonical trace lookup. Lean models this selection, proves that
+the selected prefix belongs to the original folio, and proves agreement of the
+returned trace with the canonical lookup, including unsuccessful lookups.
+Lean proves that every genuine-page entry of the native cached trace is the
+prefix's interval transport and every padded entry retains the final position.
+The Atlas lookup wrapper requires both a matching origin and the owning-folio
+trace equation. Its callback and the merge/sequence resolvers retain
+`cellTraceValid` for the selected owner. Native lookup retains its entire
+optional trace result, including failure, so the owner certificate implies
+both exact trace length and the requested starting position. Both checkers
+use these scalar conditions to prove that a suffix arrow reads the target's
+position at the target page. Atlas ordering and transposal ordering share the
+same Natural-indexed trace lookup; cross-language fixtures include offsets
+larger than a machine integer. Negative checks reject omitting either endpoint's
+trace shape, using the shape proof without an owner certificate, or dropping a
+successful native lookup. Normalization preserves the same owner certificate:
+canonical lookup at the clamped page equals lookup at the original page with
+its trace trimmed to the owning folio's length. Genuine-page traces stay fixed;
+padded traces trim to the exact native final-page trace. The Atlas object and
+arrow normalization proofs retain that certificate using the checked equality
+between the pagination's cardinality and its stored folio length. These are
+scalar trace certificates; derived arrow membership preservation and the full
+dependent-carrier assembly still need checked contracts. The cached folio counts are constructor
+invariants: an origin has length one and an append increments the previous
+length. Negative checks reject malformed counts, missing padding, a trace
+that discards the origin or current occurrence, a stored value at an unrelated
+position, a forged cached transport trace, lookup that shifts the requested
+page, and Atlas lookup without its owning-folio trace equation. A runtime
+regression distinguishes folios with the same origin, page sizes, and selected
+coordinates but different intermediate transports, including padded pages.
+Lean proves the corresponding trace and count laws. The shared Atlas lookup
+callback retains the source's origin-arrow condition. Merge and sequence
+resolve component cells through this callback, and their membership modules
+are LiquidHaskell-checked. The member-position scan also checks that its
+selected sequence index lies within the supplied member list. Negative checks
+reject changing the selected cell's owning Atlas, discarding its transport
+trace, or claiming an out-of-range member index. Their full Atlas assembly
+still needs the stronger validity and membership-preservation conditions for
+data arrows and inclusion callbacks; generative scope alone does not establish
+these value-dependent conditions.
+
+Consolidation and opposite transport retain both order predicates through
+identity and composition. The opposite wrapper declares invariant predicates,
+so subtyping cannot replace the nested map's orders. `Consolidation.Ordered`
+retains the actual source and target chains and checks monotonicity against
+their executable position comparisons. Its composition requires the exact
+middle chain to match. Lean proves that these comparisons agree with the
+semantic orders and models the same concrete-chain package. Negative checks
+reject changing the opposite wrapper's orders, dropping an ordered-input
+condition, composing mismatched chains, and using identity between unrelated
+orders. Folio presentations and derived page-transition assembly still need to
+retain these concrete-chain certificates through existential carrier hiding.
+
+Atlas data stores its four law witnesses with their refinements intact. The
+owning Atlas checks that the stored normalization bounds match its pagination,
+and its identity, composition, coherence, and disjointness accessors recover
+the corresponding equations for the public data action. Pagination stores one
+page-element category and recovers its folio from that category. The shared
+extent module uses the retained composition law to prove that transport
+preserves origin ranks and accepted cell membership. It also checks that every
+accepted cell rank belongs to the extent, and that distinct cells on one
+genuine page cannot accept a common rank. The latter proof recovers source data
+from the checked inverses, then combines origin-rank injectivity with the
+stored disjointness law. Lean's merge and sequence transport proofs reuse these
+shared membership lemmas. Negative checks reject disjointness applied to the
+same cell and extent membership without an accepted source rank. The correspondence
+inventory includes the logical predicate and refinement-type aliases used to
+state these contracts. Atlas actions retain their native folio domain and a
+first-order membership package. Lookup requires a valid occurrence in that
+domain; transport requires valid source and target occurrences. The stored
+Atlas action's domain must equal its owning pagination, including its
+normalization bounds. Object Dominions and both directions of data insertions carry the appropriate
+cell predicate. Atlas laws quantify over accepted data. Merge and sequence
+store their membership predicates through the restricted-action constructor.
+Extent and territory packages retain a `MembershipDominion`, so existential
+elimination does not widen its carrier to the ambient Haskell type. Coherence
+uses the identity insertion on this accepted carrier, with a checked equality
+to the stored normalization action. Lean interprets the raw membership package
+as a canonical indexed Atlas. Native lookup agrees with the canonical full-spine
+trace, so every canonical occurrence satisfies the stored domain predicate.
+Normalization preserves that predicate. The interpretation requires the same
+folio ownership equality as Haskell's Atlas constructor, and supplies the
+lookup and transport certificates from those proofs. Valid occurrences with the same genuine cell
+have equal normalizations, so the accepted family follows from folio validity
+without an extra assumption about the supplied predicate. The bridge transfers
+all four Atlas laws and preserves ranking, decoding, forward transport, and
+partial inverses. A natural isomorphism connects its data functor to the runtime
+accepted-carrier functor. Merge and sequence reuse the shared carrier
+equivalence operations for their indexed Dominions and insertions.
+The merge page-chain constructor restricts each component carrier to the exact
+trace returned by that component's native folio lookup. Native lookup succeeds
+exactly below the selected page's ordinal and retains its starting position.
+The trace chains are summed and retagged through a checked carrier equivalence
+that explicitly retains target membership. Lean proves equality of this native
+construction with the merge page model, including the executable decoder, and
+identifies each native trace chain with its original dependent page. Negative
+checks reject a false carrier equivalence and either trace-chain carrier being
+widened to arbitrary raw traces. The checked predecessor drops one transport
+step and preserves membership in the preceding page of the same component,
+including across genuine and padded pages. Its checked preimage follows the
+stored choice of preimage in each genuine transition and duplicates the final
+position on padded pages. The result belongs to the next page and its
+predecessor is exactly the original trace. Lean identifies both operations with
+the dependent page transport and its chosen preimage. Full Haskell folio
+assembly still requires checked transition-order and data-transport certificates;
+sequence page chains also need the corresponding carrier restriction.
+
+Consumers import exposed interfaces rather than another component's
+`LiquidInternal` module. The primitive interfaces are `DatraOrdinal.Laws`,
+`Chain.Sum`, `Consolidation.Core`, `DomanialInsertion.Core`,
+`Folio.Presentation`, `PageElements.Structure`, `AtlasMerge.Data`, and
+`AtlasSequence.Data`. Their definitions and refinement contracts are checked in
+the exposed modules, including the logical record selectors used by clients.
+The alignment checker enforces this import boundary; remaining private
+implementation imports stay within each interface's owner.
+
+Merge and sequence components use a shared origin-rank insertion. Its inverse
+checks the candidate's forward rank, because Dominion unranking and insertion
+preimages may return arbitrary candidates outside their images. LiquidHaskell
+checks the rank insertion's round trip and inverse soundness. Lean identifies
+its accepted ranks with the semantic image Dominion and proves rank preservation;
+Atlas cell and extent membership use this operation. Identity, composition,
+and induced source rankings are checked in the insertion implementation module;
+the public Category instances delegate to those operations. Lean also models
+the opposite insertion wrapper and its reversed composition. The merge's tagged
+data, parity decoding, and membership invariant have an executable model for
+each successful cell-resolution branch. Its Dominion is equivalent to the
+semantic root-map image, preserving ranks. Data arrows commute with that
+interpretation, preserve identity and composition including their stored partial
+inverses, and both inclusion components satisfy naturality. The finite merge
+folio stores tagged full traces, builds the component pages by a checked chain
+sum, and appends them behind a fresh singleton origin. Its page order agrees
+with the written bouquet pages; adjacent transports and their chosen preimages
+agree with the component consolidations. Its stored and semantic lengths agree
+with the bouquet length. The cell resolver gives an equivalence between actual full-spine
+merge occurrences and the fresh origin plus left/right component occurrences.
+Both inclusions resolve back to the exact source occurrence, including padding,
+and satisfy their page-number and ordinal-position equations. Stored-page
+resolution preserves every actual page-element arrow, is invariant under
+normalization, and agrees with full-spine resolution on normalized occurrences.
+Checked position lookup recovers valid occurrences without choice. The merge
+Atlas has a computable genuine-cell data family and checked identity,
+composition, coherence, and pagewise-disjointness laws. Its normalized data
+action commutes with the semantic root-image interpretation and preserves ranks.
+The finite page equivalences intertwine every interval map and induce mutually
+inverse functors between the finite element categories. Runtime membership
+accepts exactly the ranks in the corresponding written bouquet data fibre;
+the resulting rank-preserving data equivalences are natural. Together these
+give an isomorphism from the complete executable merge Atlas to the written
+bouquet Atlas, including both inverse laws. The canonical inclusion object
+maps use checked full-spine page lookup, with proved normalized object
+insertions. Their optional inverse decoders have round-trip and inverse-soundness
+laws and reject the opposite component. Prefix ordinal subtraction has an
+exact coefficient model and a checked relation to sum-interval subtraction.
+Both inclusion object maps agree with the written finite inclusions and have
+normalized arrow certificates. Their dependent data insertions accept exactly
+the source cell ranks, including padding pages inside a deeper merge, and
+satisfy normalized naturality. The resulting executable morphisms and checked
+object inverses assemble into complete transposals. A common-page transport
+argument proves strict-order preservation for both inclusions, giving executable
+ordered transposals. The written bouquet has canonical inclusion morphisms
+whose data components are the tagged origin images. Both complete executable
+inclusion morphisms, including the ordered wrappers, commute with the merge
+interpretation isomorphism and these written inclusions. Haskell assembly
+certificates remain to be checked. The merge's
+shared datum module is LiquidHaskell-checked: parity decoding and retagging
+preserve ranks, retagging round trips, and membership-filtered unranking is
+sound and round-trips accepted data. The checked module packages a Dominion
+on that restricted carrier and an insertion between accepted-data carriers,
+requiring explicit preservation of the target membership predicate. The merge
+assembly uses these constructors. The datum's nominal cell role prevents
+coercion between distinct cell identities. The Atlas assembly still needs to
+establish and retain those membership preconditions for its dependent data
+family, including the membership-preservation witness for each data arrow.
+
+Sequence has a checked finite-member datum model. Its radix encoding is
+`memberCount * originRank + memberIndex`; decoding requires a positive member
+count, and its round-trip theorem requires a member index below that count.
+LiquidHaskell checks these conditions, membership-filtered decoding, and the
+restricted Dominion constructor. The runtime sequence uses this constructor
+and a checked membership-preserving data insertion, with a nominal datum cell
+role. Lean models the corresponding finite family of source cells, proves
+that membership implies a bounded member index, and supplies data-action
+identity, composition, and member-component naturality laws. Its accepted-data
+carriers have rank-preserving equivalences with images in the finite tagged
+sum of member extents, and the data action commutes with these equivalences.
+The sequence folio has a computable finite ordinal-sum page chain, tagged
+transport traces, adjacent consolidations with checked preimages, and the
+maximum-depth finite spine. The prefix accumulator and optional-subtraction
+member scan have exact roundtrip, soundness, bounds, and ordering laws.
+Padded-page lookup preserves the requested full-spine page number. Resolving
+a sequence occurrence and rebuilding it from its member occurrence are inverse
+operations; canonical member objects satisfy their page and prefix-position
+equations. Binary merge and sequence share the finite-prefix folio constructor,
+structural page indices, interval-resolution and pagewise-separation proofs,
+and padding/cast lemmas. Every sequence arrow resolves to a checked member
+transport or to the fresh origin. The stored resolver is invariant under
+normalization and agrees with full-spine resolution on normalized occurrences.
+The sequence Atlas has a computable genuine-cell data family and checked
+identity, composition, coherence, and pagewise-disjointness laws. Its data
+action commutes with the tagged root-image interpretation and preserves radix
+ranks. Canonical member inclusions have checked object lookups, optional inverse
+round trips and inverse soundness, and reject objects from other members. Their
+normalized arrow maps preserve the actual sequence intervals. Their dependent
+data insertions accept exactly the source ranks, including padding inside a
+deeper sequence, and satisfy normalized naturality. These assemble into complete
+executable ordered transposals. Merge and sequence share the clamping and
+constant-page-shift order proofs. The semantic finite-family
+folio uses lexicographically ordered tagged member cells, componentwise
+consolidations, and one fresh singleton origin. Its finite sums retain the
+ordinal chain bound. Executable page equivalences preserve order, identify the
+maximum depth, and commute with every finite interval. The resulting element
+functors are mutually inverse. Merge and sequence share the general finite-folio
+comparison construction. The semantic sequence data functor uses images in the
+finite tagged union of member extents. Its identity, composition, and pagewise
+disjointness laws are checked. Bounded executable data membership agrees exactly
+with the ranks in each semantic cell; quotient/remainder decoding gives a
+rank-preserving data equivalence. Together with the folio comparison this proves
+a complete Atlas isomorphism. The canonical member morphisms, including their
+ordered-transposal presentations, commute with this isomorphism. Merge and
+sequence share the rank-preserving Atlas comparison and origin-membership proofs.
+The runtime Atlas assembly
+must also establish the membership conditions and arrow-preservation evidence
+required by its checked helpers.
+
+The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
+ranking round trip, charted witness caches, and propagation of coverage and
+inverse certificates across public entry points still need checked contracts.
+The checked insertion helpers alone do not discharge those assembly obligations;
+these modules remain partially aligned.
 
 ### Haskell and LiquidHaskell
 
@@ -71,6 +339,25 @@ The current `DatraCore` representation is executable and intensional:
   full-spine coherence, and pagewise-disjointness witnesses.
 - Primitive Atlas morphisms normalize at source and target and carry page-arrow
   preservation and data-naturality witnesses.
+- Primitive Atlas transversals certify coverage of the actual mapped source datum.
+  Their callback receives only the covered source; the shared image operation
+  supplies the dependent target datum used by the coverage predicate.
+- Primitive stable Atlas transversals carry an explicit coalition inverse and
+  its left-inverse certificate for the actual forward coalition action.
+  Identity and composition derive the insertion and its certificate
+  structurally; coverage preservation alone does not supply an executable inverse.
+- The executable coalition-to-inclusion construction additionally takes a component
+  inverse on target cell data, with a checked left-inverse certificate for the
+  transported coalition action. Uncovered target data need no coverage search.
+- Charter counits and the lowering hom map take an explicit inverse on original
+  cell data, with a checked left-inverse certificate. `chartCellData` constructs
+  a charted datum from checked coverage evidence.
+- Charter data arrows verify inverse candidates against the target Dominion's
+  rank before retaining them. Their origin-image equation then reflects target
+  coverage back to the source cell.
+- `chartMap` and `charterFunctorHom` take the source's covered-inclusion inverse
+  and left-inverse certificate. Complete components use this inverse to retain
+  source coverage. `chartLift` derives it from its source Atlas-map evidence.
 - `AtlasMorphism` and `AtlasHom` explicitly represent identity and composition.
   A materialized identity is the Atlas normalization/coherence idempotent, and
   composite evaluation inserts the middle Atlas coherence.
@@ -80,14 +367,12 @@ The current `DatraCore` representation is executable and intensional:
 
 ### Remaining explicit trust boundary
 
-A repository-wide scan of `DatraCore` currently finds four explicit
+A repository-wide scan of `DatraCore` currently finds two explicit
 LiquidHaskell `assume` declarations, all in
 `DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs`:
 
 | Assumption | Intended fact | Nature of the gap |
 | --- | --- | --- |
-| `presheafRightIdentity` | `presheafCompose arrow presheafIdentity == arrow` | Structural equality of the indexed `AtlasHom` syntax |
-| `presheafAssociativity` | Associativity of `presheafCompose` | Structural induction over the indexed syntax |
 | `yoneda` | The representable action packages as a lawful `DataTransformation` | LiquidHaskell loses verified laws at a rank-N/defunctionalized constructor boundary |
 | `yonedaNatural` | An Atlas arrow packages as the corresponding Yoneda natural transformation | The pointwise naturality lemma is checked, but its rank-N component cannot be stored without an assumption |
 
@@ -109,21 +394,22 @@ LiquidHaskell theorem has a Lean counterpart over the same cases.
 Suggested modules:
 
 ```text
-Datra/Executable/Ordinal.lean
-Datra/Executable/Dominion.lean
-Datra/Executable/Chain.lean
-Datra/Executable/Consolidation.lean
-Datra/Executable/Folio.lean
-Datra/Executable/PageElements.lean
-Datra/Executable/Pagination.lean
-Datra/Executable/Atlas/Data.lean
-Datra/Executable/Atlas/Morphism.lean
-Datra/Executable/DataTransformation.lean
+datra-lean/Executable/Ordinal.lean
+datra-lean/Executable/Dominion.lean
+datra-lean/Executable/Chain.lean
+datra-lean/Executable/Consolidation.lean
+datra-lean/Executable/Folio.lean
+datra-lean/Executable/PageElements.lean
+datra-lean/Executable/Pagination.lean
+datra-lean/Executable/Atlas/Data.lean
+datra-lean/Executable/Atlas/Morphism.lean
+datra-lean/Executable/DataTransformation.lean
 ```
 
-Initially, `datra.lean` can import these modules while retaining the literate
-preprint material and compatibility aliases. Splitting the file is part of the
-work, not a prerequisite for changing the mathematics.
+`datra.lean` is the import entry point. The literate preprint material remains
+beside the corresponding semantic definitions in `datra-lean/Semantics.lean`.
+The preprint extractor follows the local imports and includes every module in
+the full source appendix.
 
 ### 2. Semantic layer
 
@@ -285,7 +571,7 @@ starting lemmas for this step.
   `PE-NORMALIZE-IDEMPOTENT` or `ATLASHOM-ASSOC`.
 - Add a short comment containing that identifier at both the Lean theorem and
   LiquidHaskell proof function.
-- Capture the current four-assumption inventory in CI so new assumptions cannot
+- Track the explicit trust inventory in CI so new assumptions cannot
   be introduced unnoticed.
 
 Exit criterion: every core Haskell representation and every trusted assumption
@@ -308,12 +594,15 @@ unexplained semantic/executable mismatch.
 
 - Implement the GADT-equivalent folio and padded page lookup.
 - Implement traces and trace-derived arrows.
+- Retain genuine-page identity in the phantom cell index: equal chain/value
+  payloads on different genuine pages may have different covered sub-dominions.
+  Padding normalization must preserve this identity.
 - Prove page-element category laws and all normalization lemmas.
 - Build the equivalence with the semantic category of elements.
 - Model pagination ownership and morphisms as object maps with an arrow witness.
 
 Exit criterion: Lean can state and prove the same contracts as
-`Folio.LiquidInternal`, `PageElements.LiquidInternal`, and
+`Folio.Presentation`, `PageElements.Structure`, and
 `Pagination.LiquidInternal` without appealing to the old `Pag` morphism type.
 
 ### Phase 3: Atlas objects and morphisms
@@ -407,7 +696,9 @@ and Haskell modules in this order:
 
 1. Atlas extent, territory, and covered page elements.
 2. Atlas transposals, ordered transposals, transversals, and stable transversals.
-3. Dominion inclusion, charter, coalition, and cartography.
+3. Dominion inclusion, charter, coalition, and cartography. Charter must restrict
+   the complete transversal action; arbitrary intermediate Atlas morphisms need
+   not preserve coverage. Its inverse candidates must retain source coverage.
 4. Empty Atlas, merge, sequence, confederation, federation, and horizontal sum.
 5. Data transversals, stable data transversals, navigation, expedition, and
    Data Transformation Maps.
