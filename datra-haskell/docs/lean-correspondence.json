@@ -3255,6 +3255,132 @@
       "haskell_declaration": "cellContainsRankPreserved",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "Atlas.cellContainsRank_preserved"
+    },
+    {
+      "id": "ATLAS-CELL-MEMBERSHIP-DISJOINT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
+      "haskell_declaration": "cellContainsRankDisjoint",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.cellContainsRank_disjoint"
+    },
+    {
+      "id": "ATLAS-CELL-MEMBERSHIP-EXTENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
+      "haskell_declaration": "cellContainsRankInExtent",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.cellContainsRank_inExtent"
+    },
+    {
+      "id": "DOMINION-MEMBERSHIP-PACKAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Dominion/Internal.hs",
+      "haskell_declaration": "membershipDominion",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "MembershipDominion.package"
+    },
+    {
+      "id": "ATLAS-MEMBERSHIP-PREDICATE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/LiquidInternal.hs",
+      "haskell_declaration": "atlasMembershipAccepts",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "AtlasMembership.accepts"
+    },
+    {
+      "id": "ATLAS-MEMBERSHIP-ACTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/LiquidInternal.hs",
+      "haskell_declaration": "atlasRestrictedAction",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "AtlasMembershipAction.package"
+    },
+    {
+      "id": "ATLAS-DATA-COHERENCE-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasDataCoherence",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "AtlasMembershipAction.coherenceInsertion"
+    },
+    {
+      "id": "ATLAS-DATA-COHERENCE-AGREEMENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasDataCoherenceAgrees",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "AtlasMembershipAction.coherenceInsertion_agrees"
+    },
+    {
+      "id": "ATLAS-DATUM-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasAcceptsDatum",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "AtlasMembershipAction.acceptsAt"
+    },
+    {
+      "id": "ATLAS-DATUM-MEMBERSHIP-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasAcceptsDatumNormalized",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "AtlasMembershipAction.acceptsAt_normalize"
+    },
+    {
+      "id": "ATLAS-MEMBERSHIP-LAWS-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/LiquidInternal.hs",
+      "haskell_declaration": "atlasData",
+      "lean_namespace": "Datra.Executable.AtlasMembershipAction",
+      "lean_declaration": "toIndexedData"
+    },
+    {
+      "id": "ATLAS-MEMBERSHIP-ATLAS-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasWithScope",
+      "lean_namespace": "Datra.Executable.AtlasMembershipAction",
+      "lean_declaration": "toCanonicalAtlas"
+    },
+    {
+      "id": "ATLAS-MEMBERSHIP-RANK-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasDataAt",
+      "lean_namespace": "Datra.Executable.AtlasMembershipAction",
+      "lean_declaration": "canonical_rank"
+    },
+    {
+      "id": "ATLAS-MEMBERSHIP-UNRANK-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasDataAt",
+      "lean_namespace": "Datra.Executable.AtlasMembershipAction",
+      "lean_declaration": "canonical_unrank"
+    },
+    {
+      "id": "ATLAS-MEMBERSHIP-MAP-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "mapAtlasData",
+      "lean_namespace": "Datra.Executable.AtlasMembershipAction",
+      "lean_declaration": "canonical_map"
+    },
+    {
+      "id": "ATLAS-MEMBERSHIP-PREIMAGE-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "mapAtlasData",
+      "lean_namespace": "Datra.Executable.AtlasMembershipAction",
+      "lean_declaration": "canonical_preimage"
+    },
+    {
+      "id": "ATLAS-MEMBERSHIP-FUNCTOR-ISOMORPHISM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasWithScope",
+      "lean_namespace": "Datra.Executable.AtlasMembershipAction",
+      "lean_declaration": "canonicalFunctorIso"
+    },
+    {
+      "id": "PE-CONSTRUCTED-TRACE-LENGTH",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElement",
+      "lean_namespace": "Datra.Executable.PageElementIndexData",
+      "lean_declaration": "toRaw_trace_length"
+    },
+    {
+      "id": "PE-CONSTRUCTED-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElement",
+      "lean_namespace": "Datra.Executable.PageElementIndexData",
+      "lean_declaration": "toRaw_page_position"
     }
   ],
   "modules": [
@@ -3269,13 +3395,23 @@
         "atlasTraceLimit",
         "atlasPagination",
         "atlasPageElements",
+        "atlasCardinality",
         "normalizeAtlasElement",
         "normalizeAtlasArrow",
-        "mapAtlasData"
+        "atlasAcceptsDatum",
+        "mapAtlasData",
+        "atlasDataCoherence"
       ],
       "refinements": [
+        "atlasRestrictedDataAction",
         "atlas",
         "atlasWithScope",
+        "atlasAcceptsDatumNormalized",
+        "atlasDataAt",
+        "mapAtlasData",
+        "atlasDataCoherence",
+        "atlasDataCoherenceAgrees",
+        "normalizeAtlasDatum",
         "atlasIdentityWitness",
         "atlasCompositionWitness",
         "atlasCoherenceWitness",
@@ -3296,14 +3432,17 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/LiquidInternal.hs",
       "module": "Atlas.LiquidInternal",
       "types": [
+        "AtlasMembership",
         "AtlasAction",
         "AtlasData"
       ],
       "reflected": [
-        "atlasActionDataAt",
-        "atlasActionMap"
+        "atlasMembershipAccepts",
+        "atlasActionAccepts"
       ],
       "refinements": [
+        "atlasMembership",
+        "atlasRestrictedAction",
         "atlasData"
       ],
       "lean_target": "Datra.Executable.Atlas",
@@ -3375,6 +3514,7 @@
         "chainOrdinalLT",
         "chainListLength",
         "positionMatches",
+        "chainObjectAt",
         "spineOmega",
         "spineOrdinal",
         "spineNatural"
@@ -3578,6 +3718,7 @@
         "composeInsertionPreimage",
         "identityMap",
         "identityPreimage",
+        "identityInsertion",
         "pullbackUnrank",
         "rankImage",
         "rankImagePreimage",
@@ -3606,11 +3747,13 @@
       "types": [
         "Dominion",
         "Dominion",
+        "MembershipDominion",
         "CountableSet"
       ],
       "reflected": [],
       "refinements": [
-        "dominion"
+        "dominion",
+        "membershipDominion"
       ],
       "lean_target": "Datra.Executable.Dominion",
       "coverage": "partial",
@@ -3687,12 +3830,15 @@
       "module": "PageElements.Internal",
       "types": [
         "PageElements",
-        "PageElementIndex"
+        "PageElementIndex",
+        "PageElementIndexData"
       ],
       "reflected": [
         "pageElementsWithScope",
         "pageElementsFolio",
         "pageElementIndexOrigin",
+        "pageElementIndexPage",
+        "pageElementIndexPosition",
         "originPageElement",
         "folioOriginElement",
         "folioOriginTrace",
@@ -3703,6 +3849,7 @@
         "pageElementIndex",
         "indexFromPrefix",
         "pageElement",
+        "lastPageElement",
         "pageElementTraceAt",
         "genuinePageElementTrace",
         "prependCopies",
@@ -3732,6 +3879,9 @@
       "reflected": [
         "pageElementCellPosition",
         "somePageElement",
+        "somePageElementPage",
+        "somePageElementPosition",
+        "somePageElementTrace",
         "pageElementAt",
         "pageElementPrecedes",
         "somePageElementPrecedes",
@@ -3945,7 +4095,8 @@
         "atlasExtent",
         "cellHasOrigin",
         "atlasCellOriginRankInsertion",
-        "cellContainsRank"
+        "cellContainsRank",
+        "extentContainsRank"
       ],
       "refinements": [
         "withAtlasCellAt",
@@ -3954,10 +4105,12 @@
         "cellContainsRankImage",
         "cellOriginRankPreimageSound",
         "cellOriginRankMap",
-        "cellContainsRankPreserved"
+        "cellContainsRankPreserved",
+        "cellContainsRankDisjoint",
+        "cellContainsRankInExtent"
       ],
       "lean_target": "Datra.Executable.Atlas.CellDominion",
-      "coverage": "aligned",
+      "coverage": "partial",
       "aliases": [
         "AtlasCellDominionHandler"
       ],

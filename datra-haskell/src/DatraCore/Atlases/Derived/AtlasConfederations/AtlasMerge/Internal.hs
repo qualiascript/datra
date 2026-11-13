@@ -23,7 +23,8 @@ import Atlas
   , AtlasObjectMap
   , atlas
   , atlasCardinality
-  , atlasDataAction
+  , atlasRestrictedDataAction
+  , atlasMembership
   , atlasFolio
   , atlasHom
   , atlasMorphism
@@ -380,7 +381,8 @@ atlasMerge left right useMerge =
   in Pagination.pagination pages $ \mergePagination ->
       atlas
         mergePagination
-        (atlasDataAction
+        (atlasRestrictedDataAction
+          (atlasMembership (mergeCellContains left right))
           (mergeDominionAt left right)
           (mergeDataMap left right))
         (\_ _ -> ())

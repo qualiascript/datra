@@ -1,5 +1,53 @@
 import Executable.PageElements
 
+namespace Datra.Executable
+
+/-- PageElements.Internal.PageElementIndexData retains the selected prefix,
+position, and value before the runtime wrapper hides their carrier types. -/
+structure PageElementIndexData (origin current : Page) where
+  page : Nat
+  folioPrefix : Folio origin current
+  padding : Nat
+  padding_eq : padding + folioPrefix.data.length = page + 1
+  position : Ordinal
+  value : current.Carrier
+  position_eq : current.chain.position value = position
+
+namespace PageElementIndexData
+variable {origin current : Page}
+
+/-- The stored prefix supplies both the transported trace and the cell payload. -/
+def toRaw {Scope : Type u} (owner : Scope) (selected : PageElementIndexData origin current) :
+    PageElement owner where
+  page := selected.page
+  position := current.chain.position selected.value
+  trace := selected.folioPrefix.data.paddedTrace selected.padding selected.value
+  cell := ⟨current.Carrier, current.chain, selected.value, selected.folioPrefix.data.depth - 1⟩
+
+-- ALIGN: PE-CONSTRUCTED-POSITION.
+theorem toRaw_page_position {Scope : Type u} (owner : Scope)
+    (selected : PageElementIndexData origin current) :
+    (selected.toRaw owner).page = selected.page ∧
+      (selected.toRaw owner).position = selected.position :=
+  ⟨rfl, selected.position_eq⟩
+
+-- ALIGN: PE-CONSTRUCTED-TRACE-LENGTH.
+theorem toRaw_trace_length {Scope : Type u} (owner : Scope)
+    (selected : PageElementIndexData origin current) :
+    (selected.toRaw owner).trace.length = selected.page + 1 := by
+  simpa only [toRaw, FolioData.paddedTrace, List.length_append, List.length_replicate,
+    FolioData.genuineTrace_length, ← selected.folioPrefix.data.length_eq_depth selected.folioPrefix.valid]
+    using selected.padding_eq
+
+theorem toRaw_origin_trace {Scope : Type u} (owner : Scope)
+    (selected : PageElementIndexData origin current) :
+    Trace.traceSuffix (selected.toRaw owner).trace
+      [origin.chain.position selected.folioPrefix.data.originValue] = true :=
+  selected.folioPrefix.data.paddedTrace_toOrigin selected.padding selected.value
+
+end PageElementIndexData
+end Datra.Executable
+
 namespace Datra.Executable.FolioData
 variable {origin final : Page}
 

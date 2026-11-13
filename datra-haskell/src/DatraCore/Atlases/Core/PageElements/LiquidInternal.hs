@@ -15,6 +15,9 @@ module PageElements.LiquidInternal
   , SomePageElementArrow (..)
   , pageElementAt
   , somePageElement
+  , somePageElementPage
+  , somePageElementPosition
+  , somePageElementTrace
   , pageElementPrecedes
   , somePageElementPrecedes
   , somePageElementPrecedesReflexive
@@ -50,6 +53,7 @@ module PageElements.LiquidInternal
   , traceSuffix
   , traceSuffixTransitive
   , traceTail
+  , traceStartsWith
   ) where
 
 import Chain
@@ -106,6 +110,23 @@ data SomePageElement (scope :: Type) where
 {-@ reflect somePageElement @-}
 somePageElement :: PageElement scope object -> SomePageElement scope
 somePageElement = SomePageElement
+
+{-@ reflect somePageElementPage @-}
+somePageElementPage :: SomePageElement scope -> Natural
+somePageElementPage (SomePageElement element) = pageElementPage element
+
+{-@ reflect somePageElementPosition @-}
+somePageElementPosition :: SomePageElement scope -> Ordinal
+somePageElementPosition (SomePageElement element) = pageElementPosition element
+
+{-@ reflect somePageElementTrace @-}
+somePageElementTrace :: SomePageElement scope -> [Ordinal]
+somePageElementTrace (SomePageElement element) = pageElementTrace element
+
+{-@ reflect traceStartsWith @-}
+traceStartsWith :: Ordinal -> [Ordinal] -> Bool
+traceStartsWith _ [] = False
+traceStartsWith position (first : _) = position == first
 
 -- | Construct a page element from its current position followed by its
 -- transported positions on every preceding page.

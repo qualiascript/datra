@@ -188,34 +188,20 @@ theorem contains_transport {X Y : Atlas} {source target : SourceCell X Y}
   | origin => exact valid
   | leftOrigin x =>
     cases datum with
-    | left n =>
-      obtain ⟨value, same⟩ := (X.cellContainsRank_iff x n).mp valid
-      exact (X.extentContainsRank_iff n).mpr ⟨X.originImage x value, same⟩
+    | left n => exact X.cellContainsRank_inExtent x n valid
     | right n => contradiction
   | rightOrigin y =>
     cases datum with
     | left n => contradiction
-    | right n =>
-      obtain ⟨value, same⟩ := (Y.cellContainsRank_iff y n).mp valid
-      exact (Y.extentContainsRank_iff n).mpr ⟨Y.originImage y value, same⟩
+    | right n => exact Y.cellContainsRank_inExtent y n valid
   | left f =>
     cases datum with
-    | left n =>
-      obtain ⟨value, same⟩ := (X.cellContainsRank_iff _ n).mp valid
-      apply (X.cellContainsRank_iff _ n).mpr
-      exact ⟨(X.data.action.normalizedMap f).map value,
-        (congrArg (X.dataAt (FolioData.ValidElement.originElement X.pages)).rank
-          (X.originImage_map f value)).trans same⟩
+    | left n => exact X.cellContainsRank_preserved f n valid
     | right n => contradiction
   | right f =>
     cases datum with
     | left n => contradiction
-    | right n =>
-      obtain ⟨value, same⟩ := (Y.cellContainsRank_iff _ n).mp valid
-      apply (Y.cellContainsRank_iff _ n).mpr
-      exact ⟨(Y.data.action.normalizedMap f).map value,
-        (congrArg (Y.dataAt (FolioData.ValidElement.originElement Y.pages)).rank
-          (Y.originImage_map f value)).trans same⟩
+    | right n => exact Y.cellContainsRank_preserved f n valid
 
 -- ALIGN: MERGE-DATA-INSERTION.
 def dataMap {X Y : Atlas} {source target : SourceCell X Y} (arrow : Transport source target)

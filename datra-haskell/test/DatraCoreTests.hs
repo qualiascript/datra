@@ -81,6 +81,7 @@ testTree =
         , testCase "pagination" testPagination
         , testCase "atlas" testAtlas
         , testCase "empty atlas" testEmptyAtlas
+        , testCase "atlas cell membership" testAtlasMembership
         , testCase "atlas merge" testAtlasMerge
         , testCase "atlas merge origin ranks" testAtlasMergeOriginRanks
         , testCase "atlas merge rejects off-image unranking" testAtlasMergeOffImageUnrank
@@ -1084,6 +1085,40 @@ testStableConfederalKleisliSyntax = do
   assert "Kleisli syntax composition is associative"
     (evaluate leftAssociated == evaluate rightAssociated)
 
+testAtlasMembership :: IO ()
+testAtlasMembership =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    let membership = atlasMembership (\_ (TestCellData value) -> even value)
+        dataAt _ = dominion
+          (\(TestCellData value) -> value)
+          (\value -> if even value then Just (TestCellData value) else Nothing)
+          (const ())
+        mapData _ = domanialInsertion
+          (\(TestCellData value) -> TestCellData value)
+          (\(TestCellData value) -> Just (TestCellData value))
+          (const ())
+    in atlas valuePagination (atlasRestrictedDataAction membership dataAt mapData)
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \valueAtlas -> do
+        mapM_ (\page ->
+          case pageElementIndex (atlasPageElements valueAtlas) page (finiteOrdinal 0) of
+            Nothing -> fail "missing restricted Atlas cell"
+            Just index -> withPageElement (pageElement index) $ \cell -> do
+              assert "Atlas construction retains accepted data"
+                (atlasAcceptsDatum valueAtlas cell (TestCellData 2))
+              assert "Atlas construction retains rejected data under padding"
+                (not (atlasAcceptsDatum valueAtlas cell (TestCellData 3)))
+              assert "restricted data lookup retains its membership filter"
+                (unrank (atlasDataAt valueAtlas cell) 2 == Just (TestCellData 2)
+                  && isNothing (unrank (atlasDataAt valueAtlas cell) 3))
+              assert "coherence preserves accepted data"
+                (normalizeAtlasDatum valueAtlas cell (TestCellData 2) == TestCellData 2)
+          ) [0, 1, 7]
+        withAtlasCellDominion (atlasExtent valueAtlas) $ \_ extent ->
+          assert "existential extent retains its carrier predicate"
+            (dominionMembership extent (TestCellData 2)
+              && not (dominionMembership extent (TestCellData 3))
+              && isNothing (unrank (memberDominion extent) 3))
+
 -- The page offset makes it observable whether 'atlasDataAt' normalized its
 -- input before consulting the canonical data assignment.
 testAtlasDataAt
@@ -1236,7 +1271,7 @@ testAtlas =
                     \extentCell extentDominion ->
                       assert "atlas extent is the origin dominion"
                         ( pageElementPage extentCell == 0
-                          && rank extentDominion (TestCellData 5) == 5
+                          && rank (memberDominion extentDominion) (TestCellData 5) == 5
                         )
                   case chainIndex
                     (atlasTerritoryChain valueAtlas)
@@ -1249,14 +1284,14 @@ testAtlas =
                           \territoryCell territoryDominion ->
                             assert "atlas territory uses the final genuine page"
                               ( pageElementPage territoryCell == 0
-                                && rank territoryDominion (TestCellData 5) == 5
+                                && rank (memberDominion territoryDominion) (TestCellData 5) == 5
                               )
                       withAtlasCellDominion
                         (atlasRegion valueAtlas territoryIndex) $
                           \regionCell regionDominion ->
                             assert "atlas regions are territory members"
                               ( pageElementPage regionCell == 0
-                                && rank regionDominion (TestCellData 5) == 5
+                                && rank (memberDominion regionDominion) (TestCellData 5) == 5
                               )
                   assert "atlas element ordering compares canonical cells"
                     (not (atlasElementLT valueAtlas padded origin))
@@ -1507,6 +1542,8 @@ checkMergeOriginRanks sourceAtlas targetAtlas inclusion encodeRank =
                     image = applyInsertion component sourceDatum
                 assert "merge inclusion stores the transported origin rank"
                   (rank targetDominion image == encodeRank expectedRank)
+                assert "merge and sequence retain membership at assembly"
+                  (atlasAcceptsDatum targetAtlas target image)
                 assert "merge inclusion recovers data from their origin ranks"
                   (preimage component image == Just sourceDatum)
                 assert "merge membership rejects a false inverse candidate"

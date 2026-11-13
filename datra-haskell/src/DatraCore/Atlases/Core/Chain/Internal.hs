@@ -176,8 +176,9 @@ chainIndexOf valueChain objectValue =
       objectValue
 
 -- | Retrieve the object at a certified chain index.
+{-@ reflect chainObjectAt @-}
 chainObjectAt :: ChainIndex object -> object
-chainObjectAt = chainIndexObject
+chainObjectAt index = chainIndexObject index
 
 compareInChain :: Chain object -> object -> object -> Ordering
 compareInChain valueChain left right =

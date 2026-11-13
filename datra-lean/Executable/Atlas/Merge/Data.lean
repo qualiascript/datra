@@ -31,26 +31,14 @@ def indexedDatumEquiv (X Y : Atlas) (source : (pagination X Y).Element) :
 
 -- ALIGN: MERGE-INDEXED-DOMINION.
 def indexedDominion (X Y : Atlas) (source : (pagination X Y).Element) :
-    Dominion (IndexedDatum X Y source.val.cell) where
-  rank datum := datumRank datum.val
-  unrank candidate := ((dominionAt (resolveStoredElement X Y source) source.val.cell).unrank candidate).map
+    Dominion (IndexedDatum X Y source.val.cell) :=
+  (dominionAt (resolveStoredElement X Y source) source.val.cell).reindex
     (indexedDatumEquiv X Y source).symm
-  coherence datum := by
-    change Option.map _ ((dominionAt (resolveStoredElement X Y source) source.val.cell).unrank
-      ((dominionAt (resolveStoredElement X Y source) source.val.cell).rank
-        (indexedDatumEquiv X Y source datum))) = _
-    simp only [Dominion.coherence, Option.map_some, Equiv.symm_apply_apply]
 
 def indexedDataMap {X Y : Atlas} {source target : (pagination X Y).Element} (arrow : source ⟶ target) :
-    DomanialInsertion (IndexedDatum X Y source.val.cell) (IndexedDatum X Y target.val.cell) where
-  map datum := (indexedDatumEquiv X Y target).symm
-    ((dataMap (resolveStoredElement_arrow X Y arrow) source.val.cell target.val.cell).map
-      (indexedDatumEquiv X Y source datum))
-  preimage datum := ((dataMap (resolveStoredElement_arrow X Y arrow) source.val.cell target.val.cell).preimage
-    (indexedDatumEquiv X Y target datum)).map (indexedDatumEquiv X Y source).symm
-  leftInverse datum := by
-    simp only [Equiv.apply_symm_apply, DomanialInsertion.leftInverse, Option.map_some,
-      Equiv.symm_apply_apply]
+    DomanialInsertion (IndexedDatum X Y source.val.cell) (IndexedDatum X Y target.val.cell) :=
+  (dataMap (resolveStoredElement_arrow X Y arrow) source.val.cell target.val.cell).reindex
+    (indexedDatumEquiv X Y source).symm (indexedDatumEquiv X Y target).symm
 
 def action (X Y : Atlas) : AtlasAction (pagination X Y).pages (IndexedDatum X Y) where
   dataAt := indexedDominion X Y

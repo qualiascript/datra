@@ -14,6 +14,25 @@ structure DomanialInsertion (A : Type u) (B : Type v) where
 namespace DomanialInsertion
 variable {A : Type u} {B : Type v} {C : Type w} {D : Type z}
 
+/-- Conjugate both executable directions by carrier equivalences. In
+particular, this preserves failed and off-image inverse lookups. -/
+def reindex (insertion : DomanialInsertion A B) (source : A ≃ C) (target : B ≃ D) :
+    DomanialInsertion C D where
+  map value := target (insertion.map (source.symm value))
+  preimage value := (insertion.preimage (target.symm value)).map source
+  leftInverse value := by simp [insertion.leftInverse]
+
+@[simp] theorem reindex_map (insertion : DomanialInsertion A B) (source : A ≃ C)
+    (target : B ≃ D) (value : A) :
+    (insertion.reindex source target).map (source value) = target (insertion.map value) := by
+  simp [reindex]
+
+@[simp] theorem reindex_preimage (insertion : DomanialInsertion A B) (source : A ≃ C)
+    (target : B ≃ D) (value : B) :
+    (insertion.reindex source target).preimage (target value) =
+      (insertion.preimage value).map source := by
+  simp [reindex]
+
 -- ALIGN: INSERTION-INJECTIVE.
 theorem injective (f : DomanialInsertion A B) : Function.Injective f.map := by
   intro x y h

@@ -106,6 +106,7 @@ identityRoundTrip :: a -> ()
 identityRoundTrip _ = ()
 
 -- ALIGN: INSERTION-IDENTITY.
+{-@ reflect identityInsertion @-}
 identityInsertion :: DomanialInsertion a a
 identityInsertion = DomanialInsertion identityMap identityPreimage identityRoundTrip
 

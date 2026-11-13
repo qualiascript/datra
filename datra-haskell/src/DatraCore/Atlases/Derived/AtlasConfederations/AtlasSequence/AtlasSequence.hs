@@ -23,7 +23,8 @@ import Atlas
   , AtlasObjectMap
   , atlas
   , atlasCardinality
-  , atlasDataAction
+  , atlasRestrictedDataAction
+  , atlasMembership
   , atlasFolio
   , atlasHom
   , atlasMorphism
@@ -379,7 +380,8 @@ atlasSequence members useSequence =
   in Pagination.pagination pages $ \sequencePagination ->
       atlas
         sequencePagination
-        (atlasDataAction
+        (atlasRestrictedDataAction
+          (atlasMembership (sequenceCellContains members))
           (sequenceDominionAt members)
           (sequenceDataMap members))
         (\_ _ -> ())

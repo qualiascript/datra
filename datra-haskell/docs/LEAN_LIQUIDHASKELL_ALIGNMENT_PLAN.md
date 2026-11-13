@@ -77,11 +77,19 @@ accepted by cell membership and that every successful inverse has the requested
 rank. Public page lookup retains a typed folio prefix with the original origin
 chain and value. LiquidHaskell checks its padding count, the generated trace's
 length and origin suffix, and the origin arrow for the resulting page element.
+A checked record retains the selected value at its actual position in the
+prefix's final chain before the existential index hides its carrier types. Successful lookup retains the
+requested page and position, and construction retains those coordinates and
+the exact trace length through the Atlas lookup callback. Full trace validity,
+including the connection between its head and the stored position, still needs
+a checked Haskell representation bridge.
 The Atlas lookup wrapper requires the index's origin to match the Atlas and
 preserves that arrow evidence. The cached folio counts are constructor
 invariants: an origin has length one and an append increments the previous
 length. Negative checks reject malformed counts, missing padding, a trace
-that discards the origin, and Atlas lookup without a matching index origin.
+that discards the origin or current occurrence, a stored value at an unrelated
+position, lookup that shifts the requested page, and Atlas lookup without a
+matching index origin.
 Lean proves the corresponding trace and count laws. The shared Atlas lookup
 callback retains the source's origin-arrow condition. Merge and sequence
 resolve component cells through this callback, and their membership modules
@@ -99,11 +107,31 @@ and its identity, composition, coherence, and disjointness accessors recover
 the corresponding equations for the public data action. Pagination stores one
 page-element category and recovers its folio from that category. The shared
 extent module uses the retained composition law to prove that transport
-preserves origin ranks and accepted cell membership. The correspondence
+preserves origin ranks and accepted cell membership. It also checks that every
+accepted cell rank belongs to the extent, and that distinct cells on one
+genuine page cannot accept a common rank. The latter proof recovers source data
+from the checked inverses, then combines origin-rank injectivity with the
+stored disjointness law. Lean's merge and sequence transport proofs reuse these
+shared membership lemmas. Negative checks reject disjointness applied to the
+same cell and extent membership without an accepted source rank. The correspondence
 inventory includes the logical predicate and refinement-type aliases used to
-state these contracts. The derived data-action families still need to encode
-cell membership at their assembly boundary, rather than expose arbitrary raw
-tagged ranks as members of every cell.
+state these contracts. Atlas actions retain a first-order membership package:
+object Dominions and both directions of data insertions carry the appropriate
+cell predicate. Atlas laws quantify over accepted data. Merge and sequence
+store their membership predicates through the restricted-action constructor.
+Extent and territory packages retain a `MembershipDominion`, so existential
+elimination does not widen its carrier to the ambient Haskell type. Coherence
+uses the identity insertion on this accepted carrier, with a checked equality
+to the stored normalization action. Lean interprets the raw membership package
+as a canonical indexed Atlas. Valid occurrences with the same genuine cell
+have equal normalizations, so the accepted family follows from folio validity
+without an extra assumption about the supplied predicate. The bridge transfers
+all four Atlas laws and preserves ranking, decoding, forward transport, and
+partial inverses. A natural isomorphism connects its data functor to the runtime
+accepted-carrier functor. Merge and sequence reuse the shared carrier
+equivalence operations for their indexed Dominions and insertions.
+Their full Haskell assembly still requires checked folio validity and transport
+certificates.
 
 Merge and sequence components use a shared origin-rank insertion. Its inverse
 checks the candidate's forward rank, because Dominion unranking and insertion

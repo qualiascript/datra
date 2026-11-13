@@ -23,20 +23,24 @@ module AtlasExtent.Internal
   , cellOriginRankPreimageSound
   , cellOriginRankMap
   , cellContainsRankPreserved
+  , cellContainsRankDisjoint
+  , cellContainsRankInExtent
   , withAtlasCellAt
   ) where
 
 import Atlas.Internal
   ( Atlas
   , atlasDataAt
+  , atlasAcceptsDatum
   , atlasPageElements
   , atlasPageCell
   , atlasCompositionWitness
   , mapAtlasData
   )
+import qualified Atlas.Internal as Atlas
 import Data.Kind (Type)
 import DatraOrdinal (Ordinal)
-import Dominion (Dominion)
+import Dominion.Internal (MembershipDominion (..), dominionCoherence)
 import DomanialInsertion.LiquidInternal
   ( DomanialInsertion (..)
   , rankImageInsertion
@@ -44,12 +48,12 @@ import DomanialInsertion.LiquidInternal
   )
 import Numeric.Natural (Natural)
 import PageElements
-  ( PageElement
-  , PageElementArrow
+  ( PageElementArrow
   , pageElementArrow
   )
 import PageElements.LiquidInternal
-  ( SomePageElement (..)
+  ( PageElement (..)
+  , SomePageElement (..)
   , arrowSource
   , arrowTarget
   , pageElementTransportedReflexive
@@ -66,14 +70,14 @@ data AtlasCellDominion
   (scope :: Type)
   (cellData :: Type -> Type) where
   AtlasCellDominion
-    :: (PageElement scope object, Dominion (cellData object))
+    :: (PageElement scope object, MembershipDominion (cellData object))
     -> AtlasCellDominion scope cellData
 
 -- | A named continuation for consuming a dependent Atlas dominion.
 type AtlasCellDominionHandler scope cellData result =
   forall object.
     PageElement scope object
-    -> Dominion (cellData object)
+    -> MembershipDominion (cellData object)
     -> result
 
 -- | Eliminate the hidden page-element identity of an extent or territory.
@@ -94,7 +98,8 @@ atlasExtent
 atlasExtent valueAtlas =
   case Elements.originPageElement (atlasPageElements valueAtlas) of
     SomePageElement origin ->
-      AtlasCellDominion (origin, atlasDataAt valueAtlas origin)
+      AtlasCellDominion (origin, MembershipDominion
+        (atlasAcceptsDatum valueAtlas origin) (atlasDataAt valueAtlas origin))
 
 -- | The page-element evidence needed by the origin action. Valid folio
 -- occurrences satisfy it; arbitrary raw traces do not.
@@ -114,8 +119,11 @@ cellHasOrigin valueAtlas source =
 -- ALIGN: ATLAS-CELL-LOOKUP-ORIGIN.
 {-@ withAtlasCellAt
       :: valueAtlas:Atlas atlasScope scope cellData origin final
-      -> Natural -> Ordinal
-      -> (forall object. source:{PageElement scope object | cellHasOrigin valueAtlas source}
+      -> page:Natural -> position:Ordinal
+      -> (forall object. source:{PageElement scope object | cellHasOrigin valueAtlas source
+             && pageElementPage source == page
+             && pageElementPosition source == position
+             && len (pageElementTrace source) == page + 1}
             -> result)
       -> Maybe result @-}
 withAtlasCellAt
@@ -137,14 +145,14 @@ withAtlasCellAt valueAtlas page position useCell =
 {-@ atlasCellOriginRankInsertion
       :: valueAtlas:Atlas atlasScope scope cellData origin final
       -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
-      -> DomanialInsertion (cellData object) Natural @-}
+      -> DomanialInsertion ({datum:cellData object | atlasAcceptsDatum valueAtlas source datum}) Natural @-}
 atlasCellOriginRankInsertion
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> DomanialInsertion (cellData object) Natural
 atlasCellOriginRankInsertion valueAtlas source =
   case atlasExtent valueAtlas of
-    AtlasCellDominion (origin, originDominion) ->
+    AtlasCellDominion (origin, MembershipDominion _ originDominion) ->
       rankImageInsertion originDominion
         (mapAtlasData valueAtlas (pageElementArrow source origin))
 
@@ -165,6 +173,7 @@ cellContainsRank valueAtlas source valueRank =
     Just _ -> True
 
 -- ALIGN: ATLAS-EXTENT-CONTAINS-RANK.
+{-@ reflect extentContainsRank @-}
 extentContainsRank
   :: Atlas atlasScope scope cellData origin final
   -> Natural
@@ -180,7 +189,7 @@ extentContainsRank valueAtlas valueRank =
 {-@ cellContainsRankImage
       :: valueAtlas:Atlas atlasScope scope cellData origin final
       -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
-      -> datum:cellData object
+      -> datum:{cellData object | atlasAcceptsDatum valueAtlas source datum}
       -> {cellContainsRank valueAtlas source
             (applyInsertion (atlasCellOriginRankInsertion valueAtlas source) datum)} @-}
 cellContainsRankImage
@@ -197,14 +206,15 @@ cellContainsRankImage valueAtlas source datum =
       -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
       -> valueRank:Natural
       -> datum:{cellData object |
-           preimage (atlasCellOriginRankInsertion valueAtlas source) valueRank == Just datum}
+           preimage (atlasCellOriginRankInsertion valueAtlas source) valueRank == Just datum
+           && atlasAcceptsDatum valueAtlas source datum}
       -> {applyInsertion (atlasCellOriginRankInsertion valueAtlas source) datum == valueRank} @-}
 cellOriginRankPreimageSound
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object -> Natural -> cellData object -> ()
 cellOriginRankPreimageSound valueAtlas source valueRank datum =
   case atlasExtent valueAtlas of
-    AtlasCellDominion (origin, originDominion) ->
+    AtlasCellDominion (origin, MembershipDominion _ originDominion) ->
       rankImagePreimageSound originDominion
         (mapAtlasData valueAtlas (pageElementArrow source origin)) valueRank datum
 
@@ -215,7 +225,7 @@ cellOriginRankPreimageSound valueAtlas source valueRank datum =
       -> arrow:{PageElementArrow scope source target |
            cellHasOrigin valueAtlas (arrowSource arrow)
            && cellHasOrigin valueAtlas (arrowTarget arrow)}
-      -> datum:cellData source
+      -> datum:{cellData source | atlasAcceptsDatum valueAtlas (arrowSource arrow) datum}
       -> {applyInsertion (atlasCellOriginRankInsertion valueAtlas (arrowTarget arrow))
             (applyInsertion (mapAtlasData valueAtlas arrow) datum)
            == applyInsertion (atlasCellOriginRankInsertion valueAtlas (arrowSource arrow)) datum} @-}
@@ -248,3 +258,57 @@ cellContainsRankPreserved valueAtlas arrow valueRank =
         cellOriginRankMap valueAtlas arrow datum `seq`
           cellContainsRankImage valueAtlas (arrowTarget arrow)
             (applyInsertion (mapAtlasData valueAtlas arrow) datum)
+
+-- | Distinct cells on a genuine page cannot accept the same origin rank.
+-- Successful inverses recover source data; the origin Dominion's coherence
+-- turns equality of their ranks into equality of their origin images, which
+-- contradicts the Atlas's stored disjointness law.
+-- ALIGN: ATLAS-CELL-MEMBERSHIP-DISJOINT.
+{-@ cellContainsRankDisjoint
+      :: valueAtlas:Atlas atlasScope scope cellData origin final
+      -> left:{PageElement scope leftObject | cellHasOrigin valueAtlas left
+           && pageElementPage left < Atlas.atlasCardinality valueAtlas}
+      -> right:{PageElement scope rightObject | cellHasOrigin valueAtlas right
+           && pageElementPage right == pageElementPage left
+           && pageElementPosition right /= pageElementPosition left}
+      -> valueRank:{Natural | cellContainsRank valueAtlas left valueRank}
+      -> {not (cellContainsRank valueAtlas right valueRank)} @-}
+cellContainsRankDisjoint
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope leftObject -> PageElement scope rightObject
+  -> Natural -> ()
+cellContainsRankDisjoint valueAtlas left right valueRank =
+  case preimage (atlasCellOriginRankInsertion valueAtlas left) valueRank of
+    Nothing -> ()
+    Just leftDatum ->
+      case preimage (atlasCellOriginRankInsertion valueAtlas right) valueRank of
+        Nothing -> ()
+        Just rightDatum ->
+          case atlasExtent valueAtlas of
+            AtlasCellDominion (origin, MembershipDominion _ originDominion) ->
+              let leftArrow = pageElementArrow left origin
+                  rightArrow = pageElementArrow right origin
+              in cellOriginRankPreimageSound valueAtlas left valueRank leftDatum `seq`
+                cellOriginRankPreimageSound valueAtlas right valueRank rightDatum `seq`
+                dominionCoherence originDominion
+                  (applyInsertion (mapAtlasData valueAtlas leftArrow) leftDatum) `seq`
+                dominionCoherence originDominion
+                  (applyInsertion (mapAtlasData valueAtlas rightArrow) rightDatum) `seq`
+                Atlas.atlasDisjointWitness valueAtlas left right leftArrow rightArrow leftDatum rightDatum
+
+-- | Every accepted cell rank belongs to the Atlas extent. This is the
+-- component-to-origin branch of merge and sequence membership transport.
+-- ALIGN: ATLAS-CELL-MEMBERSHIP-EXTENT.
+{-@ cellContainsRankInExtent
+      :: valueAtlas:Atlas atlasScope scope cellData origin final
+      -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
+      -> valueRank:{Natural | cellContainsRank valueAtlas source valueRank}
+      -> {extentContainsRank valueAtlas valueRank} @-}
+cellContainsRankInExtent
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object -> Natural -> ()
+cellContainsRankInExtent valueAtlas source valueRank =
+  case atlasExtent valueAtlas of
+    AtlasCellDominion (origin, _) ->
+      pageElementTransportedReflexive origin `seq`
+        cellContainsRankPreserved valueAtlas (pageElementArrow source origin) valueRank

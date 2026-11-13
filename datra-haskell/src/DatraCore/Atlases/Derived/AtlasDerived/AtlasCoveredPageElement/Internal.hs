@@ -45,7 +45,7 @@ import AtlasTerritory
 import DomanialInsertion (applyInsertion, preimage)
 import Chain (chainIndex)
 import DatraOrdinal (ordinal)
-import Dominion (rank, unrank)
+import Dominion (rank, unrank, memberDominion)
 import Numeric.Natural (Natural)
 import PageElements
   ( PageElement
@@ -313,8 +313,9 @@ atlasCoverageAt valueAtlas source candidate =
           Nothing -> Nothing
           Just territoryIndex ->
             withAtlasCellDominion
-              (atlasTerritory valueAtlas territoryIndex) $ \region regionDom ->
-                case unrank regionDom datumRank of
+              (atlasTerritory valueAtlas territoryIndex) $ \region regionDomain ->
+                let regionDom = memberDominion regionDomain
+                in case unrank regionDom datumRank of
                   Nothing -> Nothing
                   Just regionDatum ->
                     withPageElement (atlasOriginCell valueAtlas) $ \origin ->
@@ -372,8 +373,9 @@ coverageCandidate valueAtlas source sourceDatum candidate =
           Nothing -> Nothing
           Just territoryIndex ->
             withAtlasCellDominion
-              (atlasTerritory valueAtlas territoryIndex) $ \region regionDom ->
-                case unrank regionDom datumRank of
+              (atlasTerritory valueAtlas territoryIndex) $ \region regionDomain ->
+                let regionDom = memberDominion regionDomain
+                in case unrank regionDom datumRank of
                   Nothing -> Nothing
                   Just regionDatum
                     | atlasOriginImageRank valueAtlas source sourceDatum

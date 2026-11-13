@@ -212,6 +212,23 @@ proofGuard = sequenceDatumMap (const True) (const False) (const ())
 
 EXTENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs"
 EXTENT_GUARDS = {
+    "cell membership disjointness requires distinct positions": """
+{-@ proofGuard :: valueAtlas:Atlas a s d o f
+      -> cell:{PageElement s object | cellHasOrigin valueAtlas cell
+           && pageElementPage cell < Atlas.atlasCardinality valueAtlas}
+      -> valueRank:{Natural | cellContainsRank valueAtlas cell valueRank}
+      -> {not (cellContainsRank valueAtlas cell valueRank)} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> Natural -> ()
+proofGuard valueAtlas cell valueRank = cellContainsRankDisjoint valueAtlas cell cell valueRank
+""",
+    "extent membership requires an accepted cell rank": """
+{-@ proofGuard :: valueAtlas:Atlas a s d o f
+      -> cell:{PageElement s object | cellHasOrigin valueAtlas cell}
+      -> valueRank:Natural
+      -> {extentContainsRank valueAtlas valueRank} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> Natural -> ()
+proofGuard = cellContainsRankInExtent
+""",
     "transport membership requires an accepted source rank": """
 {-@ proofGuard :: valueAtlas:Atlas a s d o f
       -> arrow:{PageElementArrow s source target |
@@ -236,7 +253,7 @@ proofGuard owner other page position valueRank =
 {-@ proofGuard
       :: valueAtlas:Atlas atlasScope scope cellData origin final
       -> source:PageElement scope object
-      -> DomanialInsertion (cellData object) Natural @-}
+      -> DomanialInsertion ({datum:cellData object | atlasAcceptsDatum valueAtlas source datum}) Natural @-}
 proofGuard
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object -> DomanialInsertion (cellData object) Natural
@@ -247,7 +264,7 @@ proofGuard = atlasCellOriginRankInsertion
       :: valueAtlas:Atlas atlasScope scope cellData origin final
       -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
       -> valueRank:Natural
-      -> datum:cellData object
+      -> datum:{cellData object | atlasAcceptsDatum valueAtlas source datum}
       -> {applyInsertion (atlasCellOriginRankInsertion valueAtlas source) datum == valueRank} @-}
 proofGuard
   :: Atlas atlasScope scope cellData origin final
@@ -277,8 +294,36 @@ proofGuard pages = SnocPage (folioLengthData pages) pages
 PAGE_INDEX_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Internal.hs"
 PAGE_INDEX_GUARDS = {
     "page indices reject a missing padding step": """
+{-@ proofGuard :: pages:Folio origin page
+      -> {index:ChainIndex page |
+           chainPosition (lastChain pages) (chainObjectAt index) == chainIndexPosition index}
+      -> PageElementIndex scope @-}
 proofGuard :: Folio origin page -> ChainIndex page -> PageElementIndex scope
-proofGuard pages index = PageElementIndex (folioLength pages) pages 0 index
+proofGuard pages index = PageElementIndex (PageElementIndexData (folioLength pages) pages 0
+  (chainIndexPosition index) (chainObjectAt index))
+""",
+    "page indices require the selected chain position": """
+{-@ proofGuard :: Folio origin page -> Ordinal -> page -> PageElementIndex scope @-}
+proofGuard :: Folio origin page -> Ordinal -> page -> PageElementIndex scope
+proofGuard pages position value = PageElementIndex
+  (PageElementIndexData (folioLength pages - 1) pages 0 position value)
+""",
+    "last-page lookup requires the selected chain position": """
+{-@ proofGuard :: PageElements scope origin final -> ChainIndex final -> SomePageElement scope @-}
+proofGuard :: PageElements scope origin final -> ChainIndex final -> SomePageElement scope
+proofGuard = lastPageElement
+""",
+    "page lookup cannot shift the requested page": """
+{-@ proofGuard :: PageElements scope origin final -> page:Natural -> Ordinal
+      -> Maybe ({index:PageElementIndex scope | pageElementIndexPage index == page}) @-}
+proofGuard :: PageElements scope origin final -> Natural -> Ordinal -> Maybe (PageElementIndex scope)
+proofGuard category page position = pageElementIndex category (page + 1) position
+""",
+    "page traces cannot discard the current occurrence": """
+{-@ proofGuard :: pages:Folio origin page -> padding:Natural -> page
+      -> {positions:[Ordinal] | len positions == padding + folioLength pages} @-}
+proofGuard :: Folio origin page -> Natural -> page -> [Ordinal]
+proofGuard pages padding value = Trace.traceTail (pageElementTraceAt pages padding value)
 """,
     "page traces cannot discard the folio origin": """
 {-@ proofGuard :: pages:Folio origin page -> page
@@ -291,6 +336,12 @@ proofGuard _ _ = []
 
 ATLAS_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Internal.hs"
 ATLAS_GUARDS = {
+    "Atlas data transport requires source membership": """
+{-@ proofGuard :: Atlas a s d o f -> PageElementArrow s source target
+      -> d source -> d target @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s source target -> d source -> d target
+proofGuard owner arrow datum = applyInsertion (mapAtlasData owner arrow) datum
+""",
     "Atlas cannot store laws for unrelated normalization bounds": """
 {-@ proofGuard :: Pagination scope origin final -> AtlasData scope cellData
       -> Atlas atlasScope scope cellData origin final @-}
@@ -299,23 +350,26 @@ proofGuard :: Pagination scope origin final -> AtlasData scope cellData
 proofGuard = Atlas
 """,
     "Atlas composition witnesses require matching arrow endpoints": """
-{-@ proofGuard :: Atlas a s d o f -> PageElementArrow s middle target
-      -> PageElementArrow s source middle -> d source -> () @-}
+{-@ proofGuard :: owner:Atlas a s d o f -> PageElementArrow s middle target
+      -> first:PageElementArrow s source middle
+      -> {datum:d source | atlasAcceptsDatum owner (arrowSource first) datum} -> () @-}
 proofGuard :: Atlas a s d o f -> PageElementArrow s middle target
   -> PageElementArrow s source middle -> d source -> ()
 proofGuard = atlasCompositionWitness
 """,
     "Atlas coherence witnesses require the normalization arrow": """
-{-@ proofGuard :: Atlas a s d o f -> PageElement s object
-      -> PageElementArrow s object object -> d object -> () @-}
+{-@ proofGuard :: owner:Atlas a s d o f -> cell:PageElement s object
+      -> PageElementArrow s object object
+      -> {datum:d object | atlasAcceptsDatum owner cell datum} -> () @-}
 proofGuard :: Atlas a s d o f -> PageElement s object
   -> PageElementArrow s object object -> d object -> ()
 proofGuard = atlasCoherenceWitness
 """,
     "Atlas disjointness witnesses require distinct cells on one genuine page": """
-{-@ proofGuard :: Atlas a s d o f -> PageElement s left -> PageElement s right
+{-@ proofGuard :: owner:Atlas a s d o f -> left:PageElement s left -> right:PageElement s right
       -> PageElementArrow s left origin -> PageElementArrow s right origin
-      -> d left -> d right -> () @-}
+      -> {datum:d left | atlasAcceptsDatum owner left datum}
+      -> {datum:d right | atlasAcceptsDatum owner right datum} -> () @-}
 proofGuard :: Atlas a s d o f -> PageElement s left -> PageElement s right
   -> PageElementArrow s left origin -> PageElementArrow s right origin
   -> d left -> d right -> ()
@@ -333,11 +387,26 @@ proofGuard = atlasPageCell
 
 ATLAS_DATA_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/LiquidInternal.hs"
 ATLAS_DATA_GUARDS = {
+    "Atlas action lookup cannot discard cell membership": """
+{-@ proofGuard :: AtlasAction scope cellData -> PageElement scope object
+      -> Dominion (cellData object) @-}
+proofGuard :: AtlasAction scope cellData -> PageElement scope object -> Dominion (cellData object)
+proofGuard action occurrence = atlasActionDataAt action occurrence
+""",
     "Atlas data cannot manufacture laws for an arbitrary action": """
 {-@ proofGuard :: Natural -> Int -> AtlasAction scope cellData -> AtlasData scope cellData @-}
 proofGuard :: Natural -> Int -> AtlasAction scope cellData -> AtlasData scope cellData
 proofGuard finalPage traceLimit action = AtlasData finalPage traceLimit action
   (\\_ _ -> ()) (\\_ _ _ -> ()) (\\_ _ _ -> ()) (\\_ _ _ _ _ _ -> ())
+""",
+}
+
+MEMBERSHIP_DOMINION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Dominion/Internal.hs"
+MEMBERSHIP_DOMINION_GUARDS = {
+    "existential Dominion packaging cannot discard membership": """
+{-@ proofGuard :: MembershipDominion a -> Dominion a @-}
+proofGuard :: MembershipDominion a -> Dominion a
+proofGuard = memberDominion
 """,
 }
 
@@ -409,6 +478,7 @@ def run(pattern=None):
                                     (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),
                                     (ATLAS_SOURCE, ATLAS_GUARDS),
                                     (ATLAS_DATA_SOURCE, ATLAS_DATA_GUARDS),
+                                    (MEMBERSHIP_DOMINION_SOURCE, MEMBERSHIP_DOMINION_GUARDS),
                                     (MERGE_RESOLUTION_SOURCE, MERGE_RESOLUTION_GUARDS),
                                     (SEQUENCE_RESOLUTION_SOURCE, SEQUENCE_RESOLUTION_GUARDS)]:
             source = re.sub(r'#include "[^"]*LiquidPlugin.h"',

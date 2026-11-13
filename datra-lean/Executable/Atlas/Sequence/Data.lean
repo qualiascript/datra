@@ -33,26 +33,14 @@ def indexedDatumEquiv (positive : 0 < count) (members : Fin count → Atlas) (so
 
 -- ALIGN: SEQUENCE-INDEXED-DOMINION.
 def indexedDominion (positive : 0 < count) (members : Fin count → Atlas) (source : (pagination positive members).Element) :
-    Dominion (IndexedDatum positive members source.val.cell) where
-  rank datum := datumRank count datum.val
-  unrank candidate := ((dominionAt positive (resolveStoredElement positive members source) source.val.cell).unrank candidate).map
+    Dominion (IndexedDatum positive members source.val.cell) :=
+  (dominionAt positive (resolveStoredElement positive members source) source.val.cell).reindex
     (indexedDatumEquiv positive members source).symm
-  coherence datum := by
-    change Option.map _ ((dominionAt positive (resolveStoredElement positive members source) source.val.cell).unrank
-      ((dominionAt positive (resolveStoredElement positive members source) source.val.cell).rank
-        (indexedDatumEquiv positive members source datum))) = _
-    simp only [Dominion.coherence, Option.map_some, Equiv.symm_apply_apply]
 
 def indexedDataMap {positive : 0 < count} {members : Fin count → Atlas} {source target : (pagination positive members).Element} (arrow : source ⟶ target) :
-    DomanialInsertion (IndexedDatum positive members source.val.cell) (IndexedDatum positive members target.val.cell) where
-  map datum := (indexedDatumEquiv positive members target).symm
-    ((dataMap (resolveStoredElement_arrow positive members arrow) source.val.cell target.val.cell).map
-      (indexedDatumEquiv positive members source datum))
-  preimage datum := ((dataMap (resolveStoredElement_arrow positive members arrow) source.val.cell target.val.cell).preimage
-    (indexedDatumEquiv positive members target datum)).map (indexedDatumEquiv positive members source).symm
-  leftInverse datum := by
-    simp only [Equiv.apply_symm_apply, DomanialInsertion.leftInverse, Option.map_some,
-      Equiv.symm_apply_apply]
+    DomanialInsertion (IndexedDatum positive members source.val.cell) (IndexedDatum positive members target.val.cell) :=
+  (dataMap (resolveStoredElement_arrow positive members arrow) source.val.cell target.val.cell).reindex
+    (indexedDatumEquiv positive members source).symm (indexedDatumEquiv positive members target).symm
 
 def action (positive : 0 < count) (members : Fin count → Atlas) : AtlasAction (pagination positive members).pages (IndexedDatum positive members) where
   dataAt := indexedDominion positive members

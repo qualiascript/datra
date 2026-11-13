@@ -194,17 +194,12 @@ theorem contains_transport {count : Nat} {members : Fin count → Atlas}
     have bounded : datum.member < count := same ▸ index.isLt
     have eqIndex : (⟨datum.member, bounded⟩ : Fin count) = index := Fin.ext same
     simp only [contains, dif_pos bounded, eqIndex]
-    obtain ⟨value, rank⟩ := ((members index).cellContainsRank_iff _ _).mp valid
-    exact ((members index).extentContainsRank_iff _).mpr ⟨(members index).originImage occurrence value, rank⟩
+    exact (members index).cellContainsRank_inExtent occurrence datum.originRank valid
   | member index f =>
     obtain ⟨same, valid⟩ := Bool.and_eq_true_iff.mp valid
     apply Bool.and_eq_true_iff.mpr
     refine ⟨same, ?_⟩
-    obtain ⟨value, rank⟩ := ((members index).cellContainsRank_iff _ _).mp valid
-    apply ((members index).cellContainsRank_iff _ _).mpr
-    exact ⟨((members index).data.action.normalizedMap f).map value,
-      (congrArg ((members index).dataAt (FolioData.ValidElement.originElement (members index).pages)).rank
-        ((members index).originImage_map f value)).trans rank⟩
+    exact (members index).cellContainsRank_preserved f datum.originRank valid
 
 -- ALIGN: SEQUENCE-DATA-INSERTION.
 def dataMap {count : Nat} {members : Fin count → Atlas} {source target : SourceCell members}

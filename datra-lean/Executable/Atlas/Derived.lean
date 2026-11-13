@@ -1,4 +1,4 @@
-import Executable.Atlas.Data
+import Executable.Atlas.Membership
 import Executable.PageElementLookup
 import Executable.CoverageEnumeration
 
@@ -287,8 +287,30 @@ theorem Atlas.cellContainsRank_samePage (X : Atlas) (left right : X.Element)
   rw [X.originImage_normalize, X.originImage_normalize]
   exact (X.originImageRank_eq_iff left right a b).mp (ha.trans hb.symm)
 
+-- ALIGN: ATLAS-CELL-MEMBERSHIP-DISJOINT.
+/-- The checked runtime disjointness contract for two distinct genuine-page
+cells. Recovering data from both accepted ranks contradicts pagewise
+disjointness after origin-rank injectivity. -/
+theorem Atlas.cellContainsRank_disjoint (X : Atlas) (left right : X.Element)
+    (_genuine : left.val.page < X.pages.depth)
+    (samePage : left.val.page = right.val.page)
+    (different : left.val.position ≠ right.val.position) (valueRank : Nat)
+    (inLeft : X.cellContainsRank left valueRank = true) :
+    X.cellContainsRank right valueRank = false := by
+  cases inRight : X.cellContainsRank right valueRank with
+  | false => rfl
+  | true =>
+    have sameCell := X.cellContainsRank_samePage left right samePage valueRank inLeft inRight
+    exact (different (congrArg (fun cell => cell.val.position) sameCell)).elim
+
 def Atlas.extentContainsRank (X : Atlas) (valueRank : Nat) : Bool :=
   X.cellContainsRank (FolioData.ValidElement.originElement X.pages) valueRank
+
+-- ALIGN: ATLAS-CELL-MEMBERSHIP-EXTENT.
+theorem Atlas.cellContainsRank_inExtent (X : Atlas) (source : X.Element) (valueRank : Nat)
+    (accepted : X.cellContainsRank source valueRank = true) :
+    X.extentContainsRank valueRank = true :=
+  X.cellContainsRank_preserved source.toOrigin valueRank accepted
 
 -- ALIGN: ATLAS-EXTENT-CONTAINS-RANK.
 theorem Atlas.extentContainsRank_iff (X : Atlas) (valueRank : Nat) :

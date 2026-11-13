@@ -14,6 +14,10 @@ module Atlas.Internal
   ( Atlas
   , AtlasDataAction
   , atlasDataAction
+  , AtlasMembership
+  , atlasMembership
+  , atlasMembershipAccepts
+  , atlasRestrictedDataAction
   , atlas
   , atlasWithScope
   , atlasPagination
@@ -24,8 +28,11 @@ module Atlas.Internal
   , normalizeAtlasArrow
   , atlasCoherence
   , atlasDataAt
+  , atlasAcceptsDatum
+  , atlasAcceptsDatumNormalized
   , mapAtlasData
   , atlasDataCoherence
+  , atlasDataCoherenceAgrees
   , normalizeAtlasDatum
   , atlasIdentityWitness
   , atlasCompositionWitness
@@ -40,12 +47,16 @@ module Atlas.Internal
 
 import Atlas.LiquidInternal
   ( AtlasAction
+  , AtlasMembership
+  , atlasMembership
+  , atlasMembershipAccepts
   , AtlasData
   , atlasAction
   , atlasActionData
   , atlasDataFinalPage
   , atlasDataTraceLimit
   , atlasActionDataAt
+  , atlasActionAccepts
   , atlasActionMap
   , atlasData
   , atlasDataIdentityLaw
@@ -53,6 +64,7 @@ import Atlas.LiquidInternal
   , atlasDataCoherenceLaw
   , atlasDataDisjointLaw
   )
+import qualified Atlas.LiquidInternal as Action
 import Chain (Chain)
 import Data.Kind (Type)
 import DatraOrdinal (Ordinal, ordinalLT)
@@ -120,6 +132,24 @@ atlasDataAction
   -> AtlasDataAction scope cellData
 atlasDataAction = atlasAction
 
+-- | Retain a value-dependent cell carrier through Atlas construction.
+{-@ atlasRestrictedDataAction
+      :: membership:AtlasMembership scope cellData
+      -> dataAt:(forall object. occurrence:PageElement scope object
+           -> Dominion ({datum:cellData object | atlasMembershipAccepts membership occurrence datum}))
+      -> mapData:(forall source target. arrow:PageElementArrow scope source target
+           -> DomanialInsertion
+                ({datum:cellData source | atlasMembershipAccepts membership (arrowSource arrow) datum})
+                ({datum:cellData target | atlasMembershipAccepts membership (arrowTarget arrow) datum}))
+      -> {action:AtlasDataAction scope cellData | Action.atlasActionMembership action == membership} @-}
+atlasRestrictedDataAction
+  :: AtlasMembership scope cellData
+  -> (forall object. PageElement scope object -> Dominion (cellData object))
+  -> (forall source target. PageElementArrow scope source target
+        -> DomanialInsertion (cellData source) (cellData target))
+  -> AtlasDataAction scope cellData
+atlasRestrictedDataAction = Action.atlasRestrictedAction
+
 -- | Construct an atlas object from a pagination and its canonical data
 -- assignment.
 --
@@ -149,7 +179,9 @@ atlas
   -> action:AtlasDataAction scope cellData
   -> identityLaw:(forall object.
        occurrence:PageElement scope object
-       -> datum:cellData object
+       -> datum:{cellData object | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) occurrence) datum}
        -> { proof:() |
             applyInsertion
               (atlasActionMap action
@@ -163,7 +195,9 @@ atlas
        second:PageElementArrow scope middle target
        -> first:PageElementArrow scope source middle
        -> alignment:{() | arrowTarget first == arrowSource second}
-       -> datum:cellData source
+       -> datum:{cellData source | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) (arrowSource first)) datum}
        -> { proof:() |
             applyInsertion
               (atlasActionMap action
@@ -191,7 +225,9 @@ atlas
             && arrowTarget coherenceArrow == normalizePageElementAt
                  (atlasFinalPage paginationValue)
                  (atlasTraceLimit paginationValue) occurrence}
-       -> datum:cellData object
+       -> datum:{cellData object | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) occurrence) datum}
        -> { proof:() |
             applyInsertion
               (atlasActionMap action
@@ -213,8 +249,12 @@ atlas
             && pageElementPage (arrowTarget leftToOrigin) == 0
             && arrowSource rightToOrigin == right
             && arrowTarget rightToOrigin == arrowTarget leftToOrigin}
-       -> leftDatum:cellData leftObject
-       -> rightDatum:cellData rightObject
+       -> leftDatum:{cellData leftObject | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) left) leftDatum}
+       -> rightDatum:{cellData rightObject | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) right) rightDatum}
        -> { proof:() |
             applyInsertion
               (atlasActionMap action
@@ -276,13 +316,17 @@ atlas paginationValue action identityLaw compositionLaw coherenceLaw disjointLaw
 -- use an input object's type-level name as the output scope, so repeated
 -- object and arrow actions agree on exactly the same category object.
 -- Public callers continue to use the generative continuation in 'atlas'.
+-- ALIGN: ATLAS-MEMBERSHIP-ATLAS-INTERPRETATION.
+-- ALIGN: ATLAS-MEMBERSHIP-FUNCTOR-ISOMORPHISM.
 {-@
 atlasWithScope
   :: paginationValue:Pagination scope origin final
   -> action:AtlasDataAction scope cellData
   -> identityLaw:(forall object.
        occurrence:PageElement scope object
-       -> datum:cellData object
+       -> datum:{cellData object | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) occurrence) datum}
        -> { proof:() |
             applyInsertion
               (atlasActionMap action
@@ -296,7 +340,9 @@ atlasWithScope
        second:PageElementArrow scope middle target
        -> first:PageElementArrow scope source middle
        -> alignment:{() | arrowTarget first == arrowSource second}
-       -> datum:cellData source
+       -> datum:{cellData source | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) (arrowSource first)) datum}
        -> { proof:() |
             applyInsertion
               (atlasActionMap action
@@ -324,7 +370,9 @@ atlasWithScope
             && arrowTarget coherenceArrow == normalizePageElementAt
                  (atlasFinalPage paginationValue)
                  (atlasTraceLimit paginationValue) occurrence}
-       -> datum:cellData object
+       -> datum:{cellData object | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) occurrence) datum}
        -> { proof:() |
             applyInsertion
               (atlasActionMap action
@@ -346,8 +394,12 @@ atlasWithScope
             && pageElementPage (arrowTarget leftToOrigin) == 0
             && arrowSource rightToOrigin == right
             && arrowTarget rightToOrigin == arrowTarget leftToOrigin}
-       -> leftDatum:cellData leftObject
-       -> rightDatum:cellData rightObject
+       -> leftDatum:{cellData leftObject | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) left) leftDatum}
+       -> rightDatum:{cellData rightObject | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) right) rightDatum}
        -> { proof:() |
             applyInsertion
               (atlasActionMap action
@@ -440,10 +492,11 @@ atlasPageElements
 atlasPageElements valueAtlas = paginationPageElements (storedPagination valueAtlas)
 
 -- | The number of genuine pages in the atlas's finite presentation.
+{-@ reflect atlasCardinality @-}
 atlasCardinality
   :: Atlas atlasScope scope cellData origin final
   -> Natural
-atlasCardinality = paginationCardinality . atlasPagination
+atlasCardinality value = paginationCardinality (atlasPagination value)
 
 -- | Collapse a tall occurrence to its last genuine representative.
 normalizeAtlasElement
@@ -477,6 +530,28 @@ atlasCoherence
   -> PaginationMorphism scope scope
 atlasCoherence = paginationCoherence . atlasPagination
 
+-- | Membership in the normalized cell carrier.
+{-@ reflect atlasAcceptsDatum @-}
+-- ALIGN: ATLAS-DATUM-MEMBERSHIP.
+atlasAcceptsDatum
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object -> cellData object -> Bool
+atlasAcceptsDatum value occurrence datum =
+  atlasActionAccepts (atlasActionData (storedAtlasData value))
+    (normalizeAtlasElement value occurrence) datum
+
+-- ALIGN: ATLAS-DATUM-MEMBERSHIP-NORMALIZATION.
+{-@ atlasAcceptsDatumNormalized :: value:Atlas atlasScope scope cellData origin final
+      -> occurrence:PageElement scope object -> datum:cellData object
+      -> {atlasAcceptsDatum value (normalizeAtlasElement value occurrence) datum
+           == atlasAcceptsDatum value occurrence datum} @-}
+atlasAcceptsDatumNormalized
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object -> cellData object -> ()
+atlasAcceptsDatumNormalized value occurrence _ =
+  normalizePageElementIdempotentAt (atlasDataFinalPage (storedAtlasData value))
+    (atlasDataTraceLimit (storedAtlasData value)) occurrence
+
 -- | Retrieve the dominion carried by a page element.
 --
 -- The occurrence is normalized before the supplied action is evaluated, so
@@ -488,6 +563,11 @@ atlasCoherence = paginationCoherence . atlasPagination
 -- @
 --
 -- holds by construction, up to extensional equality of 'Dominion' values.
+{-@ atlasDataAt :: value:Atlas atlasScope scope cellData origin final
+      -> occurrence:PageElement scope object
+      -> Dominion ({datum:cellData object | atlasAcceptsDatum value occurrence datum}) @-}
+-- ALIGN: ATLAS-MEMBERSHIP-RANK-INTERPRETATION.
+-- ALIGN: ATLAS-MEMBERSHIP-UNRANK-INTERPRETATION.
 atlasDataAt
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -503,6 +583,13 @@ atlasDataAt value occurrence =
 -- checked canonical action preserves identities and composition.  Together
 -- with normalization preserving those operations, that makes this full
 -- tall-spine action functorial and constant on the padded tail.
+{-@ mapAtlasData :: value:Atlas atlasScope scope cellData origin final
+      -> arrow:PageElementArrow scope source target
+      -> DomanialInsertion
+           ({datum:cellData source | atlasAcceptsDatum value (arrowSource arrow) datum})
+           ({datum:cellData target | atlasAcceptsDatum value (arrowTarget arrow) datum}) @-}
+-- ALIGN: ATLAS-MEMBERSHIP-MAP-INTERPRETATION.
+-- ALIGN: ATLAS-MEMBERSHIP-PREIMAGE-INTERPRETATION.
 mapAtlasData
   :: Atlas atlasScope scope cellData origin final
   -> PageElementArrow scope source target
@@ -518,28 +605,45 @@ mapAtlasData value pageArrow =
 --
 -- The checked tall-coherence law makes this extensionally the identity
 -- insertion.  It is the data component of the Atlas's normalization
--- idempotent.
+-- idempotent. Constructing the identity directly retains the same membership
+-- predicate on both ends; 'atlasDataCoherenceAgrees' checks its forward action
+-- against the stored normalization arrow.
+{-@ atlasDataCoherence :: value:Atlas atlasScope scope cellData origin final
+      -> occurrence:PageElement scope object
+      -> DomanialInsertion
+           ({datum:cellData object | atlasAcceptsDatum value occurrence datum})
+           ({datum:cellData object | atlasAcceptsDatum value occurrence datum}) @-}
 atlasDataCoherence
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> DomanialInsertion (cellData object) (cellData object)
-atlasDataCoherence value occurrence =
-  case normalizePageElementReachableAt
-    (atlasFinalPage (atlasPagination value))
-    (atlasTraceLimit (atlasPagination value))
-    occurrence of
-      () -> mapAtlasData value
-        (pageElementArrow
-          occurrence
-          (normalizePageElementAt
-            (atlasFinalPage (atlasPagination value))
-            (atlasTraceLimit (atlasPagination value))
-            occurrence))
+{-@ reflect atlasDataCoherence @-}
+-- ALIGN: ATLAS-DATA-COHERENCE-INSERTION.
+atlasDataCoherence _ _ = identityInsertion
+
+-- ALIGN: ATLAS-DATA-COHERENCE-AGREEMENT.
+{-@ atlasDataCoherenceAgrees :: value:Atlas atlasScope scope cellData origin final
+      -> occurrence:PageElement scope object
+      -> arrow:{PageElementArrow scope object object |
+           arrowSource arrow == occurrence && arrowTarget arrow == normalizeAtlasElement value occurrence}
+      -> datum:{cellData object | atlasAcceptsDatum value occurrence datum}
+      -> {applyInsertion (atlasDataCoherence value occurrence) datum
+           == applyInsertion (mapAtlasData value arrow) datum} @-}
+atlasDataCoherenceAgrees
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object -> PageElementArrow scope object object
+  -> cellData object -> ()
+atlasDataCoherenceAgrees value occurrence arrow datum =
+  atlasCoherenceWitness value occurrence arrow datum
 
 -- | Normalize a datum by applying the data component of Atlas coherence.
 --
 -- The checked tall-coherence law makes this operation pointwise equal to the
 -- identity.
+{-@ normalizeAtlasDatum :: value:Atlas atlasScope scope cellData origin final
+      -> occurrence:PageElement scope object
+      -> {datum:cellData object | atlasAcceptsDatum value occurrence datum}
+      -> {datum:cellData object | atlasAcceptsDatum value occurrence datum} @-}
 normalizeAtlasDatum
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -554,7 +658,7 @@ normalizeAtlasDatum value occurrence =
 -- ALIGN: ATLAS-IDENTITY-WITNESS.
 {-@ atlasIdentityWitness
       :: value:Atlas atlasScope scope cellData origin final
-      -> occurrence:PageElement scope object -> datum:cellData object
+      -> occurrence:PageElement scope object -> datum:{cellData object | atlasAcceptsDatum value occurrence datum}
       -> {applyInsertion (mapAtlasData value (identityPageElementArrow occurrence)) datum == datum} @-}
 atlasIdentityWitness
   :: Atlas atlasScope scope cellData origin final
@@ -569,7 +673,7 @@ atlasIdentityWitness value occurrence datum =
       :: value:Atlas atlasScope scope cellData origin final
       -> second:PageElementArrow scope middle target
       -> first:{PageElementArrow scope source middle | arrowTarget first == arrowSource second}
-      -> datum:cellData source
+      -> datum:{cellData source | atlasAcceptsDatum value (arrowSource first) datum}
       -> {applyInsertion (mapAtlasData value (composePageElementArrows second first)) datum
            == applyInsertion (mapAtlasData value second)
                 (applyInsertion (mapAtlasData value first) datum)} @-}
@@ -589,7 +693,7 @@ atlasCompositionWitness value second first datum =
       -> coherenceArrow:{PageElementArrow scope object object |
            arrowSource coherenceArrow == occurrence
            && arrowTarget coherenceArrow == normalizeAtlasElement value occurrence}
-      -> datum:cellData object
+      -> datum:{cellData object | atlasAcceptsDatum value occurrence datum}
       -> {applyInsertion (mapAtlasData value coherenceArrow) datum == datum} @-}
 atlasCoherenceWitness
   :: Atlas atlasScope scope cellData origin final
@@ -613,7 +717,7 @@ atlasCoherenceWitness value occurrence coherenceArrow datum =
            && pageElementPage (arrowTarget leftToOrigin) == 0
            && arrowSource rightToOrigin == right
            && arrowTarget rightToOrigin == arrowTarget leftToOrigin}
-      -> leftDatum:cellData leftObject -> rightDatum:cellData rightObject
+      -> leftDatum:{cellData leftObject | atlasAcceptsDatum value left leftDatum} -> rightDatum:{cellData rightObject | atlasAcceptsDatum value right rightDatum}
       -> {applyInsertion (mapAtlasData value leftToOrigin) leftDatum
            /= applyInsertion (mapAtlasData value rightToOrigin) rightDatum} @-}
 atlasDisjointWitness
@@ -648,7 +752,10 @@ withAtlasPageChain valueAtlas = withPageAt (atlasFolio valueAtlas)
            somePageElementPrecedes element
              (Elements.originPageElement (atlasPageElements valueAtlas))
            && somePageElementTransported element
-             (Elements.originPageElement (atlasPageElements valueAtlas))} @-}
+             (Elements.originPageElement (atlasPageElements valueAtlas))
+           && somePageElementPage element == Elements.pageElementIndexPage index
+           && somePageElementPosition element == Elements.pageElementIndexPosition index
+           && len (somePageElementTrace element) == Elements.pageElementIndexPage index + 1} @-}
 atlasPageCell
   :: Atlas atlasScope scope cellData origin final
   -> PageElementIndex scope
