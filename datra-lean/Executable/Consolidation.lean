@@ -14,6 +14,13 @@ structure Consolidation {A B : Type} (source : Chain A) (target : Chain B) where
 namespace Consolidation
 variable {A B C D : Type} {X : Chain A} {Y : Chain B} {Z : Chain C} {W : Chain D}
 
+/-- The carrier map retains both chain orders when used as opposite transport. -/
+-- ALIGN: COCONSOLIDATION-MONOTONE.
+theorem map_order (f : Consolidation X Y) (left right : A)
+    (ordered : (X.position left).toSemantics ≤ (X.position right).toSemantics) :
+    (Y.position (f.map left)).toSemantics ≤ (Y.position (f.map right)).toSemantics :=
+  f.monotone left right ordered
+
 def identity (X : Chain A) : Consolidation X X where
   map := id
   preimage := id
@@ -71,4 +78,38 @@ theorem sum_interpretation {A' B' : Type} {X' : Chain A'} {Y' : Chain B'}
         (Chain.sumOrderIso X X' value) := by cases value <;> rfl
 
 end Consolidation
+
+/-- The concrete-chain wrapper retains the source and target before a caller
+hides their carriers. Its map includes the order and chosen-preimage laws. -/
+structure OrderedConsolidation (A B : Type) where
+  source : Chain A
+  target : Chain B
+  map : Consolidation source target
+
+namespace OrderedConsolidation
+
+-- ALIGN: CONSOLIDATION-ORDERED.
+def orderedConsolidation {A B : Type} (source : Chain A) (target : Chain B)
+    (mapping : Consolidation source target) : OrderedConsolidation A B :=
+  ⟨source, target, mapping⟩
+
+-- ALIGN: CONSOLIDATION-ORDERED-MONOTONE.
+theorem orderedMonotone {A B : Type} (value : OrderedConsolidation A B)
+    (left right : A) (ordered : value.source.precedes left right = true) :
+    value.target.precedes (value.map.map left) (value.map.map right) = true :=
+  (value.target.precedes_correct _ _).2
+    (value.map.monotone left right ((value.source.precedes_correct _ _).1 ordered))
+
+-- ALIGN: CONSOLIDATION-ORDERED-IDENTITY.
+def identity {A : Type} (page : Chain A) : OrderedConsolidation A A :=
+  orderedConsolidation page page (Consolidation.identity page)
+
+-- ALIGN: CONSOLIDATION-ORDERED-COMPOSITION.
+def comp {A B C : Type} (second : OrderedConsolidation B C)
+    (first : OrderedConsolidation A B) (matching : first.target = second.source) :
+    OrderedConsolidation A C :=
+  orderedConsolidation first.source second.target
+    (Consolidation.comp (matching ▸ first.map) second.map)
+
+end OrderedConsolidation
 end Datra.Executable

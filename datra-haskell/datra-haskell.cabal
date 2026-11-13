@@ -53,7 +53,9 @@ library
     exposed-modules:
         DatraOrdinal.Laws
         Chain.Sum
+        Chain.Order
         Consolidation.Core
+        Consolidation.Ordered
         DomanialInsertion.Core
         Folio.Presentation
         PageElements.Structure

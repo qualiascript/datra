@@ -44,10 +44,54 @@ proofGuard (CompositeAtlasHom _ _) = ()
 }
 
 CHAIN_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Chain/Internal.hs"
+CONSOLIDATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Core.hs"
+CONSOLIDATION_GUARDS = {
+    "opposite wrappers cannot change the preserved order": r"""
+{-@ proofGuard :: Consolidation <{\x y -> x <= y}, {\x y -> x <= y}> Int Int
+      -> Coconsolidation <{\x y -> x <= y}, {\x y -> x >= y}> Int Int @-}
+proofGuard :: Consolidation Int Int -> Coconsolidation Int Int
+proofGuard = op
+""",
+    "opposite monotonicity requires an ordered pair": r"""
+{-@ proofGuard :: transition:Coconsolidation <{\x y -> x <= y}, {\x y -> x <= y}> Int Int
+      -> left:Int -> right:Int
+      -> {result:Int | result == applyConsolidation (unop transition) right
+           && applyConsolidation (unop transition) left <= result} @-}
+proofGuard :: Coconsolidation Int Int -> Int -> Int -> Int
+proofGuard transition left right = coconsolidationMonotone transition left right
+""",
+}
+
 CHAIN_GUARDS = {
     "chain reindexing rejects a constant carrier equivalence": """
 proofGuard :: Chain Natural
 proofGuard = reindexChain (const True) spine (const 0) (const 0) (const ()) (const ())
+""",
+}
+
+ORDERED_CONSOLIDATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Ordered.hs"
+ORDERED_CONSOLIDATION_GUARDS = {
+    "concrete consolidation monotonicity requires the source order": """
+{-@ proofGuard :: value:OrderedConsolidation a b -> left:a -> right:a
+      -> {chainPrecedes (orderedTarget value)
+            (applyConsolidation (orderedMap value) left)
+            (applyConsolidation (orderedMap value) right)} @-}
+proofGuard :: OrderedConsolidation a b -> a -> a -> ()
+proofGuard value left right = orderedMonotone value left right
+""",
+    "concrete consolidation composition requires matching chains": """
+{-@ proofGuard :: OrderedConsolidation b c -> OrderedConsolidation a b
+      -> OrderedConsolidation a c @-}
+proofGuard :: OrderedConsolidation b c -> OrderedConsolidation a b -> OrderedConsolidation a c
+proofGuard second first = composeOrderedConsolidations second first
+""",
+    "concrete consolidation identity cannot certify unrelated orders": """
+{-@ proofGuard :: source:Chain a -> target:Chain a -> left:a
+      -> right:{a | chainPrecedes source left right}
+      -> {chainPrecedes target left right} @-}
+proofGuard :: Chain a -> Chain a -> a -> a -> ()
+proofGuard source target left right =
+  orderedMonotone (orderedConsolidation source target identityConsolidation) left right
 """,
 }
 
@@ -670,6 +714,8 @@ def run(pattern=None):
         for dependency in library["depends"]:
             command.extend(["-package-id", dependency])
         for source_path, guards in [(SOURCE, GUARDS), (CHAIN_SOURCE, CHAIN_GUARDS),
+                                    (CONSOLIDATION_SOURCE, CONSOLIDATION_GUARDS),
+                                    (ORDERED_CONSOLIDATION_SOURCE, ORDERED_CONSOLIDATION_GUARDS),
                                     (PAGE_TRACE_SOURCE, PAGE_TRACE_GUARDS),
                                     (MERGE_PAGE_SOURCE, MERGE_PAGE_GUARDS),
                                     (STABLE_SOURCE, STABLE_GUARDS),

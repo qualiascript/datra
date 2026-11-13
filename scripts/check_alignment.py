@@ -73,15 +73,18 @@ def check(require_complete=False):
         predicates = re.findall(r"\{-@\s*predicate\s+(\w+)", text)
         refinement_aliases = re.findall(r"\{-@\s*type\s+(\w+)", text)
         embeddings = re.findall(r"\{-@\s*embed\s+([^\n]*?)\s*@-\}", text)
+        variances = [" ".join(value.split()) for value in
+                     re.findall(r"\{-@\s*data\s+variance\s+(.+?)\s*@-\}", text, re.S)]
         path = str(source.relative_to(ROOT))
         refinements = re.findall(r"\{-@\s*(?:assume\s+)?([a-z]\w*)\s*::", text)
-        if reflected or types or aliases or predicates or refinement_aliases or refinements:
+        if reflected or types or aliases or predicates or refinement_aliases or refinements or variances:
             expected = expected_modules.pop(path, None)
             if (expected is None or expected["reflected"] != reflected
                     or expected["types"] != types or expected["aliases"] != aliases
                     or expected["predicates"] != predicates
                     or expected["refinement_aliases"] != refinement_aliases
                     or expected["embeddings"] != embeddings
+                    or expected.get("variances", []) != variances
                     or expected["refinements"] != refinements):
                 errors.append(f"Correspondence inventory drift: {path}")
         for match in re.finditer(r"\{-@\s*(assume|ignore)\s+(\w+)", text):

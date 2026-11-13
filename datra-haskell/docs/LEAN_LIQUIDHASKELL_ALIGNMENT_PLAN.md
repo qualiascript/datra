@@ -126,6 +126,18 @@ still needs the stronger validity and membership-preservation conditions for
 data arrows and inclusion callbacks; generative scope alone does not establish
 these value-dependent conditions.
 
+Consolidation and opposite transport retain both order predicates through
+identity and composition. The opposite wrapper declares invariant predicates,
+so subtyping cannot replace the nested map's orders. `Consolidation.Ordered`
+retains the actual source and target chains and checks monotonicity against
+their executable position comparisons. Its composition requires the exact
+middle chain to match. Lean proves that these comparisons agree with the
+semantic orders and models the same concrete-chain package. Negative checks
+reject changing the opposite wrapper's orders, dropping an ordered-input
+condition, composing mismatched chains, and using identity between unrelated
+orders. Folio presentations and derived page-transition assembly still need to
+retain these concrete-chain certificates through existential carrier hiding.
+
 Atlas data stores its four law witnesses with their refinements intact. The
 owning Atlas checks that the stored normalization bounds match its pagination,
 and its identity, composition, coherence, and disjointness accessors recover

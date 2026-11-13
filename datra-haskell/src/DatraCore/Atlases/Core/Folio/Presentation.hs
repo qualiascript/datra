@@ -162,6 +162,8 @@ lastPageData (SnocPage _ _ value _) = value
 
 -- | The identity map used for every identity interval in a folio.
 {-@ reflect identityFolioMap @-}
+{-@ identityFolioMap :: forall <pageLe :: page -> page -> Bool>.
+      Coconsolidation <pageLe, pageLe> page page @-}
 identityFolioMap :: Coconsolidation page page
 identityFolioMap = op identityConsolidation
 
@@ -177,6 +179,13 @@ folioMapIdentity = coconsolidationIdentity
 
 -- | The composition operation used to derive every non-adjacent folio map.
 {-@ reflect composeFolioMaps @-}
+{-@ composeFolioMaps :: forall
+       < sourceLe :: source -> source -> Bool
+       , middleLe :: middle -> middle -> Bool
+       , targetLe :: target -> target -> Bool >.
+      Coconsolidation <middleLe, targetLe> middle target
+      -> Coconsolidation <sourceLe, middleLe> source middle
+      -> Coconsolidation <sourceLe, targetLe> source target @-}
 composeFolioMaps
   :: Coconsolidation middle target
   -> Coconsolidation source middle

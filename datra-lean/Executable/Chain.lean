@@ -14,6 +14,18 @@ structure Chain (Carrier : Type) where
   positionSurjective : ∀ p, Ordinal.ordinalLT p orderType = true →
     ∃ x, lookup p = some x ∧ position x = p
 
+/-- The executable non-strict order compares positions in the owning chain. -/
+-- ALIGN: CHAIN-ORDER-PREDICATE.
+def Chain.precedes {A : Type} (C : Chain A) (earlier later : A) : Bool :=
+  !(Ordinal.ordinalLT (C.position later) (C.position earlier))
+
+theorem Chain.precedes_correct {A : Type} (C : Chain A) (earlier later : A) :
+    C.precedes earlier later = true ↔
+      (C.position earlier).toSemantics ≤ (C.position later).toSemantics := by
+  have comparison := Ordinal.ordinalLT_correct (C.position later) (C.position earlier)
+  cases result : Ordinal.ordinalLT (C.position later) (C.position earlier) <;>
+    simp_all [precedes, not_lt]
+
 -- ALIGN: CHAIN-LOOKUP-POSITION.
 theorem Chain.lookup_position {A : Type} (C : Chain A) (x : A) :
     C.lookup (C.position x) = some x := by

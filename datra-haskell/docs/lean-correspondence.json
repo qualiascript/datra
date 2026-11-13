@@ -3612,6 +3612,48 @@
       "haskell_declaration": "nextMergeCell",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "nativeNext_valid"
+    },
+    {
+      "id": "COCONSOLIDATION-MONOTONE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Core.hs",
+      "haskell_declaration": "coconsolidationMonotone",
+      "lean_namespace": "Datra.Executable.Consolidation",
+      "lean_declaration": "map_order"
+    },
+    {
+      "id": "CHAIN-ORDER-PREDICATE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Order.hs",
+      "haskell_declaration": "chainPrecedes",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Chain.precedes"
+    },
+    {
+      "id": "CONSOLIDATION-ORDERED",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Ordered.hs",
+      "haskell_declaration": "orderedConsolidation",
+      "lean_namespace": "Datra.Executable.OrderedConsolidation",
+      "lean_declaration": "orderedConsolidation"
+    },
+    {
+      "id": "CONSOLIDATION-ORDERED-MONOTONE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Ordered.hs",
+      "haskell_declaration": "orderedMonotone",
+      "lean_namespace": "Datra.Executable.OrderedConsolidation",
+      "lean_declaration": "orderedMonotone"
+    },
+    {
+      "id": "CONSOLIDATION-ORDERED-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Ordered.hs",
+      "haskell_declaration": "identityOrderedConsolidation",
+      "lean_namespace": "Datra.Executable.OrderedConsolidation",
+      "lean_declaration": "identity"
+    },
+    {
+      "id": "CONSOLIDATION-ORDERED-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Ordered.hs",
+      "haskell_declaration": "composeOrderedConsolidations",
+      "lean_namespace": "Datra.Executable.OrderedConsolidation",
+      "lean_declaration": "comp"
     }
   ],
   "modules": [
@@ -3841,6 +3883,7 @@
         "transportCoconsolidation"
       ],
       "refinements": [
+        "consolidationMonotone",
         "consolidation",
         "identityConsolidation",
         "identityConsolidationApply",
@@ -3848,6 +3891,10 @@
         "identityPointSurjective",
         "composeConsolidations",
         "composeConsolidationsApply",
+        "op",
+        "unop",
+        "composeCoconsolidations",
+        "coconsolidationMonotone",
         "coconsolidationIdentity",
         "coconsolidationComposition",
         "composeMonotone",
@@ -3861,7 +3908,10 @@
       "aliases": [],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "variances": [
+        "Coconsolidation invariant invariant invariant invariant"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Internal.hs",
@@ -4066,7 +4116,9 @@
         "folioData",
         "folioLengthData",
         "originUniqueData",
+        "identityFolioMap",
         "folioMapIdentity",
+        "composeFolioMaps",
         "folioMapComposition"
       ],
       "lean_target": "Datra.Executable.Folio",
@@ -5227,6 +5279,41 @@
         "mergePageChainFromParts",
         "previousMergeCell",
         "nextMergeCell"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Order.hs",
+      "module": "Chain.Order",
+      "lean_target": "Datra.Executable.Chain.precedes",
+      "coverage": "aligned",
+      "reflected": [
+        "chainPrecedes"
+      ],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Ordered.hs",
+      "module": "Consolidation.Ordered",
+      "lean_target": "Datra.Executable.OrderedConsolidation",
+      "coverage": "aligned",
+      "reflected": [],
+      "types": [
+        "OrderedConsolidation"
+      ],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "orderedConsolidation",
+        "orderedMonotone",
+        "identityOrderedConsolidation",
+        "composeOrderedConsolidations"
       ]
     }
   ],
