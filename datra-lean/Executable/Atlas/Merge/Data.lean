@@ -114,18 +114,12 @@ theorem sourceAtIndex_separates (X Y : Atlas) (n : Nat) (index : (prefixFolio X 
     (left right : ((prefixFolio X Y n).data.page index).Carrier) {cell : PageElementCell}
     (datum : Datum cell)
     (inLeft : contains (sourceAtIndex X Y n index left) datum = true)
-    (inRight : contains (sourceAtIndex X Y n index right) datum = true) : left = right := by
-  induction n with
-  | zero =>
-    cases index with
-    | none => exact resolvePageCell_separates X Y 0 left right datum inLeft inRight
-    | some index =>
-      change @Eq Unit left right
-      exact Subsingleton.elim _ _
-  | succ n ih =>
-    cases index with
-    | none => exact resolvePageCell_separates X Y (n + 1) left right datum inLeft inRight
-    | some index => exact ih index left right inLeft inRight
+    (inRight : contains (sourceAtIndex X Y n index right) datum = true) : left = right :=
+  Folio.PrefixResolution.atIndex_separates DomanialInclusion.singletonPage () (fun x => by cases x; rfl)
+    (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y)
+    (SourceCell.origin : SourceCell X Y) (resolvePageCell X Y)
+    (fun source => contains source datum = true)
+    (fun n a b => resolvePageCell_separates X Y n a b datum) n index left right inLeft inRight
 
 theorem resolveStoredOccurrence_separates (X Y : Atlas)
     (left right : (pagination X Y).pages.Occurrence) (samePage : left.page = right.page)

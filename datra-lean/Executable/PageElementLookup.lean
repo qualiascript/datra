@@ -52,4 +52,14 @@ theorem ValidElement.page_bound_of_normalize_eq {pages : FolioData origin final}
   change min source.val.page (pages.depth - 1) = source.val.page at same
   omega
 
+/-- A trace has only one target on a given page. -/
+theorem ValidElement.arrow_target_eq {pages : FolioData origin final}
+    {source a b : pages.ValidElement} (first : source ⟶ a) (second : source ⟶ b)
+    (samePage : a.val.page = b.val.page) : a = b := by
+  apply ValidElement.eq_of_page_position samePage
+  have firstPosition := ValidElement.positionAtPage_arrow first
+  have secondPosition := ValidElement.positionAtPage_arrow second
+  rw [samePage] at firstPosition
+  exact Option.some.inj (firstPosition.symm.trans secondPosition)
+
 end Datra.Executable.FolioData

@@ -1,5 +1,6 @@
 import Executable.Atlas.Derived
 import Executable.Atlas.DomanialInclusion
+import Executable.Folio.Prefix
 
 namespace Datra.Executable.AtlasMerge
 
@@ -193,20 +194,12 @@ def mergePage (X Y : Atlas) (n : Nat) : Page := ⟨ValidPageCell X Y n, pageChai
 /-- Append the component pages in increasing full-spine order, retaining the
 fresh singleton origin. This is the structural form of appendRemainingPages. -/
 -- ALIGN: MERGE-FOLIO-PREFIX.
-def prefixFolio (X Y : Atlas) : (n : Nat) → Folio DomanialInclusion.singletonPage (mergePage X Y n)
-  | 0 =>
-      ⟨DomanialInclusion.onePageFolio.data.append (mergePage X Y 0) (collapseToOrigin X Y),
-        FolioData.append_valid _ DomanialInclusion.onePageFolio.valid _ _⟩
-  | n + 1 =>
-      ⟨(prefixFolio X Y n).data.append (mergePage X Y (n + 1)) (pageTransition X Y n),
-        FolioData.append_valid _ (prefixFolio X Y n).valid _ _⟩
+def prefixFolio (X Y : Atlas) (n : Nat) : Folio DomanialInclusion.singletonPage (mergePage X Y n) :=
+  Folio.buildPrefix DomanialInclusion.singletonPage () (fun value => by cases value; rfl)
+    (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y) n
 
 theorem prefixFolio_length (X Y : Atlas) (n : Nat) : (prefixFolio X Y n).data.length = n + 2 := by
-  induction n with
-  | zero => rfl
-  | succ n ih =>
-      change (prefixFolio X Y n).data.length + 1 = n + 1 + 2
-      rw [ih]
+  exact Folio.buildPrefix_length _ _ _ _ _ _ n
 
 def mergeDepth (X Y : Atlas) : Nat := max X.pages.length Y.pages.length
 

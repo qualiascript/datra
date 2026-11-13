@@ -6,6 +6,7 @@ library's interfaces. No failed proof or expected-failure directive enters the
 library, and the temporary sources and compiler artifacts are always removed.
 Run after `make -C datra-haskell verify-liquid`.
 """
+import argparse
 import json
 import os
 import re
@@ -188,8 +189,28 @@ proofGuard = mergeDatumMap (const True) (const False) (const ())
 """,
 }
 
+SEQUENCE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs"
+SEQUENCE_GUARDS = {
+    "sequence decoding requires a positive member count": """
+proofGuard :: Natural -> AtlasSequenceDatum object
+proofGuard = decodeSequenceDatum 0
+""",
+    "sequence roundtrips require a bounded member index": """
+proofGuard :: Natural -> ()
+proofGuard valueRank = decodeSequenceDatumRank 3 (AtlasSequenceDatum 3 valueRank)
+""",
+    "sequence unranking requires cell membership": """
+proofGuard :: Natural -> ()
+proofGuard valueRank = sequenceDatumLookupRoundTrip 3 (const False) (AtlasSequenceDatum 0 valueRank)
+""",
+    "sequence insertions require target membership preservation": """
+proofGuard :: AtlasSequenceDatum source -> AtlasSequenceDatum target
+proofGuard = sequenceDatumMap (const True) (const False) (const ())
+""",
+}
 
-def run():
+
+def run(pattern=None):
     plan = json.loads((HASKELL / "dist-newstyle/cache/plan.json").read_text())
     library = next(unit for unit in plan["install-plan"]
                    if unit.get("pkg-name") == "datra-haskell"
@@ -212,11 +233,14 @@ def run():
                                     (TRANSVERSAL_SOURCE, TRANSVERSAL_GUARDS),
                                     (CHARTER_SOURCE, CHARTER_GUARDS),
                                     (RANK_IMAGE_SOURCE, RANK_IMAGE_GUARDS),
-                                    (MERGE_SOURCE, MERGE_GUARDS)]:
+                                    (MERGE_SOURCE, MERGE_GUARDS),
+                                    (SEQUENCE_SOURCE, SEQUENCE_GUARDS)]:
             source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
                             f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
                             source_path.read_text())
             for description, guard in guards.items():
+                if pattern and not re.search(pattern, description):
+                    continue
                 target.write_text(source + "\n" + guard)
                 result = subprocess.run(command + [str(target)], cwd=HASKELL,
                                         text=True, capture_output=True)
@@ -227,20 +251,28 @@ def run():
                     raise SystemExit(f"Proof guard did not produce the required rejection: {description}\n{output}")
                 print(f"Rejected false law: {description}")
 
-        source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
-                        f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
-                        MERGE_SOURCE.read_text())
-        source = source.replace("import Numeric.Natural", "import Data.Coerce (coerce)\nimport Numeric.Natural")
-        target.write_text(source + "\nproofGuard :: AtlasMergeDatum source -> AtlasMergeDatum target\n"
-                          "proofGuard = coerce\n")
-        result = subprocess.run(command + [str(target)], cwd=HASKELL, text=True, capture_output=True)
-        output = result.stdout + result.stderr
-        error_lines = re.findall(re.escape(str(target)) + r":(\d+):\d+: error:", output)
-        if (result.returncode == 0 or "Couldn't match type" not in output or "coerce" not in output
-                or not any(int(line) > source.count("\n") for line in error_lines)):
-            raise SystemExit("Merge cell-role guard did not produce the required rejection:\n" + output)
-        print("Rejected invalid coercion: merge datums retain their cell identity")
+        for source_path, datum_type, description in [
+            (MERGE_SOURCE, "AtlasMergeDatum", "merge datums retain their cell identity"),
+            (SEQUENCE_SOURCE, "AtlasSequenceDatum", "sequence datums retain their cell identity"),
+        ]:
+            if pattern and not re.search(pattern, description):
+                continue
+            source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
+                            f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
+                            source_path.read_text())
+            source = source.replace("import Numeric.Natural", "import Data.Coerce (coerce)\nimport Numeric.Natural")
+            target.write_text(source + f"\nproofGuard :: {datum_type} source -> {datum_type} target\n"
+                              "proofGuard = coerce\n")
+            result = subprocess.run(command + [str(target)], cwd=HASKELL, text=True, capture_output=True)
+            output = result.stdout + result.stderr
+            error_lines = re.findall(re.escape(str(target)) + r":(\d+):\d+: error:", output)
+            if (result.returncode == 0 or "Couldn't match type" not in output or "coerce" not in output
+                    or not any(int(line) > source.count("\n") for line in error_lines)):
+                raise SystemExit(f"Cell-role guard did not produce the required rejection: {description}\n{output}")
+            print(f"Rejected invalid coercion: {description}")
 
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--filter", help="Run only guard descriptions matching this regular expression")
+    run(parser.parse_args().filter)

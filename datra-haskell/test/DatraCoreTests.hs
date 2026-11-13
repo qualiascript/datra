@@ -86,6 +86,7 @@ testTree =
         , testCase "atlas merge rejects off-image unranking" testAtlasMergeOffImageUnrank
         , testCase "atlas merge transfinite pages" testAtlasMergeTransfinitePages
         , testCase "atlas sequence merge origin ranks" testAtlasSequenceOriginRanks
+        , testCase "atlas sequence transfinite pages" testAtlasSequenceTransfinitePages
         , testCase "atlas confederation" testAtlasConfederation
         , testCase "atlas federation" testAtlasFederation
         , testCase "atlas map" testAtlasMap
@@ -1518,12 +1519,39 @@ testAtlasMergeOriginRanks = withPartialCoverageAtlas $ \input ->
 testAtlasSequenceOriginRanks :: IO ()
 testAtlasSequenceOriginRanks = withPartialCoverageAtlas $ \input ->
   let member = atlasSequenceMember input
-      members = member :| [member]
-  in atlasSequence members $ \merged -> do
-    checkMergeOriginRanks input merged
-      (atlasSequenceMemberOrderedTransposal members 0 input merged) (2 *)
-    checkMergeOriginRanks input merged
-      (atlasSequenceMemberOrderedTransposal members 1 input merged) (\n -> 2 * n + 1)
+  in mapM_ (\count ->
+      let members = member :| replicate (fromIntegral count - 1) member
+      in atlasSequence members $ \merged ->
+        mapM_ (\memberIndex -> checkMergeOriginRanks input merged
+          (atlasSequenceMemberOrderedTransposal members memberIndex input merged)
+          (\n -> count * n + memberIndex)) [0 .. count - 1]) [1, 2, 3, 5]
+
+testAtlasSequenceTransfinitePages :: IO ()
+testAtlasSequenceTransfinitePages =
+  let naturals = dominion id Just (const ())
+      input = rankedDominionAtlas naturals
+      member = atlasSequenceMember input
+      members = member :| [member, member]
+      starts = [finiteOrdinal 0, omega, addOrdinals omega omega]
+  in atlasSequence members $ \sequenceAtlas ->
+    mapM_ (\page -> do
+      mapM_ (\(memberIndex, start) ->
+        mapM_ (\valueRank ->
+          let position = addOrdinals start (finiteOrdinal valueRank)
+              expectedRank = 3 * valueRank + memberIndex
+          in case pageElementIndex (atlasPageElements sequenceAtlas) page position of
+            Nothing -> fail "missing transfinite sequence cell"
+            Just index -> withPageElement (pageElement index) $ \cell -> do
+              let valueDominion = atlasDataAt sequenceAtlas cell
+              assert "sequence lookup retains its full-spine position"
+                (pageElementPage cell == page && pageElementPosition cell == position)
+              assert "sequence cell decodes exactly its member's origin rank"
+                (fmap (rank valueDominion) (unrank valueDominion expectedRank) == Just expectedRank
+                  && isNothing (unrank valueDominion (expectedRank + 3)))) [0, 7])
+        (zip [0 ..] starts)
+      assert "sequence lookup rejects the complete ordinal-sum upper bound"
+        (isNothing (pageElementIndex (atlasPageElements sequenceAtlas) page
+          (addOrdinals (addOrdinals omega omega) omega)))) [2, 5]
 
 -- This Dominion obeys its round trip but also decodes odd ranks. Both the
 -- merged extent and the included cells must reject those off-image decodings.

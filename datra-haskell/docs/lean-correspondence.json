@@ -2499,6 +2499,447 @@
       "haskell_declaration": "mergeDatumInsertion",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "acceptedInsertion_preimage"
+    },
+    {
+      "id": "SEQUENCE-DATUM-MEMBER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "atlasSequenceDatumMember",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "datumMember"
+    },
+    {
+      "id": "SEQUENCE-DATUM-ORIGIN-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "atlasSequenceDatumRank",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "datumOriginRank"
+    },
+    {
+      "id": "SEQUENCE-DATUM-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "sequenceDatumRank",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "datumRank"
+    },
+    {
+      "id": "SEQUENCE-DATUM-ENCODE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "decodeSequenceDatum",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "rank_decode"
+    },
+    {
+      "id": "SEQUENCE-DATUM-DECODE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "decodeSequenceDatumRank",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "decode_rank"
+    },
+    {
+      "id": "SEQUENCE-DATUM-LOOKUP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "sequenceDatumLookup",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "lookupDatum"
+    },
+    {
+      "id": "SEQUENCE-DATUM-LOOKUP-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "sequenceDatumLookupRoundTrip",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "lookupDatum_roundtrip"
+    },
+    {
+      "id": "SEQUENCE-DATUM-LOOKUP-SOUND",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "sequenceDatumLookupSound",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "lookupDatum_sound"
+    },
+    {
+      "id": "SEQUENCE-ACCEPTED-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "sequenceDatumDominion",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "lookupDominion"
+    },
+    {
+      "id": "SEQUENCE-DATUM-RETAG",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "retagSequenceDatum",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "retag"
+    },
+    {
+      "id": "SEQUENCE-DATUM-RETAG-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "retagSequenceDatumRoundTrip",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "retag_roundtrip"
+    },
+    {
+      "id": "SEQUENCE-DATA-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "sequenceDatumPreimage",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "preimageDatum"
+    },
+    {
+      "id": "SEQUENCE-DATA-PREIMAGE-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "sequenceDatumPreimageRoundTrip",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "preimageDatum_roundtrip"
+    },
+    {
+      "id": "SEQUENCE-DATA-MEMBERSHIP-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "sequenceDatumMap",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "mapDatum"
+    },
+    {
+      "id": "SEQUENCE-ACCEPTED-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "haskell_declaration": "sequenceDatumInsertion",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "acceptedInsertion"
+    },
+    {
+      "id": "SEQUENCE-CELL-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceCellContains",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "contains"
+    },
+    {
+      "id": "SEQUENCE-CELL-ROOT-IMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceCellContains",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "contains_iff_root_image"
+    },
+    {
+      "id": "SEQUENCE-DOMINION-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceDominionAt",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "dominionAt"
+    },
+    {
+      "id": "SEQUENCE-DOMINION-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceDominionAt",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "interpretationEquiv"
+    },
+    {
+      "id": "SEQUENCE-DOMINION-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceDominionAt",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "interpretation_rank"
+    },
+    {
+      "id": "SEQUENCE-DATA-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceDataMap",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "dataMap"
+    },
+    {
+      "id": "SEQUENCE-DATA-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceDataMap",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "dataMap_interpretation"
+    },
+    {
+      "id": "SEQUENCE-DATA-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequence",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "dataMap_identity"
+    },
+    {
+      "id": "SEQUENCE-DATA-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequence",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "dataMap_comp"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-COMPONENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceMemberComponent",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "memberComponent"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-NATURALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceMemberComponent",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "memberComponent_naturality"
+    },
+    {
+      "id": "SEQUENCE-PAGE-TOTAL-ORDER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequencePageChain",
+      "lean_namespace": "Datra.Executable.ChainSequence",
+      "lean_declaration": "orderSum_foldl"
+    },
+    {
+      "id": "SEQUENCE-PAGE-PREFIX-ORDER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "prefixPageOrder",
+      "lean_namespace": "Datra.Executable.ChainSequence",
+      "lean_declaration": "prefixOrder"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-POSITION-RESOLVER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "withMemberAtPosition",
+      "lean_namespace": "Datra.Executable.ChainSequence",
+      "lean_declaration": "locate"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-POSITION-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "withMemberAtPosition",
+      "lean_namespace": "Datra.Executable.ChainSequence",
+      "lean_declaration": "locate_position"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-POSITION-SOUND",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "withMemberAtPosition",
+      "lean_namespace": "Datra.Executable.ChainSequence",
+      "lean_declaration": "locate_sound"
+    },
+    {
+      "id": "SEQUENCE-PAGE-CHAIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequencePageChain",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "pageChain"
+    },
+    {
+      "id": "SEQUENCE-PAGE-CELL-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceCellPosition",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "pagePosition"
+    },
+    {
+      "id": "SEQUENCE-PAGE-TRACE-ENCODING",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceCellPosition",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "pagePosition_encode"
+    },
+    {
+      "id": "SEQUENCE-PAGE-PREVIOUS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "previousSequenceCell",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "previousPageCell_encode"
+    },
+    {
+      "id": "SEQUENCE-PAGE-NEXT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "nextSequenceCell",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "nextPageCell_encode"
+    },
+    {
+      "id": "SEQUENCE-PAGE-TRANSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequencePageTransition",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "pageTransition"
+    },
+    {
+      "id": "SEQUENCE-COLLAPSE-ORIGIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "collapseToOrigin",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "collapseToOrigin"
+    },
+    {
+      "id": "SEQUENCE-FOLIO-PREFIX",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "appendRemainingPages",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "prefixFolio"
+    },
+    {
+      "id": "SEQUENCE-FOLIO",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequenceFolio",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "folio"
+    },
+    {
+      "id": "SEQUENCE-FOLIO-LENGTH",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequenceLength",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "folio_length"
+    },
+    {
+      "id": "SEQUENCE-PADDED-PAGE-RESOLUTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequenceFolio",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "prefixPageAt_succ"
+    },
+    {
+      "id": "SEQUENCE-PAGE-LOOKUP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequencePageChain",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "pageChain_lookup"
+    },
+    {
+      "id": "SEQUENCE-PAGE-LOOKUP-BOUNDS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequencePageChain",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "pageLookup_isSome"
+    },
+    {
+      "id": "SEQUENCE-COMPONENT-DECODER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "withMemberAtPosition",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "resolvePosition_pagePosition"
+    },
+    {
+      "id": "SEQUENCE-SOURCE-RESOLUTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceSourceCell",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "resolveOccurrence"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-OBJECT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceMemberElement",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "memberOccurrence"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-RESOLVED",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceMemberElement",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "resolveOccurrence_member"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-PAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceMemberElement",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "memberOccurrence_page"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceMemberElement",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "memberOccurrence_position"
+    },
+    {
+      "id": "SEQUENCE-SOURCE-RESOLUTION-EQUIV",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceSourceCell",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "occurrenceEquiv"
+    },
+    {
+      "id": "SEQUENCE-RESOLVED-ARROW",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceDataMap",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "resolveStoredElement_arrow"
+    },
+    {
+      "id": "SEQUENCE-NORMALIZED-RESOLUTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceSourceCell",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "resolveStoredElement_runtime"
+    },
+    {
+      "id": "SEQUENCE-RESOLVED-CELL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceCellContains",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "resolveStoredElement_cell_eq"
+    },
+    {
+      "id": "SEQUENCE-INDEXED-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceDominionAt",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "indexedDominion"
+    },
+    {
+      "id": "SEQUENCE-ATLAS-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequence",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "action_identity"
+    },
+    {
+      "id": "SEQUENCE-ATLAS-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequence",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "action_composition"
+    },
+    {
+      "id": "SEQUENCE-ATLAS-COHERENCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequence",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "action_coherence"
+    },
+    {
+      "id": "SEQUENCE-ATLAS-DISJOINT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequence",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "action_disjoint"
+    },
+    {
+      "id": "SEQUENCE-ATLAS-CONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "atlasSequence",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "atlasSequence"
+    },
+    {
+      "id": "SEQUENCE-INDEXED-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceDominionAt",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "indexedInterpretationEquiv"
+    },
+    {
+      "id": "SEQUENCE-ATLAS-DATA-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceDataMap",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "atlasSequence_data_interpretation"
+    },
+    {
+      "id": "SEQUENCE-ATLAS-RANK-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/AtlasSequence.hs",
+      "haskell_declaration": "sequenceDominionAt",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "atlasSequence_rank_interpretation"
     }
   ],
   "modules": [
@@ -3042,7 +3483,6 @@
       "module": "AtlasSequence",
       "types": [
         "AtlasSequenceMember",
-        "AtlasSequenceDatum",
         "AtlasSequencePageCell",
         "SequenceSourceCell",
         "AtlasSequenceObjectMap"
@@ -3050,7 +3490,7 @@
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.AtlasSequence",
-      "coverage": "pending",
+      "coverage": "partial",
       "aliases": [],
       "embeddings": []
     },
@@ -3674,6 +4114,43 @@
         "mergeDatumPreimageRoundTrip",
         "mergeDatumMap",
         "mergeDatumInsertion"
+      ],
+      "aliases": [],
+      "embeddings": [
+        "Natural as int"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/LiquidInternal.hs",
+      "module": "AtlasSequence.LiquidInternal",
+      "lean_target": "Datra.Executable.AtlasSequence",
+      "coverage": "aligned",
+      "types": [
+        "AtlasSequenceDatum"
+      ],
+      "reflected": [
+        "atlasSequenceDatumMember",
+        "atlasSequenceDatumRank",
+        "sequenceDatumRank",
+        "decodeSequenceDatum",
+        "sequenceDatumLookup",
+        "retagSequenceDatum",
+        "sequenceDatumPreimage",
+        "sequenceDatumMap"
+      ],
+      "refinements": [
+        "decodeSequenceDatum",
+        "decodeSequenceDatumRank",
+        "sequenceDatumLookup",
+        "sequenceDatumLookupRoundTrip",
+        "sequenceDatumLookupSound",
+        "sequenceDatumDominion",
+        "retagSequenceDatum",
+        "retagSequenceDatumRoundTrip",
+        "sequenceDatumPreimage",
+        "sequenceDatumPreimageRoundTrip",
+        "sequenceDatumMap",
+        "sequenceDatumInsertion"
       ],
       "aliases": [],
       "embeddings": [

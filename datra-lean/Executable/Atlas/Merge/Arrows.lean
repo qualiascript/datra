@@ -1,15 +1,8 @@
 import Executable.Atlas.Merge.Resolution
+import Executable.Folio.PrefixResolution
 
 namespace Datra.Executable.AtlasMerge
 open CategoryTheory
-
-/-- A component's full-spine interval supplies its trace-based page arrow. -/
-def componentArrow (X : Atlas) (source target : Nat) (precedes : target ≤ source)
-    (value : (componentPage X source).Carrier) :
-    (FolioData.ValidElement.ofOccurrence (⟨source, value⟩ : X.pages.Occurrence)) ⟶
-      FolioData.ValidElement.ofOccurrence
-        (⟨target, (X.pages.transport source target precedes).map value⟩ : X.pages.Occurrence) :=
-  ⟨precedes, (X.pages.traceAt_suffix_iff source target precedes value _).mpr rfl⟩
 
 def Transport.toOrigin {X Y : Atlas} (source : SourceCell X Y) : Transport source .origin :=
   match source with
@@ -29,36 +22,20 @@ theorem resolve_pageTransition (X Y : Atlas) (n : Nat) (cell : ValidPageCell X Y
   | inl value =>
     simp only [componentTransition, Consolidation.sum, Sum.map_inl,
       resolvePageCell_left]
-    exact .left (componentArrow X (n + 1) n (Nat.le_succ n) value)
+    exact .left (X.pages.transportArrow (n + 1) n (Nat.le_succ n) value)
   | inr value =>
     simp only [componentTransition, Consolidation.sum, Sum.map_inr,
       resolvePageCell_right]
-    exact .right (componentArrow Y (n + 1) n (Nat.le_succ n) value)
+    exact .right (Y.pages.transportArrow (n + 1) n (Nat.le_succ n) value)
 
 /-- Resolve a stored finite page structurally, before presenting its index as
 a natural page number. This avoids any choice of an inverse page lookup. -/
 def sourceAtIndex (X Y : Atlas) : (n : Nat) →
     (index : (prefixFolio X Y n).data.Index) →
     ((prefixFolio X Y n).data.page index).Carrier → SourceCell X Y
-  | 0, none, value => resolvePageCell X Y 0 value
-  | 0, some _, _ => .origin
-  | n + 1, none, value => resolvePageCell X Y (n + 1) value
-  | n + 1, some index, value => sourceAtIndex X Y n index value
-
-theorem resolve_lastInterval (X Y : Atlas) (n : Nat)
-    (target : (prefixFolio X Y n).data.Index) (value : ValidPageCell X Y n) :
-    Transport (resolvePageCell X Y n value)
-      (sourceAtIndex X Y n target ((prefixFolio X Y n).data.lastInterval target |>.map value)) := by
-  induction n with
-  | zero =>
-    cases target with
-    | none => exact Transport.identity _
-    | some target => exact Transport.toOrigin _
-  | succ n ih =>
-    cases target with
-    | none => exact Transport.identity _
-    | some target =>
-      exact (resolve_pageTransition X Y n value).comp (ih target ((pageTransition X Y n).map value))
+  := Folio.PrefixResolution.atIndex DomanialInclusion.singletonPage () (fun x => by cases x; rfl)
+    (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y)
+    (SourceCell.origin : SourceCell X Y) (resolvePageCell X Y)
 
 /-- Every generated interval in the finite folio resolves to a component
 transport, including its composite through all intervening stored pages. -/
@@ -67,30 +44,12 @@ theorem resolve_interval (X Y : Atlas) (n : Nat)
     (precedes : (prefixFolio X Y n).data.indexNumber target ≤ (prefixFolio X Y n).data.indexNumber source)
     (value : ((prefixFolio X Y n).data.page source).Carrier) :
     Transport (sourceAtIndex X Y n source value)
-      (sourceAtIndex X Y n target ((prefixFolio X Y n).data.interval source target precedes |>.map value)) := by
-  induction n with
-  | zero =>
-    cases source with
-    | none =>
-      cases target with
-      | none => exact Transport.identity _
-      | some target => exact Transport.toOrigin _
-    | some source =>
-      cases target with
-      | none => have : 1 ≤ 0 := precedes; omega
-      | some target => exact .origin
-  | succ n ih =>
-    cases source with
-    | none =>
-      cases target with
-      | none => exact Transport.identity _
-      | some target =>
-        exact (resolve_pageTransition X Y n value).comp
-          (resolve_lastInterval X Y n target ((pageTransition X Y n).map value))
-    | some source =>
-      cases target with
-      | none => exact False.elim (Nat.not_le_of_lt ((prefixFolio X Y n).data.indexNumber_lt source) precedes)
-      | some target => exact ih source target precedes value
+      (sourceAtIndex X Y n target ((prefixFolio X Y n).data.interval source target precedes |>.map value)) :=
+  Folio.PrefixResolution.interval DomanialInclusion.singletonPage () (fun x => by cases x; rfl)
+    (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y)
+    (SourceCell.origin : SourceCell X Y) (resolvePageCell X Y)
+    Transport Transport.identity (fun first second => first.comp second)
+    (fun _ _ => Transport.toOrigin _) (resolve_pageTransition X Y) n source target precedes value
 
 
 /-- The stored-page form of resolution forgets only the repeated padding
@@ -101,43 +60,28 @@ def resolveStoredOccurrence (X Y : Atlas) (occurrence : (pagination X Y).pages.O
 
 theorem sourceAtIndex_first (X Y : Atlas) (n : Nat)
     (value : ((prefixFolio X Y n).data.page (prefixFolio X Y n).data.firstIndex).Carrier) :
-    sourceAtIndex X Y n (prefixFolio X Y n).data.firstIndex value = .origin := by
-  induction n with
-  | zero => rfl
-  | succ n ih => exact ih value
+    sourceAtIndex X Y n (prefixFolio X Y n).data.firstIndex value = .origin :=
+  Folio.PrefixResolution.atIndex_first DomanialInclusion.singletonPage () (fun x => by cases x; rfl)
+    (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y)
+    (SourceCell.origin : SourceCell X Y) (resolvePageCell X Y) n value
 
 theorem sourceAtIndex_heq (X Y : Atlas) (n : Nat)
     {i j : (prefixFolio X Y n).data.Index} (same : i = j)
     {a : ((prefixFolio X Y n).data.page i).Carrier}
     {b : ((prefixFolio X Y n).data.page j).Carrier} (values : HEq a b) :
-    sourceAtIndex X Y n i a = sourceAtIndex X Y n j b := by
-  subst j
-  cases values
-  rfl
+    sourceAtIndex X Y n i a = sourceAtIndex X Y n j b :=
+  Folio.PrefixResolution.atIndex_heq DomanialInclusion.singletonPage () (fun x => by cases x; rfl)
+    (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y)
+    (SourceCell.origin : SourceCell X Y) (resolvePageCell X Y) n same values
 
 theorem sourceAtIndex_component (X Y : Atlas) (n : Nat) (k : Fin (n + 1))
     (value : ValidPageCell X Y k.val) :
     sourceAtIndex X Y n (componentIndex X Y n k)
       (cast (congrArg Page.Carrier (componentIndex_page X Y n k).symm) value) =
-      resolvePageCell X Y k.val value := by
-  induction n with
-  | zero =>
-    have hk : k = ⟨0, by omega⟩ := Fin.ext (by have := k.isLt; omega)
-    subst k
-    rfl
-  | succ n ih =>
-    by_cases last : k.val = n + 1
-    · obtain ⟨k, hk⟩ := k
-      dsimp only at last
-      subst k
-      have index : componentIndex X Y (n + 1) ⟨n + 1, hk⟩ = none := by simp [componentIndex]
-      exact sourceAtIndex_heq X Y (n + 1) index (cast_heq _ value)
-    · let previous : Fin (n + 1) := ⟨k.val, by have := k.isLt; omega⟩
-      have index : componentIndex X Y (n + 1) k = some (componentIndex X Y n previous) := by
-        simp [componentIndex, last, previous]
-      exact (sourceAtIndex_heq X Y (n + 1) index
-        ((cast_heq _ value).trans (cast_heq (congrArg Page.Carrier
-          (componentIndex_page X Y n previous).symm) value).symm)).trans (ih previous value)
+      resolvePageCell X Y k.val value :=
+  Folio.PrefixResolution.atIndex_component DomanialInclusion.singletonPage () (fun x => by cases x; rfl)
+    (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y)
+    (SourceCell.origin : SourceCell X Y) (resolvePageCell X Y) n k value
 
 theorem resolveStored_arrow (X Y : Atlas) {source target : (pagination X Y).pages.Occurrence}
     (arrow : source ⟶ target) :

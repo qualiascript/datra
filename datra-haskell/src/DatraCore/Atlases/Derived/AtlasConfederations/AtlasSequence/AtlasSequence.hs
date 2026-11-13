@@ -70,7 +70,8 @@ import DomanialInsertion
   , domanialInsertion
   , preimage
   )
-import Dominion (Dominion, dominion)
+import Dominion (Dominion)
+import AtlasSequence.LiquidInternal
 import Folio
   ( Folio
   , appendPage
@@ -90,6 +91,7 @@ import PageElements
   ( PageElement
   , PageElementArrow
   , arrowSource
+  , arrowTarget
   , pageElement
   , pageElementIndex
   , withPageElement
@@ -117,16 +119,6 @@ withAtlasSequenceMember
 withAtlasSequenceMember (AtlasSequenceMember valueAtlas) useAtlas =
   useAtlas valueAtlas
 
--- | A datum tagged by its zero-based member and its rank in that member.
-data AtlasSequenceDatum object = AtlasSequenceDatum Natural Natural
-  deriving (Eq, Show)
-
-atlasSequenceDatumMember :: AtlasSequenceDatum object -> Natural
-atlasSequenceDatumMember (AtlasSequenceDatum member _) = member
-
-atlasSequenceDatumRank :: AtlasSequenceDatum object -> Natural
-atlasSequenceDatumRank (AtlasSequenceDatum _ valueRank) = valueRank
-
 -- | A non-origin cell tagged by its member and source-cell transport trace.
 data AtlasSequencePageCell = AtlasSequencePageCell Natural [Ordinal]
   deriving (Eq, Show)
@@ -139,6 +131,7 @@ memberCardinality member =
   withAtlasSequenceMember member atlasCardinality
 
 -- | A sequence has a fresh extent followed by all member pages in parallel.
+-- ALIGN: SEQUENCE-FOLIO-LENGTH.
 atlasSequenceLength :: NonEmpty AtlasSequenceMember -> Natural
 atlasSequenceLength members =
   maximum (fmap memberCardinality members) + 1
@@ -172,6 +165,7 @@ memberPageOrder member pageNumber =
   withAtlasSequenceMember member $ \valueAtlas ->
     withPageAt (atlasFolio valueAtlas) pageNumber chainOrderType
 
+-- ALIGN: SEQUENCE-PAGE-PREFIX-ORDER.
 prefixPageOrder
   :: [AtlasSequenceMember]
   -> Natural
@@ -201,6 +195,10 @@ withMemberAt (member : _) 0 useAtlas =
 withMemberAt (_ : members) memberIndex useAtlas =
   withMemberAt members (memberIndex - 1) useAtlas
 
+-- ALIGN: SEQUENCE-MEMBER-POSITION-RESOLVER.
+-- ALIGN: SEQUENCE-MEMBER-POSITION-ROUNDTRIP.
+-- ALIGN: SEQUENCE-MEMBER-POSITION-SOUND.
+-- ALIGN: SEQUENCE-COMPONENT-DECODER.
 withMemberAtPosition
   :: forall result.
      [AtlasSequenceMember]
@@ -241,6 +239,8 @@ withMemberAtPosition = go 0
                   remaining
                   usePosition
 
+-- ALIGN: SEQUENCE-PAGE-CELL-POSITION.
+-- ALIGN: SEQUENCE-PAGE-TRACE-ENCODING.
 sequenceCellPosition
   :: [AtlasSequenceMember]
   -> Natural
@@ -253,6 +253,10 @@ sequenceCellPosition members pageNumber
     position
 sequenceCellPosition _ _ _ = finiteOrdinal 0
 
+-- ALIGN: SEQUENCE-PAGE-TOTAL-ORDER.
+-- ALIGN: SEQUENCE-PAGE-CHAIN.
+-- ALIGN: SEQUENCE-PAGE-LOOKUP.
+-- ALIGN: SEQUENCE-PAGE-LOOKUP-BOUNDS.
 atlasSequencePageChain
   :: NonEmpty AtlasSequenceMember
   -> Natural
@@ -288,6 +292,7 @@ firstSequenceCell (member :| _) =
         Just trace -> AtlasSequencePageCell 0 trace
         Nothing -> AtlasSequencePageCell 0 [position]
 
+-- ALIGN: SEQUENCE-COLLAPSE-ORIGIN.
 collapseToOrigin
   :: NonEmpty AtlasSequenceMember
   -> Coconsolidation () AtlasSequencePageCell
@@ -298,6 +303,7 @@ collapseToOrigin members =
     (\_ _ _ -> ())
     (const ()))
 
+-- ALIGN: SEQUENCE-PAGE-PREVIOUS.
 previousSequenceCell :: AtlasSequencePageCell -> AtlasSequencePageCell
 previousSequenceCell
     (AtlasSequencePageCell memberIndex (_ : rest@(_ : _))) =
@@ -318,6 +324,7 @@ componentPreimagePosition valueAtlas targetPage sourcePosition = do
           targetCell = consolidationPreimage (unop transition) sourceCell
       pure (chainPosition targetPageChain targetCell)
 
+-- ALIGN: SEQUENCE-PAGE-NEXT.
 nextSequenceCell
   :: [AtlasSequenceMember]
   -> Natural
@@ -333,6 +340,7 @@ nextSequenceCell members targetPage previous =
         _ -> previous
     _ -> previous
 
+-- ALIGN: SEQUENCE-PAGE-TRANSITION.
 sequencePageTransition
   :: NonEmpty AtlasSequenceMember
   -> Natural
@@ -344,6 +352,7 @@ sequencePageTransition members targetPage =
     (\_ _ rightCell -> previousSequenceCell rightCell)
     (const ()))
 
+-- ALIGN: SEQUENCE-FOLIO-PREFIX.
 appendRemainingPages
   :: NonEmpty AtlasSequenceMember
   -> Natural
@@ -359,6 +368,8 @@ appendRemainingPages members pageNumber depth pages
           (atlasSequencePageChain members pageNumber)
           (sequencePageTransition members pageNumber))
 
+-- ALIGN: SEQUENCE-FOLIO.
+-- ALIGN: SEQUENCE-PADDED-PAGE-RESOLUTION.
 atlasSequenceFolio
   :: NonEmpty AtlasSequenceMember
   -> Folio () AtlasSequencePageCell
@@ -379,6 +390,9 @@ data SequenceSourceCell where
     -> PageElement scope object
     -> SequenceSourceCell
 
+-- ALIGN: SEQUENCE-SOURCE-RESOLUTION.
+-- ALIGN: SEQUENCE-SOURCE-RESOLUTION-EQUIV.
+-- ALIGN: SEQUENCE-NORMALIZED-RESOLUTION.
 sequenceSourceCell
   :: NonEmpty AtlasSequenceMember
   -> PageElement mergeScope object
@@ -395,6 +409,9 @@ sequenceSourceCell members occurrence
             pure $ withPageElement (pageElement index) $
               SequenceMemberSourceCell memberIndex valueAtlas
 
+-- ALIGN: SEQUENCE-CELL-MEMBERSHIP.
+-- ALIGN: SEQUENCE-CELL-ROOT-IMAGE.
+-- ALIGN: SEQUENCE-RESOLVED-CELL.
 sequenceCellContains
   :: NonEmpty AtlasSequenceMember
   -> PageElement mergeScope object
@@ -412,38 +429,23 @@ sequenceCellContains members occurrence
       sourceMember == datumMember
         && cellContainsRank valueAtlas source valueRank
 
-sequenceDatumAt
-  :: NonEmpty AtlasSequenceMember
-  -> PageElement mergeScope object
-  -> Natural
-  -> Maybe (AtlasSequenceDatum object)
-sequenceDatumAt members occurrence combinedRank =
-  let count = memberCount members
-      candidate = AtlasSequenceDatum
-        (combinedRank `mod` count)
-        (combinedRank `div` count)
-  in if sequenceCellContains members occurrence candidate
-      then Just candidate
-      else Nothing
-
+-- ALIGN: SEQUENCE-DOMINION-ROUNDTRIP.
+-- ALIGN: SEQUENCE-DOMINION-INTERPRETATION.
+-- ALIGN: SEQUENCE-DOMINION-RANK.
+-- ALIGN: SEQUENCE-INDEXED-DOMINION.
+-- ALIGN: SEQUENCE-INDEXED-INTERPRETATION.
+-- ALIGN: SEQUENCE-ATLAS-RANK-INTERPRETATION.
 sequenceDominionAt
   :: NonEmpty AtlasSequenceMember
   -> PageElement mergeScope object
   -> Dominion (AtlasSequenceDatum object)
 sequenceDominionAt members occurrence =
-  let count = memberCount members
-  in dominion
-      (\(AtlasSequenceDatum memberIndex valueRank) ->
-        count * valueRank + memberIndex)
-      (sequenceDatumAt members occurrence)
-      (const ())
+  sequenceDatumDominion (memberCount members) (sequenceCellContains members occurrence)
 
-retagSequenceDatum
-  :: AtlasSequenceDatum source
-  -> AtlasSequenceDatum target
-retagSequenceDatum (AtlasSequenceDatum memberIndex valueRank) =
-  AtlasSequenceDatum memberIndex valueRank
-
+-- ALIGN: SEQUENCE-DATA-INSERTION.
+-- ALIGN: SEQUENCE-DATA-INTERPRETATION.
+-- ALIGN: SEQUENCE-RESOLVED-ARROW.
+-- ALIGN: SEQUENCE-ATLAS-DATA-INTERPRETATION.
 sequenceDataMap
   :: NonEmpty AtlasSequenceMember
   -> PageElementArrow mergeScope source target
@@ -451,17 +453,21 @@ sequenceDataMap
        (AtlasSequenceDatum source)
        (AtlasSequenceDatum target)
 sequenceDataMap members pageArrow =
-  domanialInsertion
-    retagSequenceDatum
-    (\datum ->
-      if sequenceCellContains members (arrowSource pageArrow) datum
-        then Just (retagSequenceDatum datum)
-        else Nothing)
+  sequenceDatumInsertion
+    (sequenceCellContains members (arrowSource pageArrow))
+    (sequenceCellContains members (arrowTarget pageArrow))
     (const ())
 
 -- | Merge every member under one fresh extent. Result page @n + 1@ is the
 -- ordered concatenation of page @n@ from every member, so page 1 has exactly
 -- one cell per member.
+-- ALIGN: SEQUENCE-DATA-IDENTITY.
+-- ALIGN: SEQUENCE-DATA-COMPOSITION.
+-- ALIGN: SEQUENCE-ATLAS-IDENTITY.
+-- ALIGN: SEQUENCE-ATLAS-COMPOSITION.
+-- ALIGN: SEQUENCE-ATLAS-COHERENCE.
+-- ALIGN: SEQUENCE-ATLAS-DISJOINT.
+-- ALIGN: SEQUENCE-ATLAS-CONSTRUCTION.
 atlasSequence
   :: NonEmpty AtlasSequenceMember
   -> (forall mergeAtlasScope mergeScope.
@@ -515,6 +521,10 @@ sequencePageElementAt sequenceAtlas pageNumber position =
       Just index -> withPageElement (pageElement index) retypePageElement
       Nothing -> error "Atlas sequence inclusion produced an invalid cell"
 
+-- ALIGN: SEQUENCE-MEMBER-OBJECT.
+-- ALIGN: SEQUENCE-MEMBER-RESOLVED.
+-- ALIGN: SEQUENCE-MEMBER-PAGE.
+-- ALIGN: SEQUENCE-MEMBER-POSITION.
 sequenceMemberElement
   :: [AtlasSequenceMember]
   -> Natural
@@ -534,6 +544,8 @@ sequenceMemberElement members memberIndex sequenceAtlas source =
       (prefixPageOrder members memberIndex (pageElementPage source))
       (pageElementPosition source))
 
+-- ALIGN: SEQUENCE-MEMBER-COMPONENT.
+-- ALIGN: SEQUENCE-MEMBER-NATURALITY.
 sequenceMemberComponent
   :: Natural
   -> Atlas sourceAtlasScope sourceScope sourceData sourceOrigin sourceFinal

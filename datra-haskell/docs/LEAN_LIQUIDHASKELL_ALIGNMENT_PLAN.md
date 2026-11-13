@@ -128,6 +128,37 @@ coercion between distinct cell identities. The Atlas assembly still needs to
 establish and retain those membership preconditions for its dependent data
 family, including the membership-preservation witness for each data arrow.
 
+Sequence has a checked finite-member datum model. Its radix encoding is
+`memberCount * originRank + memberIndex`; decoding requires a positive member
+count, and its round-trip theorem requires a member index below that count.
+LiquidHaskell checks these conditions, membership-filtered decoding, and the
+restricted Dominion constructor. The runtime sequence uses this constructor
+and a checked membership-preserving data insertion, with a nominal datum cell
+role. Lean models the corresponding finite family of source cells, proves
+that membership implies a bounded member index, and supplies data-action
+identity, composition, and member-component naturality laws. Its accepted-data
+carriers have rank-preserving equivalences with images in the finite tagged
+sum of member extents, and the data action commutes with these equivalences.
+The sequence folio has a computable finite ordinal-sum page chain, tagged
+transport traces, adjacent consolidations with checked preimages, and the
+maximum-depth finite spine. The prefix accumulator and optional-subtraction
+member scan have exact roundtrip, soundness, bounds, and ordering laws.
+Padded-page lookup preserves the requested full-spine page number. Resolving
+a sequence occurrence and rebuilding it from its member occurrence are inverse
+operations; canonical member objects satisfy their page and prefix-position
+equations. Binary merge and sequence share the finite-prefix folio constructor,
+structural page indices, interval-resolution and pagewise-separation proofs,
+and padding/cast lemmas. Every sequence arrow resolves to a checked member
+transport or to the fresh origin. The stored resolver is invariant under
+normalization and agrees with full-spine resolution on normalized occurrences.
+The sequence Atlas has a computable genuine-cell data family and checked
+identity, composition, coherence, and pagewise-disjointness laws. Its data
+action commutes with the tagged root-image interpretation and preserves radix
+ranks. Complete inclusion morphisms and the equivalence of the sequence folio
+with the written construction remain unfinished. The runtime Atlas assembly
+must also establish the membership conditions and arrow-preservation evidence
+required by its checked helpers.
+
 The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
 ranking round trip, charted witness caches, and propagation of coverage and
 inverse certificates across public entry points still need checked contracts.

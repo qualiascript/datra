@@ -18,7 +18,7 @@ theorem finitePageEquiv_left_position (X Y : Atlas)
       ((finitePageEquiv X Y n.succ).symm (toLex (.inl value))) =
       (componentPage X n.val).chain.position value := by
   rw [finitePageEquiv_symm_succ_encode]
-  exact (pagePosition_cast (storedIndex_succ_page X Y n).symm
+  exact (Page.cast_position (storedIndex_succ_page X Y n).symm
     (encodedPageCell X Y n.val (.inl value))).trans (pagePosition_encode X Y n.val (.inl value))
 
 theorem finitePageEquiv_right_position (X Y : Atlas)
@@ -29,7 +29,7 @@ theorem finitePageEquiv_right_position (X Y : Atlas)
       Ordinal.addOrdinals (componentPage X n.val).chain.orderType
         ((componentPage Y n.val).chain.position value) := by
   rw [finitePageEquiv_symm_succ_encode]
-  exact (pagePosition_cast (storedIndex_succ_page X Y n).symm
+  exact (Page.cast_position (storedIndex_succ_page X Y n).symm
     (encodedPageCell X Y n.val (.inr value))).trans (pagePosition_encode X Y n.val (.inr value))
 
 -- ALIGN: MERGE-LEFT-OBJECT-INTERPRETATION.
