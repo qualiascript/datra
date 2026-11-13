@@ -31,6 +31,12 @@ module PageElements.Internal
   , pageElementIndexTrace
   , pageElementIndexTraceResult
   , folioTraceLookup
+  , prefixTraceLookup
+  , prefixTraceLookupPosition
+  , pageElementTraceAt
+  , genuinePageElementTrace
+  , prependCopies
+  , folioTraceLengthPositive
   , traceLookupPresent
   , folioPageOrderType
   , folioTraceLookupBounded
@@ -79,6 +85,7 @@ import Chain.Internal
   , chainPosition
   , chainLookup
   , chainPositionBelow
+  , chainPositionInjective
   , chainPositionSurjective
   )
 import Consolidation
@@ -265,6 +272,20 @@ prefixTraceLookup prefix padding position =
   case chainIndex (lastChain prefix) position of
     Nothing -> Nothing
     Just index -> Just (pageElementTraceAt prefix padding (chainObjectAt index))
+
+-- | Native prefix lookup reconstructs the trace of every actual final-page value.
+{-@ prefixTraceLookupPosition :: prefix:Folio origin current -> padding:Natural -> value:current
+      -> {prefixTraceLookup prefix padding (chainPosition (lastChain prefix) value)
+           == Just (pageElementTraceAt prefix padding value)} @-}
+prefixTraceLookupPosition :: Folio origin current -> Natural -> current -> ()
+prefixTraceLookupPosition prefix _ value =
+  let pageChain = lastChain prefix
+      position = chainPosition pageChain value
+  in chainPositionBelow pageChain value `seq`
+      chainPositionSurjective pageChain position `seq`
+        case chainLookup pageChain position of
+          Nothing -> ()
+          Just candidate -> chainPositionInjective pageChain candidate value
 
 -- | The scalar success observation shared by page-chain constructors.
 {-@ reflect traceLookupPresent @-}

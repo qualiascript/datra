@@ -63,4 +63,22 @@ theorem nativePageChain_eq (X Y : Atlas) (n : Nat) : nativePageChain X Y n = pag
     rw [outside] at absent
     cases found : (componentSum X Y n).chainIndex position <;> simp_all
 
+-- ALIGN: MERGE-PAGE-PREVIOUS-VALID.
+theorem nativePrevious_valid (X Y : Atlas) (n : Nat)
+    (source : Sum (X.pages.TraceCarrier (n + 1)) (Y.pages.TraceCarrier (n + 1))) :
+    previousValidCell X Y n (nativeCellEquiv X Y (n + 1) source) =
+      nativeCellEquiv X Y n
+        (Sum.map (fun trace => trace.previous X.pagination.folio.valid n)
+          (fun trace => trace.previous Y.pagination.folio.valid n) source) := by
+  apply Subtype.ext
+  cases source with
+  | inl trace =>
+      change previousPageCell (nativeCellEquiv X Y (n + 1) (.inl trace)).val = _
+      rw [nativeCellEquiv_left]
+      exact (nativeCellEquiv_left X Y n (trace.previous X.pagination.folio.valid n)).symm
+  | inr trace =>
+      change previousPageCell (nativeCellEquiv X Y (n + 1) (.inr trace)).val = _
+      rw [nativeCellEquiv_right]
+      exact (nativeCellEquiv_right X Y n (trace.previous Y.pagination.folio.valid n)).symm
+
 end Datra.Executable.AtlasMerge

@@ -170,8 +170,11 @@ that explicitly retains target membership. Lean proves equality of this native
 construction with the merge page model, including the executable decoder, and
 identifies each native trace chain with its original dependent page. Negative
 checks reject a false carrier equivalence and either trace-chain carrier being
-widened to arbitrary raw traces. Full Haskell
-folio assembly still requires checked transition and data-transport certificates;
+widened to arbitrary raw traces. The checked predecessor drops one transport
+step and preserves membership in the preceding page of the same component,
+including across genuine and padded pages. Lean identifies this operation with
+the dependent page transport. Full Haskell folio assembly still requires
+checked preimage, transition-order, and data-transport certificates;
 sequence page chains also need the corresponding carrier restriction.
 
 Merge and sequence components use a shared origin-rank insertion. Its inverse

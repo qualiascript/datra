@@ -42,7 +42,7 @@ import AtlasMerge.LiquidInternal
   , mergeDatumInsertion
   )
 import AtlasExtent.Internal (atlasCellOriginRankInsertion)
-import AtlasMerge.Page (AtlasMergePageCell (..), atlasMergePageChain)
+import AtlasMerge.Page (AtlasMergePageCell (..), atlasMergePageChain, previousMergeCell)
 import AtlasMerge.Resolution (mergeCellContains)
 import AtlasTransposal
   ( AtlasTransposalElement
@@ -160,14 +160,6 @@ collapseToOrigin left =
     (\_ _ _ -> ())
     (const ()))
 
--- ALIGN: MERGE-PAGE-PREVIOUS.
-previousMergeCell :: AtlasMergePageCell -> AtlasMergePageCell
-previousMergeCell (AtlasMergeLeftCell (_ : rest@(_ : _))) =
-  AtlasMergeLeftCell rest
-previousMergeCell (AtlasMergeRightCell (_ : rest@(_ : _))) =
-  AtlasMergeRightCell rest
-previousMergeCell cell = cell
-
 componentPreimagePosition
   :: Atlas atlasScope scope cellData origin final
   -> Natural
@@ -213,9 +205,9 @@ mergePageTransition
   -> Coconsolidation AtlasMergePageCell AtlasMergePageCell
 mergePageTransition left right targetPage =
   op (consolidation
-    previousMergeCell
+    (previousMergeCell left right targetPage)
     (nextMergeCell left right targetPage)
-    (\_ _ rightCell -> previousMergeCell rightCell)
+    (\_ _ rightCell -> previousMergeCell left right targetPage rightCell)
     (const ()))
 
 -- ALIGN: MERGE-FOLIO-PREFIX.

@@ -1802,7 +1802,7 @@
     },
     {
       "id": "MERGE-PAGE-PREVIOUS",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
       "haskell_declaration": "previousMergeCell",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "previousPageCell_encode"
@@ -3577,6 +3577,20 @@
       "haskell_declaration": "atlasMergePageChain",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "nativePageChain_eq"
+    },
+    {
+      "id": "PE-TRACE-PREVIOUS-VALID",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "pageTracePrevious",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "TraceCarrier.previous"
+    },
+    {
+      "id": "MERGE-PAGE-PREVIOUS-VALID",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
+      "haskell_declaration": "previousMergeCell",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "nativePrevious_valid"
     }
   ],
   "modules": [
@@ -4085,6 +4099,7 @@
         "pageElementIndex",
         "folioTraceLookup",
         "prefixTraceLookup",
+        "prefixTraceLookupPosition",
         "prefixTraceLookupBounded",
         "folioTraceLookupBounded",
         "folioTraceLookupHead",
@@ -5122,7 +5137,10 @@
       "reflected": [
         "traceHead",
         "pageTraceContains",
-        "pageTraceLookup"
+        "pageTraceLookup",
+        "previousTrace",
+        "previousLookup",
+        "previousLookupValid"
       ],
       "types": [],
       "aliases": [],
@@ -5139,7 +5157,14 @@
         "pageTracePositionSurjective",
         "pageTraceChain",
         "boundedFolioTraceLookup",
-        "pageTraceChainAtOrder"
+        "pageTraceChainAtOrder",
+        "previousTraceCons",
+        "genuineTraceNative",
+        "prefixLookupPrevious",
+        "folioLookupPreviousPadded",
+        "paddedLookupPreviousValid",
+        "folioLookupPreviousValid",
+        "pageTracePrevious"
       ]
     },
     {
@@ -5151,7 +5176,8 @@
         "mergePageContains",
         "mergeCellAccepted",
         "mergeCellFromParts",
-        "mergeCellParts"
+        "mergeCellParts",
+        "previousMergeCell"
       ],
       "types": [
         "AtlasMergePageCell"
@@ -5168,7 +5194,8 @@
         "mergePartsRoundTrip",
         "mergeCellRoundTrip",
         "atlasMergePageChain",
-        "mergePageChainFromParts"
+        "mergePageChainFromParts",
+        "previousMergeCell"
       ]
     }
   ],

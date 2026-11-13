@@ -109,9 +109,8 @@ noncomputable def pageOrderIso (X Y : Atlas) (n : Nat) :
 
 
 def previousPageCell : PageCell → PageCell
-  | .left (_ :: next :: rest) => .left (next :: rest)
-  | .right (_ :: next :: rest) => .right (next :: rest)
-  | cell => cell
+  | .left trace => .left (FolioData.previousTrace trace)
+  | .right trace => .right (FolioData.previousTrace trace)
 
 def componentTransition (X Y : Atlas) (n : Nat) :
     Consolidation (componentSum X Y (n + 1)) (componentSum X Y n) :=

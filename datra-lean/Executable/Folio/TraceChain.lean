@@ -118,4 +118,33 @@ noncomputable def traceChainOrderIso (pages : FolioData origin final) (valid : p
     exact iff_of_eq (congrArg₂ (fun x y : Ordinal => x.toSemantics ≤ y.toSemantics)
       (position first) (position second))
 
+/-- A singleton origin is fixed; every longer trace loses its first step. -/
+def previousTrace : List Ordinal → List Ordinal
+  | _ :: next :: rest => next :: rest
+  | trace => trace
+
+theorem previousTrace_traceAt (pages : FolioData origin final) (page : Nat)
+    (value : (pages.pageAt (page + 1)).Carrier) :
+    previousTrace (pages.traceAt (page + 1) value) =
+      pages.traceAt page ((pages.transport (page + 1) page (Nat.le_succ page)).map value) := by
+  cases page <;> rfl
+
+-- ALIGN: PE-TRACE-PREVIOUS-VALID.
+def TraceCarrier.previous {pages : FolioData origin final} (valid : pages.Valid) (page : Nat)
+    (trace : pages.TraceCarrier (page + 1)) : pages.TraceCarrier page :=
+  ⟨previousTrace trace.val, by
+    obtain ⟨value, rfl⟩ := (pages.encodeTrace_bijective valid (page + 1)).2 trace
+    change pages.traceLookup page (traceHead (previousTrace (pages.traceAt (page + 1) value))) =
+      some (previousTrace (pages.traceAt (page + 1) value))
+    rw [previousTrace_traceAt]
+    exact (pages.encodeTrace valid page ((pages.transport (page + 1) page (Nat.le_succ page)).map value)).property⟩
+
+/-- Dropping a native trace step is the original page transport. -/
+theorem previous_encodeTrace (pages : FolioData origin final) (valid : pages.Valid) (page : Nat)
+    (value : (pages.pageAt (page + 1)).Carrier) :
+    (pages.encodeTrace valid (page + 1) value).previous valid page =
+      pages.encodeTrace valid page ((pages.transport (page + 1) page (Nat.le_succ page)).map value) := by
+  apply Subtype.ext
+  exact previousTrace_traceAt pages page value
+
 end Datra.Executable.FolioData

@@ -53,6 +53,12 @@ proofGuard = reindexChain (const True) spine (const 0) (const 0) (const ()) (con
 
 PAGE_TRACE_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/TraceChain.hs"
 PAGE_TRACE_GUARDS = {
+    "trace predecessors require membership in the source page": """
+{-@ proofGuard :: pages:Folio origin final -> page:Natural -> positions:[Ordinal]
+      -> {pageTraceContains pages page (previousTrace positions)} @-}
+proofGuard :: Folio origin final -> Natural -> [Ordinal] -> ()
+proofGuard = pageTracePrevious
+""",
     "native trace chains cannot widen their accepted carrier": """
 {-@ proofGuard :: Folio origin final -> Natural -> Chain [Ordinal] @-}
 proofGuard :: Folio origin final -> Natural -> Chain [Ordinal]
@@ -62,6 +68,23 @@ proofGuard = pageTraceChain
 
 MERGE_PAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs"
 MERGE_PAGE_GUARDS = {
+    "merge predecessors reject page zero": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) 0 cell}
+      -> AtlasMergePageCell @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> AtlasMergePageCell -> AtlasMergePageCell
+proofGuard left right cell = previousMergeCell left right 0 cell
+""",
+    "merge predecessors cannot switch the owning component": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0}
+      -> positions:{[Ordinal] | pageTraceContains (atlasFolio left) page positions}
+      -> {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> [Ordinal] -> AtlasMergePageCell
+proofGuard left _ page positions =
+  pageTracePrevious (atlasFolio left) (page - 1) positions `seq`
+    AtlasMergeRightCell (previousTrace positions)
+""",
     "merge page chains cannot accept arbitrary component traces": """
 {-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Chain AtlasMergePageCell @-}
 proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Chain AtlasMergePageCell
