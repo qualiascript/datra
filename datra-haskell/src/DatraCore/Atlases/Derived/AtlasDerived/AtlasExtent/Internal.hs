@@ -17,6 +17,7 @@ module AtlasExtent.Internal
   , withAtlasCellDominion
   , atlasCellOriginRankInsertion
   , cellHasOrigin
+  , cellTraceValid
   , extentContainsRank
   , cellContainsRank
   , cellContainsRankImage
@@ -61,6 +62,7 @@ import PageElements.LiquidInternal
   , somePageElementTransported
   )
 import qualified PageElements.Internal as Elements
+import qualified PageElements.LiquidInternal as Trace
 
 -- | A dependent Atlas dominion whose page-element identity is hidden. This
 -- is the Haskell presentation of Lean values such as @extent A@ and
@@ -72,6 +74,10 @@ data AtlasCellDominion
   AtlasCellDominion
     :: (PageElement scope object, MembershipDominion (cellData object))
     -> AtlasCellDominion scope cellData
+
+{-@ reflect atlasCellDominionElement @-}
+atlasCellDominionElement :: AtlasCellDominion scope cellData -> SomePageElement scope
+atlasCellDominionElement (AtlasCellDominion (occurrence, _)) = SomePageElement occurrence
 
 -- | A named continuation for consuming a dependent Atlas dominion.
 type AtlasCellDominionHandler scope cellData result =
@@ -92,6 +98,10 @@ withAtlasCellDominion
 -- | The Atlas extent: the dominion attached to its origin cell.
 -- ALIGN: ATLAS-EXTENT-INTERPRETATION.
 {-@ reflect atlasExtent @-}
+{-@ atlasExtent :: owner:Atlas atlasScope scope cellData origin final
+      -> {result:AtlasCellDominion scope cellData |
+           atlasCellDominionElement result == Elements.originPageElement (atlasPageElements owner)
+           && Elements.somePageElementTraceValid (atlasPageElements owner) (atlasCellDominionElement result)} @-}
 atlasExtent
   :: Atlas atlasScope scope cellData origin final
   -> AtlasCellDominion scope cellData
@@ -114,6 +124,13 @@ cellHasOrigin valueAtlas source =
   in somePageElementPrecedes (SomePageElement source) origin
       && somePageElementTransported (SomePageElement source) origin
 
+-- | The occurrence's entire trace agrees with lookup in its owning folio.
+-- ALIGN: ATLAS-CELL-TRACE-VALIDITY.
+{-@ reflect cellTraceValid @-}
+cellTraceValid :: Atlas atlasScope scope cellData origin final -> PageElement scope object -> Bool
+cellTraceValid valueAtlas source =
+  Elements.pageElementTraceValid (atlasPageElements valueAtlas) source
+
 -- | Resolve a dynamic page position and retain its checked origin arrow
 -- while the caller consumes the existential cell identity.
 -- ALIGN: ATLAS-CELL-LOOKUP-ORIGIN.
@@ -121,9 +138,11 @@ cellHasOrigin valueAtlas source =
       :: valueAtlas:Atlas atlasScope scope cellData origin final
       -> page:Natural -> position:Ordinal
       -> (forall object. source:{PageElement scope object | cellHasOrigin valueAtlas source
+             && cellTraceValid valueAtlas source
              && pageElementPage source == page
              && pageElementPosition source == position
-             && len (pageElementTrace source) == page + 1}
+             && len (pageElementTrace source) == page + 1
+             && Trace.traceStartsWith position (pageElementTrace source)}
             -> result)
       -> Maybe result @-}
 withAtlasCellAt
@@ -144,7 +163,7 @@ withAtlasCellAt valueAtlas page position useCell =
 {-@ reflect atlasCellOriginRankInsertion @-}
 {-@ atlasCellOriginRankInsertion
       :: valueAtlas:Atlas atlasScope scope cellData origin final
-      -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
+      -> source:{PageElement scope object | cellHasOrigin valueAtlas source && cellTraceValid valueAtlas source}
       -> DomanialInsertion ({datum:cellData object | atlasAcceptsDatum valueAtlas source datum}) Natural @-}
 atlasCellOriginRankInsertion
   :: Atlas atlasScope scope cellData origin final
@@ -160,7 +179,7 @@ atlasCellOriginRankInsertion valueAtlas source =
 {-@ reflect cellContainsRank @-}
 {-@ cellContainsRank
       :: valueAtlas:Atlas atlasScope scope cellData origin final
-      -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
+      -> source:{PageElement scope object | cellHasOrigin valueAtlas source && cellTraceValid valueAtlas source}
       -> Natural -> Bool @-}
 cellContainsRank
   :: Atlas atlasScope scope cellData origin final
@@ -188,7 +207,7 @@ extentContainsRank valueAtlas valueRank =
 -- ALIGN: ATLAS-CELL-CONTAINS-IMAGE.
 {-@ cellContainsRankImage
       :: valueAtlas:Atlas atlasScope scope cellData origin final
-      -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
+      -> source:{PageElement scope object | cellHasOrigin valueAtlas source && cellTraceValid valueAtlas source}
       -> datum:{cellData object | atlasAcceptsDatum valueAtlas source datum}
       -> {cellContainsRank valueAtlas source
             (applyInsertion (atlasCellOriginRankInsertion valueAtlas source) datum)} @-}
@@ -203,7 +222,7 @@ cellContainsRankImage valueAtlas source datum =
 -- ALIGN: ATLAS-CELL-RANK-PREIMAGE-SOUND.
 {-@ cellOriginRankPreimageSound
       :: valueAtlas:Atlas atlasScope scope cellData origin final
-      -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
+      -> source:{PageElement scope object | cellHasOrigin valueAtlas source && cellTraceValid valueAtlas source}
       -> valueRank:Natural
       -> datum:{cellData object |
            preimage (atlasCellOriginRankInsertion valueAtlas source) valueRank == Just datum
@@ -224,7 +243,9 @@ cellOriginRankPreimageSound valueAtlas source valueRank datum =
       :: valueAtlas:Atlas atlasScope scope cellData origin final
       -> arrow:{PageElementArrow scope source target |
            cellHasOrigin valueAtlas (arrowSource arrow)
-           && cellHasOrigin valueAtlas (arrowTarget arrow)}
+           && cellTraceValid valueAtlas (arrowSource arrow)
+           && cellHasOrigin valueAtlas (arrowTarget arrow)
+           && cellTraceValid valueAtlas (arrowTarget arrow)}
       -> datum:{cellData source | atlasAcceptsDatum valueAtlas (arrowSource arrow) datum}
       -> {applyInsertion (atlasCellOriginRankInsertion valueAtlas (arrowTarget arrow))
             (applyInsertion (mapAtlasData valueAtlas arrow) datum)
@@ -244,7 +265,9 @@ cellOriginRankMap valueAtlas arrow datum =
       :: valueAtlas:Atlas atlasScope scope cellData origin final
       -> arrow:{PageElementArrow scope source target |
            cellHasOrigin valueAtlas (arrowSource arrow)
-           && cellHasOrigin valueAtlas (arrowTarget arrow)}
+           && cellTraceValid valueAtlas (arrowSource arrow)
+           && cellHasOrigin valueAtlas (arrowTarget arrow)
+           && cellTraceValid valueAtlas (arrowTarget arrow)}
       -> valueRank:{Natural | cellContainsRank valueAtlas (arrowSource arrow) valueRank}
       -> {cellContainsRank valueAtlas (arrowTarget arrow) valueRank} @-}
 cellContainsRankPreserved
@@ -266,9 +289,9 @@ cellContainsRankPreserved valueAtlas arrow valueRank =
 -- ALIGN: ATLAS-CELL-MEMBERSHIP-DISJOINT.
 {-@ cellContainsRankDisjoint
       :: valueAtlas:Atlas atlasScope scope cellData origin final
-      -> left:{PageElement scope leftObject | cellHasOrigin valueAtlas left
+      -> left:{PageElement scope leftObject | cellHasOrigin valueAtlas left && cellTraceValid valueAtlas left
            && pageElementPage left < Atlas.atlasCardinality valueAtlas}
-      -> right:{PageElement scope rightObject | cellHasOrigin valueAtlas right
+      -> right:{PageElement scope rightObject | cellHasOrigin valueAtlas right && cellTraceValid valueAtlas right
            && pageElementPage right == pageElementPage left
            && pageElementPosition right /= pageElementPosition left}
       -> valueRank:{Natural | cellContainsRank valueAtlas left valueRank}
@@ -301,7 +324,7 @@ cellContainsRankDisjoint valueAtlas left right valueRank =
 -- ALIGN: ATLAS-CELL-MEMBERSHIP-EXTENT.
 {-@ cellContainsRankInExtent
       :: valueAtlas:Atlas atlasScope scope cellData origin final
-      -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
+      -> source:{PageElement scope object | cellHasOrigin valueAtlas source && cellTraceValid valueAtlas source}
       -> valueRank:{Natural | cellContainsRank valueAtlas source valueRank}
       -> {extentContainsRank valueAtlas valueRank} @-}
 cellContainsRankInExtent

@@ -226,7 +226,7 @@ withCollapsedSequenceAtlas sequenceAtlas useConcat =
   in Pagination.pagination collapsedPages $ \collapsedPagination ->
       atlas
         collapsedPagination
-        (atlasDataAction
+        (atlasDataAction (Pagination.paginationPageElements collapsedPagination)
           (atlasDataAt sequenceAtlas . sequenceElement sequenceAtlas)
           (concatDataMap sequenceAtlas))
         (\_ _ -> ())

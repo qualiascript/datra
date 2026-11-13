@@ -51,7 +51,7 @@ import DomanialInsertion
   , insertionLeftInverse
   , preimage
   )
-import DatraOrdinal (Ordinal, ordinalLT)
+import DatraOrdinal (ordinalLT)
 import PageElements
   ( PageElement
   , PageElementArrow
@@ -61,8 +61,7 @@ import PageElements
   , withPageElement
   )
 import Pagination (PaginationMorphism, SomePageElementArrow)
-import PageElements.LiquidInternal (pageElementTrace)
-import Numeric.Natural (Natural)
+import PageElements.LiquidInternal (positionAtPage)
 import Prelude hiding ((.), id)
 
 -- | One object of the finite page-element category belonging to an Atlas.
@@ -130,19 +129,6 @@ atlasTransposalElementLT
         (Just leftPosition, Just rightPosition) ->
           ordinalLT leftPosition rightPosition
         _ -> False
-
--- ALIGN: ATLAS-ORDER-TRACE-LOOKUP.
-positionAtPage
-  :: Natural
-  -> PageElement scope object
-  -> Maybe Ordinal
-positionAtPage page occurrence =
-  atOffset (pageElementPage occurrence - page) (pageElementTrace occurrence)
-  where
-    -- Page numbers are Natural; retain that range when indexing the trace.
-    atOffset _ [] = Nothing
-    atOffset 0 (position : _) = Just position
-    atOffset offset (_ : rest) = atOffset (offset - 1) rest
 
 -- | An arrow in the wide subcategory of Atlas transposals.
 --

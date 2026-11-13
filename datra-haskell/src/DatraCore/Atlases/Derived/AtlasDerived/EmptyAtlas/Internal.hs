@@ -47,7 +47,7 @@ emptyAtlas useAtlas =
   Pagination.pagination (singletonFolio unitChain) $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction emptyDominionAt emptyDataMap)
+      (atlasDataAction (Pagination.paginationPageElements valuePagination) emptyDominionAt emptyDataMap)
       (\_ impossible -> absurdEmptyDatum impossible)
       (\_ _ _ impossible -> absurdEmptyDatum impossible)
       (\_ _ _ impossible -> absurdEmptyDatum impossible)

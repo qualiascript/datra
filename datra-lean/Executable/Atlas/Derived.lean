@@ -5,6 +5,30 @@ import Executable.CoverageEnumeration
 namespace Datra.Executable
 open CategoryTheory
 
+def Atlas.cellTraceValid (X : Atlas) (source : PageElement X.pages) : Bool :=
+  X.pages.traceValid source
+
+-- ALIGN: ATLAS-CELL-TRACE-VALIDITY.
+theorem Atlas.cellTraceValid_iff_index (X : Atlas) (source : PageElement X.pages) :
+    X.cellTraceValid source = true ↔
+      ∃ selected, X.pages.indexInFolio X.pagination.folio.valid source.page source.position = some selected ∧
+        selected.2.trace = source.trace :=
+  X.pages.traceValid_iff_index X.pagination.folio.valid source
+
+-- ALIGN: ATLAS-TRACE-VALID-NORMALIZATION.
+theorem Atlas.cellTraceValid_normalize (X : Atlas) (source : PageElement X.pages)
+    (accepted : X.cellTraceValid source = true) :
+    X.cellTraceValid (source.normalize (X.pages.depth - 1) X.pages.depth) = true :=
+  X.pages.traceValid_normalize X.pagination.folio.valid source accepted
+
+-- ALIGN: ATLAS-ARROW-TRACE-VALID-NORMALIZATION.
+theorem Atlas.arrowTraceValid_normalize (X : Atlas) {source target : PageElement X.pages}
+    (_arrow : source.Arrow target) (sourceValid : X.cellTraceValid source = true)
+    (targetValid : X.cellTraceValid target = true) :
+    X.cellTraceValid (source.normalize (X.pages.depth - 1) X.pages.depth) = true ∧
+      X.cellTraceValid (target.normalize (X.pages.depth - 1) X.pages.depth) = true :=
+  ⟨X.cellTraceValid_normalize source sourceValid, X.cellTraceValid_normalize target targetValid⟩
+
 def Atlas.extent (X : Atlas) : X.CellDominion :=
   ⟨FolioData.ValidElement.originElement X.pages,
     X.dataAt (FolioData.ValidElement.originElement X.pages)⟩

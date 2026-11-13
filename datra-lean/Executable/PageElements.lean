@@ -31,6 +31,11 @@ variable {Scope : Type s} {owner : Scope}
 def positionAtPage (page : Nat) (occurrence : PageElement owner) : Option Ordinal :=
   (occurrence.trace.drop (occurrence.page - page)).head?
 
+/-- Scalar trace shape, independent of the existential cell payload. -/
+def traceShape (occurrence : PageElement owner) : Prop :=
+  occurrence.trace.length = occurrence.page + 1 ∧
+    occurrence.trace.head? = some occurrence.position
+
 /-- The strict comparison reads both traces at the common earliest page. -/
 def elementLT (left right : PageElement owner) : Bool :=
   let commonPage := min left.page right.page
@@ -46,6 +51,17 @@ def transported (source target : PageElement owner) : Prop :=
 structure Arrow (source target : PageElement owner) : Type where
   precedes : precedes source target
   transported : transported source target
+
+-- ALIGN: PE-SHAPED-ARROW-POSITION.
+theorem Arrow.positionAtPage {source target : PageElement owner}
+    (arrow : Arrow source target) (sourceShape : source.traceShape)
+    (targetShape : target.traceShape) :
+    positionAtPage target.page source = some target.position := by
+  have suffix := (Trace.traceSuffix_iff _ _).mp arrow.transported
+  have dropped := List.suffix_iff_eq_drop.mp suffix
+  rw [sourceShape.1, targetShape.1, Nat.add_sub_add_right] at dropped
+  rw [PageElement.positionAtPage, ← dropped]
+  exact targetShape.2
 
 instance (source target : PageElement owner) : Subsingleton (Arrow source target) :=
   ⟨by intro a b; cases a; cases b; rfl⟩
@@ -484,11 +500,7 @@ theorem cell_ne_of_genuine_pages_ne {x y : pages.ValidElement}
 -- ALIGN: ATLAS-ORDER-TRACE-LOOKUP.
 theorem positionAtPage_arrow {x y : pages.ValidElement} (f : x ⟶ y) :
     PageElement.positionAtPage y.val.page x.val = some y.val.position := by
-  have hs := (Trace.traceSuffix_iff _ _).mp f.transported
-  have hd := (List.suffix_iff_eq_drop).mp hs
-  rw [trace_length, trace_length, Nat.add_sub_add_right] at hd
-  rw [PageElement.positionAtPage, ← hd]
-  exact trace_head y
+  exact f.positionAtPage ⟨trace_length x, trace_head x⟩ ⟨trace_length y, trace_head y⟩
 
 noncomputable def fromFinite (pages : FolioData origin final) :
     pages.toSemantics.El ⥤ pages.ValidElement :=

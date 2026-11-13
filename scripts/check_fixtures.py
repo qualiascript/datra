@@ -4,6 +4,7 @@
 Generated drivers and compiler outputs live in a TemporaryDirectory, removed on
 success or failure. These fixtures supplement, rather than replace, the proofs.
 """
+import argparse
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,41 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def trace_position_checks(lean_lines, haskell_lines):
+    vectors = json.loads((ROOT / "datra-haskell/test/fixtures/alignment/trace-positions.json").read_text())
+    for i, vector in enumerate(vectors):
+        page, target, trace, position = (vector[key] for key in ("page", "target", "trace", "position"))
+        offset = max(page - target, 0)
+        lean_expected = "none" if position is None else f"some (finiteOrdinal {position})"
+        haskell_expected = "Nothing" if position is None else f"Just (finiteOrdinal {position})"
+        lean_lines.extend([
+            f"def tracePositionRaw{i} : Datra.Executable.PageElement () := "
+            f"⟨{page}, finiteOrdinal 0, ({trace} : List Nat).map finiteOrdinal, "
+            "⟨Nat, Datra.Executable.Chain.spine, 0, 0⟩⟩",
+            f"#guard Datra.Executable.Trace.tracePosition {offset} tracePositionRaw{i}.trace == {lean_expected}",
+            f"#guard Datra.Executable.PageElement.positionAtPage {target} tracePositionRaw{i} == {lean_expected}",
+        ])
+        haskell_lines.extend([
+            f"  let tracePositionRaw{i} = PE.PageElement {page} (finiteOrdinal 0) "
+            f"(map finiteOrdinal {trace}) (PE.PageElementCell Ch.spine 0) :: PE.PageElement () ()",
+            f'  if PE.tracePosition {offset} (PE.pageElementTrace tracePositionRaw{i}) == {haskell_expected} '
+            f'then pure () else fail "trace offset {i}"',
+            f'  if PE.positionAtPage {target} tracePositionRaw{i} == {haskell_expected} '
+            f'then pure () else fail "trace page {i}"',
+        ])
+    return len(vectors)
+
+
+def run_trace_positions():
+    lean_lines = ["import Executable.PageElements", "open Datra.Executable.Ordinal"]
+    haskell_lines = ["module Main where", "import DatraOrdinal",
+                     "import qualified PageElements.LiquidInternal as PE",
+                     "import qualified Chain as Ch", "main :: IO ()", "main = do"]
+    count = trace_position_checks(lean_lines, haskell_lines)
+    run_drivers(lean_lines, haskell_lines)
+    print(f"Cross-language trace positions passed: {count} vectors")
 
 
 def run():
@@ -24,6 +60,7 @@ def run():
                      "import qualified DatraOrdinal.Internal as OI",
                      "import qualified DatraOrdinal.LiquidInternal as OL",
                      "import qualified Chain as Ch", "main :: IO ()", "main = do"]
+    trace_positions = trace_position_checks(lean_lines, haskell_lines)
     for i, vector in enumerate(vectors):
         left, right = vector["left"], vector["right"]
         checks = [
@@ -90,7 +127,7 @@ def run():
         expected_page = vector["normalized_page"]
         expected_trace = [[n] if n else [] for n in vector["normalized_trace"]]
         lean_lines.extend([
-            f"def raw{i} : Datra.Executable.PageElement () := ⟨{page}, finiteOrdinal {position}, ({trace} : List Nat).map finiteOrdinal, ⟨Nat, Datra.Executable.Chain.spine, {position}⟩⟩",
+            f"def raw{i} : Datra.Executable.PageElement () := ⟨{page}, finiteOrdinal {position}, ({trace} : List Nat).map finiteOrdinal, ⟨Nat, Datra.Executable.Chain.spine, {position}, {min(page, final)}⟩⟩",
             f"def normalized{i} := Datra.Executable.PageElement.normalize {final} ({limit}) raw{i}",
             f"#guard normalized{i}.page == {expected_page}",
             f"#guard normalized{i}.position == raw{i}.position",
@@ -141,7 +178,7 @@ def run():
                 f"def order{side}{i} : Datra.Executable.PageElement () := "
                 f"Datra.Executable.PageElement.normalize 2 3 "
                 f"⟨{page}, finiteOrdinal {position}, ({trace} : List Nat).map finiteOrdinal, "
-                f"⟨Nat, Datra.Executable.Chain.spine, {position}⟩⟩")
+                f"⟨Nat, Datra.Executable.Chain.spine, {position}, {min(page, 2)}⟩⟩")
         lean_lines.append(
             f"#guard Datra.Executable.PageElement.elementLT orderLeft{i} orderRight{i} == "
             f"{str(vector['lt']).lower()}")
@@ -166,7 +203,7 @@ orderFixture leftPage leftPosition rightPage rightPosition =
       mapData _ = DI.domanialInsertion (\(OrderDatum v) -> absurd v) (const Nothing)
         (\(OrderDatum v) -> absurd v)
   in P.pagination folio $ \pagination ->
-    A.atlas pagination (A.atlasDataAction dataAt mapData)
+    A.atlas pagination (A.atlasDataAction (P.paginationPageElements pagination) dataAt mapData)
       (\_ (OrderDatum v) -> absurd v)
       (\_ _ _ (OrderDatum v) -> absurd v)
       (\_ _ _ (OrderDatum v) -> absurd v)
@@ -181,6 +218,14 @@ orderFixture leftPage leftPosition rightPage rightPosition =
                   (AT.atlasTransposalElement (A.atlasWitness atlas) r)
           _ -> error "invalid Atlas order fixture"
 """)
+    run_drivers(lean_lines, haskell_lines)
+    print(f"Cross-language fixtures passed: {len(vectors)} ordinal, {len(traces)} trace, "
+          f"{len(subtraction)} subtraction, {len(chains)} chain, {len(normalization)} normalization, "
+          f"{len(enumeration['decode']) + len(enumeration['rejections'])} enumeration, "
+          f"{len(order)} Atlas order, {trace_positions} trace position")
+
+
+def run_drivers(lean_lines, haskell_lines):
     env = os.environ.copy()
     local_lake = ROOT / ".elan/bin/lake"
     if local_lake.exists():
@@ -203,11 +248,14 @@ orderFixture leftPage leftPosition rightPage rightPosition =
                         str(haskell_file),
                         "-outputdir", str(tmp), "-o", str(executable)], cwd=ROOT / "datra-haskell", check=True)
         subprocess.run([str(executable)], check=True)
-    print(f"Cross-language fixtures passed: {len(vectors)} ordinal, {len(traces)} trace, "
-          f"{len(subtraction)} subtraction, {len(chains)} chain, {len(normalization)} normalization, "
-          f"{len(enumeration['decode']) + len(enumeration['rejections'])} enumeration, "
-          f"{len(order)} Atlas order")
 
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--trace-positions", action="store_true",
+                        help="Check only trace offsets and page lookup, including large Natural pages")
+    args = parser.parse_args()
+    if args.trace_positions:
+        run_trace_positions()
+    else:
+        run()

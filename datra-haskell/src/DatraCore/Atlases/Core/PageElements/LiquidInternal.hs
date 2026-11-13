@@ -50,10 +50,15 @@ module PageElements.LiquidInternal
   , trimTraceIdempotent
   , trimTraceIsSuffix
   , trimTracePreservesSuffix
+  , trimTraceWithinLength
+  , trimTraceToSuffix
   , traceSuffix
   , traceSuffixTransitive
   , traceTail
   , traceStartsWith
+  , tracePosition
+  , positionAtPage
+  , pageElementArrowPosition
   ) where
 
 import Chain
@@ -123,10 +128,64 @@ somePageElementPosition (SomePageElement element) = pageElementPosition element
 somePageElementTrace :: SomePageElement scope -> [Ordinal]
 somePageElementTrace (SomePageElement element) = pageElementTrace element
 
+-- ALIGN: PE-TRACE-START.
 {-@ reflect traceStartsWith @-}
 traceStartsWith :: Ordinal -> [Ordinal] -> Bool
 traceStartsWith _ [] = False
 traceStartsWith position (first : _) = position == first
+
+-- | Index a descending trace without narrowing a page number to machine Int.
+-- ALIGN: PE-TRACE-POSITION.
+{-@ reflect tracePosition @-}
+tracePosition :: Natural -> [Ordinal] -> Maybe Ordinal
+tracePosition _ [] = Nothing
+tracePosition offset (position : rest)
+  | offset == 0 = Just position
+  | otherwise = tracePosition (offset - 1) rest
+
+-- | Read the position at an earlier page. Subtraction saturates at zero,
+-- matching the executable Lean model even for a later requested page.
+-- ALIGN: ATLAS-ORDER-TRACE-LOOKUP.
+{-@ reflect positionAtPage @-}
+positionAtPage :: Natural -> PageElement scope object -> Maybe Ordinal
+positionAtPage page occurrence =
+  let sourcePage = pageElementPage occurrence
+      offset = if page <= sourcePage then sourcePage - page else 0
+  in tracePosition offset (pageElementTrace occurrence)
+
+-- | The scalar premises required to read suffix arrows as page transport.
+{-@ predicate PageElementTraceShape X =
+      len (pageElementTrace X) == pageElementPage X + 1
+      && traceStartsWith (pageElementPosition X) (pageElementTrace X) @-}
+
+{-@ tracePositionSuffix :: source:[Ordinal]
+      -> target:{[Ordinal] | traceSuffix source target}
+      -> offset:{Natural | len source == offset + len target}
+      -> position:{Ordinal | traceStartsWith position target}
+      -> {tracePosition offset source == Just position} @-}
+tracePositionSuffix :: [Ordinal] -> [Ordinal] -> Natural -> Ordinal -> ()
+tracePositionSuffix source target offset position
+  | source == target = case target of
+      [] -> ()
+      _ : _ -> ()
+tracePositionSuffix [] _ _ _ = ()
+tracePositionSuffix (_ : rest) target offset position =
+  traceSuffixLength rest target `seq`
+    tracePositionSuffix rest target (offset - 1) position
+
+-- ALIGN: PE-SHAPED-ARROW-POSITION.
+{-@ pageElementArrowPosition
+      :: arrow:{PageElementArrow scope source target |
+           PageElementTraceShape (arrowSource arrow)
+           && PageElementTraceShape (arrowTarget arrow)}
+      -> {positionAtPage (pageElementPage (arrowTarget arrow)) (arrowSource arrow)
+           == Just (pageElementPosition (arrowTarget arrow))} @-}
+pageElementArrowPosition :: PageElementArrow scope source target -> ()
+pageElementArrowPosition arrow =
+  let source = arrowSource arrow
+      target = arrowTarget arrow
+  in tracePositionSuffix (pageElementTrace source) (pageElementTrace target)
+       (pageElementPage source - pageElementPage target) (pageElementPosition target)
 
 -- | Construct a page element from its current position followed by its
 -- transported positions on every preceding page.
@@ -227,7 +286,8 @@ traceSuffix (_ : rest) target = traceSuffix rest target
 -- | A reflected trace-length counter used by the verified suffix-trimming
 -- operation below.
 {-@ reflect traceLength @-}
-traceLength :: [a] -> Int
+{-@ traceLength :: values:[a] -> {n:Integer | n == len values} @-}
+traceLength :: [a] -> Integer
 traceLength [] = 0
 traceLength (_ : rest) = 1 + traceLength rest
 
@@ -237,9 +297,27 @@ traceLength (_ : rest) = 1 + traceLength rest
 {-@ reflect trimTrace @-}
 trimTrace :: Int -> [Ordinal] -> [Ordinal]
 trimTrace limit values
-  | traceLength values <= limit = values
+  | traceLength values <= fromIntegral limit = values
 trimTrace _ [] = []
 trimTrace limit (_ : rest) = trimTrace limit rest
+
+-- | A trace already inside the normalization bound is unchanged.
+{-@ trimTraceWithinLength :: limit:Int -> values:{[Ordinal] | len values <= limit}
+      -> {trimTrace limit values == values} @-}
+trimTraceWithinLength :: Int -> [Ordinal] -> ()
+trimTraceWithinLength _ values = traceLength values `seq` ()
+
+-- | The requested suffix is recovered exactly when its length is the bound.
+-- ALIGN: PE-TRIM-EXACT-SUFFIX.
+{-@ trimTraceToSuffix :: source:[Ordinal] -> target:{[Ordinal] | traceSuffix source target}
+      -> limit:{Int | limit == len target} -> {trimTrace limit source == target} @-}
+trimTraceToSuffix :: [Ordinal] -> [Ordinal] -> Int -> ()
+trimTraceToSuffix source target limit
+  | source == target = trimTraceWithinLength limit source
+trimTraceToSuffix [] _ _ = ()
+trimTraceToSuffix source@(_ : rest) target limit =
+  traceSuffixLength rest target `seq` traceLength source `seq`
+    trimTraceToSuffix rest target limit
 
 -- | Trimming an already trimmed trace has no further effect.
 {-@
@@ -252,7 +330,7 @@ trimTraceIdempotent
 -- ALIGN: PE-TRIM-IDEMPOTENT.
 trimTraceIdempotent :: Int -> [Ordinal] -> ()
 trimTraceIdempotent limit values
-  | traceLength values <= limit = ()
+  | traceLength values <= fromIntegral limit = ()
 trimTraceIdempotent _ [] = ()
 trimTraceIdempotent limit (_ : rest) =
   trimTraceIdempotent limit rest
@@ -267,7 +345,7 @@ trimTraceIsSuffix
 -- ALIGN: PE-TRIM-SUFFIX.
 trimTraceIsSuffix :: Int -> [Ordinal] -> ()
 trimTraceIsSuffix limit values
-  | traceLength values <= limit = ()
+  | traceLength values <= fromIntegral limit = ()
 trimTraceIsSuffix _ [] = ()
 trimTraceIsSuffix limit values@(_ : rest) =
   case trimTraceIsSuffix limit rest of
@@ -278,7 +356,8 @@ trimTraceIsSuffix limit values@(_ : rest) =
 traceSuffixLength
   :: source:[Ordinal]
   -> target:{[Ordinal] | traceSuffix source target}
-  -> { proof:() | traceLength target <= traceLength source }
+  -> { proof:() | traceLength target <= traceLength source
+                  && len target <= len source }
 @-}
 traceSuffixLength :: [Ordinal] -> [Ordinal] -> ()
 traceSuffixLength source target
@@ -301,7 +380,7 @@ trimTracePreservesSuffix _ source target
   | source == target = ()
 trimTracePreservesSuffix _ [] _ = ()
 trimTracePreservesSuffix limit source@(_ : rest) target
-  | traceLength source <= limit =
+  | traceLength source <= fromIntegral limit =
       case traceSuffixLength source target of
         () -> ()
   | otherwise = trimTracePreservesSuffix limit rest target

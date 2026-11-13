@@ -48,6 +48,7 @@ import Atlas
   , atlasMorphism
   , atlasMorphismAction
   , atlasPagination
+  , atlasPageElements
   , atlasDataAt
   , atlasWitness
   , mapAtlasData
@@ -212,7 +213,7 @@ chartAtlas
 chartAtlas valueAtlas =
   atlasWithScope
     (atlasPagination valueAtlas)
-    (atlasDataAction
+    (atlasDataAction (atlasPageElements valueAtlas)
       (chartedDominion valueAtlas)
       (chartedInsertion valueAtlas))
     (\occurrence covered ->

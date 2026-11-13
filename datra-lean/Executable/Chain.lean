@@ -66,6 +66,17 @@ theorem Chain.chainIndex_position {A : Type} (C : Chain A) (x : A) :
     subst y
     rfl
 
+theorem Chain.chainIndex_requested {A : Type} (C : Chain A) (position : Ordinal)
+    (index : ChainIndex C) (found : C.chainIndex position = some index) :
+    index.position = position := by
+  unfold chainIndex at found
+  split at found
+  · split at found
+    · contradiction
+    · cases Option.some.inj found
+      rfl
+  · contradiction
+
 -- ALIGN: CHAIN-INDEX-BOUNDS.
 theorem Chain.chainIndex_isSome {A : Type} (C : Chain A) (p : Ordinal) :
     (C.chainIndex p).isSome = Ordinal.ordinalLT p C.orderType := by

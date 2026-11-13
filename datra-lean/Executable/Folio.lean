@@ -111,6 +111,10 @@ def genuineTrace {origin final : Page} : (pages : FolioData origin final) → fi
   | .snoc _ previous next transition => fun value =>
       next.chain.position value :: previous.genuineTrace (transition.map value)
 
+theorem genuineTrace_head (pages : FolioData origin final) (value : final.Carrier) :
+    (pages.genuineTrace value).head? = some (final.chain.position value) := by
+  cases pages <;> rfl
+
 -- ALIGN: FOLIO-TRACE-LENGTH.
 theorem genuineTrace_length (pages : FolioData origin final) (value : final.Carrier) :
     (pages.genuineTrace value).length = pages.depth := by
@@ -133,6 +137,10 @@ theorem genuineTrace_toOrigin (pages : FolioData origin final) (value : final.Ca
 the genuine transport trace, exactly as prependCopies does in Haskell. -/
 def paddedTrace (pages : FolioData origin final) (padding : Nat) (value : final.Carrier) : List Ordinal :=
   List.replicate padding (final.chain.position value) ++ pages.genuineTrace value
+
+theorem paddedTrace_head (pages : FolioData origin final) (padding : Nat) (value : final.Carrier) :
+    (pages.paddedTrace padding value).head? = some (final.chain.position value) := by
+  cases padding <;> simp [paddedTrace, genuineTrace_head, List.replicate_succ]
 
 -- ALIGN: FOLIO-PADDED-TRACE-ORIGIN.
 theorem paddedTrace_toOrigin (pages : FolioData origin final) (padding : Nat) (value : final.Carrier) :

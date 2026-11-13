@@ -4,6 +4,30 @@ namespace Datra.Executable
 namespace Trace
 variable {α : Type} [DecidableEq α]
 
+/-- The first position in a nonempty transport trace. -/
+def traceStartsWith (position : α) : List α → Bool
+  | [] => false
+  | first :: _ => decide (position = first)
+
+-- ALIGN: PE-TRACE-START.
+theorem traceStartsWith_iff_head (position : α) (values : List α) :
+    traceStartsWith position values = true ↔ values.head? = some position := by
+  cases values <;> simp [traceStartsWith, eq_comm]
+
+/-- Natural-number indexing used by both executable Atlas order operations. -/
+def tracePosition (offset : Nat) : List α → Option α
+  | [] => none
+  | position :: rest => if offset = 0 then some position else tracePosition (offset - 1) rest
+
+-- ALIGN: PE-TRACE-POSITION.
+omit [DecidableEq α] in
+theorem tracePosition_eq_drop (offset : Nat) (values : List α) :
+    tracePosition offset values = (values.drop offset).head? := by
+  induction values generalizing offset with
+  | nil => simp [tracePosition]
+  | cons position rest ih =>
+      cases offset <;> simp [tracePosition, ih]
+
 /-- PageElements.LiquidInternal.traceSuffix, with the same recursion direction. -/
 def traceSuffix : List α → List α → Bool
   | [], target => decide ([] = target)
@@ -62,6 +86,13 @@ theorem trimTrace_eq_drop (limit : Int) (values : List α) :
           simp only [List.length_cons] at *
           omega
         simp only [trimTrace, if_neg h, hn, List.drop_succ_cons, ih]
+
+-- ALIGN: PE-TRIM-EXACT-SUFFIX.
+theorem trimTraceToSuffix (source target : List α)
+    (suffix : traceSuffix source target = true) (limit : Int)
+    (length : limit = target.length) : trimTrace limit source = target := by
+  rw [length, trimTrace_eq_drop, Int.toNat_natCast]
+  exact ((List.suffix_iff_eq_drop).mp ((traceSuffix_iff _ _).mp suffix)).symm
 
 -- ALIGN: PE-TRIM-PRESERVES-SUFFIX.
 theorem trimTracePreservesSuffix (limit : Int) (source target : List α)

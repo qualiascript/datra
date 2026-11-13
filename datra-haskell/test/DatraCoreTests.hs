@@ -78,6 +78,7 @@ testTree =
         , testCase "consolidation transport" testConsolidationTransport
         , testCase "folio" testFolio
         , testCase "page elements" testPageElements
+        , testCase "page lookup owning folio" testPageLookupOwner
         , testCase "pagination" testPagination
         , testCase "atlas" testAtlas
         , testCase "empty atlas" testEmptyAtlas
@@ -616,6 +617,31 @@ testPageElements =
                     (fiveToOrigin == directFiveToOrigin)
       _ -> fail "test setup failed: expected cell occurrences"
 
+testPageLookupOwner :: IO ()
+testPageLookupOwner = do
+  let atLeastTwo = consolidation (>= 2) (\value -> if value then 2 else 0)
+        (\_ _ right -> right >= 2) (const ())
+      alternate = appendPage
+        (appendPage (singletonFolio unitChain) boolChain (Consolidation.op collapseBool))
+        spine (Consolidation.op atLeastTwo)
+      flags pages page = pageElements pages $ \category ->
+        case (pageElementIndex category page (finiteOrdinal 1),
+              pageElementIndex category 1 (finiteOrdinal 1),
+              pageElementIndex category 0 (finiteOrdinal 0)) of
+          (Just sourceIndex, Just targetIndex, Just originIndex) ->
+            withPageElement (pageElement sourceIndex) $ \source ->
+              withPageElement (pageElement targetIndex) $ \target ->
+                withPageElement (pageElement originIndex) $ \origin ->
+                  pure (pageElementTransported source target, pageElementTransported source origin)
+          _ -> fail "test setup failed: expected page lookup indices"
+  assert "owner fixtures have the same number of pages"
+    (folioLength threePageFolio == folioLength alternate)
+  mapM_ (\page -> do
+    original <- flags threePageFolio page
+    changed <- flags alternate page
+    assert "same coordinates and origin retain different owning-folio transports"
+      (original == (True, True) && changed == (False, True))) [2, 3, 100]
+
 testPagination :: IO ()
 testPagination =
   pagination threePageFolio $ \sourcePagination ->
@@ -1097,7 +1123,7 @@ testAtlasMembership =
           (\(TestCellData value) -> TestCellData value)
           (\(TestCellData value) -> Just (TestCellData value))
           (const ())
-    in atlas valuePagination (atlasRestrictedDataAction membership dataAt mapData)
+    in atlas valuePagination (atlasRestrictedDataAction (paginationPageElements valuePagination) membership dataAt mapData)
       testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \valueAtlas -> do
         mapM_ (\page ->
           case pageElementIndex (atlasPageElements valueAtlas) page (finiteOrdinal 0) of
@@ -1203,7 +1229,7 @@ testAtlasDisjointLaw _ _ _ _ _ _ _ = ()
 testAtlas :: IO ()
 testAtlas =
   pagination (singletonFolio unitChain) $ \valuePagination ->
-    let dataAction = atlasDataAction testAtlasDataAt testAtlasMapData
+    let dataAction = atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData
     in atlas
       valuePagination
       dataAction
@@ -1679,7 +1705,7 @@ testAtlasMergeOffImageUnrank =
           (\(TestCellData value) -> 2 * value)
           (\valueRank -> Just (TestCellData (valueRank `div` 2)))
           (const ())
-    in atlas valuePagination (atlasDataAction dataAt testAtlasMapData)
+    in atlas valuePagination (atlasDataAction (paginationPageElements valuePagination) dataAt testAtlasMapData)
       testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw
       testAtlasDisjointLaw $ \input -> do
         atlasMerge input input checkMerged
@@ -1744,7 +1770,7 @@ testSingletonAtlasMerge =
   pagination (singletonFolio unitChain) $ \leftPagination ->
     atlas
       leftPagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements leftPagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -1752,7 +1778,7 @@ testSingletonAtlasMerge =
         pagination (singletonFolio unitChain) $ \rightPagination ->
           atlas
             rightPagination
-            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            (atlasDataAction (paginationPageElements rightPagination) testAtlasDataAt testAtlasMapData)
             testAtlasIdentityLaw
             testAtlasCompositionLaw
             testAtlasCoherenceLaw
@@ -1894,7 +1920,7 @@ testDeepAtlasMerge =
   pagination threePageFolio $ \leftPagination ->
     atlas
       leftPagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements leftPagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -1902,7 +1928,7 @@ testDeepAtlasMerge =
         pagination (singletonFolio unitChain) $ \rightPagination ->
           atlas
             rightPagination
-            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            (atlasDataAction (paginationPageElements rightPagination) testAtlasDataAt testAtlasMapData)
             testAtlasIdentityLaw
             testAtlasCompositionLaw
             testAtlasCoherenceLaw
@@ -1939,7 +1965,7 @@ testAtlasConfederation =
   pagination (singletonFolio unitChain) $ \leftPagination ->
     atlas
       leftPagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements leftPagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -1947,7 +1973,7 @@ testAtlasConfederation =
         pagination (singletonFolio unitChain) $ \rightPagination ->
           atlas
             rightPagination
-            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            (atlasDataAction (paginationPageElements rightPagination) testAtlasDataAt testAtlasMapData)
             testAtlasIdentityLaw
             testAtlasCompositionLaw
             testAtlasCoherenceLaw
@@ -2115,7 +2141,7 @@ testAtlasMap =
   pagination (singletonFolio unitChain) $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2200,7 +2226,7 @@ testNavigationAndExpedition =
   pagination (singletonFolio unitChain) $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2554,7 +2580,7 @@ testCharter =
   pagination (singletonFolio unitChain) $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2678,7 +2704,7 @@ withPartialCoverageAtlas useAtlas =
         (Just . TestCellData)
         (const ())
   in pagination pages $ \valuePagination ->
-    atlas valuePagination (atlasDataAction dataAt coverageTestMapData)
+    atlas valuePagination (atlasDataAction (paginationPageElements valuePagination) dataAt coverageTestMapData)
       testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw
       testAtlasDisjointLaw useAtlas
 
@@ -2713,7 +2739,7 @@ testCharterMapUncoveredInverse :: IO ()
 testCharterMapUncoveredInverse =
   withPartialCoverageAtlas $ \sourceAtlas ->
     atlas (atlasPagination sourceAtlas)
-      (atlasDataAction testAtlasDataAt (coverageTestMapDataWithFinalMultiplier 1))
+      (atlasDataAction (atlasPageElements sourceAtlas) testAtlasDataAt (coverageTestMapDataWithFinalMultiplier 1))
       testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \targetAtlas ->
         let sourceWitness = atlasWitness sourceAtlas
             targetWitness = atlasWitness targetAtlas
@@ -2883,7 +2909,7 @@ testOrderedAtlasTransposal =
   pagination threePageFolio $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2932,7 +2958,7 @@ testAtlasTransversal =
   pagination threePageFolio $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -2981,7 +3007,7 @@ testStableAtlasTransversal =
   pagination threePageFolio $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
@@ -3013,7 +3039,7 @@ testCoalition =
   pagination (singletonFolio unitChain) $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      (atlasDataAction (paginationPageElements valuePagination) testAtlasDataAt testAtlasMapData)
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw

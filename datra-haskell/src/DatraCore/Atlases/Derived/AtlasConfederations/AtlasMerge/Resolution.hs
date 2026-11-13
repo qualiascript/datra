@@ -35,8 +35,8 @@ import PageElements.LiquidInternal (PageElement (..))
       -> right:Atlas ra rs rd ro rf
       -> PageElement ms object
       -> result
-      -> (forall source. cell:{PageElement ls source | Extent.cellHasOrigin left cell} -> result)
-      -> (forall source. cell:{PageElement rs source | Extent.cellHasOrigin right cell} -> result)
+      -> (forall source. cell:{PageElement ls source | Extent.cellHasOrigin left cell && Extent.cellTraceValid left cell} -> result)
+      -> (forall source. cell:{PageElement rs source | Extent.cellHasOrigin right cell && Extent.cellTraceValid right cell} -> result)
       -> Maybe result @-}
 mergeSourceCell
   :: Atlas la ls ld lo lf

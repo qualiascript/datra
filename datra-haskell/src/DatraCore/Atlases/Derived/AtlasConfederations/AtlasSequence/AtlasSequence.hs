@@ -380,7 +380,7 @@ atlasSequence members useSequence =
   in Pagination.pagination pages $ \sequencePagination ->
       atlas
         sequencePagination
-        (atlasRestrictedDataAction
+        (atlasRestrictedDataAction (Pagination.paginationPageElements sequencePagination)
           (atlasMembership (sequenceCellContains members))
           (sequenceDominionAt members)
           (sequenceDataMap members))

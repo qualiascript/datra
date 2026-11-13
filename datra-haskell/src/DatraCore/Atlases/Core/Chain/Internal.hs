@@ -131,6 +131,7 @@ chain
 chain = Chain
 
 -- | Refine an arbitrary ordinal to an in-bounds chain index.
+{-@ reflect chainIndex @-}
 {-@
 chainIndex
   :: valueChain:Chain object

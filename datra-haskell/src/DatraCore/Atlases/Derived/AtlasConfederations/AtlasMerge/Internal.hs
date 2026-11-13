@@ -381,7 +381,7 @@ atlasMerge left right useMerge =
   in Pagination.pagination pages $ \mergePagination ->
       atlas
         mergePagination
-        (atlasRestrictedDataAction
+        (atlasRestrictedDataAction (Pagination.paginationPageElements mergePagination)
           (atlasMembership (mergeCellContains left right))
           (mergeDominionAt left right)
           (mergeDataMap left right))

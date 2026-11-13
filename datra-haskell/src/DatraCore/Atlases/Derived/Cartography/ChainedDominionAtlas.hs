@@ -15,6 +15,7 @@ module ChainedDominionAtlas
   , chainedDominionInsertionTraversal
   ) where
 
+import qualified Pagination
 import Atlas
   ( Atlas
   , AtlasObject
@@ -205,7 +206,7 @@ chainedDominionAtlas
 chainedDominionAtlas firstValue valueChain valueDominion =
   atlasWithScope
     (chainedDominionPagination firstValue valueChain)
-    (atlasDataAction
+    (atlasDataAction (Pagination.paginationPageElements (chainedDominionPagination firstValue valueChain))
       (chainedDominionAt firstValue valueChain valueDominion)
       (chainedDominionDataMap firstValue valueChain))
     (\_ _ -> ())

@@ -78,18 +78,43 @@ rank. Public page lookup retains a typed folio prefix with the original origin
 chain and value. LiquidHaskell checks its padding count, the generated trace's
 length and origin suffix, and the origin arrow for the resulting page element.
 A checked record retains the selected value at its actual position in the
-prefix's final chain before the existential index hides its carrier types. Successful lookup retains the
-requested page and position, and construction retains those coordinates and
-the exact trace length through the Atlas lookup callback. Full trace validity,
-including the connection between its head and the stored position, still needs
-a checked Haskell representation bridge.
-The Atlas lookup wrapper requires the index's origin to match the Atlas and
-preserves that arrow evidence. The cached folio counts are constructor
+prefix's final chain before the existential index hides its carrier types.
+The trace is constructed while that carrier is known and stored with its exact
+equality to the prefix's recursively generated padded trace. Its checked
+invariants retain the requested page and position, exact trace length, starting
+position, and origin suffix through the Atlas lookup callback. The Lean index
+record models the stored trace and its equality to that computation. Lookup
+walks the owning folio and retains an equation between the returned trace and
+that folio's canonical trace lookup. Lean models this selection, proves that
+the selected prefix belongs to the original folio, and proves agreement of the
+returned trace with the canonical lookup, including unsuccessful lookups.
+Lean proves that every genuine-page entry of the native cached trace is the
+prefix's interval transport and every padded entry retains the final position.
+The Atlas lookup wrapper requires both a matching origin and the owning-folio
+trace equation. Its callback and the merge/sequence resolvers retain
+`cellTraceValid` for the selected owner. Native lookup retains its entire
+optional trace result, including failure, so the owner certificate implies
+both exact trace length and the requested starting position. Both checkers
+use these scalar conditions to prove that a suffix arrow reads the target's
+position at the target page. Atlas ordering and transposal ordering share the
+same Natural-indexed trace lookup; cross-language fixtures include offsets
+larger than a machine integer. Negative checks reject omitting either endpoint's
+trace shape, using the shape proof without an owner certificate, or dropping a
+successful native lookup. Normalization preserves the same owner certificate:
+canonical lookup at the clamped page equals lookup at the original page with
+its trace trimmed to the owning folio's length. Genuine-page traces stay fixed;
+padded traces trim to the exact native final-page trace. The Atlas object and
+arrow normalization proofs retain that certificate using the checked equality
+between the pagination's cardinality and its stored folio length. These are
+scalar trace certificates; derived arrow membership preservation and the full
+dependent-carrier assembly still need checked contracts. The cached folio counts are constructor
 invariants: an origin has length one and an append increments the previous
 length. Negative checks reject malformed counts, missing padding, a trace
 that discards the origin or current occurrence, a stored value at an unrelated
-position, lookup that shifts the requested page, and Atlas lookup without a
-matching index origin.
+position, a forged cached transport trace, lookup that shifts the requested
+page, and Atlas lookup without its owning-folio trace equation. A runtime
+regression distinguishes folios with the same origin, page sizes, and selected
+coordinates but different intermediate transports, including padded pages.
 Lean proves the corresponding trace and count laws. The shared Atlas lookup
 callback retains the source's origin-arrow condition. Merge and sequence
 resolve component cells through this callback, and their membership modules

@@ -17,6 +17,9 @@ module Atlas.LiquidInternal
   , atlasRestrictedAction
   , atlasActionAccepts
   , atlasActionMembership
+  , atlasActionDomain
+  , atlasActionElementValid
+  , atlasActionArrowValid
   , atlasActionDataAt
   , atlasActionMap
   , AtlasData
@@ -34,6 +37,10 @@ import Data.Kind (Type)
 import DomanialInsertion.LiquidInternal
 import Dominion.Internal (Dominion)
 import Numeric.Natural (Natural)
+import PageElements.Internal
+  ( PageElementDomain, pageElementDomainContains
+  , pageElementDomainFinalPage, pageElementDomainTraceLimit
+  )
 import PageElements.LiquidInternal
 
 -- | A first-order membership package keeps the rank-2 predicate's identity
@@ -62,11 +69,14 @@ atlasMembershipAccepts (AtlasMembership accepts) occurrence datum = accepts occu
 -- Dominion coherence and arrow inverses range over accepted cell data.
 type role AtlasAction nominal nominal
 {-@ data AtlasAction scope cellData = AtlasAction
-      { atlasActionMembership :: AtlasMembership scope cellData
-      , atlasActionDataAt :: forall object. occurrence:PageElement scope object
+      { atlasActionDomain :: PageElementDomain scope
+      , atlasActionMembership :: AtlasMembership scope cellData
+      , atlasActionDataAt :: forall object. occurrence:{PageElement scope object | pageElementDomainContains atlasActionDomain occurrence}
           -> Dominion ({datum:cellData object |
                atlasMembershipAccepts atlasActionMembership occurrence datum})
-      , atlasActionMap :: forall source target. arrow:PageElementArrow scope source target
+      , atlasActionMap :: forall source target. arrow:{PageElementArrow scope source target |
+               pageElementDomainContains atlasActionDomain (arrowSource arrow)
+               && pageElementDomainContains atlasActionDomain (arrowTarget arrow)}
           -> DomanialInsertion
                ({datum:cellData source |
                     atlasMembershipAccepts atlasActionMembership (arrowSource arrow) datum})
@@ -76,13 +86,25 @@ type role AtlasAction nominal nominal
 data AtlasAction
   (scope :: Type)
   (cellData :: Type -> Type) = AtlasAction
-  { atlasActionMembership :: AtlasMembership scope cellData
+  { atlasActionDomain :: PageElementDomain scope
+  , atlasActionMembership :: AtlasMembership scope cellData
   , atlasActionDataAt :: forall object.
       PageElement scope object -> Dominion (cellData object)
   , atlasActionMap :: forall source target.
       PageElementArrow scope source target
       -> DomanialInsertion (cellData source) (cellData target)
   }
+
+{-@ reflect atlasActionElementValid @-}
+atlasActionElementValid :: AtlasAction scope cellData -> PageElement scope object -> Bool
+atlasActionElementValid action occurrence =
+  pageElementDomainContains (atlasActionDomain action) occurrence
+
+{-@ reflect atlasActionArrowValid @-}
+atlasActionArrowValid :: AtlasAction scope cellData -> PageElementArrow scope source target -> Bool
+atlasActionArrowValid action arrow =
+  atlasActionElementValid action (arrowSource arrow)
+    && atlasActionElementValid action (arrowTarget arrow)
 
 {-@ reflect atlasActionAccepts @-}
 atlasActionAccepts
@@ -91,28 +113,40 @@ atlasActionAccepts action occurrence datum =
   atlasMembershipAccepts (atlasActionMembership action) occurrence datum
 
 -- | Package a carrier whose Haskell type already enforces membership.
+{-@ atlasAction :: domain:PageElementDomain scope
+      -> dataAt:(forall object. occurrence:{PageElement scope object | pageElementDomainContains domain occurrence}
+           -> Dominion (cellData object))
+      -> mapData:(forall source target. arrow:{PageElementArrow scope source target |
+           pageElementDomainContains domain (arrowSource arrow) && pageElementDomainContains domain (arrowTarget arrow)}
+           -> DomanialInsertion (cellData source) (cellData target))
+      -> {action:AtlasAction scope cellData | atlasActionDomain action == domain} @-}
 atlasAction
-  :: (forall object.
+  :: PageElementDomain scope
+  -> (forall object.
         PageElement scope object -> Dominion (cellData object))
   -> (forall source target.
         PageElementArrow scope source target
         -> DomanialInsertion (cellData source) (cellData target))
   -> AtlasAction scope cellData
-atlasAction dataAt mapData = AtlasAction AllAtlasData dataAt mapData
+atlasAction domain dataAt mapData = AtlasAction domain AllAtlasData dataAt mapData
 
 -- | Package a value-dependent carrier without discarding its predicate.
 {-@ atlasRestrictedAction
-      :: membership:AtlasMembership scope cellData
-      -> dataAt:(forall object. occurrence:PageElement scope object
+      :: domain:PageElementDomain scope
+      -> membership:AtlasMembership scope cellData
+      -> dataAt:(forall object. occurrence:{PageElement scope object | pageElementDomainContains domain occurrence}
            -> Dominion ({datum:cellData object | atlasMembershipAccepts membership occurrence datum}))
-      -> mapData:(forall source target. arrow:PageElementArrow scope source target
+      -> mapData:(forall source target. arrow:{PageElementArrow scope source target |
+           pageElementDomainContains domain (arrowSource arrow) && pageElementDomainContains domain (arrowTarget arrow)}
            -> DomanialInsertion
                 ({datum:cellData source | atlasMembershipAccepts membership (arrowSource arrow) datum})
                 ({datum:cellData target | atlasMembershipAccepts membership (arrowTarget arrow) datum}))
-      -> {action:AtlasAction scope cellData | atlasActionMembership action == membership} @-}
+      -> {action:AtlasAction scope cellData | atlasActionMembership action == membership
+           && atlasActionDomain action == domain} @-}
 -- ALIGN: ATLAS-MEMBERSHIP-ACTION.
 atlasRestrictedAction
-  :: AtlasMembership scope cellData
+  :: PageElementDomain scope
+  -> AtlasMembership scope cellData
   -> (forall object. PageElement scope object -> Dominion (cellData object))
   -> (forall source target. PageElementArrow scope source target
         -> DomanialInsertion (cellData source) (cellData target))
@@ -147,24 +181,26 @@ atlasRestrictedAction = AtlasAction
 {-@ data AtlasData scope cellData = AtlasData
       { atlasDataFinalPage :: Natural
       , atlasDataTraceLimit :: Int
-      , atlasActionData :: AtlasAction scope cellData
+      , atlasActionData :: {action:AtlasAction scope cellData |
+           pageElementDomainFinalPage (atlasActionDomain action) == atlasDataFinalPage
+           && pageElementDomainTraceLimit (atlasActionDomain action) == atlasDataTraceLimit}
       , atlasDataIdentityLaw :: forall object.
-          occurrence:PageElement scope object -> datum:{cellData object | atlasActionAccepts atlasActionData (normalizePageElementAt atlasDataFinalPage atlasDataTraceLimit occurrence) datum}
+          occurrence:{PageElement scope object | atlasActionElementValid atlasActionData occurrence} -> datum:{cellData object | atlasActionAccepts atlasActionData (normalizePageElementAt atlasDataFinalPage atlasDataTraceLimit occurrence) datum}
           -> {AtlasIdentityAt atlasActionData atlasDataFinalPage atlasDataTraceLimit occurrence datum}
       , atlasDataCompositionLaw :: forall source middle target.
-          second:PageElementArrow scope middle target
-          -> first:PageElementArrow scope source middle -> datum:{cellData source | atlasActionAccepts atlasActionData (normalizePageElementAt atlasDataFinalPage atlasDataTraceLimit (arrowSource first)) datum}
+          second:{PageElementArrow scope middle target | atlasActionArrowValid atlasActionData second}
+          -> first:{PageElementArrow scope source middle | atlasActionArrowValid atlasActionData first} -> datum:{cellData source | atlasActionAccepts atlasActionData (normalizePageElementAt atlasDataFinalPage atlasDataTraceLimit (arrowSource first)) datum}
           -> {arrowTarget first == arrowSource second =>
                 AtlasCompositionAt atlasActionData atlasDataFinalPage atlasDataTraceLimit second first datum}
       , atlasDataCoherenceLaw :: forall object.
-          occurrence:PageElement scope object -> coherenceArrow:PageElementArrow scope object object
+          occurrence:{PageElement scope object | atlasActionElementValid atlasActionData occurrence} -> coherenceArrow:{PageElementArrow scope object object | atlasActionArrowValid atlasActionData coherenceArrow}
           -> datum:{cellData object | atlasActionAccepts atlasActionData (normalizePageElementAt atlasDataFinalPage atlasDataTraceLimit occurrence) datum}
           -> {AtlasCoherenceConditions atlasDataFinalPage atlasDataTraceLimit occurrence coherenceArrow =>
                 AtlasCoherenceAt atlasActionData atlasDataFinalPage atlasDataTraceLimit coherenceArrow datum}
       , atlasDataDisjointLaw :: forall leftObject rightObject originObject.
-          left:PageElement scope leftObject -> right:PageElement scope rightObject
-          -> leftToOrigin:PageElementArrow scope leftObject originObject
-          -> rightToOrigin:PageElementArrow scope rightObject originObject
+          left:{PageElement scope leftObject | atlasActionElementValid atlasActionData left} -> right:{PageElement scope rightObject | atlasActionElementValid atlasActionData right}
+          -> leftToOrigin:{PageElementArrow scope leftObject originObject | atlasActionArrowValid atlasActionData leftToOrigin}
+          -> rightToOrigin:{PageElementArrow scope rightObject originObject | atlasActionArrowValid atlasActionData rightToOrigin}
           -> leftDatum:{cellData leftObject | atlasActionAccepts atlasActionData (normalizePageElementAt atlasDataFinalPage atlasDataTraceLimit left) leftDatum} -> rightDatum:{cellData rightObject | atlasActionAccepts atlasActionData (normalizePageElementAt atlasDataFinalPage atlasDataTraceLimit right) rightDatum}
           -> {AtlasDisjointConditions atlasDataFinalPage left right leftToOrigin rightToOrigin =>
                 AtlasDisjointAt atlasActionData atlasDataFinalPage atlasDataTraceLimit
@@ -194,24 +230,27 @@ data AtlasData
 -- | Smart constructor for a checked Atlas data assignment.  LiquidHaskell
 -- validates each supplied witness against the corresponding record field.
 {-@ atlasData
-      :: finalPage:Natural -> traceLimit:Int -> action:AtlasAction scope cellData
+      :: finalPage:Natural -> traceLimit:Int
+      -> action:{AtlasAction scope cellData |
+           pageElementDomainFinalPage (atlasActionDomain action) == finalPage
+           && pageElementDomainTraceLimit (atlasActionDomain action) == traceLimit}
       -> identityLaw:(forall object.
-           occurrence:PageElement scope object -> datum:{cellData object | atlasActionAccepts action (normalizePageElementAt finalPage traceLimit occurrence) datum}
+           occurrence:{PageElement scope object | atlasActionElementValid action occurrence} -> datum:{cellData object | atlasActionAccepts action (normalizePageElementAt finalPage traceLimit occurrence) datum}
            -> {AtlasIdentityAt action finalPage traceLimit occurrence datum})
       -> compositionLaw:(forall source middle target.
-           second:PageElementArrow scope middle target
-           -> first:PageElementArrow scope source middle
+           second:{PageElementArrow scope middle target | atlasActionArrowValid action second}
+           -> first:{PageElementArrow scope source middle | atlasActionArrowValid action first}
            -> alignment:{() | arrowTarget first == arrowSource second}
            -> datum:{cellData source | atlasActionAccepts action (normalizePageElementAt finalPage traceLimit (arrowSource first)) datum}
            -> {AtlasCompositionAt action finalPage traceLimit second first datum})
       -> coherenceLaw:(forall object.
-           occurrence:PageElement scope object -> coherenceArrow:PageElementArrow scope object object
+           occurrence:{PageElement scope object | atlasActionElementValid action occurrence} -> coherenceArrow:{PageElementArrow scope object object | atlasActionArrowValid action coherenceArrow}
            -> conditions:{() | AtlasCoherenceConditions finalPage traceLimit occurrence coherenceArrow}
            -> datum:{cellData object | atlasActionAccepts action (normalizePageElementAt finalPage traceLimit occurrence) datum} -> {AtlasCoherenceAt action finalPage traceLimit coherenceArrow datum})
       -> disjointLaw:(forall leftObject rightObject originObject.
-           left:PageElement scope leftObject -> right:PageElement scope rightObject
-           -> leftToOrigin:PageElementArrow scope leftObject originObject
-           -> rightToOrigin:PageElementArrow scope rightObject originObject
+           left:{PageElement scope leftObject | atlasActionElementValid action left} -> right:{PageElement scope rightObject | atlasActionElementValid action right}
+           -> leftToOrigin:{PageElementArrow scope leftObject originObject | atlasActionArrowValid action leftToOrigin}
+           -> rightToOrigin:{PageElementArrow scope rightObject originObject | atlasActionArrowValid action rightToOrigin}
            -> conditions:{() | AtlasDisjointConditions finalPage left right leftToOrigin rightToOrigin}
            -> leftDatum:{cellData leftObject | atlasActionAccepts action (normalizePageElementAt finalPage traceLimit left) leftDatum} -> rightDatum:{cellData rightObject | atlasActionAccepts action (normalizePageElementAt finalPage traceLimit right) rightDatum}
            -> {AtlasDisjointAt action finalPage traceLimit leftToOrigin rightToOrigin leftDatum rightDatum})

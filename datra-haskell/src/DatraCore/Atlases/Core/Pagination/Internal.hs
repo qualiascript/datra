@@ -97,6 +97,8 @@ paginationPageElements (Pagination elements) = elements
 
 -- | The number of genuine pages in the pagination's finite presentation.
 -- Every greater page number denotes a repeated occurrence of its final page.
+{-@ paginationCardinality :: value:Pagination scope origin final
+      -> {count:Natural | count == folioLengthData (pageElementsFolio (paginationPageElements value))} @-}
 paginationCardinality
   :: Pagination scope origin final
   -> Natural

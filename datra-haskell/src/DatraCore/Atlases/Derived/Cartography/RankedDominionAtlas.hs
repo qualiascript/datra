@@ -15,6 +15,7 @@ module RankedDominionAtlas
   , rankedDominionInsertionTraversal
   ) where
 
+import qualified Pagination
 import Atlas
   ( Atlas
   , AtlasObject
@@ -181,7 +182,7 @@ rankedDominionAtlas
 rankedDominionAtlas valueDominion =
   atlasWithScope
     rankedDominionPagination
-    (atlasDataAction
+    (atlasDataAction (Pagination.paginationPageElements rankedDominionPagination)
       (rankedDominionAt valueDominion)
       (rankedDominionDataMap valueDominion))
     (\_ _ -> ())

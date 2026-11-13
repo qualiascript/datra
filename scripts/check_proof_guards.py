@@ -212,9 +212,16 @@ proofGuard = sequenceDatumMap (const True) (const False) (const ())
 
 EXTENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs"
 EXTENT_GUARDS = {
+    "cell lookup cannot claim another Atlas transport trace": """
+{-@ proofGuard :: Atlas a s d o f -> Atlas a s d o f -> Natural -> Ordinal
+      -> Maybe ({answer:Bool | answer}) @-}
+proofGuard :: Atlas a s d o f -> Atlas a s d o f -> Natural -> Ordinal -> Maybe Bool
+proofGuard owner other page position =
+  withAtlasCellAt owner page position (\\source -> cellTraceValid other source)
+""",
     "cell membership disjointness requires distinct positions": """
 {-@ proofGuard :: valueAtlas:Atlas a s d o f
-      -> cell:{PageElement s object | cellHasOrigin valueAtlas cell
+      -> cell:{PageElement s object | cellHasOrigin valueAtlas cell && cellTraceValid valueAtlas cell
            && pageElementPage cell < Atlas.atlasCardinality valueAtlas}
       -> valueRank:{Natural | cellContainsRank valueAtlas cell valueRank}
       -> {not (cellContainsRank valueAtlas cell valueRank)} @-}
@@ -223,7 +230,7 @@ proofGuard valueAtlas cell valueRank = cellContainsRankDisjoint valueAtlas cell 
 """,
     "extent membership requires an accepted cell rank": """
 {-@ proofGuard :: valueAtlas:Atlas a s d o f
-      -> cell:{PageElement s object | cellHasOrigin valueAtlas cell}
+      -> cell:{PageElement s object | cellHasOrigin valueAtlas cell && cellTraceValid valueAtlas cell}
       -> valueRank:Natural
       -> {extentContainsRank valueAtlas valueRank} @-}
 proofGuard :: Atlas a s d o f -> PageElement s object -> Natural -> ()
@@ -233,7 +240,9 @@ proofGuard = cellContainsRankInExtent
 {-@ proofGuard :: valueAtlas:Atlas a s d o f
       -> arrow:{PageElementArrow s source target |
            cellHasOrigin valueAtlas (arrowSource arrow)
-           && cellHasOrigin valueAtlas (arrowTarget arrow)}
+           && cellTraceValid valueAtlas (arrowSource arrow)
+           && cellHasOrigin valueAtlas (arrowTarget arrow)
+           && cellTraceValid valueAtlas (arrowTarget arrow)}
       -> valueRank:Natural
       -> {cellContainsRank valueAtlas (arrowTarget arrow) valueRank} @-}
 proofGuard :: Atlas a s d o f -> PageElementArrow s source target -> Natural -> ()
@@ -262,7 +271,7 @@ proofGuard = atlasCellOriginRankInsertion
     "extent inverse soundness requires a successful lookup": """
 {-@ proofGuard
       :: valueAtlas:Atlas atlasScope scope cellData origin final
-      -> source:{PageElement scope object | cellHasOrigin valueAtlas source}
+      -> source:{PageElement scope object | cellHasOrigin valueAtlas source && cellTraceValid valueAtlas source}
       -> valueRank:Natural
       -> datum:{cellData object | atlasAcceptsDatum valueAtlas source datum}
       -> {applyInsertion (atlasCellOriginRankInsertion valueAtlas source) datum == valueRank} @-}
@@ -291,8 +300,66 @@ proofGuard pages = SnocPage (folioLengthData pages) pages
 """,
 }
 
+PAGE_ARROW_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs"
+PAGE_ARROW_GUARDS = {
+    "arrow position requires the source trace shape": """
+{-@ proofGuard :: arrow:{PageElementArrow scope source target |
+      PageElementTraceShape (arrowTarget arrow)}
+      -> {positionAtPage (pageElementPage (arrowTarget arrow)) (arrowSource arrow)
+           == Just (pageElementPosition (arrowTarget arrow))} @-}
+proofGuard :: PageElementArrow scope source target -> ()
+proofGuard arrow = pageElementArrowPosition arrow
+""",
+    "arrow position requires the target trace shape": """
+{-@ proofGuard :: arrow:{PageElementArrow scope source target |
+      PageElementTraceShape (arrowSource arrow)}
+      -> {positionAtPage (pageElementPage (arrowTarget arrow)) (arrowSource arrow)
+           == Just (pageElementPosition (arrowTarget arrow))} @-}
+proofGuard :: PageElementArrow scope source target -> ()
+proofGuard arrow = pageElementArrowPosition arrow
+""",
+}
+
 PAGE_INDEX_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Internal.hs"
 PAGE_INDEX_GUARDS = {
+    "normalization cannot discard the owning trace": """
+{-@ proofGuard :: category:PageElements scope origin final
+      -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence}
+      -> {pageElementTraceValid category
+           (normalizePageElementAt (folioLength (pageElementsFolio category) - 1) 0 occurrence)} @-}
+proofGuard :: PageElements scope origin final -> PageElement scope object -> ()
+proofGuard category occurrence = pageElementTraceValidNormalize category occurrence
+""",
+    "normalization evidence cannot prove False": """
+{-@ proofGuard :: category:PageElements scope origin final
+      -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence}
+      -> {proof:() | False} @-}
+proofGuard :: PageElements scope origin final -> PageElement scope object -> ()
+proofGuard category occurrence = pageElementTraceValidNormalize category occurrence
+""",
+    "page lookup cannot discard a successful owning trace": """
+{-@ proofGuard :: category:PageElements scope origin final -> page:Natural -> position:Ordinal
+      -> {result:Maybe (PageElementIndex scope) |
+           pageElementIndexTraceResult result == folioTraceLookup (pageElementsFolio category) page position} @-}
+proofGuard :: PageElements scope origin final -> Natural -> Ordinal -> Maybe (PageElementIndex scope)
+proofGuard _ _ _ = Nothing
+""",
+    "trace shape requires the owning folio certificate": """
+{-@ proofGuard :: category:PageElements scope origin final -> occurrence:PageElement scope object
+      -> {len (Trace.pageElementTrace occurrence) == pageElementPage occurrence + 1
+           && Trace.traceStartsWith (pageElementPosition occurrence) (Trace.pageElementTrace occurrence)} @-}
+proofGuard :: PageElements scope origin final -> PageElement scope object -> ()
+proofGuard category occurrence = pageElementTraceValidShape category occurrence
+""",
+    "page lookup cannot claim another owning folio": """
+{-@ proofGuard :: PageElements scope origin final -> other:PageElements scope origin final
+      -> page:Natural -> position:Ordinal
+      -> Maybe ({index:PageElementIndex scope |
+           folioTraceLookup (pageElementsFolio other) page position == Just (pageElementIndexTrace index)}) @-}
+proofGuard :: PageElements scope origin final -> PageElements scope origin final
+  -> Natural -> Ordinal -> Maybe (PageElementIndex scope)
+proofGuard owner _ page position = pageElementIndex owner page position
+""",
     "page indices reject a missing padding step": """
 {-@ proofGuard :: pages:Folio origin page
       -> {index:ChainIndex page |
@@ -300,13 +367,28 @@ PAGE_INDEX_GUARDS = {
       -> PageElementIndex scope @-}
 proofGuard :: Folio origin page -> ChainIndex page -> PageElementIndex scope
 proofGuard pages index = PageElementIndex (PageElementIndexData (folioLength pages) pages 0
-  (chainIndexPosition index) (chainObjectAt index))
+  (chainIndexPosition index) (chainObjectAt index) (pageElementTraceAt pages 0 (chainObjectAt index)))
 """,
     "page indices require the selected chain position": """
 {-@ proofGuard :: Folio origin page -> Ordinal -> page -> PageElementIndex scope @-}
 proofGuard :: Folio origin page -> Ordinal -> page -> PageElementIndex scope
 proofGuard pages position value = PageElementIndex
-  (PageElementIndexData (folioLength pages - 1) pages 0 position value)
+  (PageElementIndexData (folioLength pages - 1) pages 0 position value (pageElementTraceAt pages 0 value))
+""",
+    "page indices reject a forged cached transport trace": """
+{-@ proofGuard :: index:PageElementIndexData origin current
+      -> {positions:[Ordinal] | len positions == indexedPage index + 1
+           && Trace.traceStartsWith (indexedPosition index) positions
+           && Trace.traceSuffix positions (folioOriginTrace (indexedPrefix index))}
+      -> PageElementIndex scope @-}
+proofGuard :: PageElementIndexData origin current -> [Ordinal] -> PageElementIndex scope
+proofGuard index positions = PageElementIndex (index {indexedTrace = positions})
+""",
+    "constructed page traces cannot start at a different position": """
+{-@ proofGuard :: index:PageElementIndex scope
+      -> {positions:[Ordinal] | not (Trace.traceStartsWith (pageElementIndexPosition index) positions)} @-}
+proofGuard :: PageElementIndex scope -> [Ordinal]
+proofGuard index = Trace.somePageElementTrace (pageElement index)
 """,
     "last-page lookup requires the selected chain position": """
 {-@ proofGuard :: PageElements scope origin final -> ChainIndex final -> SomePageElement scope @-}
@@ -336,38 +418,72 @@ proofGuard _ _ = []
 
 ATLAS_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Internal.hs"
 ATLAS_GUARDS = {
+    "Atlas normalization cannot switch the owning folio": """
+{-@ proofGuard :: owner:Atlas a s d o f -> other:Atlas a s d o f
+      -> occurrence:{PageElement s object |
+           Elements.pageElementTraceValid (atlasPageElements other) occurrence}
+      -> {Elements.pageElementTraceValid (atlasPageElements owner) (normalizeAtlasElement owner occurrence)} @-}
+proofGuard :: Atlas a s d o f -> Atlas a s d o f -> PageElement s object -> ()
+proofGuard owner _ occurrence = normalizeAtlasElementTraceValid owner occurrence
+""",
+    "Atlas arrow normalization requires both endpoint certificates": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           Elements.pageElementTraceValid (atlasPageElements owner) (arrowSource arrow)}
+      -> {Elements.pageElementTraceValid (atlasPageElements owner)
+           (arrowTarget (normalizeAtlasArrow owner arrow))} @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s source target -> ()
+proofGuard owner arrow = normalizeAtlasArrowTraceValid owner arrow
+""",
+    "Atlas lookup requires its owning folio trace": """
+{-@ proofGuard :: owner:Atlas atlasScope scope cellData origin final
+      -> {index:PageElementIndex scope | Elements.pageElementIndexOrigin index
+           == Elements.originPageElement (atlasPageElements owner)}
+      -> SomePageElement scope @-}
+proofGuard :: Atlas atlasScope scope cellData origin final
+  -> PageElementIndex scope -> SomePageElement scope
+proofGuard = atlasPageCell
+""",
     "Atlas data transport requires source membership": """
-{-@ proofGuard :: Atlas a s d o f -> PageElementArrow s source target
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target | AtlasValidArrow owner arrow}
       -> d source -> d target @-}
 proofGuard :: Atlas a s d o f -> PageElementArrow s source target -> d source -> d target
 proofGuard owner arrow datum = applyInsertion (mapAtlasData owner arrow) datum
 """,
-    "Atlas cannot store laws for unrelated normalization bounds": """
-{-@ proofGuard :: Pagination scope origin final -> AtlasData scope cellData
+    "Atlas cannot store data for an unrelated folio": """
+{-@ proofGuard :: paginationValue:Pagination scope origin final
+      -> stored:{AtlasData scope cellData |
+           atlasDataFinalPage stored == atlasFinalPage paginationValue
+           && atlasDataTraceLimit stored == atlasTraceLimit paginationValue}
       -> Atlas atlasScope scope cellData origin final @-}
 proofGuard :: Pagination scope origin final -> AtlasData scope cellData
   -> Atlas atlasScope scope cellData origin final
 proofGuard = Atlas
 """,
     "Atlas composition witnesses require matching arrow endpoints": """
-{-@ proofGuard :: owner:Atlas a s d o f -> PageElementArrow s middle target
-      -> first:PageElementArrow s source middle
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> second:{PageElementArrow s middle target | AtlasValidArrow owner second}
+      -> first:{PageElementArrow s source middle | AtlasValidArrow owner first}
       -> {datum:d source | atlasAcceptsDatum owner (arrowSource first) datum} -> () @-}
 proofGuard :: Atlas a s d o f -> PageElementArrow s middle target
   -> PageElementArrow s source middle -> d source -> ()
 proofGuard = atlasCompositionWitness
 """,
     "Atlas coherence witnesses require the normalization arrow": """
-{-@ proofGuard :: owner:Atlas a s d o f -> cell:PageElement s object
-      -> PageElementArrow s object object
+{-@ proofGuard :: owner:Atlas a s d o f -> cell:{PageElement s object | AtlasValidCell owner cell}
+      -> arrow:{PageElementArrow s object object | AtlasValidArrow owner arrow}
       -> {datum:d object | atlasAcceptsDatum owner cell datum} -> () @-}
 proofGuard :: Atlas a s d o f -> PageElement s object
   -> PageElementArrow s object object -> d object -> ()
 proofGuard = atlasCoherenceWitness
 """,
     "Atlas disjointness witnesses require distinct cells on one genuine page": """
-{-@ proofGuard :: owner:Atlas a s d o f -> left:PageElement s left -> right:PageElement s right
-      -> PageElementArrow s left origin -> PageElementArrow s right origin
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> left:{PageElement s left | AtlasValidCell owner left}
+      -> right:{PageElement s right | AtlasValidCell owner right}
+      -> leftArrow:{PageElementArrow s left origin | AtlasValidArrow owner leftArrow}
+      -> rightArrow:{PageElementArrow s right origin | AtlasValidArrow owner rightArrow}
       -> {datum:d left | atlasAcceptsDatum owner left datum}
       -> {datum:d right | atlasAcceptsDatum owner right datum} -> () @-}
 proofGuard :: Atlas a s d o f -> PageElement s left -> PageElement s right
@@ -387,14 +503,35 @@ proofGuard = atlasPageCell
 
 ATLAS_DATA_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/LiquidInternal.hs"
 ATLAS_DATA_GUARDS = {
+    "Atlas action lookup requires its declared domain": """
+{-@ proofGuard :: action:AtlasAction scope cellData -> occurrence:PageElement scope object
+      -> Dominion ({datum:cellData object | atlasActionAccepts action occurrence datum}) @-}
+proofGuard :: AtlasAction scope cellData -> PageElement scope object -> Dominion (cellData object)
+proofGuard action occurrence = atlasActionDataAt action occurrence
+""",
+    "Atlas action transport requires the target domain": """
+{-@ proofGuard :: action:AtlasAction scope cellData
+      -> arrow:{PageElementArrow scope source target | atlasActionElementValid action (arrowSource arrow)}
+      -> DomanialInsertion
+           ({datum:cellData source | atlasActionAccepts action (arrowSource arrow) datum})
+           ({datum:cellData target | atlasActionAccepts action (arrowTarget arrow) datum}) @-}
+proofGuard :: AtlasAction scope cellData -> PageElementArrow scope source target
+  -> DomanialInsertion (cellData source) (cellData target)
+proofGuard action arrow = atlasActionMap action arrow
+""",
     "Atlas action lookup cannot discard cell membership": """
-{-@ proofGuard :: AtlasAction scope cellData -> PageElement scope object
+{-@ proofGuard :: action:AtlasAction scope cellData
+      -> occurrence:{PageElement scope object | atlasActionElementValid action occurrence}
       -> Dominion (cellData object) @-}
 proofGuard :: AtlasAction scope cellData -> PageElement scope object -> Dominion (cellData object)
 proofGuard action occurrence = atlasActionDataAt action occurrence
 """,
     "Atlas data cannot manufacture laws for an arbitrary action": """
-{-@ proofGuard :: Natural -> Int -> AtlasAction scope cellData -> AtlasData scope cellData @-}
+{-@ proofGuard :: finalPage:Natural -> traceLimit:Int
+      -> action:{AtlasAction scope cellData |
+           pageElementDomainFinalPage (atlasActionDomain action) == finalPage
+           && pageElementDomainTraceLimit (atlasActionDomain action) == traceLimit}
+      -> AtlasData scope cellData @-}
 proofGuard :: Natural -> Int -> AtlasAction scope cellData -> AtlasData scope cellData
 proofGuard finalPage traceLimit action = AtlasData finalPage traceLimit action
   (\\_ _ -> ()) (\\_ _ _ -> ()) (\\_ _ _ -> ()) (\\_ _ _ _ _ _ -> ())
@@ -475,6 +612,7 @@ def run(pattern=None):
                                     (SEQUENCE_SOURCE, SEQUENCE_GUARDS),
                                     (EXTENT_SOURCE, EXTENT_GUARDS),
                                     (FOLIO_SOURCE, FOLIO_GUARDS),
+                                    (PAGE_ARROW_SOURCE, PAGE_ARROW_GUARDS),
                                     (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),
                                     (ATLAS_SOURCE, ATLAS_GUARDS),
                                     (ATLAS_DATA_SOURCE, ATLAS_DATA_GUARDS),

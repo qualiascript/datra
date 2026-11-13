@@ -133,7 +133,7 @@ withMemberAtPosition = go 0
       -> result
       -> (forall atlasScope scope cellData origin final sourceObject.
             Natural -> valueAtlas:Atlas atlasScope scope cellData origin final
-            -> source:{PageElement scope sourceObject | Extent.cellHasOrigin valueAtlas source}
+            -> source:{PageElement scope sourceObject | Extent.cellHasOrigin valueAtlas source && Extent.cellTraceValid valueAtlas source}
             -> result)
       -> Maybe result @-}
 sequenceSourceCell

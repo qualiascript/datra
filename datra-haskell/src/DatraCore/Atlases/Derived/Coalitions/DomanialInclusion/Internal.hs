@@ -37,6 +37,7 @@ module DomanialInclusion.Internal
   , dominionLemma
   ) where
 
+import qualified Pagination
 import Atlas
   ( Atlas
   , AtlasMappedObject
@@ -184,7 +185,7 @@ dominionAtlas
 dominionAtlas valueDominion =
   atlasWithScope
     (onePagePagination @a)
-    (atlasDataAction
+    (atlasDataAction (Pagination.paginationPageElements (onePagePagination @a))
       (const (constantDominion valueDominion))
       (const identityDominionCellInsertion))
     (\_ _ -> ())

@@ -731,7 +731,7 @@
     },
     {
       "id": "ATLAS-ORDER-TRACE-LOOKUP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
       "haskell_declaration": "positionAtPage",
       "lean_namespace": "Datra.Executable.FolioData.ValidElement",
       "lean_declaration": "positionAtPage_arrow"
@@ -3381,6 +3381,160 @@
       "haskell_declaration": "pageElement",
       "lean_namespace": "Datra.Executable.PageElementIndexData",
       "lean_declaration": "toRaw_page_position"
+    },
+    {
+      "id": "PE-TRACE-START",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_declaration": "traceStartsWith",
+      "lean_namespace": "Datra.Executable.Trace",
+      "lean_declaration": "traceStartsWith_iff_head"
+    },
+    {
+      "id": "PE-CONSTRUCTED-TRACE-HEAD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElement",
+      "lean_namespace": "Datra.Executable.PageElementIndexData",
+      "lean_declaration": "toRaw_trace_head"
+    },
+    {
+      "id": "PE-INDEX-TRACE-CACHE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "indexWithTrace",
+      "lean_namespace": "Datra.Executable.PageElementIndexData",
+      "lean_declaration": "toRaw_trace_computed"
+    },
+    {
+      "id": "PE-PREFIX-TRACE-TRANSPORT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementTraceAt",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "paddedTrace_atIndex"
+    },
+    {
+      "id": "PE-PADDED-TRACE-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementTraceAt",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "paddedTrace_atPadded"
+    },
+    {
+      "id": "PE-LOOKUP-OWNING-TRACE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "indexInFolio",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "indexInFolio_trace"
+    },
+    {
+      "id": "PE-LOOKUP-STORED-PREFIX",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "indexInFolio",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "indexInFolio_prefix"
+    },
+    {
+      "id": "PE-TRACE-OWNER-VALIDITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementTraceValid",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceValid_iff_index"
+    },
+    {
+      "id": "ATLAS-CELL-TRACE-VALIDITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
+      "haskell_declaration": "cellTraceValid",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.cellTraceValid_iff_index"
+    },
+    {
+      "id": "PE-NATIVE-LOOKUP-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "indexInFolio",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "indexInFolio_page_position"
+    },
+    {
+      "id": "PE-TRACE-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_declaration": "tracePosition",
+      "lean_namespace": "Datra.Executable.Trace",
+      "lean_declaration": "tracePosition_eq_drop"
+    },
+    {
+      "id": "PE-SHAPED-ARROW-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_declaration": "pageElementArrowPosition",
+      "lean_namespace": "Datra.Executable.PageElement",
+      "lean_declaration": "Arrow.positionAtPage"
+    },
+    {
+      "id": "PE-TRACE-VALID-SHAPE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementTraceValidShape",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceValid_shape"
+    },
+    {
+      "id": "PE-OWNER-ARROW-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementValidArrowPosition",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceValid_arrow_position"
+    },
+    {
+      "id": "PE-TRIM-EXACT-SUFFIX",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/LiquidInternal.hs",
+      "haskell_declaration": "trimTraceToSuffix",
+      "lean_namespace": "Datra.Executable.Trace",
+      "lean_declaration": "trimTraceToSuffix"
+    },
+    {
+      "id": "PE-LOOKUP-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "folioTraceLookupNormalize",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceLookup_normalize"
+    },
+    {
+      "id": "PE-TRACE-VALID-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementTraceValidNormalize",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceValid_normalize"
+    },
+    {
+      "id": "ATLAS-TRACE-VALID-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "normalizeAtlasElementTraceValid",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.cellTraceValid_normalize"
+    },
+    {
+      "id": "ATLAS-ARROW-TRACE-VALID-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "normalizeAtlasArrowTraceValid",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.arrowTraceValid_normalize"
+    },
+    {
+      "id": "PE-ACTION-DOMAIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementDomainContains",
+      "lean_namespace": "Datra.Executable.PageElementDomain",
+      "lean_declaration": "contains"
+    },
+    {
+      "id": "PE-ACTION-DOMAIN-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "pageElementDomainNormalizeValid",
+      "lean_namespace": "Datra.Executable.PageElementDomain",
+      "lean_declaration": "normalize_valid"
+    },
+    {
+      "id": "PE-NATIVE-ORIGIN-LOOKUP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "folioOriginTraceLookup",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceLookup_origin"
     }
   ],
   "modules": [
@@ -3403,9 +3557,12 @@
         "atlasDataCoherence"
       ],
       "refinements": [
+        "atlasDataAction",
         "atlasRestrictedDataAction",
         "atlas",
         "atlasWithScope",
+        "normalizeAtlasElementTraceValid",
+        "normalizeAtlasArrowTraceValid",
         "atlasAcceptsDatumNormalized",
         "atlasDataAt",
         "mapAtlasData",
@@ -3425,7 +3582,10 @@
         "AtlasDataAction"
       ],
       "embeddings": [],
-      "predicates": [],
+      "predicates": [
+        "AtlasValidCell",
+        "AtlasValidArrow"
+      ],
       "refinement_aliases": []
     },
     {
@@ -3438,10 +3598,13 @@
       ],
       "reflected": [
         "atlasMembershipAccepts",
+        "atlasActionElementValid",
+        "atlasActionArrowValid",
         "atlasActionAccepts"
       ],
       "refinements": [
         "atlasMembership",
+        "atlasAction",
         "atlasRestrictedAction",
         "atlasData"
       ],
@@ -3514,6 +3677,7 @@
         "chainOrdinalLT",
         "chainListLength",
         "positionMatches",
+        "chainIndex",
         "chainObjectAt",
         "spineOmega",
         "spineOrdinal",
@@ -3830,28 +3994,60 @@
       "module": "PageElements.Internal",
       "types": [
         "PageElements",
+        "PageElementDomain",
         "PageElementIndex",
         "PageElementIndexData"
       ],
       "reflected": [
+        "pageElementDomain",
+        "pageElementDomainContains",
+        "pageElementDomainFinalPage",
+        "pageElementDomainTraceLimit",
         "pageElementsWithScope",
         "pageElementsFolio",
+        "folioTraceLookup",
+        "prefixTraceLookup",
+        "trimLookupTrace",
+        "pageElementTraceValid",
+        "somePageElementTraceValid",
         "pageElementIndexOrigin",
         "pageElementIndexPage",
         "pageElementIndexPosition",
+        "pageElementIndexTrace",
+        "pageElementIndexTraceResult",
         "originPageElement",
         "folioOriginElement",
         "folioOriginTrace",
+        "pageElementTraceAt",
+        "genuinePageElementTrace",
+        "originElementTrace",
+        "snocElementTrace",
+        "prependCopies",
         "normalizePageElement",
         "normalizePageElementArrow"
       ],
       "refinements": [
+        "pageElementDomainNormalizeValid",
         "pageElementIndex",
-        "indexFromPrefix",
+        "folioTraceLookup",
+        "prefixTraceLookup",
+        "prefixTraceLookupTrim",
+        "folioTraceLookupNormalize",
+        "indexInFolio",
+        "pageElementTraceValidShape",
+        "pageElementValidArrowPosition",
+        "pageElementTraceValidNormalize",
+        "lookupPrefixIndex",
+        "indexWithTrace",
         "pageElement",
+        "originPageElement",
+        "folioOriginTraceLookup",
         "lastPageElement",
         "pageElementTraceAt",
         "genuinePageElementTrace",
+        "originElementTrace",
+        "snocElementTrace",
+        "folioTraceLengthPositive",
         "prependCopies",
         "withPageElement"
       ],
@@ -3882,6 +4078,9 @@
         "somePageElementPage",
         "somePageElementPosition",
         "somePageElementTrace",
+        "traceStartsWith",
+        "tracePosition",
+        "positionAtPage",
         "pageElementAt",
         "pageElementPrecedes",
         "somePageElementPrecedes",
@@ -3900,9 +4099,14 @@
         "composePageElementArrows"
       ],
       "refinements": [
+        "tracePositionSuffix",
+        "pageElementArrowPosition",
         "pageElementAt",
         "somePageElementPrecedesReflexive",
         "somePageElementTransportedReflexive",
+        "traceLength",
+        "trimTraceWithinLength",
+        "trimTraceToSuffix",
         "trimTraceIdempotent",
         "trimTraceIsSuffix",
         "traceSuffixLength",
@@ -3934,7 +4138,9 @@
       "embeddings": [
         "Natural as int"
       ],
-      "predicates": [],
+      "predicates": [
+        "PageElementTraceShape"
+      ],
       "refinement_aliases": []
     },
     {
@@ -3951,6 +4157,7 @@
         "normalizePaginationArrow"
       ],
       "refinements": [
+        "paginationCardinality",
         "paginationMorphism"
       ],
       "lean_target": "Datra.Executable.Pagination",
@@ -4092,13 +4299,16 @@
         "AtlasCellDominion"
       ],
       "reflected": [
+        "atlasCellDominionElement",
         "atlasExtent",
         "cellHasOrigin",
+        "cellTraceValid",
         "atlasCellOriginRankInsertion",
         "cellContainsRank",
         "extentContainsRank"
       ],
       "refinements": [
+        "atlasExtent",
         "withAtlasCellAt",
         "atlasCellOriginRankInsertion",
         "cellContainsRank",
