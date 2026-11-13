@@ -21,6 +21,41 @@ theorem Chain.lookup_position {A : Type} (C : Chain A) (x : A) :
   have he := C.positionInjective hp
   simpa [he] using hy
 
+/-- Equal positions determine the same decoder when both reject out-of-range inputs. -/
+theorem Chain.ext_of_boundedLookup {A : Type} (source target : Chain A)
+    (order : source.orderType = target.orderType) (position : source.position = target.position)
+    (sourceOutside : ∀ p, Ordinal.ordinalLT p source.orderType = false → source.lookup p = none)
+    (targetOutside : ∀ p, Ordinal.ordinalLT p target.orderType = false → target.lookup p = none) :
+    source = target := by
+  have lookup : source.lookup = target.lookup := by
+    funext p
+    cases bound : Ordinal.ordinalLT p source.orderType with
+    | false => rw [sourceOutside p bound, targetOutside p (by rwa [← order])]
+    | true =>
+        obtain ⟨first, firstFound, firstPosition⟩ := source.positionSurjective p bound
+        obtain ⟨second, secondFound, secondPosition⟩ := target.positionSurjective p (by rwa [← order])
+        have same : first = second := source.positionInjective
+          (firstPosition.trans (by rw [position]; exact secondPosition.symm))
+        rw [firstFound, secondFound, same]
+  cases source
+  cases target
+  cases order
+  cases position
+  cases lookup
+  rfl
+
+/-- Reindex the executable decoder through a checked carrier equivalence. -/
+-- ALIGN: CHAIN-REINDEX.
+def Chain.reindex {A B : Type} (source : Chain A) (equiv : A ≃ B) : Chain B where
+  orderType := source.orderType
+  position value := source.position (equiv.symm value)
+  lookup position := (source.lookup position).map equiv
+  positionBelow value := source.positionBelow (equiv.symm value)
+  positionInjective := source.positionInjective.comp equiv.symm.injective
+  positionSurjective position below := by
+    obtain ⟨value, found, same⟩ := source.positionSurjective position below
+    exact ⟨equiv value, by simp [found], by simpa using same⟩
+
 /-- Certified chain indices retain their object, just as ChainIndex does. -/
 structure ChainIndex {A : Type} (C : Chain A) where
   position : Ordinal
@@ -191,6 +226,17 @@ def sumChains (left : Chain A) (right : Chain B) : Chain (Sum A B) where
       refine ⟨Sum.inr y, ?_, ?_⟩
       · simp [sumChainLookup, hf, hp, hy]
       · simp only [sumChainPosition, heq, he]
+
+theorem sumChains_lookup_outside (left : Chain A) (right : Chain B) (position : Ordinal)
+    (outside : Ordinal.ordinalLT position (sumChains left right).orderType = false) :
+    (sumChains left right).lookup position = none := by
+  by_cases inLeft : Ordinal.ordinalLT position left.orderType = true
+  · have inside := Ordinal.ordinalAddLeftBelow left.orderType right.orderType position inLeft
+    change Ordinal.ordinalLT position (sumChains left right).orderType = true at inside
+    rw [outside] at inside
+    contradiction
+  · simp only [sumChains] at outside ⊢
+    simp [sumChainLookup, inLeft, outside]
 
 -- ALIGN: CHAIN-SUM-SEMANTICS.
 noncomputable def sumOrderIso (left : Chain A) (right : Chain B) :

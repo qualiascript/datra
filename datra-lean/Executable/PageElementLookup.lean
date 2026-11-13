@@ -194,9 +194,48 @@ def selectPrefix : {origin final : Page} → (pages : FolioData origin final) �
           .step count previous next transition selected.belongs⟩
 
 
+/-- Native prefix selection retains exactly the page selected on the full spine. -/
+theorem selectPrefix_current (pages : FolioData origin final) (valid : pages.Valid) (page : Nat) :
+    (pages.selectPrefix valid page).current = pages.pageAt page := by
+  induction pages with
+  | origin count selected unique => simp [selectPrefix, pageAt, FolioData.page]
+  | snoc count previous next transition ih =>
+      let full := FolioData.snoc count previous next transition
+      by_cases last : previous.length ≤ page
+      · have bound : previous.depth ≤ page := by rwa [previous.length_eq_depth valid.1] at last
+        have index : full.indexEquivFin.symm (full.paddedIndex page) = none := by
+          apply full.indexEquivFin.injective
+          apply Fin.ext
+          rw [Equiv.apply_symm_apply, indexEquivFin_val]
+          simp only [paddedIndex, full, depth, Nat.add_sub_cancel, indexNumber]
+          exact Nat.min_eq_right bound
+        rw [selectPrefix, dif_pos last]
+        change next = full.page (full.indexEquivFin.symm (full.paddedIndex page))
+        rw [index]
+        rfl
+      · have bound : page < previous.depth := by rw [previous.length_eq_depth valid.1] at last; omega
+        have index : full.indexEquivFin.symm (full.paddedIndex page) =
+            some (previous.indexEquivFin.symm (previous.paddedIndex page)) := by
+          apply full.indexEquivFin.injective
+          apply Fin.ext
+          rw [Equiv.apply_symm_apply, indexEquivFin_val]
+          simp only [paddedIndex, full, depth, Nat.add_sub_cancel, indexNumber, indexEquivFin_symm_number]
+          omega
+        rw [selectPrefix, dif_neg last]
+        change (previous.selectPrefix valid.1 page).current =
+          full.page (full.indexEquivFin.symm (full.paddedIndex page))
+        rw [index]
+        exact ih valid.1
+
+
 def prefixTraceLookup (pages : FolioData origin final) (padding : Nat) (position : Ordinal) :
     Option (List Ordinal) :=
   (final.chain.chainIndex position).map (fun index => pages.paddedTrace padding index.object)
+
+-- ALIGN: PE-PREFIX-LOOKUP-BOUNDS.
+theorem prefixTraceLookup_bounded (pages : FolioData origin final) (padding : Nat) (position : Ordinal) :
+    (pages.prefixTraceLookup padding position).isSome = Ordinal.ordinalLT position final.chain.orderType := by
+  simp only [prefixTraceLookup, Option.isSome_map, Chain.chainIndex_isSome]
 
 def SelectedPrefix.lookupTrace {pages : FolioData origin final} {page : Nat}
     (selected : SelectedPrefix pages page) (position : Ordinal) : Option (List Ordinal) :=
@@ -270,6 +309,40 @@ theorem traceLookup_length (pages : FolioData origin final) (valid : pages.Valid
   rw [traceEq, (indexInFolio_page_position pages valid page position selected indexed).1] at length
   exact length
 
+-- ALIGN: PE-NATIVE-LOOKUP-HEAD.
+theorem traceLookup_head (pages : FolioData origin final) (valid : pages.Valid)
+    (page : Nat) (position : Ordinal) (trace : List Ordinal)
+    (found : pages.traceLookup page position = some trace) : trace.head? = some position := by
+  rw [← indexInFolio_trace pages valid page position] at found
+  obtain ⟨selected, indexed, traceEq⟩ := Option.map_eq_some_iff.mp found
+  have head := (Trace.traceStartsWith_iff_head _ _).mp (selected.2.toRaw_trace_head ())
+  change selected.2.trace.head? = some selected.2.position at head
+  rw [traceEq, (indexInFolio_page_position pages valid page position selected indexed).2] at head
+  exact head
+
+/-- Native prefix selection retains the original folio's lookup, its exact
+domain, and the trace coordinates across the hidden page carrier. -/
+theorem selectPrefix_lookup_spec (pages : FolioData origin final) (valid : pages.Valid)
+    (page : Nat) (position : Ordinal) :
+    let selected := selectPrefix pages valid page
+    selected.lookupTrace position = pages.traceLookup page position ∧
+      (selected.lookupTrace position).isSome = Ordinal.ordinalLT position selected.current.chain.orderType ∧
+      ∀ trace, selected.lookupTrace position = some trace →
+        trace.length = page + 1 ∧ trace.head? = some position := by
+  refine ⟨(selectPrefix_traceLookup pages valid page position).symm, ?_, ?_⟩
+  · exact prefixTraceLookup_bounded _ _ _
+  · intro trace found
+    rw [← selectPrefix_traceLookup pages valid page position] at found
+    exact ⟨pages.traceLookup_length valid page position trace found,
+      pages.traceLookup_head valid page position trace found⟩
+
+-- ALIGN: PE-NATIVE-LOOKUP-BOUNDS.
+theorem traceLookup_bounded (pages : FolioData origin final) (valid : pages.Valid)
+    (page : Nat) (position : Ordinal) :
+    (pages.traceLookup page position).isSome = Ordinal.ordinalLT position (pages.pageAt page).chain.orderType := by
+  have bounded := (pages.selectPrefix_lookup_spec valid page position).2.1
+  rwa [← selectPrefix_traceLookup, selectPrefix_current] at bounded
+
 /-- At and beyond the last genuine page, native lookup always uses the entire
 stored folio and counts only the repeated final occurrences as padding. -/
 theorem traceLookup_final (pages : FolioData origin final) (valid : pages.Valid)
@@ -324,9 +397,184 @@ theorem traceLookup_normalize (pages : FolioData origin final) (valid : pages.Va
       pages.traceLookup_final valid page position lower, Nat.sub_self]
     exact (pages.prefixTraceLookup_trim _ position).symm
 
+/-- Native lookup at a genuine page reads the corresponding suffix of the
+last cell's transport trace. The proof follows the origin/snoc lookup cases. -/
+theorem traceLookup_atIndex (pages : FolioData origin final) (valid : pages.Valid)
+    (target : pages.Index) (value : final.Carrier) :
+    pages.traceLookup (pages.indexNumber target)
+        ((pages.page target).chain.position ((pages.lastInterval target).map value)) =
+      some ((pages.genuineTrace value).drop (pages.depth - 1 - pages.indexNumber target)) := by
+  induction pages with
+  | origin =>
+      cases target
+      simp [traceLookup, prefixTraceLookup, indexNumber, page, lastInterval,
+        Consolidation.identity, Chain.chainIndex_position, Chain.chainIndexOf,
+        paddedTrace, depth]
+  | snoc count previous next transition ih =>
+      cases target with
+      | none =>
+          simp [traceLookup, prefixTraceLookup, indexNumber, page, lastInterval,
+            Consolidation.identity, previous.length_eq_depth valid.1,
+            Chain.chainIndex_position, Chain.chainIndexOf, paddedTrace, depth]
+      | some target =>
+          have lower : ¬previous.length ≤ previous.indexNumber target := by
+            rw [previous.length_eq_depth valid.1]
+            exact Nat.not_le_of_lt (previous.indexNumber_lt target)
+          have offset : previous.depth - previous.indexNumber target =
+              (previous.depth - 1 - previous.indexNumber target) + 1 := by
+            have := previous.indexNumber_lt target
+            omega
+          simp only [indexNumber, page, lastInterval, Consolidation.comp, Function.comp_apply,
+            traceLookup, if_neg lower, genuineTrace, depth, Nat.add_sub_cancel]
+          rw [offset, List.drop_succ_cons]
+          exact ih valid.1 target (transition.map value)
+
+/-- Transport a final-page value to any occurrence of the padded spine. -/
+def lastToPage (pages : FolioData origin final) (n : Nat) :
+    Consolidation final.chain (pages.pageAt n).chain :=
+  pages.lastInterval (pages.indexEquivFin.symm (pages.paddedIndex n))
+
+theorem lastToPage_comp (pages : FolioData origin final) (source target : Nat)
+    (bound : target ≤ source) :
+    Consolidation.comp (pages.lastToPage source) (pages.transport source target bound) =
+      pages.lastToPage target :=
+  pages.lastInterval_comp _ _ _
+
+theorem lastToPage_final_position (pages : FolioData origin final) (n : Nat)
+    (bound : pages.depth - 1 ≤ n) (value : final.Carrier) :
+    (pages.pageAt n).chain.position ((pages.lastToPage n).map value) =
+      final.chain.position value := by
+  have last : pages.indexEquivFin.symm (pages.paddedIndex n) = pages.lastIndex := by
+    apply pages.indexEquivFin.injective
+    apply Fin.ext
+    rw [Equiv.apply_symm_apply, indexEquivFin_val]
+    change min n (pages.depth - 1) = pages.indexNumber pages.lastIndex
+    rw [Nat.min_eq_right bound]
+    cases pages <;> simp [depth, lastIndex, indexNumber]
+  change (pages.page _).chain.position ((pages.lastInterval _).map value) = _
+  rw [last]
+  cases pages <;> rfl
+
+/-- A fixed slice of a padded final trace has exactly the entries down from
+page n, whether n is genuine or lies on the repeated tail. -/
+def traceFromFinal (pages : FolioData origin final) (n : Nat) (value : final.Carrier) :
+    List Ordinal := (pages.paddedTrace n value).drop (pages.depth - 1)
+
+theorem traceFromFinal_length (pages : FolioData origin final) (n : Nat) (value : final.Carrier) :
+    (pages.traceFromFinal n value).length = n + 1 := by
+  simp only [traceFromFinal, List.length_drop, paddedTrace, List.length_append,
+    List.length_replicate, genuineTrace_length]
+  have := pages.depth_positive
+  omega
+
+theorem traceLookup_fromFinal (pages : FolioData origin final) (valid : pages.Valid)
+    (n : Nat) (value : final.Carrier) :
+    pages.traceLookup n ((pages.pageAt n).chain.position ((pages.lastToPage n).map value)) =
+      some (pages.traceFromFinal n value) := by
+  by_cases bound : n < pages.depth
+  · have number : pages.indexNumber (pages.indexEquivFin.symm (pages.paddedIndex n)) = n := by
+      simp only [indexEquivFin_symm_number, paddedIndex]
+      exact Nat.min_eq_left (by omega)
+    have found := pages.traceLookup_atIndex valid
+      (pages.indexEquivFin.symm (pages.paddedIndex n)) value
+    rw [number] at found
+    change pages.traceLookup n ((pages.pageAt n).chain.position ((pages.lastToPage n).map value)) = _ at found
+    rw [found]
+    congr 1
+    simp only [traceFromFinal, paddedTrace, List.drop_append, List.drop_replicate,
+      List.length_replicate, show n - (pages.depth - 1) = 0 by omega,
+      List.replicate_zero, List.nil_append]
+  · have lower : pages.depth - 1 ≤ n := by omega
+    rw [pages.lastToPage_final_position n lower value, pages.traceLookup_final valid n _ lower]
+    simp only [prefixTraceLookup, Chain.chainIndex_position, Option.map_some, Chain.chainIndexOf]
+    congr 1
+    simp only [traceFromFinal, paddedTrace, List.drop_append, List.drop_replicate,
+      List.length_replicate, show pages.depth - 1 - n = 0 by omega, List.drop_zero]
+
+theorem traceFromFinal_atPage (pages : FolioData origin final) (source target : Nat)
+    (bound : target ≤ source) (value : final.Carrier) :
+    ((pages.traceFromFinal source value).drop (source - target)).head? =
+      some ((pages.pageAt target).chain.position ((pages.lastToPage target).map value)) := by
+  have offset : pages.depth - 1 + (source - target) = source + pages.depth - 1 - target := by
+    have := pages.depth_positive
+    omega
+  rw [traceFromFinal, List.drop_drop, offset]
+  by_cases genuine : target < pages.depth
+  · have number : pages.indexNumber (pages.indexEquivFin.symm (pages.paddedIndex target)) = target := by
+      simp only [indexEquivFin_symm_number, paddedIndex]
+      exact Nat.min_eq_left (by omega)
+    have entry := pages.paddedTrace_atIndex source
+      (pages.indexEquivFin.symm (pages.paddedIndex target)) value
+    rw [number] at entry
+    exact entry
+  · have lower : pages.depth - 1 ≤ target := by omega
+    rw [pages.lastToPage_final_position target lower value]
+    exact pages.paddedTrace_atPadded source target lower (by have := pages.depth_positive; omega) value
+
+theorem traceAt_fromFinal_atPage (pages : FolioData origin final) (source target : Nat)
+    (bound : target ≤ source) (value : final.Carrier) :
+    ((pages.traceAt source ((pages.lastToPage source).map value)).drop (source - target)).head? =
+      some ((pages.pageAt target).chain.position ((pages.lastToPage target).map value)) := by
+  rw [pages.traceAt_drop source target bound]
+  have composed := congrFun (congrArg Consolidation.map (pages.lastToPage_comp source target bound)) value
+  change (pages.transport source target bound).map ((pages.lastToPage source).map value) =
+    (pages.lastToPage target).map value at composed
+  rw [composed, traceAt_head]
+
+/-- Native traces and the dependent full-spine traces agree entry by entry.
+Finite entries use lastInterval_comp; padded entries use the identity map. -/
+theorem traceAt_fromFinal (pages : FolioData origin final) (source : Nat)
+    (value : final.Carrier) :
+    pages.traceAt source ((pages.lastToPage source).map value) =
+      pages.traceFromFinal source value := by
+  apply List.ext_getElem?
+  intro offset
+  by_cases bound : offset ≤ source
+  · have earlier := Nat.sub_le source offset
+    have canonical := pages.traceAt_fromFinal_atPage source (source - offset) earlier value
+    have native := pages.traceFromFinal_atPage source (source - offset) earlier value
+    simpa only [Nat.sub_sub_self bound, List.head?_drop] using canonical.trans native.symm
+  · rw [List.getElem?_eq_none (by rw [traceAt_length]; omega),
+      List.getElem?_eq_none (by rw [traceFromFinal_length]; omega)]
+
+theorem traceLookup_occurrence (pages : FolioData origin final) (valid : pages.Valid)
+    (occurrence : pages.Occurrence) :
+    pages.traceLookup occurrence.page occurrence.toRaw.position = some occurrence.toRaw.trace := by
+  let value := (pages.lastToPage occurrence.page).preimage occurrence.value
+  have found := pages.traceLookup_fromFinal valid occurrence.page value
+  rw [← pages.traceAt_fromFinal occurrence.page value] at found
+  simpa only [value, Consolidation.rightInverse] using found
+
+/-- Native lookup agrees with the canonical occurrence decoder on success and failure. -/
+theorem traceLookup_canonical (pages : FolioData origin final) (valid : pages.Valid)
+    (page : Nat) (position : Ordinal) :
+    pages.traceLookup page position =
+      ((pages.pageAt page).chain.chainIndex position).map (fun index => pages.traceAt page index.object) := by
+  cases found : (pages.pageAt page).chain.chainIndex position with
+  | none =>
+      have bounded := pages.traceLookup_bounded valid page position
+      have absent := (pages.pageAt page).chain.chainIndex_isSome position
+      rw [found] at absent
+      rw [← absent] at bounded
+      cases native : pages.traceLookup page position <;> simp_all
+  | some index =>
+      have position_eq := index.position_eq.trans ((pages.pageAt page).chain.chainIndex_requested position index found)
+      have native := pages.traceLookup_occurrence valid ⟨page, index.object⟩
+      change pages.traceLookup page ((pages.pageAt page).chain.position index.object) =
+        some (pages.traceAt page index.object) at native
+      simpa only [position_eq, Option.map_some] using native
+
 def traceValid {Scope : Type u} {owner : Scope} (pages : FolioData origin final)
     (source : PageElement owner) : Bool :=
   decide (traceLookup pages source.page source.position = some source.trace)
+
+/-- Every fully indexed occurrence satisfies the executable owner's scalar
+lookup test. The converse additionally needs agreement of the stored payload. -/
+theorem ValidElement.traceValid {pages : FolioData origin final} (valid : pages.Valid)
+    (source : pages.ValidElement) : pages.traceValid source.val = true := by
+  obtain ⟨_, occurrence, rfl⟩ := source
+  change decide (pages.traceLookup occurrence.page occurrence.toRaw.position = some occurrence.toRaw.trace) = true
+  exact decide_eq_true (pages.traceLookup_occurrence valid occurrence)
 
 -- ALIGN: PE-TRACE-VALID-NORMALIZATION.
 theorem traceValid_normalize {Scope : Type u} {owner : Scope}

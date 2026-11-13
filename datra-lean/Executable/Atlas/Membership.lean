@@ -1,4 +1,5 @@
 import Executable.Atlas.Data
+import Executable.PageElementLookup
 
 namespace Datra.Executable
 
@@ -32,21 +33,26 @@ abbrev AtlasMembership.Carrier {Scope : Type u} {owner : Scope}
   {datum : cellData occurrence.cell // membership.accepts occurrence datum = true}
 
 /-- The runtime action before interpreting its accepted carriers as the
-indexed data family of an Atlas. Both insertion directions retain membership. -/
+indexed data family of an Atlas. Lookup and transport require the stored
+folio domain; both insertion directions retain cell membership. -/
 structure AtlasMembershipAction {Scope : Type u} (owner : Scope)
     (cellData : PageElementCell → Type) where
+  domain : PageElementDomain owner
   membership : AtlasMembership owner cellData
-  dataAt : (occurrence : PageElement owner) → Dominion (membership.Carrier occurrence)
-  mapData : {source target : PageElement owner} → source.Arrow target →
+  dataAt : (occurrence : PageElement owner) → domain.contains occurrence = true → Dominion (membership.Carrier occurrence)
+  mapData : {source target : PageElement owner} →
+    domain.contains source = true → domain.contains target = true → source.Arrow target →
     DomanialInsertion (membership.Carrier source) (membership.Carrier target)
 
 -- ALIGN: ATLAS-MEMBERSHIP-ACTION.
 def AtlasMembershipAction.package {Scope : Type u} {owner : Scope}
-    {cellData : PageElementCell → Type} (membership : AtlasMembership owner cellData)
-    (dataAt : (occurrence : PageElement owner) → Dominion (membership.Carrier occurrence))
-    (mapData : {source target : PageElement owner} → source.Arrow target →
+    {cellData : PageElementCell → Type} (domain : PageElementDomain owner)
+    (membership : AtlasMembership owner cellData)
+    (dataAt : (occurrence : PageElement owner) → domain.contains occurrence = true → Dominion (membership.Carrier occurrence))
+    (mapData : {source target : PageElement owner} →
+      domain.contains source = true → domain.contains target = true → source.Arrow target →
       DomanialInsertion (membership.Carrier source) (membership.Carrier target)) :
-    AtlasMembershipAction owner cellData := ⟨membership, dataAt, mapData⟩
+    AtlasMembershipAction owner cellData := ⟨domain, membership, dataAt, mapData⟩
 
 -- ALIGN: ATLAS-DATUM-MEMBERSHIP.
 def AtlasMembershipAction.acceptsAt {Scope : Type u} {owner : Scope}
@@ -69,16 +75,20 @@ theorem AtlasMembershipAction.acceptsAt_normalize {Scope : Type u} {owner : Scop
 
 theorem AtlasMembershipAction.map_accepted {Scope : Type u} {owner : Scope}
     {cellData : PageElementCell → Type} (action : AtlasMembershipAction owner cellData)
-    {source target : PageElement owner} (arrow : source.Arrow target)
+    {source target : PageElement owner}
+    (sourceValid : action.domain.contains source = true)
+    (targetValid : action.domain.contains target = true) (arrow : source.Arrow target)
     (datum : action.membership.Carrier source) :
-    action.membership.accepts target ((action.mapData arrow).map datum).val = true :=
-  ((action.mapData arrow).map datum).property
+    action.membership.accepts target ((action.mapData sourceValid targetValid arrow).map datum).val = true :=
+  ((action.mapData sourceValid targetValid arrow).map datum).property
 
 theorem AtlasMembershipAction.preimage_accepted {Scope : Type u} {owner : Scope}
     {cellData : PageElementCell → Type} (action : AtlasMembershipAction owner cellData)
-    {source target : PageElement owner} (arrow : source.Arrow target)
+    {source target : PageElement owner}
+    (sourceValid : action.domain.contains source = true)
+    (targetValid : action.domain.contains target = true) (arrow : source.Arrow target)
     (datum : action.membership.Carrier target) (candidate : action.membership.Carrier source)
-    (_found : (action.mapData arrow).preimage datum = some candidate) :
+    (_found : (action.mapData sourceValid targetValid arrow).preimage datum = some candidate) :
     action.membership.accepts source candidate.val = true := candidate.property
 
 -- ALIGN: ATLAS-DATA-COHERENCE-INSERTION.
@@ -96,10 +106,13 @@ theorem AtlasMembershipAction.coherenceInsertion_agrees {Scope : Type u} {owner 
     {cellData : PageElementCell → Type} (action : AtlasMembershipAction owner cellData)
     (finalPage : Nat) (traceLimit : Int) (occurrence : PageElement owner)
     (datum : action.membership.Carrier (occurrence.normalize finalPage traceLimit))
-    (coherent : ((action.mapData (PageElement.normalizeArrow finalPage traceLimit
+    (sourceValid : action.domain.contains (occurrence.normalize finalPage traceLimit) = true)
+    (targetValid : action.domain.contains
+      ((occurrence.normalize finalPage traceLimit).normalize finalPage traceLimit) = true)
+    (coherent : ((action.mapData sourceValid targetValid (PageElement.normalizeArrow finalPage traceLimit
       (occurrence.toNormalized finalPage traceLimit))).map datum).val = datum.val) :
     ((action.coherenceInsertion finalPage traceLimit occurrence).map datum).val =
-      ((action.mapData (PageElement.normalizeArrow finalPage traceLimit
+      ((action.mapData sourceValid targetValid (PageElement.normalizeArrow finalPage traceLimit
         (occurrence.toNormalized finalPage traceLimit))).map datum).val :=
   coherent.symm
 
@@ -110,6 +123,43 @@ open CategoryTheory
 
 variable {origin final : Page} {pages : FolioData origin final}
   {cellData : PageElementCell → Type}
+
+/-- The stored action domain is exactly the owning pagination's checked folio. -/
+class FolioOwner (action : AtlasMembershipAction pages cellData) : Prop where
+  valid : pages.Valid
+  domain_eq : action.domain = PageElementDomain.ofFolio pages ⟨pages, valid⟩
+
+/-- Packaging an action for the actual folio supplies the ownership certificate
+without an additional law about the action's callbacks. -/
+theorem package_folioOwner (valid : pages.Valid)
+    (membership : AtlasMembership pages cellData)
+    (dataAt : (occurrence : PageElement pages) → pages.traceValid occurrence = true →
+      Dominion (membership.Carrier occurrence))
+    (mapData : {source target : PageElement pages} →
+      pages.traceValid source = true → pages.traceValid target = true → source.Arrow target →
+      DomanialInsertion (membership.Carrier source) (membership.Carrier target)) :
+    FolioOwner (package (PageElementDomain.ofFolio pages ⟨pages, valid⟩) membership dataAt mapData) :=
+  ⟨valid, rfl⟩
+
+theorem validElement (action : AtlasMembershipAction pages cellData) [owner : FolioOwner action]
+    (occurrence : pages.ValidElement) : action.domain.contains occurrence.val = true := by
+  rw [owner.domain_eq]
+  exact occurrence.traceValid owner.valid
+
+def dataAtValid (action : AtlasMembershipAction pages cellData) [FolioOwner action]
+    (occurrence : pages.ValidElement) : Dominion (action.membership.Carrier occurrence.val) :=
+  action.dataAt occurrence.val (action.validElement occurrence)
+
+def mapValid (action : AtlasMembershipAction pages cellData) [FolioOwner action]
+    {source target : pages.ValidElement} (arrow : source ⟶ target) :
+    DomanialInsertion (action.membership.Carrier source.val) (action.membership.Carrier target.val) :=
+  action.mapData (action.validElement source) (action.validElement target) arrow
+
+theorem normalize_valid (action : AtlasMembershipAction pages cellData) [owner : FolioOwner action]
+    (occurrence : PageElement pages) (valid : action.domain.contains occurrence = true) :
+    action.domain.contains (occurrence.normalize (pages.depth - 1) pages.depth) = true := by
+  rw [owner.domain_eq] at valid ⊢
+  exact pages.traceValid_normalize owner.valid occurrence valid
 
 /-- The accepted data family used by the indexed Atlas model. -/
 abbrev IndexedCarrier (accepts : (cell : PageElementCell) → cellData cell → Prop)
@@ -134,55 +184,55 @@ def carrierEquiv (action : AtlasMembershipAction pages cellData)
 
 /-- Interpret the retained predicate as the actual carrier type. No data are
 added or removed: the equivalences only change their membership proofs. -/
-def toIndexed (action : AtlasMembershipAction pages cellData)
+def toIndexed (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) : AtlasAction pages (IndexedCarrier accepts) where
-  dataAt occurrence := (action.dataAt occurrence.val).reindex
+  dataAt occurrence := (action.dataAtValid occurrence).reindex
     (action.carrierEquiv accepts compatible occurrence)
-  mapData {source target} arrow := (action.mapData arrow).reindex
+  mapData {source target} arrow := (action.mapValid arrow).reindex
     (action.carrierEquiv accepts compatible source) (action.carrierEquiv accepts compatible target)
 
-theorem toIndexed_rank (action : AtlasMembershipAction pages cellData)
+theorem toIndexed_rank (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) (occurrence : pages.ValidElement)
     (datum : action.membership.Carrier occurrence.val) :
     ((action.toIndexed accepts compatible).dataAt occurrence).rank
         (action.carrierEquiv accepts compatible occurrence datum) =
-      (action.dataAt occurrence.val).rank datum := by
+      (action.dataAtValid occurrence).rank datum := by
   exact Dominion.reindex_rank _ _ _
 
-theorem toIndexed_unrank (action : AtlasMembershipAction pages cellData)
+theorem toIndexed_unrank (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) (occurrence : pages.ValidElement) (n : Nat) :
     (((action.toIndexed accepts compatible).dataAt occurrence).unrank n).map Subtype.val =
-      ((action.dataAt occurrence.val).unrank n).map Subtype.val := by
+      ((action.dataAtValid occurrence).unrank n).map Subtype.val := by
   simp [toIndexed, Dominion.reindex, Option.map_map, carrierEquiv]
 
-theorem toIndexed_map (action : AtlasMembershipAction pages cellData)
+theorem toIndexed_map (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) {source target : pages.ValidElement}
     (arrow : source ⟶ target) (datum : IndexedCarrier accepts source.val.cell) :
     (((action.toIndexed accepts compatible).mapData arrow).map datum).val =
-      ((action.mapData arrow).map
+      ((action.mapValid arrow).map
         ((action.carrierEquiv accepts compatible source).symm datum)).val := rfl
 
-theorem toIndexed_preimage (action : AtlasMembershipAction pages cellData)
+theorem toIndexed_preimage (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) {source target : pages.ValidElement}
     (arrow : source ⟶ target) (datum : IndexedCarrier accepts target.val.cell) :
     (((action.toIndexed accepts compatible).mapData arrow).preimage datum).map Subtype.val =
-      ((action.mapData arrow).preimage
+      ((action.mapValid arrow).preimage
         ((action.carrierEquiv accepts compatible target).symm datum)).map Subtype.val := by
   simp [toIndexed, DomanialInsertion.reindex, Option.map_map, carrierEquiv]
 
 /-- Apply the stored raw action with precisely the owning folio's bounds. -/
-def normalizedMap (action : AtlasMembershipAction pages cellData)
+def normalizedMap (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     {source target : pages.ValidElement} (arrow : source ⟶ target) :
     DomanialInsertion (action.membership.Carrier source.normalize.val)
       (action.membership.Carrier target.normalize.val) :=
-  action.mapData (FolioData.ValidElement.normalizeArrow arrow)
+  action.mapValid (FolioData.ValidElement.normalizeArrow arrow)
 
-theorem toIndexed_normalizedMap (action : AtlasMembershipAction pages cellData)
+theorem toIndexed_normalizedMap (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) {source target : pages.ValidElement}
     (arrow : source ⟶ target) (datum : IndexedCarrier accepts source.val.cell) :
@@ -190,22 +240,22 @@ theorem toIndexed_normalizedMap (action : AtlasMembershipAction pages cellData)
       ((action.normalizedMap arrow).map
         ((action.carrierEquiv accepts compatible source.normalize).symm datum)).val := rfl
 
-theorem toIndexed_normalizedRank (action : AtlasMembershipAction pages cellData)
+theorem toIndexed_normalizedRank (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) (occurrence : pages.ValidElement)
     (datum : IndexedCarrier accepts occurrence.val.cell) :
     ((action.toIndexed accepts compatible).dataAt occurrence.normalize).rank datum =
-      (action.dataAt occurrence.normalize.val).rank
+      (action.dataAtValid occurrence.normalize).rank
         ((action.carrierEquiv accepts compatible occurrence.normalize).symm datum) := rfl
 
-theorem toIndexed_normalizedUnrank (action : AtlasMembershipAction pages cellData)
+theorem toIndexed_normalizedUnrank (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) (occurrence : pages.ValidElement) (n : Nat) :
     (((action.toIndexed accepts compatible).dataAt occurrence.normalize).unrank n).map Subtype.val =
-      ((action.dataAt occurrence.normalize.val).unrank n).map Subtype.val :=
+      ((action.dataAtValid occurrence.normalize).unrank n).map Subtype.val :=
   action.toIndexed_unrank accepts compatible occurrence.normalize n
 
-theorem toIndexed_normalizedPreimage (action : AtlasMembershipAction pages cellData)
+theorem toIndexed_normalizedPreimage (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) {source target : pages.ValidElement}
     (arrow : source ⟶ target) (datum : IndexedCarrier accepts target.val.cell) :
@@ -217,7 +267,7 @@ theorem toIndexed_normalizedPreimage (action : AtlasMembershipAction pages cellD
 /-- The runtime AtlasData obligations, stated on accepted data and comparing
 the underlying values as LiquidHaskell does. Only valid folio occurrences
 are needed by the interpretation. -/
-structure Laws (action : AtlasMembershipAction pages cellData) : Prop where
+structure Laws (action : AtlasMembershipAction pages cellData) [FolioOwner action] : Prop where
   identity : ∀ (source : pages.ValidElement)
     (datum : action.membership.Carrier source.normalize.val),
     ((action.normalizedMap (𝟙 source)).map datum).val = datum.val
@@ -241,7 +291,7 @@ structure Laws (action : AtlasMembershipAction pages cellData) : Prop where
 /-- Transport the four checked runtime laws to the indexed Atlas. This uses
 only equality of the erased values, since membership proofs are irrelevant. -/
 -- ALIGN: ATLAS-MEMBERSHIP-LAWS-INTERPRETATION.
-def toIndexedData (action : AtlasMembershipAction pages cellData)
+def toIndexedData (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) (laws : action.Laws) :
     AtlasData pages (IndexedCarrier accepts) where
@@ -266,12 +316,12 @@ def toIndexedData (action : AtlasMembershipAction pages cellData)
 
 /-- The accepted-carrier bridge reuses the established finite-spine
 interpretation, including the written pagewise-disjointness definition. -/
-noncomputable def toSemantics (action : AtlasMembershipAction pages cellData)
+noncomputable def toSemantics (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) (laws : action.Laws) : Datra.Semantics.Atl :=
   (action.toIndexedData accepts compatible laws).toSemantics
 
-def toAtlas (pagination : Pagination) (action : AtlasMembershipAction pagination.pages cellData)
+def toAtlas (pagination : Pagination) (action : AtlasMembershipAction pagination.pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) (laws : action.Laws) : Atlas where
   pagination := pagination
@@ -279,7 +329,7 @@ def toAtlas (pagination : Pagination) (action : AtlasMembershipAction pagination
   data := action.toIndexedData accepts compatible laws
 
 theorem toAtlas_semantics (pagination : Pagination)
-    (action : AtlasMembershipAction pagination.pages cellData)
+    (action : AtlasMembershipAction pagination.pages cellData) [FolioOwner action]
     (accepts : (cell : PageElementCell) → cellData cell → Prop)
     (compatible : action.CellCompatible accepts) (laws : action.Laws) :
     (toAtlas pagination action accepts compatible laws).toSemantics =
@@ -288,10 +338,19 @@ theorem toAtlas_semantics (pagination : Pagination)
 /-- The public action always uses normalized occurrences and arrows. Recording
 that wrapper as an action lets its accepted family depend only on genuine
 cells, even if a supplied raw predicate varies on padding occurrences. -/
-def normalize (action : AtlasMembershipAction pages cellData) : AtlasMembershipAction pages cellData where
+def normalize (action : AtlasMembershipAction pages cellData) [FolioOwner action] : AtlasMembershipAction pages cellData where
+  domain := action.domain
   membership := .predicate (action.acceptsAt (pages.depth - 1) pages.depth)
-  dataAt occurrence := action.dataAt (occurrence.normalize (pages.depth - 1) pages.depth)
-  mapData arrow := action.mapData (PageElement.normalizeArrow (pages.depth - 1) pages.depth arrow)
+  dataAt occurrence valid := action.dataAt (occurrence.normalize (pages.depth - 1) pages.depth)
+    (action.normalize_valid occurrence valid)
+  mapData {source target} sourceValid targetValid arrow := action.mapData
+    (action.normalize_valid source sourceValid) (action.normalize_valid target targetValid)
+    (PageElement.normalizeArrow (pages.depth - 1) pages.depth arrow)
+
+instance (action : AtlasMembershipAction pages cellData) [owner : FolioOwner action] :
+    FolioOwner action.normalize where
+  valid := owner.valid
+  domain_eq := owner.domain_eq
 
 /-- The canonical genuine-cell carrier is defined without a choice of
 representative or a decision procedure over arbitrary raw cell tags. -/
@@ -310,7 +369,7 @@ theorem acceptsAt_cell_eq (action : AtlasMembershipAction pages cellData)
   action.membership.accepts_cast
     (congrArg Subtype.val ((FolioData.ValidElement.cell_eq_iff_normalize_eq source target).mp same)) datum
 
-theorem normalized_compatible (action : AtlasMembershipAction pages cellData) :
+theorem normalized_compatible (action : AtlasMembershipAction pages cellData) [FolioOwner action] :
     action.normalize.CellCompatible action.AcceptedCell := by
   intro occurrence datum
   constructor
@@ -319,7 +378,7 @@ theorem normalized_compatible (action : AtlasMembershipAction pages cellData) :
   · rintro ⟨other, same, accepted⟩
     exact (action.acceptsAt_cell_eq same datum).symm.trans accepted
 
-theorem Laws.normalized {action : AtlasMembershipAction pages cellData} (laws : action.Laws) :
+theorem Laws.normalized {action : AtlasMembershipAction pages cellData} [FolioOwner action] (laws : action.Laws) :
     action.normalize.Laws where
   identity source datum := laws.identity source.normalize datum
   composition first second datum := laws.composition
@@ -337,10 +396,10 @@ interpretation. Cell compatibility follows from normalization and folio
 validity; it is not a further assumption on the user's membership predicate. -/
 -- ALIGN: ATLAS-MEMBERSHIP-ATLAS-INTERPRETATION.
 def toCanonicalAtlas (pagination : Pagination)
-    (action : AtlasMembershipAction pagination.pages cellData) (laws : action.Laws) : Atlas :=
+    (action : AtlasMembershipAction pagination.pages cellData) [FolioOwner action] (laws : action.Laws) : Atlas :=
   toAtlas pagination action.normalize action.AcceptedCell action.normalized_compatible laws.normalized
 
-def canonicalCarrierEquiv (action : AtlasMembershipAction pages cellData)
+def canonicalCarrierEquiv (action : AtlasMembershipAction pages cellData) [FolioOwner action]
     (occurrence : pages.ValidElement) :
     IndexedCarrier action.AcceptedCell occurrence.val.cell ≃
       action.membership.Carrier occurrence.normalize.val :=
@@ -348,25 +407,33 @@ def canonicalCarrierEquiv (action : AtlasMembershipAction pages cellData)
 
 theorem rank_congr (action : AtlasMembershipAction pages cellData)
     {source target : PageElement pages} (same : source = target)
+    {sourceValid : action.domain.contains source = true}
+    {targetValid : action.domain.contains target = true}
     (a : action.membership.Carrier source) (b : action.membership.Carrier target)
-    (values : HEq a.val b.val) : (action.dataAt source).rank a = (action.dataAt target).rank b := by
+    (values : HEq a.val b.val) : (action.dataAt source sourceValid).rank a = (action.dataAt target targetValid).rank b := by
   cases same
   have sameDatum : a = b := Subtype.ext (eq_of_heq values)
   cases sameDatum
   rfl
 
 theorem unrank_congr (action : AtlasMembershipAction pages cellData)
-    {source target : PageElement pages} (same : source = target) (n : Nat) :
-    HEq (((action.dataAt source).unrank n).map Subtype.val)
-      (((action.dataAt target).unrank n).map Subtype.val) := by cases same; rfl
+    {source target : PageElement pages} (same : source = target)
+    {sourceValid : action.domain.contains source = true}
+    {targetValid : action.domain.contains target = true} (n : Nat) :
+    HEq (((action.dataAt source sourceValid).unrank n).map Subtype.val)
+      (((action.dataAt target targetValid).unrank n).map Subtype.val) := by cases same; rfl
 
 theorem map_congr (action : AtlasMembershipAction pages cellData)
     {source target source' target' : PageElement pages}
     (sameSource : source = source') (sameTarget : target = target')
+    {sourceValid : action.domain.contains source = true}
+    {targetValid : action.domain.contains target = true}
+    {sourceValid' : action.domain.contains source' = true}
+    {targetValid' : action.domain.contains target' = true}
     (arrow : source.Arrow target) (arrow' : source'.Arrow target')
     (a : action.membership.Carrier source) (b : action.membership.Carrier source')
     (values : HEq a.val b.val) :
-    HEq ((action.mapData arrow).map a).val ((action.mapData arrow').map b).val := by
+    HEq ((action.mapData sourceValid targetValid arrow).map a).val ((action.mapData sourceValid' targetValid' arrow').map b).val := by
   cases sameSource
   cases sameTarget
   have sameDatum : a = b := Subtype.ext (eq_of_heq values)
@@ -378,11 +445,15 @@ theorem map_congr (action : AtlasMembershipAction pages cellData)
 theorem preimage_congr (action : AtlasMembershipAction pages cellData)
     {source target source' target' : PageElement pages}
     (sameSource : source = source') (sameTarget : target = target')
+    {sourceValid : action.domain.contains source = true}
+    {targetValid : action.domain.contains target = true}
+    {sourceValid' : action.domain.contains source' = true}
+    {targetValid' : action.domain.contains target' = true}
     (arrow : source.Arrow target) (arrow' : source'.Arrow target')
     (a : action.membership.Carrier target) (b : action.membership.Carrier target')
     (values : HEq a.val b.val) :
-    HEq (((action.mapData arrow).preimage a).map Subtype.val)
-      (((action.mapData arrow').preimage b).map Subtype.val) := by
+    HEq (((action.mapData sourceValid targetValid arrow).preimage a).map Subtype.val)
+      (((action.mapData sourceValid' targetValid' arrow').preimage b).map Subtype.val) := by
   cases sameSource
   cases sameTarget
   have sameDatum : a = b := Subtype.ext (eq_of_heq values)
@@ -393,19 +464,19 @@ theorem preimage_congr (action : AtlasMembershipAction pages cellData)
 
 -- ALIGN: ATLAS-MEMBERSHIP-RANK-INTERPRETATION.
 theorem canonical_rank (pagination : Pagination)
-    (action : AtlasMembershipAction pagination.pages cellData) (laws : action.Laws)
+    (action : AtlasMembershipAction pagination.pages cellData) [FolioOwner action] (laws : action.Laws)
     (occurrence : pagination.Element) (datum : IndexedCarrier action.AcceptedCell occurrence.val.cell) :
     ((toCanonicalAtlas pagination action laws).dataAt occurrence).rank datum =
-      (action.dataAt occurrence.normalize.val).rank (action.canonicalCarrierEquiv occurrence datum) := by
+      (action.dataAtValid occurrence.normalize).rank (action.canonicalCarrierEquiv occurrence datum) := by
   apply action.rank_congr (congrArg Subtype.val occurrence.normalize_idempotent)
   rfl
 
 -- ALIGN: ATLAS-MEMBERSHIP-UNRANK-INTERPRETATION.
 theorem canonical_unrank (pagination : Pagination)
-    (action : AtlasMembershipAction pagination.pages cellData) (laws : action.Laws)
+    (action : AtlasMembershipAction pagination.pages cellData) [FolioOwner action] (laws : action.Laws)
     (occurrence : pagination.Element) (n : Nat) :
     (((toCanonicalAtlas pagination action laws).dataAt occurrence).unrank n).map Subtype.val =
-      ((action.dataAt occurrence.normalize.val).unrank n).map Subtype.val := by
+      ((action.dataAtValid occurrence.normalize).unrank n).map Subtype.val := by
   have preserved := action.normalize.toIndexed_normalizedUnrank
     action.AcceptedCell action.normalized_compatible occurrence n
   change (((action.normalize.toIndexed action.AcceptedCell action.normalized_compatible).dataAt
@@ -415,7 +486,7 @@ theorem canonical_unrank (pagination : Pagination)
 
 -- ALIGN: ATLAS-MEMBERSHIP-MAP-INTERPRETATION.
 theorem canonical_map (pagination : Pagination)
-    (action : AtlasMembershipAction pagination.pages cellData) (laws : action.Laws)
+    (action : AtlasMembershipAction pagination.pages cellData) [FolioOwner action] (laws : action.Laws)
     {source target : pagination.Element} (arrow : source ⟶ target)
     (datum : IndexedCarrier action.AcceptedCell source.val.cell) :
     (((toCanonicalAtlas pagination action laws).data.action.normalizedMap arrow).map datum).val =
@@ -427,7 +498,7 @@ theorem canonical_map (pagination : Pagination)
 
 -- ALIGN: ATLAS-MEMBERSHIP-PREIMAGE-INTERPRETATION.
 theorem canonical_preimage (pagination : Pagination)
-    (action : AtlasMembershipAction pagination.pages cellData) (laws : action.Laws)
+    (action : AtlasMembershipAction pagination.pages cellData) [FolioOwner action] (laws : action.Laws)
     {source target : pagination.Element} (arrow : source ⟶ target)
     (datum : IndexedCarrier action.AcceptedCell target.val.cell) :
     (((toCanonicalAtlas pagination action laws).data.action.normalizedMap arrow).preimage datum).map Subtype.val =
@@ -444,9 +515,9 @@ theorem canonical_preimage (pagination : Pagination)
 
 /-- The public runtime data action, with the accepted subtype retained at
 each normalized occurrence. -/
-def acceptedFunctor (action : AtlasMembershipAction pages cellData) (laws : action.Laws) :
+def acceptedFunctor (action : AtlasMembershipAction pages cellData) [FolioOwner action] (laws : action.Laws) :
     pages.ValidElement ⥤ Datra.Semantics.DomIns where
-  obj occurrence := ⟨(action.dataAt occurrence.normalize.val).toSemantics⟩
+  obj occurrence := ⟨(action.dataAtValid occurrence.normalize).toSemantics⟩
   map arrow := (action.normalizedMap arrow).toSemantics
   map_id occurrence := by
     apply Function.Embedding.ext
@@ -461,7 +532,7 @@ def acceptedFunctor (action : AtlasMembershipAction pages cellData) (laws : acti
 are naturally isomorphic through maps that retain the underlying data. -/
 -- ALIGN: ATLAS-MEMBERSHIP-FUNCTOR-ISOMORPHISM.
 def canonicalFunctorIso (pagination : Pagination)
-    (action : AtlasMembershipAction pagination.pages cellData) (laws : action.Laws) :
+    (action : AtlasMembershipAction pagination.pages cellData) [FolioOwner action] (laws : action.Laws) :
     (toCanonicalAtlas pagination action laws).data.toFunctor ≅ action.acceptedFunctor laws :=
   NatIso.ofComponents (fun occurrence =>
     { hom := (action.canonicalCarrierEquiv occurrence).toEmbedding

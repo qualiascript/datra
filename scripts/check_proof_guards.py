@@ -43,6 +43,33 @@ proofGuard (CompositeAtlasHom _ _) = ()
 """,
 }
 
+CHAIN_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Chain/Internal.hs"
+CHAIN_GUARDS = {
+    "chain reindexing rejects a constant carrier equivalence": """
+proofGuard :: Chain Natural
+proofGuard = reindexChain (const True) spine (const 0) (const 0) (const ()) (const ())
+""",
+}
+
+PAGE_TRACE_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/TraceChain.hs"
+PAGE_TRACE_GUARDS = {
+    "native trace chains cannot widen their accepted carrier": """
+{-@ proofGuard :: Folio origin final -> Natural -> Chain [Ordinal] @-}
+proofGuard :: Folio origin final -> Natural -> Chain [Ordinal]
+proofGuard = pageTraceChain
+""",
+}
+
+MERGE_PAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs"
+MERGE_PAGE_GUARDS = {
+    "merge page chains cannot accept arbitrary component traces": """
+{-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Chain AtlasMergePageCell @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Chain AtlasMergePageCell
+proofGuard = atlasMergePageChain
+""",
+}
+
+
 STABLE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs"
 STABLE_GUARDS = {
     "stable transversals reject an inverse that drops every image": """
@@ -603,7 +630,10 @@ def run(pattern=None):
                    "-i" + str(Path(library["dist-dir"]) / "build")]
         for dependency in library["depends"]:
             command.extend(["-package-id", dependency])
-        for source_path, guards in [(SOURCE, GUARDS), (STABLE_SOURCE, STABLE_GUARDS),
+        for source_path, guards in [(SOURCE, GUARDS), (CHAIN_SOURCE, CHAIN_GUARDS),
+                                    (PAGE_TRACE_SOURCE, PAGE_TRACE_GUARDS),
+                                    (MERGE_PAGE_SOURCE, MERGE_PAGE_GUARDS),
+                                    (STABLE_SOURCE, STABLE_GUARDS),
                                     (DOMINC_SOURCE, DOMINC_GUARDS),
                                     (TRANSVERSAL_SOURCE, TRANSVERSAL_GUARDS),
                                     (CHARTER_SOURCE, CHARTER_GUARDS),

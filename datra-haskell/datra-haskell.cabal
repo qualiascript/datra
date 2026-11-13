@@ -153,6 +153,7 @@ library
         DataTransformationMap
     other-modules:
         PageElements.Internal
+        PageElements.TraceChain
         PageElements.LiquidInternal
         Pagination.Internal
         Pagination.LiquidInternal
@@ -162,6 +163,7 @@ library
         AtlasTerritory.Internal
         EmptyAtlas.Internal
         AtlasMerge.Internal
+        AtlasMerge.Page
         AtlasMerge.LiquidInternal
         AtlasMerge.Resolution
         AtlasSequence.LiquidInternal

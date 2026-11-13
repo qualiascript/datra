@@ -42,6 +42,7 @@ import AtlasMerge.LiquidInternal
   , mergeDatumInsertion
   )
 import AtlasExtent.Internal (atlasCellOriginRankInsertion)
+import AtlasMerge.Page (AtlasMergePageCell (..), atlasMergePageChain)
 import AtlasMerge.Resolution (mergeCellContains)
 import AtlasTransposal
   ( AtlasTransposalElement
@@ -56,7 +57,6 @@ import Chain
   , chainObjectAt
   , chainOrderType
   , chainPosition
-  , sumChains
   )
 import Consolidation
   ( Coconsolidation
@@ -99,6 +99,7 @@ import PageElements
   , pageElementIndex
   , withPageElement
   )
+import PageElements.Internal (folioTraceLookup)
 import PageElements.LiquidInternal
   ( PageElement (..)
   )
@@ -107,17 +108,6 @@ import OrderedAtlasTransposal
   ( OrderedAtlasTransposal
   , orderedAtlasTransposal
   )
-
--- | A cell in a non-origin page of the merged folio.
---
--- The stored list is the component cell's transport trace, beginning at the
--- represented component page and ending at that component's origin.  Keeping
--- the trace makes adjacent bouquet consolidations total without erasing any
--- of the source folios' dependent page carriers.
-data AtlasMergePageCell
-  = AtlasMergeLeftCell [Ordinal]
-  | AtlasMergeRightCell [Ordinal]
-  deriving (Eq, Show)
 
 -- | The merge has a fresh singleton origin followed by the componentwise
 -- pages of both input atlases.
@@ -141,65 +131,13 @@ unitChain =
     (\_ _ -> ())
     (const ())
 
-cellTrace :: PageElement scope object -> [Ordinal]
-cellTrace (PageElement _ _ trace _) = trace
-
 componentTraceAt
   :: Atlas atlasScope scope cellData origin final
   -> Natural
   -> Ordinal
   -> Maybe [Ordinal]
-componentTraceAt valueAtlas pageNumber position = do
-  index <- pageElementIndex
-    (atlasPageElements valueAtlas) pageNumber position
-  let element = pageElement index
-  pure (withPageElement element cellTrace)
-
-mergeCellPosition :: AtlasMergePageCell -> Ordinal
-mergeCellPosition (AtlasMergeLeftCell (position : _)) = position
-mergeCellPosition (AtlasMergeRightCell (position : _)) = position
--- The constructors are hidden and all constructed cells have nonempty traces.
--- This total fallback also keeps malformed internal values harmless.
-mergeCellPosition _ = finiteOrdinal 0
-
--- | The tagged componentwise page at source-spine index @n@.  Its ordinal is
--- the ordinal sum of the two component page ordinals.
--- ALIGN: MERGE-PAGE-CHAIN.
--- ALIGN: MERGE-PAGE-LOOKUP-BOUNDS.
--- ALIGN: MERGE-PAGE-TRACE-ENCODING.
--- ALIGN: MERGE-PAGE-ORDER-INTERPRETATION.
--- ALIGN: MERGE-FINITE-PAGE-EQUIVALENCE.
-atlasMergePageChain
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> Natural
-  -> Chain AtlasMergePageCell
-atlasMergePageChain left right pageNumber =
-  withPageAt (atlasFolio left) pageNumber $ \leftPage ->
-    withPageAt (atlasFolio right) pageNumber $ \rightPage ->
-      let leftOrder = chainOrderType leftPage
-          componentSum = sumChains leftPage rightPage
-
-          positionInPage (AtlasMergeLeftCell trace) =
-            mergeCellPosition (AtlasMergeLeftCell trace)
-          positionInPage (AtlasMergeRightCell trace) =
-            addOrdinals leftOrder
-              (mergeCellPosition (AtlasMergeRightCell trace))
-
-          cellAt position = do
-            index <- chainIndex componentSum position
-            case chainObjectAt index of
-              Left value -> AtlasMergeLeftCell <$>
-                componentTraceAt left pageNumber (chainPosition leftPage value)
-              Right value -> AtlasMergeRightCell <$>
-                componentTraceAt right pageNumber (chainPosition rightPage value)
-      in chain
-          (chainOrderType componentSum)
-          positionInPage
-          cellAt
-          (const ())
-          (\_ _ -> ())
-          (const ())
+componentTraceAt valueAtlas pageNumber position =
+  folioTraceLookup (atlasFolio valueAtlas) pageNumber position
 
 firstMergeCell
   :: Atlas atlasScope scope cellData origin final

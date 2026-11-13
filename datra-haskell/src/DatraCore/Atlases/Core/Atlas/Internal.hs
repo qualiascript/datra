@@ -500,10 +500,11 @@ atlasPagination
 atlasPagination = storedPagination
 
 -- | Recover the finite folio underlying an atlas.
+{-@ reflect atlasFolio @-}
 atlasFolio
   :: Atlas atlasScope scope cellData origin final
   -> Folio origin final
-atlasFolio = paginationFolio . atlasPagination
+atlasFolio value = Elements.pageElementsFolio (atlasPageElements value)
 
 -- | Recover the category of page elements underlying an atlas.
 {-@ reflect atlasPageElements @-}

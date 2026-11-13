@@ -1,6 +1,7 @@
 import Executable.Atlas.Derived
 import Executable.Atlas.DomanialInclusion
 import Executable.Folio.Prefix
+import Executable.Folio.TraceChain
 
 namespace Datra.Executable.AtlasMerge
 

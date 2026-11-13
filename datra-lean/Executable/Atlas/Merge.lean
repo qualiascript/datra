@@ -1,4 +1,4 @@
-import Executable.Atlas.Merge.Folio
+import Executable.Atlas.Merge.TraceChain
 
 namespace Datra.Executable.AtlasMerge
 open CategoryTheory

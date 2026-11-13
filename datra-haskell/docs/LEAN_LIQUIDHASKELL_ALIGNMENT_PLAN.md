@@ -140,23 +140,39 @@ stored disjointness law. Lean's merge and sequence transport proofs reuse these
 shared membership lemmas. Negative checks reject disjointness applied to the
 same cell and extent membership without an accepted source rank. The correspondence
 inventory includes the logical predicate and refinement-type aliases used to
-state these contracts. Atlas actions retain a first-order membership package:
-object Dominions and both directions of data insertions carry the appropriate
+state these contracts. Atlas actions retain their native folio domain and a
+first-order membership package. Lookup requires a valid occurrence in that
+domain; transport requires valid source and target occurrences. The stored
+Atlas action's domain must equal its owning pagination, including its
+normalization bounds. Object Dominions and both directions of data insertions carry the appropriate
 cell predicate. Atlas laws quantify over accepted data. Merge and sequence
 store their membership predicates through the restricted-action constructor.
 Extent and territory packages retain a `MembershipDominion`, so existential
 elimination does not widen its carrier to the ambient Haskell type. Coherence
 uses the identity insertion on this accepted carrier, with a checked equality
 to the stored normalization action. Lean interprets the raw membership package
-as a canonical indexed Atlas. Valid occurrences with the same genuine cell
+as a canonical indexed Atlas. Native lookup agrees with the canonical full-spine
+trace, so every canonical occurrence satisfies the stored domain predicate.
+Normalization preserves that predicate. The interpretation requires the same
+folio ownership equality as Haskell's Atlas constructor, and supplies the
+lookup and transport certificates from those proofs. Valid occurrences with the same genuine cell
 have equal normalizations, so the accepted family follows from folio validity
 without an extra assumption about the supplied predicate. The bridge transfers
 all four Atlas laws and preserves ranking, decoding, forward transport, and
 partial inverses. A natural isomorphism connects its data functor to the runtime
 accepted-carrier functor. Merge and sequence reuse the shared carrier
 equivalence operations for their indexed Dominions and insertions.
-Their full Haskell assembly still requires checked folio validity and transport
-certificates.
+The merge page-chain constructor restricts each component carrier to the exact
+trace returned by that component's native folio lookup. Native lookup succeeds
+exactly below the selected page's ordinal and retains its starting position.
+The trace chains are summed and retagged through a checked carrier equivalence
+that explicitly retains target membership. Lean proves equality of this native
+construction with the merge page model, including the executable decoder, and
+identifies each native trace chain with its original dependent page. Negative
+checks reject a false carrier equivalence and either trace-chain carrier being
+widened to arbitrary raw traces. Full Haskell
+folio assembly still requires checked transition and data-transport certificates;
+sequence page chains also need the corresponding carrier restriction.
 
 Merge and sequence components use a shared origin-rank insertion. Its inverse
 checks the candidate's forward rank, because Dominion unranking and insertion

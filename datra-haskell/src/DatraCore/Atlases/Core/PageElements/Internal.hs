@@ -31,6 +31,11 @@ module PageElements.Internal
   , pageElementIndexTrace
   , pageElementIndexTraceResult
   , folioTraceLookup
+  , traceLookupPresent
+  , folioPageOrderType
+  , folioTraceLookupBounded
+  , traceLookupStartsWith
+  , folioTraceLookupHead
   , pageElementTraceValid
   , pageElementTraceValidShape
   , pageElementValidArrowPosition
@@ -67,6 +72,8 @@ import Chain.Internal
   ( Chain
   , ChainIndex
   , chainIndex
+  , chainOrderType
+  , chainOrdinalLT
   , chainIndexPosition
   , chainObjectAt
   , chainPosition
@@ -240,7 +247,7 @@ pageElementIndex (PageElements pages) page position =
 
 -- | The canonical transport trace selected by this folio's page lookup.
 {-@ reflect folioTraceLookup @-}
-{-@ folioTraceLookup :: pages:Folio origin final -> page:Natural -> Ordinal
+{-@ folioTraceLookup :: pages:Folio origin final -> page:Natural -> position:Ordinal
       -> Maybe ({positions:[Ordinal] | len positions == page + 1}) @-}
 folioTraceLookup :: Folio origin final -> Natural -> Ordinal -> Maybe [Ordinal]
 folioTraceLookup (OriginFolio count pageChain witness) page position =
@@ -251,13 +258,66 @@ folioTraceLookup pages@(SnocPage _ previous _ _) page position
   | otherwise = folioTraceLookup previous page position
 
 {-@ reflect prefixTraceLookup @-}
-{-@ prefixTraceLookup :: prefix:Folio origin current -> padding:Natural -> Ordinal
+{-@ prefixTraceLookup :: prefix:Folio origin current -> padding:Natural -> position:Ordinal
       -> Maybe ({positions:[Ordinal] | len positions == padding + folioLength prefix}) @-}
 prefixTraceLookup :: Folio origin current -> Natural -> Ordinal -> Maybe [Ordinal]
 prefixTraceLookup prefix padding position =
   case chainIndex (lastChain prefix) position of
     Nothing -> Nothing
     Just index -> Just (pageElementTraceAt prefix padding (chainObjectAt index))
+
+-- | The scalar success observation shared by page-chain constructors.
+{-@ reflect traceLookupPresent @-}
+traceLookupPresent :: Maybe [Ordinal] -> Bool
+traceLookupPresent Nothing = False
+traceLookupPresent (Just _) = True
+
+-- ALIGN: PE-PREFIX-LOOKUP-BOUNDS.
+{-@ prefixTraceLookupBounded :: prefix:Folio origin current -> padding:Natural -> position:Ordinal
+      -> {traceLookupPresent (prefixTraceLookup prefix padding position)
+           == chainOrdinalLT position (chainOrderType (lastChain prefix))} @-}
+prefixTraceLookupBounded :: Folio origin current -> Natural -> Ordinal -> ()
+prefixTraceLookupBounded prefix _ position
+  | chainOrdinalLT position (chainOrderType (lastChain prefix)) =
+      chainPositionSurjective (lastChain prefix) position `seq`
+        case chainLookup (lastChain prefix) position of
+          Nothing -> ()
+          Just _ -> ()
+  | otherwise = ()
+
+-- | The ordinal of the actual page selected from the owning finite folio.
+{-@ reflect folioPageOrderType @-}
+folioPageOrderType :: Folio origin final -> Natural -> Ordinal
+folioPageOrderType (OriginFolio _ pageChain _) _ = chainOrderType pageChain
+folioPageOrderType (SnocPage _ previous pageChain _) page
+  | page >= folioLength previous = chainOrderType pageChain
+  | otherwise = folioPageOrderType previous page
+
+-- ALIGN: PE-NATIVE-LOOKUP-BOUNDS.
+{-@ folioTraceLookupBounded :: pages:Folio origin final -> page:Natural -> position:Ordinal
+      -> {traceLookupPresent (folioTraceLookup pages page position)
+           == chainOrdinalLT position (folioPageOrderType pages page)} @-}
+folioTraceLookupBounded :: Folio origin final -> Natural -> Ordinal -> ()
+folioTraceLookupBounded (OriginFolio count pageChain witness) page position =
+  prefixTraceLookupBounded (OriginFolio count pageChain witness) page position
+folioTraceLookupBounded pages@(SnocPage _ previous _ _) page position
+  | page >= folioLength previous =
+      prefixTraceLookupBounded pages (page - folioLength previous) position
+  | otherwise = folioTraceLookupBounded previous page position
+
+{-@ reflect traceLookupStartsWith @-}
+traceLookupStartsWith :: Ordinal -> Maybe [Ordinal] -> Bool
+traceLookupStartsWith _ Nothing = True
+traceLookupStartsWith position (Just positions) = Trace.traceStartsWith position positions
+
+-- ALIGN: PE-NATIVE-LOOKUP-HEAD.
+{-@ folioTraceLookupHead :: pages:Folio origin final -> page:Natural -> position:Ordinal
+      -> {traceLookupStartsWith position (folioTraceLookup pages page position)} @-}
+folioTraceLookupHead :: Folio origin final -> Natural -> Ordinal -> ()
+folioTraceLookupHead pages page position =
+  case indexInFolio pages page position of
+    Nothing -> ()
+    Just index -> pageElement index `seq` ()
 
 {-@ reflect trimLookupTrace @-}
 trimLookupTrace :: Int -> Maybe [Ordinal] -> Maybe [Ordinal]
