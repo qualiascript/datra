@@ -59,13 +59,17 @@ def check(require_complete=False):
         reflected = re.findall(r"\{-@\s*(?:reflect|inline)\s+(\w+)", text)
         types = re.findall(r"^(?:data|newtype)\s+(\w+)", text, re.M)
         aliases = re.findall(r"^type\s+(?!role\b|family\b|instance\b)(\w+)", text, re.M)
+        predicates = re.findall(r"\{-@\s*predicate\s+(\w+)", text)
+        refinement_aliases = re.findall(r"\{-@\s*type\s+(\w+)", text)
         embeddings = re.findall(r"\{-@\s*embed\s+([^\n]*?)\s*@-\}", text)
         path = str(source.relative_to(ROOT))
         refinements = re.findall(r"\{-@\s*(?:assume\s+)?([a-z]\w*)\s*::", text)
-        if reflected or types or aliases or refinements:
+        if reflected or types or aliases or predicates or refinement_aliases or refinements:
             expected = expected_modules.pop(path, None)
             if (expected is None or expected["reflected"] != reflected
                     or expected["types"] != types or expected["aliases"] != aliases
+                    or expected["predicates"] != predicates
+                    or expected["refinement_aliases"] != refinement_aliases
                     or expected["embeddings"] != embeddings
                     or expected["refinements"] != refinements):
                 errors.append(f"Correspondence inventory drift: {path}")

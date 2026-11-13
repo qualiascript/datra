@@ -17,6 +17,7 @@ module PageElements.Internal
   , PageElementArrow
   , pageElements
   , pageElementsWithScope
+  , pageElementsFolio
   , pageElementIndex
   , pageElementIndexOrigin
   , pageElementIndexPage
@@ -140,10 +141,16 @@ pageElements pages useCategory =
 
 -- | Internal, deterministically scoped variant used by derived functors whose
 -- object action must return the same type-level category on every call.
+{-@ reflect pageElementsWithScope @-}
 pageElementsWithScope
   :: Folio origin final
   -> PageElements scope origin final
 pageElementsWithScope = PageElements
+
+-- | The single folio underlying this category of occurrences.
+{-@ reflect pageElementsFolio @-}
+pageElementsFolio :: PageElements scope origin final -> Folio origin final
+pageElementsFolio (PageElements pages) = pages
 
 -- | Refine a page number and ordinal to an index of this folio's page-element
 -- category.  Pages after the finite presentation repeat its final chain, so
@@ -334,6 +341,7 @@ withPageElementValue
 
 -- | Collapse an occurrence on the infinite padded spine to its coherent
 -- representative at the final genuine page.
+{-@ reflect normalizePageElement @-}
 normalizePageElement
   :: PageElements scope origin final
   -> PageElement scope object
@@ -354,6 +362,7 @@ normalizeSomePageElement (PageElements pages) =
     (fromIntegral (folioLength pages))
 
 -- | Normalize both endpoints of a page-element arrow.
+{-@ reflect normalizePageElementArrow @-}
 normalizePageElementArrow
   :: PageElements scope origin final
   -> PageElementArrow scope source target

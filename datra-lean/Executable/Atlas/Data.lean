@@ -120,6 +120,34 @@ noncomputable def Atlas.toSemantics (X : Atlas) : Datra.Semantics.Atl := X.data.
 def Atlas.dataAt (X : Atlas) (x : X.Element) : Dominion (X.cellData x.val.cell) :=
   X.data.action.dataAt x.normalize
 
+-- ALIGN: ATLAS-IDENTITY-WITNESS.
+theorem Atlas.identityWitness (X : Atlas) (source : X.Element) (datum : X.cellData source.val.cell) :
+    (X.data.action.normalizedMap (𝟙 source)).map datum = datum :=
+  X.data.identity source datum
+
+-- ALIGN: ATLAS-COMPOSITION-WITNESS.
+theorem Atlas.compositionWitness (X : Atlas) {source middle target : X.Element}
+    (second : middle ⟶ target) (first : source ⟶ middle) (datum : X.cellData source.val.cell) :
+    (X.data.action.normalizedMap (first ≫ second)).map datum =
+      (X.data.action.normalizedMap second).map ((X.data.action.normalizedMap first).map datum) :=
+  X.data.composition first second datum
+
+-- ALIGN: ATLAS-COHERENCE-WITNESS.
+theorem Atlas.coherenceWitness (X : Atlas) (source : X.Element) (arrow : source ⟶ source.normalize)
+    (datum : X.cellData source.val.cell) : (X.data.action.normalizedMap arrow).map datum = datum := by
+  rw [Subsingleton.elim arrow source.toNormalized]
+  exact X.data.coherence source datum
+
+-- ALIGN: ATLAS-DISJOINT-WITNESS.
+theorem Atlas.disjointWitness (X : Atlas) {left right origin : X.Element}
+    (samePage : left.val.page = right.val.page) (different : left.val.position ≠ right.val.position)
+    (bounded : left.val.page ≤ X.pages.depth - 1) (atOrigin : origin.val.page = 0)
+    (leftToOrigin : left ⟶ origin) (rightToOrigin : right ⟶ origin)
+    (leftDatum : X.cellData left.val.cell) (rightDatum : X.cellData right.val.cell) :
+    (X.data.action.normalizedMap leftToOrigin).map leftDatum ≠
+      (X.data.action.normalizedMap rightToOrigin).map rightDatum :=
+  X.data.disjoint samePage different bounded atOrigin leftToOrigin rightToOrigin leftDatum rightDatum
+
 /-- A dependent dominion retains its selected cell, as AtlasCellDominion does. -/
 structure Atlas.CellDominion (X : Atlas) where
   element : X.Element

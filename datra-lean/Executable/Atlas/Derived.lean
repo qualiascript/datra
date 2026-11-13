@@ -1,4 +1,5 @@
 import Executable.Atlas.Data
+import Executable.PageElementLookup
 import Executable.CoverageEnumeration
 
 namespace Datra.Executable
@@ -137,7 +138,7 @@ theorem Atlas.originImage_map (X : Atlas) {source target : X.Element} (arrow : s
     (datum : X.cellData source.val.cell) :
     X.originImage target ((X.data.action.normalizedMap arrow).map datum) =
       X.originImage source datum := by
-  have composition := X.data.composition arrow target.toOrigin datum
+  have composition := X.compositionWitness target.toOrigin arrow datum
   have same : arrow ≫ target.toOrigin = source.toOrigin := Subsingleton.elim _ _
   rw [same] at composition
   exact composition.symm
@@ -193,6 +194,25 @@ def Atlas.cellHasOrigin (X : Atlas) (source : PageElement X.pages) : Prop :=
 theorem Atlas.validCell_hasOrigin (X : Atlas) (source : X.Element) : X.cellHasOrigin source.val :=
   ⟨source.toOrigin.precedes, source.toOrigin.transported⟩
 
+/-- Consume a dynamically looked-up cell with the origin-arrow evidence
+retained through the existential callback in Haskell. -/
+-- ALIGN: ATLAS-CELL-LOOKUP-ORIGIN.
+def Atlas.withCellAt {result : Type} (X : Atlas) (page : Nat) (position : Ordinal)
+    (useCell : (source : PageElement X.pages) → X.cellHasOrigin source → result) : Option result :=
+  (X.pages.elementAt page position).map fun source => useCell source.val (X.validCell_hasOrigin source)
+
+theorem Atlas.withCellAt_roundtrip {result : Type} (X : Atlas) (source : X.Element)
+    (useCell : (source : PageElement X.pages) → X.cellHasOrigin source → result) :
+    X.withCellAt source.val.page source.val.position useCell =
+      some (useCell source.val (X.validCell_hasOrigin source)) := by
+  simp only [Atlas.withCellAt, FolioData.elementAt_roundtrip, Option.map_some]
+
+theorem Atlas.withCellAt_isSome {result : Type} (X : Atlas) (page : Nat) (position : Ordinal)
+    (useCell : (source : PageElement X.pages) → X.cellHasOrigin source → result) :
+    (X.withCellAt page position useCell).isSome =
+      Ordinal.ordinalLT position (X.pages.pageAt page).chain.orderType := by
+  simp only [Atlas.withCellAt, Option.isSome_map, FolioData.elementAt_isSome]
+
 /-- The common origin-rank insertion used by merge and sequence membership
 and by their dependent data components. -/
 -- ALIGN: ATLAS-CELL-ORIGIN-RANK-INSERTION.
@@ -204,6 +224,13 @@ def Atlas.cellOriginRankInsertion (X : Atlas) (source : X.Element) :
 theorem Atlas.cellOriginRankInsertion_map (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) :
     (X.cellOriginRankInsertion source).map datum = X.originImageRank source datum := rfl
+
+-- ALIGN: ATLAS-CELL-RANK-MAP.
+theorem Atlas.cellOriginRankInsertion_map_arrow (X : Atlas) {source target : X.Element}
+    (arrow : source ⟶ target) (datum : X.cellData source.val.cell) :
+    (X.cellOriginRankInsertion target).map ((X.data.action.normalizedMap arrow).map datum) =
+      (X.cellOriginRankInsertion source).map datum := by
+  simp only [X.cellOriginRankInsertion_map, Atlas.originImageRank, X.originImage_map]
 
 def Atlas.cellContainsRank (X : Atlas) (source : X.Element) (valueRank : Nat) : Bool :=
   ((X.cellOriginRankInsertion source).preimage valueRank).isSome
@@ -218,6 +245,15 @@ theorem Atlas.cellContainsRank_image (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) :
     X.cellContainsRank source ((X.cellOriginRankInsertion source).map datum) = true :=
   (X.cellContainsRank_iff source _).mpr ⟨datum, rfl⟩
+
+-- ALIGN: ATLAS-CELL-MEMBERSHIP-PRESERVED.
+theorem Atlas.cellContainsRank_preserved (X : Atlas) {source target : X.Element}
+    (arrow : source ⟶ target) (valueRank : Nat) (accepted : X.cellContainsRank source valueRank = true) :
+    X.cellContainsRank target valueRank = true := by
+  obtain ⟨datum, same⟩ := (X.cellContainsRank_iff source valueRank).mp accepted
+  apply (X.cellContainsRank_iff target valueRank).mpr
+  refine ⟨(X.data.action.normalizedMap arrow).map datum, ?_⟩
+  exact (X.cellOriginRankInsertion_map_arrow arrow datum).trans same
 
 -- ALIGN: ATLAS-CELL-RANK-PREIMAGE-SOUND.
 theorem Atlas.cellOriginRankPreimage_sound (X : Atlas) (source : X.Element)
@@ -242,7 +278,7 @@ theorem Atlas.cellContainsRank_samePage (X : Atlas) (left right : X.Element)
   obtain ⟨b, hb⟩ := (X.cellContainsRank_iff right valueRank).mp inRight
   apply FolioData.ValidElement.eq_of_page_position samePage
   by_contra different
-  have distinct := X.data.disjoint
+  have distinct := X.disjointWitness
     (left := left.normalize) (right := right.normalize)
     (congrArg (fun n => min n (X.pages.depth - 1)) samePage) different
     (min_le_right _ _) rfl left.normalize.toOrigin right.normalize.toOrigin a b

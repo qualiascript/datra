@@ -1,4 +1,3 @@
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -33,7 +32,15 @@ import Atlas
   , atlasPageElements
   , atlasWitness
   )
-import AtlasExtent.Internal (atlasCellOriginRankInsertion, extentContainsRank, cellContainsRank)
+import AtlasExtent.Internal (atlasCellOriginRankInsertion)
+import AtlasSequence.Resolution
+  ( AtlasSequenceMember
+  , atlasSequenceMember
+  , withAtlasSequenceMember
+  , withMemberAt
+  , withMemberAtPosition
+  , sequenceCellContains
+  )
 import AtlasTransposal
   ( AtlasTransposalElement
   , atlasTransposal
@@ -55,7 +62,7 @@ import Consolidation
   , op
   , unop
   )
-import Data.List.NonEmpty (NonEmpty (..))
+import Data.List.NonEmpty (NonEmpty (..), toList)
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
@@ -98,26 +105,6 @@ import PageElements
   )
 import PageElements.LiquidInternal (PageElement (..))
 import qualified Pagination
-
--- | An existential Atlas retained as one member of a flattened sequence.
-data AtlasSequenceMember where
-  AtlasSequenceMember
-    :: Atlas atlasScope paginationScope cellData origin final
-    -> AtlasSequenceMember
-
-atlasSequenceMember
-  :: Atlas atlasScope paginationScope cellData origin final
-  -> AtlasSequenceMember
-atlasSequenceMember = AtlasSequenceMember
-
-withAtlasSequenceMember
-  :: AtlasSequenceMember
-  -> (forall atlasScope paginationScope cellData origin final.
-       Atlas atlasScope paginationScope cellData origin final
-       -> result)
-  -> result
-withAtlasSequenceMember (AtlasSequenceMember valueAtlas) useAtlas =
-  useAtlas valueAtlas
 
 -- | A non-origin cell tagged by its member and source-cell transport trace.
 data AtlasSequencePageCell = AtlasSequencePageCell Natural [Ordinal]
@@ -182,63 +169,6 @@ prefixPageOrder members memberIndex pageNumber =
         rest
         (remaining - 1)
         (addOrdinals accumulated (memberPageOrder member pageNumber))
-
-withMemberAt
-  :: [AtlasSequenceMember]
-  -> Natural
-  -> (forall atlasScope paginationScope cellData origin final.
-       Atlas atlasScope paginationScope cellData origin final
-       -> result)
-  -> Maybe result
-withMemberAt [] _ _ = Nothing
-withMemberAt (member : _) 0 useAtlas =
-  Just (withAtlasSequenceMember member useAtlas)
-withMemberAt (_ : members) memberIndex useAtlas =
-  withMemberAt members (memberIndex - 1) useAtlas
-
--- ALIGN: SEQUENCE-MEMBER-POSITION-RESOLVER.
--- ALIGN: SEQUENCE-MEMBER-POSITION-ROUNDTRIP.
--- ALIGN: SEQUENCE-MEMBER-POSITION-SOUND.
--- ALIGN: SEQUENCE-COMPONENT-DECODER.
-withMemberAtPosition
-  :: forall result.
-     [AtlasSequenceMember]
-  -> Natural
-  -> Ordinal
-  -> (forall atlasScope paginationScope cellData origin final.
-       Natural
-       -> Atlas atlasScope paginationScope cellData origin final
-       -> Ordinal
-       -> Maybe result)
-  -> Maybe result
-withMemberAtPosition = go 0
-  where
-    go
-      :: Natural
-      -> [AtlasSequenceMember]
-      -> Natural
-      -> Ordinal
-      -> (forall atlasScope paginationScope cellData origin final.
-           Natural
-           -> Atlas atlasScope paginationScope cellData origin final
-           -> Ordinal
-           -> Maybe result)
-      -> Maybe result
-    go _ [] _ _ _ = Nothing
-    go memberIndex (member : members) pageNumber position usePosition =
-      withAtlasSequenceMember member $ \valueAtlas ->
-        withPageAt (atlasFolio valueAtlas) pageNumber $ \sourcePage ->
-          let sourceOrder = chainOrderType sourcePage
-          in if ordinalLT position sourceOrder
-              then usePosition memberIndex valueAtlas position
-              else do
-                remaining <- subtractOrdinal sourceOrder position
-                go
-                  (memberIndex + 1)
-                  members
-                  pageNumber
-                  remaining
-                  usePosition
 
 -- ALIGN: SEQUENCE-PAGE-CELL-POSITION.
 -- ALIGN: SEQUENCE-PAGE-TRACE-ENCODING.
@@ -387,54 +317,6 @@ atlasSequenceFolio members =
         (atlasSequencePageChain members 0)
         (collapseToOrigin members)
   in appendRemainingPages members 1 depth firstPage
-
-data SequenceSourceCell where
-  SequenceOriginCell :: SequenceSourceCell
-  SequenceMemberSourceCell
-    :: Natural
-    -> Atlas atlasScope scope cellData origin final
-    -> PageElement scope object
-    -> SequenceSourceCell
-
--- ALIGN: SEQUENCE-SOURCE-RESOLUTION.
--- ALIGN: SEQUENCE-SOURCE-RESOLUTION-EQUIV.
--- ALIGN: SEQUENCE-NORMALIZED-RESOLUTION.
-sequenceSourceCell
-  :: NonEmpty AtlasSequenceMember
-  -> PageElement mergeScope object
-  -> Maybe SequenceSourceCell
-sequenceSourceCell members occurrence
-  | pageElementPage occurrence == 0 = Just SequenceOriginCell
-  | otherwise =
-      let sourcePage = pageElementPage occurrence - 1
-          position = pageElementPosition occurrence
-      in withMemberAtPosition (toList members) sourcePage position $
-          \memberIndex valueAtlas sourcePosition -> do
-            index <- pageElementIndex
-              (atlasPageElements valueAtlas) sourcePage sourcePosition
-            pure $ withPageElement (pageElement index) $
-              SequenceMemberSourceCell memberIndex valueAtlas
-
--- ALIGN: SEQUENCE-CELL-MEMBERSHIP.
--- ALIGN: SEQUENCE-CELL-ROOT-IMAGE.
--- ALIGN: SEQUENCE-RESOLVED-CELL.
--- ALIGN: SEQUENCE-FINITE-MEMBERSHIP.
-sequenceCellContains
-  :: NonEmpty AtlasSequenceMember
-  -> PageElement mergeScope object
-  -> AtlasSequenceDatum datumObject
-  -> Bool
-sequenceCellContains members occurrence
-    (AtlasSequenceDatum datumMember valueRank) =
-  case sequenceSourceCell members occurrence of
-    Nothing -> False
-    Just SequenceOriginCell ->
-      maybe False id $
-        withMemberAt (toList members) datumMember $ \valueAtlas ->
-          extentContainsRank valueAtlas valueRank
-    Just (SequenceMemberSourceCell sourceMember valueAtlas source) ->
-      sourceMember == datumMember
-        && cellContainsRank valueAtlas source valueRank
 
 -- ALIGN: SEQUENCE-DOMINION-ROUNDTRIP.
 -- ALIGN: SEQUENCE-DOMINION-INTERPRETATION.
@@ -668,6 +550,3 @@ atlasSequenceMemberOrderedTransposal
         (sequenceMemberObjectPreimage
           memberList memberIndex sourceAtlas)
         (const ())
-
-toList :: NonEmpty value -> [value]
-toList (value :| values) = value : values

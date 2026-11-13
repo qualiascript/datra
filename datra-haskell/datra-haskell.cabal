@@ -163,7 +163,9 @@ library
         EmptyAtlas.Internal
         AtlasMerge.Internal
         AtlasMerge.LiquidInternal
+        AtlasMerge.Resolution
         AtlasSequence.LiquidInternal
+        AtlasSequence.Resolution
         AtlasConfederation.Internal
         AtlasFederation.Internal
         AtlasMapFederation.Internal

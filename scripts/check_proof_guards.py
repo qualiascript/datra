@@ -212,6 +212,26 @@ proofGuard = sequenceDatumMap (const True) (const False) (const ())
 
 EXTENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs"
 EXTENT_GUARDS = {
+    "transport membership requires an accepted source rank": """
+{-@ proofGuard :: valueAtlas:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellHasOrigin valueAtlas (arrowSource arrow)
+           && cellHasOrigin valueAtlas (arrowTarget arrow)}
+      -> valueRank:Natural
+      -> {cellContainsRank valueAtlas (arrowTarget arrow) valueRank} @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s source target -> Natural -> ()
+proofGuard = cellContainsRankPreserved
+""",
+    "cell lookup cannot switch to an unrelated Atlas origin": """
+{-@ proofGuard :: Atlas atlasScope scope cellData origin final
+      -> Atlas atlasScope scope cellData origin final
+      -> Natural -> Ordinal -> Natural -> Maybe Bool @-}
+proofGuard :: Atlas atlasScope scope cellData origin final
+  -> Atlas atlasScope scope cellData origin final
+  -> Natural -> Ordinal -> Natural -> Maybe Bool
+proofGuard owner other page position valueRank =
+  withAtlasCellAt owner page position (\\source -> cellContainsRank other source valueRank)
+""",
     "extent origin insertions require a valid origin arrow": """
 {-@ proofGuard
       :: valueAtlas:Atlas atlasScope scope cellData origin final
@@ -271,12 +291,90 @@ proofGuard _ _ = []
 
 ATLAS_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Internal.hs"
 ATLAS_GUARDS = {
+    "Atlas cannot store laws for unrelated normalization bounds": """
+{-@ proofGuard :: Pagination scope origin final -> AtlasData scope cellData
+      -> Atlas atlasScope scope cellData origin final @-}
+proofGuard :: Pagination scope origin final -> AtlasData scope cellData
+  -> Atlas atlasScope scope cellData origin final
+proofGuard = Atlas
+""",
+    "Atlas composition witnesses require matching arrow endpoints": """
+{-@ proofGuard :: Atlas a s d o f -> PageElementArrow s middle target
+      -> PageElementArrow s source middle -> d source -> () @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s middle target
+  -> PageElementArrow s source middle -> d source -> ()
+proofGuard = atlasCompositionWitness
+""",
+    "Atlas coherence witnesses require the normalization arrow": """
+{-@ proofGuard :: Atlas a s d o f -> PageElement s object
+      -> PageElementArrow s object object -> d object -> () @-}
+proofGuard :: Atlas a s d o f -> PageElement s object
+  -> PageElementArrow s object object -> d object -> ()
+proofGuard = atlasCoherenceWitness
+""",
+    "Atlas disjointness witnesses require distinct cells on one genuine page": """
+{-@ proofGuard :: Atlas a s d o f -> PageElement s left -> PageElement s right
+      -> PageElementArrow s left origin -> PageElementArrow s right origin
+      -> d left -> d right -> () @-}
+proofGuard :: Atlas a s d o f -> PageElement s left -> PageElement s right
+  -> PageElementArrow s left origin -> PageElementArrow s right origin
+  -> d left -> d right -> ()
+proofGuard = atlasDisjointWitness
+""",
     "Atlas lookup requires the index's origin to match": """
 {-@ proofGuard :: Atlas atlasScope scope cellData origin final
       -> PageElementIndex scope -> SomePageElement scope @-}
 proofGuard :: Atlas atlasScope scope cellData origin final
   -> PageElementIndex scope -> SomePageElement scope
 proofGuard = atlasPageCell
+""",
+}
+
+
+ATLAS_DATA_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/LiquidInternal.hs"
+ATLAS_DATA_GUARDS = {
+    "Atlas data cannot manufacture laws for an arbitrary action": """
+{-@ proofGuard :: Natural -> Int -> AtlasAction scope cellData -> AtlasData scope cellData @-}
+proofGuard :: Natural -> Int -> AtlasAction scope cellData -> AtlasData scope cellData
+proofGuard finalPage traceLimit action = AtlasData finalPage traceLimit action
+  (\\_ _ -> ()) (\\_ _ _ -> ()) (\\_ _ _ -> ()) (\\_ _ _ _ _ _ -> ())
+""",
+}
+
+
+MERGE_RESOLUTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Resolution.hs"
+MERGE_RESOLUTION_GUARDS = {
+    "merge resolution cannot switch the left cell's owner": """
+{-@ proofGuard :: Atlas la ls ld lo lf -> Atlas la ls ld lo lf
+      -> Atlas ra rs rd ro rf -> PageElement ms object -> Maybe Bool @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas la ls ld lo lf
+  -> Atlas ra rs rd ro rf -> PageElement ms object -> Maybe Bool
+proofGuard left other right occurrence =
+  mergeSourceCell left right occurrence False
+    (\\source -> Extent.cellContainsRank other source 0) (\\_ -> False)
+""",
+}
+
+SEQUENCE_RESOLUTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Resolution.hs"
+SEQUENCE_RESOLUTION_GUARDS = {
+    "sequence member resolution cannot return an out-of-range index": """
+{-@ proofGuard :: members:[AtlasSequenceMember] -> Natural -> Ordinal
+      -> Maybe ({index:Natural | index >= len members}) @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> Ordinal -> Maybe Natural
+proofGuard members page position =
+  withMemberAtPosition members page position (\\index _ _ -> Just index)
+""",
+    "sequence resolution cannot discard the selected cell's trace": """
+{-@ proofGuard :: NonEmpty AtlasSequenceMember -> PageElement scope object -> Maybe Bool @-}
+proofGuard :: NonEmpty AtlasSequenceMember -> PageElement scope object -> Maybe Bool
+proofGuard members occurrence =
+  sequenceSourceCell members occurrence False proofGuardCallback
+
+{-@ proofGuardCallback :: Natural -> owner:Atlas a s d o f
+      -> source:{PageElement s object | Extent.cellHasOrigin owner source} -> Bool @-}
+proofGuardCallback :: Natural -> Atlas a s d o f -> PageElement s object -> Bool
+proofGuardCallback _ owner source =
+  Extent.cellContainsRank owner (source {pageElementTrace = []}) 0
 """,
 }
 
@@ -309,7 +407,10 @@ def run(pattern=None):
                                     (EXTENT_SOURCE, EXTENT_GUARDS),
                                     (FOLIO_SOURCE, FOLIO_GUARDS),
                                     (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),
-                                    (ATLAS_SOURCE, ATLAS_GUARDS)]:
+                                    (ATLAS_SOURCE, ATLAS_GUARDS),
+                                    (ATLAS_DATA_SOURCE, ATLAS_DATA_GUARDS),
+                                    (MERGE_RESOLUTION_SOURCE, MERGE_RESOLUTION_GUARDS),
+                                    (SEQUENCE_RESOLUTION_SOURCE, SEQUENCE_RESOLUTION_GUARDS)]:
             source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
                             f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
                             source_path.read_text())

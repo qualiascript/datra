@@ -1,4 +1,3 @@
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -41,7 +40,8 @@ import AtlasMerge.LiquidInternal
   , mergeDatumDominion
   , mergeDatumInsertion
   )
-import AtlasExtent.Internal (atlasCellOriginRankInsertion, extentContainsRank, cellContainsRank)
+import AtlasExtent.Internal (atlasCellOriginRankInsertion)
+import AtlasMerge.Resolution (mergeCellContains)
 import AtlasTransposal
   ( AtlasTransposalElement
   , atlasTransposal
@@ -313,66 +313,6 @@ atlasMergeFolio left right =
         (atlasMergePageChain left right 0)
         (collapseToOrigin left)
   in appendRemainingPages left right 1 depth firstPage
-
-data MergeSourceCell leftScope rightScope where
-  MergeOriginCell :: MergeSourceCell leftScope rightScope
-  MergeLeftSourceCell
-    :: PageElement leftScope object
-    -> MergeSourceCell leftScope rightScope
-  MergeRightSourceCell
-    :: PageElement rightScope object
-    -> MergeSourceCell leftScope rightScope
-
--- ALIGN: MERGE-PAGE-RESOLUTION.
--- ALIGN: MERGE-PADDED-PAGE-RESOLUTION.
--- ALIGN: MERGE-COMPONENT-DECODER.
--- ALIGN: MERGE-SOURCE-RESOLUTION.
--- ALIGN: MERGE-SOURCE-RESOLUTION-EQUIV.
--- ALIGN: MERGE-NORMALIZED-RESOLUTION.
-mergeSourceCell
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> PageElement mergeScope object
-  -> Maybe (MergeSourceCell leftScope rightScope)
-mergeSourceCell left right occurrence
-  | pageElementPage occurrence == 0 = Just MergeOriginCell
-  | otherwise =
-      let componentPage = pageElementPage occurrence - 1
-          position = pageElementPosition occurrence
-      in withPageAt (atlasFolio left) componentPage $ \leftPage ->
-          withPageAt (atlasFolio right) componentPage $ \rightPage -> do
-            componentIndex <- chainIndex (sumChains leftPage rightPage) position
-            case chainObjectAt componentIndex of
-              Left value -> do
-                index <- pageElementIndex (atlasPageElements left) componentPage
-                  (chainPosition leftPage value)
-                pure (withPageElement (pageElement index) MergeLeftSourceCell)
-              Right value -> do
-                index <- pageElementIndex (atlasPageElements right) componentPage
-                  (chainPosition rightPage value)
-                pure (withPageElement (pageElement index) MergeRightSourceCell)
-
--- ALIGN: MERGE-CELL-MEMBERSHIP.
--- ALIGN: MERGE-RESOLVED-CELL.
--- ALIGN: MERGE-BOUQUET-MEMBERSHIP.
-mergeCellContains
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> PageElement mergeScope object
-  -> AtlasMergeDatum datumObject
-  -> Bool
-mergeCellContains left right occurrence datum =
-  case mergeSourceCell left right occurrence of
-    Nothing -> False
-    Just MergeOriginCell -> case datum of
-      AtlasMergeLeftDatum valueRank -> extentContainsRank left valueRank
-      AtlasMergeRightDatum valueRank -> extentContainsRank right valueRank
-    Just (MergeLeftSourceCell source) -> case datum of
-      AtlasMergeLeftDatum valueRank -> cellContainsRank left source valueRank
-      AtlasMergeRightDatum _ -> False
-    Just (MergeRightSourceCell source) -> case datum of
-      AtlasMergeLeftDatum _ -> False
-      AtlasMergeRightDatum valueRank -> cellContainsRank right source valueRank
 
 -- ALIGN: MERGE-UNRANK-SOUND.
 -- ALIGN: MERGE-BOUQUET-DATA-DECODE.

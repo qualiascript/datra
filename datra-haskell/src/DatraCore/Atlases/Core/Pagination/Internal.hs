@@ -39,7 +39,7 @@ import PageElements
   , normalizePageElement
   , normalizePageElementArrow
   )
-import PageElements.Internal (pageElementsWithScope)
+import PageElements.Internal (pageElementsWithScope, pageElementsFolio)
 import PageElements.LiquidInternal hiding (withPageElementArrow)
 import Pagination.LiquidInternal
   ( composePaginationMorphismsData
@@ -53,13 +53,12 @@ import Pagination.LiquidInternal
 import qualified Pagination.LiquidInternal as Liquid
 import Prelude hiding ((.), id)
 
--- | A folio paired with the category of page elements generated from it.
+-- | A pagination retains its category of page elements, which owns the folio.
 -- The nominal @scope@ makes the association generative: page elements from a
 -- different pagination cannot be substituted, even when both folios have the
 -- same Haskell carrier types.
 type role Pagination nominal nominal nominal
 data Pagination (scope :: Type) origin final = Pagination
-  (Folio origin final)
   (PageElements scope origin final)
 
 -- | Public pagination morphisms wrap the LiquidHaskell-verified
@@ -83,18 +82,18 @@ paginationWithScope
   :: Folio origin final
   -> Pagination scope origin final
 paginationWithScope pages =
-  Pagination pages (pageElementsWithScope pages)
+  Pagination (pageElementsWithScope pages)
 
 -- | Recover the folio from a pagination.
 paginationFolio :: Pagination scope origin final -> Folio origin final
-paginationFolio (Pagination pages _) = pages
+paginationFolio (Pagination elements) = pageElementsFolio elements
 
 -- | Recover the folio's corresponding category of page elements.
 {-@ reflect paginationPageElements @-}
 paginationPageElements
   :: Pagination scope origin final
   -> PageElements scope origin final
-paginationPageElements (Pagination _ elements) = elements
+paginationPageElements (Pagination elements) = elements
 
 -- | The number of genuine pages in the pagination's finite presentation.
 -- Every greater page number denotes a repeated occurrence of its final page.
@@ -102,10 +101,11 @@ paginationCardinality
   :: Pagination scope origin final
   -> Natural
 {-@ reflect paginationCardinality @-}
-paginationCardinality (Pagination pages _) = folioLengthData pages
+paginationCardinality (Pagination elements) = folioLengthData (pageElementsFolio elements)
 
 -- | Collapse a tall occurrence to its representative at or before the final
 -- genuine page.
+{-@ reflect normalizePaginationElement @-}
 normalizePaginationElement
   :: Pagination scope origin final
   -> PageElement scope object
@@ -114,6 +114,7 @@ normalizePaginationElement paginationValue =
   normalizePageElement (paginationPageElements paginationValue)
 
 -- | Normalize both endpoints of a tall page-element arrow.
+{-@ reflect normalizePaginationArrow @-}
 normalizePaginationArrow
   :: Pagination scope origin final
   -> PageElementArrow scope source target

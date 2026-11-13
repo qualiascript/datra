@@ -82,10 +82,28 @@ preserves that arrow evidence. The cached folio counts are constructor
 invariants: an origin has length one and an append increments the previous
 length. Negative checks reject malformed counts, missing padding, a trace
 that discards the origin, and Atlas lookup without a matching index origin.
-Lean proves the corresponding trace and count laws.
-Unchecked assembly callers still need to carry the validity of their source
-occurrences through their callbacks; generative scope alone does not establish
+Lean proves the corresponding trace and count laws. The shared Atlas lookup
+callback retains the source's origin-arrow condition. Merge and sequence
+resolve component cells through this callback, and their membership modules
+are LiquidHaskell-checked. The member-position scan also checks that its
+selected sequence index lies within the supplied member list. Negative checks
+reject changing the selected cell's owning Atlas, discarding its transport
+trace, or claiming an out-of-range member index. Their full Atlas assembly
+still needs the stronger validity and membership-preservation conditions for
+data arrows and inclusion callbacks; generative scope alone does not establish
 these value-dependent conditions.
+
+Atlas data stores its four law witnesses with their refinements intact. The
+owning Atlas checks that the stored normalization bounds match its pagination,
+and its identity, composition, coherence, and disjointness accessors recover
+the corresponding equations for the public data action. Pagination stores one
+page-element category and recovers its folio from that category. The shared
+extent module uses the retained composition law to prove that transport
+preserves origin ranks and accepted cell membership. The correspondence
+inventory includes the logical predicate and refinement-type aliases used to
+state these contracts. The derived data-action families still need to encode
+cell membership at their assembly boundary, rather than expose arbitrary raw
+tagged ranks as members of every cell.
 
 Merge and sequence components use a shared origin-rank insertion. Its inverse
 checks the candidate's forward rank, because Dominion unranking and insertion

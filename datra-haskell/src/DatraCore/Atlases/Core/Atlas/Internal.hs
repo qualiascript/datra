@@ -43,6 +43,8 @@ import Atlas.LiquidInternal
   , AtlasData
   , atlasAction
   , atlasActionData
+  , atlasDataFinalPage
+  , atlasDataTraceLimit
   , atlasActionDataAt
   , atlasActionMap
   , atlasData
@@ -64,8 +66,6 @@ import PageElements.LiquidInternal
 import Pagination
   ( Pagination
   , PaginationMorphism
-  , normalizePaginationArrow
-  , normalizePaginationElement
   , paginationCardinality
   , paginationCoherence
   , paginationCoherenceIdempotent
@@ -90,6 +90,12 @@ import Pagination
 -- normalized page elements and arrows.  Consequently, all public observations
 -- of a padded occurrence are defined by its last genuine representative.
 type role Atlas nominal nominal nominal nominal nominal
+{-@ data Atlas atlasScope scope cellData origin final = Atlas
+      { storedPagination :: Pagination scope origin final
+      , storedAtlasData :: {stored:AtlasData scope cellData |
+           atlasDataFinalPage stored == atlasFinalPage storedPagination
+           && atlasDataTraceLimit stored == atlasTraceLimit storedPagination}
+      } @-}
 data Atlas
   (atlasScope :: Type)
   (scope :: Type)
@@ -414,6 +420,7 @@ atlasTraceLimit paginationValue =
   fromIntegral (paginationCardinality paginationValue)
 
 -- | Recover the pagination underlying an atlas.
+{-@ reflect atlasPagination @-}
 atlasPagination
   :: Atlas atlasScope scope cellData origin final
   -> Pagination scope origin final
@@ -445,15 +452,20 @@ normalizeAtlasElement
   -> PageElement scope object
 {-@ reflect normalizeAtlasElement @-}
 normalizeAtlasElement value =
-  normalizePaginationElement (atlasPagination value)
+  normalizePageElementAt
+    (atlasDataFinalPage (storedAtlasData value))
+    (atlasDataTraceLimit (storedAtlasData value))
 
 -- | Normalize both endpoints of a tall page-element arrow.
+{-@ reflect normalizeAtlasArrow @-}
 normalizeAtlasArrow
   :: Atlas atlasScope scope cellData origin final
   -> PageElementArrow scope source target
   -> PageElementArrow scope source target
 normalizeAtlasArrow value =
-  normalizePaginationArrow (atlasPagination value)
+  normalizePageElementArrowAt
+    (atlasDataFinalPage (storedAtlasData value))
+    (atlasDataTraceLimit (storedAtlasData value))
 
 -- | The idempotent pagination endomorphism selecting the finite
 -- representatives used by this atlas.
@@ -539,30 +551,71 @@ normalizeAtlasDatum value occurrence =
 -- | Reuse the checked laws retained by an Atlas. These eliminators keep
 -- derived constructions proof-bearing instead of asking them to resupply
 -- opaque unit callbacks.
+-- ALIGN: ATLAS-IDENTITY-WITNESS.
+{-@ atlasIdentityWitness
+      :: value:Atlas atlasScope scope cellData origin final
+      -> occurrence:PageElement scope object -> datum:cellData object
+      -> {applyInsertion (mapAtlasData value (identityPageElementArrow occurrence)) datum == datum} @-}
 atlasIdentityWitness
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> cellData object
   -> ()
-atlasIdentityWitness value = atlasDataIdentityLaw (storedAtlasData value)
+atlasIdentityWitness value occurrence datum =
+  atlasDataIdentityLaw (storedAtlasData value) occurrence datum
 
+-- ALIGN: ATLAS-COMPOSITION-WITNESS.
+{-@ atlasCompositionWitness
+      :: value:Atlas atlasScope scope cellData origin final
+      -> second:PageElementArrow scope middle target
+      -> first:{PageElementArrow scope source middle | arrowTarget first == arrowSource second}
+      -> datum:cellData source
+      -> {applyInsertion (mapAtlasData value (composePageElementArrows second first)) datum
+           == applyInsertion (mapAtlasData value second)
+                (applyInsertion (mapAtlasData value first) datum)} @-}
 atlasCompositionWitness
   :: Atlas atlasScope scope cellData origin final
   -> PageElementArrow scope middle target
   -> PageElementArrow scope source middle
   -> cellData source
   -> ()
-atlasCompositionWitness value =
-  atlasDataCompositionLaw (storedAtlasData value)
+atlasCompositionWitness value second first datum =
+  atlasDataCompositionLaw (storedAtlasData value) second first datum
 
+-- ALIGN: ATLAS-COHERENCE-WITNESS.
+{-@ atlasCoherenceWitness
+      :: value:Atlas atlasScope scope cellData origin final
+      -> occurrence:PageElement scope object
+      -> coherenceArrow:{PageElementArrow scope object object |
+           arrowSource coherenceArrow == occurrence
+           && arrowTarget coherenceArrow == normalizeAtlasElement value occurrence}
+      -> datum:cellData object
+      -> {applyInsertion (mapAtlasData value coherenceArrow) datum == datum} @-}
 atlasCoherenceWitness
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> PageElementArrow scope object object
   -> cellData object
   -> ()
-atlasCoherenceWitness value = atlasDataCoherenceLaw (storedAtlasData value)
+atlasCoherenceWitness value occurrence coherenceArrow datum =
+  atlasDataCoherenceLaw (storedAtlasData value) occurrence coherenceArrow datum
 
+-- ALIGN: ATLAS-DISJOINT-WITNESS.
+{-@ atlasDisjointWitness
+      :: value:Atlas atlasScope scope cellData origin final
+      -> left:PageElement scope leftObject -> right:PageElement scope rightObject
+      -> leftToOrigin:PageElementArrow scope leftObject originObject
+      -> rightToOrigin:{PageElementArrow scope rightObject originObject |
+           pageElementPage right == pageElementPage left
+           && pageElementPosition right /= pageElementPosition left
+           && pageElementPage left <= atlasFinalPage (atlasPagination value)
+           && arrowSource leftToOrigin == left
+           && pageElementPage (arrowTarget leftToOrigin) == 0
+           && arrowSource rightToOrigin == right
+           && arrowTarget rightToOrigin == arrowTarget leftToOrigin}
+      -> leftDatum:cellData leftObject -> rightDatum:cellData rightObject
+      -> {applyInsertion (mapAtlasData value leftToOrigin) leftDatum
+           /= applyInsertion (mapAtlasData value rightToOrigin) rightDatum} @-}
 atlasDisjointWitness
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope leftObject
@@ -572,7 +625,8 @@ atlasDisjointWitness
   -> cellData leftObject
   -> cellData rightObject
   -> ()
-atlasDisjointWitness value = atlasDataDisjointLaw (storedAtlasData value)
+atlasDisjointWitness value left right leftToOrigin rightToOrigin leftDatum rightDatum =
+  atlasDataDisjointLaw (storedAtlasData value) left right leftToOrigin rightToOrigin leftDatum rightDatum
 
 -- | Eliminate the carrier of the @n@th page chain. Pages at or above the
 -- Atlas cardinality are the padded copies of the final genuine chain.
