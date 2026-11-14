@@ -2,6 +2,8 @@
 #include "../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
+{-@ qualif ConsolidationAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | LiquidHaskell-verified consolidation representation, operations, and
 -- carrier transport.
@@ -9,6 +11,7 @@ module Consolidation.Core
   ( Consolidation (..)
   , consolidationMonotone
   , consolidation
+  , restrictedConsolidation
   , identityConsolidation
   , identityConsolidationApply
   , identityMap
@@ -95,7 +98,8 @@ consolidation
            mappedRight == forward right })
   -> (value:target ->
        { proof:() | forward (backward value) == value })
-  -> Consolidation <sourceLe, targetLe> source target
+  -> {result:Consolidation <sourceLe, targetLe> source target |
+        applyConsolidation result == forward && consolidationPreimage result == backward}
 @-}
 consolidation
   :: (source -> target)
@@ -104,6 +108,31 @@ consolidation
   -> (target -> ())
   -> Consolidation source target
 consolidation = Consolidation
+
+-- | Construct a consolidation while retaining both accepted carriers.
+-- ALIGN: CONSOLIDATION-RESTRICTED.
+{-@
+restrictedConsolidation
+  :: forall
+       < sourceLe :: source -> source -> Bool
+       , targetLe :: target -> target -> Bool >.
+     sourceContains:(source -> Bool) -> targetContains:(target -> Bool)
+  -> forward:({value:source | sourceContains value} -> {value:target | targetContains value})
+  -> backward:({value:target | targetContains value} -> {value:source | sourceContains value})
+  -> (left:{source | sourceContains left}
+       -> mappedLeft:{target | targetContains mappedLeft && mappedLeft == forward left}
+       -> right:{source<sourceLe left> | sourceContains right}
+       -> {mappedRight:target<targetLe mappedLeft> |
+             targetContains mappedRight && mappedRight == forward right})
+  -> (value:{target | targetContains value} -> {forward (backward value) == value})
+  -> {result:Consolidation <sourceLe, targetLe>
+       {value:source | sourceContains value} {value:target | targetContains value} |
+         applyConsolidation result == forward && consolidationPreimage result == backward} @-}
+restrictedConsolidation
+  :: (source -> Bool) -> (target -> Bool) -> (source -> target) -> (target -> source)
+  -> (source -> target -> source -> target) -> (target -> ()) -> Consolidation source target
+restrictedConsolidation _ _ forward backward monotone surjective =
+  Consolidation forward backward monotone surjective
 
 -- | The identity consolidation preserves every relation and is its own
 -- chosen-preimage map.

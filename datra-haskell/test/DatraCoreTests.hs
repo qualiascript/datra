@@ -22,6 +22,7 @@ import Chain
 import ChainedDominionAtlas
 import Charter
 import Coalition
+import qualified Consolidation.Ordered as Ordered
 import Consolidation
 import qualified Control.Category as Category
 import qualified Control.Exception as Exception
@@ -38,6 +39,7 @@ import HorizontalSum
 import HorizontalSum.Syntax
 import Navigation
 import PageElements
+import qualified PageElements.TraceChain as TraceChain
 import Pagination
 import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
@@ -77,6 +79,7 @@ testTree =
         , testCase "consolidation sum" testConsolidationSum
         , testCase "consolidation transport" testConsolidationTransport
         , testCase "folio" testFolio
+        , testCase "native trace consolidation" testNativeTraceConsolidation
         , testCase "page elements" testPageElements
         , testCase "page lookup owning folio" testPageLookupOwner
         , testCase "pagination" testPagination
@@ -409,18 +412,37 @@ testConsolidation = do
 
 testConsolidationSum :: IO ()
 testConsolidationSum = do
-  let summed = sumConsolidations halve halve
+  let summed = sumConsolidations
+        (Ordered.orderedConsolidation spine spine halve)
+        (Ordered.orderedConsolidation spine spine halve)
       targets = map Left [0 .. 4] <> map Right [0 .. 4]
   assert "sum consolidation maps within each summand"
-    (map (applyConsolidation summed)
+    (map (Ordered.orderedApply summed)
       [Left 3, Left 4, Right 5, Right 6]
       == [Left 1, Left 2, Right 2, Right 3])
   assert "sum consolidation is point-surjective in both summands"
     (all
       (\value ->
-        applyConsolidation summed (consolidationPreimage summed value)
+        Ordered.orderedApply summed (Ordered.orderedPreimage summed value)
           == value)
       targets)
+  let heterogeneous = sumConsolidations
+        (Ordered.orderedConsolidation spine boolChain chooseSeven)
+        (Ordered.orderedConsolidation spine spine halve)
+      source = Ordered.orderedSource heterogeneous
+      target = Ordered.orderedTarget heterogeneous
+      values = map Left [0 .. 8] <> map Right [0 .. 8]
+  assert "sum consolidation retains the components' chosen preimages"
+    (map (Ordered.orderedPreimage heterogeneous) [Left False, Left True, Right 3]
+      == [Left 0, Left 7, Right 6])
+  assert "sum consolidation uses the actual source and target ordinal offsets"
+    (chainPosition source (Right 0) == omega
+      && chainPosition target (Right 0) == finiteOrdinal 2)
+  assert "sum consolidation preserves order within and across heterogeneous summands"
+    (and [not (hasArrow source first second)
+           || hasArrow target (Ordered.orderedApply heterogeneous first)
+                (Ordered.orderedApply heterogeneous second)
+         | first <- values, second <- values])
 
 unitChain :: Chain ()
 unitChain =
@@ -523,9 +545,7 @@ testFolio =
             index <- chainIndex targetPage (finiteOrdinal 2)
             let value = chainObjectAt index
             let transported =
-                  runConsolidationTransport
-                    (transportCoconsolidation pageMap)
-                    value
+                  Ordered.orderedApply pageMap value
             pure (chainPosition sourcePage transported == finiteOrdinal 1))
           == Just True)
       assert "folio transports from a later page to its origin"
@@ -534,9 +554,7 @@ testFolio =
             index <- chainIndex targetPage (finiteOrdinal 5)
             let value = chainObjectAt index
             let transported =
-                  runConsolidationTransport
-                    (transportCoconsolidation pageMap)
-                    value
+                  Ordered.orderedApply pageMap value
             pure (chainPosition sourcePage transported == finiteOrdinal 0))
           == Just True)
       assert "folio pads maps along the full spine"
@@ -545,9 +563,7 @@ testFolio =
             index <- chainIndex targetPage (finiteOrdinal 8)
             let value = chainObjectAt index
             let transported =
-                  runConsolidationTransport
-                    (transportCoconsolidation pageMap)
-                    value
+                  Ordered.orderedApply pageMap value
             pure (chainPosition sourcePage transported == finiteOrdinal 1))
           == Just True)
       assert "folio rejects an interval against the spine order"
@@ -1744,13 +1760,45 @@ testAtlasMerge = do
   testSingletonAtlasMerge
   testDeepAtlasMerge
 
-testAtlasMergeChosenPreimages :: IO ()
-testAtlasMergeChosenPreimages =
+chosenPreimageFolios :: (Folio () Bool, Folio () Natural)
+chosenPreimageFolios =
   let chooseTrue = consolidation (const ()) (const True) (\_ _ _ -> ()) (const ())
-      chooseSeven = consolidation (> 0) (\value -> if value then 7 else 0)
-        (\_ _ right -> right > 0) (const ())
       shortPages = appendPage (singletonFolio unitChain) boolChain (Consolidation.op chooseTrue)
       longPages = appendPage shortPages spine (Consolidation.op chooseSeven)
+  in (shortPages, longPages)
+
+chooseSeven :: Consolidation Natural Bool
+chooseSeven = consolidation (> 0) (\value -> if value then 7 else 0)
+  (\_ _ right -> right > 0) (const ())
+
+testNativeTraceConsolidation :: IO ()
+testNativeTraceConsolidation =
+  let (_, pages) = chosenPreimageFolios
+      check (page, targetPosition, expectedPreimage) =
+        let source = TraceChain.pageTraceChain pages (page + 1)
+            target = TraceChain.pageTraceChain pages page
+            mapping = TraceChain.pageTraceTransition pages page source target
+        in case chainIndex target (finiteOrdinal targetPosition) of
+          Nothing -> fail "test setup failed: missing native trace"
+          Just index -> do
+            let trace = chainObjectAt index
+                chosen = Ordered.orderedPreimage mapping trace
+            assert "native consolidation retains its exact chosen preimage"
+              (chainPosition source chosen == finiteOrdinal expectedPreimage)
+            assert "native consolidation's preimage belongs to the next page"
+              (TraceChain.pageTraceContains pages (page + 1) chosen)
+            assert "native consolidation returns to the original trace"
+              (Ordered.orderedApply mapping chosen == trace)
+            let samples = [chainObjectAt selected | number <- [0 .. 8],
+                           Just selected <- [chainIndex source (finiteOrdinal number)]]
+                mapped = map (Ordered.orderedApply mapping) samples
+            assert "native consolidation preserves page order"
+              (and (zipWith TraceChain.tracePrecedes mapped (drop 1 mapped)))
+  in mapM_ check [(0, 0, 1), (1, 0, 0), (1, 1, 7), (2, 7, 7), (8, 7, 7)]
+
+testAtlasMergeChosenPreimages :: IO ()
+testAtlasMergeChosenPreimages =
+  let (shortPages, longPages) = chosenPreimageFolios
   in pagination longPages $ \leftPagination ->
     atlas leftPagination
       (atlasDataAction (paginationPageElements leftPagination) testAtlasDataAt testAtlasMapData)
@@ -1768,12 +1816,21 @@ testAtlasMergeChosenPreimages =
                       Nothing -> fail "test setup failed: missing preimage source"
                       Just index -> do
                         let source = chainObjectAt index
-                            chosen = consolidationPreimage (Consolidation.unop transition) source
-                            returned = applyConsolidation (Consolidation.unop transition) chosen
+                            chosen = Ordered.orderedPreimage transition source
+                            returned = Ordered.orderedApply transition chosen
                         assert "merge retains the component's chosen preimage"
                           (chainPosition targetChain chosen == expectedPosition)
                         assert "merge chosen preimage returns to the original cell"
                           (chainPosition sourceChain returned == sourcePosition)
+                        let positions = map finiteOrdinal [0 .. 8]
+                              <> map (addOrdinals omega . finiteOrdinal) [0 .. 2]
+                            samples = [chainObjectAt selected | position <- positions,
+                                       Just selected <- [chainIndex targetChain position]]
+                        assert "merge transition preserves the actual component and cross-component orders"
+                          (and [not (hasArrow targetChain first second)
+                                 || hasArrow sourceChain (Ordered.orderedApply transition first)
+                                      (Ordered.orderedApply transition second)
+                               | first <- samples, second <- samples])
           in mapM_ check
             [ (1, 2, finiteOrdinal 0, finiteOrdinal 1)
             , (1, 2, finiteOrdinal 1, finiteOrdinal 3)

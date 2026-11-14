@@ -450,6 +450,12 @@ theorem ordinalAddRightBelow (initial left right : Ordinal)
   rw [addOrdinals_denote, addOrdinals_denote]
   exact add_lt_add_left ((ordinalLT_correct _ _).1 h) _
 
+-- ALIGN: ORDINAL-ADD-RIGHT-COMPARISON.
+theorem ordinalAddRightComparison (initial left right : Ordinal) :
+    ordinalLT (addOrdinals initial left) (addOrdinals initial right) = ordinalLT left right := by
+  apply Bool.eq_iff_iff.mpr
+  simp only [ordinalLT_correct, addOrdinals_denote, add_lt_add_iff_left]
+
 -- ALIGN: ORDINAL-ADD-RIGHT-INJECTIVE.
 theorem ordinalAddRightInjective (initial left right : Ordinal)
     (h : addOrdinals initial left = addOrdinals initial right) : left = right := by

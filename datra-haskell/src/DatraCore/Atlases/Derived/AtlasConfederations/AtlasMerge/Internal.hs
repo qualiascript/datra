@@ -42,7 +42,7 @@ import AtlasMerge.Data
   , mergeDatumInsertion
   )
 import AtlasExtent.Internal (atlasCellOriginRankInsertion)
-import AtlasMerge.Page (AtlasMergePageCell (..), atlasMergePageChain, previousMergeCell, nextMergeCell)
+import AtlasMerge.Page (AtlasMergePageCell (..), atlasMergePageChain, mergePageTransition)
 import AtlasMerge.Resolution (mergeCellContains)
 import AtlasTransposal
   ( AtlasTransposalElement
@@ -63,6 +63,7 @@ import Consolidation
   , consolidation
   , op
   )
+import Consolidation.Ordered (orderedSource, orderedOpposite)
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
@@ -156,20 +157,6 @@ collapseToOrigin left =
     (\_ _ _ -> ())
     (const ()))
 
--- ALIGN: MERGE-PAGE-TRANSITION.
--- ALIGN: MERGE-PAGE-TRANSITION-INTERPRETATION.
-mergePageTransition
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> Natural
-  -> Coconsolidation AtlasMergePageCell AtlasMergePageCell
-mergePageTransition left right targetPage =
-  op (consolidation
-    (previousMergeCell left right targetPage)
-    (nextMergeCell left right targetPage)
-    (\_ _ rightCell -> previousMergeCell left right targetPage rightCell)
-    (const ()))
-
 -- ALIGN: MERGE-FOLIO-PREFIX.
 appendRemainingPages
   :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
@@ -181,11 +168,12 @@ appendRemainingPages
 appendRemainingPages left right pageNumber depth pages
   | pageNumber >= depth = pages
   | otherwise =
-      appendRemainingPages left right (pageNumber + 1) depth
+      let transition = mergePageTransition left right pageNumber
+      in appendRemainingPages left right (pageNumber + 1) depth
         (appendPage
           pages
-          (atlasMergePageChain left right pageNumber)
-          (mergePageTransition left right pageNumber))
+          (orderedSource transition)
+          (orderedOpposite transition))
 
 -- | The finite bouquet folio underlying an Atlas merge.
 -- ALIGN: MERGE-FOLIO.

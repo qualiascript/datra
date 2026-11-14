@@ -10,6 +10,7 @@ module Folio.Presentation
   , PageOrder (..)
   , pageOrder
   , FolioData (..)
+  , FolioStep (..)
   , folioData
   , appendPageData
   , folioLengthData
@@ -23,6 +24,8 @@ module Folio.Presentation
   , folioMapComposition
   ) where
 
+import Chain (Chain)
+import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget)
 import Consolidation.Core
   ( Consolidation (..)
   , Coconsolidation (..)
@@ -71,94 +74,108 @@ pageOrder source target
   | source <= target = Just (PageOrder source target)
   | otherwise = Nothing
 
--- | A type-aligned, nonempty sequence parameterized by its page container.
--- GHC checks that every coconsolidation joins the carrier of the preceding
--- page to the carrier of the next page.
-{-@ data FolioData page origin final where
+-- | A nonempty sequence of chains whose generating maps retain the exact
+-- source and target orders before their intermediate carriers are hidden.
+{-@ data FolioData origin final where
       OriginFolio :: count:{Natural | count == 1}
-        -> originPage:page origin -> witness:SingletonOrigin origin
-        -> FolioData page origin origin
-      SnocPage :: count:{Natural | count > 1}
-        -> previous:{FolioData page origin previous | folioLengthData previous + 1 == count}
-        -> nextPage:page final -> transition:Coconsolidation previous final
-        -> FolioData page origin final @-}
-data FolioData page origin final where
+        -> originPage:Chain origin -> witness:SingletonOrigin origin
+        -> FolioData origin origin
+      SnocPage :: step:FolioStep origin previous final
+        -> FolioData origin final @-}
+data FolioData origin final where
   OriginFolio
     :: Natural
-    -> page origin
+    -> Chain origin
     -> SingletonOrigin origin
-    -> FolioData page origin origin
-  SnocPage
-    :: Natural
-    -> FolioData page origin previous
-    -> page next
-    -> Coconsolidation previous next
-    -> FolioData page origin next
+    -> FolioData origin origin
+  SnocPage :: FolioStep origin previous final -> FolioData origin final
+
+-- | Certify the preceding page and exact transition endpoints before the
+-- intermediate carrier is hidden by 'SnocPage'.
+{-@ data FolioStep origin previous final = FolioStep
+      { stepLength :: {count:Natural | count > 1}
+      , stepPrevious :: {pages:FolioData origin previous |
+           folioLengthData pages + 1 == stepLength}
+      , stepTransition :: {mapping:OrderedConsolidation final previous |
+           orderedTarget mapping == lastPageData stepPrevious}
+      } @-}
+data FolioStep origin previous final = FolioStep
+  { stepLength :: Natural
+  , stepPrevious :: FolioData origin previous
+  , stepTransition :: OrderedConsolidation final previous
+  }
 
 -- | Construct the singleton origin page. LiquidHaskell checks that the
 -- supplied witness identifies every origin value with the selected value.
 {-@
 folioData
-  :: page origin
+  :: Chain origin
   -> selectedOrigin:origin
   -> (value:origin -> { proof:() | value == selectedOrigin })
-  -> FolioData page origin origin
+  -> FolioData origin origin
 @-}
 folioData
-  :: page origin
+  :: Chain origin
   -> origin
   -> (origin -> ())
-  -> FolioData page origin origin
+  -> FolioData origin origin
 folioData page selected unique =
   OriginFolio 1 page (SingletonOrigin selected unique)
 
--- | Append a genuine page and its generating coconsolidation.
+-- | Append a genuine page and its certified generating coconsolidation.
+-- ALIGN: FOLIO-APPEND-ORDERED.
+{-@ appendPageData :: pages:FolioData origin previous -> nextPage:Chain next
+      -> transition:{OrderedConsolidation next previous |
+           orderedSource transition == nextPage
+           && orderedTarget transition == lastPageData pages}
+      -> FolioData origin next @-}
 appendPageData
-  :: FolioData page origin previous
-  -> page next
-  -> Coconsolidation previous next
-  -> FolioData page origin next
-appendPageData pages = SnocPage (folioLengthData pages + 1) pages
+  :: FolioData origin previous
+  -> Chain next
+  -> OrderedConsolidation next previous
+  -> FolioData origin next
+appendPageData pages _ transition =
+  SnocPage (FolioStep (folioLengthData pages + 1) pages transition)
 
 -- | The number of genuine pages.
 {-@ reflect folioLengthData @-}
 -- ALIGN: FOLIO-SEMANTIC-LENGTH.
 -- ALIGN: FOLIO-LENGTH-POSITIVE.
-{-@ folioLengthData :: FolioData page origin final -> {n:Natural | n > 0} @-}
-folioLengthData :: FolioData page origin final -> Natural
+{-@ folioLengthData :: FolioData origin final -> {n:Natural | n > 0} @-}
+folioLengthData :: FolioData origin final -> Natural
 folioLengthData (OriginFolio count _ _) = count
-folioLengthData (SnocPage count _ _ _) = count
+folioLengthData (SnocPage step) = stepLength step
 
 -- | The first page.
 {-@ reflect originPageData @-}
-originPageData :: FolioData page origin final -> page origin
+originPageData :: FolioData origin final -> Chain origin
 originPageData (OriginFolio _ value _) = value
-originPageData (SnocPage _ pages _ _) = originPageData pages
+originPageData (SnocPage (FolioStep _ pages _)) = originPageData pages
 
 -- | The distinguished value of the singleton origin page.
 {-@ reflect originValueData @-}
-originValueData :: FolioData page origin final -> origin
+originValueData :: FolioData origin final -> origin
 originValueData (OriginFolio _ _ witness) = selectedOrigin witness
-originValueData (SnocPage _ pages _ _) = originValueData pages
+originValueData (SnocPage (FolioStep _ pages _)) = originValueData pages
 
 -- | Every value of the origin carrier is its distinguished value.
 {-@
 originUniqueData
-  :: pages:FolioData page origin final
+  :: pages:FolioData origin final
   -> value:origin
   -> { proof:() | value == originValueData pages }
 @-}
 -- ALIGN: FOLIO-ORIGIN-UNIQUE.
-originUniqueData :: FolioData page origin final -> origin -> ()
+originUniqueData :: FolioData origin final -> origin -> ()
 originUniqueData (OriginFolio _ _ witness) value =
   singletonOriginUnique witness value
-originUniqueData (SnocPage _ pages _ _) value = originUniqueData pages value
+originUniqueData (SnocPage (FolioStep _ pages _)) value = originUniqueData pages value
 
 -- | The final genuine page.
 {-@ reflect lastPageData @-}
-lastPageData :: FolioData page origin final -> page final
+lastPageData :: FolioData origin final -> Chain final
 lastPageData (OriginFolio _ value _) = value
-lastPageData (SnocPage _ _ value _) = value
+lastPageData (SnocPage (FolioStep _ _ transition)) = orderedSource transition
 
 -- | The identity map used for every identity interval in a folio.
 {-@ reflect identityFolioMap @-}

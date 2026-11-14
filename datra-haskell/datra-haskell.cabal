@@ -56,9 +56,12 @@ library
         Chain.Order
         Consolidation.Core
         Consolidation.Ordered
+        Consolidation.Sum
+        Consolidation.Reindex
         DomanialInsertion.Core
         Folio.Presentation
         PageElements.Structure
+        PageElements.TraceChain
         AtlasMerge.Data
         AtlasSequence.Data
         DatraLanguage.AST
@@ -163,7 +166,6 @@ library
         DataTransformationMap
     other-modules:
         PageElements.Internal
-        PageElements.TraceChain
         Pagination.Internal
         Pagination.LiquidInternal
         Atlas.Internal

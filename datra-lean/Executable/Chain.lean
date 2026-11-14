@@ -68,6 +68,12 @@ def Chain.reindex {A B : Type} (source : Chain A) (equiv : A ≃ B) : Chain B wh
     obtain ⟨value, found, same⟩ := source.positionSurjective position below
     exact ⟨equiv value, by simp [found], by simpa using same⟩
 
+-- ALIGN: CHAIN-REINDEX-ORDER.
+theorem Chain.reindexedPrecedes {A B : Type} (source : Chain A) (equiv : A ≃ B)
+    (page : Chain B) (position : page.position = fun value => source.position (equiv.symm value))
+    (first second : B) : page.precedes first second = source.precedes (equiv.symm first) (equiv.symm second) := by
+  simp only [Chain.precedes, position]
+
 /-- Certified chain indices retain their object, just as ChainIndex does. -/
 structure ChainIndex {A : Type} (C : Chain A) where
   position : Ordinal
@@ -188,6 +194,7 @@ def spine : Chain Nat where
   positionInjective := Ordinal.finiteOrdinal_injective
   positionSurjective p hp := Ordinal.naturalAtOrdinal_complete p hp
 
+
 end Datra.Executable.Chain
 
 namespace Datra.Executable.Chain
@@ -298,5 +305,40 @@ noncomputable def sumOrderIso (left : Chain A) (right : Chain B) :
                 (Ordinal.addOrdinals left.orderType (right.position y)).toSemantics
             rw [Ordinal.addOrdinals_denote, Ordinal.addOrdinals_denote]
             exact (add_le_add_iff_left _).symm
+
+def sumPrecedes (left : Chain A) (right : Chain B) : Sum A B → Sum A B → Bool
+  | .inl first, .inl second => left.precedes first second
+  | .inl _, .inr _ => true
+  | .inr _, .inl _ => false
+  | .inr first, .inr second => right.precedes first second
+
+-- ALIGN: CHAIN-SUM-ORDER.
+theorem sumChainOrder (left : Chain A) (right : Chain B) (first second : Sum A B) :
+    (sumChains left right).precedes first second = sumPrecedes left right first second := by
+  cases first with
+  | inl first =>
+    cases second with
+    | inl second => rfl
+    | inr second =>
+      apply ((sumChains left right).precedes_correct _ _).2
+      change (left.position first).toSemantics ≤
+        (Ordinal.addOrdinals left.orderType (right.position second)).toSemantics
+      rw [Ordinal.addOrdinals_denote]
+      exact ((Ordinal.ordinalLT_correct _ _).1 (left.positionBelow first)).le.trans
+        (_root_.Ordinal.le_add_right _ _)
+  | inr first =>
+    cases second with
+    | inl second =>
+      apply Bool.eq_false_iff.mpr
+      intro ordered
+      have h := ((sumChains left right).precedes_correct _ _).1 ordered
+      change (Ordinal.addOrdinals left.orderType (right.position first)).toSemantics ≤
+        (left.position second).toSemantics at h
+      rw [Ordinal.addOrdinals_denote] at h
+      exact not_lt_of_ge ((_root_.Ordinal.le_add_right _ _).trans h)
+        ((Ordinal.ordinalLT_correct _ _).1 (left.positionBelow second))
+    | inr second =>
+      simp only [precedes, sumChains, sumChainPosition, sumPrecedes, Ordinal.ordinalAddRightComparison]
+
 
 end Datra.Executable.Chain

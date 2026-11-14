@@ -135,8 +135,39 @@ middle chain to match. Lean proves that these comparisons agree with the
 semantic orders and models the same concrete-chain package. Negative checks
 reject changing the opposite wrapper's orders, dropping an ordered-input
 condition, composing mismatched chains, and using identity between unrelated
-orders. Folio presentations and derived page-transition assembly still need to
-retain these concrete-chain certificates through existential carrier hiding.
+orders. Folio presentations store each prefix and its ordered transition in a
+checked `FolioStep` before hiding the preceding carrier. The next page is the
+transition's source chain; its target must equal the prefix's final chain.
+Origin transport and interval composition retain these exact endpoints.
+`withFolioMap` exposes the ordered certificate to its callback, including the
+chosen preimage and checked right-inverse law. Native traces use the stored
+forward map and preimage. Negative checks reject mismatched preceding chains
+and appending a map without evidence for the actual page orders. Native adjacent
+trace transport preserves order on both genuine and padded pages. Its checked
+consolidation retains the canonical trace carriers, predecessor, and stored
+choice of preimage. `restrictedConsolidation` preserves both carrier predicates
+through construction. The trace transition requires the actual position
+functions to be trace heads; the native chain constructor exposes this equality.
+Lean models the same restricted construction and proves native predecessor
+monotonicity. Negative checks reject unordered pairs, traces from outside the
+owning page, and unrelated position functions. A runtime regression checks
+non-default chosen preimages and order preservation across padding.
+`Consolidation.Sum` combines ordered component maps while retaining their
+forward maps and chosen preimages. Its source and target position functions
+must be the corresponding ordinal sums. Both checkers prove the four
+same-component and cross-component order cases, including reflection of order
+under an ordinal offset. Negative checks reject unrelated endpoint positions,
+missing source order, and exchanged summand tags. A runtime regression checks
+components with different source and target order types and non-default
+preimages. `Consolidation.Reindex` transports the checked source and target
+orders through carrier equivalences, retaining both directions of the map.
+Merge page transitions sum the native component transitions and reindex them
+through the tagged-cell encoding. The folio builder uses this checked
+transition's source chain and opposite map. Lean proves that both endpoint
+chains, the forward map, and the chosen preimage agree with the mathematical
+merge transition. Full merge folio assembly still needs checked origin and
+prefix-endpoint certificates; sequence transitions still need the corresponding
+integration.
 
 Atlas data stores its four law witnesses with their refinements intact. The
 owning Atlas checks that the stored normalization bounds match its pagination,
@@ -194,12 +225,14 @@ sequence page chains also need the corresponding carrier restriction.
 
 Consumers import exposed interfaces rather than another component's
 `LiquidInternal` module. The primitive interfaces are `DatraOrdinal.Laws`,
-`Chain.Sum`, `Consolidation.Core`, `DomanialInsertion.Core`,
-`Folio.Presentation`, `PageElements.Structure`, `AtlasMerge.Data`, and
+`Chain.Sum`, `Consolidation.Core`, `Consolidation.Ordered`, `Consolidation.Sum`,
+`Consolidation.Reindex`,
+`DomanialInsertion.Core`, `Folio.Presentation`, `PageElements.Structure`,
+`PageElements.TraceChain`, `AtlasMerge.Data`, and
 `AtlasSequence.Data`. Their definitions and refinement contracts are checked in
 the exposed modules, including the logical record selectors used by clients.
-The alignment checker enforces this import boundary; remaining private
-implementation imports stay within each interface's owner.
+The alignment checker enforces this import boundary in the library, tests, and
+application. Direct `LiquidInternal` imports stay within each interface's owner.
 
 Merge and sequence components use a shared origin-rank insertion. Its inverse
 checks the candidate's forward rank, because Dominion unranking and insertion

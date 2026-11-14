@@ -14,6 +14,17 @@ structure Consolidation {A B : Type} (source : Chain A) (target : Chain B) where
 namespace Consolidation
 variable {A B C D : Type} {X : Chain A} {Y : Chain B} {Z : Chain C} {W : Chain D}
 
+/-- Both maps and their laws are checked on the accepted carriers. -/
+-- ALIGN: CONSOLIDATION-RESTRICTED.
+def restricted {A B : Type} (sourceContains : A → Prop) (targetContains : B → Prop)
+    (source : Chain {value // sourceContains value}) (target : Chain {value // targetContains value})
+    (forward : {value // sourceContains value} → {value // targetContains value})
+    (backward : {value // targetContains value} → {value // sourceContains value})
+    (monotone : ∀ left right, (source.position left).toSemantics ≤ (source.position right).toSemantics →
+      (target.position (forward left)).toSemantics ≤ (target.position (forward right)).toSemantics)
+    (surjective : ∀ value, forward (backward value) = value) : Consolidation source target :=
+  ⟨forward, backward, monotone, surjective⟩
+
 /-- The carrier map retains both chain orders when used as opposite transport. -/
 -- ALIGN: COCONSOLIDATION-MONOTONE.
 theorem map_order (f : Consolidation X Y) (left right : A)
@@ -56,7 +67,6 @@ noncomputable def toSemantics (f : Consolidation X Y) : Datra.Semantics.ConHom X
 
 /-- Componentwise transport on an ordinal sum retains the chosen preimages
 from both consolidations, as used by merged pages. -/
--- ALIGN: CONSOLIDATION-SUM.
 def sum {A' B' : Type} {X' : Chain A'} {Y' : Chain B'}
     (left : Consolidation X Y) (right : Consolidation X' Y') :
     Consolidation (Chain.sumChains X X') (Chain.sumChains Y Y') where
@@ -69,7 +79,6 @@ def sum {A' B' : Type} {X' : Chain A'} {Y' : Chain B'}
   rightInverse value := by
     cases value <;> simp [Sum.map, left.rightInverse, right.rightInverse]
 
--- ALIGN: CONSOLIDATION-SUM-INTERPRETATION.
 theorem sum_interpretation {A' B' : Type} {X' : Chain A'} {Y' : Chain B'}
     (left : Consolidation X Y) (right : Consolidation X' Y')
     (value : Sum A A') :
@@ -87,6 +96,14 @@ structure OrderedConsolidation (A B : Type) where
   map : Consolidation source target
 
 namespace OrderedConsolidation
+
+def apply {A B : Type} (value : OrderedConsolidation A B) : A → B := value.map.map
+
+def preimage {A B : Type} (value : OrderedConsolidation A B) : B → A := value.map.preimage
+
+-- ALIGN: CONSOLIDATION-ORDERED-PREIMAGE.
+theorem preimage_apply {A B : Type} (mapping : OrderedConsolidation A B) (value : B) :
+    mapping.apply (mapping.preimage value) = value := mapping.map.rightInverse value
 
 -- ALIGN: CONSOLIDATION-ORDERED.
 def orderedConsolidation {A B : Type} (source : Chain A) (target : Chain B)
@@ -110,6 +127,51 @@ def comp {A B C : Type} (second : OrderedConsolidation B C)
     OrderedConsolidation A C :=
   orderedConsolidation first.source second.target
     (Consolidation.comp (matching ▸ first.map) second.map)
+
+def sumBetween {A B C D : Type} (left : OrderedConsolidation A B) (right : OrderedConsolidation C D)
+    (source : Chain (Sum A C)) (target : Chain (Sum B D))
+    (sourcePosition : source.position = Chain.sumChainPosition left.source right.source)
+    (targetPosition : target.position = Chain.sumChainPosition left.target right.target) :
+    OrderedConsolidation (Sum A C) (Sum B D) :=
+  let mapping := Consolidation.sum left.map right.map
+  ⟨source, target, {
+    map := mapping.map
+    preimage := mapping.preimage
+    monotone := by
+      intro first second ordered
+      rw [sourcePosition] at ordered
+      rw [targetPosition]
+      exact mapping.monotone first second ordered
+    rightInverse := mapping.rightInverse }⟩
+
+-- ALIGN: CONSOLIDATION-SUM.
+def sum {A B C D : Type} (left : OrderedConsolidation A B) (right : OrderedConsolidation C D) :
+    OrderedConsolidation (Sum A C) (Sum B D) :=
+  sumBetween left right (Chain.sumChains left.source right.source)
+    (Chain.sumChains left.target right.target) rfl rfl
+
+-- ALIGN: CONSOLIDATION-SUM-INTERPRETATION.
+theorem sum_interpretation {A B C D : Type} (left : OrderedConsolidation A B)
+    (right : OrderedConsolidation C D) (value : Sum A C) :
+    Chain.sumOrderIso left.target right.target ((sum left right).map.map value) =
+      (Datra.Semantics.ConHom.sum left.map.toSemantics right.map.toSemantics)
+        (Chain.sumOrderIso left.source right.source value) :=
+  Consolidation.sum_interpretation left.map right.map value
+
+/-- Transport both maps through carrier equivalences, keeping the native orders. -/
+-- ALIGN: CONSOLIDATION-REINDEX.
+def reindex {A B C D : Type} (mapping : OrderedConsolidation A B)
+    (sourceEquiv : A ≃ C) (targetEquiv : B ≃ D) : OrderedConsolidation C D :=
+  ⟨mapping.source.reindex sourceEquiv, mapping.target.reindex targetEquiv, {
+    map := fun value => targetEquiv (mapping.map.map (sourceEquiv.symm value))
+    preimage := fun value => sourceEquiv (mapping.map.preimage (targetEquiv.symm value))
+    monotone := by
+      intro first second ordered
+      simpa only [Chain.reindex, Equiv.symm_apply_apply] using
+        mapping.map.monotone (sourceEquiv.symm first) (sourceEquiv.symm second) ordered
+    rightInverse := by
+      intro value
+      simp only [Equiv.symm_apply_apply, mapping.map.rightInverse, Equiv.apply_symm_apply] }⟩
 
 end OrderedConsolidation
 end Datra.Executable

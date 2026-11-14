@@ -14,12 +14,17 @@ module Consolidation.Ordered
   , orderedConsolidation
   , identityOrderedConsolidation
   , composeOrderedConsolidations
+  , orderedOpposite
+  , orderedApply
+  , orderedPreimage
+  , orderedPreimageProof
+  , orderedFunctions
   ) where
 
 import Chain (Chain)
 import Chain.Order (chainPrecedes)
 import Consolidation.Core
-  ( Consolidation, applyConsolidation, consolidationMonotone
+  ( Consolidation (..), Coconsolidation, op, unop, consolidationMonotone
   , identityConsolidation, composeConsolidations )
 
 {-@ data OrderedConsolidation source target = OrderedConsolidation
@@ -50,12 +55,11 @@ orderedConsolidation source target mapping =
 {-@ orderedMonotone :: value:OrderedConsolidation a b
       -> left:a -> right:{a | chainPrecedes (orderedSource value) left right}
       -> {chainPrecedes (orderedTarget value)
-            (applyConsolidation (orderedMap value) left)
-            (applyConsolidation (orderedMap value) right)} @-}
+            (orderedApply value left) (orderedApply value right)} @-}
 -- ALIGN: CONSOLIDATION-ORDERED-MONOTONE.
 orderedMonotone :: OrderedConsolidation a b -> a -> a -> ()
-orderedMonotone (OrderedConsolidation _ _ mapping) left right =
-  consolidationMonotone mapping left right `seq` ()
+orderedMonotone value@(OrderedConsolidation _ _ mapping) left right =
+  consolidationMonotone mapping left right `seq` orderedFunctions value
 
 {-@ identityOrderedConsolidation :: page:Chain a
       -> {result:OrderedConsolidation a a |
@@ -77,3 +81,38 @@ composeOrderedConsolidations
 composeOrderedConsolidations (OrderedConsolidation _ target second)
     (OrderedConsolidation source _ first) =
   orderedConsolidation source target (composeConsolidations second first)
+
+{-@ orderedOpposite :: value:OrderedConsolidation a b
+      -> {result:Coconsolidation
+           <{\earlier later -> chainPrecedes (orderedTarget value) earlier later},
+            {\earlier later -> chainPrecedes (orderedSource value) earlier later}> b a |
+              unop result == orderedMap value} @-}
+orderedOpposite :: OrderedConsolidation a b -> Coconsolidation b a
+orderedOpposite (OrderedConsolidation _ _ mapping) = op mapping
+
+{-@ reflect orderedApply @-}
+{-@ orderedApply :: value:OrderedConsolidation a b
+      -> {forward:(a -> b) | forward == applyConsolidation (orderedMap value)} @-}
+orderedApply :: OrderedConsolidation a b -> a -> b
+orderedApply (OrderedConsolidation _ _ (Consolidation forward _ _ _)) = forward
+
+{-@ reflect orderedPreimage @-}
+{-@ orderedPreimage :: value:OrderedConsolidation a b
+      -> {backward:(b -> a) | backward == consolidationPreimage (orderedMap value)} @-}
+orderedPreimage :: OrderedConsolidation a b -> b -> a
+orderedPreimage (OrderedConsolidation _ _ (Consolidation _ backward _ _)) = backward
+
+{-@ orderedPreimageProof :: mapping:OrderedConsolidation a b -> value:b
+      -> {orderedApply mapping (orderedPreimage mapping value) == value} @-}
+-- ALIGN: CONSOLIDATION-ORDERED-PREIMAGE.
+orderedPreimageProof :: OrderedConsolidation a b -> b -> ()
+orderedPreimageProof (OrderedConsolidation _ _ (Consolidation _ _ _ inverseProof)) value =
+  inverseProof value
+
+-- | Relate the public scalar operations to the stored function fields.
+{-@ orderedFunctions :: value:OrderedConsolidation a b
+      -> {orderedApply value == applyConsolidation (orderedMap value)
+           && orderedPreimage value == consolidationPreimage (orderedMap value)} @-}
+orderedFunctions :: OrderedConsolidation a b -> ()
+orderedFunctions value@(OrderedConsolidation _ _ (Consolidation {})) =
+  orderedApply value `seq` orderedPreimage value `seq` ()

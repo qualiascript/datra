@@ -13,6 +13,9 @@ module DatraOrdinal.Laws
   , ordinalAddSeparatesLeft
   , ordinalSubtractBetween
   , ordinalLongNotBelowOmega
+  , ordinalLTIrreflexive
+  , ordinalLTAsymmetric
+  , ordinalAddRightComparison
   ) where
 
 import Numeric.Natural (Natural)
@@ -337,6 +340,23 @@ coefficientsLTIrreflexive
 coefficientsLTIrreflexive :: [Natural] -> ()
 coefficientsLTIrreflexive [] = ()
 coefficientsLTIrreflexive (_ : values) = coefficientsLTIrreflexive values
+
+{-@ ordinalLTAsymmetric :: left:Ordinal -> right:Ordinal
+      -> {ordinalLT left right => not (ordinalLT right left)} @-}
+ordinalLTAsymmetric :: Ordinal -> Ordinal -> ()
+ordinalLTAsymmetric (Ordinal left) (Ordinal right)
+  | coefficientsLT left right = coefficientsLTAsymmetric left right
+  | otherwise = ()
+
+-- | A fixed left ordinal summand preserves and reflects strict comparison.
+-- ALIGN: ORDINAL-ADD-RIGHT-COMPARISON.
+{-@ ordinalAddRightComparison :: prefix:Ordinal -> left:Ordinal -> right:Ordinal
+      -> {ordinalLT (addOrdinals prefix left) (addOrdinals prefix right)
+           == ordinalLT left right} @-}
+ordinalAddRightComparison :: Ordinal -> Ordinal -> Ordinal -> ()
+ordinalAddRightComparison (Ordinal prefix) (Ordinal left) (Ordinal right)
+  | coefficientsLT left right = addCoefficientsRightBelow prefix left right
+  | otherwise = addCoefficientsRightReflectsBelow prefix left right
 
 -- | Subtraction decomposes every point in the right interval of a sum.
 {-@

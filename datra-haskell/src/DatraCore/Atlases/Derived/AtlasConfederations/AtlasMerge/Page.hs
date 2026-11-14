@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
-{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--ple-local" @-}
 {-@ LIQUID "--higherorder" @-}
 {-@ qualif TraceAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
@@ -12,15 +12,19 @@ module AtlasMerge.Page
   , mergePageContains
   , previousMergeCell
   , nextMergeCell
+  , mergePageTransition
   ) where
 
 import Atlas.Internal (Atlas, atlasFolio)
 import Chain.Internal (Chain, reindexChain)
 import Chain.Sum (sumChains)
+import Consolidation.Ordered (OrderedConsolidation)
+import Consolidation.Reindex (reindexConsolidation)
+import Consolidation.Sum (sumConsolidations)
 import DatraOrdinal.Internal (Ordinal)
 import Folio.Internal (Folio)
 import Numeric.Natural (Natural)
-import PageElements.TraceChain (pageTraceChain, pageTraceContains, previousTrace, pageTracePrevious, pageTraceNext)
+import PageElements.TraceChain (pageTraceChain, pageTraceContains, pageTraceTransition, previousTrace, pageTracePrevious, pageTraceNext)
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -40,6 +44,7 @@ mergeCellAccepted left _ (AtlasMergeLeftCell positions) = left positions
 mergeCellAccepted _ right (AtlasMergeRightCell positions) = right positions
 
 {-@ reflect mergeCellFromParts @-}
+{-@ ple mergeCellFromParts @-}
 {-@ mergeCellFromParts :: left:([Ordinal] -> Bool) -> right:([Ordinal] -> Bool)
       -> Either {positions:[Ordinal] | left positions}
                 {positions:[Ordinal] | right positions}
@@ -49,6 +54,7 @@ mergeCellFromParts _ _ (Left positions) = AtlasMergeLeftCell positions
 mergeCellFromParts _ _ (Right positions) = AtlasMergeRightCell positions
 
 {-@ reflect mergeCellParts @-}
+{-@ ple mergeCellParts @-}
 {-@ mergeCellParts :: left:([Ordinal] -> Bool) -> right:([Ordinal] -> Bool)
       -> {cell:AtlasMergePageCell | mergeCellAccepted left right cell}
       -> Either {positions:[Ordinal] | left positions}
@@ -61,6 +67,7 @@ mergeCellParts _ _ (AtlasMergeRightCell positions) = Right positions
       -> parts:Either {positions:[Ordinal] | left positions}
                       {positions:[Ordinal] | right positions}
       -> {mergeCellParts left right (mergeCellFromParts left right parts) == parts} @-}
+{-@ ple mergePartsRoundTrip @-}
 mergePartsRoundTrip :: ([Ordinal] -> Bool) -> ([Ordinal] -> Bool) -> Either [Ordinal] [Ordinal] -> ()
 mergePartsRoundTrip _ _ (Left _) = ()
 mergePartsRoundTrip _ _ (Right _) = ()
@@ -68,6 +75,7 @@ mergePartsRoundTrip _ _ (Right _) = ()
 {-@ mergeCellRoundTrip :: left:([Ordinal] -> Bool) -> right:([Ordinal] -> Bool)
       -> cell:{AtlasMergePageCell | mergeCellAccepted left right cell}
       -> {mergeCellFromParts left right (mergeCellParts left right cell) == cell} @-}
+{-@ ple mergeCellRoundTrip @-}
 mergeCellRoundTrip :: ([Ordinal] -> Bool) -> ([Ordinal] -> Bool) -> AtlasMergePageCell -> ()
 mergeCellRoundTrip _ _ (AtlasMergeLeftCell _) = ()
 mergeCellRoundTrip _ _ (AtlasMergeRightCell _) = ()
@@ -81,6 +89,7 @@ mergeCellRoundTrip _ _ (AtlasMergeRightCell _) = ()
 {-@ atlasMergePageChain :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf -> page:Natural
       -> Chain {cell:AtlasMergePageCell |
            mergePageContains (atlasFolio left) (atlasFolio right) page cell} @-}
+{-@ ple atlasMergePageChain @-}
 atlasMergePageChain
   :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Chain AtlasMergePageCell
 atlasMergePageChain left right page =
@@ -94,6 +103,7 @@ atlasMergePageChain left right page =
       -> Chain {positions:[Ordinal] | left positions}
       -> Chain {positions:[Ordinal] | right positions}
       -> Chain {cell:AtlasMergePageCell | mergeCellAccepted left right cell} @-}
+{-@ ple mergePageChainFromParts @-}
 mergePageChainFromParts
   :: ([Ordinal] -> Bool) -> ([Ordinal] -> Bool) -> Chain [Ordinal] -> Chain [Ordinal] -> Chain AtlasMergePageCell
 mergePageChainFromParts left right leftChain rightChain =
@@ -112,6 +122,7 @@ mergePageChainFromParts left right leftChain rightChain =
       -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) page cell}
       -> {result:AtlasMergePageCell |
            mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) result} @-}
+{-@ ple previousMergeCell @-}
 previousMergeCell
   :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> AtlasMergePageCell
 previousMergeCell left _ page (AtlasMergeLeftCell positions) =
@@ -130,9 +141,49 @@ previousMergeCell _ right page (AtlasMergeRightCell positions) =
       -> {result:AtlasMergePageCell |
            mergePageContains (atlasFolio left) (atlasFolio right) page result
            && previousMergeCell left right page result == cell} @-}
+{-@ ple nextMergeCell @-}
 nextMergeCell
   :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> AtlasMergePageCell
 nextMergeCell left _ page (AtlasMergeLeftCell positions) =
   AtlasMergeLeftCell (pageTraceNext (atlasFolio left) (page - 1) positions)
 nextMergeCell _ right page (AtlasMergeRightCell positions) =
   AtlasMergeRightCell (pageTraceNext (atlasFolio right) (page - 1) positions)
+
+-- | Sum the native trace transitions and transport their checked orders and
+-- chosen preimages through the merge-cell encoding.
+-- ALIGN: MERGE-PAGE-TRANSITION.
+-- ALIGN: MERGE-PAGE-TRANSITION-INTERPRETATION.
+-- ALIGN: MERGE-NATIVE-TRANSITION.
+{-@ mergePageTransition :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0}
+      -> OrderedConsolidation
+           {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) page cell}
+           {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} @-}
+{-@ ple mergePageTransition @-}
+mergePageTransition :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural
+  -> OrderedConsolidation AtlasMergePageCell AtlasMergePageCell
+mergePageTransition left right page = mergeTraceTransition (atlasFolio left) (atlasFolio right) page
+
+{-@ mergeTraceTransition :: leftPages:Folio lo lf -> rightPages:Folio ro rf
+      -> page:{Natural | page > 0}
+      -> OrderedConsolidation
+           {cell:AtlasMergePageCell | mergeCellAccepted (pageTraceContains leftPages page) (pageTraceContains rightPages page) cell}
+           {cell:AtlasMergePageCell | mergeCellAccepted (pageTraceContains leftPages (page - 1)) (pageTraceContains rightPages (page - 1)) cell} @-}
+mergeTraceTransition :: Folio lo lf -> Folio ro rf -> Natural
+  -> OrderedConsolidation AtlasMergePageCell AtlasMergePageCell
+mergeTraceTransition leftPages rightPages page =
+  let sourceLeft = pageTraceContains leftPages page
+      sourceRight = pageTraceContains rightPages page
+      targetLeft = pageTraceContains leftPages (page - 1)
+      targetRight = pageTraceContains rightPages (page - 1)
+      leftTransition = pageTraceTransition leftPages (page - 1)
+        (pageTraceChain leftPages page) (pageTraceChain leftPages (page - 1))
+      rightTransition = pageTraceTransition rightPages (page - 1)
+        (pageTraceChain rightPages page) (pageTraceChain rightPages (page - 1))
+  in reindexConsolidation
+       (mergeCellAccepted sourceLeft sourceRight) (mergeCellAccepted targetLeft targetRight)
+       (sumConsolidations leftTransition rightTransition)
+       (mergeCellFromParts sourceLeft sourceRight) (mergeCellParts sourceLeft sourceRight)
+       (mergePartsRoundTrip sourceLeft sourceRight) (mergeCellRoundTrip sourceLeft sourceRight)
+       (mergeCellFromParts targetLeft targetRight) (mergeCellParts targetLeft targetRight)
+       (mergePartsRoundTrip targetLeft targetRight) (mergeCellRoundTrip targetLeft targetRight)

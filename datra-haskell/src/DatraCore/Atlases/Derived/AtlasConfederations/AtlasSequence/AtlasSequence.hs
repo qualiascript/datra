@@ -56,12 +56,11 @@ import Chain
   , chainOrderType
   , chainPosition
   )
+import Consolidation.Ordered (orderedPreimage)
 import Consolidation
   ( Coconsolidation
   , consolidation
-  , consolidationPreimage
   , op
-  , unop
   )
 import Data.List.NonEmpty (NonEmpty (..), toList)
 import DatraOrdinal
@@ -255,7 +254,7 @@ componentPreimagePosition valueAtlas targetPage sourcePosition = do
     \sourcePage targetPageChain transition -> do
       sourceIndex <- chainIndex sourcePage sourcePosition
       let sourceCell = chainObjectAt sourceIndex
-          targetCell = consolidationPreimage (unop transition) sourceCell
+          targetCell = orderedPreimage transition sourceCell
       pure (chainPosition targetPageChain targetCell)
 
 -- ALIGN: SEQUENCE-PAGE-NEXT.

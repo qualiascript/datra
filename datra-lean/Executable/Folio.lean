@@ -8,7 +8,8 @@ structure Page where
   chain : Chain Carrier
 
 /-- The cached counts and the existential previous page mirror FolioData.
-Only the smart constructors below establish the cache invariant. -/
+The snoc fields unpack Haskell's FolioStep record; the transition retains both
+actual chain endpoints. Validity records the checked cache invariants. -/
 inductive FolioData : Page → Page → Type 1
   | origin (page : Page) (count : Nat) (selected : page.Carrier)
       (unique : ∀ x : page.Carrier, x = selected) : FolioData page page
@@ -33,9 +34,25 @@ def Valid {origin final : Page} : FolioData origin final → Prop
 def singleton (page : Page) (selected : page.Carrier) (unique : ∀ x, x = selected) :
     FolioData page page := .origin page 1 selected unique
 
+/-- Fields certified together before the previous carrier is hidden. -/
+structure Step (origin previous next : Page) where
+  count : Nat
+  pages : FolioData origin previous
+  transition : Consolidation next.chain previous.chain
+
+def Step.Valid {origin previous next : Page} (step : Step origin previous next) : Prop :=
+  step.pages.Valid ∧ step.count = step.pages.length + 1
+
+def Step.toFolio {origin previous next : Page} (step : Step origin previous next) :
+    FolioData origin next := .snoc step.count step.pages next step.transition
+
+theorem Step.toFolio_valid {origin previous next : Page} (step : Step origin previous next)
+    (valid : step.Valid) : step.toFolio.Valid := valid
+
+-- ALIGN: FOLIO-APPEND-ORDERED.
 def append (pages : FolioData origin final) (next : Page)
     (transition : Consolidation next.chain final.chain) : FolioData origin next :=
-  .snoc (pages.length + 1) pages next transition
+  (Step.mk (pages.length + 1) pages transition).toFolio
 
 theorem singleton_valid (page : Page) (selected : page.Carrier) (unique : ∀ x, x = selected) :
     (singleton page selected unique).Valid := rfl

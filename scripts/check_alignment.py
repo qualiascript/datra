@@ -17,7 +17,9 @@ def check(require_complete=False):
     sources = project_sources()
     lean = "\n".join(path.read_text() for path in sources)
     errors = []
-    for source in (ROOT / "datra-haskell/src").rglob("*.hs"):
+    haskell_sources = (source for directory in ("src", "test", "app")
+                       for source in (ROOT / "datra-haskell" / directory).rglob("*.hs"))
+    for source in haskell_sources:
         text = source.read_text()
         module = re.search(r"^module\s+([\w.]+)", text, re.M)
         if module is None:

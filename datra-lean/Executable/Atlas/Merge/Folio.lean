@@ -155,7 +155,6 @@ def nextValidCell (X Y : Atlas) (n : Nat) (cell : ValidPageCell X Y n) : ValidPa
     rw [← same, nextPageCell_encode]
     exact ⟨_, rfl⟩⟩
 
--- ALIGN: MERGE-PAGE-TRANSITION.
 def pageTransition (X Y : Atlas) (n : Nat) :
     Consolidation (pageChain X Y (n + 1)) (pageChain X Y n) where
   map := previousValidCell X Y n
@@ -249,7 +248,6 @@ noncomputable def pageSumOrderIso (X Y : Atlas) (n : Nat) :
         (componentPage Y n).chain.toSemantics).Obj :=
   (pageOrderIso X Y n).trans (Chain.sumOrderIso (componentPage X n).chain (componentPage Y n).chain)
 
--- ALIGN: MERGE-PAGE-TRANSITION-INTERPRETATION.
 theorem pageTransition_interpretation (X Y : Atlas) (n : Nat)
     (value : Sum (componentPage X (n + 1)).Carrier (componentPage Y (n + 1)).Carrier) :
     pageSumOrderIso X Y n ((pageTransition X Y n).map (encodedPageCell X Y (n + 1) value)) =

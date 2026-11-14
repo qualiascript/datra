@@ -9,6 +9,17 @@ theorem traceHead_of_head {trace : List Ordinal} {position : Ordinal}
     (head : trace.head? = some position) : traceHead trace = position := by
   cases trace <;> simp_all [traceHead]
 
+-- ALIGN: PE-TRACE-ORDER.
+def tracePrecedes (earlier later : List Ordinal) : Bool :=
+  !(Ordinal.ordinalLT (traceHead later) (traceHead earlier))
+
+theorem tracePrecedes_correct (earlier later : List Ordinal) :
+    tracePrecedes earlier later = true ↔
+      (traceHead earlier).toSemantics ≤ (traceHead later).toSemantics := by
+  have comparison := Ordinal.ordinalLT_correct (traceHead later) (traceHead earlier)
+  cases result : Ordinal.ordinalLT (traceHead later) (traceHead earlier) <;>
+    simp_all [tracePrecedes, not_lt]
+
 /-- Only the native trace at its own first position belongs to the page. -/
 def TraceCarrier (pages : FolioData origin final) (page : Nat) :=
   {trace : List Ordinal // pages.traceLookup page (traceHead trace) = some trace}
@@ -81,6 +92,17 @@ theorem encodeTrace_position (pages : FolioData origin final) (valid : pages.Val
       (pages.pageAt page).chain.position value :=
   traceHead_of_head (pages.traceAt_head page value)
 
+theorem tracePrecedes_encodeTrace (pages : FolioData origin final) (valid : pages.Valid)
+    (page : Nat) (first second : (pages.pageAt page).Carrier) :
+    tracePrecedes (pages.encodeTrace valid page first).val (pages.encodeTrace valid page second).val = true ↔
+      ((pages.pageAt page).chain.position first).toSemantics ≤
+        ((pages.pageAt page).chain.position second).toSemantics := by
+  rw [tracePrecedes_correct]
+  change (traceHead (pages.traceAt page first)).toSemantics ≤
+    (traceHead (pages.traceAt page second)).toSemantics ↔ _
+  rw [traceHead_of_head (pages.traceAt_head page first),
+    traceHead_of_head (pages.traceAt_head page second)]
+
 theorem encodeTrace_bijective (pages : FolioData origin final) (valid : pages.Valid) (page : Nat) :
     Function.Bijective (pages.encodeTrace valid page) := by
   constructor
@@ -147,6 +169,18 @@ theorem previous_encodeTrace (pages : FolioData origin final) (valid : pages.Val
   apply Subtype.ext
   exact previousTrace_traceAt pages page value
 
+-- ALIGN: PE-TRACE-PREVIOUS-MONOTONE.
+theorem TraceCarrier.previous_monotone {pages : FolioData origin final} (valid : pages.Valid)
+    (page : Nat) (first second : pages.TraceCarrier (page + 1))
+    (ordered : tracePrecedes first.val second.val = true) :
+    tracePrecedes (first.previous valid page).val (second.previous valid page).val = true := by
+  obtain ⟨left, rfl⟩ := (pages.encodeTrace_bijective valid (page + 1)).2 first
+  obtain ⟨right, rfl⟩ := (pages.encodeTrace_bijective valid (page + 1)).2 second
+  rw [previous_encodeTrace, previous_encodeTrace]
+  apply (pages.tracePrecedes_encodeTrace valid page _ _).2
+  exact (pages.transport (page + 1) page (Nat.le_succ page)).monotone left right
+    ((pages.tracePrecedes_encodeTrace valid (page + 1) left right).1 ordered)
+
 /-- Lookup on the preceding page followed by the stored chosen preimage. -/
 def nextTraceLookup (pages : FolioData origin final) (page : Nat) (position : Ordinal) :
     Option (List Ordinal) :=
@@ -190,5 +224,24 @@ theorem TraceCarrier.previous_next {pages : FolioData origin final} (valid : pag
     (trace.next valid page).previous valid page = trace := by
   obtain ⟨value, rfl⟩ := (pages.encodeTrace_bijective valid page).2 trace
   rw [next_encodeTrace, previous_encodeTrace, Consolidation.rightInverse]
+
+/-- Construct the native consolidation against chains whose positions are the
+canonical trace heads. Both the map and its chosen inverse are retained. -/
+-- ALIGN: PE-TRACE-CONSOLIDATION.
+def traceTransitionBetween (pages : FolioData origin final) (valid : pages.Valid) (page : Nat)
+    (source : Chain (pages.TraceCarrier (page + 1))) (target : Chain (pages.TraceCarrier page))
+    (sourcePosition : source.position = fun trace => traceHead trace.val)
+    (targetPosition : target.position = fun trace => traceHead trace.val) :
+    OrderedConsolidation (pages.TraceCarrier (page + 1)) (pages.TraceCarrier page) :=
+  ⟨source, target, Consolidation.restricted _ _ source target
+    (fun trace => TraceCarrier.previous valid page trace)
+    (fun trace => TraceCarrier.next valid page trace) (by
+      intro first second ordered
+      rw [sourcePosition] at ordered
+      rw [targetPosition]
+      exact (tracePrecedes_correct _ _).1
+        (TraceCarrier.previous_monotone valid page first second
+          ((tracePrecedes_correct _ _).2 ordered)))
+    (TraceCarrier.previous_next valid page)⟩
 
 end Datra.Executable.FolioData

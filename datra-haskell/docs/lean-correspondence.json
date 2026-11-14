@@ -1760,16 +1760,16 @@
     },
     {
       "id": "CONSOLIDATION-SUM",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Sum.hs",
       "haskell_declaration": "sumConsolidations",
-      "lean_namespace": "Datra.Executable.Consolidation",
+      "lean_namespace": "Datra.Executable.OrderedConsolidation",
       "lean_declaration": "sum"
     },
     {
       "id": "CONSOLIDATION-SUM-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Sum.hs",
       "haskell_declaration": "sumConsolidations",
-      "lean_namespace": "Datra.Executable.Consolidation",
+      "lean_namespace": "Datra.Executable.OrderedConsolidation",
       "lean_declaration": "sum_interpretation"
     },
     {
@@ -1816,17 +1816,17 @@
     },
     {
       "id": "MERGE-PAGE-TRANSITION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
       "haskell_declaration": "mergePageTransition",
       "lean_namespace": "Datra.Executable.AtlasMerge",
-      "lean_declaration": "pageTransition"
+      "lean_declaration": "nativePageTransition"
     },
     {
       "id": "MERGE-PAGE-TRANSITION-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
       "haskell_declaration": "mergePageTransition",
       "lean_namespace": "Datra.Executable.AtlasMerge",
-      "lean_declaration": "pageTransition_interpretation"
+      "lean_declaration": "nativePageTransition_interpretation"
     },
     {
       "id": "MERGE-PAGE-PREIMAGE",
@@ -3654,6 +3654,83 @@
       "haskell_declaration": "composeOrderedConsolidations",
       "lean_namespace": "Datra.Executable.OrderedConsolidation",
       "lean_declaration": "comp"
+    },
+    {
+      "id": "CONSOLIDATION-ORDERED-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Ordered.hs",
+      "haskell_declaration": "orderedPreimageProof",
+      "lean_namespace": "Datra.Executable.OrderedConsolidation",
+      "lean_declaration": "preimage_apply"
+    },
+    {
+      "id": "FOLIO-APPEND-ORDERED",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/Presentation.hs",
+      "haskell_declaration": "appendPageData",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "append"
+    },
+    {
+      "id": "CONSOLIDATION-RESTRICTED",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Core.hs",
+      "haskell_declaration": "restrictedConsolidation",
+      "lean_namespace": "Datra.Executable.Consolidation",
+      "lean_declaration": "restricted"
+    },
+    {
+      "id": "PE-TRACE-ORDER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "tracePrecedes",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "tracePrecedes"
+    },
+    {
+      "id": "PE-TRACE-PREVIOUS-MONOTONE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "pageTracePreviousMonotone",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "TraceCarrier.previous_monotone"
+    },
+    {
+      "id": "PE-TRACE-CONSOLIDATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "pageTraceTransition",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceTransitionBetween"
+    },
+    {
+      "id": "ORDINAL-ADD-RIGHT-COMPARISON",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
+      "haskell_declaration": "ordinalAddRightComparison",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "ordinalAddRightComparison"
+    },
+    {
+      "id": "CHAIN-SUM-ORDER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Sum.hs",
+      "haskell_declaration": "sumChainOrder",
+      "lean_namespace": "Datra.Executable.Chain",
+      "lean_declaration": "sumChainOrder"
+    },
+    {
+      "id": "CHAIN-REINDEX-ORDER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Order.hs",
+      "haskell_declaration": "reindexedPrecedes",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Chain.reindexedPrecedes"
+    },
+    {
+      "id": "CONSOLIDATION-REINDEX",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Reindex.hs",
+      "haskell_declaration": "reindexConsolidation",
+      "lean_namespace": "Datra.Executable.OrderedConsolidation",
+      "lean_declaration": "reindex"
+    },
+    {
+      "id": "MERGE-NATIVE-TRANSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
+      "haskell_declaration": "mergePageTransition",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "nativePageTransition"
     }
   ],
   "modules": [
@@ -3840,11 +3917,14 @@
       "types": [],
       "reflected": [
         "sumChainPosition",
+        "sumPrecedes",
         "sumChainLookup",
         "leftMaybe",
         "rightMaybe"
       ],
       "refinements": [
+        "sumChains",
+        "sumChainOrder",
         "sumChainPositionBelow",
         "sumChainPositionInjective",
         "sumChainPositionSurjective"
@@ -3885,6 +3965,7 @@
       "refinements": [
         "consolidationMonotone",
         "consolidation",
+        "restrictedConsolidation",
         "identityConsolidation",
         "identityConsolidationApply",
         "identityMonotone",
@@ -3975,6 +4056,8 @@
         "ordinalAddSeparatesLeft",
         "ordinalLTIrreflexive",
         "coefficientsLTIrreflexive",
+        "ordinalLTAsymmetric",
+        "ordinalAddRightComparison",
         "ordinalSubtractBetween",
         "subtractEqualCoefficients",
         "addCoefficientsLift",
@@ -4079,9 +4162,14 @@
       ],
       "refinements": [
         "folio",
+        "appendPage",
         "folioLength",
         "originUnique",
-        "withPageDataAt"
+        "folioOriginToFinal",
+        "folioOriginMap",
+        "withFolioMap",
+        "withPageDataAt",
+        "mapFromIndex"
       ],
       "lean_target": "Datra.Executable.Folio",
       "coverage": "partial",
@@ -4102,7 +4190,8 @@
         "SingletonOrigin",
         "PageOrder",
         "PageOrder",
-        "FolioData"
+        "FolioData",
+        "FolioStep"
       ],
       "reflected": [
         "folioLengthData",
@@ -4114,6 +4203,7 @@
       ],
       "refinements": [
         "folioData",
+        "appendPageData",
         "folioLengthData",
         "originUniqueData",
         "identityFolioMap",
@@ -5216,7 +5306,9 @@
         "pageTraceLookup",
         "previousTrace",
         "previousLookup",
-        "previousLookupValid"
+        "previousLookupValid",
+        "tracePrecedes",
+        "previousPageTrace"
       ],
       "types": [],
       "aliases": [],
@@ -5241,12 +5333,21 @@
         "paddedLookupPreviousValid",
         "folioLookupPreviousValid",
         "pageTracePrevious",
+        "genuineTraceHead",
+        "finalPrefixLookup",
+        "paddedPreviousHead",
+        "pageTracePreviousMonotone",
         "originTraceUnique",
         "prefixNextLookup",
         "genuineNextLookup",
         "paddedNextLookup",
         "folioNextLookup",
-        "pageTraceNext"
+        "pageTraceNext",
+        "previousPageTrace",
+        "previousPageTraceMonotone",
+        "previousPageTraceSurjective",
+        "pageTraceConsolidation",
+        "pageTraceTransition"
       ]
     },
     {
@@ -5278,7 +5379,9 @@
         "atlasMergePageChain",
         "mergePageChainFromParts",
         "previousMergeCell",
-        "nextMergeCell"
+        "nextMergeCell",
+        "mergePageTransition",
+        "mergeTraceTransition"
       ]
     },
     {
@@ -5294,14 +5397,19 @@
       "predicates": [],
       "refinement_aliases": [],
       "embeddings": [],
-      "refinements": []
+      "refinements": [
+        "reindexedPrecedes"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Ordered.hs",
       "module": "Consolidation.Ordered",
       "lean_target": "Datra.Executable.OrderedConsolidation",
       "coverage": "aligned",
-      "reflected": [],
+      "reflected": [
+        "orderedApply",
+        "orderedPreimage"
+      ],
       "types": [
         "OrderedConsolidation"
       ],
@@ -5313,7 +5421,54 @@
         "orderedConsolidation",
         "orderedMonotone",
         "identityOrderedConsolidation",
-        "composeOrderedConsolidations"
+        "composeOrderedConsolidations",
+        "orderedOpposite",
+        "orderedApply",
+        "orderedPreimage",
+        "orderedPreimageProof",
+        "orderedFunctions"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Sum.hs",
+      "module": "Consolidation.Sum",
+      "lean_target": "Datra.Executable.OrderedConsolidation",
+      "coverage": "aligned",
+      "reflected": [
+        "sumApply",
+        "sumPreimage"
+      ],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "sumConsolidations",
+        "sumConsolidationsBetween",
+        "sumSurjective",
+        "sumApplyMonotone",
+        "sumMonotone"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Reindex.hs",
+      "module": "Consolidation.Reindex",
+      "lean_target": "Datra.Executable.OrderedConsolidation",
+      "coverage": "aligned",
+      "reflected": [
+        "reindexApply",
+        "reindexPreimage"
+      ],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "reindexConsolidation",
+        "reindexSurjective",
+        "reindexMonotone"
       ]
     }
   ],

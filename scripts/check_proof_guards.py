@@ -46,6 +46,12 @@ proofGuard (CompositeAtlasHom _ _) = ()
 CHAIN_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Chain/Internal.hs"
 CONSOLIDATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Core.hs"
 CONSOLIDATION_GUARDS = {
+    "restricted consolidations require accepted source values": """
+{-@ proofGuard :: Consolidation {value:Int | value == 0} {value:Int | value == 0}
+      -> Int -> Int @-}
+proofGuard :: Consolidation Int Int -> Int -> Int
+proofGuard mapping value = applyConsolidation mapping value
+""",
     "opposite wrappers cannot change the preserved order": r"""
 {-@ proofGuard :: Consolidation <{\x y -> x <= y}, {\x y -> x <= y}> Int Int
       -> Coconsolidation <{\x y -> x <= y}, {\x y -> x >= y}> Int Int @-}
@@ -74,8 +80,7 @@ ORDERED_CONSOLIDATION_GUARDS = {
     "concrete consolidation monotonicity requires the source order": """
 {-@ proofGuard :: value:OrderedConsolidation a b -> left:a -> right:a
       -> {chainPrecedes (orderedTarget value)
-            (applyConsolidation (orderedMap value) left)
-            (applyConsolidation (orderedMap value) right)} @-}
+            (orderedApply value left) (orderedApply value right)} @-}
 proofGuard :: OrderedConsolidation a b -> a -> a -> ()
 proofGuard value left right = orderedMonotone value left right
 """,
@@ -95,8 +100,90 @@ proofGuard source target left right =
 """,
 }
 
+REINDEX_CONSOLIDATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Reindex.hs"
+REINDEX_CONSOLIDATION_GUARDS = {
+    "consolidation reindexing requires the source inverse": """
+{-@ proofGuard :: OrderedConsolidation Int Int -> OrderedConsolidation Int Int @-}
+proofGuard :: OrderedConsolidation Int Int -> OrderedConsolidation Int Int
+proofGuard mapping = reindexConsolidation (const True) (const True) mapping
+  (const 0) id (const ()) (const ()) id id (const ()) (const ())
+""",
+    "consolidation reindexing requires the target inverse": """
+{-@ proofGuard :: OrderedConsolidation Int Int -> OrderedConsolidation Int Int @-}
+proofGuard :: OrderedConsolidation Int Int -> OrderedConsolidation Int Int
+proofGuard mapping = reindexConsolidation (const True) (const True) mapping
+  id id (const ()) (const ()) (const 0) id (const ()) (const ())
+""",
+}
+
+SUM_CONSOLIDATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Sum.hs"
+SUM_CONSOLIDATION_GUARDS = {
+    "sum consolidations require matching endpoint positions": """
+{-@ proofGuard :: OrderedConsolidation a b -> OrderedConsolidation c d
+      -> Chain (Either a c) -> Chain (Either b d)
+      -> OrderedConsolidation (Either a c) (Either b d) @-}
+proofGuard :: OrderedConsolidation a b -> OrderedConsolidation c d
+  -> Chain (Either a c) -> Chain (Either b d)
+  -> OrderedConsolidation (Either a c) (Either b d)
+proofGuard = sumConsolidationsBetween
+""",
+    "sum consolidation monotonicity requires the source order": """
+{-@ proofGuard :: left:OrderedConsolidation a b -> right:OrderedConsolidation c d
+      -> first:Either a c -> second:Either a c
+      -> {result:Either b d | sumPrecedes (orderedTarget left) (orderedTarget right)
+            (sumApply left right first) result} @-}
+proofGuard :: OrderedConsolidation a b -> OrderedConsolidation c d
+  -> Either a c -> Either a c -> Either b d
+proofGuard left right first second =
+  sumApplyMonotone left right first (sumApply left right first) second
+""",
+    "sum consolidation cannot exchange summand tags": """
+{-@ proofGuard :: left:OrderedConsolidation a b -> right:OrderedConsolidation a b
+      -> value:a -> {result:Either b b | result == Left (orderedApply left value)} @-}
+proofGuard :: OrderedConsolidation a b -> OrderedConsolidation a b -> a -> Either b b
+{-@ ple proofGuard @-}
+proofGuard left right value = sumApply left right (Right value)
+""",
+}
+
 PAGE_TRACE_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/TraceChain.hs"
 PAGE_TRACE_GUARDS = {
+    "trace consolidations require the actual position functions": """
+{-@ proofGuard :: pages:Folio origin final -> page:Natural
+      -> Chain {positions:[Ordinal] | pageTraceContains pages (page + 1) positions}
+      -> Chain {positions:[Ordinal] | pageTraceContains pages page positions}
+      -> OrderedConsolidation
+           {positions:[Ordinal] | pageTraceContains pages (page + 1) positions}
+           {positions:[Ordinal] | pageTraceContains pages page positions} @-}
+proofGuard :: Folio origin final -> Natural -> Chain [Ordinal] -> Chain [Ordinal]
+  -> OrderedConsolidation [Ordinal] [Ordinal]
+proofGuard pages page source target = pageTraceTransition pages page source target
+""",
+    "trace consolidations reject an unowned input trace": """
+{-@ proofGuard :: pages:Folio origin final -> page:Natural
+      -> OrderedConsolidation
+           {positions:[Ordinal] | pageTraceContains pages (page + 1) positions}
+           {positions:[Ordinal] | pageTraceContains pages page positions}
+      -> [Ordinal] -> [Ordinal] @-}
+proofGuard :: Folio origin final -> Natural -> OrderedConsolidation [Ordinal] [Ordinal]
+  -> [Ordinal] -> [Ordinal]
+proofGuard _ _ mapping positions = orderedApply mapping positions
+""",
+    "trace monotonicity requires an ordered source pair": """
+{-@ proofGuard :: pages:Folio origin final -> page:Natural
+      -> first:{[Ordinal] | pageTraceContains pages (page + 1) first}
+      -> second:{[Ordinal] | pageTraceContains pages (page + 1) second}
+      -> {tracePrecedes (previousTrace first) (previousTrace second)} @-}
+proofGuard :: Folio origin final -> Natural -> [Ordinal] -> [Ordinal] -> ()
+proofGuard pages page first second = pageTracePreviousMonotone pages page first second
+""",
+    "trace monotonicity requires the owning page": """
+{-@ proofGuard :: pages:Folio origin final -> page:Natural
+      -> first:[Ordinal] -> second:{[Ordinal] | tracePrecedes first second}
+      -> {tracePrecedes (previousTrace first) (previousTrace second)} @-}
+proofGuard :: Folio origin final -> Natural -> [Ordinal] -> [Ordinal] -> ()
+proofGuard pages page first second = pageTracePreviousMonotone pages page first second
+""",
     "trace preimages require membership in the source page": """
 {-@ proofGuard :: pages:Folio origin final -> page:Natural -> positions:[Ordinal]
       -> {result:[Ordinal] | pageTraceContains pages (page + 1) result} @-}
@@ -118,6 +205,19 @@ proofGuard = pageTraceChain
 
 MERGE_PAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs"
 MERGE_PAGE_GUARDS = {
+    "merge transitions cannot widen their canonical carriers": """
+{-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+      -> {page:Natural | page > 0}
+      -> OrderedConsolidation AtlasMergePageCell AtlasMergePageCell @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural
+  -> OrderedConsolidation AtlasMergePageCell AtlasMergePageCell
+proofGuard = mergePageTransition
+""",
+    "merge transitions reject page zero": """
+{-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> ()
+proofGuard left right = mergePageTransition left right 0 `seq` ()
+""",
     "merge preimages cannot use the other component as their inverse": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> page:{Natural | page > 0}
@@ -395,18 +495,34 @@ proofGuard = cellOriginRankPreimageSound
 
 FOLIO_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Folio/Presentation.hs"
 FOLIO_GUARDS = {
+    "folio steps require the actual preceding chain": """
+{-@ proofGuard :: pages:FolioData origin previous
+      -> OrderedConsolidation next previous -> FolioData origin next @-}
+proofGuard :: FolioData origin previous -> OrderedConsolidation next previous -> FolioData origin next
+proofGuard pages transition = SnocPage (FolioStep (folioLengthData pages + 1) pages transition)
+""",
     "folio origins reject a zero cached length": """
-proofGuard :: page origin -> SingletonOrigin origin -> FolioData page origin origin
+proofGuard :: Chain origin -> SingletonOrigin origin -> FolioData origin origin
 proofGuard = OriginFolio 0
 """,
     "folio origins reject a cached length greater than one": """
-proofGuard :: page origin -> SingletonOrigin origin -> FolioData page origin origin
+proofGuard :: Chain origin -> SingletonOrigin origin -> FolioData origin origin
 proofGuard = OriginFolio 2
 """,
     "folio append rejects an unchanged cached length": """
-proofGuard :: FolioData page origin previous -> page next
-  -> Coconsolidation previous next -> FolioData page origin next
-proofGuard pages = SnocPage (folioLengthData pages) pages
+proofGuard :: FolioStep origin previous next -> FolioData origin next
+proofGuard (FolioStep _ pages transition) =
+  SnocPage (FolioStep (folioLengthData pages) pages transition)
+""",
+}
+
+FOLIO_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Folio/Internal.hs"
+FOLIO_API_GUARDS = {
+    "folio append requires page-order evidence": """
+{-@ proofGuard :: Folio origin previous -> Chain next
+      -> Coconsolidation previous next -> Folio origin next @-}
+proofGuard :: Folio origin previous -> Chain next -> Coconsolidation previous next -> Folio origin next
+proofGuard pages next transition = appendPage pages next transition
 """,
 }
 
@@ -716,6 +832,8 @@ def run(pattern=None):
         for source_path, guards in [(SOURCE, GUARDS), (CHAIN_SOURCE, CHAIN_GUARDS),
                                     (CONSOLIDATION_SOURCE, CONSOLIDATION_GUARDS),
                                     (ORDERED_CONSOLIDATION_SOURCE, ORDERED_CONSOLIDATION_GUARDS),
+                                    (SUM_CONSOLIDATION_SOURCE, SUM_CONSOLIDATION_GUARDS),
+                                    (REINDEX_CONSOLIDATION_SOURCE, REINDEX_CONSOLIDATION_GUARDS),
                                     (PAGE_TRACE_SOURCE, PAGE_TRACE_GUARDS),
                                     (MERGE_PAGE_SOURCE, MERGE_PAGE_GUARDS),
                                     (STABLE_SOURCE, STABLE_GUARDS),
@@ -727,6 +845,7 @@ def run(pattern=None):
                                     (SEQUENCE_SOURCE, SEQUENCE_GUARDS),
                                     (EXTENT_SOURCE, EXTENT_GUARDS),
                                     (FOLIO_SOURCE, FOLIO_GUARDS),
+                                    (FOLIO_API_SOURCE, FOLIO_API_GUARDS),
                                     (PAGE_ARROW_SOURCE, PAGE_ARROW_GUARDS),
                                     (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),
                                     (ATLAS_SOURCE, ATLAS_GUARDS),

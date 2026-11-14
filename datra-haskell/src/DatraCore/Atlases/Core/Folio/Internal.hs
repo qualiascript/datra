@@ -30,17 +30,20 @@ module Folio.Internal
   ) where
 
 import Chain (Chain)
-import Consolidation (Coconsolidation)
+import Chain.Order (chainPrecedes)
+import Consolidation.Core (Coconsolidation, unop)
+import Consolidation.Ordered
+  ( OrderedConsolidation, orderedSource, orderedTarget, orderedOpposite
+  , orderedConsolidation, identityOrderedConsolidation, composeOrderedConsolidations )
 import Folio.Presentation
   ( FolioData (..)
+  , FolioStep (..)
   , PageOrder (..)
   , appendPageData
-  , composeFolioMaps
   , folioData
   , folioLengthData
   , folioMapComposition
   , folioMapIdentity
-  , identityFolioMap
   , lastPageData
   , originPageData
   , originUniqueData
@@ -52,9 +55,8 @@ import Numeric.Natural (Natural)
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
 
--- | Datra folios specialize the verified type-aligned representation to
--- chains as their page container.
-type Folio origin final = FolioData Chain origin final
+-- | Datra folios retain certified maps between their actual page chains.
+type Folio origin final = FolioData origin final
 
 {-@ folio :: Chain origin -> selected:origin
       -> (value:origin -> {value == selected}) -> Folio origin origin @-}
@@ -68,12 +70,18 @@ folio = folioData
 singletonFolio :: Chain () -> Folio () ()
 singletonFolio origin = folio origin () (\() -> ())
 
+{-@ appendPage :: pages:Folio origin previous -> next:Chain next
+      -> Coconsolidation
+           <{\earlier later -> chainPrecedes (lastChain pages) earlier later},
+            {\earlier later -> chainPrecedes next earlier later}> previous next
+      -> Folio origin next @-}
 appendPage
   :: Folio origin previous
   -> Chain next
   -> Coconsolidation previous next
   -> Folio origin next
-appendPage = appendPageData
+appendPage pages next transition =
+  appendPageData pages next (orderedConsolidation next (lastChain pages) (unop transition))
 
 {-@ reflect folioLength @-}
 {-@ folioLength :: Folio origin final -> {n:Natural | n > 0} @-}
@@ -98,12 +106,22 @@ lastChain = lastPageData
 
 -- | Compose every generating page map into the canonical coconsolidation
 -- from the origin page to the final genuine page.
+{-@ folioOriginToFinal :: pages:Folio origin final
+      -> Coconsolidation
+           <{\earlier later -> chainPrecedes (originChain pages) earlier later},
+            {\earlier later -> chainPrecedes (lastChain pages) earlier later}> origin final @-}
 folioOriginToFinal
   :: Folio origin final
   -> Coconsolidation origin final
-folioOriginToFinal (OriginFolio _ _ _) = identityFolioMap
-folioOriginToFinal (SnocPage _ previous _ transition) =
-  composeFolioMaps transition (folioOriginToFinal previous)
+folioOriginToFinal pages = orderedOpposite (folioOriginMap pages)
+
+{-@ folioOriginMap :: pages:Folio origin final
+      -> {mapping:OrderedConsolidation final origin |
+           orderedSource mapping == lastChain pages && orderedTarget mapping == originChain pages} @-}
+folioOriginMap :: Folio origin final -> OrderedConsolidation final origin
+folioOriginMap (OriginFolio _ page _) = identityOrderedConsolidation page
+folioOriginMap (SnocPage (FolioStep _ previous transition)) =
+  composeOrderedConsolidations (folioOriginMap previous) transition
 
 -- | Clamp a spine index to the final genuine page.
 paddedIndex :: Folio origin final -> Natural -> Natural
@@ -125,13 +143,19 @@ withPageAt pages index usePage =
 -- source index is no later than the target; both indices are automatically
 -- padded past the finite presentation.
 -- ALIGN: FOLIO-SEMANTIC-INTERVAL.
+{-@ withFolioMap :: Folio origin final -> PageOrder
+      -> (forall source target. sourceChain:Chain source -> targetChain:Chain target
+           -> {mapping:OrderedConsolidation target source |
+                orderedSource mapping == targetChain && orderedTarget mapping == sourceChain}
+           -> result)
+      -> result @-}
 withFolioMap
   :: Folio origin final
   -> PageOrder
   -> (forall source target.
         Chain source
         -> Chain target
-        -> Coconsolidation source target
+        -> OrderedConsolidation target source
         -> result)
   -> result
 withFolioMap pages (PageOrder sourceIndex targetIndex) useMap =
@@ -158,23 +182,29 @@ withPageDataAt
   -> result
 withPageDataAt pages@(OriginFolio {}) index usePage =
   usePage pages index
-withPageDataAt pages@(SnocPage _ previous _ _) index usePage
+withPageDataAt pages@(SnocPage (FolioStep _ previous _)) index usePage
   | index >= folioLength previous =
       usePage pages (index - folioLength previous)
   | otherwise = withPageDataAt previous index usePage
 
 -- ALIGN: FOLIO-INTERVAL-IDENTITY.
 -- ALIGN: FOLIO-INTERVAL-COMPOSITION.
+{-@ mapFromIndex :: pages:Folio origin target -> Natural
+      -> (forall source. sourceChain:Chain source
+           -> {mapping:OrderedConsolidation target source |
+                orderedSource mapping == lastChain pages && orderedTarget mapping == sourceChain}
+           -> result)
+      -> result @-}
 mapFromIndex
   :: Folio origin target
   -> Natural
-  -> (forall source. Chain source -> Coconsolidation source target -> result)
+  -> (forall source. Chain source -> OrderedConsolidation target source -> result)
   -> result
-mapFromIndex (OriginFolio _ page _) _ useMap =
-  useMap page identityFolioMap
-mapFromIndex (SnocPage _ previous page transition) sourceIndex useMap
+mapFromIndex pages@(OriginFolio {}) _ useMap =
+  useMap (lastChain pages) (identityOrderedConsolidation (lastChain pages))
+mapFromIndex (SnocPage (FolioStep _ previous transition)) sourceIndex useMap
   | sourceIndex >= folioLength previous =
-      useMap page identityFolioMap
+      useMap (orderedSource transition) (identityOrderedConsolidation (orderedSource transition))
   | otherwise =
       mapFromIndex previous sourceIndex $ \sourcePage sourceToPrevious ->
-        useMap sourcePage (composeFolioMaps transition sourceToPrevious)
+        useMap sourcePage (composeOrderedConsolidations sourceToPrevious transition)

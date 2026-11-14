@@ -23,6 +23,7 @@ module Chain.Internal
   , chainPositionSurjective
   , chain
   , reindexChain
+  , reindexedPosition
   , compareInChain
   , hasArrow
   , spine
@@ -121,7 +122,8 @@ chain
            chainOrdinalLT ordinalValue orderType
              => positionMatches position ordinalValue
                   (objectAt ordinalValue) })
-  -> Chain object
+  -> {result:Chain object | chainOrderType result == orderType
+       && chainPosition result == position && chainLookup result == objectAt}
 @-}
 chain
   :: Ordinal
@@ -138,7 +140,9 @@ chain = Chain
 {-@ reindexChain :: targetContains:(b -> Bool) -> source:Chain a -> forward:(a -> {value:b | targetContains value}) -> backward:({value:b | targetContains value} -> a)
       -> (value:a -> {backward (forward value) == value})
       -> (value:{b | targetContains value} -> {forward (backward value) == value})
-      -> Chain {value:b | targetContains value} @-}
+      -> {result:Chain {value:b | targetContains value} |
+           chainOrderType result == chainOrderType source
+           && chainPosition result == reindexedPosition targetContains source backward} @-}
 reindexChain :: (b -> Bool) -> Chain a -> (a -> b) -> (b -> a) -> (a -> ()) -> (b -> ()) -> Chain b
 reindexChain targetContains source forward backward leftInverse rightInverse =
   Chain

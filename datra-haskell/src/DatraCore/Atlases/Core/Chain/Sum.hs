@@ -8,6 +8,9 @@
 -- | Liquid-checked construction of ordinal sums of chains.
 module Chain.Sum
   ( sumChains
+  , sumChainPosition
+  , sumPrecedes
+  , sumChainOrder
   ) where
 
 import Chain.Internal
@@ -22,6 +25,7 @@ import Chain.Internal
   , chainPositionSurjective
   , positionMatches
   )
+import Chain.Order (chainPrecedes)
 import DatraOrdinal.Internal
   ( Ordinal
   , addOrdinals
@@ -32,10 +36,16 @@ import DatraOrdinal.Laws
   , ordinalAddRightInjective
   , ordinalAddSeparatesLeft
   , ordinalSubtractBetween
+  , ordinalLTAsymmetric
+  , ordinalAddRightComparison
   )
 
 -- ALIGN: CHAIN-SUM.
 -- ALIGN: CHAIN-SUM-SEMANTICS.
+{-@ sumChains :: left:Chain a -> right:Chain b
+      -> {result:Chain (Either a b) |
+           chainOrderType result == addOrdinals (chainOrderType left) (chainOrderType right)
+           && chainPosition result == sumChainPosition left right} @-}
 sumChains :: Chain left -> Chain right -> Chain (Either left right)
 sumChains left right =
   chain
@@ -51,6 +61,30 @@ sumChainPosition :: Chain left -> Chain right -> Either left right -> Ordinal
 sumChainPosition left _ (Left object) = chainPosition left object
 sumChainPosition left right (Right object) =
   addOrdinals (chainOrderType left) (chainPosition right object)
+
+{-@ reflect sumPrecedes @-}
+sumPrecedes :: Chain a -> Chain b -> Either a b -> Either a b -> Bool
+sumPrecedes left _ (Left first) (Left second) = chainPrecedes left first second
+sumPrecedes _ _ (Left _) (Right _) = True
+sumPrecedes _ _ (Right _) (Left _) = False
+sumPrecedes _ right (Right first) (Right second) = chainPrecedes right first second
+
+-- ALIGN: CHAIN-SUM-ORDER.
+{-@ sumChainOrder :: left:Chain a -> right:Chain b -> first:Either a b -> second:Either a b
+      -> {not (chainOrdinalLT (sumChainPosition left right second) (sumChainPosition left right first))
+           == sumPrecedes left right first second} @-}
+sumChainOrder :: Chain a -> Chain b -> Either a b -> Either a b -> ()
+sumChainOrder _ _ (Left _) (Left _) = ()
+sumChainOrder left right (Left first) (Right second) =
+  chainPositionBelow left first `seq`
+    ordinalAddLeftBelow (chainOrderType left) (chainPosition right second) (chainPosition left first) `seq`
+    ordinalLTAsymmetric (chainPosition left first)
+      (addOrdinals (chainOrderType left) (chainPosition right second))
+sumChainOrder left right (Right first) (Left second) =
+  chainPositionBelow left second `seq`
+    ordinalAddLeftBelow (chainOrderType left) (chainPosition right first) (chainPosition left second)
+sumChainOrder left right (Right first) (Right second) =
+  ordinalAddRightComparison (chainOrderType left) (chainPosition right second) (chainPosition right first)
 
 {-@ reflect sumChainLookup @-}
 sumChainLookup
