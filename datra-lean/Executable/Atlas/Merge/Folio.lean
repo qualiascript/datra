@@ -181,7 +181,7 @@ def firstPageCell (X Y : Atlas) : ValidPageCell X Y 0 :=
   encodedPageCell X Y 0 (.inl (componentZeroValue X))
 
 -- ALIGN: MERGE-COLLAPSE-ORIGIN.
-def collapseToOrigin (X Y : Atlas) : Consolidation (pageChain X Y 0) DomanialInclusion.singletonChain where
+def collapseToOrigin (X Y : Atlas) : Consolidation (pageChain X Y 0) Chain.singletonChain where
   map _ := ()
   preimage _ := firstPageCell X Y
   monotone _ _ _ := le_rfl

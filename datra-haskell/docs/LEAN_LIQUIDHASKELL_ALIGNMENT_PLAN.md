@@ -162,12 +162,19 @@ components with different source and target order types and non-default
 preimages. `Consolidation.Reindex` transports the checked source and target
 orders through carrier equivalences, retaining both directions of the map.
 Merge page transitions sum the native component transitions and reindex them
-through the tagged-cell encoding. The folio builder uses this checked
-transition's source chain and opposite map. Lean proves that both endpoint
-chains, the forward map, and the chosen preimage agree with the mathematical
-merge transition. Full merge folio assembly still needs checked origin and
-prefix-endpoint certificates; sequence transitions still need the corresponding
-integration.
+through the tagged-cell encoding. Checked position transport exposes their
+canonical position functions, and endpoint transport retains the actual
+preceding page as the transition's exact target. The folio builder appends these
+ordered transitions behind a checked singleton origin, choosing the left
+component's canonical origin trace for the first transition's preimage.
+LiquidHaskell checks accepted carriers, prefix endpoints, positive depth,
+length, and termination throughout assembly. Lean proves that the endpoint
+chains, forward map, and chosen preimage agree with the mathematical merge
+transition. Sequence transitions still need the corresponding integration.
+The folio step's source accessor has a checked endpoint contract and an opaque
+logical symbol, so reflected lookup does not unfold an existential carrier's
+transition selector. The correspondence inventory records opaque reflection;
+negative checks reject false endpoint equations through this accessor.
 
 Atlas data stores its four law witnesses with their refinements intact. The
 owning Atlas checks that the stored normalization bounds match its pagination,
@@ -219,20 +226,24 @@ including across genuine and padded pages. Its checked preimage follows the
 stored choice of preimage in each genuine transition and duplicates the final
 position on padded pages. The result belongs to the next page and its
 predecessor is exactly the original trace. Lean identifies both operations with
-the dependent page transport and its chosen preimage. Full Haskell folio
-assembly still requires checked transition-order and data-transport certificates;
-sequence page chains also need the corresponding carrier restriction.
+the dependent page transport and its chosen preimage. Haskell merge folio
+assembly retains these checked transitions. Full merge Atlas assembly still
+requires checked data-transport and inclusion certificates; sequence page
+chains and folio assembly need the corresponding carrier and order contracts.
 
 Consumers import exposed interfaces rather than another component's
 `LiquidInternal` module. The primitive interfaces are `DatraOrdinal.Laws`,
-`Chain.Sum`, `Consolidation.Core`, `Consolidation.Ordered`, `Consolidation.Sum`,
-`Consolidation.Reindex`,
+`Chain.Sum`, `Chain.Position`, `Chain.Singleton`, `Consolidation.Core`, `Consolidation.Ordered`,
+`Consolidation.Sum`, `Consolidation.Reindex`, `Consolidation.Endpoints`,
 `DomanialInsertion.Core`, `Folio.Presentation`, `PageElements.Structure`,
-`PageElements.TraceChain`, `AtlasMerge.Data`, and
+`PageElements.TraceChain`, `AtlasMerge.Assembly`, `AtlasMerge.Data`, and
 `AtlasSequence.Data`. Their definitions and refinement contracts are checked in
 the exposed modules, including the logical record selectors used by clients.
 The alignment checker enforces this import boundary in the library, tests, and
 application. Direct `LiquidInternal` imports stay within each interface's owner.
+Merge, sequence, the empty Atlas, and Dominion inclusion share the checked
+singleton-chain constructor. Lean uses the same singleton chain and the common
+carrier-reindexing operation in its derived folios.
 
 Merge and sequence components use a shared origin-rank insertion. Its inverse
 checks the candidate's forward rank, because Dominion unranking and insertion

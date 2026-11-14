@@ -56,6 +56,7 @@ import Chain
   , chainOrderType
   , chainPosition
   )
+import Chain.Singleton (singletonChain)
 import Consolidation.Ordered (orderedPreimage)
 import Consolidation
   ( Coconsolidation
@@ -123,17 +124,6 @@ memberCardinality member =
 atlasSequenceLength :: NonEmpty AtlasSequenceMember -> Natural
 atlasSequenceLength members =
   maximum (fmap memberCardinality members) + 1
-
-unitChain :: Chain ()
-unitChain =
-  chain
-    (finiteOrdinal 1)
-    (const (finiteOrdinal 0))
-    (\position ->
-      if position == finiteOrdinal 0 then Just () else Nothing)
-    (const ())
-    (\_ _ -> ())
-    (const ())
 
 cellTrace :: PageElement scope object -> [Ordinal]
 cellTrace (PageElement _ _ trace _) = trace
@@ -311,7 +301,7 @@ atlasSequenceFolio
   -> Folio () AtlasSequencePageCell
 atlasSequenceFolio members =
   let depth = maximum (fmap memberCardinality members)
-      origin = singletonFolio unitChain
+      origin = singletonFolio singletonChain
       firstPage = appendPage
         origin
         (atlasSequencePageChain members 0)

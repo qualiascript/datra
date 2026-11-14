@@ -12,6 +12,19 @@ CORE = ROOT / "datra-haskell/src/DatraCore"
 MANIFEST = ROOT / "datra-haskell/docs/lean-correspondence.json"
 
 
+def private_liquid_imports(text):
+    """Allow only an interface's own implementation to import its proof module."""
+    declaration = re.search(r"^\s*module\s+([\w.]+)", text, re.M)
+    module = declaration[1] if declaration else "Main"
+    imports = re.findall(
+        r'^\s*import\s+(?:\{-#\s*SOURCE\s*#-\}\s*)?(?:safe\s+)?'
+        r'(?:qualified\s+)?(?:"[^"\n]+"\s+)?([A-Z][\w.]*)', text, re.M)
+    return [imported for imported in imports
+            if imported.endswith(".LiquidInternal")
+            and module not in {imported.removesuffix(".LiquidInternal"),
+                               imported.removesuffix(".LiquidInternal") + ".Internal"}]
+
+
 def check(require_complete=False):
     manifest = json.loads(MANIFEST.read_text())
     sources = project_sources()
@@ -20,16 +33,10 @@ def check(require_complete=False):
     haskell_sources = (source for directory in ("src", "test", "app")
                        for source in (ROOT / "datra-haskell" / directory).rglob("*.hs"))
     for source in haskell_sources:
-        text = source.read_text()
-        module = re.search(r"^module\s+([\w.]+)", text, re.M)
-        if module is None:
-            continue
-        for imported in re.findall(r"^import\s+(?:qualified\s+)?([\w.]+)", text, re.M):
-            if imported.endswith(".LiquidInternal"):
-                owner = imported.removesuffix(".LiquidInternal")
-                if module[1] not in {owner, owner + ".Internal"}:
-                    errors.append(f"{source.relative_to(ROOT)}: import {owner}'s exposed interface "
-                                  f"instead of {imported}")
+        for imported in private_liquid_imports(source.read_text()):
+            owner = imported.removesuffix(".LiquidInternal")
+            errors.append(f"{source.relative_to(ROOT)}: import {owner}'s exposed interface "
+                          f"instead of {imported}")
     unreachable = set((ROOT / "datra-lean").rglob("*.lean")) - set(sources)
     if unreachable:
         errors.append("Lean modules missing from datra.lean imports: " + ", ".join(
@@ -70,6 +77,7 @@ def check(require_complete=False):
             errors.append(f"{source.relative_to(ROOT)}: unregistered correspondences: "
                           + ", ".join(sorted(unregistered)))
         reflected = re.findall(r"\{-@\s*(?:reflect|inline)\s+(\w+)", text)
+        opaque_reflected = re.findall(r"\{-@\s*opaque-reflect\s+(\w+)", text)
         types = re.findall(r"^(?:data|newtype)\s+(\w+)", text, re.M)
         aliases = re.findall(r"^type\s+(?!role\b|family\b|instance\b)(\w+)", text, re.M)
         predicates = re.findall(r"\{-@\s*predicate\s+(\w+)", text)
@@ -79,9 +87,10 @@ def check(require_complete=False):
                      re.findall(r"\{-@\s*data\s+variance\s+(.+?)\s*@-\}", text, re.S)]
         path = str(source.relative_to(ROOT))
         refinements = re.findall(r"\{-@\s*(?:assume\s+)?([a-z]\w*)\s*::", text)
-        if reflected or types or aliases or predicates or refinement_aliases or refinements or variances:
+        if reflected or opaque_reflected or types or aliases or predicates or refinement_aliases or refinements or variances:
             expected = expected_modules.pop(path, None)
             if (expected is None or expected["reflected"] != reflected
+                    or expected.get("opaque_reflected", []) != opaque_reflected
                     or expected["types"] != types or expected["aliases"] != aliases
                     or expected["predicates"] != predicates
                     or expected["refinement_aliases"] != refinement_aliases

@@ -10,24 +10,12 @@ module EmptyAtlas.Internal
   ) where
 
 import Atlas (Atlas, atlas, atlasDataAction)
-import Chain (Chain, chain)
-import DatraOrdinal (finiteOrdinal)
+import Chain.Singleton (singletonChain)
 import DomanialInsertion (DomanialInsertion, domanialInsertion)
 import Dominion (Dominion, dominion)
 import Folio (singletonFolio)
 import PageElements (PageElement, PageElementArrow)
 import qualified Pagination
-
-unitChain :: Chain ()
-unitChain =
-  chain
-    (finiteOrdinal 1)
-    (const (finiteOrdinal 0))
-    (\position ->
-      if position == finiteOrdinal 0 then Just () else Nothing)
-    (const ())
-    (\_ _ -> ())
-    (const ())
 
 -- | The uninhabited data family of the empty Atlas.
 data EmptyAtlasDatum object
@@ -44,7 +32,7 @@ emptyAtlas
        -> result)
   -> result
 emptyAtlas useAtlas =
-  Pagination.pagination (singletonFolio unitChain) $ \valuePagination ->
+  Pagination.pagination (singletonFolio singletonChain) $ \valuePagination ->
     atlas
       valuePagination
       (atlasDataAction (Pagination.paginationPageElements valuePagination) emptyDominionAt emptyDataMap)

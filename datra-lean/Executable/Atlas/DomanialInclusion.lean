@@ -1,4 +1,5 @@
 import Executable.Atlas.StableTransversal
+import Executable.Chain.Singleton
 
 namespace Datra.Executable.DomanialInclusion
 open CategoryTheory
@@ -69,21 +70,7 @@ theorem homNaturalityRight {A B C : Type} {cell : PageElementCell} (f : CellData
 
 def emptyDominion : Dominion Empty := ⟨Empty.elim, fun _ => none, fun x => nomatch x⟩
 
-def singletonChain : Chain Unit where
-  orderType := Ordinal.finiteOrdinal 1
-  position := fun _ => Ordinal.finiteOrdinal 0
-  lookup position := if position = Ordinal.finiteOrdinal 0 then some () else none
-  positionBelow _ := by decide
-  positionInjective _ _ _ := Subsingleton.elim _ _
-  positionSurjective position below := by
-    have h : position.toSemantics < 1 := by
-      simpa only [Ordinal.finiteOrdinal_denote, Nat.cast_one] using (Ordinal.ordinalLT_correct _ _).mp below
-    have hz : position = Ordinal.finiteOrdinal 0 := Ordinal.toSemantics_injective (by
-      simpa only [Ordinal.finiteOrdinal_denote, Nat.cast_zero] using _root_.Ordinal.lt_one_iff_zero.mp h)
-    subst position
-    exact ⟨(), by simp, rfl⟩
-
-def singletonPage : Page := ⟨Unit, singletonChain⟩
+def singletonPage : Page := ⟨Unit, Chain.singletonChain⟩
 
 def onePageFolio : Folio singletonPage singletonPage :=
   ⟨FolioData.singleton singletonPage () (fun x => by cases x; rfl),
@@ -150,7 +137,7 @@ theorem coalitionMorphism_component {A : Type} (D : Dominion A) (X : Atlas)
 -- ALIGN: DOMINC-COVERAGE.
 theorem dominionAtlas_covered {A : Type} (D : Dominion A) (element : (dominionAtlas D).Element)
     (datum : (dominionAtlas D).cellData element.val.cell) : (dominionAtlas D).Covered element datum :=
-  ⟨singletonChain.chainIndexOf (), ⟨datum.value⟩, rfl⟩
+  ⟨Chain.singletonChain.chainIndexOf (), ⟨datum.value⟩, rfl⟩
 
 def dominionCoalitionValue {A : Type} (D : Dominion A) (value : A) : (dominionAtlas D).CoalitionValue :=
   ⟨⟨value⟩, dominionAtlas_covered D _ _⟩

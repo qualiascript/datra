@@ -70,7 +70,7 @@ def componentPositionEquiv (members : Fin count → Atlas) (n : Nat) :
   right_inv := componentPosition_valueAtPosition members n
 
 def componentSum (members : Fin count → Atlas) (n : Nat) : Chain (PageValue members n) :=
-  (ChainSequence.chain (pageOrders members n)).reindex (componentPositionEquiv members n)
+  (ChainSequence.chain (pageOrders members n)).reindex (componentPositionEquiv members n).symm
 
 /-- A flattened member tag and its source transport trace, exactly the
 runtime page payload. -/
@@ -129,7 +129,7 @@ def pageEncodingEquiv (members : Fin count → Atlas) (n : Nat) :
 
 -- ALIGN: SEQUENCE-PAGE-CHAIN.
 def pageChain (members : Fin count → Atlas) (n : Nat) : Chain (ValidPageCell members n) :=
-  (componentSum members n).reindex (pageEncodingEquiv members n).symm
+  (componentSum members n).reindex (pageEncodingEquiv members n)
 
 -- ALIGN: SEQUENCE-PAGE-CELL-POSITION.
 def pagePosition (members : Fin count → Atlas) (n : Nat) (cell : PageCell) : Ordinal :=
@@ -247,7 +247,7 @@ def firstPageCell (positive : 0 < count) (members : Fin count → Atlas) : Valid
 
 -- ALIGN: SEQUENCE-COLLAPSE-ORIGIN.
 def collapseToOrigin (positive : 0 < count) (members : Fin count → Atlas) :
-    Consolidation (pageChain members 0) DomanialInclusion.singletonChain where
+    Consolidation (pageChain members 0) Chain.singletonChain where
   map _ := ()
   preimage _ := firstPageCell positive members
   monotone _ _ _ := le_rfl

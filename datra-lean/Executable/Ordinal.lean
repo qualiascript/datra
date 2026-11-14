@@ -228,6 +228,13 @@ theorem toSemantics_injective : Function.Injective toSemantics := by
   cases hc
   rfl
 
+-- ALIGN: ORDINAL-BELOW-ONE.
+theorem ordinalBelowOne (value : Ordinal) (below : ordinalLT value (finiteOrdinal 1) = true) :
+    value = finiteOrdinal 0 := by
+  apply toSemantics_injective
+  have bound := (ordinalLT_correct _ _).1 below
+  simpa using (_root_.Ordinal.lt_one_iff_zero.1 (by simpa using bound))
+
 end Datra.Executable.Ordinal
 
 namespace Datra.Executable.Ordinal

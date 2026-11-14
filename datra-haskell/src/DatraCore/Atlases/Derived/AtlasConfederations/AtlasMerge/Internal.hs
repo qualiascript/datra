@@ -42,7 +42,8 @@ import AtlasMerge.Data
   , mergeDatumInsertion
   )
 import AtlasExtent.Internal (atlasCellOriginRankInsertion)
-import AtlasMerge.Page (AtlasMergePageCell (..), atlasMergePageChain, mergePageTransition)
+import AtlasMerge.Page (AtlasMergePageCell (..))
+import AtlasMerge.Assembly (atlasMergeLength, atlasMergeFolio)
 import AtlasMerge.Resolution (mergeCellContains)
 import AtlasTransposal
   ( AtlasTransposalElement
@@ -52,18 +53,11 @@ import AtlasTransposal
   )
 import Chain
   ( Chain
-  , chain
   , chainIndex
   , chainObjectAt
   , chainOrderType
   , chainPosition
   )
-import Consolidation
-  ( Coconsolidation
-  , consolidation
-  , op
-  )
-import Consolidation.Ordered (orderedSource, orderedOpposite)
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
@@ -80,10 +74,6 @@ import DomanialInsertion
 import Dominion (Dominion)
 import Folio
   ( Folio
-  , appendPage
-  , originChain
-  , originValue
-  , singletonFolio
   , withPageAt
   )
 import Numeric.Natural (Natural)
@@ -96,7 +86,6 @@ import PageElements
   , pageElementIndex
   , withPageElement
   )
-import PageElements.Internal (folioTraceLookup)
 import PageElements.Structure
   ( PageElement (..)
   )
@@ -105,93 +94,6 @@ import OrderedAtlasTransposal
   ( OrderedAtlasTransposal
   , orderedAtlasTransposal
   )
-
--- | The merge has a fresh singleton origin followed by the componentwise
--- pages of both input atlases.
--- ALIGN: MERGE-FOLIO-LENGTH.
--- ALIGN: MERGE-FOLIO-LENGTH-INTERPRETATION.
-atlasMergeLength
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> Natural
-atlasMergeLength left right =
-  max (atlasCardinality left) (atlasCardinality right) + 1
-
-unitChain :: Chain ()
-unitChain =
-  chain
-    (finiteOrdinal 1)
-    (const (finiteOrdinal 0))
-    (\position ->
-      if position == finiteOrdinal 0 then Just () else Nothing)
-    (const ())
-    (\_ _ -> ())
-    (const ())
-
-componentTraceAt
-  :: Atlas atlasScope scope cellData origin final
-  -> Natural
-  -> Ordinal
-  -> Maybe [Ordinal]
-componentTraceAt valueAtlas pageNumber position =
-  folioTraceLookup (atlasFolio valueAtlas) pageNumber position
-
-firstMergeCell
-  :: Atlas atlasScope scope cellData origin final
-  -> AtlasMergePageCell
-firstMergeCell valueAtlas =
-  let pages = atlasFolio valueAtlas
-      firstPosition = chainPosition (originChain pages) (originValue pages)
-  in case componentTraceAt valueAtlas 0 firstPosition of
-      Just trace -> AtlasMergeLeftCell trace
-      Nothing -> AtlasMergeLeftCell [firstPosition]
-
--- ALIGN: MERGE-COLLAPSE-ORIGIN.
-collapseToOrigin
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Coconsolidation () AtlasMergePageCell
-collapseToOrigin left =
-  op (consolidation
-    (const ())
-    (const (firstMergeCell left))
-    (\_ _ _ -> ())
-    (const ()))
-
--- ALIGN: MERGE-FOLIO-PREFIX.
-appendRemainingPages
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> Natural
-  -> Natural
-  -> Folio () AtlasMergePageCell
-  -> Folio () AtlasMergePageCell
-appendRemainingPages left right pageNumber depth pages
-  | pageNumber >= depth = pages
-  | otherwise =
-      let transition = mergePageTransition left right pageNumber
-      in appendRemainingPages left right (pageNumber + 1) depth
-        (appendPage
-          pages
-          (orderedSource transition)
-          (orderedOpposite transition))
-
--- | The finite bouquet folio underlying an Atlas merge.
--- ALIGN: MERGE-FOLIO.
--- ALIGN: MERGE-COMPONENT-PAGE-INDEX.
--- ALIGN: MERGE-FINITE-INDEX-INTERPRETATION.
--- ALIGN: MERGE-FINITE-INTERVAL-INTERPRETATION.
-atlasMergeFolio
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> Folio () AtlasMergePageCell
-atlasMergeFolio left right =
-  let depth = max (atlasCardinality left) (atlasCardinality right)
-      origin = singletonFolio unitChain
-      firstPage = appendPage
-        origin
-        (atlasMergePageChain left right 0)
-        (collapseToOrigin left)
-  in appendRemainingPages left right 1 depth firstPage
 
 -- ALIGN: MERGE-UNRANK-SOUND.
 -- ALIGN: MERGE-BOUQUET-DATA-DECODE.

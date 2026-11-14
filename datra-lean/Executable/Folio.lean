@@ -43,6 +43,10 @@ structure Step (origin previous next : Page) where
 def Step.Valid {origin previous next : Page} (step : Step origin previous next) : Prop :=
   step.pages.Valid ∧ step.count = step.pages.length + 1
 
+-- ALIGN: FOLIO-STEP-SOURCE.
+def Step.source {origin previous next : Page} (_step : Step origin previous next) : Chain next.Carrier :=
+  next.chain
+
 def Step.toFolio {origin previous next : Page} (step : Step origin previous next) :
     FolioData origin next := .snoc step.count step.pages next step.transition
 

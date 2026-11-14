@@ -100,6 +100,56 @@ proofGuard source target left right =
 """,
 }
 
+POSITION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Chain/Position.hs"
+POSITION_GUARDS = {
+    "chain position transport requires pointwise equality": """
+{-@ proofGuard :: Chain a -> (a -> Ordinal) -> Chain a @-}
+proofGuard :: Chain a -> (a -> Ordinal) -> Chain a
+proofGuard original position = withChainPosition (const True) original position (const ())
+""",
+}
+
+ENDPOINTS_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Endpoints.hs"
+ENDPOINTS_GUARDS = {
+    "consolidation endpoint transport requires equal positions": """
+{-@ proofGuard :: OrderedConsolidation a b -> Chain a -> Chain b -> OrderedConsolidation a b @-}
+proofGuard :: OrderedConsolidation a b -> Chain a -> Chain b -> OrderedConsolidation a b
+proofGuard mapping source target =
+  withConsolidationEndpoints (const True) (const True) mapping source target (const ()) (const ())
+""",
+}
+
+MERGE_ASSEMBLY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs"
+MERGE_ASSEMBLY_GUARDS = {
+    "merge assembly requires the prefix length": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
+      -> pages:{Folio () {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} |
+           folioLengthData pages == page
+           && chainPosition (lastPageData pages) == mergePagePosition (folioPageOrderType (atlasFolio left) (page - 1))}
+      -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Natural
+  -> Folio () AtlasMergePageCell -> ()
+proofGuard left right page depth pages = appendRemainingPages left right page depth pages `seq` ()
+""",
+    "merge assembly requires the prefix endpoint": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
+      -> pages:{Folio () {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} |
+           folioLengthData pages == page + 1}
+      -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Natural
+  -> Folio () AtlasMergePageCell -> ()
+proofGuard left right page depth pages = appendRemainingPages left right page depth pages `seq` ()
+""",
+    "merge origin collapse requires a canonical chosen cell": """
+{-@ proofGuard :: contains:(AtlasMergePageCell -> Bool)
+      -> Chain {cell:AtlasMergePageCell | contains cell} -> Chain () -> AtlasMergePageCell -> () @-}
+proofGuard :: (AtlasMergePageCell -> Bool) -> Chain AtlasMergePageCell -> Chain () -> AtlasMergePageCell -> ()
+proofGuard contains source target chosen = collapseToOrigin contains source target chosen `seq` ()
+""",
+}
+
 REINDEX_CONSOLIDATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Reindex.hs"
 REINDEX_CONSOLIDATION_GUARDS = {
     "consolidation reindexing requires the source inverse": """
@@ -206,17 +256,27 @@ proofGuard = pageTraceChain
 MERGE_PAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs"
 MERGE_PAGE_GUARDS = {
     "merge transitions cannot widen their canonical carriers": """
-{-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
-      -> {page:Natural | page > 0}
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0}
+      -> target:{Chain {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} |
+           chainPosition target == mergePagePosition (folioPageOrderType (atlasFolio left) (page - 1))}
       -> OrderedConsolidation AtlasMergePageCell AtlasMergePageCell @-}
-proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Chain AtlasMergePageCell
   -> OrderedConsolidation AtlasMergePageCell AtlasMergePageCell
 proofGuard = mergePageTransition
+""",
+    "merge transitions require the actual preceding page positions": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0}
+      -> Chain {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell}
+      -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Chain AtlasMergePageCell -> ()
+proofGuard left right page target = mergePageTransition left right page target `seq` ()
 """,
     "merge transitions reject page zero": """
 {-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> () @-}
 proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> ()
-proofGuard left right = mergePageTransition left right 0 `seq` ()
+proofGuard left right = mergePageTransition left right 0 (atlasMergePageChain left right 0) `seq` ()
 """,
     "merge preimages cannot use the other component as their inverse": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
@@ -495,6 +555,12 @@ proofGuard = cellOriginRankPreimageSound
 
 FOLIO_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Folio/Presentation.hs"
 FOLIO_GUARDS = {
+    "opaque folio accessors cannot equate different endpoints": """
+{-@ proofGuard :: step:FolioStep origin page page
+      -> {stepSource step == orderedTarget (stepTransition step)} @-}
+proofGuard :: FolioStep origin page page -> ()
+proofGuard step = stepSource step `seq` ()
+""",
     "folio steps require the actual preceding chain": """
 {-@ proofGuard :: pages:FolioData origin previous
       -> OrderedConsolidation next previous -> FolioData origin next @-}
@@ -834,6 +900,9 @@ def run(pattern=None):
                                     (ORDERED_CONSOLIDATION_SOURCE, ORDERED_CONSOLIDATION_GUARDS),
                                     (SUM_CONSOLIDATION_SOURCE, SUM_CONSOLIDATION_GUARDS),
                                     (REINDEX_CONSOLIDATION_SOURCE, REINDEX_CONSOLIDATION_GUARDS),
+                                    (POSITION_SOURCE, POSITION_GUARDS),
+                                    (ENDPOINTS_SOURCE, ENDPOINTS_GUARDS),
+                                    (MERGE_ASSEMBLY_SOURCE, MERGE_ASSEMBLY_GUARDS),
                                     (PAGE_TRACE_SOURCE, PAGE_TRACE_GUARDS),
                                     (MERGE_PAGE_SOURCE, MERGE_PAGE_GUARDS),
                                     (STABLE_SOURCE, STABLE_GUARDS),

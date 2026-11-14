@@ -45,6 +45,7 @@ import Folio.Presentation
   , folioMapComposition
   , folioMapIdentity
   , lastPageData
+  , stepSource
   , originPageData
   , originUniqueData
   , originValueData
@@ -120,8 +121,8 @@ folioOriginToFinal pages = orderedOpposite (folioOriginMap pages)
            orderedSource mapping == lastChain pages && orderedTarget mapping == originChain pages} @-}
 folioOriginMap :: Folio origin final -> OrderedConsolidation final origin
 folioOriginMap (OriginFolio _ page _) = identityOrderedConsolidation page
-folioOriginMap (SnocPage (FolioStep _ previous transition)) =
-  composeOrderedConsolidations (folioOriginMap previous) transition
+folioOriginMap (SnocPage step@(FolioStep _ previous transition)) =
+  stepSource step `seq` composeOrderedConsolidations (folioOriginMap previous) transition
 
 -- | Clamp a spine index to the final genuine page.
 paddedIndex :: Folio origin final -> Natural -> Natural
@@ -202,9 +203,9 @@ mapFromIndex
   -> result
 mapFromIndex pages@(OriginFolio {}) _ useMap =
   useMap (lastChain pages) (identityOrderedConsolidation (lastChain pages))
-mapFromIndex (SnocPage (FolioStep _ previous transition)) sourceIndex useMap
+mapFromIndex (SnocPage step@(FolioStep _ previous transition)) sourceIndex useMap
   | sourceIndex >= folioLength previous =
-      useMap (orderedSource transition) (identityOrderedConsolidation (orderedSource transition))
+      useMap (stepSource step) (identityOrderedConsolidation (stepSource step))
   | otherwise =
-      mapFromIndex previous sourceIndex $ \sourcePage sourceToPrevious ->
-        useMap sourcePage (composeOrderedConsolidations sourceToPrevious transition)
+      stepSource step `seq` mapFromIndex previous sourceIndex (\sourcePage sourceToPrevious ->
+        useMap sourcePage (composeOrderedConsolidations sourceToPrevious transition))

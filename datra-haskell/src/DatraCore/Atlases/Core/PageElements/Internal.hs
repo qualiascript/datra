@@ -38,6 +38,7 @@ module PageElements.Internal
   , prependCopies
   , folioTraceLengthPositive
   , folioOriginTrace
+  , folioOriginTraceLookup
   , traceLookupPresent
   , folioPageOrderType
   , folioTraceLookupBounded
@@ -99,7 +100,9 @@ import Folio.Internal
   , originChain
   , originValue
   )
-import Folio.Presentation (FolioData (..), FolioStep (..), SingletonOrigin (..))
+import Folio.Presentation (FolioData (..), FolioStep (..), SingletonOrigin (..), stepSource)
+
+{-@ opaque-reflect stepSource @-}
 import Numeric.Natural (Natural)
 import PageElements.Structure
   ( PageElement (..)
@@ -307,8 +310,8 @@ prefixTraceLookupBounded prefix _ position
 {-@ reflect folioPageOrderType @-}
 folioPageOrderType :: Folio origin final -> Natural -> Ordinal
 folioPageOrderType (OriginFolio _ pageChain _) _ = chainOrderType pageChain
-folioPageOrderType (SnocPage (FolioStep _ previous transition)) page
-  | page >= folioLength previous = chainOrderType (orderedSource transition)
+folioPageOrderType (SnocPage step@(FolioStep _ previous _)) page
+  | page >= folioLength previous = chainOrderType (stepSource step)
   | otherwise = folioPageOrderType previous page
 
 -- ALIGN: PE-NATIVE-LOOKUP-BOUNDS.
@@ -385,10 +388,10 @@ indexInFolio :: Folio origin final -> Natural -> Ordinal -> Maybe (PageElementIn
 indexInFolio (OriginFolio count pageChain witness) page position =
   lookupPrefixIndex page position (OriginFolio count pageChain witness) page
     (originElementTrace pageChain witness)
-indexInFolio pages@(SnocPage (FolioStep _ previous transition)) page position
+indexInFolio pages@(SnocPage step@(FolioStep _ previous transition)) page position
   | page >= folioLength previous =
       lookupPrefixIndex page position pages
-        (page - folioLength previous) (snocElementTrace previous (orderedSource transition) transition)
+        (page - folioLength previous) (snocElementTrace previous (stepSource step) transition)
   | otherwise = indexInFolio previous page position
 
 -- | Scalar trace validity against the owning folio, including its exact
@@ -603,11 +606,11 @@ lastPageElement (PageElements (OriginFolio count pageChain witness)) index =
       value = chainObjectAt index
   in pageElement (PageElementIndex (indexWithTrace 0 prefix 0 value
        (originElementTrace pageChain witness value)))
-lastPageElement (PageElements (SnocPage (FolioStep count previous transition))) index =
-  let prefix = SnocPage (FolioStep count previous transition)
+lastPageElement (PageElements (SnocPage step@(FolioStep count previous transition))) index =
+  let prefix = SnocPage step
       value = chainObjectAt index
   in pageElement (PageElementIndex (indexWithTrace (count - 1) prefix 0 value
-       (snocElementTrace previous (orderedSource transition) transition value)))
+       (snocElementTrace previous (stepSource step) transition value)))
 
 -- | The exact trace of the unique origin occurrence.
 {-@ reflect folioOriginTrace @-}

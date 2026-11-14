@@ -16,6 +16,7 @@ module DatraOrdinal.Laws
   , ordinalLTIrreflexive
   , ordinalLTAsymmetric
   , ordinalAddRightComparison
+  , ordinalBelowOne
   ) where
 
 import Numeric.Natural (Natural)
@@ -29,12 +30,23 @@ import DatraOrdinal.Internal
   , listLength
   , omega
   , ordinalLT
+  , finiteOrdinal
   )
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
 
 {-@ type CanonicalCoefficients = { values:[Natural] | canonicalCoefficients values } @-}
+
+-- ALIGN: ORDINAL-BELOW-ONE.
+{-@ ordinalBelowOne :: value:Ordinal
+      -> {ordinalLT value (finiteOrdinal 1) => value == finiteOrdinal 0} @-}
+ordinalBelowOne :: Ordinal -> ()
+ordinalBelowOne (Ordinal []) = ()
+ordinalBelowOne (Ordinal values@[leading])
+  | leading == 1 = coefficientsLT values [1] `seq` ()
+  | otherwise = coefficientsLT values [1] `seq` ()
+ordinalBelowOne (Ordinal values@(_ : _ : _)) = coefficientsLT values [1] `seq` ()
 
 -- | The left summand embeds as an initial segment of an ordinal sum.
 {-@

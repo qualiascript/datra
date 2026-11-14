@@ -173,5 +173,21 @@ def reindex {A B C D : Type} (mapping : OrderedConsolidation A B)
       intro value
       simp only [Equiv.symm_apply_apply, mapping.map.rightInverse, Equiv.apply_symm_apply] }⟩
 
+-- ALIGN: CONSOLIDATION-ENDPOINTS.
+def withEndpoints {A B : Type} (mapping : OrderedConsolidation A B)
+    (source : Chain A) (target : Chain B)
+    (sourcePositions : ∀ value, source.position value = mapping.source.position value)
+    (targetPositions : ∀ value, target.position value = mapping.target.position value) :
+    OrderedConsolidation A B :=
+  ⟨source, target, {
+    map := mapping.map.map
+    preimage := mapping.map.preimage
+    monotone := by
+      intro first second ordered
+      rw [sourcePositions, sourcePositions] at ordered
+      rw [targetPositions, targetPositions]
+      exact mapping.map.monotone first second ordered
+    rightInverse := mapping.map.rightInverse }⟩
+
 end OrderedConsolidation
 end Datra.Executable

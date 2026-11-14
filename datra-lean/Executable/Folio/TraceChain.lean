@@ -24,6 +24,10 @@ theorem tracePrecedes_correct (earlier later : List Ordinal) :
 def TraceCarrier (pages : FolioData origin final) (page : Nat) :=
   {trace : List Ordinal // pages.traceLookup page (traceHead trace) = some trace}
 
+-- ALIGN: PE-TRACE-ORIGIN.
+def traceOrigin (pages : FolioData origin final) (valid : pages.Valid) : pages.TraceCarrier 0 :=
+  ⟨[origin.chain.position pages.originValue], pages.traceLookup_origin valid⟩
+
 def traceChainLookup (pages : FolioData origin final) (valid : pages.Valid)
     (page : Nat) (position : Ordinal) : Option (pages.TraceCarrier page) :=
   match found : pages.traceLookup page position with
@@ -85,6 +89,20 @@ def encodeTrace (pages : FolioData origin final) (valid : pages.Valid) (page : N
   ⟨pages.traceAt page value, by
     rw [traceHead_of_head (pages.traceAt_head page value)]
     exact pages.traceLookup_occurrence valid ⟨page, value⟩⟩
+
+theorem encodeTrace_origin (pages : FolioData origin final) (valid : pages.Valid)
+    (value : (pages.pageAt 0).Carrier) :
+    pages.encodeTrace valid 0 value = pages.traceOrigin valid := by
+  have atOrigin : pages.pageAt 0 = origin := by
+    rw [pages.pageAt_fin ⟨0, pages.depth_positive⟩, zero_index, firstIndex_page]
+  have position_cast {A B : Page} (same : A = B) (v : A.Carrier) :
+      A.chain.position v = B.chain.position (cast (congrArg Page.Carrier same) v) := by
+    cases same
+    rfl
+  apply Subtype.ext
+  change [(pages.pageAt 0).chain.position value] = [origin.chain.position pages.originValue]
+  rw [position_cast atOrigin value,
+    pages.originUnique (cast (congrArg Page.Carrier atOrigin) value)]
 
 theorem encodeTrace_position (pages : FolioData origin final) (valid : pages.Valid) (page : Nat)
     (value : (pages.pageAt page).Carrier) :

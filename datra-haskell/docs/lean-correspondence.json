@@ -1819,14 +1819,14 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
       "haskell_declaration": "mergePageTransition",
       "lean_namespace": "Datra.Executable.AtlasMerge",
-      "lean_declaration": "nativePageTransition"
+      "lean_declaration": "nativePageTransitionTo"
     },
     {
       "id": "MERGE-PAGE-TRANSITION-INTERPRETATION",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
       "haskell_declaration": "mergePageTransition",
       "lean_namespace": "Datra.Executable.AtlasMerge",
-      "lean_declaration": "nativePageTransition_interpretation"
+      "lean_declaration": "nativePageTransitionTo_interpretation"
     },
     {
       "id": "MERGE-PAGE-PREIMAGE",
@@ -1837,42 +1837,42 @@
     },
     {
       "id": "MERGE-COLLAPSE-ORIGIN",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
       "haskell_declaration": "collapseToOrigin",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "collapseToOrigin"
     },
     {
       "id": "MERGE-FOLIO",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
       "haskell_declaration": "atlasMergeFolio",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "folio"
     },
     {
       "id": "MERGE-FOLIO-LENGTH",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
       "haskell_declaration": "atlasMergeLength",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "folio_length"
     },
     {
       "id": "MERGE-FOLIO-LENGTH-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
       "haskell_declaration": "atlasMergeLength",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "folio_length_interpretation"
     },
     {
       "id": "MERGE-FOLIO-PREFIX",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
       "haskell_declaration": "appendRemainingPages",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "prefixFolio"
     },
     {
       "id": "MERGE-COMPONENT-PAGE-INDEX",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
       "haskell_declaration": "atlasMergeFolio",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "componentIndex_number"
@@ -2054,7 +2054,7 @@
     },
     {
       "id": "MERGE-FINITE-INDEX-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
       "haskell_declaration": "atlasMergeFolio",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "finiteIndexOrderIso"
@@ -2068,7 +2068,7 @@
     },
     {
       "id": "MERGE-FINITE-INTERVAL-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
       "haskell_declaration": "atlasMergeFolio",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "finitePageEquiv_interval"
@@ -3731,6 +3731,55 @@
       "haskell_declaration": "mergePageTransition",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "nativePageTransition"
+    },
+    {
+      "id": "CHAIN-POSITION-TRANSPORT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Position.hs",
+      "haskell_declaration": "withChainPosition",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Chain.withPosition"
+    },
+    {
+      "id": "CONSOLIDATION-ENDPOINTS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Endpoints.hs",
+      "haskell_declaration": "withConsolidationEndpoints",
+      "lean_namespace": "Datra.Executable.OrderedConsolidation",
+      "lean_declaration": "withEndpoints"
+    },
+    {
+      "id": "PE-TRACE-ORIGIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "pageTraceOrigin",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceOrigin"
+    },
+    {
+      "id": "ORDINAL-BELOW-ONE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
+      "haskell_declaration": "ordinalBelowOne",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "ordinalBelowOne"
+    },
+    {
+      "id": "FOLIO-STEP-SOURCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/Presentation.hs",
+      "haskell_declaration": "stepSource",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "Step.source"
+    },
+    {
+      "id": "MERGE-FIRST-CELL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
+      "haskell_declaration": "firstMergeCell",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "nativeFirstPageCell"
+    },
+    {
+      "id": "CHAIN-SINGLETON",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Singleton.hs",
+      "haskell_declaration": "singletonChain",
+      "lean_namespace": "Datra.Executable.Chain",
+      "lean_declaration": "singletonChain"
     }
   ],
   "modules": [
@@ -4042,6 +4091,7 @@
         "subtractEqualCoefficients"
       ],
       "refinements": [
+        "ordinalBelowOne",
         "ordinalAddLeftBelow",
         "addCoefficientsLeftBelow",
         "addCoefficientsPreservesLexBelow",
@@ -4206,6 +4256,7 @@
         "appendPageData",
         "folioLengthData",
         "originUniqueData",
+        "stepSource",
         "identityFolioMap",
         "folioMapIdentity",
         "composeFolioMaps",
@@ -4218,7 +4269,10 @@
         "Natural as int"
       ],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": [
+        "stepSource"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
@@ -4296,7 +4350,10 @@
         "Natural as int"
       ],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": [
+        "stepSource"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Structure.hs",
@@ -5319,6 +5376,7 @@
       ],
       "refinements": [
         "traceHeadMatches",
+        "pageTraceOrigin",
         "pageTraceLookup",
         "pageTracePositionBelow",
         "pageTracePositionInjective",
@@ -5356,6 +5414,7 @@
       "lean_target": "Datra.Executable.AtlasMerge.nativePageChain",
       "coverage": "partial",
       "reflected": [
+        "mergePagePosition",
         "mergePageContains",
         "mergeCellAccepted",
         "mergeCellFromParts",
@@ -5378,10 +5437,12 @@
         "mergeCellRoundTrip",
         "atlasMergePageChain",
         "mergePageChainFromParts",
+        "mergePositionEquation",
         "previousMergeCell",
         "nextMergeCell",
         "mergePageTransition",
-        "mergeTraceTransition"
+        "mergeTraceTransition",
+        "sumTraceTransitions"
       ]
     },
     {
@@ -5469,6 +5530,89 @@
         "reindexConsolidation",
         "reindexSurjective",
         "reindexMonotone"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Position.hs",
+      "module": "Chain.Position",
+      "lean_target": "Datra.Executable.Chain",
+      "coverage": "aligned",
+      "reflected": [],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "withChainPosition",
+        "positionBelow",
+        "positionInjective",
+        "positionSurjective"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Endpoints.hs",
+      "module": "Consolidation.Endpoints",
+      "lean_target": "Datra.Executable.OrderedConsolidation",
+      "coverage": "aligned",
+      "reflected": [],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "withConsolidationEndpoints",
+        "endpointMonotone"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
+      "module": "AtlasMerge.Assembly",
+      "lean_target": "Datra.Executable.AtlasMerge",
+      "coverage": "aligned",
+      "reflected": [
+        "atlasMergeLength",
+        "unitContains",
+        "collapseValue",
+        "collapseChosen"
+      ],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [
+        "Natural as int"
+      ],
+      "refinements": [
+        "atlasMergeLength",
+        "firstMergeCell",
+        "collapseToOrigin",
+        "collapseInverse",
+        "collapseMonotone",
+        "appendRemainingPages",
+        "appendMergePage",
+        "atlasMergeFolio"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Singleton.hs",
+      "module": "Chain.Singleton",
+      "lean_target": "Datra.Executable.Chain",
+      "coverage": "aligned",
+      "reflected": [
+        "unitPosition",
+        "unitLookup"
+      ],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "singletonChain",
+        "unitBelow",
+        "unitSurjective"
       ]
     }
   ],

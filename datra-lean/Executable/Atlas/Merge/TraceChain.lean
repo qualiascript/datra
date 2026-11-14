@@ -20,6 +20,15 @@ theorem nativeCellEquiv_right (X Y : Atlas) (n : Nat) (trace : Y.pages.TraceCarr
   exact congrArg PageCell.right (congrArg Subtype.val
     ((Y.pages.traceEncodingEquiv Y.pagination.folio.valid n).apply_symm_apply trace))
 
+-- ALIGN: MERGE-FIRST-CELL.
+theorem nativeFirstPageCell (X Y : Atlas) :
+    nativeCellEquiv X Y 0 (.inl (X.pages.traceOrigin X.pagination.folio.valid)) =
+      firstPageCell X Y := by
+  apply Subtype.ext
+  rw [nativeCellEquiv_left]
+  exact congrArg PageCell.left (congrArg Subtype.val
+    (X.pages.encodeTrace_origin X.pagination.folio.valid (componentZeroValue X))).symm
+
 /-- The Haskell constructor sums the two native trace chains, then retags them. -/
 noncomputable def nativePageChain (X Y : Atlas) (n : Nat) : Chain (ValidPageCell X Y n) :=
   (Chain.sumChains (X.pages.traceChain X.pagination.folio.valid n)
@@ -107,7 +116,6 @@ theorem nativeNext_valid (X Y : Atlas) (n : Nat)
 
 /-- The native merge transition sums the component trace maps before retagging. -/
 -- ALIGN: MERGE-NATIVE-TRANSITION.
--- ALIGN: MERGE-PAGE-TRANSITION.
 noncomputable def nativePageTransition (X Y : Atlas) (n : Nat) :
     OrderedConsolidation (ValidPageCell X Y (n + 1)) (ValidPageCell X Y n) :=
   OrderedConsolidation.reindex
@@ -148,7 +156,6 @@ theorem nativePageTransition_preimage (X Y : Atlas) (n : Nat) (cell : ValidPageC
   rw [Equiv.symm_apply_apply]
   exact (nativeNext_valid X Y n parts).symm
 
--- ALIGN: MERGE-PAGE-TRANSITION-INTERPRETATION.
 theorem nativePageTransition_interpretation (X Y : Atlas) (n : Nat)
     (value : Sum (componentPage X (n + 1)).Carrier (componentPage Y (n + 1)).Carrier) :
     pageSumOrderIso X Y n ((nativePageTransition X Y n).map.map (encodedPageCell X Y (n + 1) value)) =
@@ -158,5 +165,54 @@ theorem nativePageTransition_interpretation (X Y : Atlas) (n : Nat)
         (pageSumOrderIso X Y (n + 1) (encodedPageCell X Y (n + 1) value)) := by
   rw [nativePageTransition_map]
   exact pageTransition_interpretation X Y n value
+
+-- ALIGN: MERGE-PAGE-TRANSITION.
+noncomputable def nativePageTransitionTo (X Y : Atlas) (n : Nat)
+    (target : Chain (ValidPageCell X Y n))
+    (targetPosition : ∀ cell, target.position cell = pagePosition X Y n cell.val) :
+    OrderedConsolidation (ValidPageCell X Y (n + 1)) (ValidPageCell X Y n) :=
+  let mapping := nativePageTransition X Y n
+  let sourcePosition : ∀ cell, pagePosition X Y (n + 1) cell.val = mapping.source.position cell := by
+    intro cell
+    rw [nativePageTransition_source]
+    rfl
+  let source := mapping.source.withPosition (fun cell => pagePosition X Y (n + 1) cell.val) sourcePosition
+  mapping.withEndpoints source target sourcePosition (by
+    intro cell
+    rw [targetPosition, nativePageTransition_target]
+    rfl)
+
+theorem nativePageTransitionTo_source (X Y : Atlas) (n : Nat)
+    (target : Chain (ValidPageCell X Y n))
+    (targetPosition : ∀ cell, target.position cell = pagePosition X Y n cell.val) :
+    (nativePageTransitionTo X Y n target targetPosition).source = pageChain X Y (n + 1) := by
+  simp only [nativePageTransitionTo, OrderedConsolidation.withEndpoints,
+    Chain.withPosition_eq, nativePageTransition_source]
+
+theorem nativePageTransitionTo_target (X Y : Atlas) (n : Nat)
+    (target : Chain (ValidPageCell X Y n))
+    (targetPosition : ∀ cell, target.position cell = pagePosition X Y n cell.val) :
+    (nativePageTransitionTo X Y n target targetPosition).target = target := rfl
+
+-- ALIGN: MERGE-PAGE-TRANSITION-INTERPRETATION.
+theorem nativePageTransitionTo_interpretation (X Y : Atlas) (n : Nat)
+    (target : Chain (ValidPageCell X Y n))
+    (targetPosition : ∀ cell, target.position cell = pagePosition X Y n cell.val)
+    (value : Sum (componentPage X (n + 1)).Carrier (componentPage Y (n + 1)).Carrier) :
+    pageSumOrderIso X Y n ((nativePageTransitionTo X Y n target targetPosition).map.map
+        (encodedPageCell X Y (n + 1) value)) =
+      (Datra.Semantics.ConHom.sum
+        (X.pages.transport (n + 1) n (Nat.le_succ n)).toSemantics
+        (Y.pages.transport (n + 1) n (Nat.le_succ n)).toSemantics)
+        (pageSumOrderIso X Y (n + 1) (encodedPageCell X Y (n + 1) value)) :=
+  nativePageTransition_interpretation X Y n value
+
+theorem nativePageTransitionTo_preimage (X Y : Atlas) (n : Nat)
+    (target : Chain (ValidPageCell X Y n))
+    (targetPosition : ∀ cell, target.position cell = pagePosition X Y n cell.val)
+    (cell : ValidPageCell X Y n) :
+    (nativePageTransitionTo X Y n target targetPosition).map.preimage cell =
+      (pageTransition X Y n).preimage cell :=
+  nativePageTransition_preimage X Y n cell
 
 end Datra.Executable.AtlasMerge

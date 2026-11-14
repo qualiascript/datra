@@ -69,7 +69,7 @@ import AtlasTransposal
   , atlasTransposalElement
   )
 import AtlasTransversal (atlasTransversal)
-import Chain (Chain, chain)
+import Chain.Singleton (singletonChain)
 import Coalition
   ( CoalitionElement
   , stableCoalitionMap
@@ -79,7 +79,6 @@ import Coalition.Internal
   ( coalitionElement
   , coalitionElementCoverageAt
   )
-import DatraOrdinal (finiteOrdinal)
 import Data.Void (Void, absurd)
 import DomanialInclusion.LiquidInternal
   ( DominionCellData
@@ -141,18 +140,6 @@ originObjectMap = atlasObjectMap
 -- | The initial dominion from the Lean construction.
 emptyDominion :: Dominion Void
 emptyDominion = dominion absurd (const Nothing) absurd
-
--- | The singleton chain used by the one-page folio.
-singletonChain :: Chain ()
-singletonChain =
-  chain
-    (finiteOrdinal 1)
-    (const (finiteOrdinal 0))
-    (\position ->
-      if position == finiteOrdinal 0 then Just () else Nothing)
-    (const ())
-    (\_ _ -> ())
-    (const ())
 
 onePageFolio :: Folio () ()
 onePageFolio = singletonFolio singletonChain

@@ -1,23 +1,6 @@
 import Executable.Chain
 import Executable.Ordinal.Subtraction
 
-namespace Datra.Executable.Chain
-
-/-- Transport both position and checked lookup through a computable carrier
-equivalence. No choice is needed to recover the original payload. -/
-def reindex {A B : Type} (source : Chain A) (equiv : B ≃ A) : Chain B where
-  orderType := source.orderType
-  position value := source.position (equiv value)
-  lookup position := (source.lookup position).map equiv.symm
-  positionBelow value := source.positionBelow (equiv value)
-  positionInjective := source.positionInjective.comp equiv.injective
-  positionSurjective position below := by
-    obtain ⟨value, found, same⟩ := source.positionSurjective position below
-    refine ⟨equiv.symm value, by simp [found], ?_⟩
-    simpa using same
-
-end Datra.Executable.Chain
-
 namespace Datra.Executable.ChainSequence
 open Ordinal
 

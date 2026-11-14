@@ -54,15 +54,19 @@ library
         DatraOrdinal.Laws
         Chain.Sum
         Chain.Order
+        Chain.Position
+        Chain.Singleton
         Consolidation.Core
         Consolidation.Ordered
         Consolidation.Sum
         Consolidation.Reindex
+        Consolidation.Endpoints
         DomanialInsertion.Core
         Folio.Presentation
         PageElements.Structure
         PageElements.TraceChain
         AtlasMerge.Data
+        AtlasMerge.Assembly
         AtlasSequence.Data
         DatraLanguage.AST
         DatraLanguage.AST.Source

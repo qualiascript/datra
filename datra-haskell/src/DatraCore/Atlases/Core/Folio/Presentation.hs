@@ -18,6 +18,7 @@ module Folio.Presentation
   , originValueData
   , originUniqueData
   , lastPageData
+  , stepSource
   , identityFolioMap
   , composeFolioMaps
   , folioMapIdentity
@@ -109,10 +110,12 @@ data FolioStep origin previous final = FolioStep
 -- supplied witness identifies every origin value with the selected value.
 {-@
 folioData
-  :: Chain origin
+  :: page:Chain origin
   -> selectedOrigin:origin
   -> (value:origin -> { proof:() | value == selectedOrigin })
-  -> FolioData origin origin
+  -> {result:FolioData origin origin | folioLengthData result == 1
+       && lastPageData result == page && originPageData result == page
+       && originValueData result == selectedOrigin}
 @-}
 folioData
   :: Chain origin
@@ -128,14 +131,17 @@ folioData page selected unique =
       -> transition:{OrderedConsolidation next previous |
            orderedSource transition == nextPage
            && orderedTarget transition == lastPageData pages}
-      -> FolioData origin next @-}
+      -> {result:FolioData origin next | folioLengthData result == folioLengthData pages + 1
+           && lastPageData result == nextPage && originPageData result == originPageData pages
+           && originValueData result == originValueData pages} @-}
 appendPageData
   :: FolioData origin previous
   -> Chain next
   -> OrderedConsolidation next previous
   -> FolioData origin next
 appendPageData pages _ transition =
-  SnocPage (FolioStep (folioLengthData pages + 1) pages transition)
+  let step = FolioStep (folioLengthData pages + 1) pages transition
+  in stepSource step `seq` SnocPage step
 
 -- | The number of genuine pages.
 {-@ reflect folioLengthData @-}
@@ -175,7 +181,15 @@ originUniqueData (SnocPage (FolioStep _ pages _)) value = originUniqueData pages
 {-@ reflect lastPageData @-}
 lastPageData :: FolioData origin final -> Chain final
 lastPageData (OriginFolio _ value _) = value
-lastPageData (SnocPage (FolioStep _ _ transition)) = orderedSource transition
+lastPageData (SnocPage step) = stepSource step
+
+-- Keep the existential carrier behind a checked accessor in reflected clients.
+-- ALIGN: FOLIO-STEP-SOURCE.
+{-@ opaque-reflect stepSource @-}
+{-@ stepSource :: step:FolioStep origin previous final
+      -> {result:Chain final | result == orderedSource (stepTransition step)} @-}
+stepSource :: FolioStep origin previous final -> Chain final
+stepSource (FolioStep _ _ transition) = orderedSource transition
 
 -- | The identity map used for every identity interval in a folio.
 {-@ reflect identityFolioMap @-}

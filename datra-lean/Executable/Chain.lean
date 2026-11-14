@@ -74,6 +74,28 @@ theorem Chain.reindexedPrecedes {A B : Type} (source : Chain A) (equiv : A ≃ B
     (first second : B) : page.precedes first second = source.precedes (equiv.symm first) (equiv.symm second) := by
   simp only [Chain.precedes, position]
 
+-- ALIGN: CHAIN-POSITION-TRANSPORT.
+def Chain.withPosition {A : Type} (original : Chain A) (position : A → Ordinal)
+    (same : ∀ value, position value = original.position value) : Chain A where
+  orderType := original.orderType
+  position := position
+  lookup := original.lookup
+  positionBelow value := by rw [same]; exact original.positionBelow value
+  positionInjective := by
+    intro first second equal
+    apply original.positionInjective
+    simpa only [same] using equal
+  positionSurjective index below := by
+    obtain ⟨value, found, located⟩ := original.positionSurjective index below
+    exact ⟨value, found, by simpa only [same] using located⟩
+
+theorem Chain.withPosition_eq {A : Type} (original : Chain A) (position : A → Ordinal)
+    (same : ∀ value, position value = original.position value) :
+    original.withPosition position same = original := by
+  have equal : position = original.position := funext same
+  subst position
+  rfl
+
 /-- Certified chain indices retain their object, just as ChainIndex does. -/
 structure ChainIndex {A : Type} (C : Chain A) where
   position : Ordinal
