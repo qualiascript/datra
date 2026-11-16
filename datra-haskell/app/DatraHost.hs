@@ -7,7 +7,10 @@ module DatraHost
 
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
-import DatraLanguage.Identifier (identifierNaturalValue)
+import DatraLanguage.Identifier
+  ( canonicalNaturalValue
+  , identifierNaturalValue
+  )
 import DatraLanguage.DependentDeclaration
   ( applyDeclarationModifier
   , removeDeclarationModifier
@@ -250,11 +253,8 @@ datraHostValue = do
 
     naturalLiteralCodec = CanonicalStringCodec
       { renderCanonicalString = maybe "" show . interpretedInteger
-      , decodeCanonicalString = \characters -> case
-          identifierNaturalValue characters of
-          Just value
-            | show value == characters -> [naturalValue value]
-          _ -> []
+      , decodeCanonicalString =
+          maybe [] (pure . naturalValue) . canonicalNaturalValue
       }
 
     -- Native identities are represented by the same structural access tree

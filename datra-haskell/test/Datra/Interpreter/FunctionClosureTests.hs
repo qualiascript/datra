@@ -313,7 +313,7 @@ assertClosedCall text argument expected = do
 parseProductionSource :: String -> Either ParseFailure Expression
 parseProductionSource source =
   locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-    True [] "<input>" source
+    True [] "test/Datra/Interpreter/FunctionClosureTests.hs" source
 
 requireProgram :: String -> IO InterpretedValue
 requireProgram = either (assertFailure . show) pure . runProgram

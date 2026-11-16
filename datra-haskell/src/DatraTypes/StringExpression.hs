@@ -9,7 +9,6 @@ module StringExpression
   , FunctionSyntax (..)
   , TemplateSelection (..)
   , templateSelectionProjection
-  , literalStringInterpolationTemplate
   , traverseStringInterpolationTemplate
   ) where
 
@@ -74,10 +73,6 @@ data TemplateSelection whole capture = TemplateSelection
 templateSelectionProjection :: TemplateSelection value value -> [value]
 templateSelectionProjection selection =
   templateSelectionWhole selection : templateSelectionCaptures selection
-
-literalStringInterpolationTemplate :: String -> StringInterpolationTemplate value
-literalStringInterpolationTemplate =
-  map (StringTemplateInterpolation . LiteralString) . words
 
 traverseStringInterpolationTemplate
   :: Applicative f

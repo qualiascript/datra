@@ -4,7 +4,7 @@ module Datra.Interpreter.StandardLibraryTests
 
 import Datra.TestSupport
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (NeutralSourceParseFailure, SyntaxRewriteParseFailure)
+  ( ParseFailure (DatraSourceParseFailure, SyntaxRewriteParseFailure)
   , SyntaxRewriteFailure (InvalidDependentDeclarationModifiers)
   )
 import DatraTypes
@@ -43,7 +43,7 @@ standardLibraryTests =
         , programFailureCase "val rejects an annotated assignment"
             "begin val x : Nat := 7; yield x"
             (SourceParseFailure
-              (NeutralSourceParseFailure "operation has no effect inside block"))
+              (DatraSourceParseFailure "operation has no effect inside block"))
         , programFailureCase "val syntax rejects a non-declaration"
             "yield val (1; 2)"
             (SourceEvaluationFailure
@@ -430,7 +430,7 @@ standardLibraryTests =
     , testGroup "scope rejections"
         [ programFailureCase "duplicate scope member"
             "a:=5\na:=8\nyield this"
-            (SourceParseFailure (NeutralSourceParseFailure
+            (SourceParseFailure (DatraSourceParseFailure
               "OverlappingDependentDeclarations \"a\" \"a\""))
         , programFailureCase "specified function validates narrowed input"
             ("f := ({x?:Int} -> Int do yield x+1)\n"
@@ -848,7 +848,7 @@ declaredPatternTests =
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programFailureCase "duplicate syntax declaration"
         (declaration <> declaration <> "yield this")
-        (SourceParseFailure (NeutralSourceParseFailure
+        (SourceParseFailure (DatraSourceParseFailure
           "OverlappingDependentDeclarations \"step %Nat next\" \"step %Nat next\""))
     ]
   where

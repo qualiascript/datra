@@ -9,11 +9,10 @@ module SyntaxRewriting.Candidates
 import DatraLanguage.AST (Expression (..), expressionChildren)
 import StringExpression
   ( StringExpression (..)
-  , StringTemplateInterpolation (..)
   , TemplateSelection (..)
   )
 import StringInterpolation
-  ( SyntaxRule (..) )
+  ( SyntaxRule (..), syntaxRuleCaptures )
 import Data.Map.Strict qualified as Map
 import DatraTypes (InterpretedValue)
 import SyntaxRewriting.Types
@@ -28,10 +27,10 @@ import SyntaxRewriting.Types
   )
 import StringInterpolation.Matching
   ( SyntaxMatch (..)
-  , StructuralSyntaxMatch (..)
+  , DeclarativeMatch (..)
   , enumerateSyntaxRuleSelections
   )
-import Parsing (stringInterpolationParser)
+import Parsing (expressionParser)
 
 initialCandidateFrame :: StructuralCandidate -> CandidateFrame
 initialCandidateFrame _ = CandidateFrame
@@ -209,17 +208,10 @@ compileRewriteRule rule = RewriteRule
   , rewriteRuleBranch = 0
   , rewriteRuleEvaluation = Nothing
   , rewriteRuleHoleFamilies =
-      [ Nothing
-      | StringTemplateInterpolation kind <- pieces
-      , case kind of
-          LiteralString {} -> False
-          _ -> True
-      ]
+      map (const Nothing) (syntaxRuleCaptures rule)
   , rewriteRuleSyntaxInsertion = Nothing
   , rewriteRuleReturnType = Nothing
   }
-  where
-    pieces = stringInterpolationTemplate rule
 
 enumerateRuleStructuralCandidates
   :: RewriteRule
@@ -231,16 +223,16 @@ enumerateRuleStructuralCandidates compiled projections =
       , structuralCandidateBranch = rewriteRuleBranch compiled
       , structuralCandidateProjection = projection
       , structuralCandidateSelection =
-          structuralSyntaxMatchSelection matched
+          declarativeMatchSelection matched
       , structuralCandidateCaptures =
-          structuralSyntaxMatchCaptures matched
+          declarativeMatchCaptures matched
       , structuralCandidateRemaining =
-          structuralSyntaxMatchRemaining matched
+          declarativeMatchRemaining matched
       }
   | (projection, expressionValue) <- zip [0 ..]
       projections
   , matched <- enumerateSyntaxRuleSelections
-      stringInterpolationParser rule expressionValue
+      expressionParser rule expressionValue
   ]
   where
     rule = rewriteRule compiled

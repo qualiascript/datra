@@ -43,7 +43,6 @@ import DatraLanguage.AST.Syntax
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST.Source (renderSourceExpression)
-import StringExpression qualified as StringExpressions
 import StringExpression (TemplateSelection (..))
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
@@ -70,25 +69,27 @@ import Parsing
   , PreparedFunctionDomainMember (..)
   , ResourceEnvelope (..)
   , functionTypeIdentifiers
-  , neutralExpressionWitnessSources
   , prepareFunctionDomain
   , prepareFunctionDomainExpression
-  , parseDatra
-  , parseDatraAst
   , parseDatraRawLocatedWithSourceName
-  , parseNeutralPhrase
-  , stringInterpolationParser
+  , parseDatraAstLocatedWithSourceName
+  , parseSourceExpression
+  , expressionParser
   )
 import StringInterpolation
-  ( StringExpression (..)
+  ( DeclarativeMatcherPlan (..)
+  , SyntaxRuleIdentity (..)
+  , ExactPresentationPattern (..)
+  , ExactPresentationPart (..)
+  , AtlasSyntaxPattern (..)
+  , AtlasSyntaxPart (..)
+  , StringExpression (..)
   , SyntaxRule (..)
   , SyntaxRuleSemantics (..)
-  , StringInterpolationTemplate
   , declarationRuleBranches
   , declarationRules
   , expandSyntax
   )
-import StringInterpolation.Admissibility (validateStringInterpolation)
 import StringInterpolation.Matching
   ( StringInterpolationMatchFailure (..)
   , matchSyntaxRules
@@ -107,6 +108,21 @@ main = defaultMain testTree
 renderParseFailure :: ParseFailure -> String
 renderParseFailure = renderDatraError English . withoutSourceSpan
 
+testSourceName :: FilePath
+testSourceName = "test/DatraParsingTests.hs"
+
+parseDatra :: String -> Either ParseFailure Expression
+parseDatra source = do
+  (_, Located _ parsed) <-
+    parseDatraRawLocatedWithSourceName testSourceName source
+  pure (case parsed of
+    SyntaxBoundary value -> value
+    value -> value)
+
+parseDatraAst :: String -> Either ParseFailure Expression
+parseDatraAst source = locatedValue <$>
+  parseDatraAstLocatedWithSourceName testSourceName source
+
 testTree :: TestTree
 testTree =
   testGroup "Datra parser"
@@ -122,6 +138,9 @@ testTree =
         assertIdentifierOperatorAstSyntax
     , testCase "dependent arguments and argumentative maps"
         testRenamedArgumentConcepts
+    , testCase "dependent comment syntax" testDependentCommentSyntax
+    , testCase "syntax separator elision" testSyntaxSeparatorElision
+    , testCase "unresolved postfix syntax" testUnresolvedPostfixSyntax
     , testCase "syntax regressions" regressionTests
     , testGroup "properties"
         [ testProperty "rendered ASTs parse canonically" propAstRoundTrip
@@ -140,6 +159,143 @@ testRenamedArgumentConcepts = do
       [ AST.dependentArgumentType "value" (ref "Int")
       , natural 2
       ])
+
+testDependentCommentSyntax :: IO ()
+testDependentCommentSyntax = do
+  let source = "(123 #this is a comment)"
+      rawComment = FunctionApplication
+        (UnresolvedSyntaxLiteral "#")
+        (SyntaxRemainder "this is a comment")
+  case parseDatraRawLocatedWithSourceName testSourceName source of
+    Right (_, Located _ actual) -> assertEqual
+      "the enclosing parenthesized boundary owns the comment extent"
+      (SyntaxBoundary (AtlasMap [ref "123", rawComment]))
+      actual
+    Left failure -> assertFailure (renderParseFailure failure)
+  case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+      NoStandardLibrary [] testSourceName source of
+    Right (Located _ actual) -> assertEqual
+      "the first dependent rule reduces the comment member before later syntax"
+      (SyntaxBoundary (ref "123"))
+      actual
+    Left failure -> assertFailure (renderParseFailure failure)
+  case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+      NoStandardLibrary [] testSourceName
+      "(left # ignored to the line boundary\nright)" of
+    Right (Located _ actual) -> assertEqual
+      "a newline ends only the comment member"
+      (SyntaxBoundary (AtlasMap [ref "left", ref "right"]))
+      actual
+    Left failure -> assertFailure (renderParseFailure failure)
+  case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+      NoStandardLibrary [] testSourceName
+      "(value # if and or not + ~> !!!)" of
+    Right (Located _ actual) -> assertEqual
+      "comment syntax has precedence over every spelling in its remainder"
+      (SyntaxBoundary (ref "value"))
+      actual
+    Left failure -> assertFailure (renderParseFailure failure)
+
+testSyntaxSeparatorElision :: IO ()
+testSyntaxSeparatorElision = do
+  assertRawSeparator "horizontal syntax is retained before matching" " "
+  assertRawSeparator "line syntax is retained before matching" "\n"
+  assertRewritten
+    "horizontal syntax introduces application without a unit argument"
+    "(left right)"
+    (SyntaxBoundary (FunctionApplication (ref "left") (ref "right")))
+  assertRewritten
+    "line syntax introduces a sequence without a unit member"
+    "(left\nright)"
+    (SyntaxBoundary (AtlasMap [ref "left", ref "right"]))
+  assertBool "elided syntax is distinct from the semantic empty map"
+    (toOperatorExpression ElidedSyntax /= toOperatorExpression (AtlasMap []))
+  where
+    assertRawSeparator label separator =
+      case parseDatraRawLocatedWithSourceName testSourceName
+          ("(left" <> separator <> "right)") of
+        Right (_, Located _ actual) -> assertEqual label
+          (SyntaxBoundary
+            (FunctionApplication
+              (FunctionApplication
+                (ref "left")
+                (UnresolvedSyntaxLiteral separator))
+              (ref "right")))
+          actual
+        Left failure -> assertFailure (renderParseFailure failure)
+    assertRewritten label source expected =
+      case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+          NoStandardLibrary [] testSourceName source of
+        Right (Located _ actual) -> assertEqual label expected actual
+        Left failure -> assertFailure (renderParseFailure failure)
+
+testUnresolvedPostfixSyntax :: IO ()
+testUnresolvedPostfixSyntax = do
+  let compact = FunctionApplication
+        (ref "Nat") (UnresolvedSyntaxLiteral "++")
+      spaced = FunctionApplication
+        (FunctionApplication
+          (ref "Nat") (UnresolvedSyntaxLiteral " "))
+        (UnresolvedSyntaxLiteral "++")
+      lineSeparated = FunctionApplication
+        (FunctionApplication
+          (ref "Nat") (UnresolvedSyntaxLiteral "\n"))
+        (UnresolvedSyntaxLiteral "++")
+      punctuated = FunctionApplication
+        (ref "hello") (UnresolvedSyntaxLiteral "!!!!")
+      exact sourceText = SyntaxRule
+        { syntaxIdentity = DeclaredSyntaxName sourceText
+        , declarativeMatcherPlan = ExactPresentationMatcher
+            (ExactPresentationPattern
+              [ExactPresentationLiteral sourceText])
+        , syntaxSemantics = SyntaxAdapter (ref "exact-match")
+        }
+      structural = SyntaxRule
+        { syntaxIdentity = DeclaredSyntaxName "Nat++"
+        , declarativeMatcherPlan = AtlasSyntaxMatcher
+            (AtlasSyntaxPattern
+              [ AtlasSyntaxLiteral (ref "Nat")
+              , AtlasSyntaxLiteral (UnresolvedSyntaxLiteral "++")
+              ])
+        , syntaxSemantics = SyntaxAdapter (ref "structural-match")
+        }
+  assertRaw "numeric-looking heads remain identifiers before declarations"
+    "(2++)"
+    (FunctionApplication (ref "2") (UnresolvedSyntaxLiteral "++"))
+  assertRaw "identifier-headed compact postfix syntax remains matchable"
+    "(Nat++)" compact
+  assertRaw "horizontal presentation remains part of the exact phrase"
+    "(Nat ++)" spaced
+  assertRaw "exact syntax is not restricted to a pure identifier"
+    "(hello!!!!)" punctuated
+  assertBool "compact exact syntax does not accept a separated spelling"
+    ( matches (exact "Nat++") compact
+      && not (matches (exact "Nat++") spaced)
+      && not (matches (exact "Nat++") lineSeparated)
+    )
+  assertBool "separated exact syntax is distinct from compact syntax"
+    ( matches (exact "Nat ++") spaced
+      && not (matches (exact "Nat ++") compact)
+    )
+  assertBool "newlines are exact presentation rather than generic layout"
+    ( matches (exact "Nat\n++") lineSeparated
+      && not (matches (exact "Nat\n++") compact)
+      && not (matches (exact "Nat\n++") spaced)
+    )
+  assertBool "exact syntax accepts arbitrary retained punctuation"
+    (matches (exact "hello!!!!") punctuated)
+  assertBool "$! structural matching ignores presentation whitespace"
+    ( all (matches structural) [compact, spaced, lineSeparated] )
+  where
+    matches rule expressionValue = case
+        matchRules (const (const True)) [rule] expressionValue of
+      Right _ -> True
+      Left _ -> False
+    assertRaw label source expected =
+      case parseDatraRawLocatedWithSourceName testSourceName source of
+        Right (_, Located _ parsed) ->
+          assertEqual label (SyntaxBoundary expected) parsed
+        Left failure -> assertFailure (renderParseFailure failure)
 
 testGenericAstRepresentation :: IO ()
 testGenericAstRepresentation = do
@@ -460,11 +616,11 @@ testBraceSeparatorSemantics = do
 
 testDependentDeclarationPrecedence :: IO ()
 testDependentDeclarationPrecedence = do
-  assertNeutral
+  assertSourceExpression
     "identifier expression binds before dependent declaration assignment"
     source
     expected
-  assertNeutral
+  assertSourceExpression
     "string and identifier-expression concatenation stays an expression"
     "\"_\",$!($hello; Int)"
     (MapConcatenation
@@ -476,26 +632,26 @@ testDependentDeclarationPrecedence = do
               [ SyntaxBoundary (IdentifierExpression (ref "hello"))
               , ref "Int"
               ])))))
-  assertNeutralRejected
+  assertSourceExpressionRejected
     "the scalar identifier operator rejects Atlas operands"
     "$($hello; Int)"
-  assertNeutralNormalized
+  assertSourceExpressionNormalized
     "the scalar identifier operator accepts string expressions"
     "$($left, $right)"
     (IdentifierExpression
       (MapConcatenation
         (IdentifierExpression (ref "left"))
         (IdentifierExpression (ref "right"))))
-  assertNeutralNormalized
+  assertSourceExpressionNormalized
     "the Atlas identifier operator accepts singleton compact strings"
     "$!($hello)"
     (AtlasIdentifierExpression (IdentifierExpression (ref "hello")))
-  assertNeutralNormalized
+  assertSourceExpressionNormalized
     "the Atlas identifier operator accepts singleton standard strings"
     "$!(\"hello\")"
     (AtlasIdentifierExpression (AST.asciiString "hello"))
   case ( dependentDeclaration expected
-       , declarationRuleBranches stringInterpolationParser expected
+       , declarationRuleBranches expected
        ) of
     (Just declaration, branches) ->
       assertEqual
@@ -520,14 +676,14 @@ testDependentDeclarationPrecedence = do
                 , ref "_Expr"
                 ]))))
         Nothing)
-    assertNeutral label input wanted =
-      case parseNeutralPhrase input of
+    assertSourceExpression label input wanted =
+      case parseSourceExpression input of
         Left failure -> assertFailure (renderParseFailure failure)
         Right actual -> assertEqual label wanted actual
-    assertNeutralRejected label input =
-      assertBool label (isLeft (parseNeutralPhrase input))
-    assertNeutralNormalized label input wanted =
-      case parseNeutralPhrase input of
+    assertSourceExpressionRejected label input =
+      assertBool label (isLeft (parseSourceExpression input))
+    assertSourceExpressionNormalized label input wanted =
+      case parseSourceExpression input of
         Left failure -> assertFailure (renderParseFailure failure)
         Right actual -> assertEqual label
           (normalizeExpression wanted)
@@ -539,6 +695,13 @@ regressionTests = do
     (Identifier.isPrivateIdentifier "_private")
   assert "apostrophe identifiers are ordinary public identifiers"
     (not (Identifier.isPrivateIdentifier "'fixed"))
+  assert "natural identifiers retain their full decimal language"
+    (Identifier.identifierNaturalValue "007" == Just 7)
+  assert "canonical natural decoding rejects leading zeroes"
+    ( Identifier.canonicalNaturalValue "0" == Just 0
+      && Identifier.canonicalNaturalValue "7" == Just 7
+      && Identifier.canonicalNaturalValue "007" == Nothing
+    )
   assert "quoted private names use the same privacy rule as compact names"
     (Identifier.isPrivateIdentifier "_ private")
   assert "quoted apostrophe names are ordinary public identifiers"
@@ -578,58 +741,10 @@ regressionTests = do
           (EllipsisNatural 2))
         == "_this 2"
     )
-  assert "literal template text cannot manufacture interpolation holes"
-    ((StringExpressions.literalStringInterpolationTemplate "%Int++" :: StringInterpolationTemplate ())
-      == [syntaxLiteral "%Int++"])
-  assert "the neutral reader retains an unknown postfix symbolic literal"
-    (case parseDatraRawLocatedWithSourceName "<postfix-syntax>" "(2++)" of
-      Right (_, Located _ parsed) ->
-        parsed == SyntaxBoundary
-          (FunctionApplication (natural 2) (ref "++"))
-      Left _ -> False)
-  let holeKinds =
-        [ ExpressionString (ref "_Expr")
-        , BlockString (ref "_Block")
-        , FunctionBodyString (ref "_FunctionBody")
-        , DeclarationString (ref "_DependentDeclaration")
-        , DependentArgumentString (ref "_DependentArgument")
-        , ValueString (ref "Int")
-        ]
-  assert "admissibility covers every typed hole kind"
-    (all
-      (\kind -> validateStringInterpolation
-        stringInterpolationParser
-        [StringTemplateInterpolation kind] == Right ())
-      holeKinds)
-  assert "expression witnesses remain recoverable after a literal prefix"
-    (validateStringInterpolation
-      stringInterpolationParser
-      [ syntaxLiteral "call"
-      , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
-      ] == Right ())
-  assert "expression witnesses remain recoverable before a literal suffix"
-    (validateStringInterpolation
-      stringInterpolationParser
-      [ StringTemplateInterpolation (ExpressionString (ref "_Expr"))
-      , syntaxLiteral "after"
-      ] == Right ())
-  assert "multiple holes retain both adjacent literal boundaries"
-    (validateStringInterpolation
-      stringInterpolationParser
-      [ syntaxLiteral "left"
-      , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
-      , syntaxLiteral "middle"
-      , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
-      ] == Right ())
-  assert "the parser-owned expression witness inventory remains parseable"
-    (all
-      (\source -> case parseNeutralPhrase source of
-        Right _ -> True
-        Left _ -> False)
-      (neutralExpressionWitnessSources "_witness" "_operand"))
   let zeroCaptureSyntax = SyntaxRule
-        { syntaxName = "answer"
-        , stringInterpolationTemplate = []
+        { syntaxIdentity = DeclaredSyntaxName "answer"
+        , declarativeMatcherPlan =
+            ExactPresentationMatcher (ExactPresentationPattern [])
         , syntaxSemantics = SyntaxAdapter (ref "answer")
         }
   assert "zero-hole syntax supplies the empty capture tail"
@@ -639,8 +754,16 @@ regressionTests = do
         (ref "answer")
         (AtlasMap []))
   let syntaxFunction name pieces = SyntaxRule
-        { syntaxName = name
-        , stringInterpolationTemplate = syntaxLiteral name : pieces
+        { syntaxIdentity = DeclaredSyntaxName name
+        , declarativeMatcherPlan = AtlasSyntaxMatcher
+            (AtlasSyntaxPattern
+              (AtlasSyntaxLiteral (ref name) :
+                [ case kind of
+                    LiteralString literal ->
+                      AtlasSyntaxLiteral (ref literal)
+                    _ -> AtlasSyntaxCapture kind
+                | StringTemplateInterpolation kind <- pieces
+                ]))
         , syntaxSemantics = SyntaxAdapter (ref name)
         }
       intHole = StringTemplateInterpolation (ValueString (ref "Int"))
@@ -686,7 +809,7 @@ regressionTests = do
     )
   assert "string interpolations rewrite an AST after it is read"
     (case parseSourceLocated False
-        "<string-interpolation-test>" "(from 0 to Infinity)" of
+        testSourceName "(from 0 to Infinity)" of
       Right (Located _ parsedPhrase) ->
         matchRules matchesNumericHole [correctFrom] parsedPhrase
           == matchRules matchesNumericHole [correctFrom] fromPhrase
@@ -2272,7 +2395,7 @@ matchRules
   -> Expression
   -> Either StringInterpolationMatchFailure Expression
 matchRules holeMatches rules expressionValue =
-  matchSyntaxRules stringInterpolationParser
+  matchSyntaxRules expressionParser
     holeMatches rules expressionValue
 
 assert :: String -> Bool -> IO ()
@@ -2417,7 +2540,7 @@ assertAllHexadecimalAsciiEscapes = do
 
 assertLocatedParse :: IO ()
 assertLocatedParse =
-  case parseSourceLocated True "<input>" "(1; 2)" of
+  case parseSourceLocated True testSourceName "(1; 2)" of
     Left message -> fail
       ("located parse unexpectedly failed: " <> renderParseFailure message)
     Right
@@ -2426,7 +2549,7 @@ assertLocatedParse =
           (AtlasMap [EllipsisNatural 1, EllipsisNatural 2])) ->
       assert
         "located parsing uses an in-memory source span"
-        ( source == "<input>"
+        ( source == testSourceName
           && start == SourcePosition 0 1 1
           && end == SourcePosition 6 1 7
         )
@@ -2483,7 +2606,7 @@ assertResourceEnvelopes = do
     ]
   where
     assertEnvelope label source expected =
-      case parseDatraRawLocatedWithSourceName "<input>" source of
+      case parseDatraRawLocatedWithSourceName testSourceName source of
         Left message -> fail
           (label <> ": unexpected failure: " <> renderParseFailure message)
         Right (actual, _) -> assert label (actual == expected)
@@ -2520,13 +2643,13 @@ assertStandardSyntaxDeclarationsAdmissible = do
   source <- readFile "libs/std.datra"
   case parseDatraRawLocatedWithSourceName "libs/std.datra" source of
     Left failure -> fail
-      ("Std neutral parse failed: " <> renderParseFailure failure)
+      ("Std source parse failed: " <> renderParseFailure failure)
     Right (_, Located _ raw) -> do
       let declarations = syntaxDeclarations raw
       assert "Std contains syntax declarations" (not (null declarations))
       assert "every Std syntax declaration is admissible"
         (all
-          (not . null . declarationRules stringInterpolationParser)
+          (not . null . declarationRules)
           declarations)
   where
     syntaxDeclarations expressionValue = current
@@ -2663,7 +2786,7 @@ assertParsed label source expected =
 
 parseSource :: String -> Either ParseFailure Expression
 parseSource source =
-  locatedValue <$> parseSourceLocated True "<input>" source
+  locatedValue <$> parseSourceLocated True testSourceName source
 
 parseSourceLocated
   :: Bool

@@ -16,6 +16,13 @@ import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (maybeToList)
 import DatraLanguage.AST
+import DatraLanguage.Application
+  ( applicationFrom
+  , applicationSpine
+  , horizontalSyntaxWhitespace
+  , horizontallySeparatedApplication
+  , syntaxWhitespaceSource
+  )
 import DatraLanguage.Diagnostics.Application
   ( SyntaxRewriteFailure (..) )
 import DatraLanguage.Diagnostics
@@ -37,21 +44,20 @@ import DatraTypes
   , subfederationValues
   )
 import StringExpression
-  ( StringExpression (LiteralString)
-  , TemplateSelection (..)
+  ( TemplateSelection (..)
   )
 import StringInterpolation
-  ( SyntaxRule (..)
+  ( DeclarativeMatcherPlan
+      (HorizontalApplicationMatcher, LineSequenceMatcher)
+  , SyntaxRule (..)
+  , SyntaxRuleSemantics (..)
   , expandSyntax
+  , syntaxRuleCaptures
   , syntaxApplicationImplementation
   , syntaxRuleAdapter
   )
 import StringInterpolation.Matching
   ( SyntaxMatch (..) )
-import StringInterpolation.Projection
-  ( applicationFrom
-  , applicationSpine
-  )
 import SyntaxRewriting.Types
   ( CandidateRejection
   , CandidateTypingContext (..)
@@ -86,10 +92,16 @@ resolvedRuleReturnType
   :: (Expression -> Maybe InterpretedValue)
   -> SyntaxRule
   -> Maybe InterpretedValue
-resolvedRuleReturnType evaluate rule =
-  (syntaxRuleAdapter rule >>= evaluate
-    >>= interpretedFunction >>= Just . functionCodomain)
-  <|> (syntaxRuleAdapter rule >>= functionCodomainExpression >>= evaluate)
+resolvedRuleReturnType evaluate rule = case syntaxSemantics rule of
+  -- The candidate frame requires a return-type witness. Discard expansion is
+  -- still 'ElidedSyntax'; this empty-map type is never inserted into the AST.
+  SyntaxDiscard -> evaluate (AtlasMap [])
+  SyntaxLineSequence -> evaluate (AtlasMap [])
+  SyntaxHorizontalApplication -> Nothing
+  _ ->
+    (syntaxRuleAdapter rule >>= evaluate
+      >>= interpretedFunction >>= Just . functionCodomain)
+    <|> (syntaxRuleAdapter rule >>= functionCodomainExpression >>= evaluate)
 
 functionCodomainExpression :: Expression -> Maybe Expression
 functionCodomainExpression expressionValue = case expressionValue of
@@ -141,16 +153,13 @@ prepareSelectedSyntaxMatch environment rule matched = PreparedExpansion
     -- evaluating its implementation is unnecessary; only declarations with
     -- captures can provide a syntax-function insertion.
     directExpansion
-      | any isHole
-          (stringInterpolationTemplate (rewriteRule rule)) = do
+      | not (null (syntaxRuleCaptures (rewriteRule rule))) = do
           implementation <- rewriteRuleImplementation rule
           insertion <- case rewriteRuleEvaluation rule of
             Just _ -> rewriteRuleSyntaxInsertion rule
             Nothing -> syntaxFunctionInsertion evaluate implementation
           applySyntaxFunction insertion (insertionCaptures rule captures)
       | otherwise = Nothing
-    isHole (StringTemplateInterpolation (LiteralString _)) = False
-    isHole StringTemplateInterpolation {} = True
 
 insertionCaptures :: RewriteRule -> [Expression] -> [Expression]
 insertionCaptures rule captures
@@ -182,10 +191,7 @@ compileRuleFamily family =
       , rewriteRuleEvaluation = Just (syntaxRuleFamilyEvaluate family)
       , rewriteRuleHoleFamilies =
           [ selected
-          | StringTemplateInterpolation kind <- stringInterpolationTemplate rule
-          , case kind of
-              LiteralString {} -> False
-              _ -> True
+          | kind <- syntaxRuleCaptures rule
           , let selected = case syntaxRuleFamilyClassify family [kind] of
                   [(_, value)] -> value
                   _ -> Nothing
@@ -305,13 +311,7 @@ directSyntaxFunctionExpansion environment selectedRule application =
       Just evaluate -> evaluate
       Nothing -> evaluateHere
     captureCount rule = length
-      [ ()
-      | StringTemplateInterpolation kind <-
-          stringInterpolationTemplate (rewriteRule rule)
-      , case kind of
-          LiteralString {} -> False
-          _ -> True
-      ]
+      (syntaxRuleCaptures (rewriteRule rule))
 -- Inspect the adapter's AST constructor before rewriting a raw block. A
 -- function body already shadows the outer input while its declarations and
 -- yield expression are being collected, before the FunctionBody node exists.
@@ -349,13 +349,50 @@ runStructuralCandidates capture environment source =
           candidateRejectionAt
             (contextSourceSpan selectedEnvironment) details
       }
-    finalizeOrdinary selectedContext expressionValue = case expressionValue of
+    finalizeOrdinary selectedContext rawExpression = case expressionValue of
       FunctionApplication _ Skip -> Left AmbiguousBareSkipApplication
       _ -> Right RewriteResult
         { rewriteResultExpression = expressionValue
         , rewriteResultType = contextResultType selectedContext expressionValue
         , rewriteResultSelection = Nothing
         }
+      where
+        expressionValue = normalizeRewrittenSequence rawExpression
+
+    normalizeRewrittenSequence value = case value of
+      UnresolvedSyntaxLiteral sourceText
+        | horizontalSyntaxWhitespace sourceText -> ElidedSyntax
+      FunctionApplication ElidedSyntax
+          (UnresolvedSyntaxLiteral sourceText)
+        | syntaxWhitespaceSource sourceText -> ElidedSyntax
+      FunctionApplication ElidedSyntax input -> input
+      FunctionApplication
+          (FunctionApplication function
+            (UnresolvedSyntaxLiteral sourceText))
+          ElidedSyntax
+        | syntaxWhitespaceSource sourceText -> function
+      FunctionApplication function ElidedSyntax -> function
+      AtlasMap members -> rebuild AtlasMap (concatMap flatten members)
+      MapSequence members -> rebuild MapSequence (concatMap flatten members)
+      ArgumentativeMap members ->
+        ArgumentativeMap
+          (filter (/= ElidedSyntax) (concatMap flatten members))
+      _ -> value
+      where
+        flatten (AtlasMap members) = members
+        flatten (MapSequence members) = members
+        flatten member = [member]
+        rebuild _ [] = AtlasMap []
+        rebuild constructor members =
+          case filter (/= ElidedSyntax) members of
+            [] -> ElidedSyntax
+            retained -> case filter nonempty retained of
+              [] -> AtlasMap []
+              [member] -> member
+              nonemptyMembers -> constructor nonemptyMembers
+        nonempty (AtlasMap []) = False
+        nonempty (MapSequence []) = False
+        nonempty _ = True
     captureHole selectedEnvironment _ previous kind captured =
       case contextClassify selectedEnvironment [kind] of
         [(specialized, Just expected)]
@@ -384,10 +421,19 @@ runStructuralCandidates capture environment source =
     candidateReturn selectedEnvironment candidate context =
       candidateTypingReturnType context
         <|> rewriteRuleReturnType compiled
+        <|> horizontalApplicationReturn
         <|> instantiatedReturn
         <|> currentDeclaredReturn
       where
         compiled = structuralCandidateRule candidate
+        horizontalApplicationReturn = case syntaxSemantics
+            (rewriteRule compiled) of
+          SyntaxHorizontalApplication -> do
+            expanded <- horizontallySeparatedApplication
+              (templateSelectionWhole
+                (structuralCandidateSelection candidate))
+            contextResultType selectedEnvironment expanded
+          _ -> Nothing
         currentDeclaredReturn = do
           implementation <- rewriteRuleImplementation compiled
           evaluated <- contextEvaluate selectedEnvironment implementation
@@ -435,15 +481,25 @@ structuralCandidatesFor
   -> Expression
   -> [StructuralCandidate]
 structuralCandidatesFor environment value =
-    enumerate value (contextRewriteRules environment)
+    enumerate value ordinaryRules
       <> scopedCandidates
+      <> enumerate value fallbackRules
   where
+    (fallbackRules, ordinaryRules) = partitionFallbackRules
+      (contextRewriteRules environment)
     enumerate selectedValue = concatMap (\rule ->
       enumerateRuleStructuralCandidates rule [selectedValue])
     scopedCandidates = case applicationSpine value of
       (ScopeAccess source body, arguments@(_ : _)) ->
         let scopedEnvironment = contextScope environment source
-            compiled = contextRewriteRules scopedEnvironment
+            compiled = snd (partitionFallbackRules
+              (contextRewriteRules scopedEnvironment))
             scopedValue = applicationFrom (body : arguments)
         in enumerate scopedValue compiled
       _ -> []
+    partitionFallbackRules = foldr partitionRule ([], [])
+    partitionRule rule (fallback, ordinary) =
+      case declarativeMatcherPlan (rewriteRule rule) of
+        LineSequenceMatcher -> (rule : fallback, ordinary)
+        HorizontalApplicationMatcher -> (rule : fallback, ordinary)
+        _ -> (fallback, rule : ordinary)

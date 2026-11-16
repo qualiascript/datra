@@ -51,6 +51,7 @@ library
     import:           warnings
     exposed-modules:
         DatraLanguage.AST
+        DatraLanguage.Application
         DatraLanguage.AST.Source
         DatraLanguage.AST.Operator
         DatraLanguage.AST.Reserved
@@ -59,7 +60,6 @@ library
         DatraLanguage.DependentDeclaration
         DatraLanguage.ContextualRole
         DatraLanguage.ContextualDeclaration
-        DatraLanguage.NeutralLexer
         DatraLanguage.Identifier
         DatraLanguage.Pretty
         DatraLanguage.StringTemplate
@@ -67,9 +67,8 @@ library
         DatraTypes.DependentTypes
         StringExpression
         StringInterpolation
-        StringInterpolation.Admissibility
+        StringInterpolation.Exact
         StringInterpolation.Matching
-        StringInterpolation.Projection
         AsciiMap
         AsciiString
         MapOperators

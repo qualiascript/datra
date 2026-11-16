@@ -5,6 +5,7 @@ module DatraLanguage.Identifier
   , isPrivateIdentifier
   , isIdentifierValue
   , identifierNaturalValue
+  , canonicalNaturalValue
   , isIdentifierCharacter
   , isAsciiCharacter
   ) where
@@ -47,6 +48,15 @@ identifierNaturalValue value = go 0 value
               + fromIntegral (ord character - ord '0'))
             remaining
       | otherwise = Nothing
+
+-- | Decode the unique decimal presentation emitted for a natural. This is
+-- deliberately stricter than 'identifierNaturalValue': numeric identifiers
+-- may contain leading zeroes, while an inverse string codec must accept only
+-- the presentation produced by its renderer.
+canonicalNaturalValue :: String -> Maybe Natural
+canonicalNaturalValue value = do
+  natural <- identifierNaturalValue value
+  if show natural == value then Just natural else Nothing
 
 isIdentifierCharacter :: Char -> Bool
 isIdentifierCharacter character =

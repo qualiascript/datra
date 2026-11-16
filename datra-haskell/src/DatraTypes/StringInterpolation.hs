@@ -3,49 +3,167 @@
 -- | Declarative string interpolations. Syntax function bodies preserve control semantics
 -- without evaluating their captures or interpolating source strings.
 module StringInterpolation
-  ( SyntaxRule (..), DependentSyntaxRule (..)
+  ( SyntaxRule (..), SyntaxRuleIdentity (..)
+  , syntaxRuleDeclaredName, syntaxRuleLabel
+  , DeclarativeMatcherPlan (..)
+  , NativeApplicationPattern (..), ExactPresentationPattern (..)
+  , ExactPresentationPart (..)
+  , AtlasSyntaxPattern (..), AtlasSyntaxPart (..)
+  , DependentSyntaxRule (..)
   , SyntaxRuleSemantics (..), DependentSyntaxInvocation (..)
   , StringInterpolationTemplate, StringTemplateInterpolation (..)
   , StringExpression (..)
   , TemplateSelection (..)
-  , StringInterpolationCompilationFailure (..)
-  , declarationRules, declarationRuleBranches, declarationRuleFailures
-  , stringInterpolationTemplateFromPattern, stringInterpolationLiteralPrefix
+  , declarationRules, declarationRuleBranches
+  , syntaxRuleCaptures, mapSyntaxRuleCaptures
+  , exactPresentationPattern
   , syntaxApplicationRule
+  , commentSyntaxRule
+  , lineSyntaxRule
+  , horizontalApplicationRule
   , syntaxApplicationImplementation
   , syntaxDependentRule, syntaxRuleAdapter
   , expandSyntax
   , declarationLiterals
-  , normalizeSyntaxExpansion
   ) where
 import DatraLanguage.DependentDeclaration
   ( dependentDeclaration
   , dependentDeclarationTemplateBranches
   )
 import DatraLanguage.AST
+import DatraLanguage.Identifier (isIdentifierValue)
 import StringExpression
   ( StringExpression (..)
+  , stringExpressionValue
   , StringInterpolationTemplate
   , TemplateSelection (..)
-  , literalStringInterpolationTemplate
   )
-import DatraLanguage.Diagnostics.Application
-  ( StringInterpolationAdmissibilityFailure )
 import DatraLanguage.AST.Source (renderSourceExpression)
-import Data.Either (partitionEithers)
-import StringInterpolation.Admissibility (validateStringTemplate)
-import StringInterpolation.Projection (StringInterpolationParser)
+import DatraLanguage.Application
+  ( horizontallySeparatedApplication
+  , lineSeparatedApplication
+  )
+
+data DeclarativeMatcherPlan
+  = NativeApplicationMatcher NativeApplicationPattern
+  | AtlasSyntaxMatcher AtlasSyntaxPattern
+  | ExactPresentationMatcher
+      (ExactPresentationPattern (StringExpression Expression))
+  | LineSequenceMatcher
+  | HorizontalApplicationMatcher
+  deriving (Eq, Show)
+
+data NativeApplicationPattern = NativeApplicationPattern
+  { nativeApplicationHead :: Expression
+  , nativeApplicationOperand :: StringExpression Expression
+  }
+  deriving (Eq, Show)
+
+newtype ExactPresentationPattern capture = ExactPresentationPattern
+  { exactPresentationParts :: [ExactPresentationPart capture]
+  }
+  deriving (Eq, Show)
+
+data ExactPresentationPart capture
+  = ExactPresentationLiteral String
+  | ExactPresentationCapture capture
+  deriving (Eq, Show)
+
+-- | The matcher AST for declaration forms whose syntax is already structural.
+-- Literals and captures are nodes in this tree; neither is encoded as a value
+-- which must be rendered and rediscovered by the expression parser.
+newtype AtlasSyntaxPattern = AtlasSyntaxPattern
+  { atlasSyntaxParts :: [AtlasSyntaxPart]
+  }
+  deriving (Eq, Show)
+
+data AtlasSyntaxPart
+  = AtlasSyntaxLiteral Expression
+  | AtlasSyntaxCapture (StringExpression Expression)
+  deriving (Eq, Show)
+
+data SyntaxRuleIdentity
+  = DeclaredSyntaxName String
+  | CommentSyntaxIdentity
+  | LineSequenceSyntaxIdentity
+  | HorizontalApplicationSyntaxIdentity
+  deriving (Eq, Show)
 
 data SyntaxRule = SyntaxRule
-  { syntaxName :: String
-  , stringInterpolationTemplate :: StringInterpolationTemplate Expression
+  { syntaxIdentity :: SyntaxRuleIdentity
+  , declarativeMatcherPlan :: DeclarativeMatcherPlan
   , syntaxSemantics :: SyntaxRuleSemantics
   } deriving (Eq,Show)
+
+syntaxRuleDeclaredName :: SyntaxRule -> Maybe String
+syntaxRuleDeclaredName rule = case syntaxIdentity rule of
+  DeclaredSyntaxName name -> Just name
+  _ -> Nothing
+
+-- Diagnostic rendering is the only place built-in identities become text.
+syntaxRuleLabel :: SyntaxRule -> String
+syntaxRuleLabel rule = case syntaxIdentity rule of
+  DeclaredSyntaxName name -> name
+  CommentSyntaxIdentity -> "comment"
+  LineSequenceSyntaxIdentity -> "line sequence"
+  HorizontalApplicationSyntaxIdentity -> "horizontal application"
+
+syntaxRuleCaptures :: SyntaxRule -> [StringExpression Expression]
+syntaxRuleCaptures rule = case declarativeMatcherPlan rule of
+  NativeApplicationMatcher patternValue ->
+    [nativeApplicationOperand patternValue]
+  AtlasSyntaxMatcher (AtlasSyntaxPattern parts) ->
+    [capture | AtlasSyntaxCapture capture <- parts]
+  ExactPresentationMatcher (ExactPresentationPattern parts) ->
+    [capture | ExactPresentationCapture capture <- parts]
+  LineSequenceMatcher -> []
+  HorizontalApplicationMatcher -> []
+
+exactPresentationPattern
+  :: StringInterpolationTemplate Expression
+  -> ExactPresentationPattern (StringExpression Expression)
+exactPresentationPattern = ExactPresentationPattern . map part
+  where
+    part (StringTemplateInterpolation expressionValue) =
+      case expressionValue of
+        LiteralString literal -> ExactPresentationLiteral literal
+        capture -> ExactPresentationCapture capture
+
+mapSyntaxRuleCaptures
+  :: (StringExpression Expression -> StringExpression Expression)
+  -> SyntaxRule
+  -> SyntaxRule
+mapSyntaxRuleCaptures transform rule = rule
+  { declarativeMatcherPlan = case declarativeMatcherPlan rule of
+      NativeApplicationMatcher patternValue -> NativeApplicationMatcher
+        patternValue
+          { nativeApplicationOperand =
+              transform (nativeApplicationOperand patternValue)
+          }
+      AtlasSyntaxMatcher (AtlasSyntaxPattern parts) ->
+        AtlasSyntaxMatcher (AtlasSyntaxPattern (map mapAtlasPart parts))
+      ExactPresentationMatcher (ExactPresentationPattern parts) ->
+        ExactPresentationMatcher
+          (ExactPresentationPattern (map mapExactPart parts))
+      LineSequenceMatcher -> LineSequenceMatcher
+      HorizontalApplicationMatcher -> HorizontalApplicationMatcher
+  }
+  where
+    mapAtlasPart patternValue = case patternValue of
+      AtlasSyntaxLiteral literal -> AtlasSyntaxLiteral literal
+      AtlasSyntaxCapture capture -> AtlasSyntaxCapture (transform capture)
+    mapExactPart partValue = case partValue of
+      ExactPresentationLiteral literal -> ExactPresentationLiteral literal
+      ExactPresentationCapture capture ->
+        ExactPresentationCapture (transform capture)
 
 data SyntaxRuleSemantics
   = SyntaxAdapter Expression
   | SyntaxApplication Expression Expression
   | DependentSyntax DependentSyntaxRule
+  | SyntaxDiscard
+  | SyntaxLineSequence
+  | SyntaxHorizontalApplication
   deriving (Eq, Show)
 
 data DependentSyntaxRule = DependentSyntaxRule
@@ -64,6 +182,9 @@ syntaxDependentRule rule = case syntaxSemantics rule of
   SyntaxAdapter {} -> Nothing
   SyntaxApplication {} -> Nothing
   DependentSyntax dependent -> Just dependent
+  SyntaxDiscard -> Nothing
+  SyntaxLineSequence -> Nothing
+  SyntaxHorizontalApplication -> Nothing
 
 syntaxRuleAdapter :: SyntaxRule -> Maybe Expression
 syntaxRuleAdapter rule = case syntaxSemantics rule of
@@ -71,60 +192,75 @@ syntaxRuleAdapter rule = case syntaxSemantics rule of
   SyntaxApplication _ implementation -> Just implementation
   DependentSyntax dependent -> Just
     (dependentSyntaxImplementation dependent)
+  SyntaxDiscard -> Nothing
+  SyntaxLineSequence -> Nothing
+  SyntaxHorizontalApplication -> Nothing
 
 syntaxApplicationImplementation :: SyntaxRule -> Maybe Expression
 syntaxApplicationImplementation rule = case syntaxSemantics rule of
   SyntaxApplication _ implementation -> Just implementation
   _ -> Nothing
 
-data StringInterpolationCompilationFailure
-  = InadmissibleStringInterpolation
-      String
-      StringInterpolationAdmissibilityFailure
-  deriving (Eq, Show)
+-- | The first declaration in every syntax environment. Its operand has
+-- already been delimited by the concrete parser, but remains ordinary syntax
+-- data until this rule discards it.
+commentSyntaxRule :: SyntaxRule
+commentSyntaxRule = SyntaxRule
+  { syntaxIdentity = CommentSyntaxIdentity
+  , declarativeMatcherPlan = NativeApplicationMatcher
+      (NativeApplicationPattern
+        (UnresolvedSyntaxLiteral "#")
+        (ExpressionString (AtlasMap [])))
+  , syntaxSemantics = SyntaxDiscard
+  }
 
-declarationRules :: StringInterpolationParser -> Expression -> [SyntaxRule]
-declarationRules parser = map third . snd . declarationRuleResults parser
+-- | Final built-in declarations. They assign semantics to unresolved source
+-- separators only after visible declarations have matched their presentation.
+lineSyntaxRule :: SyntaxRule
+lineSyntaxRule = SyntaxRule
+  { syntaxIdentity = LineSequenceSyntaxIdentity
+  , declarativeMatcherPlan = LineSequenceMatcher
+  , syntaxSemantics = SyntaxLineSequence
+  }
+
+horizontalApplicationRule :: SyntaxRule
+horizontalApplicationRule = SyntaxRule
+  { syntaxIdentity = HorizontalApplicationSyntaxIdentity
+  , declarativeMatcherPlan = HorizontalApplicationMatcher
+  , syntaxSemantics = SyntaxHorizontalApplication
+  }
+
+declarationRules :: Expression -> [SyntaxRule]
+declarationRules = map third . declarationRuleBranches
   where
     third (_, _, rule) = rule
 
 declarationRuleBranches
-  :: StringInterpolationParser
-  -> Expression
+  :: Expression
   -> [(DependentDeclaration Expression, Int, SyntaxRule)]
-declarationRuleBranches parser = snd . declarationRuleResults parser
-
-declarationRuleFailures
-  :: StringInterpolationParser
-  -> Expression
-  -> [StringInterpolationCompilationFailure]
-declarationRuleFailures parser = fst . declarationRuleResults parser
-
-declarationRuleResults
-  :: StringInterpolationParser
-  -> Expression
-  -> ( [StringInterpolationCompilationFailure]
-     , [(DependentDeclaration Expression, Int, SyntaxRule)]
-     )
-declarationRuleResults parser expressionValue =
+declarationRuleBranches expressionValue =
   case dependentDeclaration expressionValue of
-    Nothing -> ([], [])
-    Just declaration -> partitionEithers
-      (dependentDeclarationRuleResults parser declaration)
+    Nothing -> []
+    Just declaration -> dependentDeclarationRuleBranches declaration
 
-dependentDeclarationRuleResults
-  :: StringInterpolationParser
-  -> DependentDeclaration Expression
-  -> [Either StringInterpolationCompilationFailure
-      (DependentDeclaration Expression, Int, SyntaxRule)]
-dependentDeclarationRuleResults parser declaration =
+dependentDeclarationRuleBranches
+  :: DependentDeclaration Expression
+  -> [(DependentDeclaration Expression, Int, SyntaxRule)]
+dependentDeclarationRuleBranches declaration =
   case dependentDeclarationHead declaration of
     IdentifierExpressionBody (IdentifierReference name) ->
-      [Right (declaration, 0, simpleApplicationRule declaration name)]
+      [(declaration, 0, simpleApplicationRule declaration name)]
+    AtlasIdentifierExpressionBody body -> zipWith
+      (\branch (patternValue, captures) ->
+        ( declaration
+        , branch
+        , structuralTemplateRule declaration patternValue captures
+        ))
+      [0 ..]
+      (atlasSyntaxPatternBranches body)
     _ -> zipWith
       (\branch parts ->
-        (declaration, branch,) <$>
-          directTemplateRule parser declaration parts)
+        (declaration, branch, directTemplateRule declaration parts))
       [0 ..]
       (dependentDeclarationSyntaxAlternatives declaration)
 
@@ -135,44 +271,123 @@ simpleApplicationRule
 simpleApplicationRule declaration (SimpleIdentifierString text) =
   syntaxApplicationRule
     text
-    (stringInterpolationTemplateFromPattern text)
+    (SimpleIdentifierString text)
     (dependentLookup [literalInterpolation text] [])
     (dependentDeclarationImplementation declaration)
 
 syntaxApplicationRule
   :: String
-  -> StringInterpolationTemplate Expression
+  -> SimpleIdentifierString
   -> Expression
   -> Expression
   -> SyntaxRule
-syntaxApplicationRule name template callable implementation = SyntaxRule
-  { syntaxName = name
-  , stringInterpolationTemplate = template <>
-      [StringTemplateInterpolation (ExpressionString
-        (IdentifierReference (SimpleIdentifierString "_Expr")))]
+syntaxApplicationRule name literalHead callable implementation = SyntaxRule
+  { syntaxIdentity = DeclaredSyntaxName name
+  , declarativeMatcherPlan = NativeApplicationMatcher
+      (NativeApplicationPattern
+        (IdentifierReference literalHead)
+        (ExpressionString (AtlasMap [])))
   , syntaxSemantics = SyntaxApplication callable implementation
   }
 
 directTemplateRule
-  :: StringInterpolationParser
-  -> DependentDeclaration Expression
+  :: DependentDeclaration Expression
   -> [StringTemplateInterpolation Expression]
-  -> Either StringInterpolationCompilationFailure SyntaxRule
-directTemplateRule parser declaration parts = do
-  (template, captures) <-
-    compileDependentDeclarationTemplate parser parts
-  pure SyntaxRule
-    { syntaxName = case dependentDeclarationHead declaration of
+  -> SyntaxRule
+directTemplateRule declaration parts =
+  SyntaxRule
+    { syntaxIdentity = DeclaredSyntaxName (case dependentDeclarationHead declaration of
         IdentifierExpressionBody
             (IdentifierReference (SimpleIdentifierString name)) -> name
         IdentifierExpressionBody (AsciiStringLiteral name) -> name
         _ -> renderSourceExpression (StringTemplate parts)
-    , stringInterpolationTemplate = template
+      )
+    , declarativeMatcherPlan =
+        ExactPresentationMatcher (exactPresentationPattern template)
     , syntaxSemantics = DependentSyntax (DependentSyntaxRule
         captures
         (dependentDeclarationImplementation declaration)
         (DependentSyntaxLookup parts))
     }
+  where
+    (template, captures) = compileDependentDeclarationTemplate parts
+
+structuralTemplateRule
+  :: DependentDeclaration Expression
+  -> AtlasSyntaxPattern
+  -> [Maybe (SimpleIdentifierString, Expression)]
+  -> SyntaxRule
+structuralTemplateRule declaration patternValue captures = SyntaxRule
+  { syntaxIdentity = DeclaredSyntaxName (case atlasSyntaxLiterals patternValue of
+      name : _ -> name
+      [] -> renderSourceExpression
+        (identifierHeadExpression (dependentDeclarationHead declaration))
+    )
+  , declarativeMatcherPlan = AtlasSyntaxMatcher patternValue
+  , syntaxSemantics = DependentSyntax (DependentSyntaxRule
+      captures
+      (dependentDeclarationImplementation declaration)
+      (DependentSyntaxLookup
+        (atlasSyntaxInvocation patternValue)))
+  }
+  where
+    identifierHeadExpression headValue = case headValue of
+      IdentifierExpressionBody body -> IdentifierExpression body
+      AtlasIdentifierExpressionBody body -> AtlasIdentifierExpression body
+
+atlasSyntaxLiterals
+  :: AtlasSyntaxPattern
+  -> [String]
+atlasSyntaxLiterals (AtlasSyntaxPattern parts) =
+  [renderSourceExpression literal | AtlasSyntaxLiteral literal <- parts]
+
+atlasSyntaxInvocation
+  :: AtlasSyntaxPattern
+  -> [StringTemplateInterpolation Expression]
+atlasSyntaxInvocation (AtlasSyntaxPattern parts) = map invocation parts
+  where
+    invocation partValue = case partValue of
+      AtlasSyntaxLiteral literal -> StringTemplateInterpolation
+        (AsciiStringLiteral (renderSourceExpression literal))
+      AtlasSyntaxCapture capture -> StringTemplateInterpolation
+        (maybe (AsciiStringLiteral "") id (stringExpressionValue capture))
+
+atlasSyntaxPatternBranches
+  :: Expression
+  -> [(AtlasSyntaxPattern, [Maybe (SimpleIdentifierString, Expression)])]
+atlasSyntaxPatternBranches expressionValue =
+  [ (AtlasSyntaxPattern patterns, concat captures)
+  | parts <- atlasSyntaxAlternatives expressionValue
+  , let compiled = map compileAtlasSyntaxPart parts
+        patterns = map fst compiled
+        captures = map snd compiled
+  , not (null patterns)
+  ]
+  where
+    atlasSyntaxAlternatives value = case value of
+      SyntaxBoundary inner -> atlasSyntaxAlternatives inner
+      AtlasMap members -> atlasSyntaxSequence members
+      MapSequence members -> atlasSyntaxSequence members
+      EitherType left right ->
+        atlasSyntaxAlternatives left <> atlasSyntaxAlternatives right
+      OptionalType present -> atlasSyntaxAlternatives present <> [[]]
+      _ -> [[value]]
+    atlasSyntaxSequence =
+      foldl combine [[]] . map atlasSyntaxAlternatives
+    combine prefixes suffixes =
+      [ prefix <> suffix | prefix <- prefixes, suffix <- suffixes ]
+    compileAtlasSyntaxPart value = case value of
+      IdentifierExpression (IdentifierReference literal) ->
+        (AtlasSyntaxLiteral (IdentifierReference literal), [])
+      IdentifierExpression (AsciiStringLiteral literal) ->
+        (AtlasSyntaxLiteral (atlasSyntaxLiteral literal), [])
+      _ ->
+        let (target, name) = captureDescriptor value
+        in (AtlasSyntaxCapture (ValueString target), [name])
+    atlasSyntaxLiteral literal
+      | isIdentifierValue literal =
+          IdentifierReference (SimpleIdentifierString literal)
+      | otherwise = UnresolvedSyntaxLiteral literal
 
 dependentDeclarationSyntaxAlternatives
   :: DependentDeclaration Expression
@@ -181,57 +396,29 @@ dependentDeclarationSyntaxAlternatives declaration =
   maybe [] id (dependentDeclarationTemplateBranches declaration)
 
 compileDependentDeclarationTemplate
-  :: StringInterpolationParser
-  -> [StringTemplateInterpolation Expression]
-  -> Either StringInterpolationCompilationFailure
-      ( StringInterpolationTemplate Expression
-      , [Maybe (SimpleIdentifierString, Expression)]
-      )
-compileDependentDeclarationTemplate parser parts = do
+  :: [StringTemplateInterpolation Expression]
+  -> ( StringInterpolationTemplate Expression
+     , [Maybe (SimpleIdentifierString, Expression)]
+     )
+compileDependentDeclarationTemplate parts =
   let (pieces, captures) = foldMap compilePart parts
-      template = pieces
-  case validateStringTemplate parser parts template of
-    Left failure -> Left (InadmissibleStringInterpolation
-      (renderSourceExpression
-        (StringTemplate (map sourceInterpolation template)))
-      failure)
-    Right () -> Right (template, captures)
+  in (pieces, captures)
   where
     compilePart
         (StringTemplateInterpolation (AsciiStringLiteral literal)) =
-      (stringInterpolationTemplateFromPattern literal, [])
+      ([StringTemplateInterpolation (LiteralString literal)], [])
     compilePart (StringTemplateInterpolation expressionValue) =
-      let (target, name) = capture expressionValue
+      let (target, name) = captureDescriptor expressionValue
       in ([StringTemplateInterpolation (ValueString target)], [name])
-    capture (SyntaxBoundary inner) = capture inner
-    capture (DependentArgument nameExpression (Just annotation))
-      | Just name <- literalIdentifierName nameExpression =
-          (annotation, Just (name, annotation))
-    capture value = (value, Nothing)
 
-    sourceInterpolation (StringTemplateInterpolation expressionValue) =
-      StringTemplateInterpolation (sourceExpression expressionValue)
-    sourceExpression (LiteralString literalValue) =
-      AsciiStringLiteral literalValue
-    sourceExpression (ExpressionString value) = value
-    sourceExpression (BlockString value) = value
-    sourceExpression (FunctionBodyString value) = value
-    sourceExpression (DeclarationString value) = value
-    sourceExpression (DependentArgumentString value) = value
-    sourceExpression (IdentifierExpressionString value) = value
-    sourceExpression (StringLiteralString value) = value
-    sourceExpression (ValueString value) = value
-
-stringInterpolationTemplateFromPattern :: String -> StringInterpolationTemplate Expression
-stringInterpolationTemplateFromPattern = literalStringInterpolationTemplate
-
-stringInterpolationLiteralPrefix :: SyntaxRule -> [String]
-stringInterpolationLiteralPrefix = foldr prefix []
-  . stringInterpolationTemplate
-  where
-    prefix (StringTemplateInterpolation (LiteralString literal)) rest =
-      literal : rest
-    prefix (StringTemplateInterpolation _) _ = []
+captureDescriptor
+  :: Expression
+  -> (Expression, Maybe (SimpleIdentifierString, Expression))
+captureDescriptor (SyntaxBoundary inner) = captureDescriptor inner
+captureDescriptor (DependentArgument nameExpression (Just annotation))
+  | Just name <- literalIdentifierName nameExpression =
+      (annotation, Just (name, annotation))
+captureDescriptor value = (value, Nothing)
 
 -- | Expand captures selected by one declared string interpolation.
 expandSyntax
@@ -245,7 +432,13 @@ expandSyntax rule selection =
     SyntaxAdapter adapter -> FunctionApplication adapter suppliedInput
     SyntaxApplication callable _ ->
       FunctionApplication callable suppliedInput
+    SyntaxDiscard -> ElidedSyntax
+    SyntaxLineSequence -> maybe whole id
+      (lineSeparatedApplication whole)
+    SyntaxHorizontalApplication -> maybe whole id
+      (horizontallySeparatedApplication whole)
   where
+    whole = templateSelectionWhole selection
     captures = templateSelectionCaptures selection
     suppliedInput = case captures of
       [] -> AtlasMap []
@@ -304,87 +497,6 @@ substituteCaptures
 
 literalInterpolation :: String -> StringTemplateInterpolation Expression
 literalInterpolation = StringTemplateInterpolation . AsciiStringLiteral
-
--- A named subexpression in a condition becomes a condition-local declaration
--- when its name is used elsewhere in that condition or in either branch.
--- Operator semantics belong to declared functions; this pass only localizes
--- the complete condition expression.
-conditionalWithBindings
-  :: Expression
-  -> Expression
-  -> Expression
-  -> Expression
-conditionalWithBindings rawCondition yes no
-  | null (selectedConditionBindings condition yes no) =
-      Conditional condition yes no
-  | otherwise = lowerConditionAtom condition yes no
-  where
-    condition = normalizeExpression rawCondition
-
--- Syntax captures are themselves rewritten after their enclosing template is
--- expanded. Re-run the shape-dependent part of a control expansion once those
--- captures have reached their final AST form. This is an AST semantic pass,
--- independent of which declaration supplied the surface spelling.
-normalizeSyntaxExpansion :: Expression -> Expression
-normalizeSyntaxExpansion (Conditional condition yes no) =
-  conditionalWithBindings condition yes no
-normalizeSyntaxExpansion value = value
-
-lowerConditionAtom :: Expression -> Expression -> Expression -> Expression
-lowerConditionAtom condition yes no =
-  case selected of
-    [] -> Conditional condition yes no
-    _ -> Begin declarations (Conditional rewrittenCondition yes no)
-  where
-    selected = selectedConditionBindings condition yes no
-    selectedNames = map fst selected
-    declarations =
-      [ DependentDeclaration
-          (IdentifierExpressionBody (IdentifierReference name))
-          False False False [] value
-      | (name, original) <- selected
-      , let value = rewrite original
-      ]
-    rewrittenCondition = rewrite condition
-    rewrite expressionValue = case expressionValue of
-      DependentArgument nameExpression (Just _)
-        | Just name <- literalIdentifierName nameExpression
-        , name `elem` selectedNames -> IdentifierReference name
-      _ -> mapExpressionChildren rewrite expressionValue
-
-selectedConditionBindings
-  :: Expression
-  -> Expression
-  -> Expression
-  -> [(SimpleIdentifierString, Expression)]
-selectedConditionBindings condition yes no =
-  [ (name, value)
-  | (name@(SimpleIdentifierString text), value) <- candidates
-  , text `elem` referenced
-  ]
-  where
-    candidates = conditionBindingCandidates condition
-    referenced = identifierReferences condition
-      <> identifierReferences yes
-      <> identifierReferences no
-
--- Nested declarations are emitted before their enclosing named expression so
--- a hoisted outer value can refer to a hoisted inner value in ordinary block
--- order.
-conditionBindingCandidates
-  :: Expression
-  -> [(SimpleIdentifierString, Expression)]
-conditionBindingCandidates expressionValue =
-  concatMap conditionBindingCandidates (expressionChildren expressionValue)
-    <> case expressionValue of
-      DependentArgument nameExpression (Just value)
-        | Just name <- literalIdentifierName nameExpression -> [(name, value)]
-      _ -> []
-
-identifierReferences :: Expression -> [String]
-identifierReferences expressionValue = case expressionValue of
-  IdentifierReference (SimpleIdentifierString name) -> [name]
-  _ -> concatMap identifierReferences (expressionChildren expressionValue)
 
 -- Literal alternatives of a named type can be spelled as keywords in an AST
 -- pattern, while ordinary application keeps their $identifier value spelling.

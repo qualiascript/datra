@@ -49,6 +49,45 @@ The source whitespace delimits parts; it is not copied into an unstructured
 pattern string. Match-time whitespace constraints are derived compositionally
 from the parts on each side of a boundary.
 
+## Parser and rewriting foundation
+
+The ordinary source parser retains presentation before any declaration is
+selected. Concrete punctuation and separators which the core grammar does not
+claim are represented directly in the expression tree:
+
+```haskell
+data Expression
+  = ...
+  | UnresolvedSyntaxLiteral String
+  | SyntaxRemainder String
+  | SyntaxBoundary Expression
+  | ElidedSyntax
+```
+
+`UnresolvedSyntaxLiteral` may contain arbitrary punctuation or whitespace.
+Spaces, tabs, carriage returns, and newlines remain exact source data at this
+boundary. There is no neutral lexer, symbolic-syntax character allowlist,
+separator record, layout AST, or adjacent-value constructor. Core operators
+are claimed by the ordinary grammar; all other presentation remains available
+to the selected declarative matcher.
+
+`SyntaxRemainder` retains source whose concrete extent is established by an
+early rule, such as the text following `#` through the active line or syntax
+boundary. `SyntaxBoundary` retains an enclosing concrete boundary during
+rewriting. `ElidedSyntax` records syntax which has been consumed without
+contributing an expression.
+
+Elision is not the semantic empty map. A written `()` remains `AtlasMap []`
+with its ordinary value and type. Parent finalization removes `ElidedSyntax`
+from applications and sequences before evaluation; it never renders or
+evaluates it as `()`.
+
+The parser does not assign application meaning to spaces or sequence meaning
+to newlines. Final built-in dependent rules supply those meanings after
+visible declarations have had an opportunity to match the retained
+presentation. The comment rule is the earliest built-in rule. Line sequencing
+and horizontal application are the final fallback rules.
+
 ## Lexical classes
 
 ### Identifier literals
@@ -130,8 +169,8 @@ an escape which decodes to a space or newline is rejected as
 `WhitespaceInTemplateLiteral`; escaping whitespace cannot smuggle it into a
 symbolic literal.
 
-`#` introduces the same line comment as it does inside quoted string
-interpolation. The comment itself contributes no template part. An escaped
+An unescaped `#` invokes the earliest built-in dependent rule. Its
+`SyntaxRemainder` is discarded and contributes no template part. An escaped
 `#` contributes symbolic literal data.
 
 ### Mixed literals
@@ -318,13 +357,18 @@ Multiple spaces, tabs, and newlines are distinct and must not be collapsed. An
 escaped literal `%` is exact literal data; an unescaped interpolation `%` is a
 capture.
 
-“Exact” refers to the candidate presentation supplied by its `_StrExpr`
-codec. It does not require retention of incidental original source trivia when
-that codec defines a canonical presentation. For direct string candidates,
-the presentation is the string value itself. For syntax-category candidates,
-the category's canonical-string codec defines the presentation. The matcher
-must not independently render or parse an AST to choose a different notion of
+“Exact” refers to the complete presentation retained by the source parser.
+Literal spaces, tabs, and newlines remain part of that presentation and are
+matched character for character. A capture may decode its selected substring
+through the capture type's inverse codec, but that codec does not replace,
+canonicalize, or re-render the surrounding literal presentation. The matcher
+must not render an AST and parse the result to choose another notion of
 exactness.
+
+Exact literals are not restricted to identifiers or pure symbolic tokens.
+`Nat++`, `Nat ++`, and `hello!!!!` are all valid exact presentations, and the
+first two are distinct. The exact matcher does not call `words`, normalize
+layout, or consult a symbolic-character predicate.
 
 ### Backtick boundary matching
 
@@ -343,8 +387,8 @@ exactly. In particular, it must not:
   interpolation;
 - split a literal with `words` or another whitespace tokenizer;
 - join template components with `unwords` or inserted separators;
-- parse literal text through the neutral Datra parser and match only the
-  resulting AST shape; or
+- parse literal text through the ordinary Datra expression parser and match
+  only the resulting AST shape; or
 - include a literal component in the projected dependent arguments.
 
 Adjacent literal chunks may be coalesced only by lossless string
@@ -357,7 +401,7 @@ respective literal and boundary matchers have succeeded.
 
 ### Compiler-path separation
 
-The two forms have distinct declaration-head AST variants and distinct
+The two forms have distinct declaration-head AST variants and distinct typed
 compiled matcher plans:
 
 ```haskell
@@ -365,9 +409,12 @@ data DeclarativeIdentifier expression
   = ExactStringIdentifier expression
   | BacktickIdentifier (BacktickTemplate expression)
 
-data DeclarativeMatcher expression
-  = ExactStringMatcher (ExactStringTemplate expression)
+data DeclarativeMatcherPlan expression
+  = ExactPresentationMatcher (ExactStringTemplate expression)
   | BacktickMatcher (CompiledBacktickTemplate expression)
+  | NativeApplicationMatcher NativeApplicationPattern
+  | LineSequenceMatcher
+  | HorizontalApplicationMatcher
 ```
 
 The names are schematic, but the sum types and separation are normative.
@@ -390,7 +437,7 @@ They must not share:
 
 - a declaration-head AST constructor;
 - literal tokenization or normalization;
-- a lowered neutral-AST pattern;
+- a lowered shared-AST pattern;
 - whitespace or boundary semantics; or
 - a matcher plan which erases whether it came from `$` or backticks.
 
@@ -399,6 +446,15 @@ pre-match template representation. The exact `$` compiler preserves decoded
 string chunks. The backtick compiler preserves typed literals, structural
 composition, and boundary constraints. Only after either matcher succeeds may
 their capture selections enter the shared dependent-argument path.
+
+Each matcher dispatches on its plan and uses only that mode's projection.
+Typed hole validation is shared only after a mode-specific match succeeds.
+Matcher mode and built-in identity are never represented by a Boolean flag,
+display name, marker expression, or string sentinel.
+
+Rule identity is a separate typed sum. Declared names participate in ordinary
+introduction order and shadowing; comment, line-sequence, and horizontal-
+application identities do not masquerade as declaration names.
 
 ### Removal of the Atlas-template operator
 
@@ -554,10 +610,17 @@ Datra expression remains part of the capture. The enclosing dependent-
 expression parser fixes the candidate extent before template matching begins;
 full consumption is measured against that fixed extent.
 
-Comments in a backtick declaration are parser trivia. Candidate comments are
-handled by the ordinary candidate parser before inverse selection. The
-template matcher receives canonical candidate text and therefore matches
-actual whitespace characters, never comment spellings.
+Comments are handled by the earliest built-in dependent rule before any
+visible template rule can inspect their remainder. The backtick matcher never
+receives comment text as a candidate component. It receives the retained
+presentation surrounding the elided comment, including any real separator
+which remains after the comment boundary.
+
+Candidate selection runs once per rewrite node. Child expansion does not cause
+the scheduler to enumerate candidates again for the parent. Comment elision,
+line sequencing, and horizontal application must therefore compose through
+ordinary bottom-up parent finalization rather than depend on a scheduler
+retry.
 
 ### Full consumption and capture projection
 
@@ -674,7 +737,8 @@ not semantic data, and canonical output normalizes them to spaces.
 
 12. Backtick templates have one parser, one semantic AST, and one compiler.
 13. No Atlas expression is used as an intermediate encoding of a template.
-14. No `$!` operator, compatibility constructor, or dual matching path exists.
+14. No `$!` operator, compatibility constructor, or Atlas-template matching
+    path exists.
 15. `$` retains only its scalar literal-expression meaning.
 16. A `$` string-expression template retains every decoded literal chunk
     exactly, including all whitespace and punctuation.
@@ -690,43 +754,55 @@ not semantic data, and canonical output normalizes them to spaces.
     text, or type-name strings.
 22. The Datra prettier is the only semantic source renderer, and parsing its
     canonical output reconstructs the same template tree.
+23. Unresolved source presentation uses ordinary AST structure and
+    `UnresolvedSyntaxLiteral`; no neutral lexer or parallel layout/token model
+    exists.
+24. `ElidedSyntax` is distinct from `AtlasMap []` and is removed before
+    evaluation.
+25. Matcher plans and built-in identities are typed sums, never string
+    sentinels or Boolean mode flags.
 
 ### Matching invariants
 
-23. A successful match consumes the complete candidate extent.
-24. Every candidate position is consumed at most once along a selected branch.
-25. Captures cannot consume leading or trailing template-separator trivia.
-26. Literal parts in both template forms constrain matching but never
+26. A successful match consumes the complete candidate extent.
+27. Every candidate position is consumed at most once along a selected branch.
+28. Captures cannot consume leading or trailing template-separator trivia.
+29. Literal parts in both template forms constrain matching but never
     contribute function arguments.
-27. Every capture node contributes exactly one stable, typed capture position.
-28. Capture order is structural source order and is independent of optional
+30. Every capture node contributes exactly one stable, typed capture position.
+31. Capture order is structural source order and is independent of optional
     branch selection.
-29. `$` literal components match exact decoded character sequences and never
+32. `$` literal components match exact retained character sequences and never
     use lexical-edge whitespace rules.
-30. Backtick whitespace requirements are computed solely from adjacent
+33. Backtick whitespace requirements are computed solely from adjacent
     realized edge classes.
-31. Equal backtick edge classes require whitespace; unequal edge classes do
+34. Equal backtick edge classes require whitespace; unequal edge classes do
     not.
-32. Empty and absent backtick components are removed before adjacency is
+35. Empty and absent backtick components are removed before adjacency is
     computed.
-33. Capture selection, `of`, optional values, aliases, and subfederation use
+36. Capture selection, `of`, optional values, aliases, and subfederation use
     the ordinary specification machinery.
-34. Candidate comments are handled before matching and never interpreted by
+37. Candidate comments are handled before matching and never interpreted by
     the template matcher.
-35. Ambiguous decompositions are rejected during declaration validation rather
+38. Ambiguous decompositions are rejected during declaration validation rather
     than resolved by parser order or longest-match accidents.
-36. Matching and admissibility terminate by structural descent and existing
+39. Matching and admissibility terminate by structural descent and existing
     specification cycle detection; they never render and reparse candidates.
+40. Exact, backtick, native, line-sequence, and horizontal-application plans
+    use only their own candidate projections.
+41. Typed hole validation begins only after one plan has matched.
+42. The earliest comment rule and final separator rules compose without
+    scheduler re-enumeration.
 
 ### Diagnostic invariants
 
-37. Every rejected structural form has a typed diagnostic and a precise
+43. Every rejected structural form has a typed diagnostic and a precise
     source span.
-38. Once a structural introducer is consumed, failures remain attributed to
+44. Once a structural introducer is consumed, failures remain attributed to
     that structure and cannot fall back to a misleading literal diagnostic.
-39. Diagnostic tests compare structured failures. Rendered wording is tested
+45. Diagnostic tests compare structured failures. Rendered wording is tested
     only in the diagnostic-renderer suite.
-40. Failed parsing or matching never leaves a partially constructed semantic
+46. Failed parsing or matching never leaves a partially constructed semantic
     template or dependent-argument projection observable.
 
 ## Verification
@@ -766,10 +842,18 @@ unit tests and end-to-end declaration tests:
     public smart constructor;
 17. property tests that successful matching consumes the candidate exactly
     once and returns only the structurally declared captures;
-18. tests showing that exact `$` compilation never calls the neutral structural
-    parser and backtick compilation never constructs an exact-string matcher;
+18. tests showing that exact `$` compilation never renders and reparses a
+    structural candidate and backtick compilation never constructs an
+    exact-string matcher;
 19. diagnostics asserted by constructor and span rather than rendered text;
 20. standard-library and fixture declarations expressed exclusively with
     backtick syntax; and
 21. source-wide checks proving that `$!`, its AST/operator constructors, and
     the shared `$`/Atlas-template lowering path no longer exist.
+22. raw-parser tests proving that spaces and newlines remain exact unresolved
+    presentation until declarative rewriting;
+23. exact `$` tests distinguishing `Nat++`, `Nat ++`, and newline-separated
+    spellings, plus punctuation such as `hello!!!!`;
+24. transient-elision tests proving that consumed presentation and comments do
+    not manufacture `()`; and
+25. standard-library bootstrap diagnostics containing no elision placeholders.

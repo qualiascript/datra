@@ -50,14 +50,14 @@ runExpression :: String -> Either SourceFailure InterpretedValue
 runExpression source = do
   expression <- first SourceParseFailure
     (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-      True [] "<expression>" ("(" <> source <> "\n)"))
+      True [] "test/Datra/TestSupport.hs" ("(" <> source <> "\n)"))
   first SourceEvaluationFailure (interpretExpressionReason expression)
 
 runProgram :: String -> Either SourceFailure InterpretedValue
 runProgram source = do
   expression <- first SourceParseFailure
     (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-      True [] "<program>" source)
+      True [] "test/Datra/TestSupport.hs" source)
   first SourceEvaluationFailure (interpretWithImports [] expression)
 
 runModuleProgram :: FilePath -> String -> IO (Either ModuleFailure InterpretedValue)

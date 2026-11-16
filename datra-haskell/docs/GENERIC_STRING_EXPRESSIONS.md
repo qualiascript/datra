@@ -12,7 +12,11 @@ expressions have no dedicated semantic AST nodes and no fixed list of
 supported source types.
 
 Identifier expressions and dependent declarations use this facility as
-clients. Their syntax and semantics are not otherwise redefined here.
+clients. Their exact `$` and structural backtick matcher plans remain distinct
+as defined in
+[BACKTICK_DECLARATIVE_SYNTAX.md](./BACKTICK_DECLARATIVE_SYNTAX.md). This
+facility replaces capture codecs; it does not merge matcher dispatch or
+literal semantics.
 
 ## Public type family
 
@@ -201,6 +205,13 @@ Responsibilities are divided as follows:
 - Syntax rewriting and dependent declarations consume evaluated string
   federations and ordinary typed selection evidence.
 
+Exact `$` matching retains literal presentation character for character,
+including spaces and newlines. Backtick matching uses its own typed component
+and boundary projection. `_StrExpr` supplies inverse selection for capture
+substrings only after the selected matcher plan has matched its literals and
+candidate extent. It must not introduce a common pre-match string
+representation which erases the mode.
+
 No semantic module may recover a string-expression kind by comparing a type
 name, inspecting rendered source, or enumerating syntax-category constructors.
 
@@ -251,6 +262,10 @@ internal hook.
     capability boundary.
 13. The prettier is the only source renderer for interpolations.
 14. No old `StringExpression` constructor path remains after the replacement.
+15. Replacing the capture codec does not merge exact `$` and structural
+    backtick matcher plans.
+16. `_StrExpr` never assigns application, sequencing, comment, or whitespace
+    semantics; those remain declarative syntax rules.
 
 ## Verification
 

@@ -1,15 +1,11 @@
--- | Match declared string interpolations against an already parsed AST.
---
--- Matching is deliberately independent of source layout. The input template
--- and source have both been lowered by the neutral parser, so core operators
--- are matched as AST constructors. Holes receive selected AST subexpressions.
--- A caller supplies the
--- membership decision for each hole so value holes can use Datra's ordinary
--- string-template/value matching rather than a second parser-side type system.
+-- | Mode-specific declarative matching over an already parsed AST. Each
+-- matcher owns its candidate projection; only typed capture validation is
+-- shared after a match has been produced.
 module StringInterpolation.Matching
-  ( StringInterpolationMatchFailure (..)
+  ( ExpressionParser (..)
+  , StringInterpolationMatchFailure (..)
   , SyntaxMatch (..)
-  , StructuralSyntaxMatch (..)
+  , DeclarativeMatch (..)
   , enumerateSyntaxRulesSelections
   , enumerateSyntaxRuleSelections
   , matchSyntaxRule
@@ -18,19 +14,36 @@ module StringInterpolation.Matching
   , expandSyntaxMatch
   ) where
 
-import DatraLanguage.AST (Expression (FunctionApplication))
+import Data.Functor.Identity (runIdentity)
+import DatraLanguage.Application
+  ( applicationFrom
+  , applicationPhrase
+  , applicationSelections
+  , horizontallySeparatedApplication
+  , lineSeparatedApplication
+  , nativeApplicationPhrase
+  )
+import DatraLanguage.AST
+  ( Expression (AsciiStringLiteral, FunctionApplication) )
+import DatraLanguage.AST.Source (renderSourceExpression)
 import StringInterpolation
-  ( StringExpression (..)
+  ( DeclarativeMatcherPlan (..)
+  , NativeApplicationPattern (..)
+  , ExactPresentationPattern (..)
+  , ExactPresentationPart (..)
+  , AtlasSyntaxPattern (..)
+  , AtlasSyntaxPart (..)
+  , StringExpression (..)
   , SyntaxRule (..)
   , TemplateSelection (..)
   , expandSyntax
   )
-import StringInterpolation.Projection
-  ( StringInterpolationParser
-  , applicationFrom
-  , applicationPhrase
-  , structuralTemplateCaptures
-  )
+import StringInterpolation.Exact (matchExactSegments)
+
+newtype ExpressionParser = ExpressionParser
+  { parseExpressionText :: String -> Maybe Expression
+  }
+
 data StringInterpolationMatchFailure
   = NoMatchingStringInterpolation
   deriving (Eq, Show)
@@ -48,48 +61,173 @@ data SyntaxMatch = SyntaxMatch
   , syntaxMatchRemaining :: [Expression]
   }
 
--- | A template match whose holes have only been partitioned structurally.
--- No capture membership, evaluation, or generic inference has occurred.
--- Keeping this distinct from 'SyntaxMatch' lets the rewrite scheduler retain
--- every greedy choice point and type its children incrementally.
-data StructuralSyntaxMatch = StructuralSyntaxMatch
-  { structuralSyntaxMatchRule :: SyntaxRule
-  , structuralSyntaxMatchSelection
+-- | The common result produced only after one concrete matcher mode succeeds.
+-- Capture membership and generic inference have not yet run.
+data DeclarativeMatch = DeclarativeMatch
+  { declarativeMatchRule :: SyntaxRule
+  , declarativeMatchSelection
       :: TemplateSelection Expression Expression
-  , structuralSyntaxMatchCaptures
+  , declarativeMatchCaptures
       :: [(StringExpression Expression, Expression)]
-  , structuralSyntaxMatchRemaining :: [Expression]
+  , declarativeMatchRemaining :: [Expression]
   }
 
 enumerateSyntaxRuleSelections
-  :: StringInterpolationParser
+  :: ExpressionParser
   -> SyntaxRule
   -> Expression
-  -> [StructuralSyntaxMatch]
+  -> [DeclarativeMatch]
 enumerateSyntaxRuleSelections parser rule =
   enumerateSyntaxRulesSelections parser [rule]
 
 enumerateSyntaxRulesSelections
-  :: StringInterpolationParser
+  :: ExpressionParser
   -> [SyntaxRule]
   -> Expression
-  -> [StructuralSyntaxMatch]
+  -> [DeclarativeMatch]
 enumerateSyntaxRulesSelections parser rules expressionValue =
-  [ StructuralSyntaxMatch rule
-      (TemplateSelection
-        (applicationFrom candidate)
-        (map snd captures))
-      captures
+  concatMap matchesRule rules
+  where
+    matchesRule rule = case declarativeMatcherPlan rule of
+      NativeApplicationMatcher patternValue ->
+        matchNativeApplication rule patternValue expressionValue
+      AtlasSyntaxMatcher patternValue ->
+        matchAtlasSyntax rule patternValue expressionValue
+      ExactPresentationMatcher patternValue ->
+        matchExactPresentation parser rule patternValue expressionValue
+      LineSequenceMatcher -> matchLineSequence rule expressionValue
+      HorizontalApplicationMatcher ->
+        matchHorizontalApplication rule expressionValue
+
+matchNativeApplication
+  :: SyntaxRule
+  -> NativeApplicationPattern
+  -> Expression
+  -> [DeclarativeMatch]
+matchNativeApplication rule patternValue expressionValue =
+  [ DeclarativeMatch rule
+      (TemplateSelection selected [captured])
+      [(nativeApplicationOperand patternValue, captured)]
       remaining
-  | rule <- rules
-  , consumed <- reverse [1 .. length phrase]
-  , let (candidate, remaining) = splitAt consumed phrase
-        selected = applicationFrom candidate
-  , captures <- structuralTemplateCaptures parser
-      (stringInterpolationTemplate rule) selected
+  | (selected, remaining) <- applicationSelections expressionValue
+  , Just (actualHead : operands) <- [nativeApplicationPhrase selected]
+  , not (null operands)
+  , actualHead == nativeApplicationHead patternValue
+  , let captured = applicationFrom operands
+  ]
+
+matchAtlasSyntax
+  :: SyntaxRule
+  -> AtlasSyntaxPattern
+  -> Expression
+  -> [DeclarativeMatch]
+matchAtlasSyntax rule patternValue expressionValue =
+  [ declarativeMatch rule selected captures remaining
+  | (selected, remaining) <- applicationSelections expressionValue
+  , captures <- atlasSyntaxCaptures patternValue
+      (applicationPhrase selected)
+  ]
+
+matchExactPresentation
+  :: ExpressionParser
+  -> SyntaxRule
+  -> ExactPresentationPattern (StringExpression Expression)
+  -> Expression
+  -> [DeclarativeMatch]
+matchExactPresentation parser rule patternValue expressionValue =
+  [ declarativeMatch rule selected captures remaining
+  | (selected, remaining) <- applicationSelections expressionValue
+  , captures <- exactPresentationCaptures parser patternValue selected
+  ]
+
+matchLineSequence :: SyntaxRule -> Expression -> [DeclarativeMatch]
+matchLineSequence rule expressionValue =
+  [ DeclarativeMatch rule
+      (TemplateSelection expressionValue []) [] []
+  | Just _ <- [lineSeparatedApplication expressionValue]
+  ]
+
+matchHorizontalApplication :: SyntaxRule -> Expression -> [DeclarativeMatch]
+matchHorizontalApplication rule expressionValue =
+  [ DeclarativeMatch rule
+      (TemplateSelection expressionValue []) [] []
+  | Just _ <- [horizontallySeparatedApplication expressionValue]
+  ]
+
+declarativeMatch
+  :: SyntaxRule
+  -> Expression
+  -> [(StringExpression Expression, Expression)]
+  -> [Expression]
+  -> DeclarativeMatch
+declarativeMatch rule selected captures remaining = DeclarativeMatch rule
+  (TemplateSelection selected (map snd captures)) captures remaining
+
+atlasSyntaxCaptures
+  :: AtlasSyntaxPattern
+  -> [Expression]
+  -> [[(StringExpression Expression, Expression)]]
+atlasSyntaxCaptures (AtlasSyntaxPattern parts) = match parts
+  where
+    match [] [] = [[]]
+    match [] _ = []
+    match _ [] = []
+    match (AtlasSyntaxLiteral expected : remaining)
+        (actual : candidates)
+      | expected == actual = match remaining candidates
+      | otherwise = []
+    match (AtlasSyntaxCapture capture : remaining) candidates =
+      [ (capture, applicationFrom selected) : later
+      | count <- reverse [1 .. length candidates]
+      , let (selected, rest) = splitAt count candidates
+      , later <- match remaining rest
+      ]
+
+exactPresentationCaptures
+  :: ExpressionParser
+  -> ExactPresentationPattern (StringExpression Expression)
+  -> Expression
+  -> [[(StringExpression Expression, Expression)]]
+exactPresentationCaptures parser (ExactPresentationPattern parts) source =
+  [ zip captureKinds selected
+  | selected <- runIdentity
+      (matchExactSegments view decode parts (renderSourceExpression source))
   ]
   where
-    phrase = applicationPhrase expressionValue
+    captureKinds =
+      [ kind
+      | ExactPresentationCapture kind <- parts
+      ]
+    view partValue = case partValue of
+      ExactPresentationLiteral literal -> Right literal
+      ExactPresentationCapture capture -> Left capture
+    decode = decodeCapture parser
+
+decodeCapture
+  :: Applicative f
+  => ExpressionParser
+  -> StringExpression Expression
+  -> String
+  -> f [Expression]
+decodeCapture parser kind captured = pure (captureExpressions kind captured)
+  where
+    captureExpressions selectedKind sourceText = case selectedKind of
+      LiteralString {} -> []
+      StringLiteralString {} -> [AsciiStringLiteral sourceText]
+      ExpressionString {} -> parsed
+      BlockString {} -> parsed
+      FunctionBodyString {} -> parsed
+      DeclarationString {} -> parsed
+      DependentArgumentString {} -> parsed
+      IdentifierExpressionString {} -> parsed
+      -- An unevaluated value descriptor has not acquired its canonical-string
+      -- codec yet. Retain both candidates until ordinary typed selection
+      -- specializes or rejects them.
+      ValueString {} -> parsed <> [AsciiStringLiteral sourceText]
+      where
+        parsed = case parseExpressionText parser sourceText of
+          Just expressionValue -> [expressionValue]
+          Nothing -> []
 
 -- | Match within one application spine. Its explicit head identifier first
 -- filters templates by their literal prefix. The selected template
@@ -101,7 +239,7 @@ enumerateSyntaxRulesSelections parser rules expressionValue =
 -- prefix. Matching never descends through another AST node to enlarge the
 -- context.
 matchSyntaxRules
-  :: StringInterpolationParser
+  :: ExpressionParser
   -> HoleMatches
   -> [SyntaxRule]
   -> Expression
@@ -113,7 +251,7 @@ matchSyntaxRules parser holeMatches rules expressionValue =
     rules expressionValue
 
 matchSyntaxRulesWith
-  :: StringInterpolationParser
+  :: ExpressionParser
   -> CaptureHole
   -> [SyntaxRule]
   -> Expression
@@ -121,14 +259,14 @@ matchSyntaxRulesWith
 matchSyntaxRulesWith parser captureHole rules expressionValue =
   expandSyntaxMatch <$> chooseSuccessful
     [ SyntaxMatch
-        (structuralSyntaxMatchRule matched)
-        ((structuralSyntaxMatchSelection matched)
+        (declarativeMatchRule matched)
+        ((declarativeMatchSelection matched)
           { templateSelectionCaptures = map snd captures })
-        (structuralSyntaxMatchRemaining matched)
+        (declarativeMatchRemaining matched)
     | matched <- enumerateSyntaxRulesSelections parser rules expressionValue
     , captures <- maybeToList
         (validateCaptures captureHole
-          (structuralSyntaxMatchCaptures matched))
+          (declarativeMatchCaptures matched))
     ]
 
 validateCaptures
@@ -153,7 +291,7 @@ expandSyntaxMatch matched = foldl FunctionApplication expanded
 -- boundary: parsing establishes the contextual AST extent of a phrase, while
 -- this matcher remains solely responsible for interpreting its template.
 matchSyntaxRule
-  :: StringInterpolationParser
+  :: ExpressionParser
   -> HoleMatches
   -> SyntaxRule
   -> Expression

@@ -181,6 +181,11 @@ prettyOperator (BeginValue bindings result) =
     [prettyForm "bindings" (map prettyDeclaration bindings), prettyOperator result]
 prettyOperator (IdentifierReferenceValue (SimpleIdentifierString name)) =
   prettyForm "ref" [pretty (renderAsciiStringLiteral name)]
+prettyOperator (UnresolvedSyntaxValue literal) =
+  prettyForm "unresolved-syntax" [pretty (renderAsciiStringLiteral literal)]
+prettyOperator ElidedSyntaxValue = prettyForm "elided-syntax" []
+prettyOperator (SyntaxRemainderValue source) =
+  prettyForm "syntax-remainder" [pretty (renderAsciiStringLiteral source)]
 prettyOperator (LookupValue operand) =
   prettyUnary LookupOperator operand
 prettyOperator (Multiply left right) =

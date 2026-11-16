@@ -41,6 +41,7 @@ data Operator
   | ConcatenationOperator
   | AccessOperator
   | SpecificationOperator
+  | ReverseSpecificationOperator
   | OverloadOperator
   | ReverseOverloadOperator
   | SafeOverloadOperator
@@ -84,6 +85,7 @@ operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
 operatorCanonicalSymbol AccessOperator = "<@>"
 operatorCanonicalSymbol SpecificationOperator = "~>"
+operatorCanonicalSymbol ReverseSpecificationOperator = "<~"
 operatorCanonicalSymbol OverloadOperator = "<<"
 operatorCanonicalSymbol ReverseOverloadOperator = ">>"
 operatorCanonicalSymbol SafeOverloadOperator = "<<<"
@@ -127,6 +129,7 @@ operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","
 operatorSourceSymbol AccessOperator = Just "@"
 operatorSourceSymbol SpecificationOperator = Just "~>"
+operatorSourceSymbol ReverseSpecificationOperator = Just "<~"
 operatorSourceSymbol OverloadOperator = Just "<<"
 operatorSourceSymbol ReverseOverloadOperator = Just ">>"
 operatorSourceSymbol SafeOverloadOperator = Just "<<<"

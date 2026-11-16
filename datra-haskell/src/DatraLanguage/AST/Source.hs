@@ -4,7 +4,8 @@ module DatraLanguage.AST.Source (renderSourceExpression) where
 import Data.List (intercalate)
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.AST
-import DatraLanguage.NeutralLexer (isOpaqueSymbolicSyntaxLiteral)
+import DatraLanguage.Application
+  ( syntaxWhitespaceSource )
 import DatraLanguage.Pretty
   ( renderAsciiStringLiteral
   , renderIdentifierString
@@ -31,16 +32,23 @@ source context expression =
       <> " " <> source 0 body
     FunctionTypeValue _ input output -> wrapped 11
       (source 12 input <> " -> " <> functionTypeOutput output)
+    FunctionApplicationValue function (UnresolvedSyntaxValue literal) ->
+      wrapped 11 (source 11 function <> literal)
     FunctionApplicationValue function input -> wrapped 11
-      (source 11 function <> " " <> applicationInput input)
+      ( source 11 function
+        <> applicationSeparator function
+        <> applicationInput input
+      )
     DeclarationValue declaration ->
       sourceDeclaration declaration
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     IdentifierReferenceValue (SimpleIdentifierString name)
       | renderIdentifierString name == name -> name
-      | isOpaqueSymbolicSyntaxLiteral name -> name
       | otherwise -> "this." <> renderIdentifierString name
+    UnresolvedSyntaxValue literal -> literal
+    ElidedSyntaxValue -> ""
+    SyntaxRemainderValue sourceText -> sourceText
     LookupValue operand -> unary "~" operand
     DependentArgumentValue name (Just annotation) ->
       let (writtenName, optionalName) = dependentArgumentNameSource name
@@ -138,6 +146,10 @@ source context expression =
     applicationInput SkipValue = "(*)"
     applicationInput operand@FunctionBodyValue {} = source 0 operand
     applicationInput operand = source 12 operand
+    applicationSeparator
+        (FunctionApplicationValue _ (UnresolvedSyntaxValue sourceText))
+      | syntaxWhitespaceSource sourceText = ""
+    applicationSeparator _ = " "
     functionTypeOutput output@FunctionTypeValue {} = source 11 output
     functionTypeOutput output = source 12 output
     bounded keyword start end = keyword <> " " <> show start <> " to " <> show end

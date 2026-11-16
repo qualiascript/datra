@@ -26,7 +26,6 @@ import DatraLanguage.Diagnostics.Application
   , ModuleLoadFailure (..)
   , ParseFailure (..)
   , SyntaxRewriteFailure (..)
-  , StringInterpolationAdmissibilityFailure (..)
   )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import Evaluation.Error
@@ -65,7 +64,7 @@ import SuperEllipsisRange
 
 localizeParseFailure :: ParseFailure -> LocalizedMessage
 localizeParseFailure failure = case failure of
-  NeutralSourceParseFailure message ->
+  DatraSourceParseFailure message ->
     LocalizedMessage "source could not be parsed" [message]
   SyntaxEnvironmentParseFailure message ->
     LocalizedMessage "syntax environment could not be constructed" [message]
@@ -132,12 +131,6 @@ localizeSyntaxRewriteFailure failure = case failure of
   ExpectedDependentDeclaration expressionValue ->
     LocalizedMessage "operation has no effect inside block"
       ["expression: " <> renderSourceExpression expressionValue]
-  InvalidRewriteStringInterpolation template failureReason ->
-    LocalizedMessage
-      (stringInterpolationFailureSummary template failureReason)
-      [ "pattern: " <> template
-      , stringInterpolationFailureDetail failureReason
-      ]
   RejectedSyntaxCandidates attempts ->
     LocalizedMessage "syntax candidates were rejected by typing"
       (map (renderDatraErrorWith localizeCandidateRejectionReport) attempts)
@@ -321,12 +314,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "value does not have a canonical string conversion"
         ["only injective, round-trippable string conversions are accepted"]
-    InvalidStringInterpolation template failure ->
-      LocalizedMessage
-        (stringInterpolationFailureSummary template failure)
-        [ "pattern: " <> show template
-        , stringInterpolationFailureDetail failure
-        ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
         "Either alternatives are not distinguishable Atlas maps"
@@ -349,29 +336,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "string contains a character outside the ASCII map"
         ["character: " <> show character]
-
-stringInterpolationFailureSummary
-  :: String
-  -> StringInterpolationAdmissibilityFailure
-  -> String
-stringInterpolationFailureSummary _ NeutralStringInterpolationParseFailure =
-  "syntax pattern cannot be read by the neutral source parser"
-stringInterpolationFailureSummary _ (IncompleteCoreSyntaxOperator operator) =
-  "syntax pattern ends with the incomplete core operator " <> operator
-stringInterpolationFailureSummary _ StringInterpolationProjectionLoss =
-  "syntax pattern loses a literal or hole during matching"
-stringInterpolationFailureSummary _ UnstableStringInterpolationProjection =
-  "syntax pattern changes when rendered and parsed again"
-
-stringInterpolationFailureDetail :: StringInterpolationAdmissibilityFailure -> String
-stringInterpolationFailureDetail NeutralStringInterpolationParseFailure =
-  "the complete pattern must be parseable before declared syntax is installed"
-stringInterpolationFailureDetail (IncompleteCoreSyntaxOperator _) =
-  "the complete pattern must supply the operator's required operand"
-stringInterpolationFailureDetail StringInterpolationProjectionLoss =
-  "the matcher cannot recover every pattern boundary from the neutral AST"
-stringInterpolationFailureDetail UnstableStringInterpolationProjection =
-  "the recovered neutral form must survive a canonical round trip"
 
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =

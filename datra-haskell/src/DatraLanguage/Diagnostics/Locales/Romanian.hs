@@ -23,7 +23,6 @@ import DatraLanguage.Diagnostics.Application
   , ModuleLoadFailure (..)
   , ParseFailure (..)
   , SyntaxRewriteFailure (..)
-  , StringInterpolationAdmissibilityFailure (..)
   )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import Evaluation.Error
@@ -61,7 +60,7 @@ import SuperEllipsisRange
 
 localizeParseFailure :: ParseFailure -> LocalizedMessage
 localizeParseFailure failure = case failure of
-  NeutralSourceParseFailure message ->
+  DatraSourceParseFailure message ->
     LocalizedMessage "sursa nu a putut fi analizată" [message]
   SyntaxEnvironmentParseFailure message ->
     LocalizedMessage "mediul sintactic nu a putut fi construit" [message]
@@ -128,12 +127,6 @@ localizeSyntaxRewriteFailure failure = case failure of
   ExpectedDependentDeclaration expressionValue ->
     LocalizedMessage "operația nu are efect în interiorul blocului"
       ["expresie: " <> renderSourceExpression expressionValue]
-  InvalidRewriteStringInterpolation template failureReason ->
-    LocalizedMessage
-      (stringInterpolationFailureSummary template failureReason)
-      [ "șablon: " <> template
-      , stringInterpolationFailureDetail failureReason
-      ]
   RejectedSyntaxCandidates attempts ->
     LocalizedMessage "candidații sintactici au fost respinși de tipizare"
       (map (renderDatraErrorWith localizeCandidateRejectionReport) attempts)
@@ -322,12 +315,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "valoarea nu are o conversie canonică în șir"
         ["sunt acceptate doar conversii în șir injective și reversibile"]
-    InvalidStringInterpolation template failure ->
-      LocalizedMessage
-        (stringInterpolationFailureSummary template failure)
-        [ "șablon: " <> show template
-        , stringInterpolationFailureDetail failure
-        ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
         "alternativele Either nu sunt hărți Atlas diferențiabile"
@@ -350,29 +337,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "șirul conține un caracter din afara hărții ASCII"
         ["caracter: " <> show character]
-
-stringInterpolationFailureSummary
-  :: String
-  -> StringInterpolationAdmissibilityFailure
-  -> String
-stringInterpolationFailureSummary _ NeutralStringInterpolationParseFailure =
-  "șablonul sintactic nu poate fi citit de analizorul neutru al sursei"
-stringInterpolationFailureSummary _ (IncompleteCoreSyntaxOperator operator) =
-  "șablonul sintactic se termină cu operatorul nucleu incomplet " <> operator
-stringInterpolationFailureSummary _ StringInterpolationProjectionLoss =
-  "șablonul sintactic pierde un literal sau un gol în timpul potrivirii"
-stringInterpolationFailureSummary _ UnstableStringInterpolationProjection =
-  "șablonul sintactic se schimbă după afișare și reanalizare"
-
-stringInterpolationFailureDetail :: StringInterpolationAdmissibilityFailure -> String
-stringInterpolationFailureDetail NeutralStringInterpolationParseFailure =
-  "șablonul complet trebuie analizat înainte de instalarea sintaxei declarate"
-stringInterpolationFailureDetail (IncompleteCoreSyntaxOperator _) =
-  "șablonul complet trebuie să furnizeze operandul cerut de operator"
-stringInterpolationFailureDetail StringInterpolationProjectionLoss =
-  "potrivitorul nu poate recupera fiecare limită din arborele sintactic neutru"
-stringInterpolationFailureDetail UnstableStringInterpolationProjection =
-  "forma neutră recuperată trebuie să rămână stabilă după o conversie canonică"
 
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =

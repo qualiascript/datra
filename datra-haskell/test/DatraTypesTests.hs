@@ -81,8 +81,7 @@ import DatraLanguage.Diagnostics
   )
 import DatraLanguage.Diagnostics.Application
   ( ModuleLoadFailure (CyclicModuleImport)
-  , ParseFailure (NeutralSourceParseFailure)
-  , StringInterpolationAdmissibilityFailure (..)
+  , ParseFailure (DatraSourceParseFailure)
   )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
@@ -361,7 +360,7 @@ testDiagnostics :: IO ()
 testDiagnostics = do
   let sourceSpan =
         SourceSpan
-          "<test>"
+          "test/DatraTypesTests.hs"
           (SourcePosition 4 1 5)
           (SourcePosition 12 1 13)
       reason = AccessPositionOutOfBounds
@@ -381,7 +380,7 @@ testDiagnostics = do
           ])
   assert "localized diagnostics render exact source position and text"
     (rendered
-      == "<test>:1:5: the access insertion selects a position outside the map\n  selected position: 4\n  map final-page order type: 3")
+      == "test/DatraTypesTests.hs:1:5: the access insertion selects a position outside the map\n  selected position: 4\n  map final-page order type: 3")
   assert "Romanian access localization has exact structured text"
     (localizedRomanian
       == LocalizedMessage
@@ -391,7 +390,7 @@ testDiagnostics = do
           ])
   assert "Romanian diagnostics retain source positions and diacritics"
     (renderedRomanian
-      == "<test>:1:5: inserția de acces selectează o poziție din afara hărții\n  poziția selectată: 4\n  tipul de ordine al ultimei pagini din hartă: 3")
+      == "test/DatraTypesTests.hs:1:5: inserția de acces selectează o poziție din afara hărții\n  poziția selectată: 4\n  tipul de ordine al ultimei pagini din hartă: 3")
   assert "no-effect operations use a typed English diagnostic"
     (localizeDiagnostic English Types.OperationHasNoEffect
       == LocalizedMessage "operation has no effect" [])
@@ -550,28 +549,10 @@ testDiagnostics = do
           "nu se poate demonstra că identificatorul generic este disjunct de un argument dependent"
           ["identificator: T"]
     )
-  assert "inadmissible syntax templates have an explicit bilingual diagnostic"
-    ( localizeDiagnostic English
-          (Types.InvalidStringInterpolation "call ~"
-            (IncompleteCoreSyntaxOperator "~"))
-        == LocalizedMessage
-          "syntax pattern ends with the incomplete core operator ~"
-          [ "pattern: \"call ~\""
-          , "the complete pattern must supply the operator's required operand"
-          ]
-      && localizeDiagnostic Romanian
-          (Types.InvalidStringInterpolation "call ~"
-            (IncompleteCoreSyntaxOperator "~"))
-        == LocalizedMessage
-          "șablonul sintactic se termină cu operatorul nucleu incomplet ~"
-          [ "șablon: \"call ~\""
-          , "șablonul complet trebuie să furnizeze operandul cerut de operator"
-          ]
-    )
   assert "parser failures have exact bilingual localization"
-    ( localizeDiagnostic English (NeutralSourceParseFailure "bad token")
+    ( localizeDiagnostic English (DatraSourceParseFailure "bad token")
         == LocalizedMessage "source could not be parsed" ["bad token"]
-      && localizeDiagnostic Romanian (NeutralSourceParseFailure "bad token")
+      && localizeDiagnostic Romanian (DatraSourceParseFailure "bad token")
         == LocalizedMessage "sursa nu a putut fi analizată" ["bad token"]
     )
   assert "module-loading failures have exact bilingual localization"
@@ -635,11 +616,11 @@ testArgumentSchemas = do
       evaluateNatural expression
         | expression == naturalExpression = Right naturalType
         | otherwise = Left (Types.UnknownIdentifier "unexpected test expression")
-      privateOptional = AST.OptionalType
-        (AST.DependentArgument
+      privateOptional = AST.DependentArgument
+        (AST.OptionalType
           (AST.IdentifierExpression
-            (AST.IdentifierReference (AST.SimpleIdentifierString "_value")))
-          (Just naturalExpression))
+            (AST.IdentifierReference (AST.SimpleIdentifierString "_value"))))
+        (Just naturalExpression)
   assert "private optional parameters use a structured boundary error"
     (case Types.compileParameters evaluateNatural privateOptional of
       Left (Types.PrivateParameterCannotBeOptional "_value") -> True

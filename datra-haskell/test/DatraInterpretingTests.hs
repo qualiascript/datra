@@ -2579,7 +2579,7 @@ testRendering = do
 parseProductionSource :: String -> Either ParseFailure Expression
 parseProductionSource source =
   locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-    True [] "<input>" source
+    True [] "test/DatraInterpretingTests.hs" source
 
 testMaps :: IO ()
 testMaps = do
@@ -4256,7 +4256,7 @@ testLocatedRejection :: IO ()
 testLocatedRejection = do
   let sourceSpan =
         SourceSpan
-          "<test>"
+          "test/DatraInterpretingTests.hs"
           (SourcePosition 4 1 5)
           (SourcePosition 10 1 11)
       expressionValue =
@@ -4273,14 +4273,14 @@ testLocatedRejection = do
     (case interpretLocatedExpression (Located sourceSpan expressionValue) of
       Left valueError ->
         renderDatraError English valueError
-          == "<test>:1:5: left operand must be a finite integer\n"
+          == "test/DatraInterpretingTests.hs:1:5: left operand must be a finite integer\n"
               <> "  actual value kind: map"
       Right _ -> False)
   assert "Romanian interpretation errors are localized only at display time"
     (case interpretLocatedExpression (Located sourceSpan expressionValue) of
       Left valueError ->
         renderDatraError Romanian valueError
-          == "<test>:1:5: operandul stâng trebuie să fie un întreg finit\n"
+          == "test/DatraInterpretingTests.hs:1:5: operandul stâng trebuie să fie un întreg finit\n"
               <> "  tipul efectiv al valorii: hartă"
       Right _ -> False)
   let ambiguousTemplate =

@@ -225,6 +225,15 @@ data Expression
   | DeclarationExpression (DependentDeclaration Expression)
   | Begin [DependentDeclaration Expression] Expression
   | IdentifierReference SimpleIdentifierString
+  -- | A transient symbolic word which the core grammar did not claim.
+  -- Declarative rewriting must resolve it before semantic evaluation.
+  | UnresolvedSyntaxLiteral String
+  -- | Source syntax consumed without contributing a semantic expression.
+  -- Parent finalization removes this node before evaluation.
+  | ElidedSyntax
+  -- | Source text owned by an early dependent rule. The parser establishes
+  -- only its concrete boundary; syntax rewriting decides its meaning.
+  | SyntaxRemainder String
   | Lookup Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
@@ -406,6 +415,9 @@ data OperatorExpression
       [DependentDeclaration OperatorExpression]
       OperatorExpression
   | IdentifierReferenceValue SimpleIdentifierString
+  | UnresolvedSyntaxValue String
+  | ElidedSyntaxValue
+  | SyntaxRemainderValue String
   | LookupValue OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
@@ -536,6 +548,9 @@ normalizeExpression (Begin bindings result) =
     (map (mapDependentDeclaration normalizeExpression) bindings)
     (normalizeExpression result)
 normalizeExpression (IdentifierReference name) = IdentifierReference name
+normalizeExpression literal@UnresolvedSyntaxLiteral {} = literal
+normalizeExpression ElidedSyntax = ElidedSyntax
+normalizeExpression remainder@SyntaxRemainder {} = remainder
 normalizeExpression (Lookup operand) = Lookup (normalizeExpression operand)
 normalizeExpression (Multiplication left right) =
   Multiplication (normalizeExpression left) (normalizeExpression right)
@@ -700,6 +715,9 @@ lower (DeclarationExpression declaration) =
 lower (Begin bindings result) = BeginValue
   (map (mapDependentDeclaration lower) bindings) (lower result)
 lower (IdentifierReference name) = IdentifierReferenceValue name
+lower (UnresolvedSyntaxLiteral literal) = UnresolvedSyntaxValue literal
+lower ElidedSyntax = ElidedSyntaxValue
+lower (SyntaxRemainder source) = SyntaxRemainderValue source
 lower (Lookup operand) = LookupValue (lower operand)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)

@@ -3,7 +3,6 @@
 module DatraLanguage.Diagnostics.Application
   ( ParseFailure (..)
   , ModuleLoadFailure (..)
-  , StringInterpolationAdmissibilityFailure (..)
   , CandidateRejectionReason (..)
   , CandidateRejectionReport (..)
   , SyntaxRewriteFailure (..)
@@ -14,7 +13,7 @@ import DatraLanguage.AST (Expression)
 import DatraLanguage.Diagnostics (DatraError)
 
 data ParseFailure
-  = NeutralSourceParseFailure String
+  = DatraSourceParseFailure String
   | SyntaxEnvironmentParseFailure String
   | SyntaxRewriteParseFailure SyntaxRewriteFailure
   deriving (Eq, Show)
@@ -25,13 +24,6 @@ data ModuleLoadFailure
   | CyclicModuleImport FilePath
   | ModuleReadFailed String FilePath String
   | ImportedModuleParseFailed FilePath ParseFailure
-  deriving (Eq, Show)
-
-data StringInterpolationAdmissibilityFailure
-  = NeutralStringInterpolationParseFailure
-  | IncompleteCoreSyntaxOperator String
-  | StringInterpolationProjectionLoss
-  | UnstableStringInterpolationProjection
   deriving (Eq, Show)
 
 data CandidateRejectionReason
@@ -59,7 +51,6 @@ data SyntaxRewriteFailure
   | NonInjectiveDependentDeclaration String
   | InvalidDependentDeclarationModifiers [String] [String]
   | ExpectedDependentDeclaration Expression
-  | InvalidRewriteStringInterpolation String StringInterpolationAdmissibilityFailure
   | RejectedSyntaxCandidates [DatraError CandidateRejectionReport]
   deriving (Eq, Show)
 

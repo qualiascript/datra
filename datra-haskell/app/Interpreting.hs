@@ -41,7 +41,8 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (nub, nubBy, isPrefixOf, partition, stripPrefix)
+import Data.Char (isSpace)
+import Data.List (nub, nubBy, partition, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Set qualified as Set
@@ -97,10 +98,9 @@ import Parsing
   , inferredFunction
   , prepareFunctionDomainExpression
   , prepareGenericExpression
-  , parseNeutralPhrase
+  , parseSourceExpression
   , parseDatraRawLocatedWithSourceName
   , resolveGenericFunctionTypes
-  , stringInterpolationParser
   , ResourceEnvelope (..)
   )
 import SyntaxRewriting
@@ -115,13 +115,22 @@ import Rendering (renderCanonicalResult, renderInterpretedValue)
 import GenericScopeProtection
 import ScopeProtection
 import StringInterpolation
-  ( SyntaxRule (..)
+  ( DeclarativeMatcherPlan (..)
+  , SyntaxRuleIdentity (..)
+  , SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , declarationRules
   , declarationRuleBranches
+  , commentSyntaxRule
+  , lineSyntaxRule
+  , horizontalApplicationRule
+  , syntaxRuleDeclaredName
+  , exactPresentationPattern
+  , mapSyntaxRuleCaptures
   , syntaxApplicationRule
   )
-import StringInterpolation.Projection (applicationPhrase)
+import DatraLanguage.Application (applicationPhrase)
+import StringInterpolation.Exact (matchExactSegments)
 import DatraLanguage.Diagnostics
   ( DatraError
   , Located (Located, locatedValue)
@@ -149,7 +158,7 @@ data ModuleSource
   = ModuleSource FilePath Expression [(String, ModuleSource)]
 
 -- | Production source parsing is deliberately split into two phases. The
--- lexical parser first reads a neutral AST without consulting declarations;
+-- the source parser first reads an unresolved AST without consulting declarations;
 -- this pass then applies the syntax functions visible through Std, explicit
 -- imports, and declarations introduced by the resource itself.
 parseDatraSourceLocatedWithImportsAndStandardLibrary
@@ -325,6 +334,10 @@ scopeSyntaxRules classify availableRules declarations source =
     , namespace == selected
     ]
 
+ruleHasAnyName :: [String] -> SyntaxRule -> Bool
+ruleHasAnyName names rule =
+  maybe False (`elem` names) (syntaxRuleDeclaredName rule)
+
 -- A lexical map can introduce syntax in exactly the same way as an imported
 -- module.  Its rules are visible only on the right side of an access to that
 -- map, and are specialized against the declarations visible both outside and
@@ -349,19 +362,13 @@ localSyntaxRules classify declarations source =
         retainedDeclarations = filter
           (null . filter (`elem` names) . bindingNames)
           visible
-        retainedRules = filter ((`notElem` names) . syntaxName) rules
+        retainedRules = filter (not . ruleHasAnyName names) rules
         introduced = map (specialize visible)
-          (declarationRules stringInterpolationParser declaration)
-    specialize visible rule = rule
-      { stringInterpolationTemplate = specializeTemplate visible (stringInterpolationTemplate rule) }
-    specializeTemplate visible pieces =
-      [ case piece of
-          StringTemplateInterpolation kind -> StringTemplateInterpolation
-            (case kind of
-              LiteralString {} -> kind
-              _ -> classify visible kind)
-      | piece <- pieces
-      ]
+          (declarationRules declaration)
+    specialize visible = mapSyntaxRuleCaptures (specializeCapture visible)
+    specializeCapture visible kind = case kind of
+      LiteralString {} -> kind
+      _ -> classify visible kind
 
 localScopeName :: Expression -> Maybe String
 localScopeName source = case source of
@@ -576,15 +583,20 @@ syntaxContext
 syntaxContext base modules availableRules initialRules initialDeclarations =
   make base initialDeclarations initialFamilies
   where
-    initialFamilies = externalFamily base initialDeclarations initialRules
-      : declarationFamilies base initialDeclarations
+    initialFamilies =
+      externalFamily base initialDeclarations [commentSyntaxRule]
+        : externalFamily base initialDeclarations initialRules
+        : declarationFamilies base initialDeclarations
 
     make currentBase declarations families = context
       where
         context = SyntaxContext
           { contextSourceSpan = Nothing
           , contextRuleFamilies = filter
-              (not . null . syntaxRuleFamilyRules) families
+              (not . null . syntaxRuleFamilyRules)
+              (families <>
+                [externalFamily currentBase declarations
+                  [lineSyntaxRule, horizontalApplicationRule]])
           , contextClassify = classifySyntaxHoles currentBase modules declarations
           , contextCapture = captureSyntaxHole currentBase modules
               `withDeclarations` declarations
@@ -708,7 +720,7 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
       , syntaxRuleFamilyRules =
           [ (branch, specialize rule)
           | (_, branch, rule) <-
-              declarationRuleBranches stringInterpolationParser resolved
+              declarationRuleBranches resolved
           ]
       , syntaxRuleFamilyClassify = classifySyntaxHoles
           currentBase modules visible
@@ -717,20 +729,11 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
       , syntaxRuleFamilyApply = applySyntaxValue currentBase modules visible
       }
       where
-        specialize rule = rule
-          { stringInterpolationTemplate =
-              [ case piece of
-                  StringTemplateInterpolation kind -> StringTemplateInterpolation
-                    (case kind of
-                      LiteralString {} -> kind
-                      _ -> fst (classify kind))
-              | piece <- stringInterpolationTemplate rule
-              ]
-          }
+        specialize = mapSyntaxRuleCaptures (fst . classify)
         classify kind = classifySyntaxHole currentBase modules visible kind
 
     externalFamily currentBase declarations rules = SyntaxRuleFamily
-      { syntaxRuleFamilyNames = map syntaxName rules
+      { syntaxRuleFamilyNames = mapMaybe syntaxRuleDeclaredName rules
       , syntaxRuleFamilyRules = map (0,) rules
       , syntaxRuleFamilyClassify = classifySyntaxHoles
           currentBase modules declarations
@@ -746,7 +749,7 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
       where
         retain family =
           let retained = filter
-                ((`notElem` names) . syntaxName . snd)
+                (not . ruleHasAnyName names . snd)
                 (syntaxRuleFamilyRules family)
           in if null retained
               then Nothing
@@ -1049,7 +1052,7 @@ canonicalStringCodec =
     }
 
 -- Canonical text is Datra source, not a parallel scalar encoding. Parsing it
--- through the ordinary neutral grammar makes forms such as @-123@ use the
+-- through the ordinary source grammar makes forms such as @-123@ use the
 -- prefix operator and lets dependent declarations assign meanings to
 -- otherwise ordinary identifiers such as @123@.
 decodeCanonicalExpression :: String -> [InterpretedValue]
@@ -1350,7 +1353,7 @@ extendRuntimeDeclarations declarations parent = scope
 
 -- A contextual surface declaration belongs to the semantic scope which makes
 -- its private value available. Ordinary runtime declaration extension remains
--- neutral: callers which establish a contextual scope opt into this paired
+-- context-free: callers which establish a contextual scope opt into this paired
 -- private/surface layer explicitly.
 extendContextualRuntimeDeclarations
   :: [RuntimeSingletonPayload]
@@ -2241,6 +2244,10 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (Just (renderSourceExpression expressionValue))
         reduction scope resolving bindings result
     DeclarationExpression _ -> Left OperationHasNoEffect
+    UnresolvedSyntaxLiteral literal ->
+      Left (UnknownIdentifier (dropWhile isSpace literal))
+    ElidedSyntax -> Left OperationHasNoEffect
+    SyntaxRemainder sourceText -> Left (UnknownIdentifier sourceText)
     IdentifierReference (SimpleIdentifierString name) ->
       resolveIdentifierWith reduction scope resolving name
     Lookup (ArgumentativeMap
@@ -3022,9 +3029,8 @@ decodeCanonicalTemplate
   -> String
   -> Either InterpretingError (Maybe [InterpretedValue])
 decodeCanonicalTemplate template input = do
-  matches <- matchSegments
-    (evaluatedStringTemplateSegments template)
-    input
+  matches <- matchExactSegments view preparedCaptureCandidates
+    (evaluatedStringTemplateSegments template) input
   let distinct = nubBy samePrepared matches
   case distinct of
     [] -> Right Nothing
@@ -3033,36 +3039,9 @@ decodeCanonicalTemplate template input = do
   where
     samePrepared left right =
       map interpretedSemanticResult left == map interpretedSemanticResult right
-
-    matchSegments [] remaining = Right [[] | null remaining]
-    matchSegments (EvaluatedStringTemplateLiteral literal : remaining) text =
-      case stripPrefix literal text of
-        Nothing -> Right []
-        Just suffix -> matchSegments remaining suffix
-    matchSegments
-        (EvaluatedStringTemplateCapture _ schema _ : remaining)
-        text = do
-      alternatives <- traverse attempt (captureBoundaries remaining text)
-      pure (concat alternatives)
-      where
-        attempt boundary = do
-          let (captured, suffix) = splitAt boundary text
-          prepared <- preparedCaptureCandidates schema captured
-          tails <- matchSegments remaining suffix
-          pure [value : tailValues | value <- prepared, tailValues <- tails]
-
-    -- A following literal is a structural delimiter. Reject names which do
-    -- not contain it before attempting to interpret any capture prefix; eager
-    -- interpretation here can recursively look up the very declaration family
-    -- whose membership is being tested.
-    captureBoundaries
-        (EvaluatedStringTemplateLiteral literal : _)
-        text =
-      [ boundary
-      | boundary <- [0 .. length text]
-      , literal `isPrefixOf` drop boundary text
-      ]
-    captureBoundaries _ text = [0 .. length text]
+    view segment = case segment of
+      EvaluatedStringTemplateLiteral literal -> Right literal
+      EvaluatedStringTemplateCapture _ schema _ -> Left schema
 
 preparedCaptureCandidates
   :: InterpretedValue
@@ -6132,11 +6111,15 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
           templates
         pure
           [ case template of
-              [StringTemplateInterpolation (LiteralString _)] ->
-                syntaxApplicationRule name template callable callable
+              [StringTemplateInterpolation (LiteralString literal)]
+                | isIdentifierValue literal ->
+                    syntaxApplicationRule name
+                      (SimpleIdentifierString literal) callable callable
               _ -> SyntaxRule
-                { syntaxName = name
-                , stringInterpolationTemplate = template
+                { syntaxIdentity = DeclaredSyntaxName name
+                , declarativeMatcherPlan =
+                    ExactPresentationMatcher
+                      (exactPresentationPattern template)
                 , syntaxSemantics = SyntaxAdapter callable
                 }
           | template <- sourceTemplates
@@ -6152,7 +6135,7 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
         ScopeAccess {} -> expressionValue
         _ -> InModule requested expressionValue)
     parseRuleExpression sourceText =
-      case parseNeutralPhrase sourceText of
+      case parseSourceExpression sourceText of
         Right expressionValue -> Right expressionValue
         Left _ -> Left NoCanonicalStringConversion
 
@@ -6506,7 +6489,7 @@ closedSourceExpressionIn definitions text = do
   expressionValue <- either
     (const (Left NoCanonicalStringConversion))
     (Right . normalizeExpression)
-    (parseNeutralPhrase text)
+    (parseSourceExpression text)
   let declarations =
         [ DeclarationExpression declaration
         | layer <- scopeDependentDeclarationLayers definitions
@@ -6515,7 +6498,7 @@ closedSourceExpressionIn definitions text = do
         , Just declaration <- [scopedDependentDeclarationValue scoped]
         ]
       rules = concatMap
-        (declarationRules stringInterpolationParser) declarations
+        declarationRules declarations
   rewritten <- Bifunctor.first
     (const NoCanonicalStringConversion)
     (rewriteStandaloneSyntax
