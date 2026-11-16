@@ -14,8 +14,8 @@ The design has three required outcomes:
    including its executable inverse. It is not inferred from a table of
    `ValueSemantics` constructors.
 3. The old string-specific proof representation, marker-based `val` handling,
-   and unused diagnostics are removed rather than retained as compatibility
-   paths.
+   and stale diagnostic paths are removed rather than retained as
+   compatibility paths.
 
 `def` consistency is separate. It constrains replacement of an existing
 binding; it does not prove that a declaration family is injective.
@@ -74,6 +74,24 @@ refuted, even though each individual lookup can be evaluated.
 
 Singleton capture federations are trivially injective. A non-singleton family
 is never accepted merely because no collision was found in a sample.
+
+## Diagnostic contract
+
+`NonInjectiveDependentDeclaration String` is the compiler diagnostic for a
+refuted `val` insertion. The constructor name and its localized headline,
+"dependent declaration is not injective", are retained. Its `String` payload
+is the rendered declaration which failed validation.
+
+The diagnostic is emitted by dependent-declaration evaluation after the
+federation decision returns `AtlasMapFederationRefuted`; syntax rewriting does
+not attempt to decide injectivity. The constructor therefore moves out of
+`SyntaxRewriteFailure` into the evaluation/compiler error path without being
+renamed or replaced. If collision witnesses are exposed to diagnostics, they
+are added as structured details beneath this same error.
+
+`AtlasMapFederationUndecidable` is not a demonstrated injectivity failure and
+must not emit `NonInjectiveDependentDeclaration`. It produces the separate
+`DependentDeclarationInjectivityUndecidable` diagnostic.
 
 ## One federation-insertion abstraction
 
@@ -201,10 +219,11 @@ For each prepared declaration branch:
 7. Publish the descriptor and concrete lookup projection only after both
    decisions are proved.
 
-A refuted value insertion produces `NonInjectiveDependentDeclaration` with two
-distinct capture/name witnesses and their shared semantic result when the
-decision procedure has concrete witnesses. An undecidable insertion produces a
-separate `DependentDeclarationInjectivityUndecidable` diagnostic identifying
+A refuted value insertion produces the existing
+`NonInjectiveDependentDeclaration` diagnostic. When the decision procedure has
+concrete witnesses, its structured details include the two distinct
+capture/name witnesses and their shared semantic result. An undecidable
+insertion produces `DependentDeclarationInjectivityUndecidable`, identifying
 the unsupported operation. Unknown is never silently accepted and is never
 misreported as a proven collision.
 
@@ -331,8 +350,8 @@ The implementation removes the superseded paths completely:
   `IdentifierStringProjectionSemantics`, and
   `IdentifierStringProjectionAtlasMapFederation` with the generic canonical
   string image;
-- move `NonInjectiveDependentDeclaration` out of syntax-rewrite failures and
-  produce it from declaration evaluation;
+- retain `NonInjectiveDependentDeclaration`, move it out of syntax-rewrite
+  failures, and emit it from the refuted declaration-evaluation branch;
 - add the distinct undecidable declaration diagnostic;
 - delete the unused `NonInjectiveStringInterpolation`; interpolation collisions
   use the ordinary federation refutation/uncertainty diagnostics;
