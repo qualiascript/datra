@@ -5,6 +5,11 @@
 This document defines a follow-up design for generic string expressions. Its
 implementation is outside the identifier-expression pull request.
 
+The proof and inverse required by a canonical string image are defined in
+[DEPENDENT_DECLARATION_INJECTIVITY.md](./DEPENDENT_DECLARATION_INJECTIVITY.md).
+`_StrExpr` consumes that generic federation insertion; it does not establish
+injectivity independently.
+
 The design replaces the closed Haskell `StringExpression` representation with
 the ordinary Datra type family `_StrExpr T`. It also represents interpolation
 as concatenation of Datra strings and Datra string-expression values. String
@@ -15,8 +20,8 @@ Identifier expressions and dependent declarations use this facility as
 clients. Their exact `$` and structural backtick matcher plans remain distinct
 as defined in
 [BACKTICK_DECLARATIVE_SYNTAX.md](./BACKTICK_DECLARATIVE_SYNTAX.md). This
-facility replaces capture codecs; it does not merge matcher dispatch or
-literal semantics.
+facility replaces capture-specific conversion tables; it does not merge
+matcher dispatch or literal semantics.
 
 ## Public type family
 
@@ -32,14 +37,16 @@ alias, a specification, an `Either`, an optional value, a syntax category, a
 user-defined structural type, or any future type; `_StrExpr` does not dispatch
 on a closed set of type names.
 
-For every well-formed `T`:
+Whenever the canonical insertion for `T` is proved:
 
 ```datra
 (_StrExpr T) of Str
 ```
 
-must be proved. This is a law of the `StrExpr` type family, not a special case
-in the `of` implementation for selected operands.
+must be proved. A refuted or undecidable canonical insertion prevents
+construction of `_StrExpr T`; it cannot produce a value outside `Str`. This is
+a law of the `StrExpr` type family, not a special case in the `of`
+implementation for selected operands.
 
 The family has these additional laws:
 
@@ -65,19 +72,20 @@ recover a member of `T` from a matched string.
 evaluated `T` constructs the ordinary internal string federation for the
 canonical-string image of `T` and retains `T` for inverse selection.
 
-The hook uses the canonical-string implementation already carried by every
-runtime Datra type:
+The hook asks the federation machinery for the operand's canonical string
+insertion:
 
 - forward conversion renders each member of `T` canonically;
-- inverse conversion decodes a string to candidates and selects candidates
-  against `T` with ordinary specification;
+- inverse conversion selects exactly one semantic source member through the
+  proven insertion;
 - string-producing operands use the identity conversion;
-- non-total operands retain a pointwise federation and its injectivity
-  evidence.
+- non-total operands retain the generic injected federation image and its
+  source witness; and
+- a refuted or undecidable canonical insertion does not produce `_StrExpr T`.
 
 Syntax-category types use the same family. Their canonical-string
-implementation may call the application-owned parser capability, but the
-generic `StrExpr` representation still stores only the operand and its codec.
+insertion may call the application-owned parser capability, but the generic
+`StrExpr` representation stores only the operand and the proven insertion.
 It does not turn `_Expr`, `_Block`, `_FunctionBody`,
 `_DependentDeclaration`, `_DependentArgument`, or `_IdentifierExpr` into
 separate string-expression variants.
@@ -156,8 +164,8 @@ operate on string federations and their retained provenance rather than on a
 closed set of hole tags.
 
 Matching must not render an AST and reparse it merely to discover its string
-expression category. Parsing is used only by the canonical-string inverse for
-a type whose codec requires parsing.
+expression category. Parsing is used only by a canonical-string insertion
+whose inverse requires parsing.
 
 ## Specification and subfederation
 
@@ -165,10 +173,9 @@ a type whose codec requires parsing.
 engines as a regular Datra type.
 
 Selection of a concrete string against `_StrExpr T` succeeds exactly when the
-operand codec decodes the string to at least one member admitted by `T`.
-Successful selection retains the chosen member of `T`; refutation means no
-decoded candidate belongs to `T`; an undecidable underlying membership check
-remains undecidable.
+canonical insertion recovers one member admitted by `T`. Successful selection
+retains that member of `T`; refutation means the string has no preimage in
+`T`; an undecidable underlying membership check remains undecidable.
 
 Subfederation follows the laws of the family:
 
@@ -201,7 +208,7 @@ Responsibilities are divided as follows:
 - DatraHost exposes that implementation as `datra.StrExpr`.
 - `std.datra` publishes the `_StrExpr` family with the definition above.
 - The application parser owns quoted interpolation syntax and any parser
-  capability required by a syntax-category codec.
+  capability required by a syntax-category insertion.
 - Syntax rewriting and dependent declarations consume evaluated string
   federations and ordinary typed selection evidence.
 
@@ -242,9 +249,9 @@ internal hook.
 
 1. `_StrExpr` is defined exactly as
    `let val _StrExpr := &T? do yield datra.StrExpr T`.
-2. `_StrExpr T` is a subfederation of `Str` for every well-formed `T`.
-3. `_StrExpr` accepts every Datra type without a constructor or name-based
-   allowlist.
+2. Every successfully constructed `_StrExpr T` is a subfederation of `Str`.
+3. `_StrExpr` attempts every Datra type without a constructor or name-based
+   allowlist; success is determined only by the canonical insertion decision.
 4. String-producing operands are converted by identity.
 5. `_StrExpr` preserves literal strings exactly and is idempotent.
 6. Non-total operands produce pointwise string federations with retained
@@ -258,12 +265,12 @@ internal hook.
    literal payloads are ordinary `AsciiStringLiteral` expressions.
 11. Matching, refinement, overlap, specification, and subfederation use the
    generic operand retained by `StrExpr`.
-12. Syntax-category parsing remains application-owned behind the codec/parser
-    capability boundary.
+12. Syntax-category parsing remains application-owned behind the
+    insertion/parser capability boundary.
 13. The prettier is the only source renderer for interpolations.
 14. No old `StringExpression` constructor path remains after the replacement.
-15. Replacing the capture codec does not merge exact `$` and structural
-    backtick matcher plans.
+15. Replacing capture-specific conversion paths does not merge exact `$` and
+    structural backtick matcher plans.
 16. `_StrExpr` never assigns application, sequencing, comment, or whitespace
     semantics; those remain declarative syntax rules.
 
@@ -280,7 +287,7 @@ internal hook.
 4. Verify `_StrExpr "literal"` equals `"literal"` and
    `_StrExpr (_StrExpr T)` equals `_StrExpr T` for total and non-total `T`.
 5. Verify concrete strings select the correct typed member through the
-   retained inverse codec.
+   retained insertion preimage.
 6. Verify declared syntax can interpolate `_StrExpr T` for a user-defined
    type that has no syntax-specific constructor.
 7. Verify expression, block, function-body, declaration, dependent-argument,
