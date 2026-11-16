@@ -19,6 +19,7 @@ import DatraLanguage.DependentDeclaration
 import Data.List (nub)
 import DatraLanguage.AST
 import DatraLanguage.ContextualDeclaration
+import DatraLanguage.Identifier (privateIdentifierPrefixCharacter)
 import Control.Monad.Trans.State.Strict (State, get, modify', put, runState)
 import Numeric.Natural (Natural)
 
@@ -323,14 +324,16 @@ collectDependency mode inDefinition active dependency =
 
 dependencyReference :: DependencyAddress -> Expression
 dependencyReference (DependencyAddress []) =
-  IdentifierReference (SimpleIdentifierString "_")
+  IdentifierReference
+    (SimpleIdentifierString [privateIdentifierPrefixCharacter])
 dependencyReference (DependencyAddress (root : fields)) =
   foldl ScopeAccess
     (IdentifierReference (prependIdentifier root))
     (map IdentifierReference fields)
 
 prependIdentifier :: SimpleIdentifierString -> SimpleIdentifierString
-prependIdentifier (SimpleIdentifierString name) = SimpleIdentifierString ('_' : name)
+prependIdentifier (SimpleIdentifierString name) = SimpleIdentifierString
+  (privateIdentifierPrefixCharacter : name)
 
 -- Captured declarations are grouped by their structural origin. Only the
 -- declaration entering the closure gets translated by the injective @_@

@@ -10,9 +10,9 @@ module DatraLanguage.Diagnostics.Locales.Rendering
 import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
-  , operatorCanonicalSymbol
-  , operatorSourceSymbol
+  , operatorPreferredSymbol
   )
+import DatraLanguage.ConcreteSyntax (sourceSpace)
 import DatraOrdinal (Ordinal, ordinalCoefficients)
 import Prettyprinter
   ( Doc
@@ -89,14 +89,11 @@ prettySourceSymbol :: Operator -> Doc annotation
 prettySourceSymbol = pretty . sourceSymbol
 
 sourceSymbol :: Operator -> String
-sourceSymbol operator =
-  case operatorSourceSymbol operator of
-    Just value -> value
-    Nothing -> operatorCanonicalSymbol operator
+sourceSymbol = operatorPreferredSymbol
 
 prettySpacedSourceSymbol :: Operator -> Doc annotation
 prettySpacedSourceSymbol operator =
-  " " <> prettySourceSymbol operator <> " "
+  pretty sourceSpace <> prettySourceSymbol operator <> pretty sourceSpace
 
 renderCompact :: Doc annotation -> String
 renderCompact = renderString . layoutCompact

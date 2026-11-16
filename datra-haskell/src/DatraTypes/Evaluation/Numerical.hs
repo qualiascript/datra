@@ -20,6 +20,10 @@ module Evaluation.Numerical
 
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SequentialAtlasMapFederation) )
+import DatraLanguage.AST.Operator
+  ( Operator (AdditionOperator, MultiplicationOperator, SubtractionOperator)
+  , operatorPreferredSymbol
+  )
 import DatraOrdinal
   ( Ordinal
   , finiteOrdinal
@@ -55,7 +59,7 @@ addValues
 addValues left right = do
   case (integerLimitProjection left, integerLimitProjection right) of
     (Just leftLimit, Just rightLimit) ->
-      addIntegerLimits "+" leftLimit rightLimit
+      addIntegerLimits AdditionOperator leftLimit rightLimit
     _ -> case (numericalProjection left, numericalProjection right) of
       (Just (IntegerNumerical _), _) -> integerBinary (+) left right
       (_, Just (IntegerNumerical _)) -> integerBinary (+) left right
@@ -72,7 +76,7 @@ subtractValues
 subtractValues left right = do
   leftValue <- requireIntegerLimit left
   rightValue <- requireIntegerLimit right
-  addIntegerLimits "-" leftValue (negateIntegerLimit rightValue)
+  addIntegerLimits SubtractionOperator leftValue (negateIntegerLimit rightValue)
 
 plusValue
   :: InterpretedValue
@@ -131,7 +135,7 @@ integerBinary operation left right = do
   pure (makeInteger (operation leftValue rightValue))
 
 addIntegerLimits
-  :: String
+  :: Operator
   -> IntegerLimit
   -> IntegerLimit
   -> Either InterpretingError InterpretedValue
@@ -148,10 +152,14 @@ multiplyIntegerLimits
   :: IntegerLimit
   -> IntegerLimit
   -> Either InterpretingError InterpretedValue
-multiplyIntegerLimits (FiniteInteger 0) PositiveInfinity = indeterminate "*"
-multiplyIntegerLimits (FiniteInteger 0) NegativeInfinity = indeterminate "*"
-multiplyIntegerLimits PositiveInfinity (FiniteInteger 0) = indeterminate "*"
-multiplyIntegerLimits NegativeInfinity (FiniteInteger 0) = indeterminate "*"
+multiplyIntegerLimits (FiniteInteger 0) PositiveInfinity =
+  indeterminate MultiplicationOperator
+multiplyIntegerLimits (FiniteInteger 0) NegativeInfinity =
+  indeterminate MultiplicationOperator
+multiplyIntegerLimits PositiveInfinity (FiniteInteger 0) =
+  indeterminate MultiplicationOperator
+multiplyIntegerLimits NegativeInfinity (FiniteInteger 0) =
+  indeterminate MultiplicationOperator
 multiplyIntegerLimits (FiniteInteger left) (FiniteInteger right) =
   Right (makeInteger (left * right))
 multiplyIntegerLimits left right =
@@ -160,8 +168,9 @@ multiplyIntegerLimits left right =
       then PositiveInfinity
       else NegativeInfinity))
 
-indeterminate :: String -> Either InterpretingError value
-indeterminate = Left . IndeterminateInfinityOperation
+indeterminate :: Operator -> Either InterpretingError value
+indeterminate =
+  Left . IndeterminateInfinityOperation . operatorPreferredSymbol
 
 integerLimitSign :: IntegerLimit -> Ordering
 integerLimitSign NegativeInfinity = LT

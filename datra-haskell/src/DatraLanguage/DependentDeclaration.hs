@@ -17,6 +17,7 @@ module DatraLanguage.DependentDeclaration
   ) where
 
 import DatraLanguage.AST
+import DatraLanguage.ConcreteSyntax (sourceSpace)
 import DatraLanguage.AST.Operator (operatorCanonicalSymbol)
 
 -- A declaration is an inferred assignment in block position. Identifier
@@ -221,7 +222,7 @@ dependentDeclarationTemplateBranches declaration = case
     join [] suffix = suffix
     join prefix [] = prefix
     join prefix suffix =
-      prefix <> [stringLiteral " "] <> suffix
+      prefix <> [stringLiteral sourceSpace] <> suffix
     stringLiteral = StringTemplateInterpolation . AsciiStringLiteral
 
 -- Lexical binders include dependent arguments and parameters, not only

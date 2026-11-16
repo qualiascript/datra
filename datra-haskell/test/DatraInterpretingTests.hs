@@ -40,7 +40,8 @@ import DatraLanguage.AST.Syntax
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraTypes qualified as Types
 import Interpreting
-  ( ModuleSource (..)
+  ( StandardLibraryVisibility (AllStandardLibrary)
+  , ModuleSource (..)
   , InterpretedValue
   , InterpretedValueKind (..)
   , InterpretingError (..)
@@ -58,7 +59,7 @@ import Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   , moduleExportNames
-  , parseDatraSourceLocatedWithImportsAndStandardLibrary
+  , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   )
 import DatraLanguage.Diagnostics.Interpreter
   ( AtlasMapFederationOperation (..)
@@ -2578,8 +2579,8 @@ testRendering = do
 
 parseProductionSource :: String -> Either ParseFailure Expression
 parseProductionSource source =
-  locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-    True [] "test/DatraInterpretingTests.hs" source
+  locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+    AllStandardLibrary [] "test/DatraInterpretingTests.hs" source
 
 testMaps :: IO ()
 testMaps = do

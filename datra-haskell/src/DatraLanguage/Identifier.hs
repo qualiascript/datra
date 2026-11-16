@@ -1,7 +1,7 @@
 -- | Shared lexical facts about Datra identifier names.
 module DatraLanguage.Identifier
-  ( IdentifierSpelling (..)
-  , identifierSpellingValue
+  ( privateIdentifierPrefixCharacter
+  , identifierPrimeCharacter
   , isPrivateIdentifier
   , isIdentifierValue
   , identifierNaturalValue
@@ -13,18 +13,17 @@ module DatraLanguage.Identifier
 import Data.Char (ord)
 import Numeric.Natural (Natural)
 
-data IdentifierSpelling
-  = BareIdentifier String
-  | FullStringIdentifier String
-
-identifierSpellingValue :: IdentifierSpelling -> Maybe String
-identifierSpellingValue (FullStringIdentifier value) = Just value
-identifierSpellingValue (BareIdentifier value) = Just value
-
 -- | Leading underscores make a binding private to its defining scope or turn
 -- a function parameter name into a positional-only implementation detail.
+privateIdentifierPrefixCharacter :: Char
+privateIdentifierPrefixCharacter = '_'
+
+identifierPrimeCharacter :: Char
+identifierPrimeCharacter = '\''
+
 isPrivateIdentifier :: String -> Bool
-isPrivateIdentifier ('_' : _) = True
+isPrivateIdentifier (prefix : _) =
+  prefix == privateIdentifierPrefixCharacter
 isPrivateIdentifier _ = False
 
 -- | A bare identifier is nonempty and uses the identifier alphabet. Numeric
@@ -62,8 +61,8 @@ isIdentifierCharacter :: Char -> Bool
 isIdentifierCharacter character =
   isAsciiLetter character
     || isAsciiDigit character
-    || character == '_'
-    || character == '\''
+    || character == privateIdentifierPrefixCharacter
+    || character == identifierPrimeCharacter
 
 isAsciiLetter :: Char -> Bool
 isAsciiLetter character =

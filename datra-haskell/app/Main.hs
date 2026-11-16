@@ -3,6 +3,7 @@ module Main (main) where
 import Data.Char (toLower)
 import Data.Bifunctor qualified as Bifunctor
 import DatraLanguage.Pretty (renderExpression)
+import DatraLanguage.ConcreteSyntax (sourceLineFeed)
 import DatraLanguage.Diagnostics
   ( Located (locatedValue)
   , withoutSourceSpan
@@ -24,7 +25,7 @@ import ModuleLoading
   , loadSourceImportsWithStandardLibraryVisibility
   )
 import Options.Applicative
-import Parsing
+import CanonicalParsing
   ( parseDatraAstLocatedWithSourceName )
 import Rendering
   ( renderInterpretedValue
@@ -306,4 +307,4 @@ readInput (InputFile path) = do
 
 writeOutput :: FilePath -> String -> IO ()
 writeOutput "-" rendered = putStrLn rendered
-writeOutput path rendered = writeFile path (rendered <> "\n")
+writeOutput path rendered = writeFile path (rendered <> sourceLineFeed)

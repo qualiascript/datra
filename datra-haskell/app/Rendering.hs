@@ -11,14 +11,20 @@ import Data.List (intercalate, isSuffixOf)
 import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
-  , operatorCanonicalSymbol
-  , operatorSourceSymbol
+  , operatorPreferredSymbol
   , skipSourceSymbol
+  )
+import DatraLanguage.ConcreteSyntax
+  ( StructuralDelimiter (..)
+  , delimiterText
+  , sourceLineFeed
+  , sourceSpace
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST
   ( StringTemplateInterpolation (..)
   )
+import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Pretty
   ( renderAsciiStringLiteral
   , renderIdentifierString
@@ -26,6 +32,7 @@ import DatraLanguage.Pretty
   )
 import DatraTypes
   ( CanonicalResult (..)
+  , FunctionSource (..)
   , IntegerLimit (..)
   , InterpretedValue
   , interpretedCanonicalResult
@@ -65,11 +72,12 @@ retainSource value result
   | CanonicalFunction {} <- interpretedCanonicalResult value = result
   | otherwise = case interpretedEvaluationSource value of
     Nothing -> result
-    Just block -> operand <> " <~ " <> block
+    Just block -> operand
+      <> spacedSourceSymbol ReverseSpecificationOperator <> block
       where
         operand = case interpretedCanonicalResult value of
           CanonicalExplicit {} -> result
-          _ -> "(" <> result <> ")"
+          _ -> delimitText OpenParenthesis CloseParenthesis result
 
 -- | Render only the root map using implicit newline notation. Nested maps
 -- keep their canonical parentheses. A semicolon is retained before a newline
@@ -94,7 +102,7 @@ renderNewlineMap :: Natural -> [CanonicalResult] -> String
 renderNewlineMap _ [] = ""
 renderNewlineMap _ [component] = renderCanonicalResult component
 renderNewlineMap _ components =
-  intercalate "\n" (terminateBeforeNewline renderedComponents)
+  intercalate sourceLineFeed (terminateBeforeNewline renderedComponents)
   where
     renderedComponents = map renderCanonicalResult components
 
@@ -105,7 +113,8 @@ terminateBeforeNewline (component : remaining) =
   disambiguate component : terminateBeforeNewline remaining
   where
     disambiguate rendered
-      | ".." `isSuffixOf` rendered = rendered <> ";"
+      | sourceSymbol RangeOperator `isSuffixOf` rendered =
+          rendered <> sourceSymbol SequentialOperator
       | otherwise = rendered
 
 prettyCanonicalResult :: CanonicalResult -> Doc annotation
@@ -125,16 +134,20 @@ prettyNonKeywordCanonicalResult result =
     CanonicalReference name -> pretty (renderIdentifierString name)
     CanonicalNamedAccess operand name ->
       prettyCanonicalAccessOperand operand
-        <> "." <> pretty (renderIdentifierString name)
+        <> prettySourceSymbol ScopeAccessOperator
+        <> pretty (renderIdentifierString name)
     CanonicalApplication function argument ->
       prettyCanonicalApplicationOperand function
         <+> prettyCanonicalApplicationArgument argument
     CanonicalPrimitiveType kind -> pretty (show kind)
     CanonicalFunction input output body ->
-      let signature = parens (prettyCanonicalResult input) <+> "->" <+> parens (prettyCanonicalResult output)
+      let signature = parens (prettyCanonicalResult input)
+            <+> prettySourceSymbol FunctionTypeOperator
+            <+> parens (prettyCanonicalResult output)
       in case body of
         Nothing -> signature
-        Just text -> parens (pretty text)
+        Just source -> parens (prettyFunctionSource source)
+    CanonicalFunctionBody source -> prettyFunctionSource source
     CanonicalExplicit _ value -> prettyExplicit value
     CanonicalInteger value ->
       prettySourceSymbol MinusOperator <> pretty (negate value)
@@ -158,14 +171,17 @@ prettyNonKeywordCanonicalResult result =
     CanonicalIntegerType -> reservedSymbolDoc Reserved.IntegerTypeSymbol
     CanonicalEither left right -> prettyEither result left right
     CanonicalRangeConcatenation descriptions ->
-      concatWith (\left right -> left <> ", " <> right)
+      concatWith (\left right ->
+        left <> prettySourceSymbol ConcatenationOperator <> sourceSpaceDoc <> right)
         (map prettyRange descriptions)
     CanonicalConcatenation members ->
-      concatWith (\left right -> left <> ", " <> right)
+      concatWith (\left right ->
+        left <> prettySourceSymbol ConcatenationOperator <> sourceSpaceDoc <> right)
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalIdentifierExpression value ->
-      pretty ('$' : renderIdentifierString value)
+      pretty (sourceSymbol IdentifierExpressionOperator
+        <> renderIdentifierString value)
     CanonicalToString source ->
       pretty
         (renderStringTemplate
@@ -203,13 +219,16 @@ prettyNonKeywordCanonicalResult result =
       prettyAssignment identifierString typeAnnotation givenValue
     CanonicalCoalization operand ->
       prettySourceSymbol CoalizationOperator
-        <> " "
+        <> sourceSpaceDoc
         <> prettyCoalizationOperand operand
     CanonicalMap cardinality components ->
       prettyMap cardinality components
     CanonicalArgumentativeMap _ components ->
-      "{" <> concatWith (\left right -> left <> "; " <> right)
-        (map prettyArgumentMember components) <> "}"
+      delimiterDoc OpenBrace
+        <> concatWith (\left right ->
+          left <> prettySourceSymbol SequentialOperator <> sourceSpaceDoc <> right)
+          (map prettyArgumentMember components)
+        <> delimiterDoc CloseBrace
     CanonicalSpecification source target ->
       case (source, target) of
         ( CanonicalSimpleIdentifierType sourceString givenValue
@@ -462,10 +481,11 @@ prettyNaturalRange
 prettyNaturalRange origin target =
   case target of
     FiniteNaturalTarget final ->
-      rangeWord <> " " <> pretty origin
-        <> " " <> toWord <> " " <> pretty final
+      rangeWord <> sourceSpaceDoc <> pretty origin
+        <> sourceSpaceDoc <> toWord <> sourceSpaceDoc <> pretty final
     UpwardsTarget ->
-      rangeWord <> " " <> pretty origin <> " " <> upwardsWord
+      rangeWord <> sourceSpaceDoc <> pretty origin
+        <> sourceSpaceDoc <> upwardsWord
 
 prettyValuedNaturalRange
   :: Natural
@@ -474,9 +494,10 @@ prettyValuedNaturalRange
 prettyValuedNaturalRange origin target =
   case target of
     FiniteNaturalTarget final ->
-      fromWord <> " " <> pretty origin
-        <> " " <> toWord <> " " <> pretty final
-    UpwardsTarget -> fromWord <> " " <> pretty origin <> " " <> upwardsWord
+      fromWord <> sourceSpaceDoc <> pretty origin
+        <> sourceSpaceDoc <> toWord <> sourceSpaceDoc <> pretty final
+    UpwardsTarget -> fromWord <> sourceSpaceDoc <> pretty origin
+      <> sourceSpaceDoc <> upwardsWord
 
 prettyIntegerRange
   :: Integer
@@ -485,12 +506,14 @@ prettyIntegerRange
 prettyIntegerRange origin target =
   case target of
     FiniteIntegerTarget final ->
-      rangeWord <> " " <> pretty origin
-        <> " " <> toWord <> " " <> pretty final
+      rangeWord <> sourceSpaceDoc <> pretty origin
+        <> sourceSpaceDoc <> toWord <> sourceSpaceDoc <> pretty final
     UpwardsIntegerTarget ->
-      rangeWord <> " " <> pretty origin <> " " <> upwardsWord
+      rangeWord <> sourceSpaceDoc <> pretty origin
+        <> sourceSpaceDoc <> upwardsWord
     DownwardsIntegerTarget ->
-      rangeWord <> " " <> pretty origin <> " " <> downwardsWord
+      rangeWord <> sourceSpaceDoc <> pretty origin
+        <> sourceSpaceDoc <> downwardsWord
     AllIntegersTarget -> reservedSymbolDoc Reserved.IntegerTypeSymbol
 
 prettyValuedIntegerRange
@@ -500,17 +523,19 @@ prettyValuedIntegerRange
 prettyValuedIntegerRange origin target =
   case target of
     FiniteIntegerTarget final ->
-      fromWord <> " " <> pretty origin
-        <> " " <> toWord <> " " <> pretty final
+      fromWord <> sourceSpaceDoc <> pretty origin
+        <> sourceSpaceDoc <> toWord <> sourceSpaceDoc <> pretty final
     UpwardsIntegerTarget ->
-      fromWord <> " " <> pretty origin <> " " <> upwardsWord
+      fromWord <> sourceSpaceDoc <> pretty origin
+        <> sourceSpaceDoc <> upwardsWord
     DownwardsIntegerTarget ->
-      fromWord <> " " <> pretty origin <> " " <> downwardsWord
+      fromWord <> sourceSpaceDoc <> pretty origin
+        <> sourceSpaceDoc <> downwardsWord
     AllIntegersTarget -> reservedSymbolDoc Reserved.IntegerTypeSymbol
 
 prettyIntegerLimit :: IntegerLimit -> Doc annotation
 prettyIntegerLimit limit = case limit of
-  NegativeInfinity -> "-Infinity"
+  NegativeInfinity -> prettySourceSymbol MinusOperator <> "Infinity"
   FiniteInteger value -> pretty value
   PositiveInfinity -> "Infinity"
 
@@ -528,11 +553,13 @@ reservedSymbolDoc :: Reserved.ReservedSymbol -> Doc annotation
 reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
-prettyMap 0 _ = "()"
+prettyMap 0 _ =
+  delimiterDoc OpenParenthesis <> delimiterDoc CloseParenthesis
 prettyMap _ [component] = prettyCanonicalResult component
 prettyMap _ components =
   parens
-    (concatWith (\left right -> left <> "; " <> right)
+    (concatWith (\left right ->
+      left <> prettySourceSymbol SequentialOperator <> sourceSpaceDoc <> right)
       (map prettyCanonicalResult components))
 
 prettyCoalizationOperand :: CanonicalResult -> Doc annotation
@@ -648,15 +675,34 @@ prettyOrdinal value =
 prettySourceSymbol :: Operator -> Doc annotation
 prettySourceSymbol = pretty . sourceSymbol
 
+prettyFunctionSource :: FunctionSource -> Doc annotation
+prettyFunctionSource (FunctionSource expression) =
+  pretty (renderSourceExpression expression)
+
 prettySpacedSourceSymbol :: Operator -> Doc annotation
 prettySpacedSourceSymbol operator =
-  " " <> prettySourceSymbol operator <> " "
+  sourceSpaceDoc <> prettySourceSymbol operator <> sourceSpaceDoc
 
 sourceSymbol :: Operator -> String
-sourceSymbol operator =
-  case operatorSourceSymbol operator of
-    Just value -> value
-    Nothing -> operatorCanonicalSymbol operator
+sourceSymbol = operatorPreferredSymbol
+
+spacedSourceSymbol :: Operator -> String
+spacedSourceSymbol operator =
+  sourceSpace <> sourceSymbol operator <> sourceSpace
+
+sourceSpaceDoc :: Doc annotation
+sourceSpaceDoc = pretty sourceSpace
+
+delimiterDoc :: StructuralDelimiter -> Doc annotation
+delimiterDoc = pretty . delimiterText
+
+delimitText
+  :: StructuralDelimiter
+  -> StructuralDelimiter
+  -> String
+  -> String
+delimitText opening closing body =
+  delimiterText opening <> body <> delimiterText closing
 
 renderCompact :: Doc annotation -> String
 renderCompact = renderString . layoutCompact

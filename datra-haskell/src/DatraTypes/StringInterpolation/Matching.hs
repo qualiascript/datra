@@ -19,8 +19,6 @@ import DatraLanguage.Application
   ( applicationFrom
   , applicationPhrase
   , applicationSelections
-  , horizontallySeparatedApplication
-  , lineSeparatedApplication
   , nativeApplicationPhrase
   )
 import DatraLanguage.AST
@@ -37,6 +35,8 @@ import StringInterpolation
   , SyntaxRule (..)
   , TemplateSelection (..)
   , expandSyntax
+  , horizontallySeparatedApplication
+  , lineSeparatedApplication
   )
 import StringInterpolation.Exact (matchExactSegments)
 

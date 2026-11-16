@@ -13,7 +13,6 @@ module Interpreting
   , parseDatraSourceSyntax
   , parsedSourceImportInvocations
   , rewriteParsedDatraSourceWithImports
-  , parseDatraSourceLocatedWithImportsAndStandardLibrary
   , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   , interpretLocatedWithImportsAndStandardLibraryVisibility
   , interpretWithImports
@@ -62,6 +61,7 @@ import LibraryFiles
 import Control.Applicative ((<|>))
 import Control.Monad (foldM)
 import DatraLanguage.AST.Source (renderSourceExpression)
+import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST
   ( Expression (..)
   , pattern FunctionType
@@ -91,16 +91,18 @@ import StringExpression
   , traverseStringInterpolationTemplate
   )
 import DatraTypes
-import Parsing
+import DatraTypes.FunctionType
   ( FunctionTypeIdentifier (..)
   , forwardGenericBoundReference
   , functionTypeIdentifiers
   , inferredFunction
   , prepareFunctionDomainExpression
   , prepareGenericExpression
-  , parseSourceExpression
-  , parseDatraRawLocatedWithSourceName
   , resolveGenericFunctionTypes
+  )
+import Parsing
+  ( parseSourceExpression
+  , parseDatraRawLocatedWithSourceName
   , ResourceEnvelope (..)
   )
 import SyntaxRewriting
@@ -161,19 +163,6 @@ data ModuleSource
 -- the source parser first reads an unresolved AST without consulting declarations;
 -- this pass then applies the syntax functions visible through Std, explicit
 -- imports, and declarations introduced by the resource itself.
-parseDatraSourceLocatedWithImportsAndStandardLibrary
-  :: Bool
-  -> [(String, ModuleSource)]
-  -> FilePath
-  -> String
-  -> Either ParseFailure (Located Expression)
-parseDatraSourceLocatedWithImportsAndStandardLibrary
-    includeStandardLibrary =
-  parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-    (if includeStandardLibrary
-      then AllStandardLibrary
-      else NoStandardLibrary)
-
 data StandardLibraryVisibility
   = NoStandardLibrary
   | QualifiedStandardLibrary
@@ -1717,11 +1706,8 @@ contextualFunction role levels@(_ : _) = do
   where
     maximumDepth = fromIntegral (length levels - 1)
     domainExpression = ValuedNaturalRange 0 maximumDepth
-    signatureSource = renderSourceExpression
-      (FunctionType domainExpression
-        (ScopeAccess
-          (IdentifierReference (SimpleIdentifierString "datra"))
-          (IdentifierReference (SimpleIdentifierString "Any"))))
+    signatureSource = FunctionSource
+      (FunctionType domainExpression AnyType)
     innerMap = ContextualMap role levels
 
     -- The surface spelling has no holes and therefore supplies the empty map.
@@ -2070,6 +2056,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     NaturalRangeUpwards origin -> naturalRangeUpwardsValue origin
     ValuedNaturalRange origin target -> valuedNaturalRangeValue origin target
     ValuedNaturalRangeUpwards origin -> valuedNaturalRangeUpwardsValue origin
+    AnyType -> Right anyTypeValue
     NaturalType -> naturalTypeValue
     IntegerRange origin target -> integerRangeValue origin target
     IntegerRangeUpwards origin -> integerRangeUpwardsValue origin
@@ -2163,8 +2150,10 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     GenericIntroductionExpression introduction ->
       Left (GenericIntroductionOutsideFunctionType
         (case genericArgumentPolarity introduction of
-          GenericProduct -> "&"
-          GenericSum -> "^"))
+          GenericProduct ->
+            AST.operatorPreferredSymbol AST.GenericProductOperator
+          GenericSum ->
+            AST.operatorPreferredSymbol AST.ExponentiationOperator))
     InModule path body -> do
       imported <- lookupModuleDefinitionScope scope path
       evalInLexicalContinuationScopeWith body reduction
@@ -2187,7 +2176,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       case interpretedFunction implementation of
         Just function -> pure (makeFunctionBodyValue
           (EvaluatedRuntimeFunctionBody
-            (renderSourceExpression expressionValue)
+            (FunctionSource expressionValue)
             function))
         Nothing -> Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionApplication
@@ -2626,7 +2615,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         preparedDomain staticDomain
       input <- parameterDomain schema
       output <- interpret staticCodomain
-      let signatureText = renderSourceExpression written
+      let signatureSource = FunctionSource written
           prepare argument = do
             (prepared, bindings) <- overloadArgumentSchemaComplete schema argument
             pure (PreparedFunctionArgument argument prepared bindings)
@@ -2634,7 +2623,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         case actuals of
           [actualInput, actualOutput] -> pure (makeFunctionValue
             (EvaluatedFunction actualInput actualOutput Nothing Nothing Nothing Nothing
-              signatureText (Just prepare) Nothing True Nothing))
+              signatureSource (Just prepare) Nothing True Nothing))
           _ -> Right neverValue
 
 genericBinderParts
@@ -3986,7 +3975,8 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
               Nothing
               (capabilityEnvelope >>= functionSource)
               (capabilityEnvelope >>= functionBody)
-              name
+              (FunctionSource
+                (IdentifierReference (SimpleIdentifierString name)))
               (Just prepare)
               (Just invoke)
               False
@@ -5158,6 +5148,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
         Just _ -> FunctionBody bindings result
         Nothing -> FunctionApplication signature
           (FunctionBody bindings result)
+      signatureSource = FunctionSource definition
       signatureText = renderSourceExpression definition
       self = case [BindingDependency name expressionValue
                   | layer <- scopeDependentDeclarationLayers captured
@@ -5176,7 +5167,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
         definition
   let functionValue = makeFunctionValue
         (EvaluatedFunction input output Nothing Nothing
-          (Just (renderSourceExpression closed)) Nothing signatureText
+          (Just (FunctionSource closed)) Nothing signatureSource
           (Just prepare) (Just invoke) False Nothing)
       validateExistentialPackage source = do
         rows <- argumentRows source
@@ -5630,7 +5621,8 @@ attachFunctionBody signatureValue body =
               (functionSuppliedArgument prepared)
               (functionDomain signature)
     attachedSource signature =
-      functionSignatureSource signature <> " " <> functionBodySource body
+      applyFunctionSource
+        (functionSignatureSource signature) (functionBodySource body)
 
 attachedFunctionInvocation
   :: EvaluatedFunction
@@ -5761,7 +5753,7 @@ evaluateImport reduction captured resolving sourceExpression paths body =
             pure (EvaluatedFunctionInvocation handed Nothing)
           callable = makeFunctionValue (EvaluatedFunction
             input anyTypeValue Nothing Nothing Nothing Nothing
-            (renderSourceExpression sourceExpression)
+            (FunctionSource sourceExpression)
             (Just prepare) (Just invoke) False Nothing)
       (applied, _) <- applyFunction
         (scopeActivation captured) reduction callable domain

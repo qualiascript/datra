@@ -21,6 +21,9 @@ module Evaluation.Value
   , SyntaxFunctionExpansion (..)
   , SyntaxFunctionInsertion (..)
   , RuntimeFunctionInsertion (..)
+  , FunctionSource (..)
+  , applyFunctionSource
+  , specifyFunctionSource
   , EvaluatedFunctionBody (..)
   , functionBodySource
   , EvaluatedFunction (..)
@@ -198,7 +201,12 @@ import StringExpression
   , StringExpression (..)
   )
 import DatraLanguage.StringTemplate (StringTemplateInterpolation (..))
-import DatraLanguage.AST (Expression, SimpleIdentifierString)
+import DatraLanguage.AST
+  ( Expression
+  , SimpleIdentifierString
+  , applyFunctionSource
+  , specifyFunctionSource
+  )
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
@@ -422,18 +430,18 @@ data RuntimeFunctionInsertion = RuntimeFunctionInsertion
 
 data EvaluatedFunctionBody
   = EvaluatedSyntaxFunctionBody
-      String
+      FunctionSource
       SyntaxFunctionInsertion
-  | EvaluatedRuntimeFunctionBody String EvaluatedFunction
+  | EvaluatedRuntimeFunctionBody FunctionSource EvaluatedFunction
 
 data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
   , functionSyntax :: Maybe (FunctionSyntax InterpretedValue)
   , functionSyntaxSource :: Maybe (FunctionSyntax String)
-  , functionSource :: Maybe String
+  , functionSource :: Maybe FunctionSource
   , functionBody :: Maybe EvaluatedFunctionBody
-  , functionSignatureSource :: String
+  , functionSignatureSource :: FunctionSource
   , functionPrepare :: Maybe
       (InterpretedValue -> Either InterpretingError PreparedFunctionArgument)
   , functionInvoke :: Maybe
@@ -550,7 +558,7 @@ makeFunctionBodyValue body = case body of
       TotalInterpretedMap
       (FunctionBodySemantics (functionBodySource body))
 
-functionBodySource :: EvaluatedFunctionBody -> String
+functionBodySource :: EvaluatedFunctionBody -> FunctionSource
 functionBodySource body = case body of
   EvaluatedSyntaxFunctionBody source _ -> source
   EvaluatedRuntimeFunctionBody source _ -> source

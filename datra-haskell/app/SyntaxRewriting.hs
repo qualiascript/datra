@@ -19,9 +19,6 @@ import DatraLanguage.AST
 import DatraLanguage.Application
   ( applicationFrom
   , applicationSpine
-  , horizontalSyntaxWhitespace
-  , horizontallySeparatedApplication
-  , syntaxWhitespaceSource
   )
 import DatraLanguage.Diagnostics.Application
   ( SyntaxRewriteFailure (..) )
@@ -52,6 +49,9 @@ import StringInterpolation
   , SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , expandSyntax
+  , horizontalSyntaxWhitespace
+  , horizontallySeparatedApplication
+  , syntaxWhitespaceSource
   , syntaxRuleCaptures
   , syntaxApplicationImplementation
   , syntaxRuleAdapter

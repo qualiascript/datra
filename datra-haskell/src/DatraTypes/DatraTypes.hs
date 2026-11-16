@@ -11,6 +11,9 @@ module DatraTypes
   , SyntaxFunctionExpansion (..)
   , SyntaxFunctionInsertion (..)
   , RuntimeFunctionInsertion (..)
+  , FunctionSource (..)
+  , applyFunctionSource
+  , specifyFunctionSource
   , EvaluatedFunctionBody (..)
   , functionBodySource
   , EvaluatedFunction (..)
@@ -496,6 +499,9 @@ import Evaluation.Value
   , SyntaxFunctionExpansion (..)
   , SyntaxFunctionInsertion (..)
   , RuntimeFunctionInsertion (..)
+  , FunctionSource (..)
+  , applyFunctionSource
+  , specifyFunctionSource
   , functionBodySource
   , EvaluatedFunctionInvocation (..)
   , ReductionContext (..)

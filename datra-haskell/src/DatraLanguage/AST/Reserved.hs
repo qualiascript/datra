@@ -11,6 +11,7 @@ module DatraLanguage.AST.Reserved
 data ReservedWord
   = ThenWord
   | ElseWord
+  | YieldWord
   | ToWord
   | UpwardsWord
   | DownwardsWord
@@ -19,6 +20,7 @@ data ReservedWord
 reservedWordText :: ReservedWord -> String
 reservedWordText ThenWord = "then"
 reservedWordText ElseWord = "else"
+reservedWordText YieldWord = "yield"
 reservedWordText ToWord = "to"
 reservedWordText UpwardsWord = "up"
 reservedWordText DownwardsWord = "down"
@@ -27,7 +29,8 @@ reservedWordText DownwardsWord = "down"
 -- Some are currently parser forms or interpreter/FFI bootstraps; a future
 -- Datra standard library can provide ordinary definitions for the same names.
 data ReservedSymbol
-  = BooleanTypeSymbol
+  = AnyTypeSymbol
+  | BooleanTypeSymbol
   | StringTypeSymbol
   | IntegerTypeSymbol
   | NaturalTypeSymbol
@@ -46,6 +49,7 @@ reservedSymbols
 
 -- | The unique simple-identifier spelling reserved for a context binding.
 reservedSymbolIdentifierString :: ReservedSymbol -> String
+reservedSymbolIdentifierString AnyTypeSymbol = "Any"
 reservedSymbolIdentifierString BooleanTypeSymbol = "Bool"
 reservedSymbolIdentifierString StringTypeSymbol = "Str"
 reservedSymbolIdentifierString IntegerTypeSymbol = "Int"

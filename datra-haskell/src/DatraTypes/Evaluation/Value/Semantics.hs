@@ -11,6 +11,7 @@ module Evaluation.Value.Semantics
   , identifierDependenciesCompatible
   , PresentationDependency (..)
   , ValuePresentation (..)
+  , FunctionSource (..)
   , ValueSemantics (..)
   , CanonicalResult (..)
   , canonicalResult
@@ -22,6 +23,7 @@ module Evaluation.Value.Semantics
   , stripPresentedDependencies
   ) where
 
+import DatraLanguage.AST (FunctionSource (..))
 import DatraOrdinal (Ordinal)
 import Evaluation.DatraType (PrimitiveType)
 import IntegerRange qualified
@@ -101,8 +103,8 @@ data ValueSemantics
   | NeverSemantics
   | PrimitiveTypeSemantics PrimitiveType
   | FunctionSemantics
-      ValueSemantics ValueSemantics (Maybe String)
-  | FunctionBodySemantics String
+      ValueSemantics ValueSemantics (Maybe FunctionSource)
+  | FunctionBodySemantics FunctionSource
   | ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
   | IntegerLimitSemantics IntegerLimit
@@ -159,7 +161,8 @@ data CanonicalResult
   | CanonicalApplication CanonicalResult CanonicalResult
   | CanonicalPrimitiveType PrimitiveType
   | CanonicalFunction
-      CanonicalResult CanonicalResult (Maybe String)
+      CanonicalResult CanonicalResult (Maybe FunctionSource)
+  | CanonicalFunctionBody FunctionSource
   | CanonicalExplicit Natural Ordinal
   | CanonicalInteger Integer
   | CanonicalFormulation Natural
@@ -313,7 +316,7 @@ canonicalResultWith retainPresentation semantics =
     FunctionSemantics input output body ->
       CanonicalFunction
         (recur input) (recur output) body
-    FunctionBodySemantics source -> CanonicalReference source
+    FunctionBodySemantics source -> CanonicalFunctionBody source
     ExplicitSemantics level value -> CanonicalExplicit level value
     IntegerSemantics value -> CanonicalInteger value
     IntegerLimitSemantics value -> CanonicalIntegerLimit value

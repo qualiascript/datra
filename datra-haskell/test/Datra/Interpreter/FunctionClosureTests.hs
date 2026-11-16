@@ -5,9 +5,10 @@ import Data.List (isInfixOf, isPrefixOf, tails)
 import Datra.TestSupport
 import DatraTypes
 import Interpreting
-  ( canonicalStringCodec
+  ( StandardLibraryVisibility (AllStandardLibrary)
+  , canonicalStringCodec
   , interpretClosedExpression
-  , parseDatraSourceLocatedWithImportsAndStandardLibrary
+  , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   )
 import DatraLanguage.Diagnostics (locatedValue)
 import DatraLanguage.Diagnostics.Application (ParseFailure)
@@ -312,8 +313,8 @@ assertClosedCall text argument expected = do
 
 parseProductionSource :: String -> Either ParseFailure Expression
 parseProductionSource source =
-  locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-    True [] "test/Datra/Interpreter/FunctionClosureTests.hs" source
+  locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+    AllStandardLibrary [] "test/Datra/Interpreter/FunctionClosureTests.hs" source
 
 requireProgram :: String -> IO InterpretedValue
 requireProgram = either (assertFailure . show) pure . runProgram

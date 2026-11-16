@@ -20,10 +20,11 @@ import DatraLanguage.Diagnostics.Application
   )
 import DatraTypes (InterpretedValue, InterpretingError)
 import Interpreting
-  ( interpretExpressionReason
+  ( StandardLibraryVisibility (AllStandardLibrary)
+  , interpretExpressionReason
   , interpretWithImports
   , rewriteParsedDatraSourceWithImports
-  , parseDatraSourceLocatedWithImportsAndStandardLibrary
+  , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   )
 import ModuleLoading (loadSourceImports)
 import Rendering (renderInterpretedValue)
@@ -49,15 +50,15 @@ data ModuleFailure
 runExpression :: String -> Either SourceFailure InterpretedValue
 runExpression source = do
   expression <- first SourceParseFailure
-    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-      True [] "test/Datra/TestSupport.hs" ("(" <> source <> "\n)"))
+    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+      AllStandardLibrary [] "test/Datra/TestSupport.hs" ("(" <> source <> "\n)"))
   first SourceEvaluationFailure (interpretExpressionReason expression)
 
 runProgram :: String -> Either SourceFailure InterpretedValue
 runProgram source = do
   expression <- first SourceParseFailure
-    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-      True [] "test/Datra/TestSupport.hs" source)
+    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+      AllStandardLibrary [] "test/Datra/TestSupport.hs" source)
   first SourceEvaluationFailure (interpretWithImports [] expression)
 
 runModuleProgram :: FilePath -> String -> IO (Either ModuleFailure InterpretedValue)

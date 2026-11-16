@@ -13,11 +13,23 @@ import Data.Char (ord, toUpper)
 import Data.Foldable (toList)
 import Data.List.NonEmpty (NonEmpty (..))
 import DatraLanguage.AST
+import DatraLanguage.AST.CanonicalForm
+  ( CanonicalForm (..), canonicalFormName )
 import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
+  , SourceCharacterOperator (IdentifierExpressionCharacterOperator)
+  , sourceOperatorCharacter
   , skipSourceSymbol
+  )
+import DatraLanguage.ConcreteSyntax
+  ( StructuralDelimiter (..)
+  , commentCharacter
+  , delimiterText
+  , escapeCharacter
+  , interpolationCharacter
+  , stringQuoteCharacter
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.Identifier (isIdentifierCharacter, isIdentifierValue)
@@ -56,13 +68,14 @@ prettyOperator (IdentifierExpressionValue operand) =
   prettyFormFor IdentifierExpressionOperator [prettyOperator operand]
 prettyOperator (AtlasIdentifierExpressionValue operand) =
   prettyFormFor AtlasIdentifierExpressionOperator [prettyOperator operand]
-prettyOperator EmptyMap = "()"
+prettyOperator EmptyMap = pretty
+  (delimiterText OpenParenthesis <> delimiterText CloseParenthesis)
 prettyOperator (Sequential (expressionValue :| [])) =
   prettyOperator expressionValue
 prettyOperator (Sequential expressions) =
   prettyFormFor SequentialOperator (map prettyOperator (toList expressions))
 prettyOperator (ArgumentativeMapValue expressions) =
-  prettyForm "argumentative-map" (map prettyOperator expressions)
+  prettyCanonicalForm ArgumentativeMapForm (map prettyOperator expressions)
 prettyOperator (Expansion left right) =
   prettyBinary ExpansionOperator left right
 prettyOperator (Range lowerBound upperBound) =
@@ -83,6 +96,7 @@ prettyOperator (InclusiveValuedNaturalRange origin target) =
 prettyOperator (InclusiveValuedNaturalRangeUpwards origin) =
   prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
     [pretty origin, reservedWordDoc Reserved.UpwardsWord]
+prettyOperator AnyTypeValue = reservedSymbolDoc Reserved.AnyTypeSymbol
 prettyOperator NaturalTypeValue = reservedSymbolDoc Reserved.NaturalTypeSymbol
 prettyOperator (InclusiveIntegerRange origin target) =
   prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
@@ -150,15 +164,18 @@ prettyOperator (NotEqual left right) =
   prettyBinary InequalityOperator left right
 prettyOperator (CoalizationValue operand) =
   prettyUnary CoalizationOperator operand
-prettyOperator (FunValue operand) = prettyForm "fun" [prettyOperator operand]
+prettyOperator (FunValue operand) =
+  prettyCanonicalForm FunctionForm [prettyOperator operand]
 prettyOperator (GenericIntroductionValue introduction) =
-  prettyForm "generic-introduction"
+  prettyCanonicalForm GenericIntroductionForm
     (pretty (genericPolaritySymbol
       (genericArgumentPolarity introduction))
       : prettyGenericArgument introduction)
-prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
-prettyOperator (ImportValue paths body) = prettyForm "import"
-  [ prettyForm "paths" (map (pretty . renderAsciiStringLiteral) paths)
+prettyOperator (InModuleValue path value) = prettyCanonicalForm InModuleForm
+  [pretty (renderAsciiStringLiteral path), prettyOperator value]
+prettyOperator (ImportValue paths body) = prettyCanonicalForm ImportForm
+  [ prettyCanonicalForm ImportPathsForm
+      (map (pretty . renderAsciiStringLiteral) paths)
   , prettyOperator body
   ]
 prettyOperator (FunctionTypeValue generics input output) =
@@ -168,24 +185,29 @@ prettyOperator (FunctionTypeValue generics input output) =
     genericPrefix
       | null generics = []
       | otherwise =
-          [prettyForm "generic-prefix" (map prettyGenericBinder generics)]
-prettyOperator (FunctionBodyValue bindings result) = prettyForm "do"
-  [ prettyForm "bindings" (map prettyDeclaration bindings)
+          [prettyCanonicalForm GenericPrefixForm (map prettyGenericBinder generics)]
+prettyOperator (FunctionBodyValue bindings result) = prettyFormFor DoOperator
+  [ prettyCanonicalForm BindingsForm (map prettyDeclaration bindings)
   , prettyOperator result
   ]
 prettyOperator (FunctionApplicationValue function input) = prettyBinary ApplicationOperator function input
 prettyOperator (DeclarationValue declaration) =
   prettyDeclaration declaration
 prettyOperator (BeginValue bindings result) =
-  prettyForm "begin"
-    [prettyForm "bindings" (map prettyDeclaration bindings), prettyOperator result]
+  prettyFormFor BeginOperator
+    [ prettyCanonicalForm BindingsForm (map prettyDeclaration bindings)
+    , prettyOperator result
+    ]
 prettyOperator (IdentifierReferenceValue (SimpleIdentifierString name)) =
-  prettyForm "ref" [pretty (renderAsciiStringLiteral name)]
+  prettyCanonicalForm IdentifierReferenceForm
+    [pretty (renderAsciiStringLiteral name)]
 prettyOperator (UnresolvedSyntaxValue literal) =
-  prettyForm "unresolved-syntax" [pretty (renderAsciiStringLiteral literal)]
-prettyOperator ElidedSyntaxValue = prettyForm "elided-syntax" []
+  prettyCanonicalForm UnresolvedSyntaxForm
+    [pretty (renderAsciiStringLiteral literal)]
+prettyOperator ElidedSyntaxValue = prettyCanonicalForm ElidedSyntaxForm []
 prettyOperator (SyntaxRemainderValue source) =
-  prettyForm "syntax-remainder" [pretty (renderAsciiStringLiteral source)]
+  prettyCanonicalForm SyntaxRemainderForm
+    [pretty (renderAsciiStringLiteral source)]
 prettyOperator (LookupValue operand) =
   prettyUnary LookupOperator operand
 prettyOperator (Multiply left right) =
@@ -195,7 +217,8 @@ prettyOperator (Power left right) =
 prettyOperator (Concatenate left right) =
   prettyBinary ConcatenationOperator left right
 prettyOperator (ScopeAccessValue source body) =
-  prettyForm "." [prettyOperator source, prettyOperator body]
+  prettyForm (operatorCanonicalSymbol ScopeAccessOperator)
+    [prettyOperator source, prettyOperator body]
 prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
 prettyOperator
@@ -276,6 +299,12 @@ prettyBinary operator left right =
 prettyFormFor :: Operator -> [Doc annotation] -> Doc annotation
 prettyFormFor operator = prettyForm (operatorCanonicalSymbol operator)
 
+prettyCanonicalForm
+  :: CanonicalForm
+  -> [Doc annotation]
+  -> Doc annotation
+prettyCanonicalForm form = prettyForm (canonicalFormName form)
+
 prettyForm :: String -> [Doc annotation] -> Doc annotation
 prettyForm headName operands =
   parens (hsep (pretty headName : operands))
@@ -284,7 +313,7 @@ prettyGenericBinder
   :: GenericBinder OperatorExpression
   -> Doc annotation
 prettyGenericBinder binder =
-  prettyForm "generic-binder"
+  prettyCanonicalForm GenericBinderForm
     ( [ pretty (genericBinderIdNatural (genericBinderId binder))
       , pretty (genericPolaritySymbol
           (genericArgumentPolarity (genericBinderArgument binder)))
@@ -308,8 +337,10 @@ genericBinderIdNatural :: GenericBinderId -> Natural
 genericBinderIdNatural (GenericBinderId value) = value
 
 genericPolaritySymbol :: GenericPolarity -> String
-genericPolaritySymbol GenericProduct = "&"
-genericPolaritySymbol GenericSum = "^"
+genericPolaritySymbol GenericProduct =
+  operatorCanonicalSymbol GenericProductOperator
+genericPolaritySymbol GenericSum =
+  operatorCanonicalSymbol ExponentiationOperator
 
 prettyInteger :: Integer -> Doc annotation
 prettyInteger = pretty
@@ -325,7 +356,8 @@ reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 -- literal and use hexadecimal escapes for every other byte except newline.
 renderAsciiStringLiteral :: String -> String
 renderAsciiStringLiteral value
-  | isIdentifierValue value = '$' : value
+  | isIdentifierValue value =
+      sourceOperatorCharacter IdentifierExpressionCharacterOperator : value
 renderAsciiStringLiteral value = renderStandardStringLiteral value
 
 -- | Render a canonical identifier expression with its compact bare spelling.
@@ -336,19 +368,25 @@ renderIdentifierString value = renderStandardStringLiteral value
 
 renderStandardStringLiteral :: String -> String
 renderStandardStringLiteral value =
-  '"' : renderStringLiteralContents value <> "\""
+  stringQuoteCharacter : renderStringLiteralContents value
+    <> [stringQuoteCharacter]
 
 renderStringLiteralContents :: String -> String
 renderStringLiteralContents = foldr escape ""
   where
-    escape '\n' rest = '\\' : 'n' : rest
-    escape '"' rest = '\\' : '"' : rest
-    escape '\\' rest = '\\' : '\\' : rest
-    escape '#' rest = '\\' : '#' : rest
-    escape '%' rest = '\\' : '%' : rest
+    escape '\n' rest = escapeCharacter : 'n' : rest
+    escape character rest
+      | character == stringQuoteCharacter =
+          escapeCharacter : stringQuoteCharacter : rest
+      | character == escapeCharacter =
+          escapeCharacter : escapeCharacter : rest
+      | character == commentCharacter =
+          escapeCharacter : commentCharacter : rest
+      | character == interpolationCharacter =
+          escapeCharacter : interpolationCharacter : rest
     escape character rest
       | isAsciiByte character && not (isKeyboardCharacter character) =
-          '\\' : hexadecimalByte character <> rest
+          escapeCharacter : hexadecimalByte character <> rest
     escape character rest = character : rest
 
     hexadecimalByte character =
@@ -377,12 +415,12 @@ renderStringTemplate
   -> String
 renderStringTemplate renderExpressionValue literalInterpolation
     compactInterpolation parts =
-  '"' : foldr renderPart "\"" parts
+  stringQuoteCharacter : foldr renderPart [stringQuoteCharacter] parts
   where
     renderPart (StringTemplateInterpolation expressionValue) rest =
       case literalInterpolation expressionValue of
         Just value -> renderStringLiteralContents value <> rest
-        Nothing -> renderInterpolation "%" expressionValue rest
+        Nothing -> renderInterpolation [interpolationCharacter] expressionValue rest
 
     renderInterpolation prefix expressionValue rest =
       case compactInterpolation expressionValue of
@@ -390,9 +428,13 @@ renderStringTemplate renderExpressionValue literalInterpolation
           | compactInterpolationBoundary rest ->
               prefix <> symbol <> rest
         Nothing ->
-          prefix <> "(" <> renderExpressionValue expressionValue <> ")" <> rest
+          prefix <> delimiterText OpenParenthesis <>
+            renderExpressionValue expressionValue <>
+            delimiterText CloseParenthesis <> rest
         Just _ ->
-          prefix <> "(" <> renderExpressionValue expressionValue <> ")" <> rest
+          prefix <> delimiterText OpenParenthesis <>
+            renderExpressionValue expressionValue <>
+            delimiterText CloseParenthesis <> rest
 
     compactInterpolationBoundary [] = True
     compactInterpolationBoundary (character : _) =
@@ -408,6 +450,7 @@ compactOperatorStringInterpolation
 compactOperatorStringInterpolation expressionValue =
   case expressionValue of
     NothingValue -> reserved Reserved.NothingSymbol
+    AnyTypeValue -> reserved Reserved.AnyTypeSymbol
     NaturalTypeValue -> reserved Reserved.NaturalTypeSymbol
     IntegerTypeValue -> reserved Reserved.IntegerTypeSymbol
     BooleanValue False -> reserved Reserved.FalseSymbol

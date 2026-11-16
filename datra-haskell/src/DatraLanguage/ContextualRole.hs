@@ -7,6 +7,8 @@ module DatraLanguage.ContextualRole
   , contextualPrivateName
   ) where
 
+import DatraLanguage.Identifier (privateIdentifierPrefixCharacter)
+
 data ContextualRole
   = ContextualThis
   | ContextualIt
@@ -17,4 +19,5 @@ contextualSurfaceName ContextualThis = "this"
 contextualSurfaceName ContextualIt = "it"
 
 contextualPrivateName :: ContextualRole -> String
-contextualPrivateName role = '_' : contextualSurfaceName role
+contextualPrivateName role =
+  privateIdentifierPrefixCharacter : contextualSurfaceName role

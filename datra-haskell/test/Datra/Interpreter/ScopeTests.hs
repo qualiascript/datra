@@ -6,6 +6,7 @@ import DatraTypes
   ( DynamicScopeLabel (..)
   , Decision (..)
   , EvaluatedFunction (..)
+  , FunctionSource (FunctionSource)
   , FunctionFailure (NoApplicableFunctionAlternative)
   , ScopeProtection (..)
   , ScopeProtectionPolicy (..)
@@ -25,6 +26,7 @@ import DatraTypes
   , neverValue
   )
 import Rendering (renderInterpretedValue)
+import DatraLanguage.AST (Expression (AnyType, FunctionTypeExpression))
 import GenericScopeProtection
 import ScopeProtection
 import Test.Tasty (TestTree, testGroup)
@@ -412,7 +414,9 @@ scopeProtectionTests =
               (EvaluatedFunction
                 (naturalValue 0) (naturalValue 1)
                 Nothing Nothing Nothing Nothing
-                "Nat -> Nat" Nothing Nothing False Nothing)
+                (FunctionSource
+                  (FunctionTypeExpression [] AnyType AnyType))
+                Nothing Nothing False Nothing)
         assertEqual "function contract"
           DecisionRefuted
           (decideClosedPublicResultContract function)

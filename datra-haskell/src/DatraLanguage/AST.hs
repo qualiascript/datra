@@ -5,7 +5,6 @@ module DatraLanguage.AST
   , GenericPolarity (..)
   , GenericBinderId (..)
   , GenericArgument (..)
-  , mapGenericArgument
   , genericArgumentExpression
   , GenericBinder (..)
   , StringTemplateInterpolation (..)
@@ -17,6 +16,9 @@ module DatraLanguage.AST
   , traverseDependentDeclaration
   , mapDependentDeclaration
   , Expression (..)
+  , FunctionSource (..)
+  , applyFunctionSource
+  , specifyFunctionSource
   , pattern FunctionType
   , attachedFunctionImplementation
   , OperatorExpression (..)
@@ -24,10 +26,13 @@ module DatraLanguage.AST
   , traverseExpressionChildren
   , mapExpressionChildren
   , expressionChildren
-  , yieldedIdentifier
   , namedBeginBlock
   , dependentArgumentExpression
-  , dependentArgumentWithAnnotation
+  , constructDependentArgument
+  , unaryExpressionOperators
+  , applyUnaryExpressionOperator
+  , binaryExpressionOperators
+  , applyBinaryExpressionOperator
   , literalIdentifierExpression
   , literalIdentifierName
   , optionalIdentifierExpression
@@ -190,6 +195,7 @@ data Expression
   | NaturalRangeUpwards Natural
   | ValuedNaturalRange Natural Natural
   | ValuedNaturalRangeUpwards Natural
+  | AnyType
   | NaturalType
   | IntegerRange Integer Integer
   | IntegerRangeUpwards Integer
@@ -253,6 +259,21 @@ data Expression
       , dependentArgumentTypeAnnotation :: Maybe Expression
       }
   deriving (Eq, Ord, Show)
+
+-- | A function's retained source remains an AST until the application layer
+-- chooses how to render it.
+newtype FunctionSource = FunctionSource
+  { functionSourceExpression :: Expression
+  }
+  deriving (Eq, Ord, Show)
+
+applyFunctionSource :: FunctionSource -> FunctionSource -> FunctionSource
+applyFunctionSource (FunctionSource function) (FunctionSource argument) =
+  FunctionSource (FunctionApplication function argument)
+
+specifyFunctionSource :: FunctionSource -> FunctionSource -> FunctionSource
+specifyFunctionSource (FunctionSource source) (FunctionSource target) =
+  FunctionSource (MapSpecification source target)
 
 -- | Convenience pattern for a function type without a generic prefix.
 -- Generic-aware code matches 'FunctionTypeExpression' directly so a
@@ -318,11 +339,106 @@ dependentArgumentExpression
   Just (name, annotation, Just given)
 dependentArgumentExpression _ = Nothing
 
--- | Attach an annotation to a parsed argument name without decoding and
--- reconstructing optional-name syntax in each caller.
-dependentArgumentWithAnnotation :: Expression -> Expression -> Expression
-dependentArgumentWithAnnotation name annotation =
-  DependentArgument name (Just annotation)
+-- | Construct the sole semantic dependent-argument representation. Optionality
+-- belongs to the name, while assignment remains specification sugar.
+constructDependentArgument
+  :: Expression
+  -> Bool
+  -> Maybe Expression
+  -> Maybe Expression
+  -> Expression
+constructDependentArgument name optionalName annotation given =
+  maybe id MapSpecification given
+    (DependentArgument
+      (if optionalName then OptionalType name else name)
+      annotation)
+
+-- | Operators whose canonical AST form has one expression operand.  Keeping
+-- this registry with the AST prevents the canonical decoder from duplicating
+-- semantic constructor dispatch.
+unaryExpressionOperators :: [Operator]
+unaryExpressionOperators =
+  [ IdentifierExpressionOperator
+  , AtlasIdentifierExpressionOperator
+  , RangePlusOperator
+  , RangeMinusOperator
+  , AdditionOperator
+  , MinusOperator
+  , CoalizationOperator
+  , LookupOperator
+  , OptionalOperator
+  ]
+
+applyUnaryExpressionOperator
+  :: Operator
+  -> Expression
+  -> Maybe Expression
+applyUnaryExpressionOperator operator operand = case operator of
+  IdentifierExpressionOperator -> Just (IdentifierExpression operand)
+  AtlasIdentifierExpressionOperator -> Just (AtlasIdentifierExpression operand)
+  RangePlusOperator -> Just (SuperEllipsisRangePlus operand)
+  RangeMinusOperator -> Just (SuperEllipsisRangeMinus operand)
+  AdditionOperator -> Just (Plus operand)
+  MinusOperator -> Just (Minus operand)
+  CoalizationOperator -> Just (Coalization operand)
+  LookupOperator -> Just (Lookup operand)
+  OptionalOperator -> Just (OptionalType operand)
+  _ -> Nothing
+
+-- | Operators whose canonical AST form has two expression operands.
+binaryExpressionOperators :: [Operator]
+binaryExpressionOperators =
+  [ ApplicationOperator
+  , ConcatenationOperator
+  , ExpansionOperator
+  , RangeOperator
+  , AdditionOperator
+  , SubtractionOperator
+  , InequalityOperator
+  , EqualityOperator
+  , LessThanOrEqualOperator
+  , GreaterThanOrEqualOperator
+  , LessThanOperator
+  , GreaterThanOperator
+  , EitherOperator
+  , MaybeThenOperator
+  , MultiplicationOperator
+  , ExponentiationOperator
+  , ScopeAccessOperator
+  , AccessOperator
+  , SpecificationOperator
+  , SafeOverloadOperator
+  , OverloadOperator
+  ]
+
+applyBinaryExpressionOperator
+  :: Operator
+  -> Expression
+  -> Expression
+  -> Maybe Expression
+applyBinaryExpressionOperator operator left right = case operator of
+  ApplicationOperator -> Just (FunctionApplication left right)
+  ConcatenationOperator -> Just (MapConcatenation left right)
+  ExpansionOperator -> Just (MapExpansion left right)
+  RangeOperator -> Just (SuperEllipsisRange left right)
+  AdditionOperator -> Just (Addition left right)
+  SubtractionOperator -> Just (Subtraction left right)
+  InequalityOperator -> Just (Inequality left right)
+  EqualityOperator -> Just (Equality left right)
+  LessThanOrEqualOperator -> Just (LessThanOrEqual left right)
+  GreaterThanOrEqualOperator -> Just (GreaterThanOrEqual left right)
+  LessThanOperator -> Just (LessThan left right)
+  GreaterThanOperator -> Just (GreaterThan left right)
+  EitherOperator -> Just (EitherType left right)
+  MaybeThenOperator -> Just (MaybeThen left right)
+  MultiplicationOperator -> Just (Multiplication left right)
+  ExponentiationOperator -> Just (Exponentiation left right)
+  ScopeAccessOperator -> Just (ScopeAccess left right)
+  AccessOperator -> Just (MapAccess left right)
+  SpecificationOperator -> Just (MapSpecification left right)
+  SafeOverloadOperator -> Just (SafeOverload left right)
+  OverloadOperator -> Just (Overload left right)
+  _ -> Nothing
 
 literalIdentifierExpression :: SimpleIdentifierString -> Expression
 literalIdentifierExpression = IdentifierExpression . IdentifierReference
@@ -369,6 +485,7 @@ data OperatorExpression
   | InclusiveNaturalRangeUpwards Natural
   | InclusiveValuedNaturalRange Natural Natural
   | InclusiveValuedNaturalRangeUpwards Natural
+  | AnyTypeValue
   | NaturalTypeValue
   | InclusiveIntegerRange Integer Integer
   | InclusiveIntegerRangeUpwards Integer
@@ -473,6 +590,7 @@ normalizeExpression (ValuedNaturalRange origin target) =
   ValuedNaturalRange origin target
 normalizeExpression (ValuedNaturalRangeUpwards origin) =
   ValuedNaturalRangeUpwards origin
+normalizeExpression AnyType = AnyType
 normalizeExpression NaturalType = NaturalType
 normalizeExpression (IntegerRange origin target) = IntegerRange origin target
 normalizeExpression (IntegerRangeUpwards origin) = IntegerRangeUpwards origin
@@ -662,6 +780,7 @@ lower (ValuedNaturalRange origin target) =
   InclusiveValuedNaturalRange origin target
 lower (ValuedNaturalRangeUpwards origin) =
   InclusiveValuedNaturalRangeUpwards origin
+lower AnyType = AnyTypeValue
 lower NaturalType = NaturalTypeValue
 lower (IntegerRange origin target) = InclusiveIntegerRange origin target
 lower (IntegerRangeUpwards origin) = InclusiveIntegerRangeUpwards origin

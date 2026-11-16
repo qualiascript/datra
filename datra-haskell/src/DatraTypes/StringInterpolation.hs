@@ -21,6 +21,10 @@ module StringInterpolation
   , commentSyntaxRule
   , lineSyntaxRule
   , horizontalApplicationRule
+  , syntaxWhitespaceSource
+  , horizontalSyntaxWhitespace
+  , lineSeparatedApplication
+  , horizontallySeparatedApplication
   , syntaxApplicationImplementation
   , syntaxDependentRule, syntaxRuleAdapter
   , expandSyntax
@@ -38,11 +42,16 @@ import StringExpression
   , StringInterpolationTemplate
   , TemplateSelection (..)
   )
+import DatraLanguage.ConcreteSyntax
+  ( commentCharacter
+  , isSourceHorizontalPresentationCharacter
+  , isSourceLineBreakCharacter
+  , isSourcePresentationCharacter
+  )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Application
-  ( horizontallySeparatedApplication
-  , lineSeparatedApplication
-  )
+  ( applicationFrom, rawApplicationPhrase )
+import Control.Monad (guard)
 
 data DeclarativeMatcherPlan
   = NativeApplicationMatcher NativeApplicationPattern
@@ -209,7 +218,7 @@ commentSyntaxRule = SyntaxRule
   { syntaxIdentity = CommentSyntaxIdentity
   , declarativeMatcherPlan = NativeApplicationMatcher
       (NativeApplicationPattern
-        (UnresolvedSyntaxLiteral "#")
+        (UnresolvedSyntaxLiteral [commentCharacter])
         (ExpressionString (AtlasMap [])))
   , syntaxSemantics = SyntaxDiscard
   }
@@ -447,6 +456,54 @@ expandSyntax rule selection =
     -- Function preparation overloads this supplied tail onto the declared
     -- domain. Empty, singleton, and multi-capture syntax therefore follows the
     -- same call path as an ordinary partial argumentative map.
+
+syntaxWhitespaceSource :: String -> Bool
+syntaxWhitespaceSource source =
+  not (null source) && all isSourcePresentationCharacter source
+
+horizontalSyntaxWhitespace :: String -> Bool
+horizontalSyntaxWhitespace source =
+  not (null source) && all isSourceHorizontalPresentationCharacter source
+
+lineSyntaxWhitespace :: String -> Bool
+lineSyntaxWhitespace source =
+  syntaxWhitespaceSource source
+    && any isSourceLineBreakCharacter source
+
+lineSeparatedApplication :: Expression -> Maybe Expression
+lineSeparatedApplication expressionValue = do
+  let (completedReversed, currentReversed, foundLine) =
+        foldl splitLine ([], [], False) (rawApplicationPhrase expressionValue)
+      linePhrases = reverse
+        (reverse currentReversed : completedReversed)
+  guard foundLine
+  guard (all (not . null) linePhrases)
+  pure (AtlasMap (map applicationFrom linePhrases))
+  where
+    splitLine (completed, current, foundLine) member
+      | lineWhitespaceLiteral member =
+          (reverse current : completed, [], True)
+      | otherwise = (completed, member : current, foundLine)
+
+horizontallySeparatedApplication :: Expression -> Maybe Expression
+horizontallySeparatedApplication expressionValue = do
+  let phrase = rawApplicationPhrase expressionValue
+      operands = filter (not . horizontalWhitespaceLiteral) phrase
+  guard (not (any lineWhitespaceLiteral phrase))
+  guard (any horizontalWhitespaceLiteral phrase)
+  case operands of
+    [] -> Nothing
+    _ -> pure (applicationFrom operands)
+
+horizontalWhitespaceLiteral :: Expression -> Bool
+horizontalWhitespaceLiteral (UnresolvedSyntaxLiteral source) =
+  horizontalSyntaxWhitespace source
+horizontalWhitespaceLiteral _ = False
+
+lineWhitespaceLiteral :: Expression -> Bool
+lineWhitespaceLiteral (UnresolvedSyntaxLiteral source) =
+  lineSyntaxWhitespace source
+lineWhitespaceLiteral _ = False
 
 dependentLookup
   :: [StringTemplateInterpolation Expression]

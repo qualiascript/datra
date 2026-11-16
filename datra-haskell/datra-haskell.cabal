@@ -52,12 +52,15 @@ library
     exposed-modules:
         DatraLanguage.AST
         DatraLanguage.Application
+        DatraLanguage.ConcreteSyntax
+        DatraLanguage.AST.CanonicalForm
         DatraLanguage.AST.Source
         DatraLanguage.AST.Operator
         DatraLanguage.AST.Reserved
         DatraLanguage.AST.Reserved.Bootstrap
         DatraLanguage.AST.Syntax
         DatraLanguage.DependentDeclaration
+        DatraTypes.FunctionType
         DatraLanguage.ContextualRole
         DatraLanguage.ContextualDeclaration
         DatraLanguage.Identifier
@@ -273,7 +276,8 @@ library
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9,
-        prettyprinter >= 1.7 && < 1.8
+        prettyprinter >= 1.7 && < 1.8,
+        transformers >= 0.5 && < 0.7
     if flag(liquid)
         cpp-options: -DDATRA_LIQUID
         build-depends:
@@ -342,6 +346,7 @@ executable datra-haskell
     import:           warnings
     main-is:          Main.hs
     other-modules:
+        CanonicalParsing
         Interpreting
         DatraHost
         ModuleLoading
@@ -356,6 +361,7 @@ executable datra-haskell
         SyntaxRewriting.Stack
         Rendering
         ScopeProtection
+        StringParsing
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell
@@ -404,12 +410,14 @@ test-suite datra-parsing-test
         app
     main-is:          DatraParsingTests.hs
     other-modules:
+        CanonicalParsing
         Interpreting
         DatraHost
         FunctionClosure
         GenericScopeProtection
         Rendering
         ScopeProtection
+        StringParsing
         LibraryFiles
         Parsing
         SyntaxRewriting
@@ -442,6 +450,7 @@ test-suite datra-interpreting-test
         app
     main-is:          DatraInterpretingTests.hs
     other-modules:
+        CanonicalParsing
         Datra.Interpreter.DatraTypeLawTests
         Datra.Interpreter.FunctionClosureTests
         Datra.Interpreter.FunctionTests
@@ -465,6 +474,7 @@ test-suite datra-interpreting-test
         SyntaxRewriting.Stack
         Rendering
         ScopeProtection
+        StringParsing
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell

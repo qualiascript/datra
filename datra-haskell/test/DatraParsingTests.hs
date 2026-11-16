@@ -58,23 +58,25 @@ import DatraLanguage.Diagnostics.Localization
   )
 import DatraLanguage.Identifier qualified as Identifier
 import Interpreting
-  ( StandardLibraryVisibility (NoStandardLibrary, QualifiedStandardLibrary)
-  , parseDatraSourceLocatedWithImportsAndStandardLibrary
+  ( StandardLibraryVisibility
+      (AllStandardLibrary, NoStandardLibrary, QualifiedStandardLibrary)
   , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   )
 import Parsing
+  ( ResourceEnvelope (..)
+  , parseDatraRawLocatedWithSourceName
+  , parseSourceExpression
+  , expressionParser
+  )
+import CanonicalParsing (parseDatraAstLocatedWithSourceName)
+import DatraTypes.FunctionType
   ( FunctionTypeIdentifier (..)
   , PreparedFunctionDomain (..)
   , PreparedFunctionDomainKind (..)
   , PreparedFunctionDomainMember (..)
-  , ResourceEnvelope (..)
   , functionTypeIdentifiers
   , prepareFunctionDomain
   , prepareFunctionDomainExpression
-  , parseDatraRawLocatedWithSourceName
-  , parseDatraAstLocatedWithSourceName
-  , parseSourceExpression
-  , expressionParser
   )
 import StringInterpolation
   ( DeclarativeMatcherPlan (..)
@@ -169,7 +171,10 @@ testDependentCommentSyntax = do
   case parseDatraRawLocatedWithSourceName testSourceName source of
     Right (_, Located _ actual) -> assertEqual
       "the enclosing parenthesized boundary owns the comment extent"
-      (SyntaxBoundary (AtlasMap [ref "123", rawComment]))
+      (SyntaxBoundary
+        (FunctionApplication
+          (FunctionApplication (ref "123") (UnresolvedSyntaxLiteral " "))
+          rawComment))
       actual
     Left failure -> assertFailure (renderParseFailure failure)
   case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
@@ -312,7 +317,7 @@ testGenericAstRepresentation = do
         (FunctionApplication (ref "Args") declaration)
         reference
       rawIntroduction = GenericIntroductionExpression
-        (genericArgument GenericSum "T" True (ref "Any"))
+        (genericArgument GenericSum "T" True AnyType)
   assert "raw generic introductions retain polarity and optional public names"
     (renderSourceExpression rawIntroduction == "^T?")
   assert "resolved function types reconstruct the declaration anchor"
@@ -337,7 +342,7 @@ testGenericSourceParsing = do
   case unowned of
     GenericIntroductionExpression introduction ->
       assert "an unowned introduction remains a raw AST node"
-        (introduction == genericArgument GenericProduct "T" True (ref "Any"))
+        (introduction == genericArgument GenericProduct "T" True AnyType)
     other -> fail ("unexpected raw generic introduction: " <> show other)
 
   parsed <- parseGenericSource
@@ -345,11 +350,11 @@ testGenericSourceParsing = do
   case parsed of
     FunctionTypeExpression [binder]
         (ArgumentativeMap
-          [OptionalType
-            (DependentArgument
+          [DependentArgument
+            (OptionalType
               (IdentifierExpression
-                (IdentifierReference (SimpleIdentifierString "value")))
-              (Just declaration))])
+                (IdentifierReference (SimpleIdentifierString "value"))))
+            (Just declaration)])
         reference -> do
       assert "optional generic name is stored on the simple identifier"
         (genericBinderArgument binder
@@ -491,7 +496,7 @@ testGenericSourceParsing = do
     FunctionTypeExpression [binder] _ _ ->
       assert "quoted simple identifiers remain valid generic names"
         (genericBinderArgument binder
-          == genericArgument GenericProduct "T-name" True (ref "Any"))
+          == genericArgument GenericProduct "T-name" True AnyType)
     other -> fail ("unexpected quoted generic AST: " <> show other)
 
   assertGenericRejected "parenthesized generic identifier is rejected"
@@ -506,9 +511,9 @@ testGenericSourceParsing = do
     FunctionTypeExpression [first, second] _ _ ->
       assert "duplicate generic declarations remain available to compilation"
         ( genericBinderArgument first
-            == genericArgument GenericProduct "T" False (ref "Any")
+            == genericArgument GenericProduct "T" False AnyType
           && genericBinderArgument second
-            == genericArgument GenericSum "T" True (ref "Any")
+            == genericArgument GenericSum "T" True AnyType
           && genericBinderId first /= genericBinderId second
         )
     other -> fail ("duplicate generic declarations were not retained: "
@@ -519,11 +524,11 @@ testGenericSourceParsing = do
   case collision of
     FunctionTypeExpression [_]
         domain@(ArgumentativeMap
-          [ OptionalType
-              (DependentArgument
-                (IdentifierExpression (IdentifierReference domainName))
-                (Just _))
-          , OptionalType (DependentArgument _ (Just _))
+          [ DependentArgument
+              (OptionalType
+                (IdentifierExpression (IdentifierReference domainName)))
+              (Just _)
+          , DependentArgument (OptionalType _) (Just _)
           ])
         codomain@(SyntaxBoundary
           (DependentArgument
@@ -622,16 +627,15 @@ testDependentDeclarationPrecedence = do
     expected
   assertSourceExpression
     "string and identifier-expression concatenation stays an expression"
-    "\"_\",$!($hello; Int)"
+    "\"_\", $!($hello; Int)"
     (MapConcatenation
       (AST.asciiString "_")
-      (SyntaxBoundary
-        (AtlasIdentifierExpression
-          (SyntaxBoundary
-            (AtlasMap
-              [ SyntaxBoundary (IdentifierExpression (ref "hello"))
-              , ref "Int"
-              ])))))
+      (AtlasIdentifierExpression
+        (SyntaxBoundary
+          (AtlasMap
+            [ IdentifierExpression (ref "hello")
+            , ref "Int"
+            ]))))
   assertSourceExpressionRejected
     "the scalar identifier operator rejects Atlas operands"
     "$($hello; Int)"
@@ -665,16 +669,13 @@ testDependentDeclarationPrecedence = do
     source = "$!($verify; _Expr | $hard; _Expr) := body"
     expected = MapSpecification (ref "body")
       (DependentArgument
-        (SyntaxBoundary
-          (AtlasIdentifierExpression
-            (SyntaxBoundary
-              (AtlasMap
-                [ SyntaxBoundary (IdentifierExpression (ref "verify"))
-                , EitherType
-                    (ref "_Expr")
-                    (SyntaxBoundary (IdentifierExpression (ref "hard")))
-                , ref "_Expr"
-                ]))))
+        (AtlasIdentifierExpression
+          (SyntaxBoundary
+            (AtlasMap
+              [ IdentifierExpression (ref "verify")
+              , EitherType (ref "_Expr") (IdentifierExpression (ref "hard"))
+              , ref "_Expr"
+              ])))
         Nothing)
     assertSourceExpression label input wanted =
       case parseSourceExpression input of
@@ -808,7 +809,7 @@ regressionTests = do
         == matchRules matchesNumericHole [correctFrom] fromPhrase
     )
   assert "string interpolations rewrite an AST after it is read"
-    (case parseSourceLocated False
+    (case parseSourceLocated NoStandardLibrary
         testSourceName "(from 0 to Infinity)" of
       Right (Located _ parsedPhrase) ->
         matchRules matchesNumericHole [correctFrom] parsedPhrase
@@ -945,9 +946,9 @@ regressionTests = do
     , Coalization (AtlasMap [natural 1, natural 2])
     , datraRef ["add"]
     , GenericIntroductionExpression
-        (genericArgument GenericProduct "T" True (ref "Any"))
+        (genericArgument GenericProduct "T" True AnyType)
     , GenericIntroductionExpression
-        (genericArgument GenericSum "T" False (ref "Any"))
+        (genericArgument GenericSum "T" False AnyType)
     , Begin []
         (AST.assignment "Example"
           (Begin
@@ -1115,7 +1116,7 @@ regressionTests = do
       assert "a generic introduction remains an ordinary body application"
         ( body == identityBody
           && introduction
-            == genericArgument GenericProduct "T" True (ref "Any")
+            == genericArgument GenericProduct "T" True AnyType
         )
     result -> fail ("unexpected generic function body: " <> show result)
   assertParsed "function domains accept forward specifications"
@@ -2540,7 +2541,7 @@ assertAllHexadecimalAsciiEscapes = do
 
 assertLocatedParse :: IO ()
 assertLocatedParse =
-  case parseSourceLocated True testSourceName "(1; 2)" of
+  case parseSourceLocated AllStandardLibrary testSourceName "(1; 2)" of
     Left message -> fail
       ("located parse unexpectedly failed: " <> renderParseFailure message)
     Right
@@ -2786,16 +2787,16 @@ assertParsed label source expected =
 
 parseSource :: String -> Either ParseFailure Expression
 parseSource source =
-  locatedValue <$> parseSourceLocated True testSourceName source
+  locatedValue <$> parseSourceLocated AllStandardLibrary testSourceName source
 
 parseSourceLocated
-  :: Bool
+  :: StandardLibraryVisibility
   -> FilePath
   -> String
   -> Either ParseFailure (Located Expression)
-parseSourceLocated includeStandardLibrary =
-  parseDatraSourceLocatedWithImportsAndStandardLibrary
-    includeStandardLibrary []
+parseSourceLocated visibility =
+  parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+    visibility []
 
 containsFunctionBody :: Expression -> Bool
 containsFunctionBody FunctionBody {} = True

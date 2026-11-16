@@ -6,7 +6,6 @@ module DatraHost
   ) where
 
 import DatraLanguage.AST
-import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Identifier
   ( canonicalNaturalValue
   , identifierNaturalValue
@@ -260,19 +259,15 @@ datraHostValue = do
     -- Native identities are represented by the same structural access tree
     -- used by the surface language.  Rendering is presentation only; member
     -- lookup never parses or compares this text.
-    datraMemberSource members = renderSourceExpression
+    datraMemberSource members = FunctionSource
       (foldl access
         (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
         members)
       where
         access source name = ScopeAccess source
           (IdentifierReference (SimpleIdentifierString name))
-    anyFunctionSource = renderSourceExpression
-      (FunctionType anyMember anyMember)
-      where
-        anyMember = ScopeAccess
-          (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
-          (IdentifierReference (SimpleIdentifierString "Any"))
+    anyFunctionSource = FunctionSource
+      (FunctionType AnyType AnyType)
 
 hostMap
   :: [(String, Either InterpretingError InterpretedValue)]
