@@ -148,8 +148,7 @@ localizeCandidateRejectionReport
   -> LocalizedMessage
 localizeCandidateRejectionReport report = LocalizedMessage
   "candidatul sintactic nu îndeplinește cerințele de tipizare"
-  ( [ "regulă: " <> rejectedCandidateRule report
-    , "ramură de șablon: " <> show (rejectedCandidateBranch report)
+  ( [ "ramură de șablon: " <> show (rejectedCandidateBranch report)
     , "indexul capturii: " <> show (rejectedCandidateCapture report)
     , "captură: " <> rejectedCandidateSource report
     , "motiv: " <> candidateRejectionReasonText

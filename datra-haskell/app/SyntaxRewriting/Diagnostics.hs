@@ -14,13 +14,11 @@ import DatraLanguage.Diagnostics
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Diagnostics.Application
   ( CandidateRejectionReport (..) )
-import StringInterpolation (syntaxRuleLabel)
 import Rendering (renderInterpretedValue)
 import SyntaxRewriting.Types
   ( CandidateRejection (..)
   , CandidateRejectionDetails (..)
   , CandidateTypingContext (..)
-  , RewriteRule (rewriteRule)
   )
 import Data.Map.Strict qualified as Map
 
@@ -45,9 +43,7 @@ reportCandidateRejections = map report . flattenCandidateRejections
     report rejection = fmap summarize
       (candidateRejectionDiagnostic rejection)
     summarize details = CandidateRejectionReport
-      { rejectedCandidateRule = syntaxRuleLabel
-          (rewriteRule (candidateRejectionRule details))
-      , rejectedCandidateBranch = candidateRejectionBranch details
+      { rejectedCandidateBranch = candidateRejectionBranch details
       , rejectedCandidateCapture = candidateRejectionCaptureIndex details
       , rejectedCandidateSource = renderSourceExpression
           (candidateRejectionSource details)

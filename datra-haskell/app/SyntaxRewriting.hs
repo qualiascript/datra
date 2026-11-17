@@ -1,7 +1,6 @@
 -- | Scope-aware declarative syntax expansion over an already-read AST.
--- Source layout has disappeared at this boundary: application spines are
--- matched directly, while an 'AtlasMap' supplies the contextual boundary for
--- block captures.
+-- Application spines retain presentation literals until a declaration has
+-- selected the extent it wants to match.
 module SyntaxRewriting
   ( SyntaxContext (..)
   , SyntaxRuleFamily (..)
@@ -44,13 +43,10 @@ import StringExpression
   ( TemplateSelection (..)
   )
 import StringInterpolation
-  ( DeclarativeMatcherPlan
-      (HorizontalApplicationMatcher, LineSequenceMatcher)
-  , SyntaxRule (..)
+  ( SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , expandSyntax
   , horizontalSyntaxWhitespace
-  , horizontallySeparatedApplication
   , syntaxWhitespaceSource
   , syntaxRuleCaptures
   , syntaxApplicationImplementation
@@ -96,8 +92,7 @@ resolvedRuleReturnType evaluate rule = case syntaxSemantics rule of
   -- The candidate frame requires a return-type witness. Discard expansion is
   -- still 'ElidedSyntax'; this empty-map type is never inserted into the AST.
   SyntaxDiscard -> evaluate (AtlasMap [])
-  SyntaxLineSequence -> evaluate (AtlasMap [])
-  SyntaxHorizontalApplication -> Nothing
+  SyntaxSequence -> evaluate (MapSequence [])
   _ ->
     (syntaxRuleAdapter rule >>= evaluate
       >>= interpretedFunction >>= Just . functionCodomain)
@@ -421,19 +416,10 @@ runStructuralCandidates capture environment source =
     candidateReturn selectedEnvironment candidate context =
       candidateTypingReturnType context
         <|> rewriteRuleReturnType compiled
-        <|> horizontalApplicationReturn
         <|> instantiatedReturn
         <|> currentDeclaredReturn
       where
         compiled = structuralCandidateRule candidate
-        horizontalApplicationReturn = case syntaxSemantics
-            (rewriteRule compiled) of
-          SyntaxHorizontalApplication -> do
-            expanded <- horizontallySeparatedApplication
-              (templateSelectionWhole
-                (structuralCandidateSelection candidate))
-            contextResultType selectedEnvironment expanded
-          _ -> Nothing
         currentDeclaredReturn = do
           implementation <- rewriteRuleImplementation compiled
           evaluated <- contextEvaluate selectedEnvironment implementation
@@ -481,25 +467,15 @@ structuralCandidatesFor
   -> Expression
   -> [StructuralCandidate]
 structuralCandidatesFor environment value =
-    enumerate value ordinaryRules
+    enumerate value (contextRewriteRules environment)
       <> scopedCandidates
-      <> enumerate value fallbackRules
   where
-    (fallbackRules, ordinaryRules) = partitionFallbackRules
-      (contextRewriteRules environment)
     enumerate selectedValue = concatMap (\rule ->
-      enumerateRuleStructuralCandidates rule [selectedValue])
+      enumerateRuleStructuralCandidates rule selectedValue)
     scopedCandidates = case applicationSpine value of
       (ScopeAccess source body, arguments@(_ : _)) ->
         let scopedEnvironment = contextScope environment source
-            compiled = snd (partitionFallbackRules
-              (contextRewriteRules scopedEnvironment))
+            compiled = contextRewriteRules scopedEnvironment
             scopedValue = applicationFrom (body : arguments)
         in enumerate scopedValue compiled
       _ -> []
-    partitionFallbackRules = foldr partitionRule ([], [])
-    partitionRule rule (fallback, ordinary) =
-      case declarativeMatcherPlan (rewriteRule rule) of
-        LineSequenceMatcher -> (rule : fallback, ordinary)
-        HorizontalApplicationMatcher -> (rule : fallback, ordinary)
-        _ -> (fallback, rule : ordinary)

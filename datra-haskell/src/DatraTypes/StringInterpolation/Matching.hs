@@ -19,7 +19,6 @@ import DatraLanguage.Application
   ( applicationFrom
   , applicationPhrase
   , applicationSelections
-  , nativeApplicationPhrase
   , presentationLiteral
   , rawApplicationPhrase
   )
@@ -34,15 +33,13 @@ import StringInterpolation
   , DeclarativeCapture (..)
   , LiteralTemplatePattern (..)
   , LiteralTemplatePatternPart (..)
-  , NativeApplicationPattern (..)
-  , ExactPresentationPattern (..)
-  , ExactPresentationPart (..)
+  , IdentifierApplicationPattern (..)
+  , LiteralExpressionPattern (..)
+  , LiteralExpressionPatternPart (..)
   , StringExpression (..)
   , SyntaxRule (..)
   , TemplateSelection (..)
   , expandSyntax
-  , horizontallySeparatedApplication
-  , lineSeparatedApplication
   )
 import StringInterpolation.Exact (matchExactSegments)
 
@@ -95,30 +92,31 @@ enumerateSyntaxRulesSelections parser rules expressionValue =
   concatMap matchesRule rules
   where
     matchesRule rule = case declarativeMatcherPlan rule of
-      NativeApplicationMatcher patternValue ->
-        matchNativeApplication rule patternValue expressionValue
+      IdentifierApplicationMatcher patternValue ->
+        matchIdentifierApplication rule patternValue expressionValue
       LiteralTemplateMatcher patternValue ->
         matchLiteralTemplate rule patternValue expressionValue
-      ExactPresentationMatcher patternValue ->
-        matchExactPresentation parser rule patternValue expressionValue
-      LineSequenceMatcher -> matchLineSequence rule expressionValue
-      HorizontalApplicationMatcher ->
-        matchHorizontalApplication rule expressionValue
+      LiteralExpressionMatcher patternValue ->
+        matchLiteralExpression parser rule patternValue expressionValue
 
-matchNativeApplication
+matchIdentifierApplication
   :: SyntaxRule
-  -> NativeApplicationPattern
+  -> IdentifierApplicationPattern
   -> Expression
   -> [DeclarativeMatch]
-matchNativeApplication rule patternValue expressionValue =
+matchIdentifierApplication rule patternValue expressionValue =
   [ DeclarativeMatch rule
       (TemplateSelection selected [captured])
-      [(StringExpressionCapture (nativeApplicationOperand patternValue), captured)]
+      [ ( StringExpressionCapture
+            (identifierApplicationOperand patternValue)
+        , captured
+        )
+      ]
       remaining
   | (selected, remaining) <- applicationSelections expressionValue
-  , Just (actualHead : operands) <- [nativeApplicationPhrase selected]
+  , actualHead : operands <- [applicationPhrase selected]
   , not (null operands)
-  , actualHead == nativeApplicationHead patternValue
+  , actualHead == identifierApplicationHead patternValue
   , let captured = applicationFrom operands
   ]
 
@@ -134,30 +132,16 @@ matchLiteralTemplate rule patternValue expressionValue =
       (rawApplicationPhrase selected)
   ]
 
-matchExactPresentation
+matchLiteralExpression
   :: ExpressionParser
   -> SyntaxRule
-  -> ExactPresentationPattern (StringExpression Expression)
+  -> LiteralExpressionPattern (StringExpression Expression)
   -> Expression
   -> [DeclarativeMatch]
-matchExactPresentation parser rule patternValue expressionValue =
+matchLiteralExpression parser rule patternValue expressionValue =
   [ declarativeMatch rule selected captures remaining
   | (selected, remaining) <- applicationSelections expressionValue
-  , captures <- exactPresentationCaptures parser patternValue selected
-  ]
-
-matchLineSequence :: SyntaxRule -> Expression -> [DeclarativeMatch]
-matchLineSequence rule expressionValue =
-  [ DeclarativeMatch rule
-      (TemplateSelection expressionValue []) [] []
-  | Just _ <- [lineSeparatedApplication expressionValue]
-  ]
-
-matchHorizontalApplication :: SyntaxRule -> Expression -> [DeclarativeMatch]
-matchHorizontalApplication rule expressionValue =
-  [ DeclarativeMatch rule
-      (TemplateSelection expressionValue []) [] []
-  | Just _ <- [horizontallySeparatedApplication expressionValue]
+  , captures <- literalExpressionCaptures parser patternValue selected
   ]
 
 declarativeMatch
@@ -205,12 +189,12 @@ literalTemplateCaptures (LiteralTemplatePattern parts) = match parts
       , not (presentationLiteral (candidates !! (count - 1)))
       ]
 
-exactPresentationCaptures
+literalExpressionCaptures
   :: ExpressionParser
-  -> ExactPresentationPattern (StringExpression Expression)
+  -> LiteralExpressionPattern (StringExpression Expression)
   -> Expression
   -> [[(DeclarativeCapture, Expression)]]
-exactPresentationCaptures parser (ExactPresentationPattern parts) source =
+literalExpressionCaptures parser (LiteralExpressionPattern parts) source =
   [ zip (map StringExpressionCapture captureKinds) selected
   | selected <- runIdentity
       (matchExactSegments view decode parts (renderSourceExpression source))
@@ -218,11 +202,11 @@ exactPresentationCaptures parser (ExactPresentationPattern parts) source =
   where
     captureKinds =
       [ kind
-      | ExactPresentationCapture kind <- parts
+      | LiteralExpressionPatternCapture kind <- parts
       ]
     view partValue = case partValue of
-      ExactPresentationLiteral literal -> Right literal
-      ExactPresentationCapture capture -> Left capture
+      LiteralExpressionPatternLiteral literal -> Right literal
+      LiteralExpressionPatternCapture capture -> Left capture
     decode = decodeCapture parser
 
 decodeCapture

@@ -219,13 +219,12 @@ compileRewriteRule rule = RewriteRule
 
 enumerateRuleStructuralCandidates
   :: RewriteRule
-  -> [Expression]
+  -> Expression
   -> [StructuralCandidate]
-enumerateRuleStructuralCandidates compiled projections =
+enumerateRuleStructuralCandidates compiled expressionValue =
   [ StructuralCandidate
       { structuralCandidateRule = compiled
       , structuralCandidateBranch = rewriteRuleBranch compiled
-      , structuralCandidateProjection = projection
       , structuralCandidateSelection =
           declarativeMatchSelection matched
       , structuralCandidateCaptures =
@@ -233,9 +232,7 @@ enumerateRuleStructuralCandidates compiled projections =
       , structuralCandidateRemaining =
           declarativeMatchRemaining matched
       }
-  | (projection, expressionValue) <- zip [0 ..]
-      projections
-  , matched <- enumerateSyntaxRuleSelections
+  | matched <- enumerateSyntaxRuleSelections
       expressionParser rule expressionValue
   ]
   where

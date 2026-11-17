@@ -9,7 +9,9 @@ module DatraLanguage.AST.Reserved
   ) where
 
 data ReservedWord
-  = ThenWord
+  = DoWord
+  | BeginWord
+  | ThenWord
   | ElseWord
   | YieldWord
   | ToWord
@@ -18,6 +20,8 @@ data ReservedWord
   deriving (Bounded, Enum, Eq, Show)
 
 reservedWordText :: ReservedWord -> String
+reservedWordText DoWord = "do"
+reservedWordText BeginWord = "begin"
 reservedWordText ThenWord = "then"
 reservedWordText ElseWord = "else"
 reservedWordText YieldWord = "yield"

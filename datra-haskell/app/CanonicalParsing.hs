@@ -115,14 +115,14 @@ astForm =
       , astUnaryForm FunctionForm Fun
       , astGenericIntroduction
       , astFunctionType
-      , astBlock AST.DoOperator FunctionBody
+      , astBlock Reserved.DoWord FunctionBody
       , astSequence
       , ArgumentativeMap <$>
           (astCanonicalForm ArgumentativeMapForm *> many astExpression)
       , astNaturalRangeExpression
       , astDependentArgument AST.AssignmentOperator (Just ())
       , astDependentArgument AST.DependentArgumentTypeOperator Nothing
-      , astBlock AST.BeginOperator Begin
+      , astBlock Reserved.BeginWord Begin
       , astDeclarationModifier AST.LetOperator DeclarationLet
       , astDeclarationModifier AST.DefOperator DeclarationDef
       , astDeclarationModifier AST.ValOperator DeclarationVal
@@ -234,11 +234,11 @@ astConditional = do
   pure (Conditional condition consequent alternative)
 
 astBlock
-  :: AST.Operator
+  :: Reserved.ReservedWord
   -> ([DependentDeclaration Expression] -> Expression -> Expression)
   -> Parser Expression
-astBlock blockOperator construct = do
-  _ <- astOperatorToken blockOperator
+astBlock blockWord construct = do
+  _ <- astReservedWord blockWord
   bindings <- between (astDelimiter OpenParenthesis) (astDelimiter CloseParenthesis)
     (astCanonicalForm BindingsForm *> many astExpression)
   declarations <- traverse

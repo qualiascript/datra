@@ -70,7 +70,9 @@ import DatraLanguage.AST
   , GenericArgument (..)
   , GenericPolarity (..)
   , IdentifierExpression (..)
+  , LiteralTemplateLiteral (..)
   , SimpleIdentifierString (..)
+  , SymbolLiteral (..)
   , StringTemplateInterpolation (..)
   , attachedFunctionImplementation
   , dependentArgumentExpression
@@ -119,18 +121,20 @@ import ScopeProtection
 import StringInterpolation
   ( DeclarativeCapture (..)
   , DeclarativeMatcherPlan (..)
-  , SyntaxRuleIdentity (..)
+  , IdentifierApplicationPattern (..)
+  , LiteralTemplatePattern (..)
+  , LiteralTemplatePatternPart (..)
+  , LiteralExpressionPattern (..)
+  , LiteralExpressionPatternPart (..)
   , SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , declarationRules
   , declarationRuleBranches
   , commentSyntaxRule
-  , lineSyntaxRule
-  , horizontalApplicationRule
-  , syntaxRuleDeclaredName
-  , exactPresentationPattern
+  , lineSequenceSyntaxRule
+  , literalExpressionPattern
   , mapSyntaxRuleCaptures
-  , syntaxApplicationRule
+  , identifierApplicationRule
   )
 import DatraLanguage.Application (applicationPhrase)
 import StringInterpolation.Exact (matchExactSegments)
@@ -325,8 +329,28 @@ scopeSyntaxRules classify availableRules declarations source =
     ]
 
 ruleHasAnyName :: [String] -> SyntaxRule -> Bool
-ruleHasAnyName names rule =
-  maybe False (`elem` names) (syntaxRuleDeclaredName rule)
+ruleHasAnyName names = any (`elem` names) . syntaxRuleLiteralHeads
+
+syntaxRuleLiteralHeads :: SyntaxRule -> [String]
+syntaxRuleLiteralHeads rule = case declarativeMatcherPlan rule of
+  IdentifierApplicationMatcher patternValue ->
+    expressionHead (identifierApplicationHead patternValue)
+  LiteralTemplateMatcher (LiteralTemplatePattern parts) -> take 1
+    [ literalText literal
+    | LiteralTemplatePatternLiteral literal <- parts
+    ]
+  LiteralExpressionMatcher (LiteralExpressionPattern parts) -> take 1
+    [ literal
+    | LiteralExpressionPatternLiteral literal <- parts
+    , not (null literal)
+    ]
+  where
+    expressionHead expressionValue = case expressionValue of
+      IdentifierReference (SimpleIdentifierString name) -> [name]
+      _ -> []
+    literalText literal = case literal of
+      IdentifierTemplateLiteral (SimpleIdentifierString text) -> text
+      SymbolTemplateLiteral (SymbolLiteral text) -> text
 
 -- A lexical map can introduce syntax in exactly the same way as an imported
 -- module.  Its rules are visible only on the right side of an access to that
@@ -606,9 +630,8 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
           { contextSourceSpan = Nothing
           , contextRuleFamilies = filter
               (not . null . syntaxRuleFamilyRules)
-              (families <>
-                [externalFamily currentBase declarations
-                  [lineSyntaxRule, horizontalApplicationRule]])
+              (families <> [externalFamily currentBase declarations
+                [lineSequenceSyntaxRule]])
           , contextClassify = classifySyntaxHoles currentBase modules declarations
           , contextCapture = captureSyntaxHole currentBase modules
               `withDeclarations` declarations
@@ -625,7 +648,6 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
           , contextScope = scoped currentBase declarations families
           , contextEnter = enter currentBase declarations families
           }
-
     rewriteScope environment locus = case locus of
       RewriteExpression expressionValue ->
         expressionScope environment expressionValue
@@ -745,7 +767,7 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
         classify kind = classifySyntaxHole currentBase modules visible kind
 
     externalFamily currentBase declarations rules = SyntaxRuleFamily
-      { syntaxRuleFamilyNames = mapMaybe syntaxRuleDeclaredName rules
+      { syntaxRuleFamilyNames = concatMap syntaxRuleLiteralHeads rules
       , syntaxRuleFamilyRules = map (0,) rules
       , syntaxRuleFamilyClassify = classifySyntaxHoles
           currentBase modules declarations
@@ -6134,13 +6156,12 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
           [ case template of
               [StringTemplateInterpolation (LiteralString literal)]
                 | isIdentifierValue literal ->
-                    syntaxApplicationRule name
+                    identifierApplicationRule
                       (SimpleIdentifierString literal) callable callable
               _ -> SyntaxRule
-                { syntaxIdentity = DeclaredSyntaxName name
-                , declarativeMatcherPlan =
-                    ExactPresentationMatcher
-                      (exactPresentationPattern template)
+                { declarativeMatcherPlan =
+                    LiteralExpressionMatcher
+                      (literalExpressionPattern template)
                 , syntaxSemantics = SyntaxAdapter callable
                 }
           | template <- sourceTemplates

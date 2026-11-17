@@ -62,9 +62,9 @@ source context expression =
     DeclarationValue declaration ->
       sourceDeclaration declaration
     FunctionBodyValue bindings result -> wrapped 0
-      (block AST.DoOperator bindings result)
+      (block Reserved.DoWord bindings result)
     BeginValue bindings result -> wrapped 0
-      (block AST.BeginOperator bindings result)
+      (block Reserved.BeginWord bindings result)
     IdentifierReferenceValue (SimpleIdentifierString name)
       | renderIdentifierString name == name -> name
       | otherwise -> contextualSurfaceName ContextualThis
@@ -234,7 +234,7 @@ source context expression =
     -- their existing conservative grouping.
     assignedValue value@EitherValue {} = source 3 value
     assignedValue value = source 7 value
-    block keyword bindings result = op keyword <> sourceSpace
+    block keyword bindings result = reservedWord keyword <> sourceSpace
       <> intercalate (spaced AST.SequentialOperator)
         ( map sourceDeclaration bindings
             <> [ reservedWord Reserved.YieldWord

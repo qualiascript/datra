@@ -90,9 +90,8 @@ import DatraTypes.FunctionType
 import StringInterpolation
   ( DeclarativeCapture (..)
   , DeclarativeMatcherPlan (..)
-  , SyntaxRuleIdentity (..)
-  , ExactPresentationPattern (..)
-  , ExactPresentationPart (..)
+  , LiteralExpressionPattern (..)
+  , LiteralExpressionPatternPart (..)
   , LiteralTemplatePattern (..)
   , LiteralTemplatePatternPart (..)
   , StringExpression (..)
@@ -358,7 +357,7 @@ testDependentCommentSyntax = do
       "(left # ignored to the line boundary\nright)" of
     Right (Located _ actual) -> assertEqual
       "a newline ends only the comment member"
-      (SyntaxBoundary (AtlasMap [ref "left", ref "right"]))
+      (SyntaxBoundary (ref "left" <:> ref "right"))
       actual
     Left failure -> assertFailure (renderParseFailure failure)
   case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
@@ -381,7 +380,11 @@ testSyntaxSeparatorElision = do
   assertRewritten
     "line syntax introduces a sequence without a unit member"
     "(left\nright)"
-    (SyntaxBoundary (AtlasMap [ref "left", ref "right"]))
+    (SyntaxBoundary (ref "left" <:> ref "right"))
+  assertRewritten
+    "repeated line syntax produces one flat sequence"
+    "(left\nmiddle\nright)"
+    (SyntaxBoundary (ref "left" <:> ref "middle" <:> ref "right"))
   assertBool "elided syntax is distinct from the semantic empty map"
     (toOperatorExpression ElidedSyntax /= toOperatorExpression (AtlasMap []))
   where
@@ -418,15 +421,13 @@ testUnresolvedPostfixSyntax = do
       punctuated = FunctionApplication
         (ref "hello") (UnresolvedSyntaxLiteral "!!!!")
       exact sourceText = SyntaxRule
-        { syntaxIdentity = DeclaredSyntaxName sourceText
-        , declarativeMatcherPlan = ExactPresentationMatcher
-            (ExactPresentationPattern
-              [ExactPresentationLiteral sourceText])
+        { declarativeMatcherPlan = LiteralExpressionMatcher
+            (LiteralExpressionPattern
+              [LiteralExpressionPatternLiteral sourceText])
         , syntaxSemantics = SyntaxAdapter (ref "exact-match")
         }
       structural = SyntaxRule
-        { syntaxIdentity = DeclaredSyntaxName "Nat++"
-        , declarativeMatcherPlan = LiteralTemplateMatcher
+        { declarativeMatcherPlan = LiteralTemplateMatcher
             (LiteralTemplatePattern
               [ LiteralTemplatePatternLiteral
                   (IdentifierTemplateLiteral (SimpleIdentifierString "Nat"))
@@ -904,9 +905,8 @@ regressionTests = do
         == "_this 2"
     )
   let zeroCaptureSyntax = SyntaxRule
-        { syntaxIdentity = DeclaredSyntaxName "answer"
-        , declarativeMatcherPlan =
-            ExactPresentationMatcher (ExactPresentationPattern [])
+        { declarativeMatcherPlan =
+            LiteralExpressionMatcher (LiteralExpressionPattern [])
         , syntaxSemantics = SyntaxAdapter (ref "answer")
         }
   assert "zero-hole syntax supplies the empty capture tail"
@@ -916,8 +916,7 @@ regressionTests = do
         (ref "answer")
         (AtlasMap []))
   let syntaxFunction name pieces = SyntaxRule
-        { syntaxIdentity = DeclaredSyntaxName name
-        , declarativeMatcherPlan = LiteralTemplateMatcher
+        { declarativeMatcherPlan = LiteralTemplateMatcher
             (LiteralTemplatePattern
               (literalPattern name :
                 [ case kind of

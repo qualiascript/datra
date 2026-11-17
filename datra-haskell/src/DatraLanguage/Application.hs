@@ -1,7 +1,6 @@
 module DatraLanguage.Application
   ( applicationSelections
   , applicationPhrase
-  , nativeApplicationPhrase
   , applicationSpine
   , rawApplicationPhrase
   , applicationFrom
@@ -9,13 +8,9 @@ module DatraLanguage.Application
   , presentationLiteral
   ) where
 
-import Control.Monad (guard)
 import DatraLanguage.AST (Expression (..))
 import DatraLanguage.ConcreteSyntax
-  ( isSourceHorizontalPresentationCharacter
-  , isSourceLineBreakCharacter
-  , isSourcePresentationCharacter
-  )
+  ( isSourcePresentationCharacter )
 
 -- | Enumerate raw application prefixes longest-first. Unconsumed operands are
 -- retained exactly, including unresolved whitespace literals.
@@ -28,18 +23,10 @@ applicationSelections = go []
           go (argument : remaining) function
         _ -> []
 
--- | Structural application projection used by Atlas syntax and syntax-value
--- captures. Whitespace literals have no structural position in this mode.
+-- | Project an application to its semantic operands. Presentation literals
+-- have no structural position after a matcher has selected an extent.
 applicationPhrase :: Expression -> [Expression]
 applicationPhrase = filter (not . presentationLiteral) . rawApplicationPhrase
-
--- | Native application ignores horizontal separators but cannot cross a line
--- separator before the newline declaration establishes a sequence boundary.
-nativeApplicationPhrase :: Expression -> Maybe [Expression]
-nativeApplicationPhrase value = do
-  let phrase = rawApplicationPhrase value
-  guard (not (any linePresentationLiteral phrase))
-  pure (filter (not . horizontalPresentationLiteral) phrase)
 
 applicationSpine :: Expression -> (Expression, [Expression])
 applicationSpine value = case applicationPhrase value of
@@ -76,13 +63,3 @@ presentationLiteral :: Expression -> Bool
 presentationLiteral (UnresolvedSyntaxLiteral source) =
   not (null source) && all isSourcePresentationCharacter source
 presentationLiteral _ = False
-
-horizontalPresentationLiteral :: Expression -> Bool
-horizontalPresentationLiteral (UnresolvedSyntaxLiteral source) =
-  not (null source) && all isSourceHorizontalPresentationCharacter source
-horizontalPresentationLiteral _ = False
-
-linePresentationLiteral :: Expression -> Bool
-linePresentationLiteral value@(UnresolvedSyntaxLiteral source) =
-  presentationLiteral value && any isSourceLineBreakCharacter source
-linePresentationLiteral _ = False

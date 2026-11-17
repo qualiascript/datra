@@ -196,7 +196,8 @@ prettyOperator (FunctionTypeValue generics input output) =
       | null generics = []
       | otherwise =
           [prettyCanonicalForm GenericPrefixForm (map prettyGenericBinder generics)]
-prettyOperator (FunctionBodyValue bindings result) = prettyFormFor DoOperator
+prettyOperator (FunctionBodyValue bindings result) =
+  prettyWordForm Reserved.DoWord
   [ prettyCanonicalForm BindingsForm (map prettyDeclaration bindings)
   , prettyOperator result
   ]
@@ -204,7 +205,7 @@ prettyOperator (FunctionApplicationValue function input) = prettyBinary Applicat
 prettyOperator (DeclarationValue declaration) =
   prettyDeclaration declaration
 prettyOperator (BeginValue bindings result) =
-  prettyFormFor BeginOperator
+  prettyWordForm Reserved.BeginWord
     [ prettyCanonicalForm BindingsForm (map prettyDeclaration bindings)
     , prettyOperator result
     ]
@@ -392,6 +393,9 @@ prettyBinary operator left right =
 
 prettyFormFor :: Operator -> [Doc annotation] -> Doc annotation
 prettyFormFor operator = prettyForm (operatorCanonicalSymbol operator)
+
+prettyWordForm :: Reserved.ReservedWord -> [Doc annotation] -> Doc annotation
+prettyWordForm word = prettyForm (Reserved.reservedWordText word)
 
 prettyCanonicalForm
   :: CanonicalForm

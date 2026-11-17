@@ -42,8 +42,7 @@ data CandidateRejectionReason
   deriving (Eq, Ord, Show)
 
 data CandidateRejectionReport = CandidateRejectionReport
-  { rejectedCandidateRule :: String
-  , rejectedCandidateBranch :: Int
+  { rejectedCandidateBranch :: Int
   , rejectedCandidateCapture :: Int
   , rejectedCandidateSource :: String
   , rejectedCandidateExpected :: Maybe String

@@ -294,12 +294,16 @@ templates get a separate matcher plan:
 
 ```haskell
 data DeclarativeMatcherPlan expression
-  = LiteralExpressionMatcher (CompiledLiteralExpression expression)
+  = IdentifierApplicationMatcher (IdentifierApplicationPattern expression)
   | LiteralTemplateMatcher (CompiledLiteralTemplate expression)
-  | NativeApplicationMatcher NativeApplicationPattern
-  | LineSequenceMatcher
-  | HorizontalApplicationMatcher
+  | LiteralExpressionMatcher (CompiledLiteralExpression expression)
 ```
+
+Newline delineation is an ordinary later dependent declaration, not a matcher
+mode or a host-injected fallback rule. An identifier-application matcher may
+select an extent containing retained newlines; ordinary declarations therefore
+get the opportunity to match the complete expression before delineation
+applies.
 
 The two declarative forms may share the interpolation parser, typed match
 evidence, capture order, and final dependent-argument packaging. They do not

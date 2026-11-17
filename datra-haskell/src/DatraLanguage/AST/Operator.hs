@@ -13,7 +13,6 @@ module DatraLanguage.AST.Operator
 data Operator
   = FunctionTypeOperator
   | ApplicationOperator
-  | DoOperator
   | SequentialOperator
   | ScopeAccessOperator
   | GenericBoundOperator
@@ -34,7 +33,6 @@ data Operator
   | CoalizationOperator
   | LookupOperator
   | IdentifierExpressionOperator
-  | BeginOperator
   | LetOperator
   | DefOperator
   | ValOperator
@@ -104,7 +102,6 @@ sourceOperatorCharacter characterOperator = case characterOperator of
 operatorCanonicalSymbol :: Operator -> String
 operatorCanonicalSymbol FunctionTypeOperator = "->"
 operatorCanonicalSymbol ApplicationOperator = "apply-func"
-operatorCanonicalSymbol DoOperator = "do"
 operatorCanonicalSymbol SequentialOperator = "<:>"
 operatorCanonicalSymbol ScopeAccessOperator = "."
 operatorCanonicalSymbol GenericBoundOperator = "::"
@@ -125,7 +122,6 @@ operatorCanonicalSymbol GreaterThanOrEqualOperator = ">="
 operatorCanonicalSymbol CoalizationOperator = "><"
 operatorCanonicalSymbol LookupOperator = "~"
 operatorCanonicalSymbol IdentifierExpressionOperator = "$"
-operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
 operatorCanonicalSymbol DefOperator = "def"
 operatorCanonicalSymbol ValOperator = "val"
@@ -150,7 +146,6 @@ operatorCanonicalSymbol AssignmentOperator = ":="
 operatorSourceSymbol :: Operator -> Maybe String
 operatorSourceSymbol FunctionTypeOperator = canonicalSource FunctionTypeOperator
 operatorSourceSymbol ApplicationOperator = Nothing
-operatorSourceSymbol DoOperator = canonicalSource DoOperator
 operatorSourceSymbol SequentialOperator = characterSource SequentialCharacterOperator
 operatorSourceSymbol ScopeAccessOperator = characterSource ScopeAccessCharacterOperator
 operatorSourceSymbol GenericBoundOperator = canonicalSource GenericBoundOperator
@@ -174,7 +169,6 @@ operatorSourceSymbol CoalizationOperator = canonicalSource CoalizationOperator
 operatorSourceSymbol LookupOperator = characterSource LookupCharacterOperator
 operatorSourceSymbol IdentifierExpressionOperator =
   characterSource IdentifierExpressionCharacterOperator
-operatorSourceSymbol BeginOperator = canonicalSource BeginOperator
 operatorSourceSymbol LetOperator = canonicalSource LetOperator
 operatorSourceSymbol DefOperator = canonicalSource DefOperator
 operatorSourceSymbol ValOperator = canonicalSource ValOperator

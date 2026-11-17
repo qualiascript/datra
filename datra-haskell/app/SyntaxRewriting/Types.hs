@@ -108,7 +108,6 @@ data RewriteLocus
 data StructuralCandidate = StructuralCandidate
   { structuralCandidateRule :: RewriteRule
   , structuralCandidateBranch :: Int
-  , structuralCandidateProjection :: Int
   , structuralCandidateSelection
       :: TemplateSelection Expression Expression
   , structuralCandidateCaptures

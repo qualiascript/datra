@@ -152,8 +152,7 @@ localizeCandidateRejectionReport
   -> LocalizedMessage
 localizeCandidateRejectionReport report = LocalizedMessage
   "syntax candidate does not satisfy its typing requirements"
-  ( [ "rule: " <> rejectedCandidateRule report
-    , "template branch: " <> show (rejectedCandidateBranch report)
+  ( [ "template branch: " <> show (rejectedCandidateBranch report)
     , "capture index: " <> show (rejectedCandidateCapture report)
     , "capture: " <> rejectedCandidateSource report
     , "reason: " <> candidateRejectionReasonText
