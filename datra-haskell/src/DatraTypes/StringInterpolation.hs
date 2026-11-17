@@ -33,8 +33,6 @@ import DatraLanguage.DependentDeclaration
   )
 import DatraLanguage.AST
 import DatraLanguage.AST.Syntax ((<:>))
-import DatraLanguage.AST.Source (renderSourceExpression)
-import Debug.Trace (trace)
 import StringExpression
   ( StringExpression (..)
   , StringInterpolationTemplate
@@ -405,13 +403,9 @@ expandSyntax rule selection =
     SyntaxApplication callable _ ->
       FunctionApplication callable suppliedInput
     SyntaxDiscard -> ElidedSyntax
-    SyntaxSequence -> trace
-      ("LINE-SEQUENCE " <> show
-        (take 160 (renderSourceExpression
-          (templateSelectionWhole selection))))
-      (case captures of
-        [left, right] -> left <:> right
-        _ -> templateSelectionWhole selection)
+    SyntaxSequence -> case captures of
+      [left, right] -> left <:> right
+      _ -> templateSelectionWhole selection
   where
     captures = templateSelectionCaptures selection
     suppliedInput = case captures of
