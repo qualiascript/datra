@@ -30,6 +30,82 @@ behind another operator. They also do not depend on the planned `_StrExpr`
 feature. Captures retain ordinary Datra target expressions and use the syntax-
 capture and specification mechanisms which already exist.
 
+## Implementation status
+
+This section records the repository state at the end of the current
+implementation session. The rest of this document remains the feature design;
+where an older implementation sketch conflicts with this status, the current
+typed representation and the linked line-break plan are authoritative.
+
+### Implemented
+
+- Backticks parse directly as `LiteralTemplateExpression`.
+- Literal-template syntax lives in `DatraLanguage.IdentifierExpression`, not a
+  dependent-declaration-only module.
+- The AST has type-safe literal, capture, group, sequence, either, and optional
+  composition. Alternatives and optionality reuse the shared
+  `IdentifierExpressionComposition` constructors rather than template-specific
+  either/optional nodes.
+- Captures reuse the quoted-interpolation parser for simple and parenthesized
+  forms, while retaining the captured Datra expression directly.
+- The parser enforces exactly one ASCII space between components, rejects
+  newline layout inside a template, and preserves the proposed grammar.
+- `MixedTemplateLiteral`, `InvalidLiteralTemplateSpacing`, and
+  `NullableLiteralTemplate` are typed diagnostics rendered through the normal
+  diagnostics modules.
+- The parser rejects a wholly nullable template, so a declaration cannot match
+  the empty identifier.
+- Source and canonical renderers understand the literal-template AST.
+- Dependent declarations distinguish ordinary identifier expressions from
+  literal-template identifiers at the AST level.
+- Literal templates compile into ordinary alternative branches containing
+  `LiteralTemplatePatternLiteral` and `LiteralTemplatePatternCapture` parts.
+- The literal-template matcher walks retained application components,
+  attempts captures longest-first, and backtracks across later literal
+  failures.
+- Literal-template captures use `LiteralTemplateCapture` and the existing
+  syntax/value capture path; there is no `_StrExpr` dependency.
+- Matcher modes have the explicit names `IdentifierApplicationMatcher`,
+  `LiteralTemplateMatcher`, and `LiteralExpressionMatcher`.
+- The standard library has been migrated to backtick declarations.
+- The obsolete `$!` parser, AST, renderer, evaluator, and matcher
+  representations have been removed. The remaining `$!` occurrence in tests
+  asserts that the obsolete spelling is rejected.
+- Stale `DoOperator`, `BeginOperator`, `nativeApplicationPhrase`, built-in
+  syntax identities, and host line/application fallback rules were removed.
+- The experimental exact-string newline rule and its `SyntaxSequence`
+  semantics were also removed; they are not part of the intended design.
+
+### Remaining
+
+1. Implement structural `LineBreak` syntax as described in
+   [COMPOSITIONAL_LINE_BREAK_SYNTAX.md](COMPOSITIONAL_LINE_BREAK_SYNTAX.md).
+   The parser still represents logical newlines as
+   `UnresolvedSyntaxLiteral` strings, and unconsumed newlines currently prevent
+   Std from forming the required block structure.
+2. Complete component-edge adjacency. The current matcher skips retained
+   presentation but does not yet implement the full equal-edge/different-edge
+   law specified below.
+3. Finish typed capture integration for composed captures. Candidate
+   classification and rewrite-result typing must agree for syntax-category
+   captures which contain application structure or line breaks.
+4. Add focused Std-less tests for structural literal-template matching,
+   capture validation, line-break consumption, greedy backtracking, and
+   fallback sequencing. A premature multiline test was removed because its
+   `datra.Expr` target was unavailable in that test environment and therefore
+   tested capture classification rather than newline matching.
+5. Restore Std loading. The current failure is
+   `ImportedModuleRequiresBlock`; the `Args` declaration remains the important
+   greedy `do ... yield ...` regression after line-break composition exists.
+6. Resolve the remaining parser/rendering regressions, including the dedicated
+   literal-template rendering assertion, and run all parser, interpreter,
+   module, CLI, and fixture suites.
+7. Clean all compiler warnings introduced or exposed by this work.
+8. Update `GENERIC_STRING_EXPRESSIONS.md` to describe the final literal
+   expression/literal template split and capture paths.
+9. Delete this implementation-plan document after the feature, migration,
+   verification, and documentation updates are complete.
+
 ## Surface syntax
 
 ### Grammar
@@ -186,41 +262,57 @@ the names `_Expr`, `_Block`, or any standard-library binding.
 
 ## Semantic representation
 
-The parser reuses the ordinary expression tree for composition. Literal
-templates add only the nodes which have no existing expression equivalent:
+The implemented representation is owned by the identifier-expression module.
+It reuses one general composition type for identifier-expression grammars while
+keeping literal-template leaves type-safe:
 
 ```haskell
 data LiteralTemplateLiteral
   = IdentifierTemplateLiteral SimpleIdentifierString
   | SymbolTemplateLiteral SymbolLiteral
 
+data IdentifierExpressionComposition value
+  = IdentifierComposition value
+  | EitherExpression
+      (IdentifierExpressionComposition value)
+      (IdentifierExpressionComposition value)
+  | OptionalExpression (IdentifierExpressionComposition value)
+
+newtype LiteralTemplate expression = LiteralTemplate
+  { literalTemplateExpression
+      :: IdentifierExpressionComposition
+          (LiteralTemplateSequence expression)
+  }
+
+newtype LiteralTemplateSequence expression = LiteralTemplateSequence
+  { literalTemplateParts
+      :: NonEmpty
+          (IdentifierExpressionComposition (LiteralTemplateAtom expression))
+  }
+
+data LiteralTemplateAtom expression
+  = LiteralTemplateLiteralAtom LiteralTemplateLiteral
+  | LiteralTemplateCaptureAtom expression
+  | LiteralTemplateGroupAtom (LiteralTemplate expression)
+
 data Expression
   = ...
-  | LiteralTemplateExpression Expression
-  | LiteralTemplateSequenceExpression (NonEmpty Expression)
-  | LiteralTemplateLiteralExpression LiteralTemplateLiteral
-  | LiteralTemplateCaptureExpression Expression
+  | LiteralTemplateExpression (LiteralTemplate Expression)
 ```
 
-The existing expression constructors represent composition:
-
-```haskell
-EitherType left right
-OptionalType expression
-```
-
-Parentheses affect parsing and rendering but do not require a group node.
-Consequently a template sequence can contain ordinary `EitherType` and
-`OptionalType` expressions, and the same existing federation, optional,
-specification, traversal, and normalization abstractions continue to apply.
+`EitherExpression` and `OptionalExpression` belong to the broader identifier
+expression grammar; there is no `LiteralTemplateEither` or
+`LiteralTemplateOptional`. A group is retained as a typed atom so the grammar
+cannot admit an arbitrary Datra expression where only a template subtree is
+valid.
 
 These distinctions are required:
 
 - identifier and symbolic literals have different validated payload types;
 - a capture stores the ordinary Datra expression written after `%`;
 - sequences are nonempty; and
-- alternatives and optionality are represented only by the existing
-  `EitherType` and `OptionalType` constructors.
+- alternatives and optionality use the shared identifier-expression
+  composition constructors.
 
 Whitespace is validated while parsing and is not represented in the semantic
 AST. The parser does not construct separator or layout nodes, retain a raw
@@ -230,9 +322,9 @@ The declaration-head AST distinguishes literal expressions from literal
 templates before evaluation:
 
 ```haskell
-data DeclarativeIdentifier expression
-  = LiteralExpressionIdentifier expression
-  | LiteralTemplateIdentifier expression
+data IdentifierExpression expression
+  = IdentifierExpressionBody expression
+  | LiteralTemplateIdentifier (LiteralTemplate expression)
 ```
 
 The literal-template constructor is produced directly by the backtick parser.
@@ -259,19 +351,21 @@ Implement the parser in this order:
 7. Construct the semantic tree directly and discard the accepted separator
    character.
 
-The parser adds only two literal-template-specific diagnostics:
+The parser adds only three literal-template-specific diagnostics:
 
 - `MixedTemplateLiteral`, located at the first transition between identifier
-  and symbol characters in one maximal literal; and
+  and symbol characters in one maximal literal;
 - `InvalidLiteralTemplateSpacing`, covering every violation of the one-space,
-  no-newline rule.
+  no-newline rule; and
+- `NullableLiteralTemplate`, reported when the complete composition can match
+  no components.
 
 Ordinary delimiter, interpolation, and expression failures use the parser's
 existing diagnostics. Do not add any other literal-template-specific
 diagnostic constructors. Other failures are already rejected by the grammar
 which owns the construct.
 
-Tests for the two new diagnostics compare their typed constructors and source
+Tests for the three diagnostics compare their typed constructors and source
 locations. The design does not require a separate diagnostic model for every
 literal-template production.
 
@@ -293,17 +387,19 @@ Literal expressions keep their existing exact-presentation matcher. Literal
 templates get a separate matcher plan:
 
 ```haskell
-data DeclarativeMatcherPlan expression
-  = IdentifierApplicationMatcher (IdentifierApplicationPattern expression)
-  | LiteralTemplateMatcher (CompiledLiteralTemplate expression)
-  | LiteralExpressionMatcher (CompiledLiteralExpression expression)
+data DeclarativeMatcherPlan
+  = IdentifierApplicationMatcher IdentifierApplicationPattern
+  | LiteralTemplateMatcher LiteralTemplatePattern
+  | LiteralExpressionMatcher
+      (LiteralExpressionPattern (StringExpression Expression))
 ```
 
-Newline delineation is an ordinary later dependent declaration, not a matcher
-mode or a host-injected fallback rule. An identifier-application matcher may
-select an extent containing retained newlines; ordinary declarations therefore
-get the opportunity to match the complete expression before delineation
-applies.
+Newline delineation will use a transient `LineBreak` AST component, not a
+dependent declaration, matcher mode, or host-injected fallback rule. All
+visible declarative candidates receive the complete line-break-containing
+application first. If none consumes a line break, ordinary rewrite
+finalization lowers it through `(<:>)`. See
+[COMPOSITIONAL_LINE_BREAK_SYNTAX.md](COMPOSITIONAL_LINE_BREAK_SYNTAX.md).
 
 The two declarative forms may share the interpolation parser, typed match
 evidence, capture order, and final dependent-argument packaging. They do not
