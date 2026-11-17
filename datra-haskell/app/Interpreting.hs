@@ -117,7 +117,8 @@ import Rendering (renderCanonicalResult, renderInterpretedValue)
 import GenericScopeProtection
 import ScopeProtection
 import StringInterpolation
-  ( DeclarativeMatcherPlan (..)
+  ( DeclarativeCapture (..)
+  , DeclarativeMatcherPlan (..)
   , SyntaxRuleIdentity (..)
   , SyntaxRule (..)
   , SyntaxRuleSemantics (..)
@@ -309,7 +310,7 @@ scopeSyntaxNamespaces source = case source of
   _ -> []
 
 scopeSyntaxRules
-  :: ([Expression] -> StringExpression Expression -> StringExpression Expression)
+  :: ([Expression] -> DeclarativeCapture -> DeclarativeCapture)
   -> [(String, [SyntaxRule])]
   -> [Expression]
   -> Expression
@@ -332,7 +333,7 @@ ruleHasAnyName names rule =
 -- map, and are specialized against the declarations visible both outside and
 -- inside the map.
 localSyntaxRules
-  :: ([Expression] -> StringExpression Expression -> StringExpression Expression)
+  :: ([Expression] -> DeclarativeCapture -> DeclarativeCapture)
   -> [Expression]
   -> Expression
   -> [SyntaxRule]
@@ -356,7 +357,7 @@ localSyntaxRules classify declarations source =
           (declarationRules declaration)
     specialize visible = mapSyntaxRuleCaptures (specializeCapture visible)
     specializeCapture visible kind = case kind of
-      LiteralString {} -> kind
+      StringExpressionCapture LiteralString {} -> kind
       _ -> classify visible kind
 
 localScopeName :: Expression -> Maybe String
@@ -396,35 +397,41 @@ captureSyntaxHole
   :: Scope
   -> [(String, ModuleSource)]
   -> [Expression]
-  -> [(StringExpression Expression, Expression)]
-  -> StringExpression Expression
+  -> [(DeclarativeCapture, Expression)]
+  -> DeclarativeCapture
   -> Expression
   -> Maybe Expression
 captureSyntaxHole base modules declarations previous kind captured =
   case kind of
-    LiteralString literal -> case captured of
-      AsciiStringLiteral actual
-        | actual == literal -> Just captured
-      _ -> Nothing
-    ExpressionString {} -> Just captured
-    BlockString {} -> case captured of
-      AtlasMap {} -> Just captured
-      _ -> Just (AtlasMap (applicationPhrase captured))
-    FunctionBodyString {} -> case captured of
-      FunctionBody {} -> Just captured
-      _ -> Nothing
-    DeclarationString {}
-      | dependentDeclarationCandidate captured -> Just captured
-      | otherwise -> Nothing
-    DependentArgumentString {} -> dependentArgumentCapture captured
-    IdentifierExpressionString {} -> case captured of
-      IdentifierReference {} -> Just captured
-      _ -> Nothing
-    StringLiteralString target ->
-      valueEvaluationCapture target
-    ValueString target ->
-      literalCapture target captured <|> valueEvaluationCapture target
+    LiteralTemplateCapture descriptor ->
+      directCapture (literalTemplateCaptureTarget descriptor)
+    StringExpressionCapture stringKind -> captureStringExpression stringKind
   where
+    directCapture target =
+      literalCapture target captured <|> valueEvaluationCapture target
+
+    captureStringExpression stringKind = case stringKind of
+      LiteralString literal -> case captured of
+        AsciiStringLiteral actual
+          | actual == literal -> Just captured
+        _ -> Nothing
+      ExpressionString {} -> Just captured
+      BlockString {} -> case captured of
+        AtlasMap {} -> Just captured
+        _ -> Just (AtlasMap (applicationPhrase captured))
+      FunctionBodyString {} -> case captured of
+        FunctionBody {} -> Just captured
+        _ -> Nothing
+      DeclarationString {}
+        | dependentDeclarationCandidate captured -> Just captured
+        | otherwise -> Nothing
+      DependentArgumentString {} -> dependentArgumentCapture captured
+      IdentifierExpressionString {} -> case captured of
+        IdentifierReference {} -> Just captured
+        _ -> Nothing
+      StringLiteralString target -> valueEvaluationCapture target
+      ValueString target -> directCapture target
+
     literalCapture target value
       | target == value = Just value
     literalCapture _ _ = Nothing
@@ -460,12 +467,18 @@ captureSyntaxHole base modules declarations previous kind captured =
           select scope target
     scopedDeclarations = declarations <> binderDeclarations previous
 
+literalTemplateCaptureTarget :: Expression -> Expression
+literalTemplateCaptureTarget descriptor = case descriptor of
+  SyntaxBoundary inner -> literalTemplateCaptureTarget inner
+  DependentArgument _ (Just annotation) -> annotation
+  value -> value
+
 classifySyntaxHole
   :: Scope
   -> [(String, ModuleSource)]
   -> [Expression]
-  -> StringExpression Expression
-  -> (StringExpression Expression, Maybe InterpretedValue)
+  -> DeclarativeCapture
+  -> (DeclarativeCapture, Maybe InterpretedValue)
 classifySyntaxHole base modules declarations kind =
   case classifySyntaxHoles base modules declarations [kind] of
     [classified] -> classified
@@ -475,19 +488,29 @@ classifySyntaxHoles
   :: Scope
   -> [(String, ModuleSource)]
   -> [Expression]
-  -> [StringExpression Expression]
-  -> [(StringExpression Expression, Maybe InterpretedValue)]
+  -> [DeclarativeCapture]
+  -> [(DeclarativeCapture, Maybe InterpretedValue)]
 classifySyntaxHoles base modules declarations kinds = map classify kinds
   where
     enclosing = extendModuleCatalog modules base
     declared = declareSyntaxScope enclosing
       (map syntaxValidationDeclaration declarations)
     classify kind = case kind of
-      ValueString target ->
+      LiteralTemplateCapture descriptor ->
+        classifyTarget kind (literalTemplateCaptureTarget descriptor)
+      StringExpressionCapture valueKind@(ValueString target) ->
         case declared >>= \scope -> evalInScope scope [] target of
           Left _ -> (kind, Nothing)
-          Right value -> (specializeStringExpression value kind, Just value)
+          Right value ->
+            ( StringExpressionCapture
+                (specializeStringExpression value valueKind)
+            , Just value
+            )
       _ -> (kind, Nothing)
+    classifyTarget kind target =
+      case declared >>= \scope -> evalInScope scope [] target of
+        Left _ -> (kind, Nothing)
+        Right value -> (kind, Just value)
 
 evaluateSyntaxValue
   :: Scope
@@ -777,12 +800,22 @@ expandSyntaxExpression expansion = case expansion of
     FunctionBody <$> lowerSyntaxDeclarations entries <*> pure result
 
 binderDeclarations
-  :: [(StringExpression Expression, Expression)]
+  :: [(DeclarativeCapture, Expression)]
   -> [Expression]
 binderDeclarations
-    ((DependentArgumentString {}, binder) : (_, bound) : remaining) =
+    ((StringExpressionCapture DependentArgumentString {}, binder)
+      : (_, bound) : remaining) =
   maybe id (:) (binderDeclaration binder bound)
     (binderDeclarations remaining)
+binderDeclarations
+    ((LiteralTemplateCapture descriptor, captured) : remaining) =
+  case descriptor of
+    SyntaxBoundary inner -> binderDeclarations
+      ((LiteralTemplateCapture inner, captured) : remaining)
+    DependentArgument name _ ->
+      maybe id (:) (binderDeclaration name captured)
+        (binderDeclarations remaining)
+    _ -> binderDeclarations remaining
 binderDeclarations (_ : remaining) = binderDeclarations remaining
 binderDeclarations [] = []
 
@@ -2018,11 +2051,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     StringTemplate parts ->
       interpretStringTemplateWith protection interpret parts
     IdentifierExpression body -> interpretIdentifierExpression body
-    identifier@(AtlasIdentifierExpression body) -> do
-      rendered <- asciiStringValue (renderSourceExpression identifier)
-      Right (withIdentifierExpressionPlan
-        (EvaluatedIdentifierExpression body)
-        (templateValue rendered))
+    LiteralTemplateExpression _ -> Left OperationHasNoEffect
     AtlasMap expressions -> interpretContainer
       (interpretProtectedAtlasMap makeAtlasMap expressions)
       (AtlasMap expressions)
@@ -2399,8 +2428,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             (IdentifierReference (SimpleIdentifierString identifierString)) ->
           interpretSimpleDependentArgument identifierString typeAnnotation
         IdentifierExpression body ->
-          interpretDependentArgumentNameFamily False body
-        AtlasIdentifierExpression body ->
           interpretDependentArgumentNameFamily False body
         SyntaxBoundary body ->
           interpretDependentArgumentNameFamily True body
@@ -3595,19 +3622,21 @@ validateDeclarationFamilies = go []
     go earlier (scoped : remaining) = do
       case scopedDependentDeclarationValue scoped of
         Nothing -> go earlier remaining
-        Just declaration -> do
-          family <- evalInScope
-            (scopedDependentDeclarationFamilyScope scoped) []
-            (dependentDeclarationNameFamilyExpression declaration)
-          case dependentDeclarationNameExpression declaration of
-            SyntaxBoundary {} ->
-              requireDependentNameSubfederation False
-                (evalInScope
-                  (scopedDependentDeclarationFamilyScope scoped) [])
-                family
-            _ -> Right ()
-          mapM_ (requireDistinct declaration family) earlier
-          go ((declaration, family) : earlier) remaining
+        Just declaration -> case dependentDeclarationHead declaration of
+          LiteralTemplateIdentifier _ -> go earlier remaining
+          _ -> do
+            family <- evalInScope
+              (scopedDependentDeclarationFamilyScope scoped) []
+              (dependentDeclarationNameFamilyExpression declaration)
+            case dependentDeclarationNameExpression declaration of
+              SyntaxBoundary {} ->
+                requireDependentNameSubfederation False
+                  (evalInScope
+                    (scopedDependentDeclarationFamilyScope scoped) [])
+                  family
+              _ -> Right ()
+            mapM_ (requireDistinct declaration family) earlier
+            go ((declaration, family) : earlier) remaining
 
     requireDistinct declaration family (_, previous)
       | Right _ <- eitherValue previous family = Right ()

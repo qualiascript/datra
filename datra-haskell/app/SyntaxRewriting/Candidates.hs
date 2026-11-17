@@ -12,7 +12,10 @@ import StringExpression
   , TemplateSelection (..)
   )
 import StringInterpolation
-  ( SyntaxRule (..), syntaxRuleCaptures )
+  ( DeclarativeCapture (..)
+  , SyntaxRule (..)
+  , syntaxRuleCaptures
+  )
 import Data.Map.Strict qualified as Map
 import DatraTypes (InterpretedValue)
 import SyntaxRewriting.Types
@@ -49,8 +52,8 @@ initialCandidateFrame _ = CandidateFrame
 -- type instantiation, finalized-node lookup, and subfederation checking.
 -- Completed captures are retained in the returned frame and never revisited.
 advanceCandidateFrameWith
-  :: ( [(StringExpression Expression, Expression)]
-       -> StringExpression Expression
+  :: ( [(DeclarativeCapture, Expression)]
+       -> DeclarativeCapture
        -> Expression
        -> Maybe Expression
      )
@@ -177,8 +180,9 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
           (candidateFramePreparedCaptures frame)]
       ]
 
-    requiresTypedResult ValueString {} _ = True
-    requiresTypedResult StringLiteralString {} _ = True
+    requiresTypedResult (LiteralTemplateCapture _) _ = True
+    requiresTypedResult (StringExpressionCapture ValueString {}) _ = True
+    requiresTypedResult (StringExpressionCapture StringLiteralString {}) _ = True
     requiresTypedResult _ selected = case rewriteResultSelection selected of
       Just _ -> True
       Nothing -> False

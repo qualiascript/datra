@@ -20,17 +20,23 @@ import DatraLanguage.Application
   , applicationPhrase
   , applicationSelections
   , nativeApplicationPhrase
+  , presentationLiteral
+  , rawApplicationPhrase
   )
 import DatraLanguage.AST
-  ( Expression (AsciiStringLiteral, FunctionApplication) )
+  ( Expression (..)
+  , LiteralTemplateLiteral (..)
+  , SymbolLiteral (..)
+  )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import StringInterpolation
   ( DeclarativeMatcherPlan (..)
+  , DeclarativeCapture (..)
+  , LiteralTemplatePattern (..)
+  , LiteralTemplatePatternPart (..)
   , NativeApplicationPattern (..)
   , ExactPresentationPattern (..)
   , ExactPresentationPart (..)
-  , AtlasSyntaxPattern (..)
-  , AtlasSyntaxPart (..)
   , StringExpression (..)
   , SyntaxRule (..)
   , TemplateSelection (..)
@@ -48,10 +54,10 @@ data StringInterpolationMatchFailure
   = NoMatchingStringInterpolation
   deriving (Eq, Show)
 
-type HoleMatches = StringExpression Expression -> Expression -> Bool
+type HoleMatches = DeclarativeCapture -> Expression -> Bool
 type CaptureHole =
-  [(StringExpression Expression, Expression)]
-  -> StringExpression Expression
+  [(DeclarativeCapture, Expression)]
+  -> DeclarativeCapture
   -> Expression
   -> Maybe Expression
 
@@ -68,7 +74,7 @@ data DeclarativeMatch = DeclarativeMatch
   , declarativeMatchSelection
       :: TemplateSelection Expression Expression
   , declarativeMatchCaptures
-      :: [(StringExpression Expression, Expression)]
+      :: [(DeclarativeCapture, Expression)]
   , declarativeMatchRemaining :: [Expression]
   }
 
@@ -91,8 +97,8 @@ enumerateSyntaxRulesSelections parser rules expressionValue =
     matchesRule rule = case declarativeMatcherPlan rule of
       NativeApplicationMatcher patternValue ->
         matchNativeApplication rule patternValue expressionValue
-      AtlasSyntaxMatcher patternValue ->
-        matchAtlasSyntax rule patternValue expressionValue
+      LiteralTemplateMatcher patternValue ->
+        matchLiteralTemplate rule patternValue expressionValue
       ExactPresentationMatcher patternValue ->
         matchExactPresentation parser rule patternValue expressionValue
       LineSequenceMatcher -> matchLineSequence rule expressionValue
@@ -107,7 +113,7 @@ matchNativeApplication
 matchNativeApplication rule patternValue expressionValue =
   [ DeclarativeMatch rule
       (TemplateSelection selected [captured])
-      [(nativeApplicationOperand patternValue, captured)]
+      [(StringExpressionCapture (nativeApplicationOperand patternValue), captured)]
       remaining
   | (selected, remaining) <- applicationSelections expressionValue
   , Just (actualHead : operands) <- [nativeApplicationPhrase selected]
@@ -116,16 +122,16 @@ matchNativeApplication rule patternValue expressionValue =
   , let captured = applicationFrom operands
   ]
 
-matchAtlasSyntax
+matchLiteralTemplate
   :: SyntaxRule
-  -> AtlasSyntaxPattern
+  -> LiteralTemplatePattern
   -> Expression
   -> [DeclarativeMatch]
-matchAtlasSyntax rule patternValue expressionValue =
+matchLiteralTemplate rule patternValue expressionValue =
   [ declarativeMatch rule selected captures remaining
   | (selected, remaining) <- applicationSelections expressionValue
-  , captures <- atlasSyntaxCaptures patternValue
-      (applicationPhrase selected)
+  , captures <- literalTemplateCaptures patternValue
+      (rawApplicationPhrase selected)
   ]
 
 matchExactPresentation
@@ -157,39 +163,55 @@ matchHorizontalApplication rule expressionValue =
 declarativeMatch
   :: SyntaxRule
   -> Expression
-  -> [(StringExpression Expression, Expression)]
+  -> [(DeclarativeCapture, Expression)]
   -> [Expression]
   -> DeclarativeMatch
 declarativeMatch rule selected captures remaining = DeclarativeMatch rule
   (TemplateSelection selected (map snd captures)) captures remaining
 
-atlasSyntaxCaptures
-  :: AtlasSyntaxPattern
+literalTemplateCaptures
+  :: LiteralTemplatePattern
   -> [Expression]
-  -> [[(StringExpression Expression, Expression)]]
-atlasSyntaxCaptures (AtlasSyntaxPattern parts) = match parts
+  -> [[(DeclarativeCapture, Expression)]]
+literalTemplateCaptures (LiteralTemplatePattern parts) = match parts
   where
     match [] [] = [[]]
     match [] _ = []
-    match _ [] = []
-    match (AtlasSyntaxLiteral expected : remaining)
-        (actual : candidates)
-      | expected == actual = match remaining candidates
-      | otherwise = []
-    match (AtlasSyntaxCapture capture : remaining) candidates =
-      [ (capture, applicationFrom selected) : later
-      | count <- reverse [1 .. length candidates]
-      , let (selected, rest) = splitAt count candidates
+    match (LiteralTemplatePatternLiteral expected : remaining) candidates =
+      [ later
+      | let (_, afterSpacing) = span presentationLiteral candidates
+      , actual : rest <- [afterSpacing]
+      , literalMatches expected actual
       , later <- match remaining rest
+      ]
+    match (LiteralTemplatePatternCapture target : remaining) candidates =
+      [ (LiteralTemplateCapture target, applicationFrom selected) : later
+      | let (_, afterSpacing) = span presentationLiteral candidates
+      , (selected, rest) <- captureSelections afterSpacing
+      , later <- match remaining rest
+      ]
+
+    literalMatches literal actual = case (literal, actual) of
+      (IdentifierTemplateLiteral expected, IdentifierReference actualName) ->
+        expected == actualName
+      (SymbolTemplateLiteral (SymbolLiteral expected),
+          UnresolvedSyntaxLiteral actualSymbol) ->
+        expected == actualSymbol
+      _ -> False
+
+    captureSelections candidates =
+      [ splitAt count candidates
+      | count <- reverse [1 .. length candidates]
+      , not (presentationLiteral (candidates !! (count - 1)))
       ]
 
 exactPresentationCaptures
   :: ExpressionParser
   -> ExactPresentationPattern (StringExpression Expression)
   -> Expression
-  -> [[(StringExpression Expression, Expression)]]
+  -> [[(DeclarativeCapture, Expression)]]
 exactPresentationCaptures parser (ExactPresentationPattern parts) source =
-  [ zip captureKinds selected
+  [ zip (map StringExpressionCapture captureKinds) selected
   | selected <- runIdentity
       (matchExactSegments view decode parts (renderSourceExpression source))
   ]
@@ -271,8 +293,8 @@ matchSyntaxRulesWith parser captureHole rules expressionValue =
 
 validateCaptures
   :: CaptureHole
-  -> [(StringExpression Expression, Expression)]
-  -> Maybe [(StringExpression Expression, Expression)]
+  -> [(DeclarativeCapture, Expression)]
+  -> Maybe [(DeclarativeCapture, Expression)]
 validateCaptures captureHole = go []
   where
     go selected [] = Just selected

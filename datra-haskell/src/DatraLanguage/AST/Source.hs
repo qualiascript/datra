@@ -14,6 +14,7 @@ import DatraLanguage.ConcreteSyntax
   ( StructuralDelimiter (..)
   , delimiterText
   , isSourcePresentationCharacter
+  , literalTemplateDelimiterCharacter
   , sourceSpace
   )
 import DatraLanguage.ContextualRole
@@ -21,6 +22,7 @@ import DatraLanguage.ContextualRole
 import DatraLanguage.Pretty
   ( renderAsciiStringLiteral
   , renderIdentifierString
+  , renderLiteralTemplate
   , renderOperatorExpression
   , renderStringTemplate
   )
@@ -158,12 +160,10 @@ source context expression =
       AsciiStringValue value -> op AST.IdentifierExpressionOperator <> renderAsciiStringLiteral value
       _ -> op AST.IdentifierExpressionOperator <>
         delimit OpenParenthesis CloseParenthesis (source 0 operand)
-    AtlasIdentifierExpressionValue operand -> case operand of
-      Sequential {} -> op AST.AtlasIdentifierExpressionOperator <> source 0 operand
-      Expansion {} -> op AST.AtlasIdentifierExpressionOperator <> source 0 operand
-      EmptyMap -> op AST.AtlasIdentifierExpressionOperator <> source 0 operand
-      _ -> op AST.AtlasIdentifierExpressionOperator <>
-        delimit OpenParenthesis CloseParenthesis (source 0 operand)
+    LiteralTemplateExpressionValue body ->
+      [literalTemplateDelimiterCharacter]
+        <> renderLiteralTemplate body
+        <> [literalTemplateDelimiterCharacter]
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom
@@ -265,7 +265,7 @@ source context expression =
 identifierHeadValue :: IdentifierExpression OperatorExpression -> OperatorExpression
 identifierHeadValue headValue = case headValue of
   IdentifierExpressionBody body -> IdentifierExpressionValue body
-  AtlasIdentifierExpressionBody body -> AtlasIdentifierExpressionValue body
+  LiteralTemplateIdentifier body -> LiteralTemplateExpressionValue body
 
 scopeBody :: OperatorExpression -> String
 scopeBody body = case body of

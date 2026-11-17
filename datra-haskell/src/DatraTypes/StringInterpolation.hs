@@ -8,7 +8,8 @@ module StringInterpolation
   , DeclarativeMatcherPlan (..)
   , NativeApplicationPattern (..), ExactPresentationPattern (..)
   , ExactPresentationPart (..)
-  , AtlasSyntaxPattern (..), AtlasSyntaxPart (..)
+  , DeclarativeCapture (..)
+  , LiteralTemplatePattern (..), LiteralTemplatePatternPart (..)
   , DependentSyntaxRule (..)
   , SyntaxRuleSemantics (..), DependentSyntaxInvocation (..)
   , StringInterpolationTemplate, StringTemplateInterpolation (..)
@@ -35,10 +36,8 @@ import DatraLanguage.DependentDeclaration
   , dependentDeclarationTemplateBranches
   )
 import DatraLanguage.AST
-import DatraLanguage.Identifier (isIdentifierValue)
 import StringExpression
   ( StringExpression (..)
-  , stringExpressionValue
   , StringInterpolationTemplate
   , TemplateSelection (..)
   )
@@ -52,10 +51,11 @@ import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Application
   ( applicationFrom, rawApplicationPhrase )
 import Control.Monad (guard)
+import Data.Foldable (toList)
 
 data DeclarativeMatcherPlan
   = NativeApplicationMatcher NativeApplicationPattern
-  | AtlasSyntaxMatcher AtlasSyntaxPattern
+  | LiteralTemplateMatcher LiteralTemplatePattern
   | ExactPresentationMatcher
       (ExactPresentationPattern (StringExpression Expression))
   | LineSequenceMatcher
@@ -78,17 +78,22 @@ data ExactPresentationPart capture
   | ExactPresentationCapture capture
   deriving (Eq, Show)
 
--- | The matcher AST for declaration forms whose syntax is already structural.
--- Literals and captures are nodes in this tree; neither is encoded as a value
--- which must be rendered and rediscovered by the expression parser.
-newtype AtlasSyntaxPattern = AtlasSyntaxPattern
-  { atlasSyntaxParts :: [AtlasSyntaxPart]
+-- | Captures from literal expressions retain the existing string-expression
+-- descriptor. A literal-template capture instead retains the Datra target
+-- expression written after @%@; it is never converted to a string expression.
+data DeclarativeCapture
+  = StringExpressionCapture (StringExpression Expression)
+  | LiteralTemplateCapture Expression
+  deriving (Eq, Show)
+
+newtype LiteralTemplatePattern = LiteralTemplatePattern
+  { literalTemplatePatternParts :: [LiteralTemplatePatternPart]
   }
   deriving (Eq, Show)
 
-data AtlasSyntaxPart
-  = AtlasSyntaxLiteral Expression
-  | AtlasSyntaxCapture (StringExpression Expression)
+data LiteralTemplatePatternPart
+  = LiteralTemplatePatternLiteral LiteralTemplateLiteral
+  | LiteralTemplatePatternCapture Expression
   deriving (Eq, Show)
 
 data SyntaxRuleIdentity
@@ -117,14 +122,18 @@ syntaxRuleLabel rule = case syntaxIdentity rule of
   LineSequenceSyntaxIdentity -> "line sequence"
   HorizontalApplicationSyntaxIdentity -> "horizontal application"
 
-syntaxRuleCaptures :: SyntaxRule -> [StringExpression Expression]
+syntaxRuleCaptures :: SyntaxRule -> [DeclarativeCapture]
 syntaxRuleCaptures rule = case declarativeMatcherPlan rule of
   NativeApplicationMatcher patternValue ->
-    [nativeApplicationOperand patternValue]
-  AtlasSyntaxMatcher (AtlasSyntaxPattern parts) ->
-    [capture | AtlasSyntaxCapture capture <- parts]
+    [StringExpressionCapture (nativeApplicationOperand patternValue)]
+  LiteralTemplateMatcher (LiteralTemplatePattern parts) ->
+    [ LiteralTemplateCapture capture
+    | LiteralTemplatePatternCapture capture <- parts
+    ]
   ExactPresentationMatcher (ExactPresentationPattern parts) ->
-    [capture | ExactPresentationCapture capture <- parts]
+    [ StringExpressionCapture capture
+    | ExactPresentationCapture capture <- parts
+    ]
   LineSequenceMatcher -> []
   HorizontalApplicationMatcher -> []
 
@@ -139,7 +148,7 @@ exactPresentationPattern = ExactPresentationPattern . map part
         capture -> ExactPresentationCapture capture
 
 mapSyntaxRuleCaptures
-  :: (StringExpression Expression -> StringExpression Expression)
+  :: (DeclarativeCapture -> DeclarativeCapture)
   -> SyntaxRule
   -> SyntaxRule
 mapSyntaxRuleCaptures transform rule = rule
@@ -147,10 +156,11 @@ mapSyntaxRuleCaptures transform rule = rule
       NativeApplicationMatcher patternValue -> NativeApplicationMatcher
         patternValue
           { nativeApplicationOperand =
-              transform (nativeApplicationOperand patternValue)
+              mapStringCapture (nativeApplicationOperand patternValue)
           }
-      AtlasSyntaxMatcher (AtlasSyntaxPattern parts) ->
-        AtlasSyntaxMatcher (AtlasSyntaxPattern (map mapAtlasPart parts))
+      LiteralTemplateMatcher (LiteralTemplatePattern parts) ->
+        LiteralTemplateMatcher
+          (LiteralTemplatePattern (map mapLiteralTemplatePart parts))
       ExactPresentationMatcher (ExactPresentationPattern parts) ->
         ExactPresentationMatcher
           (ExactPresentationPattern (map mapExactPart parts))
@@ -158,13 +168,23 @@ mapSyntaxRuleCaptures transform rule = rule
       HorizontalApplicationMatcher -> HorizontalApplicationMatcher
   }
   where
-    mapAtlasPart patternValue = case patternValue of
-      AtlasSyntaxLiteral literal -> AtlasSyntaxLiteral literal
-      AtlasSyntaxCapture capture -> AtlasSyntaxCapture (transform capture)
     mapExactPart partValue = case partValue of
       ExactPresentationLiteral literal -> ExactPresentationLiteral literal
       ExactPresentationCapture capture ->
-        ExactPresentationCapture (transform capture)
+        ExactPresentationCapture (mapStringCapture capture)
+    mapStringCapture capture = case transform
+        (StringExpressionCapture capture) of
+      StringExpressionCapture transformed -> transformed
+      LiteralTemplateCapture _ -> capture
+    mapLiteralTemplatePart partValue = case partValue of
+      LiteralTemplatePatternLiteral literal ->
+        LiteralTemplatePatternLiteral literal
+      LiteralTemplatePatternCapture capture ->
+        case transform (LiteralTemplateCapture capture) of
+          LiteralTemplateCapture transformed ->
+            LiteralTemplatePatternCapture transformed
+          StringExpressionCapture _ ->
+            LiteralTemplatePatternCapture capture
 
 data SyntaxRuleSemantics
   = SyntaxAdapter Expression
@@ -259,14 +279,14 @@ dependentDeclarationRuleBranches declaration =
   case dependentDeclarationHead declaration of
     IdentifierExpressionBody (IdentifierReference name) ->
       [(declaration, 0, simpleApplicationRule declaration name)]
-    AtlasIdentifierExpressionBody body -> zipWith
+    LiteralTemplateIdentifier body -> zipWith
       (\branch (patternValue, captures) ->
         ( declaration
         , branch
-        , structuralTemplateRule declaration patternValue captures
+        , literalTemplateRule declaration patternValue captures
         ))
       [0 ..]
-      (atlasSyntaxPatternBranches body)
+      (literalTemplatePatternBranches body)
     _ -> zipWith
       (\branch parts ->
         (declaration, branch, directTemplateRule declaration parts))
@@ -321,82 +341,87 @@ directTemplateRule declaration parts =
   where
     (template, captures) = compileDependentDeclarationTemplate parts
 
-structuralTemplateRule
+literalTemplateRule
   :: DependentDeclaration Expression
-  -> AtlasSyntaxPattern
+  -> LiteralTemplatePattern
   -> [Maybe (SimpleIdentifierString, Expression)]
   -> SyntaxRule
-structuralTemplateRule declaration patternValue captures = SyntaxRule
-  { syntaxIdentity = DeclaredSyntaxName (case atlasSyntaxLiterals patternValue of
-      name : _ -> name
-      [] -> renderSourceExpression
-        (identifierHeadExpression (dependentDeclarationHead declaration))
-    )
-  , declarativeMatcherPlan = AtlasSyntaxMatcher patternValue
+literalTemplateRule declaration patternValue captures = SyntaxRule
+  { syntaxIdentity = DeclaredSyntaxName
+      (case literalTemplateLiterals patternValue of
+        name : _ -> name
+        [] -> renderSourceExpression
+          (identifierHeadExpression (dependentDeclarationHead declaration)))
+  , declarativeMatcherPlan = LiteralTemplateMatcher patternValue
   , syntaxSemantics = DependentSyntax (DependentSyntaxRule
       captures
       (dependentDeclarationImplementation declaration)
-      (DependentSyntaxLookup
-        (atlasSyntaxInvocation patternValue)))
+      (DependentSyntaxLookup (literalTemplateInvocation patternValue)))
   }
   where
     identifierHeadExpression headValue = case headValue of
       IdentifierExpressionBody body -> IdentifierExpression body
-      AtlasIdentifierExpressionBody body -> AtlasIdentifierExpression body
+      LiteralTemplateIdentifier body -> LiteralTemplateExpression body
 
-atlasSyntaxLiterals
-  :: AtlasSyntaxPattern
-  -> [String]
-atlasSyntaxLiterals (AtlasSyntaxPattern parts) =
-  [renderSourceExpression literal | AtlasSyntaxLiteral literal <- parts]
+literalTemplateLiterals :: LiteralTemplatePattern -> [String]
+literalTemplateLiterals (LiteralTemplatePattern parts) =
+  [ literalTemplateLiteralText literal
+  | LiteralTemplatePatternLiteral literal <- parts
+  ]
 
-atlasSyntaxInvocation
-  :: AtlasSyntaxPattern
+literalTemplateLiteralText :: LiteralTemplateLiteral -> String
+literalTemplateLiteralText literal = case literal of
+  IdentifierTemplateLiteral (SimpleIdentifierString text) -> text
+  SymbolTemplateLiteral (SymbolLiteral text) -> text
+
+literalTemplateInvocation
+  :: LiteralTemplatePattern
   -> [StringTemplateInterpolation Expression]
-atlasSyntaxInvocation (AtlasSyntaxPattern parts) = map invocation parts
+literalTemplateInvocation (LiteralTemplatePattern parts) = map invocation parts
   where
     invocation partValue = case partValue of
-      AtlasSyntaxLiteral literal -> StringTemplateInterpolation
-        (AsciiStringLiteral (renderSourceExpression literal))
-      AtlasSyntaxCapture capture -> StringTemplateInterpolation
-        (maybe (AsciiStringLiteral "") id (stringExpressionValue capture))
+      LiteralTemplatePatternLiteral literal -> StringTemplateInterpolation
+        (AsciiStringLiteral (literalTemplateLiteralText literal))
+      LiteralTemplatePatternCapture capture ->
+        StringTemplateInterpolation capture
 
-atlasSyntaxPatternBranches
-  :: Expression
-  -> [(AtlasSyntaxPattern, [Maybe (SimpleIdentifierString, Expression)])]
-atlasSyntaxPatternBranches expressionValue =
-  [ (AtlasSyntaxPattern patterns, concat captures)
-  | parts <- atlasSyntaxAlternatives expressionValue
-  , let compiled = map compileAtlasSyntaxPart parts
-        patterns = map fst compiled
-        captures = map snd compiled
+literalTemplatePatternBranches
+  :: LiteralTemplate Expression
+  -> [(LiteralTemplatePattern, [Maybe (SimpleIdentifierString, Expression)])]
+literalTemplatePatternBranches template =
+  [ (LiteralTemplatePattern patterns, captures)
+  | (patterns, captures) <- compileTemplate template
   , not (null patterns)
   ]
   where
-    atlasSyntaxAlternatives value = case value of
-      SyntaxBoundary inner -> atlasSyntaxAlternatives inner
-      AtlasMap members -> atlasSyntaxSequence members
-      MapSequence members -> atlasSyntaxSequence members
-      EitherType left right ->
-        atlasSyntaxAlternatives left <> atlasSyntaxAlternatives right
-      OptionalType present -> atlasSyntaxAlternatives present <> [[]]
-      _ -> [[value]]
-    atlasSyntaxSequence =
-      foldl combine [[]] . map atlasSyntaxAlternatives
+    compileTemplate (LiteralTemplate body) =
+      compileComposition compileSequence body
+
+    compileSequence (LiteralTemplateSequence parts) =
+      foldl combine [([], [])]
+        (map (compileComposition compileAtom) (toList parts))
+
+    compileAtom atom = case atom of
+      LiteralTemplateLiteralAtom literal ->
+        [([LiteralTemplatePatternLiteral literal], [])]
+      LiteralTemplateCaptureAtom expression ->
+        let (_, name) = captureDescriptor expression
+        in [([LiteralTemplatePatternCapture expression], [name])]
+      LiteralTemplateGroupAtom group -> compileTemplate group
+
+    compileComposition compileLeaf composition = case composition of
+      IdentifierComposition value -> compileLeaf value
+      EitherExpression left right ->
+        compileComposition compileLeaf left
+          <> compileComposition compileLeaf right
+      OptionalExpression present ->
+        compileComposition compileLeaf present <> [([], [])]
+
     combine prefixes suffixes =
-      [ prefix <> suffix | prefix <- prefixes, suffix <- suffixes ]
-    compileAtlasSyntaxPart value = case value of
-      IdentifierExpression (IdentifierReference literal) ->
-        (AtlasSyntaxLiteral (IdentifierReference literal), [])
-      IdentifierExpression (AsciiStringLiteral literal) ->
-        (AtlasSyntaxLiteral (atlasSyntaxLiteral literal), [])
-      _ ->
-        let (target, name) = captureDescriptor value
-        in (AtlasSyntaxCapture (ValueString target), [name])
-    atlasSyntaxLiteral literal
-      | isIdentifierValue literal =
-          IdentifierReference (SimpleIdentifierString literal)
-      | otherwise = UnresolvedSyntaxLiteral literal
+      [ (prefixPatterns <> suffixPatterns, prefixCaptures <> suffixCaptures)
+      | (prefixPatterns, prefixCaptures) <- prefixes
+      , (suffixPatterns, suffixCaptures) <- suffixes
+      ]
 
 dependentDeclarationSyntaxAlternatives
   :: DependentDeclaration Expression

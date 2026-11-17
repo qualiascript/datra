@@ -15,9 +15,10 @@ import Control.Monad.Combinators.Expr
   , makeExprParser
   )
 import Data.Bifunctor qualified as Bifunctor
+import Data.List.NonEmpty qualified as NonEmpty
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Void (Void)
 import DatraLanguage.AST
   ( SimpleIdentifierString (..)
   , GenericPolarity (GenericProduct, GenericSum)
@@ -25,7 +26,7 @@ import DatraLanguage.AST
   , Expression
       ( Addition
       , IdentifierExpression
-      , AtlasIdentifierExpression
+      , LiteralTemplateExpression
       , AtlasMap
       , ArgumentativeMap
       , AnyType
@@ -81,7 +82,11 @@ import DatraLanguage.ConcreteSyntax
   , delimiterCharacter
   , isSymbolicSourceCharacter
   )
-import DatraLanguage.Application (presentedApplication)
+import DatraLanguage.Application
+  ( applicationFrom
+  , presentedApplication
+  , rawApplicationPhrase
+  )
 import DatraLanguage.Identifier
   ( isPrivateIdentifier
   , isIdentifierCharacter
@@ -92,16 +97,29 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (DatraSourceParseFailure) )
+  ( LiteralTemplateParseFailure
+  , ParseFailure (DatraLiteralTemplateParseFailure, DatraSourceParseFailure)
+  )
 import StringInterpolation.Matching (ExpressionParser (..))
-import StringParsing (standardStringToken, stringTemplateToken)
+import StringParsing
+  ( InterpolationParsers (..)
+  , LiteralTemplateParsers (..)
+  , literalTemplateToken
+  , standardStringToken
+  , stringTemplateToken
+  )
 import DatraTypes.FunctionType (resolveGenericFunctionTypes)
 import Text.Megaparsec
   ( Parsec
+  , ErrorFancy (ErrorCustom)
+  , ParseError (FancyError)
+  , ParseErrorBundle (ParseErrorBundle)
+  , ShowErrorComponent (showErrorComponent)
   , anySingle
   , between
   , choice
   , chunk
+  , customFailure
   , eof
   , errorBundlePretty
   , getOffset
@@ -122,7 +140,15 @@ import Text.Megaparsec
 import Text.Megaparsec.Char (char, eol, hspace1, space1)
 import Text.Megaparsec.Char.Lexer qualified as Lexer
 
-type Parser = Parsec Void Text
+newtype SourceParserError = SourceLiteralTemplateFailure
+  { sourceLiteralTemplateFailure :: LiteralTemplateParseFailure
+  }
+  deriving (Eq, Ord, Show)
+
+instance ShowErrorComponent SourceParserError where
+  showErrorComponent = show
+
+type Parser = Parsec SourceParserError Text
 
 data ResourceEnvelope
   = ExplicitMapEnvelope
@@ -133,7 +159,7 @@ data ResourceEnvelope
 parseSourceExpression :: String -> Either ParseFailure Expression
 parseSourceExpression source =
   resolveGenericFunctionTypes <$> Bifunctor.first
-    (DatraSourceParseFailure . errorBundlePretty)
+    sourceParseFailure
     (runParser
       (fullSpaceConsumer *> expression <* fullSpaceConsumer <* eof)
       mempty
@@ -149,10 +175,22 @@ parseDatraRawLocatedWithSourceName
   -> Either ParseFailure (ResourceEnvelope, Located Expression)
 parseDatraRawLocatedWithSourceName resourceName source = do
   (envelope, Located sourceSpan expressionValue) <-
-    Bifunctor.first (DatraSourceParseFailure . errorBundlePretty) (runParser
+    Bifunctor.first sourceParseFailure (runParser
       locatedRawResourceWithEnvelope resourceName (Text.pack source))
   pure (envelope, Located sourceSpan
     (resolveGenericFunctionTypes expressionValue))
+
+sourceParseFailure
+  :: ParseErrorBundle Text SourceParserError
+  -> ParseFailure
+sourceParseFailure bundle@(ParseErrorBundle errors _) =
+  case
+    [ reason
+    | FancyError _ fancy <- NonEmpty.toList errors
+    , ErrorCustom (SourceLiteralTemplateFailure reason) <- Set.toList fancy
+    ] of
+    reason : _ -> DatraLiteralTemplateParseFailure reason
+    [] -> DatraSourceParseFailure (errorBundlePretty bundle)
 
 locatedRawResourceWithEnvelope
   :: Parser (ResourceEnvelope, Located Expression)
@@ -221,11 +259,24 @@ elementsUntil boundary = do
           following <- commentExpression boundary
           continue (presentedApplication sourceText entry following)
         Just (LineSeparator sourceText) -> do
-          next <- optional (commentExpression boundary <|> expression)
+          next <- optional
+            ((Left <$> commentExpression boundary) <|> (Right <$> expression))
           case next of
             Nothing -> pure [entry]
-            Just following -> continue
-              (presentedApplication sourceText entry following)
+            -- A comment owns its source remainder as one operand. Ordinary
+            -- lines instead remain one unresolved top-level phrase so the
+            -- visible declarative rules get the complete presentation before
+            -- the later newline rule delineates it.
+            Just (Left comment) -> continue
+              (presentedApplication sourceText entry comment)
+            Just (Right following) -> continue
+              (presentedLineApplication sourceText entry following)
+
+    presentedLineApplication separator left right = applicationFrom
+      ( rawApplicationPhrase left
+          <> [UnresolvedSyntaxLiteral separator]
+          <> rawApplicationPhrase right
+      )
 
 -- Hash is the head of the first dependent declaration in every environment.
 -- Its operand is concrete source remainder, delimited by the enclosing syntax
@@ -389,7 +440,7 @@ templateConcatenation = do
 evaluatedDependentArgumentOrExpression :: Parser Expression
 evaluatedDependentArgumentOrExpression =
   try dependentArgumentExpressionParser
-    <|> try atlasIdentifierExpression
+    <|> literalTemplateExpression
     <|> dollarIdentifierExpression
     <|> parenthesizedOrReverse
   where
@@ -417,7 +468,7 @@ dependentArgumentExpressionParser = do
 
 dependentArgumentName :: Parser Expression
 dependentArgumentName = choice
-  [ try atlasIdentifierExpression
+  [ literalTemplateExpression
   , dollarIdentifierExpression
   , parenthesizedExpression
   , IdentifierExpression . IdentifierReference . SimpleIdentifierString
@@ -576,6 +627,7 @@ termAtom =
   choice
     [ bareSkip
     , genericIntroduction
+    , literalTemplateExpression
     , evaluatedDependentArgumentOrExpression
     , lookupExpression
     , argumentativeMap
@@ -657,7 +709,6 @@ rangeEndpointAtom :: Parser Expression
 rangeEndpointAtom =
   choice
     [ parenthesizedExpression
-    , atlasIdentifierExpression
     , dollarIdentifierExpression
     , stringExpression
     , identifierReference
@@ -699,7 +750,6 @@ lookupExpression = do
     lookupOperand = choice
       [ lookupExpression
       , argumentativeMap
-      , atlasIdentifierExpression
       , dollarIdentifierExpression
       , parenthesizedExpression
       , sourceAtomicExpressionToken
@@ -729,8 +779,19 @@ parenthesizedExpression =
     (SyntaxBoundary . parenthesizedSequenceExpression <$>
       elementsUntil (void (lookAhead (sourceDelimiter CloseParenthesis))))
 
+literalTemplateExpression :: Parser Expression
+literalTemplateExpression = literalTemplateToken LiteralTemplateParsers
+  { literalTemplateInterpolation = InterpolationParsers
+      { compoundInterpolationParser = sourceInterpolationExpression
+      , simpleInterpolationParser = sourceSimpleInterpolation
+      , interpolationLayoutParser = pure ()
+      }
+  , rejectLiteralTemplate =
+      customFailure . SourceLiteralTemplateFailure
+  }
+
 -- Scalar identifier conversion accepts literal names and parenthesized string
--- expressions. Atlas templates use the distinct @$!@ operator below.
+-- expressions.
 dollarIdentifierExpression :: Parser Expression
 dollarIdentifierExpression = try $ do
   _ <- sourceOperatorToken AST.IdentifierExpressionOperator
@@ -742,16 +803,6 @@ dollarIdentifierExpression = try $ do
         guard (not (isAtlasIdentifierOperand body))
         pure body
     ]
-
--- Atlas identifier conversion is intentionally syntax-directed: parentheses
--- establish an Atlas literal, including empty and singleton literals. The
--- dedicated AST node preserves that choice even when a singleton's body has
--- no sequence node of its own.
-atlasIdentifierExpression :: Parser Expression
-atlasIdentifierExpression = try $ do
-  _ <- sourceOperatorToken AST.AtlasIdentifierExpressionOperator
-  body <- parenthesizedExpression
-  pure (AtlasIdentifierExpression body)
 
 isAtlasIdentifierOperand :: Expression -> Bool
 isAtlasIdentifierOperand expressionValue = case expressionValue of

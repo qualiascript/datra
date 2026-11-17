@@ -21,6 +21,7 @@ import DatraLanguage.Diagnostics.Application
   , CandidateRejectionReport (..)
   , CommandLineOptionFailure (..)
   , ModuleLoadFailure (..)
+  , LiteralTemplateParseFailure (..)
   , ParseFailure (..)
   , SyntaxRewriteFailure (..)
   )
@@ -62,6 +63,17 @@ localizeParseFailure :: ParseFailure -> LocalizedMessage
 localizeParseFailure failure = case failure of
   DatraSourceParseFailure message ->
     LocalizedMessage "sursa nu a putut fi analizată" [message]
+  DatraLiteralTemplateParseFailure reason ->
+    case reason of
+      MixedTemplateLiteral ->
+        LocalizedMessage "șablonul literal conține un literal mixt"
+          ["separați componentele identificatoare și simbolice cu un spațiu"]
+      InvalidLiteralTemplateSpacing ->
+        LocalizedMessage "spațierea șablonului literal nu este validă"
+          ["folosiți exact un spațiu ASCII între componente și fără linii noi"]
+      NullableLiteralTemplate ->
+        LocalizedMessage "șablonul literal poate corespunde unui identificator gol"
+          ["faceți cel puțin o componentă obligatorie în fiecare alternativă"]
   SyntaxEnvironmentParseFailure message ->
     LocalizedMessage "mediul sintactic nu a putut fi construit" [message]
   SyntaxRewriteParseFailure reason ->

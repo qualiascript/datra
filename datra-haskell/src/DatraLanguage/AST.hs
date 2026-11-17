@@ -8,6 +8,15 @@ module DatraLanguage.AST
   , genericArgumentExpression
   , GenericBinder (..)
   , StringTemplateInterpolation (..)
+  , SymbolLiteral (..)
+  , LiteralTemplateLiteral (..)
+  , IdentifierExpressionComposition (..)
+  , LiteralTemplate (..)
+  , LiteralTemplateSequence (..)
+  , LiteralTemplateAtom (..)
+  , traverseLiteralTemplate
+  , mapLiteralTemplate
+  , literalTemplateNullable
   , IdentifierExpression (..)
   , DeclarationModifier (..)
   , declarationModifierOperator
@@ -44,13 +53,9 @@ import Data.Functor.Const (Const (..))
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.AST.Operator (Operator (..))
+import DatraLanguage.IdentifierExpression
 import DatraLanguage.StringTemplate (StringTemplateInterpolation (..))
 import Numeric.Natural (Natural)
-
-newtype SimpleIdentifierString = SimpleIdentifierString
-  { simpleIdentifierStringText :: String
-  }
-  deriving (Eq, Ord, Show)
 
 -- | The quantifier-like polarity of a function-owned generic binder.
 data GenericPolarity
@@ -103,14 +108,6 @@ data GenericBinder expression = GenericBinder
   }
   deriving (Eq, Ord, Show)
 
--- | The two expression families that can name a dependent declaration.
--- Keeping scalar string conversion and Atlas template conversion distinct
--- prevents either operator from silently accepting the other's operand kind.
-data IdentifierExpression expression
-  = IdentifierExpressionBody expression
-  | AtlasIdentifierExpressionBody expression
-  deriving (Eq, Ord, Show)
-
 -- | A declaration is semantic block structure, not an expression which must
 -- later be recognized by inspecting modifier and assignment nodes.
 -- | Modifier applications in a declaration are recorded from the innermost
@@ -153,8 +150,8 @@ traverseDependentDeclaration visit declaration = DependentDeclaration
   where
     traverseHead headValue = case headValue of
       IdentifierExpressionBody body -> IdentifierExpressionBody <$> visit body
-      AtlasIdentifierExpressionBody body ->
-        AtlasIdentifierExpressionBody <$> visit body
+      LiteralTemplateIdentifier body ->
+        LiteralTemplateIdentifier <$> traverseLiteralTemplate visit body
 
 mapDependentDeclaration
   :: (left -> right)
@@ -180,7 +177,7 @@ data Expression
   | NothingLiteral
   | StringTemplate [StringTemplateInterpolation Expression]
   | IdentifierExpression Expression
-  | AtlasIdentifierExpression Expression
+  | LiteralTemplateExpression (LiteralTemplate Expression)
   | AtlasMap [Expression]
   | ArgumentativeMap [Expression]
   | MapSequence [Expression]
@@ -359,7 +356,6 @@ constructDependentArgument name optionalName annotation given =
 unaryExpressionOperators :: [Operator]
 unaryExpressionOperators =
   [ IdentifierExpressionOperator
-  , AtlasIdentifierExpressionOperator
   , RangePlusOperator
   , RangeMinusOperator
   , AdditionOperator
@@ -375,7 +371,6 @@ applyUnaryExpressionOperator
   -> Maybe Expression
 applyUnaryExpressionOperator operator operand = case operator of
   IdentifierExpressionOperator -> Just (IdentifierExpression operand)
-  AtlasIdentifierExpressionOperator -> Just (AtlasIdentifierExpression operand)
   RangePlusOperator -> Just (SuperEllipsisRangePlus operand)
   RangeMinusOperator -> Just (SuperEllipsisRangeMinus operand)
   AdditionOperator -> Just (Plus operand)
@@ -473,7 +468,7 @@ data OperatorExpression
   | NothingValue
   | StringTemplateValue [StringTemplateInterpolation OperatorExpression]
   | IdentifierExpressionValue OperatorExpression
-  | AtlasIdentifierExpressionValue OperatorExpression
+  | LiteralTemplateExpressionValue (LiteralTemplate OperatorExpression)
   | EmptyMap
   | Sequential (NonEmpty OperatorExpression)
   | ArgumentativeMapValue [OperatorExpression]
@@ -562,8 +557,8 @@ normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplateInterpolation parts)
 normalizeExpression (IdentifierExpression operand) =
   IdentifierExpression (normalizeExpression operand)
-normalizeExpression (AtlasIdentifierExpression operand) =
-  AtlasIdentifierExpression (normalizeExpression operand)
+normalizeExpression (LiteralTemplateExpression template) =
+  LiteralTemplateExpression (mapLiteralTemplate normalizeExpression template)
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (ArgumentativeMap expressions) =
@@ -758,8 +753,8 @@ lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplateInterpolation parts)
 lower (IdentifierExpression operand) = IdentifierExpressionValue (lower operand)
-lower (AtlasIdentifierExpression operand) =
-  AtlasIdentifierExpressionValue (lower operand)
+lower (LiteralTemplateExpression template) =
+  LiteralTemplateExpressionValue (mapLiteralTemplate lower template)
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
@@ -959,8 +954,8 @@ traverseExpressionChildren visit expression = case expression of
       <*> traverse visit annotation
   StringTemplate parts -> StringTemplate <$> traverse part parts
   IdentifierExpression operand -> IdentifierExpression <$> visit operand
-  AtlasIdentifierExpression operand ->
-    AtlasIdentifierExpression <$> visit operand
+  LiteralTemplateExpression template ->
+    LiteralTemplateExpression <$> traverseLiteralTemplate visit template
   _ -> pure expression
   where
     visitBinder binder =

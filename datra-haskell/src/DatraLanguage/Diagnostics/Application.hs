@@ -2,6 +2,7 @@
 -- line boundaries. Human-language rendering belongs to the locale modules.
 module DatraLanguage.Diagnostics.Application
   ( ParseFailure (..)
+  , LiteralTemplateParseFailure (..)
   , ModuleLoadFailure (..)
   , CandidateRejectionReason (..)
   , CandidateRejectionReport (..)
@@ -14,9 +15,16 @@ import DatraLanguage.Diagnostics (DatraError)
 
 data ParseFailure
   = DatraSourceParseFailure String
+  | DatraLiteralTemplateParseFailure LiteralTemplateParseFailure
   | SyntaxEnvironmentParseFailure String
   | SyntaxRewriteParseFailure SyntaxRewriteFailure
   deriving (Eq, Show)
+
+data LiteralTemplateParseFailure
+  = MixedTemplateLiteral
+  | InvalidLiteralTemplateSpacing
+  | NullableLiteralTemplate
+  deriving (Eq, Ord, Show)
 
 data ModuleLoadFailure
   = ImportScanFailed FilePath ParseFailure

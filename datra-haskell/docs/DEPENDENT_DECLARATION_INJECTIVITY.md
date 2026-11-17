@@ -59,14 +59,14 @@ every value in the declaration image has exactly one canonical name.
 For example:
 
 ```datra
-val $!($pair; (_x : Int); $with; (_y : Int)) := it
+val `pair %(_x : Int) with %(_y : Int)` := it
 ```
 
 is injective because the result retains the complete capture tuple. This is
 not injective:
 
 ```datra
-val $!($pair; (_x : Int)) := 1
+val `pair %(_x : Int)` := 1
 ```
 
 Every capture maps to the same semantic integer. The declaration must be

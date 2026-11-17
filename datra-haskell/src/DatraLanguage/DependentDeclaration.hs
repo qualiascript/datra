@@ -19,6 +19,8 @@ module DatraLanguage.DependentDeclaration
 import DatraLanguage.AST
 import DatraLanguage.ConcreteSyntax (sourceSpace)
 import DatraLanguage.AST.Operator (operatorCanonicalSymbol)
+import Data.List.NonEmpty (NonEmpty ((:|)))
+import Data.List.NonEmpty qualified as NonEmpty
 
 -- A declaration is an inferred assignment in block position. Identifier
 -- annotations and dependent arguments remain expressions until an explicit
@@ -41,14 +43,12 @@ dependentDeclaration = declaration
       IdentifierReference identifier ->
         Just (IdentifierExpressionBody (IdentifierReference identifier))
       IdentifierExpression body -> Just (IdentifierExpressionBody body)
-      AtlasIdentifierExpression (SyntaxBoundary body) ->
-        Just (AtlasIdentifierExpressionBody body)
-      AtlasIdentifierExpression body ->
-        Just (AtlasIdentifierExpressionBody body)
+      LiteralTemplateExpression body ->
+        Just (LiteralTemplateIdentifier body)
       SyntaxBoundary (IdentifierExpression body) ->
         Just (IdentifierExpressionBody body)
-      SyntaxBoundary (AtlasIdentifierExpression body) ->
-        Just (AtlasIdentifierExpressionBody body)
+      SyntaxBoundary (LiteralTemplateExpression body) ->
+        Just (LiteralTemplateIdentifier body)
       boundary@SyntaxBoundary {} ->
         Just (IdentifierExpressionBody boundary)
       _ -> Nothing
@@ -122,8 +122,10 @@ dependentDeclarationCandidate = maybe False (const True) . dependentDeclaration
 dependentDeclarationNameExpression
   :: DependentDeclaration Expression
   -> Expression
-dependentDeclarationNameExpression =
-  identifierHeadBody . dependentDeclarationHead
+dependentDeclarationNameExpression declaration =
+  case dependentDeclarationHead declaration of
+    IdentifierExpressionBody body -> body
+    LiteralTemplateIdentifier template -> LiteralTemplateExpression template
 
 dependentDeclarationNameFamilyExpression
   :: DependentDeclaration Expression
@@ -131,16 +133,11 @@ dependentDeclarationNameFamilyExpression
 dependentDeclarationNameFamilyExpression =
   identifierHeadExpression . dependentDeclarationHead
 
-identifierHeadBody :: IdentifierExpression expression -> expression
-identifierHeadBody headValue = case headValue of
-  IdentifierExpressionBody body -> body
-  AtlasIdentifierExpressionBody body -> body
-
 identifierHeadExpression :: IdentifierExpression Expression -> Expression
 identifierHeadExpression headValue = case headValue of
   IdentifierExpressionBody body@SyntaxBoundary {} -> body
   IdentifierExpressionBody body -> IdentifierExpression body
-  AtlasIdentifierExpressionBody body -> AtlasIdentifierExpression body
+  LiteralTemplateIdentifier body -> LiteralTemplateExpression body
 
 -- | Translate a declaration's complete name family by one literal prefix.
 -- This is one operation for every dependent declaration: the cases below
@@ -161,11 +158,51 @@ prependDependentDeclarationName prefix declaration = declaration
       IdentifierExpressionBody (AsciiStringLiteral (prefix <> name))
     prependHead (IdentifierExpressionBody operand) = IdentifierExpressionBody
       (MapConcatenation (AsciiStringLiteral prefix) operand)
-    prependHead (AtlasIdentifierExpressionBody operand) =
-      IdentifierExpressionBody
-        (MapConcatenation
-          (AsciiStringLiteral prefix)
-          (AtlasIdentifierExpression operand))
+    prependHead (LiteralTemplateIdentifier body) =
+      LiteralTemplateIdentifier (prependLiteralTemplate prefix body)
+
+prependLiteralTemplate
+  :: String
+  -> LiteralTemplate Expression
+  -> LiteralTemplate Expression
+prependLiteralTemplate prefix (LiteralTemplate body) =
+  LiteralTemplate (prependComposition body)
+  where
+    prependComposition composition = case composition of
+      IdentifierComposition sequenceValue ->
+        IdentifierComposition (prependSequence sequenceValue)
+      EitherExpression left right -> EitherExpression
+        (prependComposition left)
+        (prependComposition right)
+      OptionalExpression value ->
+        OptionalExpression (prependComposition value)
+
+    prependSequence (LiteralTemplateSequence (first :| remaining)) =
+      case prependPart first of
+        Just prefixed -> LiteralTemplateSequence (prefixed :| remaining)
+        Nothing -> LiteralTemplateSequence
+          (prefixPart :| (first : remaining))
+
+    prependPart composition = case composition of
+      IdentifierComposition atom -> IdentifierComposition <$> prependAtom atom
+      EitherExpression left right -> EitherExpression
+        <$> prependPart left
+        <*> prependPart right
+      OptionalExpression _ -> Nothing
+
+    prependAtom atom = case atom of
+      LiteralTemplateLiteralAtom
+          (IdentifierTemplateLiteral (SimpleIdentifierString literal)) ->
+        Just (LiteralTemplateLiteralAtom
+          (IdentifierTemplateLiteral
+            (SimpleIdentifierString (prefix <> literal))))
+      LiteralTemplateGroupAtom group ->
+        Just (LiteralTemplateGroupAtom (prependLiteralTemplate prefix group))
+      _ -> Nothing
+
+    prefixPart = IdentifierComposition
+      (LiteralTemplateLiteralAtom
+        (IdentifierTemplateLiteral (SimpleIdentifierString prefix)))
 
 dependentDeclarationWithImplementation
   :: Expression
@@ -182,14 +219,16 @@ dependentDeclarationTemplateBranches
   :: DependentDeclaration Expression
   -> Maybe [[StringTemplateInterpolation Expression]]
 dependentDeclarationTemplateBranches declaration = case
-    identifierHeadBody (dependentDeclarationHead declaration) of
-  SyntaxBoundary {} -> Nothing
-  IdentifierReference (SimpleIdentifierString name) ->
-    Just [[stringLiteral name]]
-  AsciiStringLiteral name ->
-    Just [[stringLiteral name]]
-  body -> Just (identifierBranches body)
+    dependentDeclarationHead declaration of
+  LiteralTemplateIdentifier _ -> Nothing
+  IdentifierExpressionBody body -> branches body
   where
+    branches SyntaxBoundary {} = Nothing
+    branches (IdentifierReference (SimpleIdentifierString name)) =
+      Just [[stringLiteral name]]
+    branches (AsciiStringLiteral name) =
+      Just [[stringLiteral name]]
+    branches body = Just (identifierBranches body)
     -- Within an identifier expression, ordinary sequence, either, and optional
     -- AST nodes describe template structure. Whitespace is structural: every
     -- pair of realized sequence components is separated by one canonical
@@ -208,8 +247,6 @@ dependentDeclarationTemplateBranches declaration = case
         AsciiStringLiteral literal ->
           [[stringLiteral literal]]
         _ -> [[StringTemplateInterpolation identifier]]
-    identifierBranches identifier@AtlasIdentifierExpression {} =
-      [[StringTemplateInterpolation identifier]]
     identifierBranches expressionValue =
       [[StringTemplateInterpolation expressionValue]]
 

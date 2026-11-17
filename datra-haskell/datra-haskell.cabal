@@ -64,6 +64,7 @@ library
         DatraLanguage.ContextualRole
         DatraLanguage.ContextualDeclaration
         DatraLanguage.Identifier
+        DatraLanguage.IdentifierExpression
         DatraLanguage.Pretty
         DatraLanguage.StringTemplate
         DatraTypes

@@ -186,36 +186,41 @@ the names `_Expr`, `_Block`, or any standard-library binding.
 
 ## Semantic representation
 
-The parser constructs a dedicated literal-template tree:
+The parser reuses the ordinary expression tree for composition. Literal
+templates add only the nodes which have no existing expression equivalent:
 
 ```haskell
 data LiteralTemplateLiteral
   = IdentifierTemplateLiteral SimpleIdentifierString
   | SymbolTemplateLiteral SymbolLiteral
 
-data LiteralTemplateAtom expression
-  = LiteralTemplateLiteralAtom LiteralTemplateLiteral
-  | LiteralTemplateCaptureAtom expression
-  | LiteralTemplateGroupAtom (LiteralTemplate expression)
-
-data LiteralTemplatePart expression
-  = RequiredTemplatePart (LiteralTemplateAtom expression)
-  | OptionalTemplatePart (LiteralTemplateAtom expression)
-
-newtype LiteralTemplateSequence expression =
-  LiteralTemplateSequence (NonEmpty (LiteralTemplatePart expression))
-
-type LiteralTemplate expression =
-  ExistingFederationComposition (LiteralTemplateSequence expression)
+data Expression
+  = ...
+  | LiteralTemplateExpression Expression
+  | LiteralTemplateSequenceExpression (NonEmpty Expression)
+  | LiteralTemplateLiteralExpression LiteralTemplateLiteral
+  | LiteralTemplateCaptureExpression Expression
 ```
 
-Names may follow local conventions, but these distinctions are required:
+The existing expression constructors represent composition:
+
+```haskell
+EitherType left right
+OptionalType expression
+```
+
+Parentheses affect parsing and rendering but do not require a group node.
+Consequently a template sequence can contain ordinary `EitherType` and
+`OptionalType` expressions, and the same existing federation, optional,
+specification, traversal, and normalization abstractions continue to apply.
+
+These distinctions are required:
 
 - identifier and symbolic literals have different validated payload types;
 - a capture stores the ordinary Datra expression written after `%`;
-- grouping and optionality remain explicit;
-- sequences and groups are nonempty; and
-- alternatives reuse the existing either/federation representation.
+- sequences are nonempty; and
+- alternatives and optionality are represented only by the existing
+  `EitherType` and `OptionalType` constructors.
 
 Whitespace is validated while parsing and is not represented in the semantic
 AST. The parser does not construct separator or layout nodes, retain a raw
@@ -227,7 +232,7 @@ templates before evaluation:
 ```haskell
 data DeclarativeIdentifier expression
   = LiteralExpressionIdentifier expression
-  | LiteralTemplateIdentifier (LiteralTemplate expression)
+  | LiteralTemplateIdentifier expression
 ```
 
 The literal-template constructor is produced directly by the backtick parser.

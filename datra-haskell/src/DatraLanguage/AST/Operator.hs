@@ -34,7 +34,6 @@ data Operator
   | CoalizationOperator
   | LookupOperator
   | IdentifierExpressionOperator
-  | AtlasIdentifierExpressionOperator
   | BeginOperator
   | LetOperator
   | DefOperator
@@ -126,7 +125,6 @@ operatorCanonicalSymbol GreaterThanOrEqualOperator = ">="
 operatorCanonicalSymbol CoalizationOperator = "><"
 operatorCanonicalSymbol LookupOperator = "~"
 operatorCanonicalSymbol IdentifierExpressionOperator = "$"
-operatorCanonicalSymbol AtlasIdentifierExpressionOperator = "$!"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
 operatorCanonicalSymbol DefOperator = "def"
@@ -176,8 +174,6 @@ operatorSourceSymbol CoalizationOperator = canonicalSource CoalizationOperator
 operatorSourceSymbol LookupOperator = characterSource LookupCharacterOperator
 operatorSourceSymbol IdentifierExpressionOperator =
   characterSource IdentifierExpressionCharacterOperator
-operatorSourceSymbol AtlasIdentifierExpressionOperator =
-  canonicalSource AtlasIdentifierExpressionOperator
 operatorSourceSymbol BeginOperator = canonicalSource BeginOperator
 operatorSourceSymbol LetOperator = canonicalSource LetOperator
 operatorSourceSymbol DefOperator = canonicalSource DefOperator

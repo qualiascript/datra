@@ -10,6 +10,7 @@ module DatraLanguage.ConcreteSyntax
   , stringQuoteCharacter
   , escapeCharacter
   , interpolationCharacter
+  , literalTemplateDelimiterCharacter
   , sourceSpaceCharacter
   , sourceHorizontalTabCharacter
   , sourceCarriageReturnCharacter
@@ -63,6 +64,9 @@ escapeCharacter = '\\'
 
 interpolationCharacter :: Char
 interpolationCharacter = '%'
+
+literalTemplateDelimiterCharacter :: Char
+literalTemplateDelimiterCharacter = '`'
 
 sourceSpaceCharacter :: Char
 sourceSpaceCharacter = ' '

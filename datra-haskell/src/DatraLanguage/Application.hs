@@ -6,6 +6,7 @@ module DatraLanguage.Application
   , rawApplicationPhrase
   , applicationFrom
   , presentedApplication
+  , presentationLiteral
   ) where
 
 import Control.Monad (guard)

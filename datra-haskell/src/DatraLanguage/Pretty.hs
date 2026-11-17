@@ -7,6 +7,7 @@ module DatraLanguage.Pretty
   , renderAsciiStringLiteral
   , renderIdentifierString
   , renderStringTemplate
+  , renderLiteralTemplate
   ) where
 
 import Data.Char (ord, toUpper)
@@ -19,16 +20,24 @@ import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
-  , SourceCharacterOperator (IdentifierExpressionCharacterOperator)
+  , operatorPreferredSymbol
+  , SourceCharacterOperator
+      ( EitherCharacterOperator
+      , IdentifierExpressionCharacterOperator
+      , OptionalCharacterOperator
+      )
   , sourceOperatorCharacter
   , skipSourceSymbol
   )
 import DatraLanguage.ConcreteSyntax
   ( StructuralDelimiter (..)
   , commentCharacter
+  , delimiterCharacter
   , delimiterText
   , escapeCharacter
   , interpolationCharacter
+  , literalTemplateDelimiterCharacter
+  , sourceSpace
   , stringQuoteCharacter
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -66,8 +75,9 @@ prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
 prettyOperator (IdentifierExpressionValue operand) =
   prettyFormFor IdentifierExpressionOperator [prettyOperator operand]
-prettyOperator (AtlasIdentifierExpressionValue operand) =
-  prettyFormFor AtlasIdentifierExpressionOperator [prettyOperator operand]
+prettyOperator (LiteralTemplateExpressionValue body) =
+  pretty (literalTemplateDelimiterCharacter
+    : renderLiteralTemplate body <> [literalTemplateDelimiterCharacter])
 prettyOperator EmptyMap = pretty
   (delimiterText OpenParenthesis <> delimiterText CloseParenthesis)
 prettyOperator (Sequential (expressionValue :| [])) =
@@ -279,7 +289,91 @@ prettyDeclaration declaration =
 identifierHeadValue :: IdentifierExpression OperatorExpression -> OperatorExpression
 identifierHeadValue headValue = case headValue of
   IdentifierExpressionBody body -> IdentifierExpressionValue body
-  AtlasIdentifierExpressionBody body -> AtlasIdentifierExpressionValue body
+  LiteralTemplateIdentifier body -> LiteralTemplateExpressionValue body
+
+renderLiteralTemplate :: LiteralTemplate OperatorExpression -> String
+renderLiteralTemplate (LiteralTemplate expressionValue) =
+  renderTemplateExpression expressionValue
+  where
+    renderTemplateExpression composition = case composition of
+      IdentifierComposition sequenceValue -> renderTemplateSequence sequenceValue
+      EitherExpression left right ->
+        renderTemplateExpression left
+          <> sourceSpace
+          <> operatorPreferredSymbol EitherOperator
+          <> sourceSpace
+          <> renderTemplateExpression right
+      OptionalExpression value ->
+        groupedExpression value <> operatorPreferredSymbol OptionalOperator
+
+    renderTemplateSequence (LiteralTemplateSequence parts) =
+      unwords (map renderTemplatePart (toList parts))
+
+    renderTemplatePart composition = case composition of
+      IdentifierComposition atom -> renderTemplateAtom atom
+      OptionalExpression value ->
+        renderPartOperand value <> operatorPreferredSymbol OptionalOperator
+      EitherExpression {} -> groupedPart composition
+
+    renderPartOperand composition = case composition of
+      IdentifierComposition atom -> renderTemplateAtom atom
+      _ -> groupedPart composition
+
+    renderTemplateAtom (LiteralTemplateLiteralAtom literal) =
+      renderTemplateLiteral literal
+    renderTemplateAtom (LiteralTemplateCaptureAtom target) =
+      interpolationCharacter : renderCapture target
+    renderTemplateAtom (LiteralTemplateGroupAtom grouped) =
+      delimiterText OpenParenthesis
+        <> renderLiteralTemplate grouped
+        <> delimiterText CloseParenthesis
+
+    groupedExpression value =
+      delimiterText OpenParenthesis
+        <> renderTemplateExpression value
+        <> delimiterText CloseParenthesis
+
+    groupedPart value = delimiterText OpenParenthesis
+      <> renderPartExpression value
+      <> delimiterText CloseParenthesis
+
+    renderPartExpression composition = case composition of
+      IdentifierComposition atom -> renderTemplateAtom atom
+      EitherExpression left right ->
+        renderPartExpression left
+          <> sourceSpace
+          <> operatorPreferredSymbol EitherOperator
+          <> sourceSpace
+          <> renderPartExpression right
+      OptionalExpression value ->
+        renderPartOperand value <> operatorPreferredSymbol OptionalOperator
+
+    renderCapture target@(IdentifierReferenceValue _) =
+      renderOperatorExpression target
+    renderCapture target =
+      delimiterText OpenParenthesis
+        <> renderOperatorExpression target
+        <> delimiterText CloseParenthesis
+
+renderTemplateLiteral :: LiteralTemplateLiteral -> String
+renderTemplateLiteral literal = case literal of
+  IdentifierTemplateLiteral (SimpleIdentifierString value) -> value
+  SymbolTemplateLiteral (SymbolLiteral value) ->
+    concatMap renderTemplateSymbol value
+  where
+    renderTemplateSymbol character
+      | character `elem` templateStructuralCharacters =
+          [escapeCharacter, character]
+      | otherwise = [character]
+    templateStructuralCharacters =
+      [ interpolationCharacter
+      , delimiterCharacter OpenParenthesis
+      , delimiterCharacter CloseParenthesis
+      , sourceOperatorCharacter OptionalCharacterOperator
+      , sourceOperatorCharacter EitherCharacterOperator
+      , literalTemplateDelimiterCharacter
+      , escapeCharacter
+      ]
 
 prettyUnary
   :: Operator

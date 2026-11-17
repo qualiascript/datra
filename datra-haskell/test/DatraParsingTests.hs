@@ -6,6 +6,7 @@ module DatraParsingTests (main) where
 import Control.Applicative ((<|>))
 import Data.Char (chr, toUpper)
 import Data.Either (isLeft)
+import Data.List.NonEmpty (NonEmpty (..))
 import DatraLanguage.AST
   ( Expression (..)
   , DependentDeclaration (..)
@@ -14,7 +15,13 @@ import DatraLanguage.AST
   , GenericBinderId (..)
   , GenericArgument (..)
   , GenericPolarity (..)
+  , IdentifierExpressionComposition (..)
+  , LiteralTemplate (..)
+  , LiteralTemplateAtom (..)
+  , LiteralTemplateLiteral (..)
+  , LiteralTemplateSequence (..)
   , SimpleIdentifierString (SimpleIdentifierString)
+  , SymbolLiteral (..)
   , StringTemplateInterpolation (..)
   , pattern FunctionType
   , dependentArgumentExpression
@@ -51,7 +58,9 @@ import DatraLanguage.Diagnostics
   , withoutSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure )
+  ( LiteralTemplateParseFailure (..)
+  , ParseFailure (..)
+  )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English)
   , renderDatraError
@@ -79,12 +88,13 @@ import DatraTypes.FunctionType
   , prepareFunctionDomainExpression
   )
 import StringInterpolation
-  ( DeclarativeMatcherPlan (..)
+  ( DeclarativeCapture (..)
+  , DeclarativeMatcherPlan (..)
   , SyntaxRuleIdentity (..)
   , ExactPresentationPattern (..)
   , ExactPresentationPart (..)
-  , AtlasSyntaxPattern (..)
-  , AtlasSyntaxPart (..)
+  , LiteralTemplatePattern (..)
+  , LiteralTemplatePatternPart (..)
   , StringExpression (..)
   , SyntaxRule (..)
   , SyntaxRuleSemantics (..)
@@ -136,6 +146,14 @@ testTree =
     , testCase "generic source parsing" testGenericSourceParsing
     , testCase "dependent declaration precedence"
         testDependentDeclarationPrecedence
+    , testGroup "template parsing"
+        [ testCase "quoted string templates" testStringTemplateParsing
+        , testCase "literal templates" testLiteralTemplateParsing
+        , testCase "literal-template diagnostics"
+            testLiteralTemplateDiagnostics
+        , testCase "literal templates cross newline presentation"
+            testLiteralTemplateMultilineMatching
+        ]
     , testCase "identifier operator AST syntax"
         assertIdentifierOperatorAstSyntax
     , testCase "dependent arguments and argumentative maps"
@@ -149,6 +167,157 @@ testTree =
         , testProperty "natural maps parse in order" propNaturalMapParsing
         ]
     ]
+
+testStringTemplateParsing :: IO ()
+testStringTemplateParsing = do
+  assertTemplateParsed
+    "quoted templates retain literal text around shared simple interpolation"
+    "\"before %value after\""
+    (StringTemplate
+      [ templateLiteral "before "
+      , StringTemplateInterpolation (ref "value")
+      , templateLiteral " after"
+      ])
+  assertTemplateParsed
+    "quoted templates use the shared compound-interpolation parser"
+    "\"sum: %(2 + 3)\""
+    (StringTemplate
+      [ templateLiteral "sum: "
+      , StringTemplateInterpolation
+          (Addition (ref "2") (ref "3"))
+      ])
+  assertTemplateParsed
+    "quoted-template escapes remain literal text"
+    "\"\\%%value\""
+    (StringTemplate
+      [ templateLiteral "%"
+      , StringTemplateInterpolation (ref "value")
+      ])
+
+testLiteralTemplateParsing :: IO ()
+testLiteralTemplateParsing = do
+  assertTemplateParsed
+    "literal-template sequences retain literals, captures, and optionality"
+    "`do %_Block? yield %_Expr`"
+    (literalTemplate
+      [ identifierTemplateLiteral "do"
+      , OptionalExpression (templateCapture (ref "_Block"))
+      , identifierTemplateLiteral "yield"
+      , templateCapture (ref "_Expr")
+      ])
+  assertTemplateParsed
+    "literal-template alternatives reuse the ordinary Either AST"
+    "`verify %_Expr | hard %_Expr`"
+    (LiteralTemplateExpression
+      (LiteralTemplate
+        (EitherExpression
+          (templateSequence
+          [ identifierTemplateLiteral "verify"
+          , templateCapture (ref "_Expr")
+          ])
+          (templateSequence
+          [ identifierTemplateLiteral "hard"
+          , templateCapture (ref "_Expr")
+          ]))))
+  assertTemplateParsed
+    "literal-template groups and compound captures reuse expression parsing"
+    "`if %Bool then %_Expr (else %(_fallback : _Expr))?`"
+    (literalTemplate
+      [ identifierTemplateLiteral "if"
+      , templateCapture (ref "Bool")
+      , identifierTemplateLiteral "then"
+      , templateCapture (ref "_Expr")
+      , OptionalExpression
+          (IdentifierComposition
+            (LiteralTemplateGroupAtom
+              (LiteralTemplate
+                (templateSequence
+                  [ identifierTemplateLiteral "else"
+                  , templateCapture
+                      (AST.dependentArgumentType "_fallback" (ref "_Expr"))
+                  ]))))
+      ])
+  assertTemplateParsed
+    "literal-template symbolic components preserve their lexical class"
+    "`%Nat + %Nat`"
+    (literalTemplate
+      [ templateCapture (ref "Nat")
+      , IdentifierComposition
+          (LiteralTemplateLiteralAtom
+            (SymbolTemplateLiteral (SymbolLiteral "+")))
+      , templateCapture (ref "Nat")
+      ])
+  where
+    literalTemplate parts = LiteralTemplateExpression
+      (LiteralTemplate (templateSequence parts))
+    templateSequence parts = IdentifierComposition
+      (LiteralTemplateSequence (nonEmpty parts))
+    templateCapture = IdentifierComposition . LiteralTemplateCaptureAtom
+    nonEmpty (first : remaining) = first :| remaining
+    nonEmpty [] = error "test literal template must be nonempty"
+    identifierTemplateLiteral text = IdentifierComposition
+      (LiteralTemplateLiteralAtom
+        (IdentifierTemplateLiteral (SimpleIdentifierString text)))
+
+assertTemplateParsed :: String -> String -> Expression -> IO ()
+assertTemplateParsed label source expected =
+  case parseSourceExpression source of
+    Left failure -> assertFailure
+      (label <> ": unexpected parse failure: " <> renderParseFailure failure)
+    Right actual -> assertEqual label expected actual
+
+testLiteralTemplateDiagnostics :: IO ()
+testLiteralTemplateDiagnostics = do
+  assertTemplateFailure MixedTemplateLiteral "`do+yield`"
+  mapM_ (assertTemplateFailure InvalidLiteralTemplateSpacing)
+    [ "` do %_Expr`"
+    , "`do  %_Expr`"
+    , "`do\t%_Expr`"
+    , "`do\n%_Expr`"
+    , "`do %_Expr `"
+    , "`do%_Expr`"
+    ]
+  mapM_ (assertTemplateFailure NullableLiteralTemplate)
+    [ "`(whatever)?`"
+    , "`a? b?`"
+    , "`a | b?`"
+    ]
+  where
+    assertTemplateFailure expected source =
+      case parseSourceExpression source of
+        Left (DatraLiteralTemplateParseFailure actual) ->
+          assertEqual source expected actual
+        Left failure -> assertFailure
+          (source <> ": wrong parse failure: " <> renderParseFailure failure)
+        Right actual -> assertFailure
+          (source <> ": unexpectedly parsed as " <> show actual)
+
+testLiteralTemplateMultilineMatching :: IO ()
+testLiteralTemplateMultilineMatching =
+  case parseSourceLocated NoStandardLibrary testSourceName source of
+    Left failure -> assertFailure
+      ("newline-spanning literal template failed: "
+        <> renderParseFailure failure)
+    Right (Located _ parsed) -> case parsed of
+      AtlasMap values -> case reverse values of
+        Fun (AtlasMap [_, capturedResult]) : _ -> assertEqual
+          "the rewrite stack chooses the greedy outer yield candidate"
+          (ref "outer") capturedResult
+        _ -> assertFailure
+          ("newline-spanning template produced the wrong shape: "
+            <> show parsed)
+      _ -> assertFailure
+        ("newline-spanning template produced the wrong resource: "
+          <> show parsed)
+  where
+    source = unlines
+      [ "(`do %(_body : datra.Expr) yield %(_result : datra.Expr)` :="
+      , "  ((datra.Expr; datra.Expr) -> datra.Any) datra.fun_body"
+      , "do"
+      , "  outerHead"
+      , "  nested do yield inner"
+      , "yield outer)"
+      ]
 
 testRenamedArgumentConcepts :: IO ()
 testRenamedArgumentConcepts = do
@@ -257,10 +426,12 @@ testUnresolvedPostfixSyntax = do
         }
       structural = SyntaxRule
         { syntaxIdentity = DeclaredSyntaxName "Nat++"
-        , declarativeMatcherPlan = AtlasSyntaxMatcher
-            (AtlasSyntaxPattern
-              [ AtlasSyntaxLiteral (ref "Nat")
-              , AtlasSyntaxLiteral (UnresolvedSyntaxLiteral "++")
+        , declarativeMatcherPlan = LiteralTemplateMatcher
+            (LiteralTemplatePattern
+              [ LiteralTemplatePatternLiteral
+                  (IdentifierTemplateLiteral (SimpleIdentifierString "Nat"))
+              , LiteralTemplatePatternLiteral
+                  (SymbolTemplateLiteral (SymbolLiteral "++"))
               ])
         , syntaxSemantics = SyntaxAdapter (ref "structural-match")
         }
@@ -289,7 +460,7 @@ testUnresolvedPostfixSyntax = do
     )
   assertBool "exact syntax accepts arbitrary retained punctuation"
     (matches (exact "hello!!!!") punctuated)
-  assertBool "$! structural matching ignores presentation whitespace"
+  assertBool "literal-template matching ignores presentation whitespace"
     ( all (matches structural) [compact, spaced, lineSeparated] )
   where
     matches rule expressionValue = case
@@ -622,20 +793,9 @@ testBraceSeparatorSemantics = do
 testDependentDeclarationPrecedence :: IO ()
 testDependentDeclarationPrecedence = do
   assertSourceExpression
-    "identifier expression binds before dependent declaration assignment"
+    "literal template binds before dependent declaration assignment"
     source
     expected
-  assertSourceExpression
-    "string and identifier-expression concatenation stays an expression"
-    "\"_\", $!($hello; Int)"
-    (MapConcatenation
-      (AST.asciiString "_")
-      (AtlasIdentifierExpression
-        (SyntaxBoundary
-          (AtlasMap
-            [ IdentifierExpression (ref "hello")
-            , ref "Int"
-            ]))))
   assertSourceExpressionRejected
     "the scalar identifier operator rejects Atlas operands"
     "$($hello; Int)"
@@ -646,14 +806,9 @@ testDependentDeclarationPrecedence = do
       (MapConcatenation
         (IdentifierExpression (ref "left"))
         (IdentifierExpression (ref "right"))))
-  assertSourceExpressionNormalized
-    "the Atlas identifier operator accepts singleton compact strings"
+  assertSourceExpressionRejected
+    "the obsolete literal-template operator is rejected"
     "$!($hello)"
-    (AtlasIdentifierExpression (IdentifierExpression (ref "hello")))
-  assertSourceExpressionNormalized
-    "the Atlas identifier operator accepts singleton standard strings"
-    "$!(\"hello\")"
-    (AtlasIdentifierExpression (AST.asciiString "hello"))
   case ( dependentDeclaration expected
        , declarationRuleBranches expected
        ) of
@@ -666,17 +821,23 @@ testDependentDeclarationPrecedence = do
         [ (owner, branch) | (owner, branch, _) <- branches ]
     _ -> assertFailure "dependent declaration did not compile into syntax rules"
   where
-    source = "$!($verify; _Expr | $hard; _Expr) := body"
+    source = "`verify %_Expr | hard %_Expr` := body"
     expected = MapSpecification (ref "body")
       (DependentArgument
-        (AtlasIdentifierExpression
-          (SyntaxBoundary
-            (AtlasMap
-              [ IdentifierExpression (ref "verify")
-              , EitherType (ref "_Expr") (IdentifierExpression (ref "hard"))
-              , ref "_Expr"
-              ])))
+        (LiteralTemplateExpression
+          (LiteralTemplate
+            (EitherExpression
+              (sequenceValue "verify")
+              (sequenceValue "hard"))))
         Nothing)
+    sequenceValue literal = IdentifierComposition
+      (LiteralTemplateSequence
+        ( IdentifierComposition
+            (LiteralTemplateLiteralAtom
+              (IdentifierTemplateLiteral (SimpleIdentifierString literal))) :|
+          [ IdentifierComposition
+              (LiteralTemplateCaptureAtom (ref "_Expr"))
+          ]))
     assertSourceExpression label input wanted =
       case parseSourceExpression input of
         Left failure -> assertFailure (renderParseFailure failure)
@@ -756,17 +917,35 @@ regressionTests = do
         (AtlasMap []))
   let syntaxFunction name pieces = SyntaxRule
         { syntaxIdentity = DeclaredSyntaxName name
-        , declarativeMatcherPlan = AtlasSyntaxMatcher
-            (AtlasSyntaxPattern
-              (AtlasSyntaxLiteral (ref name) :
+        , declarativeMatcherPlan = LiteralTemplateMatcher
+            (LiteralTemplatePattern
+              (literalPattern name :
                 [ case kind of
                     LiteralString literal ->
-                      AtlasSyntaxLiteral (ref literal)
-                    _ -> AtlasSyntaxCapture kind
+                      literalPattern literal
+                    ValueString target ->
+                      LiteralTemplatePatternCapture target
+                    ExpressionString target ->
+                      LiteralTemplatePatternCapture target
+                    BlockString target -> LiteralTemplatePatternCapture target
+                    FunctionBodyString target ->
+                      LiteralTemplatePatternCapture target
+                    DeclarationString target ->
+                      LiteralTemplatePatternCapture target
+                    DependentArgumentString target ->
+                      LiteralTemplatePatternCapture target
+                    IdentifierExpressionString target ->
+                      LiteralTemplatePatternCapture target
+                    StringLiteralString target ->
+                      LiteralTemplatePatternCapture target
                 | StringTemplateInterpolation kind <- pieces
                 ]))
         , syntaxSemantics = SyntaxAdapter (ref name)
         }
+      literalPattern literal = LiteralTemplatePatternLiteral
+        (if Identifier.isIdentifierValue literal
+          then IdentifierTemplateLiteral (SimpleIdentifierString literal)
+          else SymbolTemplateLiteral (SymbolLiteral literal))
       intHole = StringTemplateInterpolation (ValueString (ref "Int"))
       intLimitHole = StringTemplateInterpolation (ValueString (ref "IntLimit"))
       fromPhrase = foldl FunctionApplication (ref "from")
@@ -792,7 +971,7 @@ regressionTests = do
         [ intHole
         , syntaxLiteral "to"
         , intLimitHole
-        , syntaxLiteral "with-more-template-text"
+        , syntaxLiteral "extra"
         ]
   assert "Int template holes reject an Infinity AST"
     (matchRules matchesNumericHole [wrongFrom] fromPhrase
@@ -1145,7 +1324,7 @@ regressionTests = do
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "$!($take; _Expr) := (Int -> Int) datra.fun_body"
+        , "`take %_Expr` := (Int -> Int) datra.fun_body"
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -1156,7 +1335,7 @@ regressionTests = do
       parseSource (unlines
         [ "(Capture := datra.Expr"
         , "CaptureAlias := Capture"
-        , "$!($take; CaptureAlias) := (Any -> Any) datra.fun_body"
+        , "`take %CaptureAlias` := (Any -> Any) datra.fun_body"
         , "take Infinity)"
         ]) of
     Right (AtlasMap values) -> case reverse values of
@@ -1167,7 +1346,7 @@ regressionTests = do
       parseSource (unlines
         [ "(_DependentArgument := datra.DependentArgument"
         , "_Expr := datra.Expr"
-        , "$!($gate; _DependentArgument; $bound; _Expr; $body; Int) :="
+        , "`gate %_DependentArgument bound %_Expr body %Int` :="
             <> " ((Any; Any; Int) -> Int) datra.test.gate"
         , "gate x bound Int body x)"
         ]) of
@@ -1183,7 +1362,7 @@ regressionTests = do
   assert "a dependent argument capture does not introduce contextual it" $ case
       parseSource (unlines
         [ "(_DependentArgument := datra.DependentArgument"
-        , "$!($capture; _DependentArgument) := (Any -> Any) datra.fun_body"
+        , "`capture %_DependentArgument` := (Any -> Any) datra.fun_body"
         , "capture \"abc%(it)\")"
         ]) of
     Right (AtlasMap [_, _, Fun captured]) ->
@@ -1192,7 +1371,7 @@ regressionTests = do
   assert "an optional dependent argument capture does not introduce contextual it" $
     case parseSource (unlines
       [ "(_DependentArgument := datra.DependentArgument"
-      , "$!($capture; _DependentArgument) := (Any -> Any) datra.fun_body"
+      , "`capture %_DependentArgument` := (Any -> Any) datra.fun_body"
       , "capture \"abc%(it)\"?)"
       ]) of
       Right (AtlasMap [_, _, Fun captured]) ->
@@ -1201,8 +1380,8 @@ regressionTests = do
   case parseSource (unlines
       [ "(_DependentArgument := datra.DependentArgument"
       , "_DependentDeclaration := datra.DependentDeclaration"
-      , "$!($captureId; _DependentArgument) := (Any -> Any) datra.fun_body"
-      , "$!($captureDeclaration; _DependentDeclaration) := (Any -> Any) datra.fun_body"
+      , "`captureId %_DependentArgument` := (Any -> Any) datra.fun_body"
+      , "`captureDeclaration %_DependentDeclaration` := (Any -> Any) datra.fun_body"
       , "captureId x"
       , "captureId (x : Int)"
       , "captureDeclaration x := 1"
@@ -2397,7 +2576,13 @@ matchRules
   -> Either StringInterpolationMatchFailure Expression
 matchRules holeMatches rules expressionValue =
   matchSyntaxRules expressionParser
-    holeMatches rules expressionValue
+    matches rules expressionValue
+  where
+    matches capture value = case capture of
+      StringExpressionCapture stringExpression ->
+        holeMatches stringExpression value
+      LiteralTemplateCapture target ->
+        holeMatches (ValueString target) value
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
@@ -2450,7 +2635,6 @@ genExpression =
         (\binding result -> Begin [generatedDeclaration binding] result)
     , Gen.subterm genExpression (StringTemplate . (:[]) . StringTemplateInterpolation)
     , Gen.subterm genExpression IdentifierExpression
-    , Gen.subterm genExpression AtlasIdentifierExpression
     , Gen.subterm2 genExpression genExpression MapExpansion
     , Gen.subterm2 genExpression genExpression SuperEllipsisRange
     , Gen.subterm genExpression SuperEllipsisRangePlus
@@ -2712,18 +2896,26 @@ assertAstSyntax = do
     (renderExpression (ref "Nat") == "(ref $Nat)")
 
 assertIdentifierOperatorAstSyntax :: IO ()
-assertIdentifierOperatorAstSyntax =
-  assert "scalar and Atlas identifier operations have distinct AST symbols"
-    ( renderExpression (IdentifierExpression (ref "name"))
-        == "($ (ref $name))"
-      && renderExpression
-          (AtlasIdentifierExpression
-            (AtlasMap [IdentifierExpression (ref "hello"), ref "Int"]))
-        == "($! (<:> ($ (ref $hello)) (ref $Int)))"
-      && renderSourceExpression
-          (AtlasIdentifierExpression (IdentifierExpression (ref "hello")))
-        == "$!($hello)"
+assertIdentifierOperatorAstSyntax = do
+  assert "scalar literal expressions retain their AST symbol"
+    (renderExpression (IdentifierExpression (ref "name"))
+      == "($ (ref $name))")
+  assert "literal templates render through their dedicated AST"
+    ( renderExpression template == "`hello %Int`"
+      && renderSourceExpression template == "`hello %Int`"
     )
+  where
+    template = LiteralTemplateExpression
+      (LiteralTemplate
+        (IdentifierComposition
+          (LiteralTemplateSequence
+            ( IdentifierComposition
+                (LiteralTemplateLiteralAtom
+                  (IdentifierTemplateLiteral
+                    (SimpleIdentifierString "hello"))) :|
+              [ IdentifierComposition
+                  (LiteralTemplateCaptureAtom (ref "Int"))
+              ]))))
 
 assertAstOutput :: String -> String -> Expression -> IO ()
 assertAstOutput label source expected =

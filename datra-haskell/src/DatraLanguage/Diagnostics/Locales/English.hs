@@ -24,6 +24,7 @@ import DatraLanguage.Diagnostics.Application
   , CandidateRejectionReport (..)
   , CommandLineOptionFailure (..)
   , ModuleLoadFailure (..)
+  , LiteralTemplateParseFailure (..)
   , ParseFailure (..)
   , SyntaxRewriteFailure (..)
   )
@@ -66,6 +67,17 @@ localizeParseFailure :: ParseFailure -> LocalizedMessage
 localizeParseFailure failure = case failure of
   DatraSourceParseFailure message ->
     LocalizedMessage "source could not be parsed" [message]
+  DatraLiteralTemplateParseFailure reason ->
+    case reason of
+      MixedTemplateLiteral ->
+        LocalizedMessage "literal template contains a mixed literal"
+          ["separate identifier and symbolic components with one space"]
+      InvalidLiteralTemplateSpacing ->
+        LocalizedMessage "literal template spacing is invalid"
+          ["use exactly one ASCII space between components and no newlines"]
+      NullableLiteralTemplate ->
+        LocalizedMessage "literal template can match an empty identifier"
+          ["make at least one component required in every alternative"]
   SyntaxEnvironmentParseFailure message ->
     LocalizedMessage "syntax environment could not be constructed" [message]
   SyntaxRewriteParseFailure reason ->
