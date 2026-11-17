@@ -311,7 +311,7 @@ testLiteralTemplateMultilineMatching =
   where
     source = unlines
       [ "(`do %(_body : datra.Expr) yield %(_result : datra.Expr)` :="
-      , "  ((datra.Expr; datra.Expr) -> datra.Any) datra.fun_body"
+      , "  ((datra.Expr; datra.Expr) -> datra.Any) datra.fun_body;"
       , "do"
       , "  outerHead"
       , "  nested do yield inner"

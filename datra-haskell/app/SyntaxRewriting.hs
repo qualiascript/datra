@@ -92,7 +92,6 @@ resolvedRuleReturnType evaluate rule = case syntaxSemantics rule of
   -- The candidate frame requires a return-type witness. Discard expansion is
   -- still 'ElidedSyntax'; this empty-map type is never inserted into the AST.
   SyntaxDiscard -> evaluate (AtlasMap [])
-  SyntaxSequence -> evaluate (MapSequence [])
   _ ->
     (syntaxRuleAdapter rule >>= evaluate
       >>= interpretedFunction >>= Just . functionCodomain)

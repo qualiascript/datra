@@ -131,7 +131,6 @@ import StringInterpolation
   , declarationRules
   , declarationRuleBranches
   , commentSyntaxRule
-  , lineSequenceSyntaxRule
   , literalExpressionPattern
   , mapSyntaxRuleCaptures
   , identifierApplicationRule
@@ -630,8 +629,7 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
           { contextSourceSpan = Nothing
           , contextRuleFamilies = filter
               (not . null . syntaxRuleFamilyRules)
-              (families <> [externalFamily currentBase declarations
-                [lineSequenceSyntaxRule]])
+              families
           , contextClassify = classifySyntaxHoles currentBase modules declarations
           , contextCapture = captureSyntaxHole currentBase modules
               `withDeclarations` declarations

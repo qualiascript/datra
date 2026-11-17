@@ -19,7 +19,6 @@ module StringInterpolation
   , literalExpressionPattern
   , identifierApplicationRule
   , commentSyntaxRule
-  , lineSequenceSyntaxRule
   , syntaxWhitespaceSource
   , horizontalSyntaxWhitespace
   , syntaxApplicationImplementation
@@ -32,7 +31,6 @@ import DatraLanguage.DependentDeclaration
   , dependentDeclarationTemplateBranches
   )
 import DatraLanguage.AST
-import DatraLanguage.AST.Syntax ((<:>))
 import StringExpression
   ( StringExpression (..)
   , StringInterpolationTemplate
@@ -157,7 +155,6 @@ data SyntaxRuleSemantics
   | SyntaxApplication Expression Expression
   | DependentSyntax DependentSyntaxRule
   | SyntaxDiscard
-  | SyntaxSequence
   deriving (Eq, Show)
 
 data DependentSyntaxRule = DependentSyntaxRule
@@ -177,7 +174,6 @@ syntaxDependentRule rule = case syntaxSemantics rule of
   SyntaxApplication {} -> Nothing
   DependentSyntax dependent -> Just dependent
   SyntaxDiscard -> Nothing
-  SyntaxSequence -> Nothing
 
 syntaxRuleAdapter :: SyntaxRule -> Maybe Expression
 syntaxRuleAdapter rule = case syntaxSemantics rule of
@@ -186,7 +182,6 @@ syntaxRuleAdapter rule = case syntaxSemantics rule of
   DependentSyntax dependent -> Just
     (dependentSyntaxImplementation dependent)
   SyntaxDiscard -> Nothing
-  SyntaxSequence -> Nothing
 
 syntaxApplicationImplementation :: SyntaxRule -> Maybe Expression
 syntaxApplicationImplementation rule = case syntaxSemantics rule of
@@ -204,21 +199,6 @@ commentSyntaxRule = SyntaxRule
         (ExpressionString (AtlasMap [])))
   , syntaxSemantics = SyntaxDiscard
   }
-
--- | The final rule in every syntax environment. Newlines remain available to
--- declared syntax first; any that remain join two expressions sequentially.
-lineSequenceSyntaxRule :: SyntaxRule
-lineSequenceSyntaxRule = SyntaxRule
-  { declarativeMatcherPlan = LiteralExpressionMatcher
-      (LiteralExpressionPattern
-        [ LiteralExpressionPatternCapture expressionCapture
-        , LiteralExpressionPatternLiteral "\n"
-        , LiteralExpressionPatternCapture expressionCapture
-        ])
-  , syntaxSemantics = SyntaxSequence
-  }
-  where
-    expressionCapture = ExpressionString (AtlasMap [])
 
 declarationRules :: Expression -> [SyntaxRule]
 declarationRules = map third . declarationRuleBranches
@@ -403,9 +383,6 @@ expandSyntax rule selection =
     SyntaxApplication callable _ ->
       FunctionApplication callable suppliedInput
     SyntaxDiscard -> ElidedSyntax
-    SyntaxSequence -> case captures of
-      [left, right] -> left <:> right
-      _ -> templateSelectionWhole selection
   where
     captures = templateSelectionCaptures selection
     suppliedInput = case captures of
