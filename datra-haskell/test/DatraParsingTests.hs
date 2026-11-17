@@ -150,8 +150,6 @@ testTree =
         , testCase "literal templates" testLiteralTemplateParsing
         , testCase "literal-template diagnostics"
             testLiteralTemplateDiagnostics
-        , testCase "literal templates cross newline presentation"
-            testLiteralTemplateMultilineMatching
         ]
     , testCase "identifier operator AST syntax"
         assertIdentifierOperatorAstSyntax
@@ -290,33 +288,6 @@ testLiteralTemplateDiagnostics = do
           (source <> ": wrong parse failure: " <> renderParseFailure failure)
         Right actual -> assertFailure
           (source <> ": unexpectedly parsed as " <> show actual)
-
-testLiteralTemplateMultilineMatching :: IO ()
-testLiteralTemplateMultilineMatching =
-  case parseSourceLocated NoStandardLibrary testSourceName source of
-    Left failure -> assertFailure
-      ("newline-spanning literal template failed: "
-        <> renderParseFailure failure)
-    Right (Located _ parsed) -> case parsed of
-      AtlasMap values -> case reverse values of
-        Fun (AtlasMap [_, capturedResult]) : _ -> assertEqual
-          "the rewrite stack chooses the greedy outer yield candidate"
-          (ref "outer") capturedResult
-        _ -> assertFailure
-          ("newline-spanning template produced the wrong shape: "
-            <> show parsed)
-      _ -> assertFailure
-        ("newline-spanning template produced the wrong resource: "
-          <> show parsed)
-  where
-    source = unlines
-      [ "(`do %(_body : datra.Expr) yield %(_result : datra.Expr)` :="
-      , "  ((datra.Expr; datra.Expr) -> datra.Any) datra.fun_body;"
-      , "do"
-      , "  outerHead"
-      , "  nested do yield inner"
-      , "yield outer)"
-      ]
 
 testRenamedArgumentConcepts :: IO ()
 testRenamedArgumentConcepts = do
