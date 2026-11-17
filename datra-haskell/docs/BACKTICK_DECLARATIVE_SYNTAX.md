@@ -1,859 +1,564 @@
-# Backtick Declarative Syntax
+# Literal Templates: Implementation Plan
 
-## Status and scope
+## Proposal
 
-This document defines the parsing, representation, validation, and matching
-rules for backtick declarative syntax. A backtick template describes the
-surface form of a dependent declaration while making its captured operands
-explicit.
+Add backtick-delimited literal templates as the declarative syntax for matching
+the surface form of dependent declarations.
 
 ```datra
 `do %_Block? yield %_Expr`
 ```
 
-The example has four parts: the literal `do`, an optional capture of `_Block`,
-the literal `yield`, and a capture of `_Expr`. Matching consumes the entire
-candidate syntax. Only the two capture parts are supplied to the declared
-function.
+The example contains two literals, `do` and `yield`, and two captures,
+`_Block?` and `_Expr`. The literals decide whether the declaration matches.
+Only the captures are supplied to the declared function.
 
-Backtick templates are their own syntactic and AST category. They are not
-Atlas expressions encoded behind an operator, and they are not reparsed
-strings. The `$` operator continues to construct scalar literal expressions;
-there is no `$!` token or corresponding AST constructor in this grammar.
+The terminology is:
 
-This design uses the generic string-expression and inverse-selection model
-defined in [GENERIC_STRING_EXPRESSIONS.md](./GENERIC_STRING_EXPRESSIONS.md).
-It adds a typed declarative-template layer which retains literal boundaries,
-grouping, optionality, and captures until matching is compiled.
+- `$` forms are **literal expressions**;
+- `$!` forms are **obsolete literal templates** and will be removed; and
+- backtick forms are **literal templates**.
 
-## Source model
+This is one replacement feature. The implementation adds literal templates,
+migrates the standard library and tests to them, and then deletes the obsolete
+`$!` parser, AST, evaluator, renderer, and matcher paths. There is no period in
+which the two template representations are allowed to interoperate.
 
-A backtick template is a nonempty, ordered tree of:
+Literal templates are a direct syntactic and semantic category. They are not
+Atlas operands, strings which are reparsed, or literal expressions hidden
+behind another operator. They also do not depend on the planned `_StrExpr`
+feature. Captures retain ordinary Datra target expressions and use the syntax-
+capture and specification mechanisms which already exist.
 
-- identifier literals;
-- symbolic literals;
-- interpolation captures;
-- grouped subtemplates; and
-- ordinary optional and either/federation composition.
+## Surface syntax
 
-Sibling parts are delimited by template whitespace. Structural punctuation
-belongs to the grammar and may be adjacent to the part it modifies.
+### Grammar
+
+The grammar remains the proposed literal-template grammar. Its `separator`
+production is exactly one ASCII space. A newline, carriage return, tab,
+repeated space, leading space, or trailing space is not template layout.
+
+```text
+literal-template ::= "`" template "`"
+
+template         ::= sequence (either-operator sequence)*
+
+sequence         ::= part (separator part)*
+
+part             ::= atom ["?"]
+
+atom             ::= literal
+                   | capture
+                   | group
+
+group            ::= "(" template ")"
+
+capture          ::= "%" simple-capture
+                   | "%" "(" expression ")"
+
+simple-capture   ::= quoted-string-simple-interpolation
+
+literal          ::= identifier-literal
+                   | symbolic-literal
+
+either-operator  ::= separator "|" separator
+
+separator        ::= " "
+```
+
+Templates and groups are nonempty. There is no padding just inside backticks
+or group parentheses. `?` is adjacent to the atom it modifies. `|` has exactly
+one space on each side.
+
+The no-newline rule applies to everything between the backticks, including a
+compound capture. The expression inside `%(` ... `)` otherwise uses the
+ordinary Datra expression grammar.
+
+Valid examples:
 
 ```datra
+`do %_Block? yield %_Expr`
 `if %Bool then %_Expr (else %_Expr)?`
 `%Nat + %Nat`
-`from %Int (to %IntLimit)?`
+`from %Int (to %IntLimit | %_Direction)`
+`pair %(_x : Int) with %(_y : Int)`
 ```
 
-The source whitespace delimits parts; it is not copied into an unstructured
-pattern string. Match-time whitespace constraints are derived compositionally
-from the parts on each side of a boundary.
-
-## Parser and rewriting foundation
-
-The ordinary source parser retains presentation before any declaration is
-selected. Concrete punctuation and separators which the core grammar does not
-claim are represented directly in the expression tree:
-
-```haskell
-data Expression
-  = ...
-  | UnresolvedSyntaxLiteral String
-  | SyntaxRemainder String
-  | SyntaxBoundary Expression
-  | ElidedSyntax
-```
-
-`UnresolvedSyntaxLiteral` may contain arbitrary punctuation or whitespace.
-Spaces, tabs, carriage returns, and newlines remain exact source data at this
-boundary. There is no neutral lexer, symbolic-syntax character allowlist,
-separator record, layout AST, or adjacent-value constructor. Core operators
-are claimed by the ordinary grammar; all other presentation remains available
-to the selected declarative matcher.
-
-`SyntaxRemainder` retains source whose concrete extent is established by an
-early rule, such as the text following `#` through the active line or syntax
-boundary. `SyntaxBoundary` retains an enclosing concrete boundary during
-rewriting. `ElidedSyntax` records syntax which has been consumed without
-contributing an expression.
-
-Elision is not the semantic empty map. A written `()` remains `AtlasMap []`
-with its ordinary value and type. Parent finalization removes `ElidedSyntax`
-from applications and sequences before evaluation; it never renders or
-evaluates it as `()`.
-
-The parser does not assign application meaning to spaces or sequence meaning
-to newlines. Final built-in dependent rules supply those meanings after
-visible declarations have had an opportunity to match the retained
-presentation. The comment rule is the earliest built-in rule. Line sequencing
-and horizontal application are the final fallback rules.
-
-## Lexical classes
-
-### Identifier literals
-
-An identifier literal is a nonempty `SimpleIdentifierString` whose characters
-come from the ordinary Datra identifier-character class: ASCII letters,
-digits, `_`, and `'`. There is no first-character restriction. `2`, `2nd`,
-and `do` are all valid identifier spellings.
-
-This simplification applies to identifier validation generally, not only to
-backtick parsing. A parser position which explicitly expects an identifier,
-such as `$` or a backtick literal, accepts `2`. In an ordinary expression
-position, the lexer first consumes the maximal identifier-character run: an
-all-decimal run is a numeric literal, while a run containing any other
-identifier character is an identifier. Thus ordinary `2` remains a number,
-ordinary `2nd` is an identifier, and `$2` and backtick `2` are explicitly
-identifiers.
-
-An identifier literal denotes the same scalar literal expression as the `$`
-form with that identifier:
+Invalid spacing:
 
 ```datra
-do       # denotes $do
-yield    # denotes $yield
-2        # denotes $2
+` do %_Expr`          # leading space
+`do  %_Expr`          # repeated space
+`do\t%_Expr`          # tab separator
+`do %_Expr `          # trailing space
+`( do %_Expr)`        # padding inside a group
+`do
+%_Expr`               # newline
 ```
 
-The AST retains `SimpleIdentifierString`; it does not store the literal as an
-unchecked `String`.
+### Captures
 
-### Symbolic literals
-
-A symbolic literal is a nonempty ASCII run whose characters do not belong to
-the identifier class and are not whitespace. In particular, a symbolic
-literal can never contain a space, tab, carriage return, newline, or any other
-horizontal or vertical whitespace character. A symbolic literal denotes the
-same scalar literal expression as a quoted `$` operand:
+The parser after `%` is the same parser used by quoted interpolation. A simple
+capture uses its simple form:
 
 ```datra
-+        # denotes $"+"
-++       # denotes $"++"
+%Nat
+%_Expr
+%_Block?
 ```
 
-The AST retains a validated `SymbolLiteral` newtype whose smart constructor
-checks all three properties: nonempty, ASCII, and entirely non-identifier,
-non-whitespace characters. A symbolic literal is not represented by a bare
-`String`, an identifier with an ad hoc flag, or a rendered expression.
-
-The structural parser reserves punctuation only while it is unescaped and in
-a position where a structural production applies. Once escaped, punctuation
-may be symbolic literal data. This makes the semantic character predicate
-simple:
-
-```text
-isSymbolLiteralCharacter c =
-  isAscii c && not (isIdentifierCharacter c) && not (isWhitespace c)
-```
-
-### Structural punctuation
-
-The backtick delimiters, `%`, parentheses, postfix `?`, and `|` are parsed as
-grammar before the parser attempts literal fallback. Consequently they need
-no exceptions in literal classification:
-
-- `%` starts an interpolation capture;
-- `(` and `)` delimit a grouped template or the payload of `%(`;
-- `?` applies ordinary optionality to the immediately preceding template
-  atom;
-- `|` uses the ordinary either/federation composition; and
-- `` ` `` terminates the template.
-
-An escaped structural character is data rather than grammar. Backtick
-templates use the quoted-string escape mechanism, extended with `` \` `` for
-the delimiter. Escaped data is still required to form a homogeneous
-identifier or symbolic literal after decoding. The usual escaped `%`, `?`,
-`#`, backslash, newline, and hexadecimal characters retain their quoted-string
-decoding, but the decoded character must satisfy the literal invariant. Thus
-an escape which decodes to a space or newline is rejected as
-`WhitespaceInTemplateLiteral`; escaping whitespace cannot smuggle it into a
-symbolic literal.
-
-An unescaped `#` invokes the earliest built-in dependent rule. Its
-`SyntaxRemainder` is discarded and contributes no template part. An escaped
-`#` contributes symbolic literal data.
-
-### Mixed literals
-
-Literal fallback consumes one maximal, non-whitespace source run after all
-structural forms have had an opportunity to parse. The decoded run must be
-homogeneous:
-
-- all identifier characters produce an identifier literal;
-- all symbolic characters produce a symbolic literal; and
-- a run containing both classes is a compile-time `MixedTemplateLiteral`
-  error.
-
-Whitespace always terminates the run and belongs to template layout. It is
-never retained by either literal constructor.
-
-The parser must not repair a mixed run by splitting it at the lexical-class
-transition. Thus this is invalid:
-
-```datra
-`do+yield`
-```
-
-and this is the explicit form:
-
-```datra
-`do + yield`
-```
-
-This rule is not implemented as a list of exceptions for `%`, `?`, or
-parentheses. Those characters have already been consumed by the structural
-grammar when literal fallback runs. A future structural form obtains the same
-behavior by being added to the structural grammar, without changing mixed
-literal validation.
-
-## Grammar
-
-The following grammar describes template structure. `hspace` is nonempty
-horizontal whitespace. `linebreak` includes the following indentation and
-comments. `expression` is parsed by the ordinary Datra expression parser.
-
-```text
-backtick-template  ::= "`" template-layout? template "`"
-
-template           ::= sequence (either-operator sequence)*
-
-sequence           ::= part (separator part)*
-
-part               ::= atom ["?"]
-
-atom               ::= literal
-                     | capture
-                     | group
-
-group              ::= "(" template-layout? template template-layout? ")"
-
-capture            ::= "%" simple-capture
-                     | "%" "(" expression ")"
-
-simple-capture     ::= quoted-string-simple-interpolation
-
-literal            ::= identifier-literal
-                     | symbolic-literal
-
-either-operator    ::= template-layout? "|" template-layout?
-
-separator          ::= hspace
-                     | permitted-linebreak
-
-permitted-linebreak
-                   ::= linebreak
-                       # valid only when the preceding part is a literal
-
-template-layout    ::= hspace | permitted-linebreak
-```
-
-`simple-capture` is exactly the simple interpolation production used by
-quoted strings. It accepts the same atom forms and stops at the same boundary.
-Backtick parsing must call that shared parser rather than reproduce or extend
-its token rules.
-
-Postfix `?` then applies uniformly to the completed template atom:
-
-```datra
-%_Block?       # optional capture of _Block
-keyword?       # optional identifier literal
-%(_Expr)?      # optional compound capture
-(else %_Expr)? # optional group
-```
-
-When `?` must be part of the captured Datra expression rather than template
-optionality, it is written inside a compound interpolation:
+The postfix `?` in `%_Block?` makes the template part optional. If `?` belongs
+to the captured Datra expression, use a compound capture:
 
 ```datra
 %(_Block?)
 ```
 
-Compound capture payloads use the quoted-interpolation spelling `%(` ... `)`:
+Compound capture syntax is also required for named captures and other
+multi-token target expressions:
 
 ```datra
-`with %(List _Expr) %_FunctionBody`
+%(_x : Int)
+%(List _Expr)
+%(left? : Int | right? : Str)
 ```
 
-Parentheses without a leading `%` group template parts. This is the template
-counterpart of ordinary grouping and Atlas composition: it preserves the
-contained part sequence and permits ordinary postfix optionality. It does not
-turn the contained source into an opaque substring.
+Optional names remain distinct from optional values. In `%(_x? : Int)`, the
+name is optional and the captured value is an `Int`. In `%(_x : Int?)`, the
+name is required and the captured value belongs to `Int?`. Template
+optionality is the postfix outside the completed capture, as in
+`%(_x : Int)?`.
 
-`|` uses the existing either/federation parser, precedence, AST, evaluation,
-specification, and subfederation mechanisms. It is not a backtick-specific
-branch list. Parentheses disambiguate its operands in the same way as ordinary
-Datra expressions:
+### Literals
+
+An identifier literal is a nonempty run of ASCII letters, digits, `_`, and
+`'`. It has no first-character restriction, so `2`, `2nd`, and `do` are all
+valid identifier literals.
+
+A symbolic literal is a nonempty ASCII run containing only non-identifier,
+non-whitespace characters. Structural characters are recognized before
+literal fallback:
+
+- `%` starts a capture;
+- `(` and `)` delimit a group or compound capture;
+- `?` applies optionality;
+- `|` composes alternatives; and
+- a backtick closes the template.
+
+The quoted-string escape rules, plus `\`` for a backtick, make a structural
+character literal data. Decoding an escape must still produce a homogeneous
+identifier or symbolic literal.
+
+Literal fallback consumes one maximal non-whitespace run. The decoded run must
+belong entirely to one lexical class. It is an error to combine identifier and
+symbol characters in one literal:
 
 ```datra
-`verify (%_Expr) | (hard %_Expr)`
+`do+yield`            # mixed literal
+`take, %Int`          # mixed literal
 ```
 
-An escaped `\|` is symbolic literal data. Other ordinary Datra operators are
-not automatically imported into the template grammar: an unescaped `+`, for
-example, remains the symbolic literal in `%Nat + %Nat`.
-
-The parser selects structural productions before literal fallback and commits
-after consuming a structural introducer. A malformed capture or group is
-therefore diagnosed as that construct; it is never reconsidered as literal
-text.
-
-## Relationship to `$` string-expression templates
-
-Backtick templates and `$` string-expression templates share one capture
-model but deliberately have different literal-matching models.
-
-Both forms are ordered compositions of literal constraints and `%`
-interpolations. In both forms:
-
-- only interpolation nodes produce captures;
-- literal nodes constrain the match and are never supplied to the function;
-- captures retain their ordinary `_StrExpr T` provenance;
-- capture order is left-to-right structural source order;
-- optional, either/federation, and dependent-argument behavior reuse the
-  existing language abstractions; and
-- a successful match consumes the complete candidate presentation selected
-  by the enclosing parser.
-
-The difference is how literal constraints and their boundaries are read.
-
-| Property | `$` string-expression template | Backtick template |
-| --- | --- | --- |
-| Literal domain | Arbitrary decoded ASCII string data | Typed identifier or symbolic literals |
-| Literal matching | Exact decoded characters | Exact literal characters plus derived boundary whitespace |
-| Spaces and newlines | Exact literal data | Template layout; never symbolic literal data |
-| Mixed identifier/symbol text | Valid literal text | Invalid as one literal part |
-| `%` interpolation | Quoted-string interpolation grammar | The same simple and compound interpolation grammar |
-| `?`, `|`, parentheses | Literal unless part of an interpolated Datra expression | Structural template composition unless escaped |
-| Captured values | Interpolation parts only | Interpolation parts only |
-| Compiler | Exact string-expression concatenation | Typed component and boundary compiler |
-| Matcher | Character-exact presentation matcher | Component matcher with lexical-edge constraints |
-
-### Exact `$` literal matching
-
-A `$` template literal consumes exactly the decoded characters written in its
-string-expression literal component. Escape spelling and comments are resolved
-by quoted-string parsing first; the resulting character sequence is what must
-match. No tokenization, whitespace normalization, AST parsing, or lexical-edge
-rule is applied to that literal sequence.
-
-The direct quoted operand of `$` is parsed by the ordinary quoted
-string-expression parser, including interpolation. Thus `$"literal"` is a
-zero-capture exact template and `$"%Nat + %Nat"` is an interpolated exact
-template. Parenthesized `$(expression)` remains available for a general string
-expression; it is not required merely to enable quoted interpolation.
-
-For example:
+Write separate components instead:
 
 ```datra
-$"%Nat+%Nat"         # matches the presentation 2+2, not 2 + 2
-
-$"%Nat + %Nat"       # matches the presentation 2 + 2, not 2+2
-
-`%Nat + %Nat`        # matches both presentations
+`do + yield`
+`take , %Int`
 ```
 
-Inside each quoted string, every decoded space is an exact literal constraint.
-Multiple spaces, tabs, and newlines are distinct and must not be collapsed. An
-escaped literal `%` is exact literal data; an unescaped interpolation `%` is a
-capture.
+The separator spaces are template syntax, not literal data. The matcher can
+therefore match `take, 3` even though the template spells `take , %Int`.
 
-“Exact” refers to the complete presentation retained by the source parser.
-Literal spaces, tabs, and newlines remain part of that presentation and are
-matched character for character. A capture may decode its selected substring
-through the capture type's inverse codec, but that codec does not replace,
-canonicalize, or re-render the surrounding literal presentation. The matcher
-must not render an AST and parse the result to choose another notion of
-exactness.
+### Alternatives, groups, and optional parts
 
-Exact literals are not restricted to identifiers or pure symbolic tokens.
-`Nat++`, `Nat ++`, and `hello!!!!` are all valid exact presentations, and the
-first two are distinct. The exact matcher does not call `words`, normalize
-layout, or consult a symbolic-character predicate.
+`|` uses the existing either/federation composition. It does not introduce a
+literal-template-specific alternative type or evaluator. Parentheses group a
+template, and `?` can make any completed atom optional.
 
-### Backtick boundary matching
+```datra
+`verify %_Expr | hard %_Expr`
+`from %Int (to %IntLimit | %_Direction)`
+`if %Bool then %_Expr (else %_Expr)?`
+```
 
-Backtick source whitespace separates typed components rather than contributing
-literal string data. The matcher uses the lexical-edge rule defined below, so
-word-to-symbol and symbol-to-word boundaries may omit candidate whitespace,
-while equal-class boundaries require it. This is why `%Nat + %Nat` accepts
-both `2+2` and `2 + 2` without weakening the exact semantics of `$` templates.
+The existing optional, specification, and subfederation rules apply to the
+resulting composition. The implementation must not add special cases keyed by
+the names `_Expr`, `_Block`, or any standard-library binding.
 
-### Required `$` implementation correction
+## Semantic representation
 
-The `$` declarative-template compiler must retain each decoded literal chunk
-exactly. In particular, it must not:
+The parser constructs a dedicated literal-template tree:
 
-- send a direct quoted operand through a literal-only parser which suppresses
-  interpolation;
-- split a literal with `words` or another whitespace tokenizer;
-- join template components with `unwords` or inserted separators;
-- parse literal text through the ordinary Datra expression parser and match
-  only the resulting AST shape; or
-- include a literal component in the projected dependent arguments.
+```haskell
+data LiteralTemplateLiteral
+  = IdentifierTemplateLiteral SimpleIdentifierString
+  | SymbolTemplateLiteral SymbolLiteral
 
-Adjacent literal chunks may be coalesced only by lossless string
-concatenation. The compiled matcher is the ordinary exact concatenation of
-singleton literal-string components and typed `_StrExpr T` capture components
-described in [GENERIC_STRING_EXPRESSIONS.md](./GENERIC_STRING_EXPRESSIONS.md).
-This exact matcher is not shared with backticks. The implementations share
-only the generic capture-selection interface and typed evidence after their
-respective literal and boundary matchers have succeeded.
+data LiteralTemplateAtom expression
+  = LiteralTemplateLiteralAtom LiteralTemplateLiteral
+  | LiteralTemplateCaptureAtom expression
+  | LiteralTemplateGroupAtom (LiteralTemplate expression)
 
-### Compiler-path separation
+data LiteralTemplatePart expression
+  = RequiredTemplatePart (LiteralTemplateAtom expression)
+  | OptionalTemplatePart (LiteralTemplateAtom expression)
 
-The two forms have distinct declaration-head AST variants and distinct typed
-compiled matcher plans:
+newtype LiteralTemplateSequence expression =
+  LiteralTemplateSequence (NonEmpty (LiteralTemplatePart expression))
+
+type LiteralTemplate expression =
+  ExistingFederationComposition (LiteralTemplateSequence expression)
+```
+
+Names may follow local conventions, but these distinctions are required:
+
+- identifier and symbolic literals have different validated payload types;
+- a capture stores the ordinary Datra expression written after `%`;
+- grouping and optionality remain explicit;
+- sequences and groups are nonempty; and
+- alternatives reuse the existing either/federation representation.
+
+Whitespace is validated while parsing and is not represented in the semantic
+AST. The parser does not construct separator or layout nodes, retain a raw
+template string, or produce a generic Atlas operand to inspect later.
+
+The declaration-head AST distinguishes literal expressions from literal
+templates before evaluation:
 
 ```haskell
 data DeclarativeIdentifier expression
-  = ExactStringIdentifier expression
-  | BacktickIdentifier (BacktickTemplate expression)
+  = LiteralExpressionIdentifier expression
+  | LiteralTemplateIdentifier (LiteralTemplate expression)
+```
 
+The literal-template constructor is produced directly by the backtick parser.
+It is never lowered through `AtlasIdentifierExpression` or discovered by
+examining an evaluated expression.
+
+## Parser implementation
+
+Implement the parser in this order:
+
+1. When a declaration head begins with a backtick, enter the literal-template
+   parser and commit to that form.
+2. Reject any newline or carriage return before parsing a template component.
+3. Parse capture, group, alternative, and postfix structure before literal
+   fallback.
+4. Parse simple captures with the existing quoted-interpolation parser. Parse
+   compound capture payloads with the ordinary expression parser, restricted
+   to the current line.
+5. Consume a maximal literal run and validate that it is entirely identifier
+   or entirely symbolic.
+6. Between sibling parts, require exactly one ASCII space. Around `|`, require
+   exactly one ASCII space on each side. Reject leading, trailing, repeated,
+   missing, tab, and newline spacing.
+7. Construct the semantic tree directly and discard the accepted separator
+   character.
+
+The parser adds only two literal-template-specific diagnostics:
+
+- `MixedTemplateLiteral`, located at the first transition between identifier
+  and symbol characters in one maximal literal; and
+- `InvalidLiteralTemplateSpacing`, covering every violation of the one-space,
+  no-newline rule.
+
+Ordinary delimiter, interpolation, and expression failures use the parser's
+existing diagnostics. Do not add any other literal-template-specific
+diagnostic constructors. Other failures are already rejected by the grammar
+which owns the construct.
+
+Tests for the two new diagnostics compare their typed constructors and source
+locations. The design does not require a separate diagnostic model for every
+literal-template production.
+
+## Compilation
+
+Compile a literal template into a matcher tree with two leaf kinds:
+
+- a literal leaf constrains candidate syntax and produces no function
+  argument; and
+- a capture leaf retains its Datra target expression, selects candidate
+  syntax, validates it, and produces one function argument.
+
+Groups, optional parts, and alternatives compile recursively through their
+existing language abstractions. Compilation must not render the template,
+concatenate it into a string pattern, reparse it, infer a capture kind from a
+type name, or build an Atlas-template compatibility value.
+
+Literal expressions keep their existing exact-presentation matcher. Literal
+templates get a separate matcher plan:
+
+```haskell
 data DeclarativeMatcherPlan expression
-  = ExactPresentationMatcher (ExactStringTemplate expression)
-  | BacktickMatcher (CompiledBacktickTemplate expression)
+  = LiteralExpressionMatcher (CompiledLiteralExpression expression)
+  | LiteralTemplateMatcher (CompiledLiteralTemplate expression)
   | NativeApplicationMatcher NativeApplicationPattern
   | LineSequenceMatcher
   | HorizontalApplicationMatcher
 ```
 
-The names are schematic, but the sum types and separation are normative.
-Neither variant is represented as an Atlas expression, and neither compiler
-discovers its variant by inspecting an untyped expression after parsing.
-The `ExactStringIdentifier` payload remains the ordinary string-producing
-expression and retained concatenation provenance defined by the generic
-string-expression design; this sketch does not reintroduce a closed semantic
-`StringExpression` AST.
+The two declarative forms may share the interpolation parser, typed match
+evidence, capture order, and final dependent-argument packaging. They do not
+share literal matching, capture matching, whitespace rules, or a pre-match
+template representation.
 
-The paths may share:
+## Matching
 
-- the quoted-string interpolation parser used after `%`;
-- generic `_StrExpr T` inverse selection for a capture;
-- typed match evidence and capture ordering;
-- existing optional, either/federation, and specification machinery; and
-- existing dependent-argument packaging after matching.
+### Candidate selection
 
-They must not share:
+The ordinary parser retains candidate presentation in the existing syntax AST.
+The literal-template matcher works over that retained structure and its source
+boundaries. It does not render an AST to choose a match and does not reparse a
+selected substring.
 
-- a declaration-head AST constructor;
-- literal tokenization or normalization;
-- a lowered shared-AST pattern;
-- whitespace or boundary semantics; or
-- a matcher plan which erases whether it came from `$` or backticks.
+For each rule, the matcher:
 
-The common result of matching is typed selection evidence, not a common
-pre-match template representation. The exact `$` compiler preserves decoded
-string chunks. The backtick compiler preserves typed literals, structural
-composition, and boundary constraints. Only after either matcher succeeds may
-their capture selections enter the shared dependent-argument path.
+1. selects the candidate extent fixed by the enclosing declarative rewrite;
+2. walks the compiled template from left to right;
+3. matches literal leaves against retained identifier or symbolic syntax;
+4. tries capture extents longest-first and backtracks when their target does
+   not accept the selection or later parts fail;
+5. applies optional and either/federation composition through the existing
+   machinery; and
+6. succeeds only when the complete candidate extent is consumed.
 
-Each matcher dispatches on its plan and uses only that mode's projection.
-Typed hole validation is shared only after a mode-specific match succeeds.
-Matcher mode and built-in identity are never represented by a Boolean flag,
-display name, marker expression, or string sentinel.
+Declaration order continues to resolve competing rules. The existing matcher
+policy resolves decompositions within one rule. Do not add a separate
+literal-template ambiguity pass or diagnostic.
 
-Rule identity is a separate typed sum. Declared names participate in ordinary
-introduction order and shadowing; comment, line-sequence, and horizontal-
-application identities do not masquerade as declaration names.
+### Candidate whitespace
 
-### Removal of the Atlas-template operator
+The exactly-one-space rule applies to the source of the literal template, not
+to candidate presentation. Template spaces separate components and are not
+copied into the matcher.
 
-`$!` is not a compatibility spelling for backticks and has no place in the
-resulting parser, AST, evaluator, prettier, source renderer, declaration-head
-model, or matcher dispatch. The implementation must remove:
-
-- `AtlasIdentifierExpression` and `AtlasIdentifierExpressionBody`;
-- `AtlasIdentifierExpressionOperator` and the `$!` token;
-- evaluated Atlas-identifier plans and their renderer branches;
-- declaration branching which treats an Atlas operand as a template; and
-- tests, fixtures, or standard-library declarations which retain `$!`.
-
-Backtick templates are parsed directly into `BacktickTemplate`. They must not
-be lowered to the former Atlas operand shape or routed through a compatibility
-adapter. Likewise, exact `$` templates must not be routed through the backtick
-compiler merely because both forms contain interpolation captures.
-
-## Template whitespace
-
-Horizontal whitespace may delimit any two sibling parts. A source line break
-may delimit parts only when the immediately preceding completed part is an
-identifier literal or symbolic literal.
-
-```datra
-`do
-  %_Block? yield %_Expr`       # valid
-
-`do %_Block?
-  yield %_Expr`                # LineBreakAfterCapture
-```
-
-Closing a group or applying `?` does not disguise the preceding part for this
-rule. A line break after a group is valid only when the group's rightmost
-realized part is a literal on every branch. A line break after an optional
-part is valid only when both the present and absent branches leave a literal
-as the rightmost realized part. This branch-total rule prevents layout from
-depending on whether an optional capture happens to match.
-
-Line breaks within a `%(` compound capture belong to the ordinary Datra
-expression parser and are not template separators. Comments follow the same
-rule as the whitespace which terminates them.
-
-Leading and trailing template layout is accepted only when it satisfies the
-same line-break rule. In particular, a line break immediately before the
-closing backtick is rejected when the template ends in a capture.
-
-## Semantic AST
-
-The semantic representation distinguishes concepts which have different
-matching rules:
-
-```haskell
-data BacktickLiteral
-  = IdentifierBacktickLiteral SimpleIdentifierString
-  | SymbolBacktickLiteral SymbolLiteral
-
-data BacktickPart expression
-  = BacktickLiteralPart BacktickLiteral
-  | BacktickCapturePart expression
-  | BacktickGroupPart (BacktickTemplate expression)
-  | BacktickOptionalPart (BacktickPart expression)
-
-newtype BacktickSequence expression =
-  BacktickSequence (NonEmpty (BacktickPart expression))
-
--- Conceptually: the existing Either/federation composition whose leaves are
--- BacktickSequence values.
-type BacktickTemplate expression =
-  ExistingFederationComposition (BacktickSequence expression)
-```
-
-Exact constructor names may follow local naming conventions, but the
-distinctions and validated payload types are normative. In particular, the
-implementation must reuse or generalize the existing either/federation
-abstraction; it must not add a parallel `BacktickAlternative` evaluator,
-specification rule, or subfederation rule.
-
-The parser may retain a parser-local separator node:
-
-```haskell
-data TemplateSeparator
-  = HorizontalTemplateSeparator
-  | LineTemplateSeparator
-```
-
-That node exists only long enough to validate layout and attach precise
-diagnostic spans. Raw whitespace is not part of the semantic template. The
-semantic AST also does not contain a generic Atlas operand which later needs
-to be inspected to discover literals and captures.
-
-Literal nodes retain their lexical class until the matcher is compiled. Their
-scalar `$` meaning is a semantic law, not an instruction to erase them early:
-the lexical class is required by the adjacency rules below.
-
-## Compilation and matching
-
-### Components
-
-Compilation produces an ordered matcher tree with two leaf kinds:
-
-- a literal leaf constrains the candidate but produces no capture; and
-- a capture leaf uses the ordinary inverse selection for the interpolation
-  payload and produces one typed capture.
-
-Groups compile recursively. Optional parts use the existing optional-value
-and optional-name abstractions. `|` uses the existing either/federation
-abstraction. Compilation does not render the AST and reparse it, infer a part
-kind from a type name, or recover boundaries from concatenated text.
-
-### Lexical edges
-
-Each realized, nonempty matched component exposes its left and right lexical
-edge:
+Each realized component exposes the lexical class of its first and last source
+character:
 
 ```text
-IdentifierEdge  # adjacent character is an identifier character
-SymbolEdge      # adjacent character is a symbolic character
+IdentifierEdge
+SymbolEdge
 ```
 
-Literal edges are known statically. Capture edges come from the concrete
-substring selected by the capture's ordinary string-expression inverse. A
-group exposes the first and last edges of its realized children. An absent
-optional part exposes no edges, so adjacency is computed across it.
+Literal edges are known from their validated payload. Capture edges come from
+the retained source boundaries of the selected candidate extent, never from a
+rendered value.
 
-For every pair of adjacent realized components:
+For adjacent realized components:
 
-- equal edge classes require at least one whitespace character between them;
-- different edge classes permit zero or more whitespace characters; and
-- an empty component is skipped before the rule is applied.
+- equal edge classes require candidate whitespace between them;
+- different edge classes allow candidate whitespace but do not require it;
+  and
+- absent optional components are skipped before adjacency is computed.
 
-This is one boundary rule, not a collection of operator-specific cases.
+This permits both presentations below:
 
 ```datra
-`%Nat + %Nat`       # matches both 2+2 and 2 + 2
-`do yield`          # matches do yield, never doyield
-`+ -`               # requires whitespace between the two symbolic literals
+2+2
+2 + 2
 ```
 
-The rule prevents two declared components from collapsing into a single
-token of the same class. It still permits the normal lexical transition
-between identifier-like and symbolic text.
+to match:
 
-Whitespace is matched at component boundaries rather than by inserting
-literal spaces into the pattern. When whitespace is required, any whitespace
-character accepted by the ordinary source lexer satisfies the boundary. The
-template-source line-break restriction remains a separate construction-time
-invariant.
+```datra
+`%Nat + %Nat`
+```
 
-A capture owns no leading or trailing template-separator trivia. The boundary
-matcher owns that trivia, while whitespace internal to the captured ordinary
-Datra expression remains part of the capture. The enclosing dependent-
-expression parser fixes the candidate extent before template matching begins;
-full consumption is measured against that fixed extent.
+It still prevents `do yield` from matching `doyield`, because two identifier
+components require a candidate boundary.
 
-Comments are handled by the earliest built-in dependent rule before any
-visible template rule can inspect their remainder. The backtick matcher never
-receives comment text as a candidate component. It receives the retained
-presentation surrounding the elided comment, including any real separator
-which remains after the comment boundary.
+### Direct capture validation
 
-Candidate selection runs once per rewrite node. Child expansion does not cause
-the scheduler to enumerate candidates again for the parent. Comment elision,
-line sequencing, and horizontal application must therefore compose through
-ordinary bottom-up parent finalization rather than depend on a scheduler
-retry.
+A literal-template capture is not a string expression. Its payload is the
+ordinary Datra expression written after `%`, including any dependent-argument
+name.
 
-### Full consumption and capture projection
+For each selected candidate extent:
 
-A template match succeeds only when:
+1. evaluate the capture target in the declaration's lexical scope, including
+   validation-only bindings established by earlier named captures;
+2. if the evaluated target is a supported syntax category, use the existing
+   syntax-capture operation;
+3. otherwise evaluate the selected candidate expression and apply ordinary
+   specification against the evaluated target; and
+4. retain the selected source AST as the capture evidence and projected
+   function argument.
 
-1. every required template part succeeds;
-2. every chosen optional branch succeeds;
-3. all adjacency constraints succeed; and
-4. the candidate extent is consumed completely.
+This path reuses the implemented syntax-category and canonical value-capture
+behavior. It does not construct `_StrExpr`, a string federation, a canonical
+string codec, or a string-expression capture wrapper. A failed capture rejects
+that candidate decomposition and lets the structural matcher backtrack.
 
-A prefix match with an unconsumed suffix is not a successful match for the
-same candidate extent.
+### Capture projection
 
-Only `BacktickCapturePart` nodes contribute function inputs. Literal leaves,
-groups, separators, and optional wrappers never enter the dependent-argument
-projection. Captures are projected in left-to-right depth-first source order
-using the existing dependent-argument packaging. For example:
+Only capture leaves contribute dependent-function inputs. Literals, groups,
+optional wrappers, and alternative structure contribute match evidence but no
+arguments.
+
+Captures are projected in left-to-right source order. Existing dependent-
+argument packaging remains authoritative for zero, one, and many captures,
+capture names, duplicate-name validation, optional names, optional values, and
+Atlas construction.
+
+For example:
 
 ```datra
 `do %_Block? yield %_Expr`
 ```
 
-produces exactly the `_Block?` and `_Expr` selections. The literal `do` and
-`yield` matches remain evidence that the declaration applied, but are not
-passed to the function.
+projects exactly `_Block?` and `_Expr`.
 
-The existing dependent-argument abstraction remains authoritative for the
-zero-, one-, and many-capture cases, capture names, duplicate-name validation,
-and Atlas construction. Optional parts use ordinary optional semantics for
-their projected captures; nested optionality, aliases, and optional names are
-normalized by the existing optional-value machinery. `|` combines projections
-through ordinary either/federation evaluation and specification. Backtick
-matching adds no capture container, absence sentinel, positional reconciliation
-algorithm, or branch-specific calling convention.
+## Formatting
 
-### Ambiguity and admissibility
+The Datra prettier is the only source renderer. It emits the canonical grammar:
 
-Each capture is selected through its retained `_StrExpr T` provenance and the
-ordinary specification engine. Aliases, optional names, `Either`, `of`, and
-subfederations therefore keep their ordinary semantics. Backtick matching
-must not introduce a separate name-based table for `_Expr`, `_Block`, or
-other syntax categories.
+- one ASCII space between sibling parts;
+- one ASCII space on each side of `|`;
+- no space just inside backticks or group parentheses;
+- no space before postfix `?`; and
+- escapes for literal structural punctuation.
 
-An admissible template has a unique stable decomposition for every accepted
-candidate. If adjacent captures, empty-producing captures, or optional
-branches permit more than one decomposition or capture projection, declaration
-validation reports an ambiguity before the declaration can be invoked.
+Because newlines are illegal in a literal template, formatting never preserves
+or introduces one between the backticks. Parsing prettier output reconstructs
+the same semantic template tree.
 
-The admissibility decision must make structural progress on either the finite
-template tree or the retained operand of `_StrExpr`. It must not recursively
-reconstruct the same template or string-expression query. Existing
-specification/subfederation cycle detection remains authoritative.
+## Standard-library migration
 
-## Diagnostics
+Migrate every obsolete template declaration in `libs/std.datra` in one change.
+The resulting declarations are:
 
-Parsing and validation report typed diagnostics with source spans. Rendering
-those diagnostics to text is a separate concern. At minimum the diagnostic
-model distinguishes:
+```datra
+`begin %_Block? yield %_Expr` := datra.begin
+`fun %_Expr` := (_Expr -> _Expr) datra.fun_body
+`if %Bool then %_Expr (else %_Expr)?` :=
+  (Bool; _Expr; _Expr? -> _Expr) datra.if_body
+`import %(List Str) %_FunctionBody` :=
+  (List Str; _FunctionBody -> _Expr) datra.import_body
+`len %_Expr` := (Any -> NatLimit) datra.len_body
+`with %(List _Expr) %_FunctionBody` :=
+  (List _Expr; _FunctionBody -> _Expr) datra.with_body
 
-- `UnterminatedBacktickTemplate`;
-- `MixedTemplateLiteral` with the first lexical-class transition;
-- `WhitespaceInTemplateLiteral` with the decoded offending character;
-- `InvalidTemplateSymbol`;
-- `MissingTemplateSeparator`;
-- `MalformedTemplateCapture`;
-- `UnbalancedTemplateGroup`;
-- `TemplatePostfixWithoutOperand`;
-- `LineBreakAfterCapture`;
-- `AmbiguousBacktickTemplate` with competing decompositions.
+# These parsing rules remain ordered from lower to higher precedence.
+`%Bool or %Bool` := (Bool; Bool -> Bool) datra.or_body
+`%Bool and %Bool` := (Bool; Bool -> Bool) datra.and_body
+`%_Expr of %_Expr` := (_Expr; _Expr -> _Expr) datra.of_body
+`not %Bool` := (Bool -> Bool) datra.not_body
 
-Parser and test helpers inspect these constructors, not fragments of rendered
-messages. The ordinary diagnostic renderer owns labels, source excerpts, and
-human-readable explanations. Invalid optional, either/federation, and
-dependent-argument compositions reuse their existing typed diagnostics; the
-backtick implementation must not wrap them in new stringly typed errors.
+`do %_Block? yield %_Expr` :=
+  (_Block?; _Expr -> _FunctionBody) datra.do_body
+let val `from %Int (to %IntLimit | %_Direction)` :=
+  ({origin : Int; ((target? : IntLimit) | (direction? : _Direction))} -> IntValRange) datra.from_body
+let val `range %IntLimit to %IntLimit` :=
+  ({origin : IntLimit; target? : IntLimit} -> IntRange) datra.range_body
+```
 
-## Empty forms and canonical formatting
+Keep the declarations in their existing order so precedence does not change.
+Do not convert ordinary literal expressions such as `$"%(_NaturalLiteral)"`;
+they are not obsolete literal templates.
 
-Empty templates and empty groups are invalid. Their semantic representations
-use `NonEmpty`, so they cannot reach matching, optionality, or ambiguity
-checking as degenerate cases.
+Migrate test and fixture declarations by the same rules:
 
-The prettier emits one ASCII space between sibling parts, one ASCII space on
-each side of `|`, no space just inside group parentheses, and no space before
-postfix `?`. It emits the escape needed whenever symbolic literal data would
-otherwise be parsed as structural punctuation. Source newlines are layout,
-not semantic data, and canonical output normalizes them to spaces.
+- `$literal` Atlas operands become literal-template literal components;
+- nonliteral Atlas operands become `%` captures;
+- a multi-token capture uses `%(` ... `)`;
+- Atlas sequences become single-space-separated template parts;
+- Atlas alternatives and optional groups become `|`, groups, and postfix `?`;
+  and
+- a mixed literal such as `$"take,"` becomes the two template components
+  `take ,`, which still matches adjacent identifier and symbol presentation.
 
-## Required invariants
+Examples:
 
-### Construction invariants
+```datra
+# obsolete
+$!($pair; (_x : Int); $with; (_y : Int)) := it
 
-1. Every semantic template and grouped sequence is nonempty.
-2. Every literal is nonempty and belongs to exactly one lexical class.
-3. Identifier literal payloads are validated `SimpleIdentifierString` values;
-   validation has no first-character restriction.
-4. Symbol literal payloads are validated `SymbolLiteral` values containing no
-   whitespace characters.
-5. A mixed literal never enters the semantic AST.
-6. Structural punctuation is consumed before literal fallback; it is not
-   excluded by an independently maintained exception list.
-7. Every successful parser branch consumes input. Repetition cannot accept an
-   empty part or loop without progress.
-8. Layout is validated once at AST construction. Later phases do not inspect
-   source text to rediscover separators.
-9. Backtick simple captures call the exact parser used by quoted-string simple
-   interpolation, and direct quoted `$` operands call the full quoted
-   string-expression parser.
-10. Postfix `?` may wrap every completed template atom.
-11. Unescaped `|` is parsed by ordinary either/federation composition before
-    symbolic literal fallback.
+# replacement
+`pair %(_x : Int) with %(_y : Int)` := it
 
-### Representation invariants
+# obsolete
+$!(Int; $"++") := body
 
-12. Backtick templates have one parser, one semantic AST, and one compiler.
-13. No Atlas expression is used as an intermediate encoding of a template.
-14. No `$!` operator, compatibility constructor, or Atlas-template matching
-    path exists.
-15. `$` retains only its scalar literal-expression meaning.
-16. A `$` string-expression template retains every decoded literal chunk
-    exactly, including all whitespace and punctuation.
-17. `$` and backtick declaration heads have distinct typed AST variants,
-    compilers, and matcher plans.
-18. The two paths meet only at typed match evidence, generic capture
-    selection, and existing dependent-argument packaging.
-19. Literal lexical class, grouping, optionality, and capture identity remain
-    explicit until matcher compilation.
-20. Either/federation, optionality, and dependent-argument packaging reuse the
-    existing language abstractions and decision procedures.
-21. No semantic decision is made by comparing rendered source, diagnostic
-    text, or type-name strings.
-22. The Datra prettier is the only semantic source renderer, and parsing its
-    canonical output reconstructs the same template tree.
-23. Unresolved source presentation uses ordinary AST structure and
-    `UnresolvedSyntaxLiteral`; no neutral lexer or parallel layout/token model
-    exists.
-24. `ElidedSyntax` is distinct from `AtlasMap []` and is removed before
-    evaluation.
-25. Matcher plans and built-in identities are typed sums, never string
-    sentinels or Boolean mode flags.
+# replacement
+`%Int ++` := body
+```
 
-### Matching invariants
+Update design examples in other documentation at the same time; no maintained
+documentation should teach `$!` syntax after the migration.
 
-26. A successful match consumes the complete candidate extent.
-27. Every candidate position is consumed at most once along a selected branch.
-28. Captures cannot consume leading or trailing template-separator trivia.
-29. Literal parts in both template forms constrain matching but never
-    contribute function arguments.
-30. Every capture node contributes exactly one stable, typed capture position.
-31. Capture order is structural source order and is independent of optional
-    branch selection.
-32. `$` literal components match exact retained character sequences and never
-    use lexical-edge whitespace rules.
-33. Backtick whitespace requirements are computed solely from adjacent
-    realized edge classes.
-34. Equal backtick edge classes require whitespace; unequal edge classes do
-    not.
-35. Empty and absent backtick components are removed before adjacency is
-    computed.
-36. Capture selection, `of`, optional values, aliases, and subfederation use
-    the ordinary specification machinery.
-37. Candidate comments are handled before matching and never interpreted by
-    the template matcher.
-38. Ambiguous decompositions are rejected during declaration validation rather
-    than resolved by parser order or longest-match accidents.
-39. Matching and admissibility terminate by structural descent and existing
-    specification cycle detection; they never render and reparse candidates.
-40. Exact, backtick, native, line-sequence, and horizontal-application plans
-    use only their own candidate projections.
-41. Typed hole validation begins only after one plan has matched.
-42. The earliest comment rule and final separator rules compose without
-    scheduler re-enumeration.
+## Removal of obsolete literal templates
 
-### Diagnostic invariants
+After the standard library, tests, fixtures, and documentation use backticks,
+delete the obsolete implementation rather than retaining an adapter:
 
-43. Every rejected structural form has a typed diagnostic and a precise
-    source span.
-44. Once a structural introducer is consumed, failures remain attributed to
-    that structure and cannot fall back to a misleading literal diagnostic.
-45. Diagnostic tests compare structured failures. Rendered wording is tested
-    only in the diagnostic-renderer suite.
-46. Failed parsing or matching never leaves a partially constructed semantic
-    template or dependent-argument projection observable.
+- remove `AtlasIdentifierExpression` and
+  `AtlasIdentifierExpressionBody`;
+- remove `AtlasIdentifierExpressionOperator` and the `$!` token;
+- remove parser branches which construct Atlas identifier expressions;
+- remove Atlas-template evaluation, declaration-head dispatch, matcher plans,
+  and renderer branches;
+- remove `AtlasSyntaxPattern`, `AtlasSyntaxPart`, and helpers which exist only
+  for `$!` matching;
+- remove compatibility conversions between Atlas operands and literal
+  templates; and
+- remove obsolete syntax tests after migrating every still-required semantic
+  assertion to the literal-template path.
 
-## Verification
+`$!` is rejected after this change. It is not an alias for backticks and does
+not remain behind a feature flag.
 
-The implementation is complete only when the following are covered by focused
-unit tests and end-to-end declaration tests:
+## Verification plan
 
-1. identifier and symbolic literal construction, including digit-leading
-   identifiers, invalid symbolic characters, and mixed runs;
-2. shared-parser tests proving that `$` and backtick simple captures have
-   exactly the same interpolation boundaries as quoted strings;
-3. postfix optionality on literals, simple captures, compound captures, and
-   nested groups;
-4. horizontal separators and every allowed and forbidden line-break boundary;
-5. escapes and comments, including escaped structural punctuation and
-   rejection of escaped spaces and newlines as literal data;
-6. exact `$` literal tests covering zero, one, and multiple spaces, tabs,
-   newlines, punctuation, escaped `%`, and adjacent literal chunks;
-7. paired tests proving that `$` templates distinguish `2+2` from `2 + 2`
-   while `` `%Nat + %Nat` `` accepts both presentations;
-8. paired capture tests proving that both forms pass only interpolation
-   selections and never their literal constraints;
-9. full-consumption failures and trailing candidate text in both matcher
-   paths;
-10. `2+2`, `2 + 2`, `do yield`, `doyield`, and consecutive symbolic
-    backtick cases;
-11. parenthesized `|` composition, escaped literal `\|`, and equivalence with
-   the ordinary either/federation evaluator;
-12. ambiguity from adjacent or empty-producing captures;
-13. optional captures, aliases, optional names, `of`, specification, and
-    subfederation interaction through the existing implementations;
-14. equivalence with existing dependent-argument packaging for zero, one, and
-    many captures, including named and duplicate-name cases;
-15. parser/prettier round trips for every template constructor and normalized
-    spacing around `|` and `?`;
-16. property tests that mixed literals cannot be constructed through any
-    public smart constructor;
-17. property tests that successful matching consumes the candidate exactly
-    once and returns only the structurally declared captures;
-18. tests showing that exact `$` compilation never renders and reparses a
-    structural candidate and backtick compilation never constructs an
-    exact-string matcher;
-19. diagnostics asserted by constructor and span rather than rendered text;
-20. standard-library and fixture declarations expressed exclusively with
-    backtick syntax; and
-21. source-wide checks proving that `$!`, its AST/operator constructors, and
-    the shared `$`/Atlas-template lowering path no longer exist.
-22. raw-parser tests proving that spaces and newlines remain exact unresolved
-    presentation until declarative rewriting;
-23. exact `$` tests distinguishing `Nat++`, `Nat ++`, and newline-separated
-    spellings, plus punctuation such as `hello!!!!`;
-24. transient-elision tests proving that consumed presentation and comments do
-    not manufacture `()`; and
-25. standard-library bootstrap diagnostics containing no elision placeholders.
+### Parser and AST
+
+- Parse every literal, capture, group, optional, and alternative form.
+- Prove templates and groups cannot be empty.
+- Accept digit-leading identifier literals.
+- Accept pure symbolic literals and escaped structural literals.
+- Reject mixed identifier/symbol runs with `MixedTemplateLiteral` at the first
+  transition.
+- Reject leading, trailing, missing, repeated, tab, and newline spacing with
+  `InvalidLiteralTemplateSpacing`.
+- Prove no separator, raw whitespace, generic Atlas operand, or string pattern
+  enters the semantic AST.
+- Round-trip every semantic constructor through the prettier.
+
+### Matching
+
+- Match identifier and symbolic literals against retained candidate syntax.
+- Match `%Nat + %Nat` against both `2+2` and `2 + 2`.
+- Reject `doyield` for `do yield`.
+- Cover optional literal, capture, and group parts.
+- Cover grouped alternatives through the existing either/federation path.
+- Cover full-consumption failures and trailing candidate syntax.
+- Prove longest-first capture selection and backtracking follow the existing
+  matcher policy.
+- Prove literal components never enter the projected argument list.
+- Prove capture order is stable source order.
+
+### Type-system interactions
+
+- Cover syntax-category captures for expressions, blocks, function bodies,
+  dependent declarations, dependent arguments, identifier expressions, and
+  supported syntax lists.
+- Cover ordinary value captures through evaluation and specification.
+- Cover named captures, duplicate names, optional names, and optional values.
+- Cover aliases, `Either`, `of`, specification, and subfederation without
+  literal-template-specific name dispatch.
+- Prove the literal-template AST, compiler, matcher, and tests have no
+  dependency on `_StrExpr` or another planned string-expression feature.
+
+### Migration and deletion
+
+- Bootstrap the migrated standard library.
+- Run the focused parser, matcher, interpreter, standard-library, module, and
+  fixture tests through literal templates.
+- Preserve standard-library precedence and declaration results.
+- Search maintained source, tests, fixtures, and library files for `$!` and
+  obsolete Atlas-template constructors.
+- Verify literal expressions still use their exact-presentation path.
+- Verify no compatibility route can lower a literal template into the removed
+  Atlas representation.
+
+The feature is complete only when the backtick path is fully exercised, the
+standard library boots through it, and the obsolete `$!` representation and
+dispatch paths have been deleted.
