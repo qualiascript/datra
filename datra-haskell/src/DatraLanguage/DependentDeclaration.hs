@@ -20,7 +20,6 @@ import DatraLanguage.AST
 import DatraLanguage.ConcreteSyntax (sourceSpace)
 import DatraLanguage.AST.Operator (operatorCanonicalSymbol)
 import Data.List.NonEmpty (NonEmpty ((:|)))
-import Data.List.NonEmpty qualified as NonEmpty
 
 -- A declaration is an inferred assignment in block position. Identifier
 -- annotations and dependent arguments remain expressions until an explicit

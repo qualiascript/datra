@@ -432,7 +432,9 @@ runStructuralCandidates capture environment source =
     expandCandidate selectedEnvironment prepared = do
       expressionValue <- contextExpandSyntax selectedEnvironment
         (preparedExpansionSyntax prepared)
-      pure (postRewriteExpansion expressionValue
+      pure (postRewriteExpansion
+        (hasDeclaredCandidate selectedEnvironment)
+        expressionValue
         (preparedExpansionRemaining prepared))
 
 publishChild
@@ -457,9 +459,20 @@ structuralCandidatesFor
   -> Expression
   -> [StructuralCandidate]
 structuralCandidatesFor environment value =
-    enumerate value (contextRewriteRules environment)
-      <> scopedCandidates
-      <> maybeToList (postRewriteCandidate value)
+    declaredCandidatesFor environment value
+      <> maybeToList
+        (postRewriteCandidate (hasDeclaredCandidate environment) value)
+
+hasDeclaredCandidate :: SyntaxContext -> Expression -> Bool
+hasDeclaredCandidate environment =
+  not . null . declaredCandidatesFor environment
+
+declaredCandidatesFor
+  :: SyntaxContext
+  -> Expression
+  -> [StructuralCandidate]
+declaredCandidatesFor environment value =
+    enumerate value (contextRewriteRules environment) <> scopedCandidates
   where
     enumerate selectedValue = concatMap (\rule ->
       enumerateRuleStructuralCandidates rule selectedValue)

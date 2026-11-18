@@ -7,7 +7,10 @@ module SyntaxRewriting.PostRewrite
 
 import DatraLanguage.AST (Expression (..))
 import DatraLanguage.AST.Syntax ((<:>))
-import DatraLanguage.Application (applicationFrom, rawApplicationPhrase)
+import DatraLanguage.Application
+  ( rawApplicationPhrase
+  , unresolvedApplicationFrom
+  )
 import StringExpression (TemplateSelection (..))
 import StringInterpolation
   ( DeclarativeMatcherPlan (..)
@@ -18,9 +21,12 @@ import StringInterpolation
 import SyntaxRewriting.Candidates (compileRewriteRule)
 import SyntaxRewriting.Types (StructuralCandidate (..))
 
-postRewriteCandidate :: Expression -> Maybe StructuralCandidate
-postRewriteCandidate source = do
-  expansion <- lineBreakFallback source
+postRewriteCandidate
+  :: (Expression -> Bool)
+  -> Expression
+  -> Maybe StructuralCandidate
+postRewriteCandidate hasDeclaredCandidate source = do
+  expansion <- terminalFallback hasDeclaredCandidate source
   let rule = SyntaxRule
         { declarativeMatcherPlan = LiteralExpressionMatcher
             (LiteralExpressionPattern [])
@@ -38,11 +44,24 @@ postRewriteCandidate source = do
 -- terminal operation used when no declaration matched at all. This is the
 -- point where an expanded prefix has finished consuming syntax but its source
 -- continuation has not yet entered ordinary traversal.
-postRewriteExpansion :: Expression -> [Expression] -> Expression
-postRewriteExpansion expansion remaining =
-  maybe source id (lineBreakFallback source)
+postRewriteExpansion
+  :: (Expression -> Bool)
+  -> Expression
+  -> [Expression]
+  -> Expression
+postRewriteExpansion hasDeclaredCandidate expansion remaining =
+  maybe source id (terminalFallback hasDeclaredCandidate source)
   where
-    source = applicationFrom (expansion : remaining)
+    source = unresolvedApplicationFrom (expansion : remaining)
+
+terminalFallback
+  :: (Expression -> Bool)
+  -> Expression
+  -> Maybe Expression
+terminalFallback hasDeclaredCandidate source =
+  case lineBreakFallback source of
+    Just expansion -> Just expansion
+    Nothing -> applicationFallback hasDeclaredCandidate source
 
 -- Split only the first unconsumed logical line break. The untouched tail is
 -- re-entered as a fresh phrase, so syntax beginning on its first line gets a
@@ -53,5 +72,30 @@ lineBreakFallback source = case break (== LineBreak)
     (rawApplicationPhrase source) of
   (before, LineBreak : after)
     | not (null before) && not (null after) ->
-        Just (applicationFrom before <:> applicationFrom after)
+        Just
+          ( unresolvedApplicationFrom before
+              <:> unresolvedApplicationFrom after
+          )
   _ -> Nothing
+
+-- Give each ordinary argument boundary, from left to right, the opportunity
+-- to begin declared syntax. The rebuilt suffix enters normal child traversal,
+-- where the declaration selects and expands its own extent.
+applicationFallback
+  :: (Expression -> Bool)
+  -> Expression
+  -> Maybe Expression
+applicationFallback hasDeclaredCandidate source = case source of
+  UnresolvedApplication phrase@(_ : _ : _) -> Just (foldPhrase phrase)
+  _ -> Nothing
+  where
+    foldPhrase (first : remaining) = foldRemaining first remaining
+    foldPhrase [] = AtlasMap []
+    foldRemaining function [] = function
+    foldRemaining function remaining@(argument : later)
+      | hasDeclaredCandidate suffix =
+          FunctionApplication function suffix
+      | otherwise =
+          foldRemaining (FunctionApplication function argument) later
+      where
+        suffix = unresolvedApplicationFrom remaining

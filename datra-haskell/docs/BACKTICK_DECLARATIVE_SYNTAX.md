@@ -75,35 +75,45 @@ typed representation and the linked line-break plan are authoritative.
   syntax identities, and host line/application fallback rules were removed.
 - The experimental exact-string newline rule and its `SyntaxSequence`
   semantics were also removed; they are not part of the intended design.
+- Logical newlines are retained as `LineBreak`, remain available to declared
+  matchers as `\n`, and fall back through the post-rewrite `(<:>)` operation
+  when no declaration consumes them.
+- Horizontal source phrases are retained as `UnresolvedApplication`
+  components. They are not folded into `FunctionApplication` by the parser.
 
 ### Remaining
 
-1. Implement structural `LineBreak` syntax as described in
-   [COMPOSITIONAL_LINE_BREAK_SYNTAX.md](COMPOSITIONAL_LINE_BREAK_SYNTAX.md).
-   The parser still represents logical newlines as
-   `UnresolvedSyntaxLiteral` strings, and unconsumed newlines currently prevent
-   Std from forming the required block structure.
-2. Complete component-edge adjacency. The current matcher skips retained
+1. Complete and verify unresolved horizontal-application composition. A
+   declared rule gets the first opportunity to consume the complete current
+   phrase. If no rule matches, the post-rewrite fallback folds ordinary
+   components left-to-right, preserving a suffix as one argument when a
+   visible declaration begins there. Do not change the rewrite-stack scheduler
+   or add an embedded-suffix matcher, horizontal-presentation type, or built-in
+   matcher mode.
+2. Parenthesize standard-library `do ... yield ...` results when a core parser
+   operator belongs inside the final capture. In particular, `|` retains its
+   ordinary parser precedence, so the `List`, `Maybe`, and `Collection`
+   declarations must explicitly group their yielded federations.
+3. Complete component-edge adjacency. The current matcher skips retained
    presentation but does not yet implement the full equal-edge/different-edge
    law specified below.
-3. Finish typed capture integration for composed captures. Candidate
+4. Finish typed capture integration for composed captures. Candidate
    classification and rewrite-result typing must agree for syntax-category
    captures which contain application structure or line breaks.
-4. Add focused Std-less tests for structural literal-template matching,
+5. Add focused Std-less tests for structural literal-template matching,
    capture validation, line-break consumption, greedy backtracking, and
-   fallback sequencing. A premature multiline test was removed because its
-   `datra.Expr` target was unavailable in that test environment and therefore
-   tested capture classification rather than newline matching.
-5. Restore Std loading. The current failure is
-   `ImportedModuleRequiresBlock`; the `Args` declaration remains the important
-   greedy `do ... yield ...` regression after line-break composition exists.
-6. Resolve the remaining parser/rendering regressions, including the dedicated
+   fallback sequencing. Include ordinary `f x y` associativity, a function
+   domain followed by `do ... yield ...`, a generic introduction followed by a
+   function body, and the existing whole-application-spine precedence case.
+6. Restore Std loading, then report the next unrelated parser failure without
+   attempting to fix it as part of this work.
+7. Resolve the remaining parser/rendering regressions, including the dedicated
    literal-template rendering assertion, and run all parser, interpreter,
    module, CLI, and fixture suites.
-7. Clean all compiler warnings introduced or exposed by this work.
-8. Update `GENERIC_STRING_EXPRESSIONS.md` to describe the final literal
+8. Clean all compiler warnings introduced or exposed by this work.
+9. Update `GENERIC_STRING_EXPRESSIONS.md` to describe the final literal
    expression/literal template split and capture paths.
-9. Delete this implementation-plan document after the feature, migration,
+10. Delete this implementation-plan document after the feature, migration,
    verification, and documentation updates are complete.
 
 ## Surface syntax
@@ -410,10 +420,111 @@ template representation.
 
 ### Candidate selection
 
-The ordinary parser retains candidate presentation in the existing syntax AST.
-The literal-template matcher works over that retained structure and its source
-boundaries. It does not render an AST to choose a match and does not reparse a
-selected substring.
+The ordinary parser retains source application components in a transient
+`UnresolvedApplication` node in the syntax AST. It does not create semantic
+`FunctionApplication` nodes. The literal-template matcher works directly over
+those retained components. It does not render an AST to choose a match,
+reparse a selected substring, or introduce a second presentation layer.
+
+Candidate selection and ordinary application compose in this order:
+
+1. Every visible declared rule receives the complete current phrase in
+   declaration order.
+2. If a rule matches, its captures are rewritten and its expansion replaces
+   the consumed phrase before any ordinary application fallback runs.
+3. If no rule matches and an unconsumed `LineBreak` is present, the existing
+   post-rewrite fallback splits the phrase through `(<:>)`.
+4. Otherwise, post-rewrite application fallback examines ordinary argument
+   boundaries from left to right. At the first boundary whose suffix has a
+   structural candidate from the visible declared rules, it groups that suffix
+   as the next argument. The child re-enters the same rewrite flow, so its
+   declaration consumes its own prefix and determines its extent normally;
+   the matcher itself does not search for or rewrite an embedded suffix.
+5. If no declaration claims such an argument, the fallback folds that
+   component into the accumulated function and continues left-to-right. Final
+   semantic `FunctionApplication` nodes are therefore produced only after
+   declared syntax has had its opportunity to determine the argument boundary.
+
+For example, after `do` is declared, the unresolved phrase
+
+```datra
+&T? do yield value
+```
+
+first gives the complete phrase to declared rules. When none begins at `&T?`,
+ordinary application exposes `do yield value` as its next argument. That child
+expands to `FunctionBody`, after which ordinary composition yields
+`FunctionApplication` of the generic introduction to the body. In contrast,
+`f x y` has no declared argument boundary and finalizes as `(f x) y`.
+
+This is an internal post-rewrite operation, not a `HorizontalApplicationMatcher`
+or a synthetic declaration. It must reuse the existing candidate enumeration
+and post-rewrite expansion path and must not modify the rewrite-stack scheduling
+algorithm.
+
+`UnresolvedApplication` is part of the primary transient syntax AST, not a
+second presentation or matcher representation. It exists only until the
+post-rewrite operation produces semantic application nodes and must not reach
+evaluation or canonical persisted syntax.
+
+### Horizontal application implementation plan
+
+Keep this change within the existing parsing, candidate-enumeration, and
+post-rewrite boundaries:
+
+1. Add a declared-only candidate helper in `SyntaxRewriting`. It enumerates the
+   current environment's ordinary and scoped declarative rules, but never
+   includes a post-rewrite fallback candidate. `structuralCandidatesFor` then
+   appends at most one post-rewrite candidate after that declared-only list.
+   Keeping these paths separate prevents application probing from recursively
+   discovering itself.
+2. Keep one shared terminal operation in `SyntaxRewriting.PostRewrite`. It
+   first applies the existing first-unconsumed-`LineBreak` fallback. Only when
+   there is no such split does it fold `UnresolvedApplication` components
+   left-to-right. If the remaining suffix begins visible declared syntax, the
+   operation preserves that suffix as the next argument so it re-enters normal
+   rewriting as one child.
+3. Use that same terminal operation in both places where a phrase becomes
+   eligible for fallback: when no declared candidate matched the original
+   phrase, and after a selected declaration has been expanded and its
+   `structuralCandidateRemaining` components have been reattached. This is the
+   compositional invariant: every declared extent is resolved first, and every
+   still-unconsumed continuation passes through exactly the same line-break/
+   application fallback ordering.
+4. Pass the current `SyntaxContext` (or only a declared-candidate predicate
+   derived from it) into the post-rewrite operation. Do not add state or a new
+   transition to `SyntaxRewriting.Stack`; its existing expansion followed by
+   child traversal supplies the required re-entry. Do not change literal-
+   template matching, capture greediness, or `structuralCandidateRemaining`.
+5. `Parsing.term` constructs `UnresolvedApplication` from two or more
+   horizontal components. `applicationSelections` and `rawApplicationPhrase`
+   expose those components directly to declared matching. Only the
+   post-rewrite operation calls the semantic `FunctionApplication`
+   constructor.
+6. Add the focused regressions below before changing the standard library.
+   Then parenthesize the three `|` expressions in `libs/std.datra`, load Std,
+   and run the parser suite. If another unrelated parser failure appears,
+   report it before making any further change.
+
+The structural candidate which begins at an argument boundary owns that
+syntactic boundary; capture typing and candidate backtracking continue to run
+inside the existing rewrite flow. The fallback itself must not duplicate those
+phases or expand the candidate eagerly.
+
+Core operators retain the precedence assigned by the ordinary parser. A
+literal-template capture does not reach outward through an already-parsed core
+operator merely because its target is `_Expr`. Parentheses make that ownership
+explicit. Thus this source leaves `|` outside the `do` expression:
+
+```datra
+&T? do yield fun () | (T; this)
+```
+
+while the intended function body is written as:
+
+```datra
+&T? do yield (fun () | (T; this))
+```
 
 For each rule, the matcher:
 
@@ -433,8 +544,8 @@ literal-template ambiguity pass or diagnostic.
 ### Candidate whitespace
 
 The exactly-one-space rule applies to the source of the literal template, not
-to candidate presentation. Template spaces separate components and are not
-copied into the matcher.
+to the candidate AST. Template spaces separate components and are not copied
+into the matcher.
 
 Each realized component exposes the lexical class of its first and last source
 character:
@@ -560,6 +671,19 @@ Keep the declarations in their existing order so precedence does not change.
 Do not convert ordinary literal expressions such as `$"%(_NaturalLiteral)"`;
 they are not obsolete literal templates.
 
+Core parser operators inside a declarative capture must be parenthesized when
+their ordinary precedence would otherwise place them outside the declared
+form. The standard-library generic function declarations therefore use:
+
+```datra
+let val List := &T? do yield (fun () | (T; this))
+let val Maybe := &T? do yield (nothing | Just T)
+val Collection := &T? do yield ((List T) | (Stream T))
+```
+
+This is ordinary explicit grouping. Do not add declarative matcher projection
+through `|` or another core operator to preserve an unparenthesized spelling.
+
 Migrate test and fixture declarations by the same rules:
 
 - `$literal` Atlas operands become literal-template literal components;
@@ -639,6 +763,15 @@ not remain behind a feature flag.
   matcher policy.
 - Prove literal components never enter the projected argument list.
 - Prove capture order is stable source order.
+- Prove a declared form gets the complete current application phrase before
+  ordinary application fallback.
+- Prove `&T? do yield value` becomes ordinary application of the generic
+  introduction to the expanded `FunctionBody`.
+- Prove ordinary `f x y` remains `(f x) y` when no declaration claims an
+  argument boundary.
+- Prove parenthesized `do yield (left | right)` captures the federation and
+  unparenthesized `do yield left | right` retains the core parser's `|`
+  ownership.
 
 ### Type-system interactions
 

@@ -57,13 +57,11 @@ import Text.Megaparsec
   , anySingle
   , between
   , choice
-  , chunk
   , eof
   , lookAhead
   , many
   , manyTill
   , match
-  , notFollowedBy
   , satisfy
   , some
   , try

@@ -134,7 +134,7 @@ import StringInterpolation
   , mapSyntaxRuleCaptures
   , identifierApplicationRule
   )
-import DatraLanguage.Application (applicationPhrase)
+import DatraLanguage.Application (applicationFrom, applicationPhrase)
 import StringInterpolation.Exact (matchExactSegments)
 import DatraLanguage.Diagnostics
   ( DatraError
@@ -2084,6 +2084,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       (MapSequence expressions)
       expressions
     SyntaxBoundary inner -> interpret inner
+    UnresolvedApplication expressions ->
+      interpret (applicationFrom expressions)
     ReverseMapSpecification target source ->
       interpret (MapSpecification source target)
     ReverseOverload supplied defaults ->

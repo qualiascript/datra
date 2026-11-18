@@ -184,6 +184,9 @@ data Expression
   -- | A transient raw-parser boundary. Declarative syntax rewriting removes
   -- it before the public/post-matching AST is exposed.
   | SyntaxBoundary Expression
+  -- | A transient horizontal phrase whose application boundaries remain
+  -- unresolved until declarative syntax has selected its expression extent.
+  | UnresolvedApplication [Expression]
   | MapExpansion Expression Expression
   | SuperEllipsisRange Expression Expression
   | SuperEllipsisRangePlus Expression
@@ -563,6 +566,10 @@ normalizeExpression (MapSequence expressions) =
   normalizeSequence MapSequence expressions
 normalizeExpression (SyntaxBoundary expressionValue) =
   normalizeExpression expressionValue
+normalizeExpression (UnresolvedApplication expressions) =
+  case map normalizeExpression expressions of
+    [] -> AtlasMap []
+    first : remaining -> foldl FunctionApplication first remaining
 normalizeExpression (MapExpansion left right) =
   normalizeExpansion
     (normalizeExpression left)
@@ -759,6 +766,10 @@ lower (MapSequence []) = EmptyMap
 lower (MapSequence (expressionValue : expressions)) =
   Sequential (lower expressionValue :| map lower expressions)
 lower (SyntaxBoundary expressionValue) = lower expressionValue
+lower (UnresolvedApplication expressions) = case expressions of
+  [] -> EmptyMap
+  first : remaining ->
+    lower (foldl FunctionApplication first remaining)
 lower (MapExpansion left right) = Expansion (lower left) (lower right)
 lower (SuperEllipsisRange lowerBound upperBound) =
   Range (lower lowerBound) (lower upperBound)
@@ -889,6 +900,7 @@ traverseExpressionChildren visit expression = case expression of
   ArgumentativeMap xs -> ArgumentativeMap <$> traverse visit xs
   MapSequence xs -> MapSequence <$> traverse visit xs
   SyntaxBoundary x -> SyntaxBoundary <$> visit x
+  UnresolvedApplication xs -> UnresolvedApplication <$> traverse visit xs
   Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x
   Coalization x -> Coalization <$> visit x

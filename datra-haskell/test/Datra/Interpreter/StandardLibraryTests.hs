@@ -792,6 +792,18 @@ declaredPatternTests =
             <> "yield prefix 1 otherwise 2"
         )
         "2"
+    , programCase "declared syntax becomes an ordinary application argument"
+        ( "`make thing` := (() -> Int) do yield 7\n"
+            <> "identity := ({value?:Int} -> Int) do yield value\n"
+            <> "yield identity make thing"
+        )
+        "7"
+    , programCase "a declared prefix composes with a declared argument"
+        ( "`make thing` := (() -> Int) do yield 7\n"
+            <> "$\"identity\" := ({value?:Int} -> Int) do yield value\n"
+            <> "yield identity make thing"
+        )
+        "7"
     , programCase "a direct declaration uses its template's surface name"
         ( "`def %Nat next` := ({value?:Nat} -> Int)"
             <> " do yield value+1\n"

@@ -16,9 +16,9 @@ module StringInterpolation.Matching
 
 import Data.Functor.Identity (runIdentity)
 import DatraLanguage.Application
-  ( applicationFrom
-  , applicationSelections
+  ( applicationSelections
   , rawApplicationPhrase
+  , unresolvedApplicationFrom
   )
 import DatraLanguage.AST
   ( Expression (..)
@@ -116,7 +116,7 @@ matchIdentifierApplication rule patternValue expressionValue =
   , not (null operands)
   , LineBreak `notElem` operands
   , actualHead == identifierApplicationHead patternValue
-  , let captured = applicationFrom operands
+  , let captured = unresolvedApplicationFrom operands
   ]
 
 matchLiteralTemplate
@@ -168,7 +168,8 @@ literalTemplateCaptures (LiteralTemplatePattern parts) = match parts
       , later <- match remaining rest
       ]
     match (LiteralTemplatePatternCapture target : remaining) candidates =
-      [ (LiteralTemplateCapture target, applicationFrom selected) : later
+      [ (LiteralTemplateCapture target,
+          unresolvedApplicationFrom selected) : later
       | let (_, afterLineBreaks) = span (== LineBreak) candidates
       , (selected, rest) <- captureSelections afterLineBreaks
       , later <- match remaining rest

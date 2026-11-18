@@ -55,14 +55,14 @@
     let val `range %IntLimit to %IntLimit` :=
       ({origin : IntLimit; target? : IntLimit} -> IntRange) datra.range_body
 
-    let val List := &T? do yield fun () | (T; this)
+    let val List := &T? do yield (fun () | (T; this))
     val InhabitedList := &T? do yield (T; List T)
     let val Just := &T? do yield Just : T
-    let val Maybe := &T? do yield nothing | Just T
+    let val Maybe := &T? do yield (nothing | Just T)
     let val Str := >< (List Char)
     let val InhabitedStr := >< (InhabitedList Char)
     val Stream := &T? do yield fun (T ; this)
-    val Collection := &T? do yield (List T) | (Stream T)
+    val Collection := &T? do yield ((List T) | (Stream T))
 
     let val Nat := from 0 up
     let val NatLimit := from 0 to Infinity

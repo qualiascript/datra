@@ -26,7 +26,6 @@ import DatraLanguage.AST
   , Expression
       ( Addition
       , IdentifierExpression
-      , LiteralTemplateExpression
       , AtlasMap
       , ArgumentativeMap
       , AnyType
@@ -39,6 +38,7 @@ import DatraLanguage.AST
       , MapExpansion
       , MapSequence
       , SyntaxBoundary
+      , UnresolvedApplication
       , MapSpecification
       , Overload
       , SafeOverload
@@ -83,8 +83,8 @@ import DatraLanguage.ConcreteSyntax
   , isSymbolicSourceCharacter
   )
 import DatraLanguage.Application
-  ( applicationFrom
-  , rawApplicationPhrase
+  ( rawApplicationPhrase
+  , unresolvedApplicationFrom
   )
 import DatraLanguage.Identifier
   ( isPrivateIdentifier
@@ -272,7 +272,7 @@ elementsUntil boundary = do
         Nothing -> pure [entry]
         Just following -> continue (lineApplication entry following)
 
-    lineApplication left right = applicationFrom
+    lineApplication left right = unresolvedApplicationFrom
       ( rawApplicationPhrase left
           <> [LineBreak]
           <> rawApplicationPhrase right
@@ -363,6 +363,8 @@ arrowExpressionWithLayer expressionLayer operand = do
 -- codomain can still be written explicitly when that is what is intended.
 applyAfter :: (Expression -> Expression) -> Expression -> Expression
 applyAfter construct value = case value of
+  UnresolvedApplication (function : arguments) ->
+    UnresolvedApplication (construct function : arguments)
   FunctionApplication function argument ->
     FunctionApplication (applyAfter construct function) argument
   Coalization operand -> applyAfter (construct . Coalization) operand
@@ -373,6 +375,9 @@ applyAfter construct value = case value of
 -- intended domain is the applied value @f A@.
 applyFunctionType :: Expression -> Expression -> Expression
 applyFunctionType input output = case input of
+  UnresolvedApplication arguments@(_ : _) ->
+    UnresolvedApplication
+      (init arguments <> [applyFunctionType (last arguments) output])
   FunctionApplication function argument ->
     FunctionApplication function (applyFunctionType argument output)
   _ -> FunctionType input output
@@ -566,7 +571,7 @@ term :: Parser Expression
 term = do
   function <- accessedTerm termAtom
   arguments <- applicationArguments
-  pure (foldl FunctionApplication function arguments)
+  pure (unresolvedApplicationFrom (function : arguments))
   where
     applicationArguments = do
       next <- optional (try $ do

@@ -340,17 +340,25 @@ testSyntaxSeparatorElision = do
   assertRaw
     "horizontal spacing is parser layout"
     "(left right)"
-    (FunctionApplication (ref "left") (ref "right"))
+    (UnresolvedApplication [ref "left", ref "right"])
+  assertRaw
+    "ordinary application remains left associative"
+    "(left middle right)"
+    (UnresolvedApplication [ref "left", ref "middle", ref "right"])
   assertRaw
     "line syntax is retained before matching"
     "(left\nright)"
-    (FunctionApplication
-      (FunctionApplication (ref "left") LineBreak)
-      (ref "right"))
+    (UnresolvedApplication [ref "left", LineBreak, ref "right"])
   assertRewritten
     "horizontal syntax introduces application without a unit argument"
     "(left right)"
     (SyntaxBoundary (FunctionApplication (ref "left") (ref "right")))
+  assertRewritten
+    "rewriting preserves ordinary left-associative application"
+    "(left middle right)"
+    (SyntaxBoundary (FunctionApplication
+      (FunctionApplication (ref "left") (ref "middle"))
+      (ref "right")))
   assertRewritten
     "line syntax introduces a sequence without a unit member"
     "(left\nright)"
@@ -374,14 +382,13 @@ testSyntaxSeparatorElision = do
 
 testUnresolvedPostfixSyntax :: IO ()
 testUnresolvedPostfixSyntax = do
-  let compact = FunctionApplication
-        (ref "Nat") (UnresolvedSyntaxLiteral "++")
+  let compact = UnresolvedApplication
+        [ref "Nat", UnresolvedSyntaxLiteral "++"]
       spaced = compact
-      lineSeparated = FunctionApplication
-        (FunctionApplication (ref "Nat") LineBreak)
-        (UnresolvedSyntaxLiteral "++")
-      punctuated = FunctionApplication
-        (ref "hello") (UnresolvedSyntaxLiteral "!!!!")
+      lineSeparated = UnresolvedApplication
+        [ref "Nat", LineBreak, UnresolvedSyntaxLiteral "++"]
+      punctuated = UnresolvedApplication
+        [ref "hello", UnresolvedSyntaxLiteral "!!!!"]
       exact sourceText = SyntaxRule
         { declarativeMatcherPlan = LiteralExpressionMatcher
             (LiteralExpressionPattern
@@ -407,7 +414,7 @@ testUnresolvedPostfixSyntax = do
         }
   assertRaw "numeric-looking heads remain identifiers before declarations"
     "(2++)"
-    (FunctionApplication (ref "2") (UnresolvedSyntaxLiteral "++"))
+    (UnresolvedApplication [ref "2", UnresolvedSyntaxLiteral "++"])
   assertRaw "identifier-headed compact postfix syntax remains matchable"
     "(Nat++)" compact
   assertRaw "horizontal spacing does not add an AST operand"
