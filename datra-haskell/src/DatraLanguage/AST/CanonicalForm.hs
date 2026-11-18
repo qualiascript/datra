@@ -17,8 +17,6 @@ data CanonicalForm
   | BindingsForm
   | IdentifierReferenceForm
   | UnresolvedSyntaxForm
-  | ElidedSyntaxForm
-  | SyntaxRemainderForm
   | GenericBinderForm
   deriving (Bounded, Enum, Eq, Show)
 
@@ -33,6 +31,4 @@ canonicalFormName GenericPrefixForm = "generic-prefix"
 canonicalFormName BindingsForm = "bindings"
 canonicalFormName IdentifierReferenceForm = "ref"
 canonicalFormName UnresolvedSyntaxForm = "unresolved-syntax"
-canonicalFormName ElidedSyntaxForm = "elided-syntax"
-canonicalFormName SyntaxRemainderForm = "syntax-remainder"
 canonicalFormName GenericBinderForm = "generic-binder"

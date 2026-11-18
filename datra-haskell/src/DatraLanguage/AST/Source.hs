@@ -13,8 +13,8 @@ import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.ConcreteSyntax
   ( StructuralDelimiter (..)
   , delimiterText
-  , isSourcePresentationCharacter
   , literalTemplateDelimiterCharacter
+  , sourceLineFeed
   , sourceSpace
   )
 import DatraLanguage.ContextualRole
@@ -30,10 +30,6 @@ import DatraLanguage.Pretty
 renderSourceExpression :: Expression -> String
 renderSourceExpression =
   source 0 . toOperatorExpression
-
-syntaxWhitespaceSource :: String -> Bool
-syntaxWhitespaceSource value =
-  not (null value) && all isSourcePresentationCharacter value
 
 -- Parenthesize nested operations conservatively, while leaving each block
 -- entry and the yield expression readable at their own expression boundary.
@@ -52,6 +48,8 @@ source context expression =
       <> sourceSpace <> source 0 body
     FunctionTypeValue _ input output -> wrapped 11
       (source 12 input <> spaced AST.FunctionTypeOperator <> functionTypeOutput output)
+    FunctionApplicationValue function LineBreakValue ->
+      wrapped 11 (source 11 function <> sourceLineFeed)
     FunctionApplicationValue function (UnresolvedSyntaxValue literal) ->
       wrapped 11 (source 11 function <> literal)
     FunctionApplicationValue function input -> wrapped 11
@@ -69,9 +67,8 @@ source context expression =
       | renderIdentifierString name == name -> name
       | otherwise -> contextualSurfaceName ContextualThis
           <> op AST.ScopeAccessOperator <> renderIdentifierString name
+    LineBreakValue -> sourceLineFeed
     UnresolvedSyntaxValue literal -> literal
-    ElidedSyntaxValue -> ""
-    SyntaxRemainderValue sourceText -> sourceText
     LookupValue operand -> unary (op AST.LookupOperator) operand
     DependentArgumentValue name (Just annotation) ->
       let (writtenName, optionalName) = dependentArgumentNameSource name
@@ -195,9 +192,7 @@ source context expression =
       (op AST.MultiplicationOperator)
     applicationInput operand@FunctionBodyValue {} = source 0 operand
     applicationInput operand = source 12 operand
-    applicationSeparator
-        (FunctionApplicationValue _ (UnresolvedSyntaxValue sourceText))
-      | syntaxWhitespaceSource sourceText = ""
+    applicationSeparator (FunctionApplicationValue _ LineBreakValue) = ""
     applicationSeparator _ = sourceSpace
     functionTypeOutput output@FunctionTypeValue {} = source 11 output
     functionTypeOutput output = source 12 output

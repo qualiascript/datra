@@ -1,5 +1,5 @@
 -- | Scope-aware declarative syntax expansion over an already-read AST.
--- Application spines retain presentation literals until a declaration has
+-- Application spines retain logical line breaks until a declaration has
 -- selected the extent it wants to match.
 module SyntaxRewriting
   ( SyntaxContext (..)
@@ -46,8 +46,6 @@ import StringInterpolation
   ( SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , expandSyntax
-  , horizontalSyntaxWhitespace
-  , syntaxWhitespaceSource
   , syntaxRuleCaptures
   , syntaxApplicationImplementation
   , syntaxRuleAdapter
@@ -76,6 +74,7 @@ import SyntaxRewriting.Diagnostics
   ( candidateRejectionAt
   , reportCandidateRejections
   )
+import SyntaxRewriting.PostRewrite (postRewriteCandidate)
 import SyntaxRewriting.Stack
   ( RewriteStackOperations (..)
   , runRewriteStack
@@ -89,9 +88,7 @@ resolvedRuleReturnType
   -> SyntaxRule
   -> Maybe InterpretedValue
 resolvedRuleReturnType evaluate rule = case syntaxSemantics rule of
-  -- The candidate frame requires a return-type witness. Discard expansion is
-  -- still 'ElidedSyntax'; this empty-map type is never inserted into the AST.
-  SyntaxDiscard -> evaluate (AtlasMap [])
+  SyntaxPostRewrite {} -> evaluate (AtlasMap [])
   _ ->
     (syntaxRuleAdapter rule >>= evaluate
       >>= interpretedFunction >>= Just . functionCodomain)
@@ -354,23 +351,10 @@ runStructuralCandidates capture environment source =
         expressionValue = normalizeRewrittenSequence rawExpression
 
     normalizeRewrittenSequence value = case value of
-      UnresolvedSyntaxLiteral sourceText
-        | horizontalSyntaxWhitespace sourceText -> ElidedSyntax
-      FunctionApplication ElidedSyntax
-          (UnresolvedSyntaxLiteral sourceText)
-        | syntaxWhitespaceSource sourceText -> ElidedSyntax
-      FunctionApplication ElidedSyntax input -> input
-      FunctionApplication
-          (FunctionApplication function
-            (UnresolvedSyntaxLiteral sourceText))
-          ElidedSyntax
-        | syntaxWhitespaceSource sourceText -> function
-      FunctionApplication function ElidedSyntax -> function
       AtlasMap members -> rebuild AtlasMap (concatMap flatten members)
       MapSequence members -> rebuild MapSequence (concatMap flatten members)
       ArgumentativeMap members ->
-        ArgumentativeMap
-          (filter (/= ElidedSyntax) (concatMap flatten members))
+        ArgumentativeMap (concatMap flatten members)
       _ -> value
       where
         flatten (AtlasMap members) = members
@@ -378,12 +362,10 @@ runStructuralCandidates capture environment source =
         flatten member = [member]
         rebuild _ [] = AtlasMap []
         rebuild constructor members =
-          case filter (/= ElidedSyntax) members of
-            [] -> ElidedSyntax
-            retained -> case filter nonempty retained of
-              [] -> AtlasMap []
-              [member] -> member
-              nonemptyMembers -> constructor nonemptyMembers
+          case filter nonempty members of
+            [] -> AtlasMap []
+            [member] -> member
+            nonemptyMembers -> constructor nonemptyMembers
         nonempty (AtlasMap []) = False
         nonempty (MapSequence []) = False
         nonempty _ = True
@@ -415,10 +397,15 @@ runStructuralCandidates capture environment source =
     candidateReturn selectedEnvironment candidate context =
       candidateTypingReturnType context
         <|> rewriteRuleReturnType compiled
+        <|> postRewriteReturn
         <|> instantiatedReturn
         <|> currentDeclaredReturn
       where
         compiled = structuralCandidateRule candidate
+        postRewriteReturn = case syntaxSemantics (rewriteRule compiled) of
+          SyntaxPostRewrite {} ->
+            contextResultType selectedEnvironment (AtlasMap [])
+          _ -> Nothing
         currentDeclaredReturn = do
           implementation <- rewriteRuleImplementation compiled
           evaluated <- contextEvaluate selectedEnvironment implementation
@@ -453,6 +440,7 @@ publishChild
   -> Either SyntaxRewriteFailure (Maybe SyntaxContext)
 publishChild environment parent cursor result = Right $ case parent of
   AtlasMap {} -> contextPublish environment entry
+  MapSequence {} -> contextPublish environment entry
   Begin declarations _
     | cursor < length declarations -> contextPublish environment entry
   FunctionBody declarations _
@@ -468,6 +456,7 @@ structuralCandidatesFor
 structuralCandidatesFor environment value =
     enumerate value (contextRewriteRules environment)
       <> scopedCandidates
+      <> maybeToList (postRewriteCandidate value)
   where
     enumerate selectedValue = concatMap (\rule ->
       enumerateRuleStructuralCandidates rule selectedValue)

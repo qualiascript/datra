@@ -12,14 +12,11 @@ module DatraLanguage.ConcreteSyntax
   , interpolationCharacter
   , literalTemplateDelimiterCharacter
   , sourceSpaceCharacter
-  , sourceHorizontalTabCharacter
   , sourceCarriageReturnCharacter
   , sourceLineFeedCharacter
   , lineFeedEscapeCharacter
   , sourceSpace
   , sourceLineFeed
-  , isSourcePresentationCharacter
-  , isSourceHorizontalPresentationCharacter
   , isSourceLineBreakCharacter
   , isSymbolicSourceCharacter
   ) where
@@ -71,9 +68,6 @@ literalTemplateDelimiterCharacter = '`'
 sourceSpaceCharacter :: Char
 sourceSpaceCharacter = ' '
 
-sourceHorizontalTabCharacter :: Char
-sourceHorizontalTabCharacter = '\t'
-
 sourceCarriageReturnCharacter :: Char
 sourceCarriageReturnCharacter = '\r'
 
@@ -88,16 +82,6 @@ sourceSpace = [sourceSpaceCharacter]
 
 sourceLineFeed :: String
 sourceLineFeed = [sourceLineFeedCharacter]
-
-isSourcePresentationCharacter :: Char -> Bool
-isSourcePresentationCharacter character =
-  isSourceHorizontalPresentationCharacter character
-    || isSourceLineBreakCharacter character
-
-isSourceHorizontalPresentationCharacter :: Char -> Bool
-isSourceHorizontalPresentationCharacter character =
-  character == sourceSpaceCharacter
-    || character == sourceHorizontalTabCharacter
 
 isSourceLineBreakCharacter :: Char -> Bool
 isSourceLineBreakCharacter character =

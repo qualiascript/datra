@@ -19,7 +19,6 @@ import DatraLanguage.Application
   ( applicationFrom
   , applicationPhrase
   , applicationSelections
-  , presentationLiteral
   , rawApplicationPhrase
   )
 import DatraLanguage.AST
@@ -163,15 +162,15 @@ literalTemplateCaptures (LiteralTemplatePattern parts) = match parts
     match [] _ = []
     match (LiteralTemplatePatternLiteral expected : remaining) candidates =
       [ later
-      | let (_, afterSpacing) = span presentationLiteral candidates
-      , actual : rest <- [afterSpacing]
+      | let (_, afterLineBreaks) = span (== LineBreak) candidates
+      , actual : rest <- [afterLineBreaks]
       , literalMatches expected actual
       , later <- match remaining rest
       ]
     match (LiteralTemplatePatternCapture target : remaining) candidates =
       [ (LiteralTemplateCapture target, applicationFrom selected) : later
-      | let (_, afterSpacing) = span presentationLiteral candidates
-      , (selected, rest) <- captureSelections afterSpacing
+      | let (_, afterLineBreaks) = span (== LineBreak) candidates
+      , (selected, rest) <- captureSelections afterLineBreaks
       , later <- match remaining rest
       ]
 
@@ -186,7 +185,7 @@ literalTemplateCaptures (LiteralTemplatePattern parts) = match parts
     captureSelections candidates =
       [ splitAt count candidates
       | count <- reverse [1 .. length candidates]
-      , not (presentationLiteral (candidates !! (count - 1)))
+      , candidates !! (count - 1) /= LineBreak
       ]
 
 literalExpressionCaptures

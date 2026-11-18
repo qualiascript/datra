@@ -18,9 +18,6 @@ module StringInterpolation
   , syntaxRuleCaptures, mapSyntaxRuleCaptures
   , literalExpressionPattern
   , identifierApplicationRule
-  , commentSyntaxRule
-  , syntaxWhitespaceSource
-  , horizontalSyntaxWhitespace
   , syntaxApplicationImplementation
   , syntaxDependentRule, syntaxRuleAdapter
   , expandSyntax
@@ -35,11 +32,6 @@ import StringExpression
   ( StringExpression (..)
   , StringInterpolationTemplate
   , TemplateSelection (..)
-  )
-import DatraLanguage.ConcreteSyntax
-  ( commentCharacter
-  , isSourceHorizontalPresentationCharacter
-  , isSourcePresentationCharacter
   )
 import Data.Foldable (toList)
 
@@ -154,7 +146,7 @@ data SyntaxRuleSemantics
   = SyntaxAdapter Expression
   | SyntaxApplication Expression Expression
   | DependentSyntax DependentSyntaxRule
-  | SyntaxDiscard
+  | SyntaxPostRewrite Expression
   deriving (Eq, Show)
 
 data DependentSyntaxRule = DependentSyntaxRule
@@ -173,7 +165,7 @@ syntaxDependentRule rule = case syntaxSemantics rule of
   SyntaxAdapter {} -> Nothing
   SyntaxApplication {} -> Nothing
   DependentSyntax dependent -> Just dependent
-  SyntaxDiscard -> Nothing
+  SyntaxPostRewrite {} -> Nothing
 
 syntaxRuleAdapter :: SyntaxRule -> Maybe Expression
 syntaxRuleAdapter rule = case syntaxSemantics rule of
@@ -181,24 +173,12 @@ syntaxRuleAdapter rule = case syntaxSemantics rule of
   SyntaxApplication _ implementation -> Just implementation
   DependentSyntax dependent -> Just
     (dependentSyntaxImplementation dependent)
-  SyntaxDiscard -> Nothing
+  SyntaxPostRewrite {} -> Nothing
 
 syntaxApplicationImplementation :: SyntaxRule -> Maybe Expression
 syntaxApplicationImplementation rule = case syntaxSemantics rule of
   SyntaxApplication _ implementation -> Just implementation
   _ -> Nothing
-
--- | The first declaration in every syntax environment. Its operand has
--- already been delimited by the concrete parser, but remains ordinary syntax
--- data until this rule discards it.
-commentSyntaxRule :: SyntaxRule
-commentSyntaxRule = SyntaxRule
-  { declarativeMatcherPlan = IdentifierApplicationMatcher
-      (IdentifierApplicationPattern
-        (UnresolvedSyntaxLiteral [commentCharacter])
-        (ExpressionString (AtlasMap [])))
-  , syntaxSemantics = SyntaxDiscard
-  }
 
 declarationRules :: Expression -> [SyntaxRule]
 declarationRules = map third . declarationRuleBranches
@@ -382,7 +362,7 @@ expandSyntax rule selection =
     SyntaxAdapter adapter -> FunctionApplication adapter suppliedInput
     SyntaxApplication callable _ ->
       FunctionApplication callable suppliedInput
-    SyntaxDiscard -> ElidedSyntax
+    SyntaxPostRewrite expressionValue -> expressionValue
   where
     captures = templateSelectionCaptures selection
     suppliedInput = case captures of
@@ -392,14 +372,6 @@ expandSyntax rule selection =
     -- Function preparation overloads this supplied tail onto the declared
     -- domain. Empty, singleton, and multi-capture syntax therefore follows the
     -- same call path as an ordinary partial argumentative map.
-
-syntaxWhitespaceSource :: String -> Bool
-syntaxWhitespaceSource source =
-  not (null source) && all isSourcePresentationCharacter source
-
-horizontalSyntaxWhitespace :: String -> Bool
-horizontalSyntaxWhitespace source =
-  not (null source) && all isSourceHorizontalPresentationCharacter source
 
 dependentLookup
   :: [StringTemplateInterpolation Expression]

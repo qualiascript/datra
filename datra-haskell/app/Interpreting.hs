@@ -130,7 +130,6 @@ import StringInterpolation
   , SyntaxRuleSemantics (..)
   , declarationRules
   , declarationRuleBranches
-  , commentSyntaxRule
   , literalExpressionPattern
   , mapSyntaxRuleCaptures
   , identifierApplicationRule
@@ -619,8 +618,7 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
   make base initialDeclarations initialFamilies
   where
     initialFamilies =
-      externalFamily base initialDeclarations [commentSyntaxRule]
-        : externalFamily base initialDeclarations initialRules
+      externalFamily base initialDeclarations initialRules
         : declarationFamilies base initialDeclarations
 
     make currentBase declarations families = context
@@ -2282,10 +2280,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (Just (renderSourceExpression expressionValue))
         reduction scope resolving bindings result
     DeclarationExpression _ -> Left OperationHasNoEffect
+    LineBreak -> Left (UnknownIdentifier "\\n")
     UnresolvedSyntaxLiteral literal ->
       Left (UnknownIdentifier (dropWhile isSpace literal))
-    ElidedSyntax -> Left OperationHasNoEffect
-    SyntaxRemainder sourceText -> Left (UnknownIdentifier sourceText)
     IdentifierReference (SimpleIdentifierString name) ->
       resolveIdentifierWith reduction scope resolving name
     Lookup (ArgumentativeMap

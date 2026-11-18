@@ -304,16 +304,10 @@ testRenamedArgumentConcepts = do
 testDependentCommentSyntax :: IO ()
 testDependentCommentSyntax = do
   let source = "(123 #this is a comment)"
-      rawComment = FunctionApplication
-        (UnresolvedSyntaxLiteral "#")
-        (SyntaxRemainder "this is a comment")
   case parseDatraRawLocatedWithSourceName testSourceName source of
     Right (_, Located _ actual) -> assertEqual
       "the enclosing parenthesized boundary owns the comment extent"
-      (SyntaxBoundary
-        (FunctionApplication
-          (FunctionApplication (ref "123") (UnresolvedSyntaxLiteral " "))
-          rawComment))
+      (SyntaxBoundary (ref "123"))
       actual
     Left failure -> assertFailure (renderParseFailure failure)
   case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
@@ -342,8 +336,16 @@ testDependentCommentSyntax = do
 
 testSyntaxSeparatorElision :: IO ()
 testSyntaxSeparatorElision = do
-  assertRawSeparator "horizontal syntax is retained before matching" " "
-  assertRawSeparator "line syntax is retained before matching" "\n"
+  assertRaw
+    "horizontal spacing is parser layout"
+    "(left right)"
+    (FunctionApplication (ref "left") (ref "right"))
+  assertRaw
+    "line syntax is retained before matching"
+    "(left\nright)"
+    (FunctionApplication
+      (FunctionApplication (ref "left") LineBreak)
+      (ref "right"))
   assertRewritten
     "horizontal syntax introduces application without a unit argument"
     "(left right)"
@@ -356,19 +358,11 @@ testSyntaxSeparatorElision = do
     "repeated line syntax produces one flat sequence"
     "(left\nmiddle\nright)"
     (SyntaxBoundary (ref "left" <:> ref "middle" <:> ref "right"))
-  assertBool "elided syntax is distinct from the semantic empty map"
-    (toOperatorExpression ElidedSyntax /= toOperatorExpression (AtlasMap []))
   where
-    assertRawSeparator label separator =
-      case parseDatraRawLocatedWithSourceName testSourceName
-          ("(left" <> separator <> "right)") of
+    assertRaw label source expected =
+      case parseDatraRawLocatedWithSourceName testSourceName source of
         Right (_, Located _ actual) -> assertEqual label
-          (SyntaxBoundary
-            (FunctionApplication
-              (FunctionApplication
-                (ref "left")
-                (UnresolvedSyntaxLiteral separator))
-              (ref "right")))
+          (SyntaxBoundary expected)
           actual
         Left failure -> assertFailure (renderParseFailure failure)
     assertRewritten label source expected =
@@ -381,13 +375,9 @@ testUnresolvedPostfixSyntax :: IO ()
 testUnresolvedPostfixSyntax = do
   let compact = FunctionApplication
         (ref "Nat") (UnresolvedSyntaxLiteral "++")
-      spaced = FunctionApplication
-        (FunctionApplication
-          (ref "Nat") (UnresolvedSyntaxLiteral " "))
-        (UnresolvedSyntaxLiteral "++")
+      spaced = compact
       lineSeparated = FunctionApplication
-        (FunctionApplication
-          (ref "Nat") (UnresolvedSyntaxLiteral "\n"))
+        (FunctionApplication (ref "Nat") LineBreak)
         (UnresolvedSyntaxLiteral "++")
       punctuated = FunctionApplication
         (ref "hello") (UnresolvedSyntaxLiteral "!!!!")
@@ -412,27 +402,27 @@ testUnresolvedPostfixSyntax = do
     (FunctionApplication (ref "2") (UnresolvedSyntaxLiteral "++"))
   assertRaw "identifier-headed compact postfix syntax remains matchable"
     "(Nat++)" compact
-  assertRaw "horizontal presentation remains part of the exact phrase"
+  assertRaw "horizontal spacing does not add an AST operand"
     "(Nat ++)" spaced
   assertRaw "exact syntax is not restricted to a pure identifier"
     "(hello!!!!)" punctuated
-  assertBool "compact exact syntax does not accept a separated spelling"
+  assertBool "horizontal layout does not change exact application syntax"
     ( matches (exact "Nat++") compact
-      && not (matches (exact "Nat++") spaced)
+      && matches (exact "Nat++") spaced
       && not (matches (exact "Nat++") lineSeparated)
     )
-  assertBool "separated exact syntax is distinct from compact syntax"
-    ( matches (exact "Nat ++") spaced
+  assertBool "horizontal layout is absent from exact source rendering"
+    ( not (matches (exact "Nat ++") spaced)
       && not (matches (exact "Nat ++") compact)
     )
-  assertBool "newlines are exact presentation rather than generic layout"
+  assertBool "line breaks contribute an exact newline"
     ( matches (exact "Nat\n++") lineSeparated
       && not (matches (exact "Nat\n++") compact)
       && not (matches (exact "Nat\n++") spaced)
     )
   assertBool "exact syntax accepts arbitrary retained punctuation"
     (matches (exact "hello!!!!") punctuated)
-  assertBool "literal-template matching ignores presentation whitespace"
+  assertBool "literal-template matching crosses line breaks"
     ( all (matches structural) [compact, spaced, lineSeparated] )
   where
     matches rule expressionValue = case

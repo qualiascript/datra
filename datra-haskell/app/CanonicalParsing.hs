@@ -130,9 +130,6 @@ astForm =
           (astCanonicalForm IdentifierReferenceForm *> astString)
       , UnresolvedSyntaxLiteral <$>
           (astCanonicalForm UnresolvedSyntaxForm *> astString)
-      , ElidedSyntax <$ astCanonicalForm ElidedSyntaxForm
-      , SyntaxRemainder <$>
-          (astCanonicalForm SyntaxRemainderForm *> astString)
       , astConditional
       , try astRegisteredBinary
       , astRegisteredUnary

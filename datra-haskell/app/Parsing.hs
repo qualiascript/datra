@@ -66,8 +66,8 @@ import DatraLanguage.AST
       , FunctionTypeExpression
       , FunctionApplication
       , IdentifierReference
+      , LineBreak
       , UnresolvedSyntaxLiteral
-      , SyntaxRemainder
       , Lookup
       )
   , pattern FunctionType
@@ -84,7 +84,6 @@ import DatraLanguage.ConcreteSyntax
   )
 import DatraLanguage.Application
   ( applicationFrom
-  , presentedApplication
   , rawApplicationPhrase
   )
 import DatraLanguage.Identifier
@@ -125,7 +124,6 @@ import Text.Megaparsec
   , getOffset
   , getSourcePos
   , lookAhead
-  , match
   , many
   , manyTill
   , notFollowedBy
@@ -244,75 +242,66 @@ sourceAtomicExpressionToken = choice
 
 elementsUntil :: Parser () -> Parser [Expression]
 elementsUntil boundary = do
-  first <- optional (commentExpression boundary <|> expression)
+  skipLeadingComments boundary
+  first <- optional expression
   case first of
     Nothing -> pure []
     Just entry -> continue entry
   where
-    continue entry = do
-      more <- optional elementSeparator
-      case more of
-        Nothing -> pure [entry]
-        Just SemicolonSeparator ->
-          (entry :) <$> elementsUntil boundary
-        Just (CommentSeparator sourceText) -> do
-          following <- commentExpression boundary
-          continue (presentedApplication sourceText entry following)
-        Just (LineSeparator sourceText) -> do
-          next <- optional
-            ((Left <$> commentExpression boundary) <|> (Right <$> expression))
-          case next of
-            Nothing -> pure [entry]
-            -- A comment owns its source remainder as one operand. Ordinary
-            -- lines instead remain one unresolved top-level phrase so the
-            -- visible declarative rules get the complete presentation before
-            -- the later newline rule delineates it.
-            Just (Left comment) -> continue
-              (presentedApplication sourceText entry comment)
-            Just (Right following) -> continue
-              (presentedLineApplication sourceText entry following)
+    continue entry =
+      semicolon entry
+        <|> comment entry
+        <|> line entry
+        <|> pure [entry]
 
-    presentedLineApplication separator left right = applicationFrom
+    semicolon entry = do
+      _ <- operatorToken AST.SequentialOperator <* lineSpaceConsumer
+      (entry :) <$> elementsUntil boundary
+
+    comment entry = do
+      _ <- try
+        (horizontalSpaceConsumer <* lookAhead (char commentCharacter))
+      sourceComment boundary
+      continue entry
+
+    line entry = do
+      logicalLineBreak
+      skipLeadingComments boundary
+      next <- optional expression
+      case next of
+        Nothing -> pure [entry]
+        Just following -> continue (lineApplication entry following)
+
+    lineApplication left right = applicationFrom
       ( rawApplicationPhrase left
-          <> [UnresolvedSyntaxLiteral separator]
+          <> [LineBreak]
           <> rawApplicationPhrase right
       )
 
--- Hash is the head of the first dependent declaration in every environment.
--- Its operand is concrete source remainder, delimited by the enclosing syntax
--- parser rather than interpreted by any later expression rule.
-commentExpression :: Parser () -> Parser Expression
-commentExpression boundary = do
+skipLeadingComments :: Parser () -> Parser ()
+skipLeadingComments boundary = do
+  next <- optional (try
+    (horizontalSpaceConsumer *> sourceComment boundary))
+  case next of
+    Nothing -> pure ()
+    Just () -> do
+      _ <- optional logicalLineBreak
+      skipLeadingComments boundary
+
+-- Comments are lexical layout. Their contents are consumed to the enclosing
+-- line or expression boundary and never enter the syntax AST.
+sourceComment :: Parser () -> Parser ()
+sourceComment boundary = do
   _ <- char commentCharacter
-  sourceText <- manyTill anySingle
+  _ <- manyTill anySingle
     (lookAhead (void eol <|> boundary <|> eof))
-  pure (FunctionApplication
-    (UnresolvedSyntaxLiteral [commentCharacter])
-    (SyntaxRemainder sourceText))
+  pure ()
 
--- A newline is a separator only while parsing map elements. Newlines after
--- an infix operator are consumed by 'continuedOperator' before this parser can
--- see them.
-data ElementSeparator
-  = SemicolonSeparator
-  | LineSeparator String
-  | CommentSeparator String
-
-elementSeparator :: Parser ElementSeparator
-elementSeparator =
-  SemicolonSeparator
-    <$ (operatorToken AST.SequentialOperator <* lineSpaceConsumer)
-    <|> (LineSeparator <$> linePresentation)
-    <|> (CommentSeparator <$>
-      try ((maybe "" id <$> optional horizontalPresentation)
-        <* lookAhead (char commentCharacter)))
-
-linePresentation :: Parser String
-linePresentation = Text.unpack . fst <$>
-  match (some (eol <* horizontalSpaceConsumer))
-
-horizontalPresentation :: Parser String
-horizontalPresentation = Text.unpack . fst <$> match hspace1
+-- A newline is retained only while parsing map elements. Newlines after an
+-- infix operator are consumed by 'continuedOperator' before this parser sees
+-- them. Multiple physical lines plus indentation form one logical break.
+logicalLineBreak :: Parser ()
+logicalLineBreak = void (some (eol <* horizontalSpaceConsumer))
 
 -- Reverse specification is the outermost expression layer, so either side
 -- can contain dependent arguments, concatenation, and function applications.
@@ -577,20 +566,18 @@ term :: Parser Expression
 term = do
   function <- accessedTerm termAtom
   arguments <- applicationArguments
-  pure (foldl applyPresentedArgument function arguments)
+  pure (foldl FunctionApplication function arguments)
   where
     applicationArguments = do
       next <- optional (try $ do
-        separator <- maybe "" id <$> optional horizontalPresentation
+        horizontalSpaceConsumer
         argument <- applicationArgument
-        pure (separator, argument))
+        pure argument)
       case next of
         Nothing -> pure []
         Just argument -> (argument :) <$> applicationArguments
-    applyPresentedArgument left (separator, right) =
-      presentedApplication separator left right
     -- A newline remains a block boundary; operator and syntax words cannot be
-    -- arguments. Horizontal presentation is retained by 'applicationArguments'.
+    -- arguments. Horizontal spacing is ordinary parser layout.
     applicationArgument = accessedTerm (choice
       [ evaluatedDependentArgumentOrExpression
       , try dependentArgumentExpressionParser

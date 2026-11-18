@@ -358,6 +358,7 @@ executable datra-haskell
         SyntaxRewriting
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
+        SyntaxRewriting.PostRewrite
         SyntaxRewriting.Diagnostics
         SyntaxRewriting.Stack
         Rendering
@@ -424,6 +425,7 @@ test-suite datra-parsing-test
         SyntaxRewriting
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
+        SyntaxRewriting.PostRewrite
         SyntaxRewriting.Diagnostics
         SyntaxRewriting.Stack
         Paths_datra_haskell
@@ -471,6 +473,7 @@ test-suite datra-interpreting-test
         SyntaxRewriting
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
+        SyntaxRewriting.PostRewrite
         SyntaxRewriting.Diagnostics
         SyntaxRewriting.Stack
         Rendering

@@ -212,13 +212,10 @@ prettyOperator (BeginValue bindings result) =
 prettyOperator (IdentifierReferenceValue (SimpleIdentifierString name)) =
   prettyCanonicalForm IdentifierReferenceForm
     [pretty (renderAsciiStringLiteral name)]
+prettyOperator LineBreakValue = pretty ("<line-break>" :: String)
 prettyOperator (UnresolvedSyntaxValue literal) =
   prettyCanonicalForm UnresolvedSyntaxForm
     [pretty (renderAsciiStringLiteral literal)]
-prettyOperator ElidedSyntaxValue = prettyCanonicalForm ElidedSyntaxForm []
-prettyOperator (SyntaxRemainderValue source) =
-  prettyCanonicalForm SyntaxRemainderForm
-    [pretty (renderAsciiStringLiteral source)]
 prettyOperator (LookupValue operand) =
   prettyUnary LookupOperator operand
 prettyOperator (Multiply left right) =
