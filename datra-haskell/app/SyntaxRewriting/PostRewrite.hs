@@ -2,6 +2,7 @@
 -- opportunity to consume a complete source phrase.
 module SyntaxRewriting.PostRewrite
   ( postRewriteCandidate
+  , postRewriteExpansion
   ) where
 
 import DatraLanguage.AST (Expression (..))
@@ -33,21 +34,24 @@ postRewriteCandidate source = do
     , structuralCandidateRemaining = []
     }
 
--- Split the complete raw application phrase at every unconsumed logical line
--- break. Each line remains an ordinary application; the lines form one flat
--- sequence. Empty lines are parser layout and therefore cannot reach here.
-lineBreakFallback :: Expression -> Maybe Expression
-lineBreakFallback source = case splitLineBreaks (rawApplicationPhrase source) of
-  [_] -> Nothing
-  linesOfSource
-    | all (not . null) linesOfSource ->
-        Just (foldl1 (<:>) (map applicationFrom linesOfSource))
-    | otherwise -> Nothing
-
-splitLineBreaks :: [Expression] -> [[Expression]]
-splitLineBreaks = foldr split [[]]
+-- Reapply a declarative candidate's unconsumed phrase through the same
+-- terminal operation used when no declaration matched at all. This is the
+-- point where an expanded prefix has finished consuming syntax but its source
+-- continuation has not yet entered ordinary traversal.
+postRewriteExpansion :: Expression -> [Expression] -> Expression
+postRewriteExpansion expansion remaining =
+  maybe source id (lineBreakFallback source)
   where
-    split LineBreak linesOfSource = [] : linesOfSource
-    split expressionValue (current : remaining) =
-      (expressionValue : current) : remaining
-    split _ [] = []
+    source = applicationFrom (expansion : remaining)
+
+-- Split only the first unconsumed logical line break. The untouched tail is
+-- re-entered as a fresh phrase, so syntax beginning on its first line gets a
+-- chance to consume later breaks under the environment published by the
+-- completed prefix.
+lineBreakFallback :: Expression -> Maybe Expression
+lineBreakFallback source = case break (== LineBreak)
+    (rawApplicationPhrase source) of
+  (before, LineBreak : after)
+    | not (null before) && not (null after) ->
+        Just (applicationFrom before <:> applicationFrom after)
+  _ -> Nothing

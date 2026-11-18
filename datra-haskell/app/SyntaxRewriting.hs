@@ -74,7 +74,10 @@ import SyntaxRewriting.Diagnostics
   ( candidateRejectionAt
   , reportCandidateRejections
   )
-import SyntaxRewriting.PostRewrite (postRewriteCandidate)
+import SyntaxRewriting.PostRewrite
+  ( postRewriteCandidate
+  , postRewriteExpansion
+  )
 import SyntaxRewriting.Stack
   ( RewriteStackOperations (..)
   , runRewriteStack
@@ -429,7 +432,7 @@ runStructuralCandidates capture environment source =
     expandCandidate selectedEnvironment prepared = do
       expressionValue <- contextExpandSyntax selectedEnvironment
         (preparedExpansionSyntax prepared)
-      pure (foldl FunctionApplication expressionValue
+      pure (postRewriteExpansion expressionValue
         (preparedExpansionRemaining prepared))
 
 publishChild

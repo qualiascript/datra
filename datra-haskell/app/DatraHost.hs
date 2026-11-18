@@ -206,6 +206,7 @@ datraHostValue = do
       ordinalBinaryBody name $ \left right ->
         booleanValue <$> operation left right
     blockExpressions (AtlasMap entries) = entries
+    blockExpressions (MapSequence entries) = entries
     blockExpressions (SyntaxBoundary inner) = blockExpressions inner
     blockExpressions value = [value]
     importPaths value = case value of

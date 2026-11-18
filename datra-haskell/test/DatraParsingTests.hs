@@ -90,6 +90,7 @@ import DatraTypes.FunctionType
 import StringInterpolation
   ( DeclarativeCapture (..)
   , DeclarativeMatcherPlan (..)
+  , IdentifierApplicationPattern (..)
   , LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
   , LiteralTemplatePattern (..)
@@ -397,6 +398,13 @@ testUnresolvedPostfixSyntax = do
               ])
         , syntaxSemantics = SyntaxAdapter (ref "structural-match")
         }
+      identifierApplication = SyntaxRule
+        { declarativeMatcherPlan = IdentifierApplicationMatcher
+            (IdentifierApplicationPattern
+              (ref "Nat")
+              (ExpressionString (AtlasMap [])))
+        , syntaxSemantics = SyntaxAdapter (ref "application-match")
+        }
   assertRaw "numeric-looking heads remain identifiers before declarations"
     "(2++)"
     (FunctionApplication (ref "2") (UnresolvedSyntaxLiteral "++"))
@@ -424,6 +432,10 @@ testUnresolvedPostfixSyntax = do
     (matches (exact "hello!!!!") punctuated)
   assertBool "literal-template matching crosses line breaks"
     ( all (matches structural) [compact, spaced, lineSeparated] )
+  assertBool "identifier application ends at a logical line break"
+    ( matches identifierApplication compact
+      && not (matches identifierApplication lineSeparated)
+    )
   where
     matches rule expressionValue = case
         matchRules (const (const True)) [rule] expressionValue of

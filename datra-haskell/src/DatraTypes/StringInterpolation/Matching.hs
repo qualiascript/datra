@@ -17,7 +17,6 @@ module StringInterpolation.Matching
 import Data.Functor.Identity (runIdentity)
 import DatraLanguage.Application
   ( applicationFrom
-  , applicationPhrase
   , applicationSelections
   , rawApplicationPhrase
   )
@@ -113,8 +112,9 @@ matchIdentifierApplication rule patternValue expressionValue =
       ]
       remaining
   | (selected, remaining) <- applicationSelections expressionValue
-  , actualHead : operands <- [applicationPhrase selected]
+  , actualHead : operands <- [rawApplicationPhrase selected]
   , not (null operands)
+  , LineBreak `notElem` operands
   , actualHead == identifierApplicationHead patternValue
   , let captured = applicationFrom operands
   ]

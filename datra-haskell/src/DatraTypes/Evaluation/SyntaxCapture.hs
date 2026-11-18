@@ -57,6 +57,7 @@ captureAtomicSyntaxExpression target captured =
     PrimitiveTypeForm (SyntaxPrimitive BlockAST) ->
       case captured of
         AtlasMap {} -> Just captured
+        MapSequence {} -> Just captured
         _ -> Nothing
     PrimitiveTypeForm (SyntaxPrimitive FunctionBodyAST) ->
       case captured of

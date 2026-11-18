@@ -121,9 +121,10 @@ matcher mode for ordinary declarations.
 
 ### Identifier applications
 
-`applicationPhrase` omits `LineBreak` when projecting semantic application
-operands. Identifier application matching can therefore select an extent
-which crosses a logical newline.
+Identifier application matching uses the raw phrase and rejects a selected
+operand extent containing `LineBreak`. This matcher has no literal newline
+component, so a logical break terminates its extent instead of disappearing
+into a greedy capture of later lines.
 
 ### Literal templates
 
@@ -155,19 +156,29 @@ The operation:
 
 1. reads the current top-level `rawApplicationPhrase`;
 2. declines the expression if the phrase contains no `LineBreak`;
-3. splits the phrase at every remaining `LineBreak`;
-4. declines malformed leading, trailing, or empty segments;
-5. rebuilds each line with ordinary `applicationFrom`; and
-6. joins the completed lines through `(<:>)`.
+3. splits the phrase at its first remaining `LineBreak`;
+4. declines malformed leading or trailing segments;
+5. rebuilds the completed prefix and untouched tail with ordinary
+   `applicationFrom`; and
+6. joins them through `(<:>)`.
 
-It handles every remaining top-level break in one expansion. It must not lower
-one partial `left LineBreak right` subtree at a time, because `right` may be
-only the first operand of a longer source line.
+The tail retains every later `LineBreak` and is re-entered as a fresh rewrite
+node. Syntax beginning on the next line therefore gets the first opportunity
+to consume its own line breaks under the environment published by the
+completed prefix. Repeated fallback applications remain flat because `(<:>)`
+is associative and absorbs existing `MapSequence` operands.
 
 The fallback is adapted to one internal structural candidate and appended
 after visible and scoped candidates in `structuralCandidatesFor`. Reuse the
 existing candidate transition: when accepted, the stack replaces the current
 node with the fallback expansion and traverses that replacement normally.
+
+When a visible or scoped candidate consumes only a prefix, reapply its
+`remaining` phrase through the same first-break operation after expansion.
+Plain function reapplication would reconstruct an unconsumed newline after
+candidate search for that node had already completed. Post-expansion fallback
+instead turns that boundary into `<:>` and makes the untouched tail a fresh
+child, without changing the rewrite stack's scheduling.
 
 Keep the adapter narrow:
 
@@ -190,6 +201,10 @@ stack traverses that container from left to right.
 The syntax-rewriting configuration must publish a rewritten declaration child
 of `MapSequence` in the same way it already publishes declaration children of
 `AtlasMap`, `Begin`, and `FunctionBody`.
+
+`MapSequence` is also a direct block container wherever the existing system
+projects or validates block expressions. `SyntaxBoundary` remains a
+transparent wrapper rather than the source of block semantics.
 
 This is a container-semantics addition to the existing `stackPublishChild`
 callback, not a change to the rewrite machine or its scheduling algorithm.
@@ -277,7 +292,10 @@ fallback visible.
 
 - One unconsumed break becomes `left <:> right`.
 - Multi-operand lines remain complete applications on each side.
-- Three or more lines produce one flat `MapSequence`.
+- Later breaks remain in the untouched tail until it is re-entered.
+- Multiline syntax beginning on a later line can consume its own breaks before
+  the next fallback.
+- Three or more unconsumed lines eventually produce one flat `MapSequence`.
 - A sequence already present on either side remains flat.
 - Rewriting the result again does not select the fallback.
 - A fallback selected for a capture follows the same invariant as a root.

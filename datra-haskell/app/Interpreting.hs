@@ -440,6 +440,7 @@ captureSyntaxHole base modules declarations previous kind captured =
       ExpressionString {} -> Just captured
       BlockString {} -> case captured of
         AtlasMap {} -> Just captured
+        MapSequence {} -> Just captured
         _ -> Just (AtlasMap (applicationPhrase captured))
       FunctionBodyString {} -> case captured of
         FunctionBody {} -> Just captured
