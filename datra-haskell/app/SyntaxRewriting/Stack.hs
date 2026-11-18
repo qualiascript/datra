@@ -268,7 +268,8 @@ runRewriteStack operations initialEnvironment source =
               let advanced = updateNode nodeId (\current -> current
                     { rewriteNodeExpression = rewritten
                     , rewriteNodeRejections = []
-                    , rewriteNodeState = NodePending
+                    , rewriteNodeState = NodeReady
+                        (TraverseChildren (ordinary Nothing))
                     }) machine
               in run (nodeId :| stack) advanced
         _ ->
