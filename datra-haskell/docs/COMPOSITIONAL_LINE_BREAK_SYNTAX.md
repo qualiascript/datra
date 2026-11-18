@@ -1,40 +1,32 @@
-# Compositional Line-Break Syntax Plan
+# Minimal Compositional Line-Break Syntax Plan
 
 ## Goal
 
-Represent a logical source newline as a transient `LineBreak` AST node.
-Declarative matchers can consume that node as presentation, including matching
-an exact `\n`. If no declaration consumes it, ordinary syntax finalization
-turns the surrounding expression into the existing sequential operator
-`(<:>)`.
-
-The resulting order is:
+Represent a logical source newline as a transient `LineBreak` expression.
+The parser retains that expression in the application spine so declarative
+syntax can match the complete phrase. While matching, `LineBreak` renders as
+the literal character `\n`. If no declaration consumes the phrase, ordinary
+syntax finalization lowers the line break through the existing sequential
+operator `(<:>)`.
 
 ```text
 source newline
-  -> LineBreak in the retained application spine
-  -> visible declarative rules get the complete spine
-  -> a selected rule consumes the LineBreak, or
+  -> LineBreak
+  -> declarative matching sees "\n"
+  -> selected syntax consumes it, or
   -> ordinary finalization lowers it with (<:>)
 ```
 
-This is deliberately compositional. `LineBreak` is one syntax component with
-one matcher interpretation and one unconsumed interpretation. There is no
-newline syntax declaration, host-injected fallback rule, matcher mode,
-identity label, rendered-string probe, or special syntax boundary.
+This is the whole pipeline. There is no newline declaration, separator AST,
+presentation taxonomy, matcher mode, candidate-presentation view, or injected
+fallback rule.
 
-## Current flow and failure
+## Current failure
 
-### Parsing
-
-`Parsing.elementsUntil` owns map-element separators. A semicolon immediately
-starts another element. A newline currently takes a different route:
-
-1. `elementSeparator` returns `LineSeparator String`.
-2. `linePresentation` captures the newline and following indentation as raw
-   text.
-3. `presentedLineApplication` flattens the expressions on both sides and
-   inserts `UnresolvedSyntaxLiteral separator` into the application spine.
+`Parsing.elementsUntil` currently distinguishes separators with an
+`ElementSeparator` type. Its newline branch captures the newline and following
+indentation as a `String`, then inserts that string into the application spine
+as `UnresolvedSyntaxLiteral`.
 
 For example, the raw form of:
 
@@ -51,45 +43,16 @@ FunctionApplication
   right
 ```
 
-This preserves the complete phrase for declarative matching, which is the
-right ordering, but it does not distinguish a logical line separator from an
-unknown symbol or horizontal presentation.
-
-### Matching
-
-`DatraLanguage.Application.presentationLiteral` currently discovers
-presentation by inspecting the string in `UnresolvedSyntaxLiteral`.
-
-- `IdentifierApplicationMatcher` uses `applicationPhrase`, which filters such
-  presentation.
-- `LiteralTemplateMatcher` uses `rawApplicationPhrase` and skips presentation
-  between template components.
-- `LiteralExpressionMatcher` renders a selected AST and runs the exact string
-  matcher over the result.
-
-Consequently a newline is visible only as an undifferentiated string operand.
-The literal-template matcher can skip it, but there is no typed component for
-an exact `\n` match and no safe final interpretation once declarations decline
-the phrase.
-
-### Finalization
-
-`SyntaxRewriting.runRewriteStack` already supplies the required precedence:
-
-1. `enterNode` enumerates declarative candidates for the complete node.
-2. Accepted candidates expand before ordinary traversal.
-3. Only after candidates are exhausted does `finalizeOrdinary` call
-   `normalizeRewrittenSequence`.
-
-Horizontal presentation is removed there today. After the experimental
-newline rule was removed, an unconsumed newline remains an unresolved
-application operand. Std therefore retains one enormous newline-containing
-application instead of acquiring block members, and module loading eventually
-fails with `ImportedModuleRequiresBlock`.
+This happens to make the newline visible to the current rendered-string
+matcher, but it gives the node no structural fallback meaning. Once visible
+declarations decline the phrase, the unresolved newline remains an application
+operand. Std therefore remains one large application instead of becoming a
+sequence of block members, and module loading fails with
+`ImportedModuleRequiresBlock`.
 
 ## AST representation
 
-Add a nullary syntax-phase constructor:
+Add one nullary syntax-phase constructor:
 
 ```haskell
 data Expression
@@ -97,160 +60,110 @@ data Expression
   | LineBreak
 ```
 
-`LineBreak` represents one logical line separator, not the source spelling or
-indentation following it. `linePresentation` already treats one or more
-physical end-of-line sequences plus indentation as one element separator; the
-new node preserves that existing logical behavior. Canonical source rendering
-of the node is `"\n"`.
+`LineBreak` represents one logical line separator. It does not retain the
+physical newline spelling or following indentation. The parser already treats
+one or more physical end-of-line sequences plus indentation as one logical
+separator, and that behavior should remain unchanged.
 
-The node has these invariants:
+The node has four rules:
 
-- the source parser is its only producer;
-- it exists only during syntax rewriting;
-- it is never a value, callable operand, or syntax rule;
-- it is either consumed as presentation by a matcher or lowered during
-  ordinary finalization; and
-- it must not reach evaluation.
+- only source parsing produces it;
+- its source rendering is exactly `"\n"`;
+- declarative matching runs before its fallback meaning is applied; and
+- it must not survive syntax rewriting into evaluation.
 
-Add the corresponding exhaustive traversal, normalization, source-rendering,
-and diagnostic-rendering cases. If `OperatorExpression` remains the common
-rendering boundary, add a transient `LineBreakValue` there as well. Evaluation
-must reject a surviving line break as unresolved syntax rather than assigning
-it a semantic value.
+Add only the exhaustive cases required by the existing AST boundaries:
 
-Do not store `String` in `LineBreak`. Exact source locations belong to the
-parser's existing located diagnostics, while indentation is presentation that
-does not affect newline matching or sequential semantics.
+- `normalizeExpression LineBreak = LineBreak`;
+- the shared traversal treats it as a leaf;
+- `toOperatorExpression` can carry it far enough for source and diagnostic
+  rendering; and
+- evaluation rejects a surviving node as unresolved syntax.
+
+Do not add `LineBreak` to canonical persisted AST syntax. It is transient.
 
 ## Parser changes
 
-Change the separator representation to distinguish logical structure at the
-type level:
+Delete `ElementSeparator`. `elementsUntil` can branch directly on the three
+separators it already owns:
+
+- a semicolon completes the current map member and parses the next member;
+- a comment retains its existing concrete remainder ownership; and
+- a logical newline reads the next expression and joins the two sides with
+  `LineBreak`.
+
+The newline parser should consume the same input as the current
+`linePresentation`, but it should return `()` rather than captured source text.
+The join is:
 
 ```haskell
-data ElementSeparator
-  = SemicolonSeparator
-  | LineSeparator
-  | CommentSeparator String
-```
-
-`linePresentation` should consume the same source as it does now but return
-`()`. `elementsUntil` should retain the complete phrase by inserting
-`LineBreak`:
-
-```haskell
-presentedLineApplication left right = applicationFrom
+lineApplication left right = applicationFrom
   (rawApplicationPhrase left <> [LineBreak] <> rawApplicationPhrase right)
 ```
 
-This preserves the important current behavior: parsing does not decide that a
-newline is a sequence before visible syntax has had the opportunity to consume
-the complete expression.
+This retains the complete application spine without deciding during parsing
+that the newline is already a sequence.
 
-Keep semicolons unchanged. They are explicit structural separators and may
-continue to produce map members directly. Keep comment remainder ownership
-unchanged; the newline after a comment becomes `LineBreak` between the reduced
-comment phrase and the following expression.
+The same join should be used when the expression following a newline is a
+comment. Comment rewriting may later elide that expression, after which normal
+line-break finalization preserves the sequence between the surrounding real
+expressions.
 
-After this change, establish the parser invariant that
-`UnresolvedSyntaxLiteral` never contains a source line-break character. It can
-continue to represent unknown symbolic syntax and retained horizontal
-presentation until those paths are narrowed separately.
+Keep semicolon behavior unchanged. Keep horizontal spacing unchanged for this
+change. After the parser change, no parser-produced `UnresolvedSyntaxLiteral`
+may contain `\r` or `\n`.
 
-## Shared application and presentation abstractions
+## Matching
 
-Extend `DatraLanguage.Application` rather than teaching each matcher about a
-private newline spelling.
+### Exact literal expressions
 
-```haskell
-data PresentationKind
-  = HorizontalPresentation
-  | LinePresentation
+Keep the existing exact literal-expression matcher. It already matches the
+rendered source of the selected application extent. Teach source rendering that
+`LineBreak` is `"\n"`; an actual newline in a literal-expression pattern then
+matches it without a second matcher representation.
 
-presentationKind :: Expression -> Maybe PresentationKind
-presentationKind LineBreak = Just LinePresentation
-presentationKind (UnresolvedSyntaxLiteral source)
-  | not (null source)
-  , all isSourceHorizontalPresentationCharacter source =
-      Just HorizontalPresentation
-presentationKind _ = Nothing
-```
+There is no `CandidatePresentation` and no tokenization layer between the AST
+and the existing exact matcher.
 
-The exact names can follow existing module conventions. The required behavior
-is:
+### Identifier applications and literal templates
 
-- `presentationLiteral` recognizes both horizontal presentation and
-  `LineBreak`;
-- `applicationPhrase` filters both;
-- `rawApplicationPhrase` retains both in source order; and
-- a dedicated `linePresentationLiteral` recognizes only `LineBreak`.
-
-This keeps identifier application, literal-template matching, comments, and
-ordinary application on one shared projection.
-
-## Matcher behavior
-
-### Identifier applications
-
-No new matcher mode is required. Because `IdentifierApplicationMatcher`
-already uses `applicationPhrase`, it continues to see the semantic operands
-on both sides of line presentation. It may therefore select an extent crossing
-one or more `LineBreak` nodes.
-
-### Literal templates
-
-`LiteralTemplateMatcher` already walks `rawApplicationPhrase` and calls
-`span presentationLiteral` before each realized component. Once
-`presentationLiteral LineBreak` is true, the existing structural walk can
-cross newlines without string inspection.
-
-The component-adjacency implementation must retain the presentation it skips:
-
-- a `LineBreak` counts as candidate whitespace;
-- horizontal presentation also counts as candidate whitespace;
-- equal lexical edge classes require at least one presentation component;
-- differing lexical edge classes permit presentation but do not require it;
-  and
-- absent optional components are removed before adjacent realized components
-  are compared.
-
-Captures remain longest-first and must never end on `LineBreak` or horizontal
-presentation. A selected capture can contain internal `LineBreak` nodes; the
-capture's own syntax category decides whether that composed expression is
-valid.
-
-### Literal expressions
-
-Compile a newline in an exact literal-expression pattern as a line-presentation
-component, not as an arbitrary character in a rendered candidate string.
-Matching that component succeeds only on `LineBreak` and contributes no
-capture.
-
-The shared exact matcher may continue to own boundary search, but its candidate
-view should be compositional:
+Identifier application and literal-template matching still need to distinguish
+retained spacing from semantic operands. Keep that as a small structural
+predicate, not a presentation model:
 
 ```haskell
-data CandidatePresentation
-  = CandidateExpression Expression
-  | CandidateHorizontalPresentation String
-  | CandidateLineBreak
+isRetainedSpacing :: Expression -> Bool
+isRetainedSpacing LineBreak = True
+isRetainedSpacing (UnresolvedSyntaxLiteral source) =
+  not (null source)
+    && all isSourceHorizontalPresentationCharacter source
+isRetainedSpacing _ = False
 ```
 
-The view is derived from `rawApplicationPhrase`. Literal text consumes the
-appropriate presentation or expression component, and captures select a
-consecutive component range which is rebuilt with `applicationFrom`. This
-avoids rendering the complete AST, splitting a substring, and reparsing it to
-recover the AST that was already available.
+Use this predicate where the current code uses `presentationLiteral`:
 
-At minimum, the first implementation must route `"\n"` through
-`CandidateLineBreak`. It must not recognize a line by searching text rendered
-from a nested operand; only a `LineBreak` in the current candidate spine is a
-separator available to that match.
+- `applicationPhrase` omits retained spacing for identifier application;
+- the literal-template matcher may skip retained spacing before a realized
+  component; and
+- a capture may contain retained spacing internally but may not end on it.
 
-## Lowering an unconsumed line break
+Delete the broader presentation terminology around this behavior. In
+particular, do not classify line and horizontal presentation into separate
+types, and do not inspect newline characters inside
+`UnresolvedSyntaxLiteral`. A newline is recognized structurally as `LineBreak`.
 
-Ordinary finalization owns the fallback meaning. Add a structural case to
-`normalizeRewrittenSequence` after its children have been rewritten:
+The full literal-template lexical-edge adjacency cleanup is independent of
+this fix and should not be bundled into the first implementation.
+
+## Unconsumed line breaks
+
+`SyntaxRewriting.runRewriteStack` already has the required ordering:
+
+1. enumerate declarations for the complete expression;
+2. expand an accepted declaration; otherwise
+3. traverse children and run ordinary finalization.
+
+Add the fallback to `normalizeRewrittenSequence`:
 
 ```haskell
 FunctionApplication
@@ -259,56 +172,52 @@ FunctionApplication
   left <:> right
 ```
 
-Use `DatraLanguage.AST.Syntax.(<:>)`, not direct `MapSequence` construction.
-`(<:>)` flattens either operand when it is already a sequence, so repeated
-unconsumed lines compose as:
+Use `DatraLanguage.AST.Syntax.(<:>)`. It already flattens a sequence on either
+side, so:
 
-```text
+```datra
 line1
 line2
 line3
 ```
 
+becomes one flat sequence rather than nested sequences.
+
+Keep narrow elision cases for comments:
+
 ```haskell
-line1 <:> line2 <:> line3
+FunctionApplication ElidedSyntax LineBreak -> ElidedSyntax
+FunctionApplication
+    (FunctionApplication left LineBreak)
+    ElidedSyntax -> left
 ```
 
-rather than `[[line1; line2]; line3]`.
+Order those before the general `left LineBreak right` fallback so an elided
+comment does not become a sequence member.
 
-This fallback happens only after all candidates for that node have failed. If
-a declaration such as `do ... yield ...` accepts the complete phrase, its
-expansion replaces the original phrase and the consumed `LineBreak` nodes
-never reach ordinary finalization.
+Horizontal spacing continues through its existing elision path, narrowed to
+horizontal characters only. Delete helpers and comments which describe a raw
+newline string as presentation or as a future syntax declaration.
 
-A bare, leading, or trailing `LineBreak` should be impossible from
-`elementsUntil`. If a future parser path produces one, leave it unresolved so
-the existing syntax-rewrite diagnostic boundary reports it. Do not silently
-erase it and do not lower it to an empty map.
+A bare, leading, or trailing `LineBreak` is not assigned an empty-map meaning.
+If one somehow survives to evaluation, reject it as unresolved syntax.
 
-## Required code changes
+## Minimal implementation order
 
-Implement in this order:
+1. Add `LineBreak` and the required normalization, rendering, and evaluation
+   cases.
+2. Remove `ElementSeparator` and make the newline branch of `elementsUntil`
+   insert `LineBreak` directly.
+3. Replace `presentationLiteral` with the small `isRetainedSpacing` predicate,
+   recognizing horizontal unresolved spacing and structural `LineBreak` only.
+4. Render `LineBreak` as `"\n"` so the existing exact matcher reads it as a
+   literal newline.
+5. Lower an unconsumed complete line application through `(<:>)`, including
+   the two comment-elision cases.
+6. Update the focused parsing and matching tests, then load Std.
 
-1. Add `LineBreak` and all exhaustive AST traversal, normalization, equality,
-   source-rendering, and pretty-rendering cases.
-2. Change `Parsing.elementSeparator`, `linePresentation`, and
-   `presentedLineApplication` to construct the node.
-3. Narrow `UnresolvedSyntaxLiteral` presentation to horizontal source only.
-4. Update `DatraLanguage.Application` with the shared presentation
-   classification.
-5. Make all three declarative matcher modes consume that classification.
-6. Implement literal-template lexical-edge adjacency using the retained
-   presentation components.
-7. Lower the unconsumed complete line pattern through `(<:>)` in
-   `normalizeRewrittenSequence`.
-8. Add an invariant check or diagnostic preventing `LineBreak` from reaching
-   semantic evaluation.
-9. Delete comments and helpers which still describe a later newline syntax
-   declaration.
-
-The change belongs in the parser, AST/application modules, declarative matcher,
-and syntax finalizer. It does not belong in `DatraHost`, `syntaxContext`, the
-standard-library declaration set, or `SyntaxRuleSemantics`.
+No changes belong in `DatraHost`, the standard-library declaration set,
+`syntaxContext`, `SyntaxRuleSemantics`, or the generic exact-string matcher.
 
 ## Verification
 
@@ -316,45 +225,47 @@ standard-library declaration set, or `SyntaxRuleSemantics`.
 
 - `left\nright` contains `LineBreak`, not
   `UnresolvedSyntaxLiteral "\n"`.
-- indentation and blank-line spellings produce the intended single logical
-  separator.
-- horizontal spaces remain horizontal presentation.
-- explicit semicolons retain their current AST.
-- comment remainder ownership ends before the following `LineBreak`.
+- indentation and blank lines still produce one logical separator.
+- horizontal spaces retain their current representation.
+- semicolons retain their current map-member behavior.
+- comments do not absorb the following logical line break.
+- no parser-produced unresolved syntax literal contains a line-break
+  character.
 
-### Matching precedence
+### Matching
 
-- an identifier application can select an extent containing `LineBreak`.
-- a literal template can skip `LineBreak` as candidate whitespace.
-- an exact literal-expression `\n` component matches only a top-level
-  `LineBreak`.
-- a newline rendered from inside a nested operand is not visible to the outer
-  matcher.
-- captures are tried longest-first across nested `do ... yield ...` phrases.
-- a successful declaration consumes the line nodes before finalization.
+- an identifier application can select an extent containing `LineBreak`;
+- a literal template can cross `LineBreak` and can capture an expression with
+  internal line breaks;
+- an exact literal-expression pattern containing `\n` matches the source
+  rendering of `LineBreak`;
+- compact, horizontally spaced, and newline-separated exact spellings remain
+  distinct; and
+- a successful declaration consumes the complete phrase before fallback
+  sequencing runs.
 
-### Fallback composition
+### Fallback
 
-- one unconsumed line becomes `left <:> right`.
-- three lines produce one flat `MapSequence`.
-- a sequence on either side remains flat.
-- no unit/empty-map member is introduced.
+- one unconsumed line becomes `left <:> right`;
+- three lines produce one flat `MapSequence`;
+- a sequence on either side remains flat;
+- an elided comment does not introduce an empty sequence member; and
 - horizontal application behavior is unchanged.
 
 ### Integration
 
-- add Std-less tests for the raw `LineBreak`, matcher consumption, and
-  unconsumed fallback independently.
-- restore a focused greedy `do ... yield ...` test only after its capture
-  targets are available in the chosen Std-less environment.
-- load `libs/std.datra` and verify `Args` reaches the final outer `yield` rather
-  than the nested one.
-- run parser, interpreter, module, CLI, and fixture suites.
-- verify no `LineBreak` reaches evaluation or canonical persisted AST output.
+- update the raw separator test to expect `LineBreak`;
+- update the exact-newline matcher test to construct `LineBreak`;
+- keep the existing Std-less unconsumed-line tests;
+- load `libs/std.datra` successfully;
+- verify the `Args` declaration reaches the final outer `yield`; and
+- run the parsing suite before expanding verification to interpreter, module,
+  CLI, and fixture suites.
 
-## Completion condition
+## Initial completion condition
 
-The work is complete when newlines are represented structurally from parsing
-through matching, visible declarations always run before fallback sequencing,
-unconsumed lines flatten through `(<:>)`, Std loads, and no newline behavior
-depends on raw string inspection or an injected syntax rule.
+The initial work is complete when source newlines become `LineBreak`, the
+existing exact matcher reads them as `\n`, declarations see the complete phrase
+before fallback, unconsumed line breaks flatten through `(<:>)`, Std loads, and
+the parsing tests pass without a newline syntax rule or a new presentation
+abstraction.
