@@ -43,8 +43,12 @@ import StringExpression
   ( TemplateSelection (..)
   )
 import StringInterpolation
-  ( SyntaxRule (..)
-  , SyntaxRuleSemantics (..)
+  ( DeclarativeMatcherPlan (..)
+  , LiteralExpressionPattern (..)
+  , LiteralExpressionPatternPart (..)
+  , LiteralTemplatePattern (..)
+  , LiteralTemplatePatternPart (..)
+  , SyntaxRule (..)
   , expandSyntax
   , syntaxRuleCaptures
   , syntaxApplicationImplementation
@@ -75,7 +79,7 @@ import SyntaxRewriting.Diagnostics
   , reportCandidateRejections
   )
 import SyntaxRewriting.PostRewrite
-  ( postRewriteCandidate
+  ( terminalFallback
   , postRewriteExpansion
   )
 import SyntaxRewriting.Stack
@@ -90,12 +94,10 @@ resolvedRuleReturnType
   :: (Expression -> Maybe InterpretedValue)
   -> SyntaxRule
   -> Maybe InterpretedValue
-resolvedRuleReturnType evaluate rule = case syntaxSemantics rule of
-  SyntaxPostRewrite {} -> evaluate (AtlasMap [])
-  _ ->
-    (syntaxRuleAdapter rule >>= evaluate
-      >>= interpretedFunction >>= Just . functionCodomain)
-    <|> (syntaxRuleAdapter rule >>= functionCodomainExpression >>= evaluate)
+resolvedRuleReturnType evaluate rule =
+  (syntaxRuleAdapter rule >>= evaluate
+    >>= interpretedFunction >>= Just . functionCodomain)
+  <|> (syntaxRuleAdapter rule >>= functionCodomainExpression >>= evaluate)
 
 functionCodomainExpression :: Expression -> Maybe Expression
 functionCodomainExpression expressionValue = case expressionValue of
@@ -330,6 +332,8 @@ runStructuralCandidates capture environment source =
   where
     operations = RewriteStackOperations
       { stackEnumerateCandidates = structuralCandidatesFor
+      , stackPostRewrite = \selectedEnvironment ->
+          terminalFallback (declaredExtent selectedEnvironment)
       , stackCaptureHole = captureHole
       , stackExpectedHole = expectedHole
       , stackCandidateReturn = candidateReturn
@@ -372,6 +376,7 @@ runStructuralCandidates capture environment source =
         nonempty (AtlasMap []) = False
         nonempty (MapSequence []) = False
         nonempty _ = True
+
     captureHole selectedEnvironment _ previous kind captured =
       case contextClassify selectedEnvironment [kind] of
         [(specialized, Just expected)]
@@ -400,15 +405,10 @@ runStructuralCandidates capture environment source =
     candidateReturn selectedEnvironment candidate context =
       candidateTypingReturnType context
         <|> rewriteRuleReturnType compiled
-        <|> postRewriteReturn
         <|> instantiatedReturn
         <|> currentDeclaredReturn
       where
         compiled = structuralCandidateRule candidate
-        postRewriteReturn = case syntaxSemantics (rewriteRule compiled) of
-          SyntaxPostRewrite {} ->
-            contextResultType selectedEnvironment (AtlasMap [])
-          _ -> Nothing
         currentDeclaredReturn = do
           implementation <- rewriteRuleImplementation compiled
           evaluated <- contextEvaluate selectedEnvironment implementation
@@ -433,7 +433,7 @@ runStructuralCandidates capture environment source =
       expressionValue <- contextExpandSyntax selectedEnvironment
         (preparedExpansionSyntax prepared)
       pure (postRewriteExpansion
-        (hasDeclaredCandidate selectedEnvironment)
+        (declaredExtent selectedEnvironment)
         expressionValue
         (preparedExpansionRemaining prepared))
 
@@ -459,13 +459,36 @@ structuralCandidatesFor
   -> Expression
   -> [StructuralCandidate]
 structuralCandidatesFor environment value =
-    declaredCandidatesFor environment value
-      <> maybeToList
-        (postRewriteCandidate (hasDeclaredCandidate environment) value)
+  declaredCandidatesFor environment value
 
-hasDeclaredCandidate :: SyntaxContext -> Expression -> Bool
-hasDeclaredCandidate environment =
-  not . null . declaredCandidatesFor environment
+declaredExtent
+  :: SyntaxContext
+  -> Expression
+  -> Maybe (Expression, [Expression])
+declaredExtent environment value = case declaredCandidatesFor environment value of
+  candidates -> case filter
+      (rewriteRuleClaimsSyntax . structuralCandidateRule) candidates of
+    candidate : _ -> Just
+      ( templateSelectionWhole (structuralCandidateSelection candidate)
+      , structuralCandidateRemaining candidate
+      )
+    [] -> Nothing
+
+rewriteRuleClaimsSyntax :: RewriteRule -> Bool
+rewriteRuleClaimsSyntax compiled = case declarativeMatcherPlan
+    (rewriteRule compiled) of
+  IdentifierApplicationMatcher {} -> True
+  LiteralTemplateMatcher (LiteralTemplatePattern parts) ->
+    any templateLiteral parts
+  LiteralExpressionMatcher (LiteralExpressionPattern parts) ->
+    any expressionLiteral parts
+  where
+    templateLiteral LiteralTemplatePatternLiteral {} = True
+    templateLiteral LiteralTemplatePatternCapture {} = False
+
+    expressionLiteral (LiteralExpressionPatternLiteral literal) =
+      not (null literal)
+    expressionLiteral LiteralExpressionPatternCapture {} = False
 
 declaredCandidatesFor
   :: SyntaxContext

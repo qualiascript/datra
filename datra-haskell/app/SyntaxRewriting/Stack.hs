@@ -37,6 +37,8 @@ import SyntaxRewriting.Types
 data RewriteStackOperations environment failure = RewriteStackOperations
   { stackEnumerateCandidates
       :: environment -> Expression -> [StructuralCandidate]
+  , stackPostRewrite
+      :: environment -> Expression -> Maybe Expression
   , stackCaptureHole
       :: environment
       -> StructuralCandidate
@@ -162,17 +164,20 @@ runRewriteStack operations initialEnvironment source =
           environment = rewriteNodeEnvironment node
           candidates = stackEnumerateCandidates operations environment
             (rewriteNodeExpression node)
-          ready
-            | null candidates = TraverseChildren (ordinary Nothing)
-            | otherwise = SearchCandidates CandidateSearch
+      in case candidates of
+        [] -> continueAfterCandidates nodeId
+          (rewriteNodeRejections node) stack machine
+        _ ->
+          let ready = SearchCandidates CandidateSearch
                 { candidateSearchCandidates = candidates
                 , candidateSearchCursor = 0
                 , candidateSearchRejections = []
                 , candidateSearchFrame = Nothing
                 }
-          entered = updateNode nodeId
-            (\current -> current { rewriteNodeState = NodeReady ready }) machine
-      in run (nodeId :| stack) entered
+              entered = updateNode nodeId
+                (\current -> current { rewriteNodeState = NodeReady ready })
+                machine
+          in run (nodeId :| stack) entered
 
     ordinary selection = OrdinaryTraversal
       { ordinaryTraversalCursor = 0
@@ -193,13 +198,8 @@ runRewriteStack operations initialEnvironment source =
     searchCandidate nodeId search stack machine =
       case drop (candidateSearchCursor search)
           (candidateSearchCandidates search) of
-        [] ->
-          let traversal = ordinary Nothing
-              advanced = updateNode nodeId (\current -> current
-                { rewriteNodeRejections = candidateSearchRejections search
-                , rewriteNodeState = NodeReady (TraverseChildren traversal)
-                }) machine
-          in run (nodeId :| stack) advanced
+        [] -> continueAfterCandidates nodeId
+          (candidateSearchRejections search) stack machine
         candidate : _ ->
           let node = nodeAt nodeId machine
               environment = rewriteNodeEnvironment node
@@ -257,6 +257,27 @@ runRewriteStack operations initialEnvironment source =
                         (TraverseChildren traversal)
                     }) transitioned
               run (nodeId :| stack) advanced
+
+    continueAfterCandidates nodeId rejections stack machine =
+      let node = nodeAt nodeId machine
+          environment = rewriteNodeEnvironment node
+          currentExpression = rewriteNodeExpression node
+      in case stackPostRewrite operations environment currentExpression of
+        Just rewritten
+          | rewritten /= currentExpression ->
+              let advanced = updateNode nodeId (\current -> current
+                    { rewriteNodeExpression = rewritten
+                    , rewriteNodeRejections = []
+                    , rewriteNodeState = NodePending
+                    }) machine
+              in run (nodeId :| stack) advanced
+        _ ->
+          let traversal = ordinary Nothing
+              advanced = updateNode nodeId (\current -> current
+                { rewriteNodeRejections = rejections
+                , rewriteNodeState = NodeReady (TraverseChildren traversal)
+                }) machine
+          in run (nodeId :| stack) advanced
 
     allocateChild parentId work childSource locus stack machine =
       let parent = nodeAt parentId machine

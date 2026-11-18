@@ -146,7 +146,6 @@ data SyntaxRuleSemantics
   = SyntaxAdapter Expression
   | SyntaxApplication Expression Expression
   | DependentSyntax DependentSyntaxRule
-  | SyntaxPostRewrite Expression
   deriving (Eq, Show)
 
 data DependentSyntaxRule = DependentSyntaxRule
@@ -165,7 +164,6 @@ syntaxDependentRule rule = case syntaxSemantics rule of
   SyntaxAdapter {} -> Nothing
   SyntaxApplication {} -> Nothing
   DependentSyntax dependent -> Just dependent
-  SyntaxPostRewrite {} -> Nothing
 
 syntaxRuleAdapter :: SyntaxRule -> Maybe Expression
 syntaxRuleAdapter rule = case syntaxSemantics rule of
@@ -173,7 +171,6 @@ syntaxRuleAdapter rule = case syntaxSemantics rule of
   SyntaxApplication _ implementation -> Just implementation
   DependentSyntax dependent -> Just
     (dependentSyntaxImplementation dependent)
-  SyntaxPostRewrite {} -> Nothing
 
 syntaxApplicationImplementation :: SyntaxRule -> Maybe Expression
 syntaxApplicationImplementation rule = case syntaxSemantics rule of
@@ -362,7 +359,6 @@ expandSyntax rule selection =
     SyntaxAdapter adapter -> FunctionApplication adapter suppliedInput
     SyntaxApplication callable _ ->
       FunctionApplication callable suppliedInput
-    SyntaxPostRewrite expressionValue -> expressionValue
   where
     captures = templateSelectionCaptures selection
     suppliedInput = case captures of

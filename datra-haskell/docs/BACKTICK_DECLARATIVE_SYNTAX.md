@@ -80,10 +80,13 @@ typed representation and the linked line-break plan are authoritative.
   when no declaration consumes them.
 - Horizontal source phrases are retained as `UnresolvedApplication`
   components. They are not folded into `FunctionApplication` by the parser.
+- Post-rewrite operations run through a type-transparent scheduler hook after
+  declared candidates are exhausted. They are not synthetic syntax rules and
+  do not manufacture a candidate return type.
 
 ### Remaining
 
-1. Complete and verify unresolved horizontal-application composition. A
+1. Complete verification of unresolved horizontal-application composition. A
    declared rule gets the first opportunity to consume the complete current
    phrase. If no rule matches, the post-rewrite fallback folds ordinary
    components left-to-right, preserving a suffix as one argument when a
@@ -472,12 +475,10 @@ evaluation or canonical persisted syntax.
 Keep this change within the existing parsing, candidate-enumeration, and
 post-rewrite boundaries:
 
-1. Add a declared-only candidate helper in `SyntaxRewriting`. It enumerates the
-   current environment's ordinary and scoped declarative rules, but never
-   includes a post-rewrite fallback candidate. `structuralCandidatesFor` then
-   appends at most one post-rewrite candidate after that declared-only list.
-   Keeping these paths separate prevents application probing from recursively
-   discovering itself.
+1. Keep declared-candidate enumeration and post-rewrite operations separate.
+   `structuralCandidatesFor` enumerates only ordinary and scoped declarative
+   rules. After those candidates are exhausted, `stackPostRewrite` invokes the
+   terminal structural operation without candidate matching or typing.
 2. Keep one shared terminal operation in `SyntaxRewriting.PostRewrite`. It
    first applies the existing first-unconsumed-`LineBreak` fallback. Only when
    there is no such split does it fold `UnresolvedApplication` components
@@ -491,11 +492,11 @@ post-rewrite boundaries:
    compositional invariant: every declared extent is resolved first, and every
    still-unconsumed continuation passes through exactly the same line-break/
    application fallback ordering.
-4. Pass the current `SyntaxContext` (or only a declared-candidate predicate
-   derived from it) into the post-rewrite operation. Do not add state or a new
-   transition to `SyntaxRewriting.Stack`; its existing expansion followed by
-   child traversal supplies the required re-entry. Do not change literal-
-   template matching, capture greediness, or `structuralCandidateRemaining`.
+4. Pass a declared-extent query derived from the current `SyntaxContext` into
+   the post-rewrite operation. The scheduler hook runs between candidate
+   exhaustion and child traversal; a changed expression re-enters the same
+   node under the same environment. Do not change literal-template matching,
+   capture greediness, or `structuralCandidateRemaining`.
 5. `Parsing.term` constructs `UnresolvedApplication` from two or more
    horizontal components. `applicationSelections` and `rawApplicationPhrase`
    expose those components directly to declared matching. Only the
@@ -506,10 +507,11 @@ post-rewrite boundaries:
    and run the parser suite. If another unrelated parser failure appears,
    report it before making any further change.
 
-The structural candidate which begins at an argument boundary owns that
-syntactic boundary; capture typing and candidate backtracking continue to run
-inside the existing rewrite flow. The fallback itself must not duplicate those
-phases or expand the candidate eagerly.
+The structural candidate which begins at an argument boundary supplies both
+the selected argument extent and its unconsumed remainder. The argument
+re-enters ordinary declared matching, while the remainder stays in the outer
+left fold. Capture typing and candidate backtracking continue to run inside the
+existing rewrite flow; the fallback does not duplicate or eagerly expand them.
 
 Core operators retain the precedence assigned by the ordinary parser. A
 literal-template capture does not reach outward through an already-parsed core
@@ -520,10 +522,10 @@ explicit. Thus this source leaves `|` outside the `do` expression:
 &T? do yield fun () | (T; this)
 ```
 
-while the intended function body is written as:
+while the intended `Either` remains inside `fun` when written as:
 
 ```datra
-&T? do yield (fun () | (T; this))
+&T? do yield fun (() | (T; this))
 ```
 
 For each rule, the matcher:
@@ -676,7 +678,7 @@ their ordinary precedence would otherwise place them outside the declared
 form. The standard-library generic function declarations therefore use:
 
 ```datra
-let val List := &T? do yield (fun () | (T; this))
+let val List := &T? do yield fun (() | (T; this))
 let val Maybe := &T? do yield (nothing | Just T)
 val Collection := &T? do yield ((List T) | (Stream T))
 ```

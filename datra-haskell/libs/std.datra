@@ -55,7 +55,7 @@
     let val `range %IntLimit to %IntLimit` :=
       ({origin : IntLimit; target? : IntLimit} -> IntRange) datra.range_body
 
-    let val List := &T? do yield (fun () | (T; this))
+    let val List := &T? do yield fun (() | (T; this))
     val InhabitedList := &T? do yield (T; List T)
     let val Just := &T? do yield Just : T
     let val Maybe := &T? do yield (nothing | Just T)
@@ -69,17 +69,17 @@
     let val Int := >< (Nat; $Complement?)
     let val IntLimit := >< (NatLimit; $Complement?)
 
-    val Args := &T? do
+    val Args := (&T? do
       slots := (^_i :: Nat) do yield $"arg%(_i)"? : T
-    yield ((^n? :: Nat) do yield slots[0..n])
+    yield ((^n? :: Nat) do yield slots[0..n]))
 
     val _DeclarationEntry := {_key : InhabitedStr; _value : Any; $def?; $val?}
 
-    public := {_declarations : Collection _DeclarationEntry} do
+    public := ({_declarations : Collection _DeclarationEntry} do
       yield (
         ((&_declaration :: _declarations) do
           yield if _declaration._key[0] = "_" then () else _declaration),
-      )
+      ))
 
   )
   public this))
