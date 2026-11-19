@@ -51,12 +51,32 @@ def nativePrefixFolio {count : Nat} (positive : 0 < count) (members : Fin count 
     (Folio.collapseToOrigin (pageChain members 0) Chain.singletonChain (firstPageCell positive members)).map
     (nativeConsolidation members) page
 
--- ALIGN: SEQUENCE-NATIVE-FOLIO-PREFIX.
 theorem nativePrefixFolio_eq {count : Nat} (positive : 0 < count) (members : Fin count → Atlas) (page : Nat) :
     nativePrefixFolio positive members page = prefixFolio positive members page := by
   have steps : nativeConsolidation members = pageTransition members := funext (nativeConsolidation_eq members)
   simp only [nativePrefixFolio, prefixFolio, steps]
   rfl
+
+-- ALIGN: SEQUENCE-FOLIO-PREFIX.
+def nativeExtendPrefix {count : Nat} (members : Fin count → Atlas) (start remaining : Nat)
+    (initial : Folio DomanialInclusion.singletonPage (sequencePage members start)) :
+    Folio DomanialInclusion.singletonPage (sequencePage members (start + remaining)) :=
+  Folio.extendPrefix (sequencePage members) (nativeConsolidation members) start remaining initial
+
+-- ALIGN: SEQUENCE-PREFIX-LOOKUP-PRESERVED.
+theorem nativeExtendPrefix_lookup {count : Nat} (members : Fin count → Atlas) (start remaining : Nat)
+    (initial : Folio DomanialInclusion.singletonPage (sequencePage members start))
+    (page : Nat) (earlier : page < initial.data.length) (position : Ordinal) :
+    (nativeExtendPrefix members start remaining initial).data.traceLookup page position =
+      initial.data.traceLookup page position :=
+  Folio.extendPrefix_lookup _ _ _ _ _ _ earlier _
+
+-- ALIGN: SEQUENCE-NATIVE-FOLIO-PREFIX.
+theorem nativeExtendPrefix_eq {count : Nat} (positive : 0 < count) (members : Fin count → Atlas)
+    (start remaining : Nat) :
+    nativeExtendPrefix members start remaining (nativePrefixFolio positive members start) =
+      nativePrefixFolio positive members (start + remaining) :=
+  Folio.extendPrefix_buildPrefix _ _ _ _ _ _ _ _
 
 -- ALIGN: SEQUENCE-NATIVE-FOLIO.
 def nativeFolio {count : Nat} (positive : 0 < count) (members : Fin count → Atlas) :

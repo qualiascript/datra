@@ -5,19 +5,22 @@
 {-@ qualif MergeAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | Assemble the finite merge folio with certified native page endpoints.
-module AtlasMerge.Assembly (atlasMergeLength, atlasMergeFolio) where
+module AtlasMerge.Assembly
+  ( atlasMergeLength, atlasMergeFolio, appendRemainingPages, appendRemainingLookup ) where
 
 import Atlas.Internal (Atlas, atlasFolio)
 import AtlasMerge.Page
-  ( AtlasMergePageCell (..), atlasMergePageChain, mergePageContains, mergePagePosition, mergePageTransition )
+  ( AtlasMergePageCell (..), atlasMergePageChain, mergePageContains, mergePagePosition, mergePageTransition
+  , previousMergeCell, nextMergeCell )
 import Chain.Internal (Chain, chainPosition)
+import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedApply, orderedPreimage)
 import Chain.Singleton (singletonChain)
-import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget)
-import Folio.Assembly (collapseToOrigin, appendOrderedPage)
+import Folio.Assembly (collapseToOrigin, extendPages, extendPagesLookup)
 import Folio.Internal (Folio)
 import Folio.Presentation (folioData, appendPageData, folioLengthData, lastPageData)
+import DatraOrdinal (Ordinal)
 import Numeric.Natural (Natural)
-import PageElements.Internal (folioPageOrderType)
+import PageElements.Internal (folioPageOrderType, folioTraceLookup)
 import PageElements.TraceChain (pageTraceOrigin)
 
 {-@ embed Natural as int @-}
@@ -40,7 +43,34 @@ atlasMergeLength left right =
 firstMergeCell :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> AtlasMergePageCell
 firstMergeCell left _ = AtlasMergeLeftCell (pageTraceOrigin (atlasFolio left))
 
+-- | The page-indexed position family used by the shared prefix builder.
+{-@ reflect mergePositionAt @-}
+{-@ mergePositionAt :: left:Atlas la ls ld lo lf -> page:Natural
+      -> {position:(AtlasMergePageCell -> Ordinal) |
+           position == mergePagePosition (folioPageOrderType (atlasFolio left) page)} @-}
+mergePositionAt :: Atlas la ls ld lo lf -> Natural -> AtlasMergePageCell -> Ordinal
+mergePositionAt left page = mergePagePosition (folioPageOrderType (atlasFolio left) page)
+
+{-@ reflect mergeTransitionAt @-}
+{-@ mergeTransitionAt :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0}
+      -> target:{Chain {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} |
+           chainPosition target == mergePositionAt left (page - 1)}
+      -> {result:OrderedConsolidation
+           {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) page cell}
+           {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} |
+             chainPosition (orderedSource result) == mergePositionAt left page && orderedTarget result == target
+             && orderedApply result == previousMergeCell left right page
+             && orderedPreimage result == nextMergeCell left right page} @-}
+mergeTransitionAt :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Chain AtlasMergePageCell
+  -> OrderedConsolidation AtlasMergePageCell AtlasMergePageCell
+mergeTransitionAt left right page target =
+  mergePositionAt left (page - 1) `seq` mergePositionAt left page `seq`
+    mergePageTransition left right page target
+
 -- ALIGN: MERGE-FOLIO-PREFIX.
+-- ALIGN: MERGE-PREFIX-EXTENSION-EQUALITY.
+{-@ reflect appendRemainingPages @-}
 {-@ appendRemainingPages :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
       -> pages:{Folio () {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} |
@@ -52,14 +82,31 @@ firstMergeCell left _ = AtlasMergeLeftCell (pageTraceOrigin (atlasFolio left))
       / [depth - page] @-}
 appendRemainingPages :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Natural
   -> Folio () AtlasMergePageCell -> Folio () AtlasMergePageCell
-appendRemainingPages left right page depth pages
-  | page == depth = pages
-  | otherwise =
-      let transition = mergePageTransition left right page (lastPageData pages)
-      in appendRemainingPages left right (page + 1) depth
-           (appendOrderedPage
-             (mergePageContains (atlasFolio left) (atlasFolio right) (page - 1))
-             (mergePageContains (atlasFolio left) (atlasFolio right) page) pages transition)
+{-@ ple appendRemainingPages @-}
+appendRemainingPages left right page depth pages =
+  mergePositionAt left (page - 1) `seq` mergePositionAt left (depth - 1) `seq`
+  extendPages (mergePageContains (atlasFolio left) (atlasFolio right))
+    (mergePositionAt left)
+    (mergeTransitionAt left right) page depth pages
+
+-- | Extending the finite merge preserves every lookup in its existing prefix.
+-- ALIGN: MERGE-PREFIX-LOOKUP-PRESERVED.
+{-@ appendRemainingLookup :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
+      -> pages:{Folio () {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} |
+           folioLengthData pages == page + 1
+           && chainPosition (lastPageData pages) == mergePagePosition (folioPageOrderType (atlasFolio left) (page - 1))}
+      -> index:{Natural | index < folioLengthData pages} -> position:Ordinal
+      -> {folioTraceLookup (appendRemainingPages left right page depth pages) index position
+           == folioTraceLookup pages index position} / [depth - page] @-}
+{-@ ple appendRemainingLookup @-}
+appendRemainingLookup :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Natural
+  -> Folio () AtlasMergePageCell -> Natural -> Ordinal -> ()
+appendRemainingLookup left right page depth pages index position =
+  mergePositionAt left (page - 1) `seq`
+  extendPagesLookup (mergePageContains (atlasFolio left) (atlasFolio right))
+    (mergePositionAt left)
+    (mergeTransitionAt left right) page depth pages index position
 
 -- ALIGN: MERGE-COLLAPSE-ORIGIN.
 -- ALIGN: MERGE-FOLIO.

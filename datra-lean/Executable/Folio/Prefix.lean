@@ -1,4 +1,4 @@
-import Executable.PageElements
+import Executable.PageElementLookup
 
 namespace Datra.Executable
 
@@ -33,6 +33,70 @@ end Datra.Executable
 
 namespace Datra.Executable.Folio
 
+/-- Append the remaining family pages in increasing order, retaining the supplied
+prefix. The executable builder's `page` and `depth` correspond to `start = page - 1`
+and `count = depth - page`; its positive-page bound makes the indices agree. -/
+-- ALIGN: FOLIO-EXTEND-PREFIX.
+def extendPrefix {origin : Page} (pages : Nat → Page)
+    (step : ∀ n, Consolidation (pages (n + 1)).chain (pages n).chain) :
+    (start count : Nat) → Folio origin (pages start) → Folio origin (pages (start + count))
+  | _, 0, initial => initial
+  | start, count + 1, initial =>
+      let next : Folio origin (pages (start + 1)) :=
+        ⟨initial.data.append (pages (start + 1)) (step start),
+          initial.data.append_valid initial.valid _ _⟩
+      cast (congrArg (fun n => Folio origin (pages n))
+        (show start + 1 + count = start + (count + 1) by omega))
+        (extendPrefix pages step (start + 1) count next)
+
+theorem cast_traceLookup {origin : Page} (pages : Nat → Page) {first second : Nat}
+    (same : first = second) (initial : Folio origin (pages first)) (page : Nat) (position : Ordinal) :
+    (cast (congrArg (fun n => Folio origin (pages n)) same) initial).data.traceLookup page position =
+      initial.data.traceLookup page position := by
+  cases same
+  rfl
+
+theorem cast_length {origin : Page} (pages : Nat → Page) {first second : Nat}
+    (same : first = second) (initial : Folio origin (pages first)) :
+    (cast (congrArg (fun n => Folio origin (pages n)) same) initial).data.length = initial.data.length := by
+  cases same
+  rfl
+
+theorem extendPrefix_length {origin : Page} (pages : Nat → Page)
+    (step : ∀ n, Consolidation (pages (n + 1)).chain (pages n).chain)
+    (start count : Nat) (initial : Folio origin (pages start)) :
+    (extendPrefix pages step start count initial).data.length = initial.data.length + count := by
+  induction count generalizing start with
+  | zero => rfl
+  | succ count ih =>
+      let next : Folio origin (pages (start + 1)) :=
+        ⟨initial.data.append (pages (start + 1)) (step start),
+          initial.data.append_valid initial.valid _ _⟩
+      have result := (cast_length pages (show start + 1 + count = start + (count + 1) by omega)
+        (extendPrefix pages step (start + 1) count next)).trans (ih (start + 1) next)
+      exact result.trans (by change initial.data.length + 1 + count = initial.data.length + (count + 1); omega)
+
+-- ALIGN: FOLIO-EXTEND-LOOKUP-PRESERVED.
+theorem extendPrefix_lookup {origin : Page} (pages : Nat → Page)
+    (step : ∀ n, Consolidation (pages (n + 1)).chain (pages n).chain)
+    (start count : Nat) (initial : Folio origin (pages start))
+    (page : Nat) (earlier : page < initial.data.length) (position : Ordinal) :
+    (extendPrefix pages step start count initial).data.traceLookup page position =
+      initial.data.traceLookup page position := by
+  induction count generalizing start with
+  | zero => rfl
+  | succ count ih =>
+      let next : Folio origin (pages (start + 1)) :=
+        ⟨initial.data.append (pages (start + 1)) (step start),
+          initial.data.append_valid initial.valid _ _⟩
+      have bound : page < next.data.length := by
+        change page < initial.data.length + 1
+        omega
+      exact (cast_traceLookup pages (show start + 1 + count = start + (count + 1) by omega)
+        (extendPrefix pages step (start + 1) count next) page position).trans
+          ((ih (start + 1) next bound).trans
+            (initial.data.append_traceLookup_before (pages (start + 1)) (step start) page earlier position))
+
 /-- A fresh singleton origin followed by a finite prefix of a page family.
 Binary merge and flattened sequence share this folio constructor. -/
 def buildPrefix (origin : Page) (selected : origin.Carrier) (unique : ∀ x, x = selected)
@@ -53,6 +117,29 @@ theorem buildPrefix_length (origin : Page) (selected : origin.Carrier) (unique :
   | succ n ih =>
     change (buildPrefix origin selected unique pages collapse step n).data.length + 1 = n + 1 + 2
     rw [ih]
+
+/-- Tail-recursive extension agrees with the structural finite-prefix builder. -/
+-- ALIGN: FOLIO-EXTEND-PREFIX-INTERPRETATION.
+theorem extendPrefix_buildPrefix (origin : Page) (selected : origin.Carrier) (unique : ∀ x, x = selected)
+    (pages : Nat → Page) (collapse : Consolidation (pages 0).chain origin.chain)
+    (step : ∀ n, Consolidation (pages (n + 1)).chain (pages n).chain) (start count : Nat) :
+    extendPrefix pages step start count (buildPrefix origin selected unique pages collapse step start) =
+      buildPrefix origin selected unique pages collapse step (start + count) := by
+  induction count generalizing start with
+  | zero => rfl
+  | succ count ih =>
+      change cast (congrArg (fun n => Folio origin (pages n))
+          (show start + 1 + count = start + (count + 1) by omega))
+        (extendPrefix pages step (start + 1) count
+          (buildPrefix origin selected unique pages collapse step (start + 1))) = _
+      rw [ih]
+      have castBuild {first second : Nat} (same : first = second) :
+          cast (congrArg (fun n => Folio origin (pages n)) same)
+            (buildPrefix origin selected unique pages collapse step first) =
+              buildPrefix origin selected unique pages collapse step second := by
+        cases same
+        rfl
+      exact castBuild (by omega)
 
 variable (origin : Page) (selected : origin.Carrier) (unique : ∀ x, x = selected)
     (pages : Nat → Page) (collapse : Consolidation (pages 0).chain origin.chain)

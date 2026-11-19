@@ -1868,7 +1868,7 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
       "haskell_declaration": "appendRemainingPages",
       "lean_namespace": "Datra.Executable.AtlasMerge",
-      "lean_declaration": "prefixFolio"
+      "lean_declaration": "extendFolio"
     },
     {
       "id": "MERGE-COMPONENT-PAGE-INDEX",
@@ -2771,7 +2771,7 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Assembly.hs",
       "haskell_declaration": "appendRemainingPages",
       "lean_namespace": "Datra.Executable.AtlasSequence",
-      "lean_declaration": "prefixFolio"
+      "lean_declaration": "nativeExtendPrefix"
     },
     {
       "id": "SEQUENCE-FOLIO",
@@ -3898,7 +3898,7 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Assembly.hs",
       "haskell_declaration": "appendRemainingPages",
       "lean_namespace": "Datra.Executable.AtlasSequence",
-      "lean_declaration": "nativePrefixFolio_eq"
+      "lean_declaration": "nativeExtendPrefix_eq"
     },
     {
       "id": "SEQUENCE-NATIVE-FOLIO",
@@ -3941,6 +3941,69 @@
       "haskell_declaration": "mergePageTransition",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "nativePageTransitionTo_preimage"
+    },
+    {
+      "id": "FOLIO-APPEND-TRACE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "appendedPageTrace",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "append_trace"
+    },
+    {
+      "id": "FOLIO-APPEND-EARLIER-LOOKUP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "appendedEarlierLookup",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "append_traceLookup_before"
+    },
+    {
+      "id": "FOLIO-APPEND-FINAL-LOOKUP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "appendedFinalLookup",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "append_traceLookup_final"
+    },
+    {
+      "id": "FOLIO-EXTEND-PREFIX",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/Assembly.hs",
+      "haskell_declaration": "extendPages",
+      "lean_namespace": "Datra.Executable.Folio",
+      "lean_declaration": "extendPrefix"
+    },
+    {
+      "id": "FOLIO-EXTEND-PREFIX-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/Assembly.hs",
+      "haskell_declaration": "extendPages",
+      "lean_namespace": "Datra.Executable.Folio",
+      "lean_declaration": "extendPrefix_buildPrefix"
+    },
+    {
+      "id": "FOLIO-EXTEND-LOOKUP-PRESERVED",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/Assembly.hs",
+      "haskell_declaration": "extendPagesLookup",
+      "lean_namespace": "Datra.Executable.Folio",
+      "lean_declaration": "extendPrefix_lookup"
+    },
+    {
+      "id": "MERGE-PREFIX-LOOKUP-PRESERVED",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
+      "haskell_declaration": "appendRemainingLookup",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "extendFolio_lookup"
+    },
+    {
+      "id": "MERGE-PREFIX-EXTENSION-EQUALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
+      "haskell_declaration": "appendRemainingPages",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "extendFolio_prefix"
+    },
+    {
+      "id": "SEQUENCE-PREFIX-LOOKUP-PRESERVED",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Assembly.hs",
+      "haskell_declaration": "appendRemainingLookup",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "nativeExtendPrefix_lookup"
     }
   ],
   "modules": [
@@ -4405,6 +4468,7 @@
         "FolioStep"
       ],
       "reflected": [
+        "appendPageData",
         "folioLengthData",
         "originPageData",
         "originValueData",
@@ -4498,6 +4562,9 @@
         "lastPageElement",
         "pageElementTraceAt",
         "genuinePageElementTrace",
+        "appendedPageTrace",
+        "appendedEarlierLookup",
+        "appendedFinalLookup",
         "originElementTrace",
         "snocElementTrace",
         "folioTraceLengthPositive",
@@ -5736,7 +5803,10 @@
       "lean_target": "Datra.Executable.AtlasMerge",
       "coverage": "aligned",
       "reflected": [
-        "atlasMergeLength"
+        "atlasMergeLength",
+        "mergePositionAt",
+        "mergeTransitionAt",
+        "appendRemainingPages"
       ],
       "types": [],
       "aliases": [],
@@ -5748,7 +5818,10 @@
       "refinements": [
         "atlasMergeLength",
         "firstMergeCell",
+        "mergePositionAt",
+        "mergeTransitionAt",
         "appendRemainingPages",
+        "appendRemainingLookup",
         "atlasMergeFolio"
       ],
       "opaque_reflected": []
@@ -5868,19 +5941,25 @@
       "reflected": [
         "unitContains",
         "collapseValue",
-        "collapseChosen"
+        "collapseChosen",
+        "appendOrderedPage",
+        "extendPages"
       ],
       "opaque_reflected": [],
       "types": [],
       "aliases": [],
       "predicates": [],
       "refinement_aliases": [],
-      "embeddings": [],
+      "embeddings": [
+        "Natural as int"
+      ],
       "refinements": [
         "collapseToOrigin",
         "collapseInverse",
         "collapseMonotone",
-        "appendOrderedPage"
+        "appendOrderedPage",
+        "extendPages",
+        "extendPagesLookup"
       ]
     },
     {
@@ -5890,7 +5969,8 @@
       "coverage": "aligned",
       "reflected": [
         "sequenceDepth",
-        "atlasSequenceLength"
+        "atlasSequenceLength",
+        "appendRemainingPages"
       ],
       "opaque_reflected": [
         "memberList"
@@ -5908,6 +5988,7 @@
         "firstSequenceCell",
         "firstCellFromList",
         "appendRemainingPages",
+        "appendRemainingLookup",
         "atlasSequenceFolio"
       ]
     }

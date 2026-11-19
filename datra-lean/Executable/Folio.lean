@@ -132,6 +132,12 @@ def genuineTrace {origin final : Page} : (pages : FolioData origin final) → fi
   | .snoc _ previous next transition => fun value =>
       next.chain.position value :: previous.genuineTrace (transition.map value)
 
+-- ALIGN: FOLIO-APPEND-TRACE.
+theorem append_trace {origin previous : Page} (pages : FolioData origin previous)
+    (next : Page) (transition : Consolidation next.chain previous.chain) (value : next.Carrier) :
+    (pages.append next transition).genuineTrace value =
+      next.chain.position value :: pages.genuineTrace (transition.map value) := rfl
+
 theorem genuineTrace_head (pages : FolioData origin final) (value : final.Carrier) :
     (pages.genuineTrace value).head? = some (final.chain.position value) := by
   cases pages <;> rfl

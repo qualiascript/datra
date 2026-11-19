@@ -248,6 +248,21 @@ def traceLookup {origin final : Page} : FolioData origin final → Nat → Ordin
       if previous.length ≤ page then prefixTraceLookup pages (page - previous.length) position
       else traceLookup previous page position
 
+-- ALIGN: FOLIO-APPEND-EARLIER-LOOKUP.
+theorem append_traceLookup_before {origin previous : Page} (pages : FolioData origin previous)
+    (next : Page) (transition : Consolidation next.chain previous.chain)
+    (page : Nat) (earlier : page < pages.length) (position : Ordinal) :
+    (pages.append next transition).traceLookup page position = pages.traceLookup page position := by
+  simp only [append, Step.toFolio, traceLookup, show ¬pages.length ≤ page from Nat.not_le.mpr earlier, if_false]
+
+-- ALIGN: FOLIO-APPEND-FINAL-LOOKUP.
+theorem append_traceLookup_final {origin previous : Page} (pages : FolioData origin previous)
+    (next : Page) (transition : Consolidation next.chain previous.chain) (value : next.Carrier) :
+    (pages.append next transition).traceLookup pages.length (next.chain.position value) =
+      some (next.chain.position value :: pages.genuineTrace (transition.map value)) := by
+  simp [append, Step.toFolio, traceLookup, prefixTraceLookup, Chain.chainIndex_position, Chain.chainIndexOf,
+    paddedTrace, genuineTrace]
+
 theorem selectPrefix_traceLookup (pages : FolioData origin final) (valid : pages.Valid)
     (page : Nat) (position : Ordinal) :
     traceLookup pages page position = (selectPrefix pages valid page).lookupTrace position := by

@@ -188,12 +188,29 @@ def collapseToOrigin (X Y : Atlas) :
 
 def mergePage (X Y : Atlas) (n : Nat) : Page := ⟨ValidPageCell X Y n, pageChain X Y n⟩
 
-/-- Append the component pages in increasing full-spine order, retaining the
-fresh singleton origin. This is the structural form of appendRemainingPages. -/
--- ALIGN: MERGE-FOLIO-PREFIX.
+/-- Structural finite prefix with the fresh singleton origin. -/
 def prefixFolio (X Y : Atlas) (n : Nat) : Folio DomanialInclusion.singletonPage (mergePage X Y n) :=
   Folio.buildPrefix DomanialInclusion.singletonPage () (fun value => by cases value; rfl)
     (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y) n
+
+-- ALIGN: MERGE-FOLIO-PREFIX.
+def extendFolio (X Y : Atlas) (start count : Nat)
+    (initial : Folio DomanialInclusion.singletonPage (mergePage X Y start)) :
+    Folio DomanialInclusion.singletonPage (mergePage X Y (start + count)) :=
+  Folio.extendPrefix (mergePage X Y) (pageTransition X Y) start count initial
+
+-- ALIGN: MERGE-PREFIX-LOOKUP-PRESERVED.
+theorem extendFolio_lookup (X Y : Atlas) (start count : Nat)
+    (initial : Folio DomanialInclusion.singletonPage (mergePage X Y start))
+    (page : Nat) (earlier : page < initial.data.length) (position : Ordinal) :
+    (extendFolio X Y start count initial).data.traceLookup page position =
+      initial.data.traceLookup page position :=
+  Folio.extendPrefix_lookup _ _ _ _ _ _ earlier _
+
+-- ALIGN: MERGE-PREFIX-EXTENSION-EQUALITY.
+theorem extendFolio_prefix (X Y : Atlas) (start count : Nat) :
+    extendFolio X Y start count (prefixFolio X Y start) = prefixFolio X Y (start + count) :=
+  Folio.extendPrefix_buildPrefix _ _ _ _ _ _ _ _
 
 theorem prefixFolio_length (X Y : Atlas) (n : Nat) : (prefixFolio X Y n).data.length = n + 2 := by
   exact Folio.buildPrefix_length _ _ _ _ _ _ n

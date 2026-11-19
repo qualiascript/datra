@@ -35,6 +35,10 @@ module PageElements.Internal
   , prefixTraceLookupPosition
   , pageElementTraceAt
   , genuinePageElementTrace
+  , appendedPageTrace
+  , appendedEarlierLookup
+  , appendedFinalLookup
+  , snocElementTrace
   , prependCopies
   , folioTraceLengthPositive
   , folioOriginTrace
@@ -100,7 +104,7 @@ import Folio.Internal
   , originChain
   , originValue
   )
-import Folio.Presentation (FolioData (..), FolioStep (..), SingletonOrigin (..), stepSource)
+import Folio.Presentation (FolioData (..), FolioStep (..), SingletonOrigin (..), stepSource, appendPageData, lastPageData)
 
 {-@ opaque-reflect stepSource @-}
 import Numeric.Natural (Natural)
@@ -654,6 +658,43 @@ genuinePageElementTrace (OriginFolio _ pageChain witness) value =
   originElementTrace pageChain witness value
 genuinePageElementTrace (SnocPage (FolioStep _ previous transition)) value =
   snocElementTrace previous (orderedSource transition) transition value
+
+-- | Appending a page retains the actual generating map in its native trace.
+-- ALIGN: FOLIO-APPEND-TRACE.
+{-@ appendedPageTrace :: previous:Folio origin earlier -> pageChain:Chain current
+      -> transition:{OrderedConsolidation current earlier |
+           orderedSource transition == pageChain && orderedTarget transition == lastPageData previous}
+      -> value:current
+      -> {genuinePageElementTrace (appendPageData previous pageChain transition) value
+           == snocElementTrace previous pageChain transition value} @-}
+appendedPageTrace :: Folio origin earlier -> Chain current -> OrderedConsolidation current earlier -> current -> ()
+appendedPageTrace previous pageChain transition value =
+  snocElementTrace previous pageChain transition value `seq` ()
+
+-- ALIGN: FOLIO-APPEND-EARLIER-LOOKUP.
+{-@ appendedEarlierLookup :: previous:Folio origin earlier -> pageChain:Chain current
+      -> transition:{OrderedConsolidation current earlier |
+           orderedSource transition == pageChain && orderedTarget transition == lastPageData previous}
+      -> page:{Natural | page < folioLength previous} -> position:Ordinal
+      -> {folioTraceLookup (appendPageData previous pageChain transition) page position
+           == folioTraceLookup previous page position} @-}
+appendedEarlierLookup :: Folio origin earlier -> Chain current -> OrderedConsolidation current earlier
+  -> Natural -> Ordinal -> ()
+appendedEarlierLookup _ _ _ _ _ = ()
+
+-- ALIGN: FOLIO-APPEND-FINAL-LOOKUP.
+{-@ appendedFinalLookup :: previous:Folio origin earlier -> pageChain:Chain current
+      -> transition:{OrderedConsolidation current earlier |
+           orderedSource transition == pageChain && orderedTarget transition == lastPageData previous}
+      -> value:current
+      -> {folioTraceLookup (appendPageData previous pageChain transition) (folioLength previous)
+             (chainPosition pageChain value) == Just (snocElementTrace previous pageChain transition value)} @-}
+appendedFinalLookup :: Folio origin earlier -> Chain current -> OrderedConsolidation current earlier
+  -> current -> ()
+appendedFinalLookup previous pageChain transition value =
+  let pages = appendPageData previous pageChain transition
+  in prefixTraceLookupPosition pages 0 value `seq`
+    appendedPageTrace previous pageChain transition value
 
 {-@ reflect originElementTrace @-}
 {-@ originElementTrace :: pageChain:Chain origin -> witness:SingletonOrigin origin -> value:origin

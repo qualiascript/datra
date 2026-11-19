@@ -127,6 +127,7 @@ folioData page selected unique =
 
 -- | Append a genuine page and its certified generating coconsolidation.
 -- ALIGN: FOLIO-APPEND-ORDERED.
+{-@ reflect appendPageData @-}
 {-@ appendPageData :: pages:FolioData origin previous -> nextPage:Chain next
       -> transition:{OrderedConsolidation next previous |
            orderedSource transition == nextPage

@@ -132,6 +132,19 @@ proofGuard mapping source target =
 
 MERGE_ASSEMBLY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs"
 MERGE_ASSEMBLY_GUARDS = {
+    "merge extension preserves only existing prefix lookups": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0} -> depth:{Natural | page < depth}
+      -> pages:{Folio () {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} |
+           folioLengthData pages == page + 1
+           && chainPosition (lastPageData pages) == mergePagePosition (folioPageOrderType (atlasFolio left) (page - 1))}
+      -> position:Ordinal -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Natural
+  -> Folio () AtlasMergePageCell -> Ordinal -> ()
+proofGuard left right page depth pages position =
+  appendRemainingLookup left right page depth pages (folioLengthData pages) position
+""",
+
     "merge assembly requires the prefix length": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
@@ -224,6 +237,17 @@ proofGuard = consCell
 
 SEQUENCE_ASSEMBLY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Assembly.hs"
 SEQUENCE_ASSEMBLY_GUARDS = {
+    "sequence extension preserves only existing prefix lookups": """
+{-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0} -> depth:{Natural | page < depth}
+      -> pages:{Folio () {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
+           folioLengthData pages == page + 1
+           && chainPosition (lastPageData pages) == sequencePagePosition members (page - 1)}
+      -> position:Ordinal -> () @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> Natural -> Folio () AtlasSequencePageCell -> Ordinal -> ()
+proofGuard members page depth pages position =
+  appendRemainingLookup members page depth pages (folioLengthData pages) position
+""",
+
     "sequence assembly requires the prefix length": """
 {-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
       -> pages:{Folio () {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
@@ -732,6 +756,26 @@ proofGuard arrow = pageElementArrowPosition arrow
 
 PAGE_INDEX_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Internal.hs"
 PAGE_INDEX_GUARDS = {
+    "appended lookup cannot treat the new page as an earlier page": """
+{-@ proofGuard :: previous:Folio origin earlier -> pageChain:Chain current
+      -> transition:{OrderedConsolidation current earlier |
+           orderedSource transition == pageChain && orderedTarget transition == lastPageData previous}
+      -> position:Ordinal -> () @-}
+proofGuard :: Folio origin earlier -> Chain current -> OrderedConsolidation current earlier -> Ordinal -> ()
+proofGuard previous pageChain transition position =
+  appendedEarlierLookup previous pageChain transition (folioLength previous) position
+""",
+    "appended lookup cannot drop the new trace head": """
+{-@ proofGuard :: previous:Folio origin earlier -> pageChain:Chain current
+      -> transition:{OrderedConsolidation current earlier |
+           orderedSource transition == pageChain && orderedTarget transition == lastPageData previous}
+      -> value:current
+      -> {folioTraceLookup (appendPageData previous pageChain transition) (folioLength previous)
+           (chainPosition pageChain value) == Just (genuinePageElementTrace previous (orderedApply transition value))} @-}
+proofGuard :: Folio origin earlier -> Chain current -> OrderedConsolidation current earlier -> current -> ()
+proofGuard previous pageChain transition value = appendedFinalLookup previous pageChain transition value
+""",
+
     "normalization cannot discard the owning trace": """
 {-@ proofGuard :: category:PageElements scope origin final
       -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence}

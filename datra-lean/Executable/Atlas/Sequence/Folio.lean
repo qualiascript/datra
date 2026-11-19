@@ -248,7 +248,6 @@ def collapseToOrigin (positive : 0 < count) (members : Fin count → Atlas) :
 
 def sequencePage (members : Fin count → Atlas) (n : Nat) : Page := ⟨ValidPageCell members n, pageChain members n⟩
 
--- ALIGN: SEQUENCE-FOLIO-PREFIX.
 def prefixFolio (positive : 0 < count) (members : Fin count → Atlas) (n : Nat) :
     Folio DomanialInclusion.singletonPage (sequencePage members n) :=
   Folio.buildPrefix DomanialInclusion.singletonPage () (fun value => by cases value; rfl)

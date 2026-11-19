@@ -5,7 +5,8 @@
 {-@ qualif SequenceAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | Assemble the sequence folio from checked native page transitions.
-module AtlasSequence.Assembly (atlasSequenceLength, atlasSequenceFolio) where
+module AtlasSequence.Assembly
+  ( atlasSequenceLength, atlasSequenceFolio, appendRemainingPages, appendRemainingLookup ) where
 
 import AtlasSequence.Member (AtlasSequenceMember, memberLength, memberList, memberPageOrigin, memberPageContains)
 import AtlasSequence.Page
@@ -14,9 +15,11 @@ import Chain.Internal (chainPosition)
 import Chain.Singleton (singletonChain)
 import Data.List.NonEmpty (NonEmpty (..))
 import Folio.Internal (Folio)
-import Folio.Assembly (collapseToOrigin, appendOrderedPage)
+import Folio.Assembly (collapseToOrigin, extendPages, extendPagesLookup)
 import Folio.Presentation (folioData, appendPageData, folioLengthData, lastPageData)
 import Numeric.Natural (Natural)
+import DatraOrdinal (Ordinal)
+import PageElements.Internal (folioTraceLookup)
 
 {-@ opaque-reflect memberList @-}
 
@@ -54,6 +57,7 @@ firstCellFromList members@(first : rest) =
 
 -- ALIGN: SEQUENCE-FOLIO-PREFIX.
 -- ALIGN: SEQUENCE-NATIVE-FOLIO-PREFIX.
+{-@ reflect appendRemainingPages @-}
 {-@ appendRemainingPages :: members:[AtlasSequenceMember]
       -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
       -> pages:{Folio () {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
@@ -65,13 +69,25 @@ firstCellFromList members@(first : rest) =
       / [depth - page] @-}
 appendRemainingPages :: [AtlasSequenceMember] -> Natural -> Natural
   -> Folio () AtlasSequencePageCell -> Folio () AtlasSequencePageCell
-appendRemainingPages members page depth pages
-  | page == depth = pages
-  | otherwise =
-      let transition = sequencePageTransition members page (lastPageData pages)
-      in appendRemainingPages members (page + 1) depth
-           (appendOrderedPage (sequencePageContains members (page - 1)) (sequencePageContains members page)
-             pages transition)
+appendRemainingPages members page depth pages =
+  extendPages (sequencePageContains members) (sequencePagePosition members)
+    (sequencePageTransition members) page depth pages
+
+-- ALIGN: SEQUENCE-PREFIX-LOOKUP-PRESERVED.
+{-@ appendRemainingLookup :: members:[AtlasSequenceMember]
+      -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
+      -> pages:{Folio () {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
+           folioLengthData pages == page + 1
+           && chainPosition (lastPageData pages) == sequencePagePosition members (page - 1)}
+      -> index:{Natural | index < folioLengthData pages} -> position:Ordinal
+      -> {folioTraceLookup (appendRemainingPages members page depth pages) index position
+           == folioTraceLookup pages index position} @-}
+{-@ ple appendRemainingLookup @-}
+appendRemainingLookup :: [AtlasSequenceMember] -> Natural -> Natural
+  -> Folio () AtlasSequencePageCell -> Natural -> Ordinal -> ()
+appendRemainingLookup members page depth pages index position =
+  extendPagesLookup (sequencePageContains members) (sequencePagePosition members)
+    (sequencePageTransition members) page depth pages index position
 
 -- ALIGN: SEQUENCE-COLLAPSE-ORIGIN.
 -- ALIGN: SEQUENCE-FOLIO.
