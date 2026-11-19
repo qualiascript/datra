@@ -275,21 +275,29 @@ Sequence member transitions, recursive sums, carrier reindexing, and endpoint
 wrappers retain the exact predecessor and chosen-preimage functions. A shared
 head/tail mapping operation handles both directions of the indexed-cell encoding;
 its function replacements have checked pointwise equality with the original maps.
-Lean proves that tail-recursive extension by one more
-page is exactly the corresponding append, yielding the same trace equation.
-Lean models the same tail-recursive
-extension and proves equality with the structural finite-prefix builder,
-including the transition maps and chosen preimages. The component assemblies
+Lean models the same tail-recursive extension and proves equality with the
+structural finite-prefix builder, including transition maps and chosen preimages.
+Extending by one more page is exactly the corresponding append, yielding the
+same trace equation. The component assemblies
 specialize this shared operation. Lean proves equality of the
 native sequence transitions, chosen preimages, and assembled finite folio with
 the sequence model, including agreement of the recursive maximum with the
 specified depth. Negative checks reject malformed prefixes, page-zero
 transitions, unaccepted native cells, padded pages used as genuine pages,
-intermediate prefixes beyond the final depth, substituted cell traces, and
+intermediate prefixes beyond the final depth, substituted cell traces,
 incorrect prefix-trace heads, and identity substitutions for sequence transitions.
 The nonempty-member-list adapter has a checked positive-length
 contract and an opaque logical symbol; its constructor decomposition is checked
 without exposing foreign datatype selectors to downstream reflection.
+
+The shared Atlas native-trace lookup retains the exact trace, page, position,
+and origin evidence in its callback and guarantees success for accepted traces.
+Merge resolution decodes the native page chain used by its folio assembler,
+then consumes the tagged component trace through this lookup. Its callbacks
+retain the component tag and the component-page and merged-position equations.
+Lean proves that this native lookup succeeds and returns the same component
+cell as the component-resolution model. Rejection checks prohibit unaccepted
+traces or cells, substituted traces, and shifted component pages.
 
 Consumers import exposed interfaces rather than another component's
 `LiquidInternal` module. The primitive interfaces are `DatraOrdinal.Laws`,

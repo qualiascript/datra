@@ -2,6 +2,49 @@ import Executable.Atlas.Merge
 
 namespace Datra.Executable.AtlasMerge
 
+theorem leftTrace_accepted (X Y : Atlas) (page : Nat) (positions : List Ordinal)
+    (accepted : PageCell.left positions ∈ Set.range (pageEncode X Y page)) :
+    X.pages.traceLookup page (FolioData.traceHead positions) = some positions := by
+  obtain ⟨value, same⟩ := accepted
+  cases value with
+  | inl value =>
+      have traces := PageCell.left.inj same
+      rw [← traces]
+      exact (X.pages.encodeTrace X.pagination.folio.valid page value).property
+  | inr value => cases same
+
+theorem rightTrace_accepted (X Y : Atlas) (page : Nat) (positions : List Ordinal)
+    (accepted : PageCell.right positions ∈ Set.range (pageEncode X Y page)) :
+    Y.pages.traceLookup page (FolioData.traceHead positions) = some positions := by
+  obtain ⟨value, same⟩ := accepted
+  cases value with
+  | inl value => cases same
+  | inr value =>
+      have traces := PageCell.right.inj same
+      rw [← traces]
+      exact (Y.pages.encodeTrace Y.pagination.folio.valid page value).property
+
+-- ALIGN: MERGE-NATIVE-CELL-RESOLUTION.
+def withNativeCell {result : Type*} (X Y : Atlas) (page : Nat) (cell : ValidPageCell X Y page)
+    (useLeft : (source : X.Element) → source.val.page = page → cell.val = .left source.val.trace → result)
+    (useRight : (source : Y.Element) → source.val.page = page → cell.val = .right source.val.trace → result) : Option result :=
+  match found : cell.val with
+  | .left positions =>
+      X.withCellTrace page ⟨positions, leftTrace_accepted X Y page positions (found ▸ cell.property)⟩
+        (fun source location _ same => useLeft source location (by rw [same]; exact found))
+  | .right positions =>
+      Y.withCellTrace page ⟨positions, rightTrace_accepted X Y page positions (found ▸ cell.property)⟩
+        (fun source location _ same => useRight source location (by rw [same]; exact found))
+
+theorem withNativeCell_isSome {result : Type*} (X Y : Atlas) (page : Nat) (cell : ValidPageCell X Y page)
+    (useLeft : (source : X.Element) → source.val.page = page → cell.val = .left source.val.trace → result)
+    (useRight : (source : Y.Element) → source.val.page = page → cell.val = .right source.val.trace → result) :
+    (withNativeCell X Y page cell useLeft useRight).isSome = true := by
+  unfold withNativeCell
+  split
+  · apply Atlas.withCellTrace_isSome
+  · apply Atlas.withCellTrace_isSome
+
 /-- The structural index of component page k in the finite merge prefix.
 Its page number is k+1 because page zero is the fresh origin. -/
 def componentIndex (X Y : Atlas) : (n : Nat) → Fin (n + 1) → (prefixFolio X Y n).data.Index
@@ -56,8 +99,8 @@ theorem pageDecode_isSome (X Y : Atlas) (n : Nat) (cell : ValidPageCell X Y n) :
   rw [← same, pageDecode_encode]
   rfl
 
-/-- Recover the component by checked lookup of the combined ordinal
-position, using the same sum-chain decoder as the runtime page resolver. -/
+/-- Recover the component in the sum presentation. `withNativeCell_resolve`
+identifies this with the runtime's accepted-trace lookup. -/
 def decodedPageCell (X Y : Atlas) (n : Nat) (cell : ValidPageCell X Y n) :
     Sum (componentPage X n).Carrier (componentPage Y n).Carrier :=
   (pageDecode X Y n cell.val).get (pageDecode_isSome X Y n cell)
@@ -90,6 +133,31 @@ theorem resolvePageCell_right (X Y : Atlas) (n : Nat) (value : (componentPage Y 
     resolvePageCell X Y n (encodedPageCell X Y n (.inr value)) =
       .right (FolioData.ValidElement.ofOccurrence ⟨n, value⟩) := by
   simp only [resolvePageCell, decodedPageCell_encode]
+
+-- ALIGN: MERGE-NATIVE-CELL-RESOLUTION-INTERPRETATION.
+theorem withNativeCell_resolve (X Y : Atlas) (page : Nat) (cell : ValidPageCell X Y page) :
+    withNativeCell X Y page cell (fun source _ _ => SourceCell.left source)
+      (fun source _ _ => SourceCell.right source) = some (resolvePageCell X Y page cell) := by
+  obtain ⟨value, same⟩ := cell.property
+  have encoded : encodedPageCell X Y page value = cell := Subtype.ext same
+  rw [← encoded]
+  cases value with
+  | inl value =>
+      rw [resolvePageCell_left]
+      change X.withCellTrace page ⟨X.pages.traceAt page value, _⟩
+        (fun source _ _ _ => SourceCell.left source) = _
+      rw [Atlas.withCellTrace_forget]
+      change (X.pages.elementAt page (FolioData.traceHead (X.pages.traceAt page value))).map SourceCell.left = _
+      rw [FolioData.traceHead_of_head (X.pages.traceAt_head page value)]
+      exact congrArg (fun resolved : Option X.Element => resolved.map (SourceCell.left : X.Element → SourceCell X Y)) (X.pages.elementAt_occurrence ⟨page, value⟩)
+  | inr value =>
+      rw [resolvePageCell_right]
+      change Y.withCellTrace page ⟨Y.pages.traceAt page value, _⟩
+        (fun source _ _ _ => SourceCell.right source) = _
+      rw [Atlas.withCellTrace_forget]
+      change (Y.pages.elementAt page (FolioData.traceHead (Y.pages.traceAt page value))).map SourceCell.right = _
+      rw [FolioData.traceHead_of_head (Y.pages.traceAt_head page value)]
+      exact congrArg (fun resolved : Option Y.Element => resolved.map (SourceCell.right : Y.Element → SourceCell X Y)) (Y.pages.elementAt_occurrence ⟨page, value⟩)
 
 theorem componentPage_clamp (X : Atlas) (limit n : Nat) (bound : X.pages.depth - 1 ≤ limit) :
     componentPage X (min n limit) = componentPage X n := by

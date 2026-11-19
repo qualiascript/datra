@@ -709,6 +709,19 @@ proofGuard = sequenceDatumMap (const True) (const False) (const ())
 
 EXTENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs"
 EXTENT_GUARDS = {
+    "native Atlas trace lookup requires an accepted trace": """
+proofGuard :: Atlas atlasScope scope cellData origin final -> Natural -> [Ordinal] -> Maybe ()
+proofGuard valueAtlas page positions = withAtlasCellTrace valueAtlas page positions (\\_ -> ())
+""",
+    "native Atlas trace lookup cannot substitute another trace": """
+{-@ proofGuard :: valueAtlas:Atlas atlasScope scope cellData origin final
+      -> page:Natural
+      -> positions:{[Ordinal] | pageTraceContains (Elements.pageElementsFolio (atlasPageElements valueAtlas)) page positions}
+      -> [Ordinal] -> Natural -> Maybe Bool @-}
+proofGuard :: Atlas atlasScope scope cellData origin final -> Natural -> [Ordinal] -> [Ordinal] -> Natural -> Maybe Bool
+proofGuard valueAtlas page positions other rankValue =
+  withAtlasCellTrace valueAtlas page positions (\\source -> cellContainsRank valueAtlas (source {pageElementTrace = other}) rankValue)
+""",
     "cell lookup cannot claim another Atlas transport trace": """
 {-@ proofGuard :: Atlas a s d o f -> Atlas a s d o f -> Natural -> Ordinal
       -> Maybe ({answer:Bool | answer}) @-}
@@ -1097,6 +1110,19 @@ proofGuard = memberDominion
 
 MERGE_RESOLUTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Resolution.hs"
 MERGE_RESOLUTION_GUARDS = {
+    "native merge resolution requires an accepted cell": """
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> Maybe ()
+proofGuard left right page cell = withMergeNativeCell left right page cell (\\_ -> ()) (\\_ -> ())
+""",
+    "native merge resolution cannot shift the component page": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:Natural -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) page cell}
+      -> Natural -> Maybe Bool @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> Natural -> Maybe Bool
+proofGuard left right page cell rankValue = withMergeNativeCell left right page cell
+  (\\source -> Extent.cellContainsRank left (source {pageElementPage = page + 1}) rankValue)
+  (\\source -> Extent.cellContainsRank right (source {pageElementPage = page + 1}) rankValue)
+""",
     "merge resolution cannot switch the left cell's owner": """
 {-@ proofGuard :: Atlas la ls ld lo lf -> Atlas la ls ld lo lf
       -> Atlas ra rs rd ro rf -> PageElement ms object -> Maybe Bool @-}

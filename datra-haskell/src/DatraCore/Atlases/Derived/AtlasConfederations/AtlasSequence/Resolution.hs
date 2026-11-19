@@ -29,6 +29,8 @@ import Data.List.NonEmpty (NonEmpty, toList)
 import DatraOrdinal (Ordinal, ordinalLT, subtractOrdinal)
 import Folio (withPageAt)
 import Numeric.Natural (Natural)
+-- Resolve the polymorphic success predicate in AtlasExtent's lookup contracts.
+import PageElements.Internal (traceLookupPresent)
 import PageElements.Structure (PageElement (..))
 
 {-@ embed Natural as int @-}

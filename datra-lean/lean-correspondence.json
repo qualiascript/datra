@@ -4137,6 +4137,27 @@
       "haskell_declaration": "atlasSequencePrefixTrace",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "nativePrefixFolio_trace_succ"
+    },
+    {
+      "id": "ATLAS-CELL-TRACE-RESOLUTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
+      "haskell_declaration": "withAtlasCellTrace",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.withCellTrace"
+    },
+    {
+      "id": "MERGE-NATIVE-CELL-RESOLUTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Resolution.hs",
+      "haskell_declaration": "withMergeNativeCell",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "withNativeCell"
+    },
+    {
+      "id": "MERGE-NATIVE-CELL-RESOLUTION-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Resolution.hs",
+      "haskell_declaration": "withMergeNativeCell",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "withNativeCell_resolve"
     }
   ],
   "modules": [
@@ -4967,6 +4988,7 @@
       "refinements": [
         "atlasExtent",
         "withAtlasCellAt",
+        "withAtlasCellTrace",
         "atlasCellOriginRankInsertion",
         "cellContainsRank",
         "cellContainsRankImage",
@@ -5683,6 +5705,7 @@
       "types": [],
       "reflected": [],
       "refinements": [
+        "withMergeNativeCell",
         "mergeSourceCell"
       ],
       "lean_target": "Datra.Executable.AtlasMerge",

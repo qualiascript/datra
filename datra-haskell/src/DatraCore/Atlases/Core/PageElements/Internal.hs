@@ -292,9 +292,9 @@ prefixTraceLookupPosition prefix _ value =
           Nothing -> ()
           Just candidate -> chainPositionInjective pageChain candidate value
 
--- | The scalar success observation shared by page-chain constructors.
+-- | The scalar success observation shared by native lookups and their callbacks.
 {-@ reflect traceLookupPresent @-}
-traceLookupPresent :: Maybe [Ordinal] -> Bool
+traceLookupPresent :: Maybe a -> Bool
 traceLookupPresent Nothing = False
 traceLookupPresent (Just _) = True
 

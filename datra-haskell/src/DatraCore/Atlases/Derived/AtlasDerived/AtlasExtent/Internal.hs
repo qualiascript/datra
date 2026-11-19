@@ -27,6 +27,7 @@ module AtlasExtent.Internal
   , cellContainsRankDisjoint
   , cellContainsRankInExtent
   , withAtlasCellAt
+  , withAtlasCellTrace
   ) where
 
 import Atlas.Internal
@@ -61,6 +62,7 @@ import PageElements.Structure
   , somePageElementPrecedes
   , somePageElementTransported
   )
+import PageElements.TraceChain (pageTraceContains, traceHead)
 import qualified PageElements.Internal as Elements
 import qualified PageElements.Structure as Trace
 
@@ -142,9 +144,11 @@ cellTraceValid valueAtlas source =
              && pageElementPage source == page
              && pageElementPosition source == position
              && len (pageElementTrace source) == page + 1
-             && Trace.traceStartsWith position (pageElementTrace source)}
+             && Trace.traceStartsWith position (pageElementTrace source)
+             && Elements.folioTraceLookup (Elements.pageElementsFolio (atlasPageElements valueAtlas)) page position == Just (pageElementTrace source)}
             -> result)
-      -> Maybe result @-}
+      -> {resolved:Maybe result | Elements.traceLookupPresent resolved
+           == Elements.traceLookupPresent (Elements.folioTraceLookup (Elements.pageElementsFolio (atlasPageElements valueAtlas)) page position)} @-}
 withAtlasCellAt
   :: Atlas atlasScope scope cellData origin final
   -> Natural -> Ordinal
@@ -156,6 +160,24 @@ withAtlasCellAt valueAtlas page position useCell =
     Just index ->
       Elements.withPageElement (atlasPageCell valueAtlas index) $ \source ->
         Just (useCell source)
+
+-- | Consume an accepted native trace without losing its exact cell evidence.
+-- ALIGN: ATLAS-CELL-TRACE-RESOLUTION.
+{-@ withAtlasCellTrace
+      :: valueAtlas:Atlas atlasScope scope cellData origin final
+      -> page:Natural -> positions:{[Ordinal] | pageTraceContains (Elements.pageElementsFolio (atlasPageElements valueAtlas)) page positions}
+      -> (forall object. source:{PageElement scope object | cellHasOrigin valueAtlas source
+             && cellTraceValid valueAtlas source
+             && pageElementPage source == page
+             && pageElementPosition source == traceHead positions
+             && pageElementTrace source == positions}
+            -> result)
+      -> {resolved:Maybe result | Elements.traceLookupPresent resolved} @-}
+withAtlasCellTrace
+  :: Atlas atlasScope scope cellData origin final -> Natural -> [Ordinal]
+  -> (forall object. PageElement scope object -> result) -> Maybe result
+withAtlasCellTrace valueAtlas page positions useCell =
+  withAtlasCellAt valueAtlas page (traceHead positions) useCell
 
 -- | Use the extent's ranking for a cell's image, with a checked inverse on
 -- all natural ranks, including ranks outside the cell's image.

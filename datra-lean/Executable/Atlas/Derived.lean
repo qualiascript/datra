@@ -1,5 +1,6 @@
 import Executable.Atlas.Membership
 import Executable.PageElementLookup
+import Executable.Folio.TraceChain
 import Executable.CoverageEnumeration
 
 namespace Datra.Executable
@@ -221,21 +222,62 @@ theorem Atlas.validCell_hasOrigin (X : Atlas) (source : X.Element) : X.cellHasOr
 /-- Consume a dynamically looked-up cell with the origin-arrow evidence
 retained through the existential callback in Haskell. -/
 -- ALIGN: ATLAS-CELL-LOOKUP-ORIGIN.
-def Atlas.withCellAt {result : Type} (X : Atlas) (page : Nat) (position : Ordinal)
+def Atlas.withCellAt {result : Type*} (X : Atlas) (page : Nat) (position : Ordinal)
     (useCell : (source : PageElement X.pages) → X.cellHasOrigin source → result) : Option result :=
   (X.pages.elementAt page position).map fun source => useCell source.val (X.validCell_hasOrigin source)
 
-theorem Atlas.withCellAt_roundtrip {result : Type} (X : Atlas) (source : X.Element)
+theorem Atlas.withCellAt_roundtrip {result : Type*} (X : Atlas) (source : X.Element)
     (useCell : (source : PageElement X.pages) → X.cellHasOrigin source → result) :
     X.withCellAt source.val.page source.val.position useCell =
       some (useCell source.val (X.validCell_hasOrigin source)) := by
   simp only [Atlas.withCellAt, FolioData.elementAt_roundtrip, Option.map_some]
 
-theorem Atlas.withCellAt_isSome {result : Type} (X : Atlas) (page : Nat) (position : Ordinal)
+theorem Atlas.withCellAt_isSome {result : Type*} (X : Atlas) (page : Nat) (position : Ordinal)
     (useCell : (source : PageElement X.pages) → X.cellHasOrigin source → result) :
     (X.withCellAt page position useCell).isSome =
       Ordinal.ordinalLT position (X.pages.pageAt page).chain.orderType := by
   simp only [Atlas.withCellAt, Option.isSome_map, FolioData.elementAt_isSome]
+
+theorem Atlas.elementAt_trace (X : Atlas) (page : Nat) (positions : X.pages.TraceCarrier page)
+    (source : X.Element)
+    (found : X.pages.elementAt page (FolioData.traceHead positions.val) = some source) :
+    source.val.trace = positions.val := by
+  have accepted := source.traceValid X.pagination.folio.valid
+  simp only [FolioData.traceValid, decide_eq_true_eq] at accepted
+  have location := X.pages.elementAt_page_position page (FolioData.traceHead positions.val) source found
+  rw [location.1, location.2, positions.property] at accepted
+  exact (Option.some.inj accepted).symm
+
+-- ALIGN: ATLAS-CELL-TRACE-RESOLUTION.
+def Atlas.withCellTrace {result : Type*} (X : Atlas) (page : Nat) (positions : X.pages.TraceCarrier page)
+    (useCell : (source : X.Element) → source.val.page = page →
+      source.val.position = FolioData.traceHead positions.val → source.val.trace = positions.val → result) : Option result :=
+  match found : X.pages.elementAt page (FolioData.traceHead positions.val) with
+  | none => none
+  | some source =>
+      let location := X.pages.elementAt_page_position page (FolioData.traceHead positions.val) source found
+      some (useCell source location.1 location.2 (X.elementAt_trace page positions source found))
+
+theorem Atlas.withCellTrace_forget {result : Type*} (X : Atlas) (page : Nat) (positions : X.pages.TraceCarrier page)
+    (useCell : X.Element → result) :
+    X.withCellTrace page positions (fun source _ _ _ => useCell source) =
+      (X.pages.elementAt page (FolioData.traceHead positions.val)).map useCell := by
+  unfold withCellTrace
+  split <;> simp_all
+
+theorem Atlas.withCellTrace_isSome {result : Type*} (X : Atlas) (page : Nat) (positions : X.pages.TraceCarrier page)
+    (useCell : (source : X.Element) → source.val.page = page →
+      source.val.position = FolioData.traceHead positions.val → source.val.trace = positions.val → result) :
+    (X.withCellTrace page positions useCell).isSome = true := by
+  have bounded := X.pages.traceLookup_bounded X.pagination.folio.valid page (FolioData.traceHead positions.val)
+  rw [positions.property] at bounded
+  unfold withCellTrace
+  split
+  · rename_i found
+    have present := X.pages.elementAt_isSome page (FolioData.traceHead positions.val)
+    rw [found, ← bounded] at present
+    contradiction
+  · rfl
 
 /-- The common origin-rank insertion used by merge and sequence membership
 and by their dependent data components. -/
