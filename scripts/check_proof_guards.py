@@ -77,6 +77,17 @@ proofGuard = reindexChain (const True) spine (const 0) (const 0) (const ()) (con
 
 ORDERED_CONSOLIDATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Ordered.hs"
 ORDERED_CONSOLIDATION_GUARDS = {
+    "consolidation function replacement requires the forward equation": """
+proofGuard :: OrderedConsolidation Int Int -> (Int -> Int) -> OrderedConsolidation Int Int
+proofGuard mapping forward = withConsolidationFunctions (const True) (const True)
+  mapping forward (orderedPreimage mapping) (const ()) (const ())
+""",
+    "consolidation function replacement retains the chosen preimage": """
+proofGuard :: OrderedConsolidation Int Int -> (Int -> Int) -> OrderedConsolidation Int Int
+proofGuard mapping backward = withConsolidationFunctions (const True) (const True)
+  mapping (orderedApply mapping) backward (const ()) (const ())
+""",
+
     "concrete consolidation monotonicity requires the source order": """
 {-@ proofGuard :: value:OrderedConsolidation a b -> left:a -> right:a
       -> {chainPrecedes (orderedTarget value)
@@ -340,6 +351,28 @@ proofGuard = pageTraceChain
 
 MERGE_PAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs"
 MERGE_PAGE_GUARDS = {
+    "merge stored forward map cannot change components": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0}
+      -> positions:{[Ordinal] | pageTraceContains (atlasFolio left) page positions}
+      -> {result:AtlasMergePageCell | result == AtlasMergeRightCell (previousTrace positions)} @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> [Ordinal] -> AtlasMergePageCell
+proofGuard left right page positions =
+  orderedApply (mergePageTransition left right page (atlasMergePageChain left right (page - 1)))
+    (AtlasMergeLeftCell positions)
+""",
+    "merge stored preimage cannot choose the other component": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0}
+      -> positions:{[Ordinal] | pageTraceContains (atlasFolio left) (page - 1) positions}
+      -> {result:AtlasMergePageCell |
+           result == AtlasMergeRightCell (pageTraceNext (atlasFolio left) (page - 1) positions)} @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> [Ordinal] -> AtlasMergePageCell
+proofGuard left right page positions =
+  orderedPreimage (mergePageTransition left right page (atlasMergePageChain left right (page - 1)))
+    (AtlasMergeLeftCell positions)
+""",
+
     "merge transitions cannot widen their canonical carriers": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> page:{Natural | page > 0}
@@ -387,7 +420,7 @@ proofGuard left right cell = previousMergeCell left right 0 cell
       -> {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} @-}
 proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> [Ordinal] -> AtlasMergePageCell
 proofGuard left _ page positions =
-  pageTracePrevious (atlasFolio left) (page - 1) positions `seq`
+  previousPageTrace (atlasFolio left) (page - 1) positions `seq`
     AtlasMergeRightCell (previousTrace positions)
 """,
     "merge page chains cannot accept arbitrary component traces": """

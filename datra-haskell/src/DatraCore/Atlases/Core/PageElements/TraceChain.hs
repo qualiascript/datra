@@ -18,6 +18,7 @@ module PageElements.TraceChain
   , pageTracePreviousMonotone
   , pageTraceTransition
   , pageTraceNext
+  , previousPageTrace
   ) where
 
 import Chain.Order (chainPrecedes)
@@ -25,7 +26,7 @@ import Chain.Internal (Chain, chain, chainOrdinalLT, chainIndex, chainObjectAt, 
 import DatraOrdinal.Internal (Ordinal, finiteOrdinal)
 import DatraOrdinal.Laws (ordinalLTIrreflexive)
 import Folio.Internal (Folio, folioLength, lastChain)
-import Consolidation.Core (Consolidation, restrictedConsolidation)
+import Consolidation.Core (Consolidation, applyConsolidation, consolidationPreimage, restrictedConsolidation)
 import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedApply, orderedPreimage, orderedPreimageProof, orderedMonotone, orderedConsolidation)
 import Folio.Presentation (FolioData (..), FolioStep (..), stepSource
   , SingletonOrigin (..))
@@ -406,6 +407,7 @@ folioNextLookup pages@(SnocPage (FolioStep _ previous transition)) page position
 -- | Canonical traces retain the stored choice of preimage and its right inverse.
 -- ALIGN: PE-TRACE-NEXT-VALID.
 -- ALIGN: PE-TRACE-NEXT-INVERSE.
+{-@ reflect pageTraceNext @-}
 {-@ pageTraceNext :: pages:Folio origin final -> page:Natural
       -> positions:{[Ordinal] | pageTraceContains pages page positions}
       -> {result:[Ordinal] | pageTraceContains pages (page + 1) result
@@ -445,10 +447,12 @@ previousPageTraceSurjective :: Folio origin final -> Natural -> ([Ordinal] -> [O
 previousPageTraceSurjective _ _ next positions = next positions `seq` ()
 
 {-@ pageTraceConsolidation :: pages:Folio origin final -> page:Natural
-      -> Consolidation <{\earlier later -> tracePrecedes earlier later},
+      -> {result:Consolidation <{\earlier later -> tracePrecedes earlier later},
                         {\earlier later -> tracePrecedes earlier later}>
            {positions:[Ordinal] | pageTraceContains pages (page + 1) positions}
-           {positions:[Ordinal] | pageTraceContains pages page positions} @-}
+           {positions:[Ordinal] | pageTraceContains pages page positions} |
+             applyConsolidation result == previousPageTrace pages page
+             && consolidationPreimage result == pageTraceNext pages page} @-}
 pageTraceConsolidation :: Folio origin final -> Natural -> Consolidation [Ordinal] [Ordinal]
 pageTraceConsolidation pages page =
   let next = pageTraceNext pages page
@@ -467,7 +471,9 @@ pageTraceConsolidation pages page =
       -> {result:OrderedConsolidation
            {positions:[Ordinal] | pageTraceContains pages (page + 1) positions}
            {positions:[Ordinal] | pageTraceContains pages page positions} |
-             orderedSource result == source && orderedTarget result == target} @-}
+             orderedSource result == source && orderedTarget result == target
+             && orderedApply result == previousPageTrace pages page
+             && orderedPreimage result == pageTraceNext pages page} @-}
 pageTraceTransition :: Folio origin final -> Natural -> Chain [Ordinal] -> Chain [Ordinal]
   -> OrderedConsolidation [Ordinal] [Ordinal]
 pageTraceTransition pages page source target =

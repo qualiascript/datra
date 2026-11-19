@@ -3,6 +3,7 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
+{-@ qualif OrderedAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | A consolidation certified against the orders of two actual chains.
 module Consolidation.Ordered
@@ -19,13 +20,14 @@ module Consolidation.Ordered
   , orderedPreimage
   , orderedPreimageProof
   , orderedFunctions
+  , withConsolidationFunctions
   ) where
 
 import Chain (Chain)
 import Chain.Order (chainPrecedes)
 import Consolidation.Core
   ( Consolidation (..), Coconsolidation, op, unop, consolidationMonotone
-  , identityConsolidation, composeConsolidations )
+  , identityConsolidation, composeConsolidations, restrictedConsolidation )
 
 {-@ data OrderedConsolidation source target = OrderedConsolidation
       { orderedSource :: Chain source
@@ -46,11 +48,14 @@ data OrderedConsolidation source target = OrderedConsolidation
             {\earlier later -> chainPrecedes target earlier later}> a b
       -> {result:OrderedConsolidation a b |
             orderedSource result == source && orderedTarget result == target
-            && orderedMap result == mapping} @-}
+            && orderedMap result == mapping
+            && orderedApply result == applyConsolidation mapping
+            && orderedPreimage result == consolidationPreimage mapping} @-}
 -- ALIGN: CONSOLIDATION-ORDERED.
 orderedConsolidation :: Chain a -> Chain b -> Consolidation a b -> OrderedConsolidation a b
 orderedConsolidation source target mapping =
-  OrderedConsolidation source target mapping
+  let result = OrderedConsolidation source target mapping
+  in orderedFunctions result `seq` result
 
 {-@ orderedMonotone :: value:OrderedConsolidation a b
       -> left:a -> right:{a | chainPrecedes (orderedSource value) left right}
@@ -90,13 +95,16 @@ composeOrderedConsolidations (OrderedConsolidation _ target second)
 orderedOpposite :: OrderedConsolidation a b -> Coconsolidation b a
 orderedOpposite (OrderedConsolidation _ _ mapping) = op mapping
 
-{-@ reflect orderedApply @-}
+-- The checked result equations expose the stored functions. Keep their logical
+-- symbols opaque so clients can combine carriers without unfolding polymorphic
+-- record selectors at incompatible SMT sorts.
+{-@ opaque-reflect orderedApply @-}
 {-@ orderedApply :: value:OrderedConsolidation a b
       -> {forward:(a -> b) | forward == applyConsolidation (orderedMap value)} @-}
 orderedApply :: OrderedConsolidation a b -> a -> b
 orderedApply (OrderedConsolidation _ _ (Consolidation forward _ _ _)) = forward
 
-{-@ reflect orderedPreimage @-}
+{-@ opaque-reflect orderedPreimage @-}
 {-@ orderedPreimage :: value:OrderedConsolidation a b
       -> {backward:(b -> a) | backward == consolidationPreimage (orderedMap value)} @-}
 orderedPreimage :: OrderedConsolidation a b -> b -> a
@@ -106,8 +114,8 @@ orderedPreimage (OrderedConsolidation _ _ (Consolidation _ backward _ _)) = back
       -> {orderedApply mapping (orderedPreimage mapping value) == value} @-}
 -- ALIGN: CONSOLIDATION-ORDERED-PREIMAGE.
 orderedPreimageProof :: OrderedConsolidation a b -> b -> ()
-orderedPreimageProof (OrderedConsolidation _ _ (Consolidation _ _ _ inverseProof)) value =
-  inverseProof value
+orderedPreimageProof mapping@(OrderedConsolidation _ _ (Consolidation _ _ _ inverseProof)) value =
+  inverseProof value `seq` orderedFunctions mapping
 
 -- | Relate the public scalar operations to the stored function fields.
 {-@ orderedFunctions :: value:OrderedConsolidation a b
@@ -116,3 +124,26 @@ orderedPreimageProof (OrderedConsolidation _ _ (Consolidation _ _ _ inverseProof
 orderedFunctions :: OrderedConsolidation a b -> ()
 orderedFunctions value@(OrderedConsolidation _ _ (Consolidation {})) =
   orderedApply value `seq` orderedPreimage value `seq` ()
+
+-- | Expose concrete transport functions after checking their pointwise equality
+-- with the stored map and chosen preimage. Both page chains remain exact.
+-- ALIGN: CONSOLIDATION-FUNCTIONS.
+{-@ withConsolidationFunctions :: sourceContains:(a -> Bool) -> targetContains:(b -> Bool)
+      -> mapping:OrderedConsolidation {value:a | sourceContains value} {value:b | targetContains value}
+      -> forward:({value:a | sourceContains value} -> {value:b | targetContains value})
+      -> backward:({value:b | targetContains value} -> {value:a | sourceContains value})
+      -> (value:{a | sourceContains value} -> {forward value == orderedApply mapping value})
+      -> (value:{b | targetContains value} -> {backward value == orderedPreimage mapping value})
+      -> {result:OrderedConsolidation {value:a | sourceContains value} {value:b | targetContains value} |
+           orderedSource result == orderedSource mapping && orderedTarget result == orderedTarget mapping
+           && orderedApply result == forward && orderedPreimage result == backward} @-}
+withConsolidationFunctions :: (a -> Bool) -> (b -> Bool) -> OrderedConsolidation a b
+  -> (a -> b) -> (b -> a) -> (a -> ()) -> (b -> ()) -> OrderedConsolidation a b
+withConsolidationFunctions sourceContains targetContains mapping forward backward forwardSame backwardSame =
+  let result = orderedConsolidation (orderedSource mapping) (orderedTarget mapping)
+        (restrictedConsolidation sourceContains targetContains forward backward
+          (\first _ second -> forwardSame first `seq` forwardSame second `seq`
+            orderedMonotone mapping first second `seq` forward second)
+          (\value -> backwardSame value `seq` forwardSame (backward value) `seq`
+            orderedPreimageProof mapping value))
+  in orderedFunctions result `seq` result

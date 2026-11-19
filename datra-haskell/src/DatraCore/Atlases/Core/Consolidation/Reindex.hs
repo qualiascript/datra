@@ -6,7 +6,7 @@
 {-@ qualif ReindexAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | Transport an ordered consolidation through checked carrier equivalences.
-module Consolidation.Reindex (reindexConsolidation) where
+module Consolidation.Reindex (reindexConsolidation, reindexApply, reindexPreimage) where
 
 import Chain.Internal (Chain, chainPosition, chainOrderType, reindexChain, reindexedPosition)
 import Chain.Order (chainPrecedes, reindexedPrecedes)

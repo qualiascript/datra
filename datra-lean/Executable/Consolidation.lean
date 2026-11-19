@@ -189,5 +189,36 @@ def withEndpoints {A B : Type} (mapping : OrderedConsolidation A B)
       exact mapping.map.monotone first second ordered
     rightInverse := mapping.map.rightInverse }⟩
 
+/-- Retain the exact chains while exposing pointwise-equal transport functions. -/
+-- ALIGN: CONSOLIDATION-FUNCTIONS.
+def withFunctions {A B : Type} (mapping : OrderedConsolidation A B)
+    (forward : A → B) (backward : B → A)
+    (forwardSame : ∀ value, forward value = mapping.map.map value)
+    (backwardSame : ∀ value, backward value = mapping.map.preimage value) :
+    OrderedConsolidation A B :=
+  ⟨mapping.source, mapping.target, {
+    map := forward
+    preimage := backward
+    monotone := by
+      intro first second ordered
+      rw [forwardSame, forwardSame]
+      exact mapping.map.monotone first second ordered
+    rightInverse := by
+      intro value
+      rw [forwardSame, backwardSame]
+      exact mapping.map.rightInverse value }⟩
+
+theorem withFunctions_eq {A B : Type} (mapping : OrderedConsolidation A B)
+    (forward : A → B) (backward : B → A)
+    (forwardSame : ∀ value, forward value = mapping.map.map value)
+    (backwardSame : ∀ value, backward value = mapping.map.preimage value) :
+    mapping.withFunctions forward backward forwardSame backwardSame = mapping := by
+  have hf := funext forwardSame
+  have hb := funext backwardSame
+  cases mapping
+  cases hf
+  cases hb
+  rfl
+
 end OrderedConsolidation
 end Datra.Executable

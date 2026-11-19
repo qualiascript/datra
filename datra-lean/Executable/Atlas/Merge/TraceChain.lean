@@ -194,6 +194,14 @@ theorem nativePageTransitionTo_target (X Y : Atlas) (n : Nat)
     (targetPosition : ∀ cell, target.position cell = pagePosition X Y n cell.val) :
     (nativePageTransitionTo X Y n target targetPosition).target = target := rfl
 
+-- ALIGN: MERGE-TRANSITION-STORED-MAP.
+theorem nativePageTransitionTo_map (X Y : Atlas) (n : Nat)
+    (target : Chain (ValidPageCell X Y n))
+    (targetPosition : ∀ cell, target.position cell = pagePosition X Y n cell.val) :
+    (nativePageTransitionTo X Y n target targetPosition).map.map = previousValidCell X Y n := by
+  funext cell
+  exact nativePageTransition_map X Y n cell
+
 -- ALIGN: MERGE-PAGE-TRANSITION-INTERPRETATION.
 theorem nativePageTransitionTo_interpretation (X Y : Atlas) (n : Nat)
     (target : Chain (ValidPageCell X Y n))
@@ -207,6 +215,7 @@ theorem nativePageTransitionTo_interpretation (X Y : Atlas) (n : Nat)
         (pageSumOrderIso X Y (n + 1) (encodedPageCell X Y (n + 1) value)) :=
   nativePageTransition_interpretation X Y n value
 
+-- ALIGN: MERGE-TRANSITION-STORED-PREIMAGE.
 theorem nativePageTransitionTo_preimage (X Y : Atlas) (n : Nat)
     (target : Chain (ValidPageCell X Y n))
     (targetPosition : ∀ cell, target.position cell = pagePosition X Y n cell.val)

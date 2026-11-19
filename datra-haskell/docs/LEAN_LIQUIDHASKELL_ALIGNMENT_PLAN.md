@@ -229,8 +229,17 @@ stored choice of preimage in each genuine transition and duplicates the final
 position on padded pages. The result belongs to the next page and its
 predecessor is exactly the original trace. Lean identifies both operations with
 the dependent page transport and its chosen preimage. Haskell merge folio
-assembly retains these checked transitions. Full merge Atlas assembly still
-requires checked data-transport and inclusion certificates. Sequence page chains
+assembly retains these checked transitions. Its transition interface also exposes
+exact stored forward and chosen-preimage functions: the forward map is the
+component-tagged trace predecessor, and the inverse follows the same component's
+stored choice. The native trace consolidation, sum, and reindex interfaces retain
+these equations through endpoint transport. A shared checked function-replacement
+operation proves pointwise equality with both stored functions and preserves the
+exact page chains. Lean proves that this replacement is equal to the original
+consolidation, including its chosen inverse. The scalar consolidation accessors
+have checked equations to their stored fields and opaque logical symbols, keeping
+polymorphic selectors out of clients' proof unfolding. Full merge Atlas assembly
+still requires checked data-transport and inclusion certificates. Sequence page chains
 use a checked recursive sum of the members' native trace chains. Each cons step
 preserves the first member's trace carrier and increments the tail's member
 tags through a checked equivalence. The empty tail has an empty accepted

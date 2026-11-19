@@ -3920,6 +3920,27 @@
       "haskell_declaration": "memberList",
       "lean_namespace": "Datra.Executable.AtlasSequence.Member",
       "lean_declaration": "memberList"
+    },
+    {
+      "id": "CONSOLIDATION-FUNCTIONS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Consolidation/Ordered.hs",
+      "haskell_declaration": "withConsolidationFunctions",
+      "lean_namespace": "Datra.Executable.OrderedConsolidation",
+      "lean_declaration": "withFunctions"
+    },
+    {
+      "id": "MERGE-TRANSITION-STORED-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
+      "haskell_declaration": "mergePageTransition",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "nativePageTransitionTo_map"
+    },
+    {
+      "id": "MERGE-TRANSITION-STORED-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Page.hs",
+      "haskell_declaration": "mergePageTransition",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "nativePageTransitionTo_preimage"
     }
   ],
   "modules": [
@@ -5503,6 +5524,7 @@
         "previousLookup",
         "previousLookupValid",
         "tracePrecedes",
+        "pageTraceNext",
         "previousPageTrace"
       ],
       "types": [],
@@ -5557,7 +5579,8 @@
         "mergeCellAccepted",
         "mergeCellFromParts",
         "mergeCellParts",
-        "previousMergeCell"
+        "previousMergeCell",
+        "nextMergeCell"
       ],
       "types": [
         "AtlasMergePageCell"
@@ -5580,7 +5603,8 @@
         "nextMergeCell",
         "mergePageTransition",
         "mergeTraceTransition",
-        "sumTraceTransitions"
+        "sumTraceTransitions",
+        "mergeForwardEquation"
       ]
     },
     {
@@ -5605,10 +5629,7 @@
       "module": "Consolidation.Ordered",
       "lean_target": "Datra.Executable.OrderedConsolidation",
       "coverage": "aligned",
-      "reflected": [
-        "orderedApply",
-        "orderedPreimage"
-      ],
+      "reflected": [],
       "types": [
         "OrderedConsolidation"
       ],
@@ -5625,7 +5646,12 @@
         "orderedApply",
         "orderedPreimage",
         "orderedPreimageProof",
-        "orderedFunctions"
+        "orderedFunctions",
+        "withConsolidationFunctions"
+      ],
+      "opaque_reflected": [
+        "orderedApply",
+        "orderedPreimage"
       ]
     },
     {

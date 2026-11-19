@@ -4,7 +4,7 @@
 {-@ LIQUID "--ple-local" @-}
 
 -- | Checked ordinal sums of consolidations with concrete chain endpoints.
-module Consolidation.Sum (sumConsolidations, sumConsolidationsBetween) where
+module Consolidation.Sum (sumConsolidations, sumConsolidationsBetween, sumApply, sumPreimage) where
 
 import Chain.Internal (Chain, chainPosition)
 import Chain.Order (chainPrecedes)
