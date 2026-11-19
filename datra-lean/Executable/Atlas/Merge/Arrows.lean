@@ -1,4 +1,5 @@
 import Executable.Atlas.Merge.Resolution
+import Executable.Atlas.Merge.Transport
 import Executable.Folio.PrefixResolution
 
 namespace Datra.Executable.AtlasMerge

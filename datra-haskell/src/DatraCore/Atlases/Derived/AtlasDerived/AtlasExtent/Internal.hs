@@ -18,6 +18,7 @@ module AtlasExtent.Internal
   , atlasCellOriginRankInsertion
   , cellHasOrigin
   , cellTraceValid
+  , cellNativeTrace
   , extentContainsRank
   , cellContainsRank
   , cellContainsRankImage
@@ -64,7 +65,7 @@ import PageElements.Structure
   , somePageElementPrecedes
   , somePageElementTransported
   )
-import PageElements.TraceChain (pageTraceContains, traceHead)
+import PageElements.TraceChain (pageTraceContains, traceHead, traceHeadMatches)
 import qualified PageElements.Internal as Elements
 import qualified PageElements.Structure as Trace
 
@@ -138,6 +139,17 @@ cellHasOrigin valueAtlas source =
 cellTraceValid :: Atlas atlasScope scope cellData origin final -> PageElement scope object -> Bool
 cellTraceValid valueAtlas source =
   Elements.pageElementTraceValid (atlasPageElements valueAtlas) source
+
+-- ALIGN: ATLAS-CELL-NATIVE-TRACE.
+{-@ cellNativeTrace :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> {pageTraceContains (Elements.pageElementsFolio (atlasPageElements owner))
+           (pageElementPage source) (pageElementTrace source)} @-}
+{-@ ple cellNativeTrace @-}
+cellNativeTrace :: Atlas a s d o f -> PageElement s object -> ()
+cellNativeTrace owner source =
+  Elements.pageElementTraceValidShape (atlasPageElements owner) source `seq`
+    traceHeadMatches (pageElementPosition source) (pageElementTrace source)
 
 -- | Observe the entire optional trace without exposing the cell's phantom.
 {-@ reflect cellLookupTrace @-}

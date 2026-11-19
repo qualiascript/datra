@@ -1,4 +1,5 @@
 import Executable.Folio
+import Executable.Chain.Singleton
 
 namespace Datra.Executable.Folio
 
@@ -10,6 +11,23 @@ def collapseToOrigin {A : Type} (source : Chain A) (target : Chain Unit) (chosen
     preimage _ := chosen
     monotone _ _ _ := le_rfl
     rightInverse value := by cases value; rfl }⟩
+
+def firstPageTrace (position : Ordinal) : List Ordinal := [position, Ordinal.finiteOrdinal 0]
+
+/-- The first appended page retains its actual trace above the fresh origin. -/
+structure OriginExtension {A : Type} (source : Chain A) where
+  pages : Folio ⟨Unit, Chain.singletonChain⟩ ⟨A, source⟩
+  length : pages.data.length = 2
+  trace : ∀ value, pages.data.genuineTrace value = firstPageTrace (source.position value)
+
+-- ALIGN: FOLIO-ORIGIN-EXTENSION.
+def extendOrigin {A : Type} (source : Chain A) (chosen : A) : OriginExtension source :=
+  let origin := FolioData.singleton ⟨Unit, Chain.singletonChain⟩ () (fun value => by cases value; rfl)
+  let transition := collapseToOrigin source Chain.singletonChain chosen
+  { pages := ⟨origin.append ⟨A, source⟩ transition.map,
+      origin.append_valid rfl _ _⟩
+    length := rfl
+    trace := fun _ => rfl }
 
 -- ALIGN: FOLIO-APPEND-ACCEPTED.
 def appendOrderedPage {origin previous : Page} {Next : Type}

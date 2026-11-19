@@ -163,6 +163,18 @@ def previousTrace : List Ordinal → List Ordinal
   | _ :: next :: rest => next :: rest
   | trace => trace
 
+-- ALIGN: PE-TRACE-PREVIOUS-SUFFIX.
+theorem previousTrace_suffix (positions : List Ordinal) :
+    Trace.traceSuffix positions (previousTrace positions) = true := by
+  cases positions with
+  | nil => rfl
+  | cons head rest =>
+      cases rest with
+      | nil => simp [previousTrace, Trace.traceSuffix]
+      | cons next tail =>
+          apply (Trace.traceSuffix_iff _ _).mpr
+          exact List.suffix_cons _ _
+
 theorem previousTrace_traceAt (pages : FolioData origin final) (page : Nat)
     (value : (pages.pageAt (page + 1)).Carrier) :
     previousTrace (pages.traceAt (page + 1) value) =

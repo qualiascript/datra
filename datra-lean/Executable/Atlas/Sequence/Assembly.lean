@@ -52,6 +52,14 @@ def nativePrefixFolio {count : Nat} (positive : 0 < count) (members : Fin count 
     (Folio.collapseToOrigin (pageChain members 0) Chain.singletonChain (firstPageCell positive members)).map
     (nativeConsolidation members) page
 
+-- ALIGN: SEQUENCE-PREFIX-TRACE-ORIGIN.
+theorem nativePrefixFolio_trace_zero {count : Nat} (positive : 0 < count) (members : Fin count → Atlas)
+    (cell : ValidPageCell members 0) :
+    (nativePrefixFolio positive members 0).data.genuineTrace cell =
+      Folio.firstPageTrace (pagePosition members 0 cell.val) := by
+  simpa only [pageChain_position] using
+    (Folio.extendOrigin (pageChain members 0) (firstPageCell positive members)).trace cell
+
 -- ALIGN: SEQUENCE-PREFIX-TRACE-STEP.
 theorem nativePrefixFolio_trace_succ {count : Nat} (positive : 0 < count) (members : Fin count → Atlas)
     (page : Nat) (cell : ValidPageCell members (page + 1)) :

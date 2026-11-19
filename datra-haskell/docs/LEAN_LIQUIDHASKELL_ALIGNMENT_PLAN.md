@@ -194,7 +194,7 @@ accepted cell rank belongs to the extent, and that distinct cells on one
 genuine page cannot accept a common rank. The latter proof recovers source data
 from the checked inverses, then combines origin-rank injectivity with the
 stored disjointness law. Lean's merge and sequence transport proofs reuse these
-shared membership lemmas. Merge's executable membership now consumes an
+shared membership lemmas. Merge's executable membership consumes an
 explicit resolved-source value: origin, left cell, or right cell. Its checked
 source predicate retains the component's origin and owning trace. The component
 transport relation allows movement within that component or into the fresh
@@ -203,9 +203,19 @@ phantom datum retag. Lean identifies this relation with its component-arrow
 relation and proves the matching preservation theorem. Raw merge lookup returns
 the same resolved values and retains their requested page and encoded position.
 The shared Atlas lookup exposes its complete optional cell and trace result,
-with the callback consuming that same lookup. The remaining assembly obligation
-is to derive the resolved transport relation from every valid raw merge arrow;
-the unchecked data-action constructor does not yet supply that proof. Negative checks reject disjointness applied to the
+with the callback consuming that same lookup. Its owning-trace certificate also
+proves membership in the component's native trace chain. Both checkers derive
+native component transport from a suffix arrow between constructed merge
+prefixes: equal-page suffixes identify the same native cell by chain-position
+injectivity, and earlier-page suffixes follow the stored predecessor recursively.
+For genuine raw pages, the owning-folio lookup equation identifies the raw trace
+with that constructed prefix. Successful resolutions of a finite raw merge arrow
+therefore satisfy the component transport relation, including arrows into the
+fresh origin. The remaining assembly obligations are padded arrows and total
+resolution of valid raw occurrences; the unchecked data-action constructor does
+not yet supply the full proof. Negative checks reject missing suffix transport,
+missing target-owner evidence, unrelated encoded positions or resolver
+coordinates, disjointness applied to the
 same cell and extent membership without an accepted source rank. The correspondence
 inventory includes the logical predicate and refinement-type aliases used to
 state these contracts. Atlas actions retain their native folio domain and a
@@ -282,8 +292,13 @@ depth. Both Atlas constructors expose their actual finite prefixes and reduce
 genuine-page lookups in the completed folio to the corresponding prefix.
 Accepted native cells on appended pages resolve to that prefix's exact transport
 trace; the singleton origin has its separate checked lookup law. The initial
-merge and sequence pages have checked accepted-carrier, length, and canonical
-position certificates. The shared extension identifies its final trace with
+merge and sequence pages use a shared origin-extension certificate retaining
+their accepted carrier, length, canonical position, and exact two-entry trace:
+the native cell position followed by the fresh origin's zero position. The
+singleton chain exposes a checked position law, and the folio certificate derives
+its initial trace from the existing trace-length and origin-suffix laws. Both
+constructors expose this base case for their actual finite prefixes. The shared
+extension identifies its final trace with
 the last stored transition into the preceding constructed prefix. Merge and
 sequence specialize this to the canonical cell position followed by the preceding
 prefix's trace of `previousMergeCell` and `previousSequenceCell`, respectively.
@@ -301,7 +316,8 @@ the sequence model, including agreement of the recursive maximum with the
 specified depth. Negative checks reject malformed prefixes, page-zero
 transitions, unaccepted native cells, padded pages used as genuine pages,
 intermediate prefixes beyond the final depth, substituted cell traces,
-incorrect prefix-trace heads, and identity substitutions for sequence transitions.
+incorrect initial or recursive prefix-trace heads, and identity substitutions
+for sequence transitions.
 The nonempty-member-list adapter has a checked positive-length
 contract and an opaque logical symbol; its constructor decomposition is checked
 without exposing foreign datatype selectors to downstream reflection.

@@ -12,7 +12,10 @@ module PageElements.TraceChain
   , pageTraceContains
   , pageTraceOrigin
   , traceHead
+  , traceHeadMatches
   , previousTrace
+  , previousTraceSuffix
+  , genuineTraceHead
   , pageTracePrevious
   , tracePrecedes
   , pageTracePreviousMonotone
@@ -46,7 +49,7 @@ import PageElements.Internal
   , folioPageOrderType
   , folioTraceLookupBounded
   )
-import PageElements.Structure (traceStartsWith)
+import PageElements.Structure (traceStartsWith, traceSuffix)
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -157,6 +160,13 @@ pageTraceChainAtOrder pages page order lookupTrace =
 previousTrace :: [Ordinal] -> [Ordinal]
 previousTrace (_ : rest@(_ : _)) = rest
 previousTrace positions = positions
+
+-- ALIGN: PE-TRACE-PREVIOUS-SUFFIX.
+{-@ previousTraceSuffix :: positions:[Ordinal] -> {traceSuffix positions (previousTrace positions)} @-}
+previousTraceSuffix :: [Ordinal] -> ()
+previousTraceSuffix [] = ()
+previousTraceSuffix (_ : []) = ()
+previousTraceSuffix (_ : _ : _) = ()
 
 {-@ previousTraceCons :: position:Ordinal -> positions:{[Ordinal] | len positions > 0}
       -> {previousTrace (prependCopies 1 position positions) == positions} @-}

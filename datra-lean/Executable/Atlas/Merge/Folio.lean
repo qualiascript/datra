@@ -194,6 +194,11 @@ def prefixFolio (X Y : Atlas) (n : Nat) : Folio DomanialInclusion.singletonPage 
   Folio.buildPrefix DomanialInclusion.singletonPage () (fun value => by cases value; rfl)
     (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y) n
 
+-- ALIGN: MERGE-PREFIX-TRACE-ORIGIN.
+theorem prefixFolio_trace_zero (X Y : Atlas) (cell : ValidPageCell X Y 0) :
+    (prefixFolio X Y 0).data.genuineTrace cell = Folio.firstPageTrace (pagePosition X Y 0 cell.val) :=
+  (Folio.extendOrigin (pageChain X Y 0) (firstPageCell X Y)).trace cell
+
 -- ALIGN: MERGE-PREFIX-TRACE-STEP.
 theorem prefixFolio_trace_succ (X Y : Atlas) (n : Nat) (cell : ValidPageCell X Y (n + 1)) :
     (prefixFolio X Y (n + 1)).data.genuineTrace cell =

@@ -130,8 +130,85 @@ proofGuard mapping source target =
 """,
 }
 
+MERGE_TRANSPORT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Transport.hs"
+MERGE_TRANSPORT_GUARDS = {
+    "merge resolved transport requires target resolver coordinates": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> arrow:{PageElementArrow ms s t |
+           mergeOccurrenceTraceValid left right (arrowSource arrow)
+           && mergeOccurrenceTraceValid left right (arrowTarget arrow)
+           && pageElementPage (arrowSource arrow) < atlasMergeLength left right}
+      -> source:{AtlasMergeSource ls rs | mergeSourceValid left right source
+           && mergeResolvedAt left (arrowSource arrow) source}
+      -> target:{AtlasMergeSource ls rs | mergeSourceValid left right target}
+      -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElementArrow ms s t
+  -> AtlasMergeSource ls rs -> AtlasMergeSource ls rs -> ()
+proofGuard = mergeResolvedFiniteTransport
+""",
+    "merge prefix transport requires the suffix arrow": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> sourcePage:Natural -> targetPage:{Natural | targetPage <= sourcePage}
+      -> source:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) sourcePage source}
+      -> target:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) targetPage target}
+      -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Natural
+  -> AtlasMergePageCell -> AtlasMergePageCell -> ()
+proofGuard = mergePrefixNativeTransport
+""",
+    "merge raw transport requires the target owning trace": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> arrow:{PageElementArrow ms s t | mergeOccurrenceTraceValid left right (arrowSource arrow)
+           && pageElementPage (arrowTarget arrow) > 0
+           && pageElementPage (arrowSource arrow) < atlasMergeLength left right}
+      -> source:{AtlasMergePageCell |
+           mergePageContains (atlasFolio left) (atlasFolio right) (pageElementPage (arrowSource arrow) - 1) source
+           && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage (arrowSource arrow) - 1)) source
+                == pageElementPosition (arrowSource arrow)}
+      -> target:{AtlasMergePageCell |
+           mergePageContains (atlasFolio left) (atlasFolio right) (pageElementPage (arrowTarget arrow) - 1) target
+           && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage (arrowTarget arrow) - 1)) target
+                == pageElementPosition (arrowTarget arrow)}
+      -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElementArrow ms s t
+  -> AtlasMergePageCell -> AtlasMergePageCell -> ()
+proofGuard = mergeGenuineArrowNativeTransport
+""",
+    "merge raw transport requires the target encoded position": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> arrow:{PageElementArrow ms s t |
+           mergeOccurrenceTraceValid left right (arrowSource arrow)
+           && mergeOccurrenceTraceValid left right (arrowTarget arrow)
+           && pageElementPage (arrowTarget arrow) > 0
+           && pageElementPage (arrowSource arrow) < atlasMergeLength left right}
+      -> source:{AtlasMergePageCell |
+           mergePageContains (atlasFolio left) (atlasFolio right) (pageElementPage (arrowSource arrow) - 1) source
+           && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage (arrowSource arrow) - 1)) source
+                == pageElementPosition (arrowSource arrow)}
+      -> target:{AtlasMergePageCell |
+           mergePageContains (atlasFolio left) (atlasFolio right) (pageElementPage (arrowTarget arrow) - 1) target}
+      -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElementArrow ms s t
+  -> AtlasMergePageCell -> AtlasMergePageCell -> ()
+proofGuard = mergeGenuineArrowNativeTransport
+""",
+}
+
 MERGE_ASSEMBLY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs"
 MERGE_ASSEMBLY_GUARDS = {
+    "merge initial trace requires an accepted first-page cell": """
+{-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> AtlasMergePageCell -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> AtlasMergePageCell -> ()
+proofGuard = atlasMergePrefixOriginTrace
+""",
+    "merge initial trace cannot replace its position": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) 0 cell}
+      -> position:Ordinal
+      -> {genuinePageElementTrace (atlasMergePrefix left right 1) cell == firstPageTrace position} @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> AtlasMergePageCell -> Ordinal -> ()
+proofGuard left right cell _ = atlasMergePrefixOriginTrace left right cell
+""",
     "merge prefix trace cannot replace its head": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> depth:{Natural | depth > 0}
@@ -297,6 +374,19 @@ proofGuard = consCell
 
 SEQUENCE_ASSEMBLY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Assembly.hs"
 SEQUENCE_ASSEMBLY_GUARDS = {
+    "sequence initial trace requires an accepted first-page cell": """
+{-@ proofGuard :: NonEmpty AtlasSequenceMember -> AtlasSequencePageCell -> () @-}
+proofGuard :: NonEmpty AtlasSequenceMember -> AtlasSequencePageCell -> ()
+proofGuard = atlasSequencePrefixOriginTrace
+""",
+    "sequence initial trace cannot replace its position": """
+{-@ proofGuard :: members:NonEmpty AtlasSequenceMember
+      -> cell:{AtlasSequencePageCell | sequencePageContains (memberList members) 0 cell}
+      -> position:Ordinal
+      -> {genuinePageElementTrace (atlasSequencePrefix members 1) cell == firstPageTrace position} @-}
+proofGuard :: NonEmpty AtlasSequenceMember -> AtlasSequencePageCell -> Ordinal -> ()
+proofGuard members cell _ = atlasSequencePrefixOriginTrace members cell
+""",
     "sequence prefix trace cannot replace its head": """
 {-@ proofGuard :: members:NonEmpty AtlasSequenceMember -> depth:{Natural | depth > 0}
       -> cell:{AtlasSequencePageCell | sequencePageContains (memberList members) depth cell}
@@ -1239,6 +1329,7 @@ def run(pattern=None):
                                     (POSITION_SOURCE, POSITION_GUARDS),
                                     (ENDPOINTS_SOURCE, ENDPOINTS_GUARDS),
                                     (MERGE_ASSEMBLY_SOURCE, MERGE_ASSEMBLY_GUARDS),
+                                    (MERGE_TRANSPORT_SOURCE, MERGE_TRANSPORT_GUARDS),
                                     (SEQUENCE_MEMBER_SOURCE, SEQUENCE_MEMBER_GUARDS),
                                     (SEQUENCE_PAGE_SOURCE, SEQUENCE_PAGE_GUARDS),
                                     (SEQUENCE_ASSEMBLY_SOURCE, SEQUENCE_ASSEMBLY_GUARDS),

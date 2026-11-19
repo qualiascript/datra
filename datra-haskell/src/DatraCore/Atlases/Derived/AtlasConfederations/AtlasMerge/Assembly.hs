@@ -6,7 +6,7 @@
 
 -- | Assemble the finite merge folio with certified native page endpoints.
 module AtlasMerge.Assembly
-  ( atlasMergeLength, atlasMergeFolio, atlasMergePrefix, atlasMergePrefixLookup, atlasMergePageLookup, atlasMergeCellLookup, atlasMergePrefixTrace
+  ( atlasMergeLength, atlasMergeFolio, atlasMergePrefix, atlasMergePrefixLookup, atlasMergePageLookup, atlasMergeCellLookup, atlasMergePrefixTrace, atlasMergePrefixOriginTrace
   , appendRemainingPages, appendRemainingLookup ) where
 
 import Atlas.Internal (Atlas, atlasFolio)
@@ -15,10 +15,9 @@ import AtlasMerge.Page
   , previousMergeCell, nextMergeCell )
 import Chain.Internal (Chain, chainPosition)
 import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedApply, orderedPreimage)
-import Chain.Singleton (singletonChain)
-import Folio.Assembly (collapseToOrigin, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace)
+import Folio.Assembly (OriginExtension, extendOrigin, originExtensionPages, originExtensionTrace, firstPageTrace, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace)
 import Folio.Internal (Folio)
-import Folio.Presentation (folioData, appendPageData, folioLengthData, lastPageData)
+import Folio.Presentation (folioLengthData, lastPageData)
 import DatraOrdinal (Ordinal)
 import Numeric.Natural (Natural)
 import PageElements.Internal (folioPageOrderType, folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup, prependCopies)
@@ -110,19 +109,31 @@ appendRemainingLookup left right page depth pages index position =
     (mergeTransitionAt left right) page depth pages index position
 
 -- | The certified seed shared by every finite merge prefix.
-{-@ opaque-reflect firstMergePage @-}
+{-@ opaque-reflect firstMergeSeed @-}
+{-@ firstMergeSeed :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> {result:OriginExtension {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) 0 cell} |
+           chainPosition (lastPageData (originExtensionPages result)) == mergePagePosition (folioPageOrderType (atlasFolio left) 0)} @-}
+firstMergeSeed :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> OriginExtension AtlasMergePageCell
+firstMergeSeed left right = extendOrigin (mergePageContains (atlasFolio left) (atlasFolio right) 0)
+  (atlasMergePageChain left right 0) (firstMergeCell left right)
+
+{-@ reflect firstMergePage @-}
 {-@ firstMergePage :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> {result:Folio () {cell:AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) 0 cell} |
            folioLengthData result == 2
            && chainPosition (lastPageData result) == mergePagePosition (folioPageOrderType (atlasFolio left) 0)} @-}
 firstMergePage :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Folio () AtlasMergePageCell
-firstMergePage left right =
-  let origin = folioData singletonChain () (\() -> ())
-      firstChain = atlasMergePageChain left right 0
-      firstTransition = collapseToOrigin (mergePageContains (atlasFolio left) (atlasFolio right) 0)
-        firstChain (lastPageData origin) (firstMergeCell left right)
-      firstPage = appendPageData origin firstChain firstTransition
-  in firstPage
+firstMergePage left right = originExtensionPages (firstMergeSeed left right)
+
+-- ALIGN: MERGE-PREFIX-TRACE-ORIGIN.
+{-@ atlasMergePrefixOriginTrace :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) 0 cell}
+      -> {genuinePageElementTrace (atlasMergePrefix left right 1) cell
+           == firstPageTrace (mergePagePosition (folioPageOrderType (atlasFolio left) 0) cell)} @-}
+{-@ ple atlasMergePrefixOriginTrace @-}
+atlasMergePrefixOriginTrace :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> AtlasMergePageCell -> ()
+atlasMergePrefixOriginTrace left right cell =
+  mergePositionAt left 0 `seq` originExtensionTrace (firstMergeSeed left right) cell
 
 -- ALIGN: MERGE-CONSTRUCTED-PREFIX.
 {-@ reflect atlasMergePrefix @-}

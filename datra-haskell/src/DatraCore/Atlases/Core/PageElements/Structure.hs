@@ -54,6 +54,8 @@ module PageElements.Structure
   , trimTraceToSuffix
   , traceSuffix
   , traceSuffixTransitive
+  , traceSuffixSameLength
+  , traceSuffixDropHead
   , traceTail
   , traceStartsWith
   , tracePosition
@@ -364,6 +366,24 @@ traceSuffixLength source target
   | source == target = ()
 traceSuffixLength [] _ = ()
 traceSuffixLength (_ : rest) target = traceSuffixLength rest target
+
+-- ALIGN: PE-SUFFIX-SAME-LENGTH.
+{-@ traceSuffixSameLength :: source:[Ordinal]
+      -> target:{[Ordinal] | traceSuffix source target && len source == len target}
+      -> {source == target} @-}
+traceSuffixSameLength :: [Ordinal] -> [Ordinal] -> ()
+traceSuffixSameLength source target
+  | source == target = ()
+traceSuffixSameLength [] _ = ()
+traceSuffixSameLength (_ : rest) target = traceSuffixLength rest target
+
+-- ALIGN: PE-SUFFIX-DROP-HEAD.
+{-@ traceSuffixDropHead :: source:[Ordinal]
+      -> target:{[Ordinal] | traceSuffix source target && len target < len source}
+      -> {traceSuffix (traceTail source) target} @-}
+traceSuffixDropHead :: [Ordinal] -> [Ordinal] -> ()
+traceSuffixDropHead [] _ = ()
+traceSuffixDropHead (_ : _) _ = ()
 
 -- | Taking equally bounded suffixes preserves the suffix relation.
 {-@

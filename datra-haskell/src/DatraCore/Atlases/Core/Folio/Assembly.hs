@@ -7,20 +7,25 @@
 {-@ qualif PageAccepted(v:@(0), p:func(0, [int; @(0); bool]), n:int) { p n v } @-}
 
 -- | Shared origin and append operations retaining accepted page carriers.
-module Folio.Assembly (collapseToOrigin, appendOrderedPage, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace) where
+module Folio.Assembly
+  ( collapseToOrigin, OriginExtension, extendOrigin, originExtensionPages, originExtensionTrace, firstPageTrace
+  , appendOrderedPage, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace ) where
 
 import Chain.Internal (Chain, chainPosition)
 import Chain.Order (chainPrecedes)
+import Chain.Singleton (singletonChain, singletonChainPosition)
 import Consolidation.Core (restrictedConsolidation)
-import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedConsolidation)
+import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedConsolidation, orderedApply)
 import DatraOrdinal.Laws (ordinalLTIrreflexive)
-import DatraOrdinal (Ordinal)
-import Folio.Presentation (FolioData, appendPageData, folioLengthData, lastPageData)
+import DatraOrdinal (Ordinal, finiteOrdinal)
+import Folio.Presentation (FolioData, folioData, appendPageData, folioLengthData, lastPageData, originPageData, originValueData)
 import Numeric.Natural (Natural)
-import PageElements.Internal (folioTraceLookup, appendedEarlierLookup, genuinePageElementTrace, appendedPageTrace, snocElementTrace)
+import PageElements.Internal (folioTraceLookup, appendedEarlierLookup, genuinePageElementTrace, appendedPageTrace, snocElementTrace, folioOriginTrace)
+import PageElements.Structure (trimTraceToSuffix, trimTraceWithinLength)
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
+{-@ opaque-reflect singletonChain @-}
 
 -- ALIGN: FOLIO-COLLAPSE-ORIGIN.
 {-@ collapseToOrigin :: contains:(a -> Bool)
@@ -58,6 +63,60 @@ collapseInverse _ () = ()
 {-@ ple collapseMonotone @-}
 collapseMonotone :: Chain () -> a -> () -> a -> ()
 collapseMonotone target _ () _ = ordinalLTIrreflexive (chainPosition target ()) `seq` ()
+
+-- | Retain the exact first trace while hiding the singleton-origin construction.
+{-@ data OriginExtension cell = OriginExtension
+      { originExtensionPages :: {pages:FolioData () cell | folioLengthData pages == 2}
+      , originExtensionTrace :: value:cell ->
+          {genuinePageElementTrace originExtensionPages value
+             == firstPageTrace (chainPosition (lastPageData originExtensionPages) value)}
+      } @-}
+data OriginExtension cell = OriginExtension
+  { originExtensionPages :: FolioData () cell
+  , originExtensionTrace :: cell -> ()
+  }
+
+{-@ reflect firstPageTrace @-}
+firstPageTrace :: Ordinal -> [Ordinal]
+firstPageTrace position = [position, finiteOrdinal 0]
+
+{-@ singlePageTrace :: pages:{FolioData origin cell | folioLengthData pages == 1} -> value:cell
+      -> {genuinePageElementTrace pages value == folioOriginTrace pages} @-}
+{-@ ple singlePageTrace @-}
+singlePageTrace :: FolioData origin cell -> cell -> ()
+singlePageTrace pages value =
+  let positions = genuinePageElementTrace pages value
+  in trimTraceToSuffix positions (folioOriginTrace pages) 1 `seq`
+    trimTraceWithinLength 1 positions
+
+-- ALIGN: FOLIO-ORIGIN-EXTENSION.
+{-@ opaque-reflect extendOrigin @-}
+{-@ extendOrigin :: contains:(a -> Bool) -> source:Chain {value:a | contains value}
+      -> chosen:{a | contains chosen}
+      -> {result:OriginExtension {value:a | contains value} |
+           lastPageData (originExtensionPages result) == source} @-}
+{-@ ple extendOrigin @-}
+extendOrigin :: (a -> Bool) -> Chain a -> a -> OriginExtension a
+extendOrigin contains source chosen =
+  let origin = folioData singletonChain () (\() -> ())
+      transition = collapseToOrigin contains source (lastPageData origin) chosen
+      pages = appendPageData origin source transition
+  in OriginExtension pages (originExtensionProof origin source transition)
+
+{-@ originExtensionProof :: origin:{FolioData () () | folioLengthData origin == 1
+        && originPageData origin == singletonChain}
+      -> source:Chain a
+      -> transition:{OrderedConsolidation a () | orderedSource transition == source
+           && orderedTarget transition == lastPageData origin}
+      -> value:a
+      -> {genuinePageElementTrace (appendPageData origin source transition) value
+           == firstPageTrace (chainPosition source value)} @-}
+{-@ ple originExtensionProof @-}
+originExtensionProof :: FolioData () () -> Chain a -> OrderedConsolidation a () -> a -> ()
+originExtensionProof origin source transition value =
+  singletonChainPosition (originValueData origin) `seq`
+    singlePageTrace origin (orderedApply transition value) `seq`
+    appendedPageTrace origin source transition value
 
 -- ALIGN: FOLIO-APPEND-ACCEPTED.
 {-@ reflect appendOrderedPage @-}

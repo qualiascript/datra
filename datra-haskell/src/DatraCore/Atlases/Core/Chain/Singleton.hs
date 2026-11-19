@@ -4,18 +4,26 @@
 {-@ LIQUID "--ple-local" @-}
 
 -- | The checked singleton chain shared by Atlas origin constructions.
-module Chain.Singleton (singletonChain) where
+module Chain.Singleton (singletonChain, singletonChainPosition) where
 
-import Chain.Internal (Chain, chain, chainOrderType, chainOrdinalLT, positionMatches)
+import Chain.Internal (Chain, chain, chainOrderType, chainPosition, chainPositionBelow, chainOrdinalLT, positionMatches)
 import DatraOrdinal.Internal (Ordinal, finiteOrdinal)
 import DatraOrdinal.Laws (ordinalBelowOne)
 
 -- ALIGN: CHAIN-SINGLETON.
+{-@ opaque-reflect singletonChain @-}
 {-@ singletonChain :: {result:Chain () | chainOrderType result == finiteOrdinal 1} @-}
 {-@ ple singletonChain @-}
 singletonChain :: Chain ()
 singletonChain = chain (finiteOrdinal 1) unitPosition unitLookup
   unitBelow (\() () -> ()) unitSurjective
+
+-- ALIGN: CHAIN-SINGLETON-POSITION.
+{-@ singletonChainPosition :: value:() -> {chainPosition singletonChain value == finiteOrdinal 0} @-}
+{-@ ple singletonChainPosition @-}
+singletonChainPosition :: () -> ()
+singletonChainPosition value = chainPositionBelow singletonChain value `seq`
+  ordinalBelowOne (chainPosition singletonChain value)
 
 {-@ reflect unitPosition @-}
 unitPosition :: () -> Ordinal

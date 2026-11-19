@@ -6,18 +6,17 @@
 
 -- | Assemble the sequence folio from checked native page transitions.
 module AtlasSequence.Assembly
-  ( atlasSequenceLength, atlasSequenceFolio, atlasSequencePrefix, atlasSequencePrefixLookup, atlasSequencePageLookup, atlasSequenceCellLookup, atlasSequencePrefixTrace
+  ( atlasSequenceLength, atlasSequenceFolio, atlasSequencePrefix, atlasSequencePrefixLookup, atlasSequencePageLookup, atlasSequenceCellLookup, atlasSequencePrefixTrace, atlasSequencePrefixOriginTrace
   , appendRemainingPages, appendRemainingLookup ) where
 
 import AtlasSequence.Member (AtlasSequenceMember, memberLength, memberList, memberPageOrigin, memberPageContains)
 import AtlasSequence.Page
   ( AtlasSequencePageCell (..), atlasSequencePageChain, sequencePageContains, sequencePagePosition, sequencePageTransition, previousSequenceCell, headCell )
 import Chain.Internal (chainPosition)
-import Chain.Singleton (singletonChain)
 import Data.List.NonEmpty (NonEmpty (..))
 import Folio.Internal (Folio)
-import Folio.Assembly (collapseToOrigin, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace)
-import Folio.Presentation (folioData, appendPageData, folioLengthData, lastPageData)
+import Folio.Assembly (OriginExtension, extendOrigin, originExtensionPages, originExtensionTrace, firstPageTrace, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace)
+import Folio.Presentation (folioLengthData, lastPageData)
 import Numeric.Natural (Natural)
 import DatraOrdinal (Ordinal)
 import PageElements.Internal (folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup, prependCopies)
@@ -91,20 +90,31 @@ appendRemainingLookup members page depth pages index position =
     (sequencePageTransition members) page depth pages index position
 
 -- | The first member supplies the checked origin choice for every prefix.
-{-@ opaque-reflect firstSequencePage @-}
+{-@ opaque-reflect firstSequenceSeed @-}
+{-@ firstSequenceSeed :: members:NonEmpty AtlasSequenceMember
+      -> {result:OriginExtension {cell:AtlasSequencePageCell | sequencePageContains (memberList members) 0 cell} |
+           chainPosition (lastPageData (originExtensionPages result)) == sequencePagePosition (memberList members) 0} @-}
+firstSequenceSeed :: NonEmpty AtlasSequenceMember -> OriginExtension AtlasSequencePageCell
+firstSequenceSeed members =
+  let entries = memberList members
+  in extendOrigin (sequencePageContains entries 0) (atlasSequencePageChain entries 0) (firstSequenceCell members)
+
+{-@ reflect firstSequencePage @-}
 {-@ firstSequencePage :: members:NonEmpty AtlasSequenceMember
       -> {result:Folio () {cell:AtlasSequencePageCell | sequencePageContains (memberList members) 0 cell} |
            folioLengthData result == 2
            && chainPosition (lastPageData result) == sequencePagePosition (memberList members) 0} @-}
 firstSequencePage :: NonEmpty AtlasSequenceMember -> Folio () AtlasSequencePageCell
-firstSequencePage members =
-  let entries = memberList members
-      origin = folioData singletonChain () (\() -> ())
-      firstChain = atlasSequencePageChain entries 0
-      firstTransition = collapseToOrigin (sequencePageContains entries 0)
-        firstChain (lastPageData origin) (firstSequenceCell members)
-      firstPage = appendPageData origin firstChain firstTransition
-  in firstPage
+firstSequencePage members = originExtensionPages (firstSequenceSeed members)
+
+-- ALIGN: SEQUENCE-PREFIX-TRACE-ORIGIN.
+{-@ atlasSequencePrefixOriginTrace :: members:NonEmpty AtlasSequenceMember
+      -> cell:{AtlasSequencePageCell | sequencePageContains (memberList members) 0 cell}
+      -> {genuinePageElementTrace (atlasSequencePrefix members 1) cell
+           == firstPageTrace (sequencePagePosition (memberList members) 0 cell)} @-}
+{-@ ple atlasSequencePrefixOriginTrace @-}
+atlasSequencePrefixOriginTrace :: NonEmpty AtlasSequenceMember -> AtlasSequencePageCell -> ()
+atlasSequencePrefixOriginTrace members cell = originExtensionTrace (firstSequenceSeed members) cell
 
 -- ALIGN: SEQUENCE-CONSTRUCTED-PREFIX.
 {-@ reflect atlasSequencePrefix @-}

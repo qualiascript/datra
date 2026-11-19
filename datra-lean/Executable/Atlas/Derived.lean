@@ -9,6 +9,14 @@ open CategoryTheory
 def Atlas.cellTraceValid (X : Atlas) (source : PageElement X.pages) : Bool :=
   X.pages.traceValid source
 
+-- ALIGN: ATLAS-CELL-NATIVE-TRACE.
+theorem Atlas.cellNativeTrace (X : Atlas) (source : PageElement X.pages)
+    (accepted : X.cellTraceValid source = true) :
+    X.pages.traceLookup source.page (FolioData.traceHead source.trace) = some source.trace := by
+  have found : X.pages.traceLookup source.page source.position = some source.trace := of_decide_eq_true accepted
+  rw [FolioData.traceHead_of_head (X.pages.traceLookup_head X.pagination.folio.valid _ _ _ found)]
+  exact found
+
 -- ALIGN: ATLAS-CELL-TRACE-VALIDITY.
 theorem Atlas.cellTraceValid_iff_index (X : Atlas) (source : PageElement X.pages) :
     X.cellTraceValid source = true ↔

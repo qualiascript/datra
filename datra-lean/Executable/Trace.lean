@@ -44,6 +44,22 @@ theorem traceSuffix_iff (source target : List α) :
       · simp [h]
       · simp [h, ih, Ne.symm h]
 
+-- ALIGN: PE-SUFFIX-SAME-LENGTH.
+theorem traceSuffix_same_length (source target : List α)
+    (suffix : traceSuffix source target = true) (length : source.length = target.length) :
+    source = target :=
+  ((traceSuffix_iff _ _).mp suffix).eq_of_length length.symm |>.symm
+
+-- ALIGN: PE-SUFFIX-DROP-HEAD.
+theorem traceSuffix_drop_head (source target : List α)
+    (suffix : traceSuffix source target = true) (shorter : target.length < source.length) :
+    traceSuffix source.tail target = true := by
+  cases source with
+  | nil => simp at shorter
+  | cons head rest =>
+      have different : head :: rest ≠ target := by intro same; simp [same] at shorter
+      simpa [traceSuffix, different] using suffix
+
 /-- Negative limits, allowed by Haskell's Int interface, also trim to empty. -/
 def trimTrace (limit : Int) : List α → List α
   | [] => []

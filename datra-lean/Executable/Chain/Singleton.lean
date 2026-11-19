@@ -14,4 +14,8 @@ def singletonChain : Chain Unit where
     subst position
     exact ⟨(), by simp, rfl⟩
 
+-- ALIGN: CHAIN-SINGLETON-POSITION.
+theorem singletonChain_position (value : Unit) :
+    singletonChain.position value = Ordinal.finiteOrdinal 0 := rfl
+
 end Datra.Executable.Chain
