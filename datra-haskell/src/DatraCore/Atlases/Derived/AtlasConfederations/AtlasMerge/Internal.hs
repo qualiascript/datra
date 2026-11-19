@@ -22,7 +22,6 @@ import Atlas
   , AtlasObject
   , AtlasObjectMap
   , atlas
-  , atlasCardinality
   , atlasRestrictedDataAction
   , atlasMembership
   , atlasFolio
@@ -39,29 +38,22 @@ import AtlasMerge.Data
   , atlasMergeDatumSide
   , atlasMergeDatumRank
   , mergeDatumDominion
-  , mergeDatumInsertion
   )
 import AtlasExtent.Internal (atlasCellOriginRankInsertion)
 import AtlasMerge.Page (AtlasMergePageCell (..))
 import AtlasMerge.Assembly (atlasMergeLength, atlasMergeFolio)
 import AtlasMerge.Resolution (mergeCellContains)
+import AtlasMerge.Action (mergeDataMap)
 import AtlasTransposal
   ( AtlasTransposalElement
   , atlasTransposal
   , atlasTransposalElement
   , withAtlasTransposalElement
   )
-import Chain
-  ( Chain
-  , chainIndex
-  , chainObjectAt
-  , chainOrderType
-  , chainPosition
-  )
+import Chain (chainOrderType)
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
-  , finiteOrdinal
   )
 import DatraOrdinal.Internal (subtractOrdinal)
 import DomanialInsertion
@@ -72,16 +64,10 @@ import DomanialInsertion
   , preimage
   )
 import Dominion (Dominion)
-import Folio
-  ( Folio
-  , withPageAt
-  )
+import Folio (withPageAt)
 import Numeric.Natural (Natural)
 import PageElements
   ( PageElement
-  , PageElementArrow
-  , arrowSource
-  , arrowTarget
   , pageElement
   , pageElementIndex
   , withPageElement
@@ -112,24 +98,6 @@ mergeDominionAt
   -> Dominion (AtlasMergeDatum object)
 mergeDominionAt left right occurrence =
   mergeDatumDominion (mergeCellContains left right occurrence)
-
--- ALIGN: MERGE-DATA-INSERTION.
--- ALIGN: MERGE-DATA-INTERPRETATION.
--- ALIGN: MERGE-DATA-IDENTITY.
--- ALIGN: MERGE-DATA-COMPOSITION.
--- ALIGN: MERGE-RESOLVED-ARROW.
--- ALIGN: MERGE-ATLAS-DATA-INTERPRETATION.
--- ALIGN: MERGE-BOUQUET-DATA-NATURALITY.
-mergeDataMap
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> PageElementArrow mergeScope source target
-  -> DomanialInsertion (AtlasMergeDatum source) (AtlasMergeDatum target)
-mergeDataMap left right pageArrow =
-  mergeDatumInsertion
-    (mergeCellContains left right (arrowSource pageArrow))
-    (mergeCellContains left right (arrowTarget pageArrow))
-    (const ())
 
 -- | Merge two atlases.  The result has a fresh singleton origin whose
 -- dominion is the disjoint union of the input extents; result page @n + 1@

@@ -193,6 +193,7 @@ library
         AtlasTerritory.Internal
         EmptyAtlas.Internal
         AtlasMerge.Internal
+        AtlasMerge.Action
         AtlasMerge.Page
         AtlasMerge.Resolution
         AtlasMerge.Source

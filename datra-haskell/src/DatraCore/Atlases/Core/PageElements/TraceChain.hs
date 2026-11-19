@@ -17,6 +17,7 @@ module PageElements.TraceChain
   , previousTraceSuffix
   , genuineTraceHead
   , folioLookupPaddedStep
+  , folioLookupPaddedPrevious
   , folioPageOrderTypePadded
   , paddedPreviousHead
   , pageTracePrevious
@@ -213,6 +214,14 @@ folioLookupPreviousPadded (OriginFolio count pageChain witness) page position =
   prefixLookupPrevious (OriginFolio count pageChain witness) page position
 folioLookupPreviousPadded pages@(SnocPage (FolioStep _ previous _)) page position =
   prefixLookupPrevious pages (page - folioLength previous) position
+
+-- ALIGN: PE-PADDED-LOOKUP-PREVIOUS.
+{-@ folioLookupPaddedPrevious :: pages:Folio origin final
+      -> page:{Natural | page >= folioLength pages} -> position:Ordinal
+      -> positions:{[Ordinal] | folioTraceLookup pages page position == Just positions}
+      -> {folioTraceLookup pages (page - 1) position == Just (previousTrace positions)} @-}
+folioLookupPaddedPrevious :: Folio origin final -> Natural -> Ordinal -> [Ordinal] -> ()
+folioLookupPaddedPrevious pages page position _ = folioLookupPreviousPadded pages page position
 
 -- | Padding adds the requested position to the preceding complete trace.
 -- ALIGN: PE-PADDED-LOOKUP-STEP.

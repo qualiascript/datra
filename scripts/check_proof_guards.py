@@ -130,8 +130,50 @@ proofGuard mapping source target =
 """,
 }
 
+MERGE_ACTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs"
+MERGE_ACTION_GUARDS = {
+    "merge data insertion requires both owning traces": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> arrow:PageElementArrow ms s t
+      -> DomanialInsertion
+           ({datum:AtlasMergeDatum s | mergeCellContains left right (arrowSource arrow) datum})
+           ({datum:AtlasMergeDatum t | mergeCellContains left right (arrowTarget arrow) datum}) @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElementArrow ms s t
+  -> DomanialInsertion (AtlasMergeDatum s) (AtlasMergeDatum t)
+proofGuard = mergeDataMap
+""",
+}
+
 MERGE_TRANSPORT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Transport.hs"
 MERGE_TRANSPORT_GUARDS = {
+    "merge raw membership preservation requires target ownership": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> arrow:{PageElementArrow ms s t | mergeOccurrenceTraceValid left right (arrowSource arrow)}
+      -> datum:{AtlasMergeDatum s | mergeCellContains left right (arrowSource arrow) datum} -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElementArrow ms s t -> AtlasMergeDatum s -> ()
+proofGuard = mergeCellContainsPreserved
+""",
+    "merge raw membership preservation requires an accepted source datum": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> arrow:{PageElementArrow ms s t | mergeOccurrenceTraceValid left right (arrowSource arrow)
+           && mergeOccurrenceTraceValid left right (arrowTarget arrow)}
+      -> AtlasMergeDatum s -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElementArrow ms s t -> AtlasMergeDatum s -> ()
+proofGuard = mergeCellContainsPreserved
+""",
+    "merge native witnesses require a successful owning lookup": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0} -> position:Ordinal -> [Ordinal] -> Maybe AtlasMergePageCell @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Ordinal -> [Ordinal]
+  -> Maybe AtlasMergePageCell
+proofGuard = mergeLookupNative
+""",
+    "merge resolver totality requires the owning trace": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> occurrence:PageElement ms object -> {mergePositionResolvable left right occurrence} @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElement ms object -> ()
+proofGuard = mergeOccurrenceResolvable
+""",
     "merge full lookup requires an accepted native cell": """
 {-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
       -> page:{Natural | page > 0} -> AtlasMergePageCell -> () @-}
@@ -1348,6 +1390,7 @@ def run(pattern=None):
                                     (ENDPOINTS_SOURCE, ENDPOINTS_GUARDS),
                                     (MERGE_ASSEMBLY_SOURCE, MERGE_ASSEMBLY_GUARDS),
                                     (MERGE_TRANSPORT_SOURCE, MERGE_TRANSPORT_GUARDS),
+                                    (MERGE_ACTION_SOURCE, MERGE_ACTION_GUARDS),
                                     (SEQUENCE_MEMBER_SOURCE, SEQUENCE_MEMBER_GUARDS),
                                     (SEQUENCE_PAGE_SOURCE, SEQUENCE_PAGE_GUARDS),
                                     (SEQUENCE_ASSEMBLY_SOURCE, SEQUENCE_ASSEMBLY_GUARDS),

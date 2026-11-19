@@ -1704,28 +1704,28 @@
     },
     {
       "id": "MERGE-DATA-INSERTION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs",
       "haskell_declaration": "mergeDataMap",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "dataMap"
     },
     {
       "id": "MERGE-DATA-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs",
       "haskell_declaration": "mergeDataMap",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "dataMap_interpretation"
     },
     {
       "id": "MERGE-DATA-IDENTITY",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs",
       "haskell_declaration": "mergeDataMap",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "dataMap_identity"
     },
     {
       "id": "MERGE-DATA-COMPOSITION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs",
       "haskell_declaration": "mergeDataMap",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "dataMap_comp"
@@ -1970,7 +1970,7 @@
     },
     {
       "id": "MERGE-RESOLVED-ARROW",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs",
       "haskell_declaration": "mergeDataMap",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "resolveStoredElement_arrow"
@@ -2040,7 +2040,7 @@
     },
     {
       "id": "MERGE-ATLAS-DATA-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs",
       "haskell_declaration": "mergeDataMap",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "atlasMerge_data_interpretation"
@@ -2110,7 +2110,7 @@
     },
     {
       "id": "MERGE-BOUQUET-DATA-NATURALITY",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs",
       "haskell_declaration": "mergeDataMap",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "finiteDataEquiv_naturality"
@@ -4361,6 +4361,62 @@
       "haskell_declaration": "mergeFullCellLookup",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "folio_cellLookup_all"
+    },
+    {
+      "id": "PE-PADDED-LOOKUP-PREVIOUS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "folioLookupPaddedPrevious",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceLookup_padded_previous"
+    },
+    {
+      "id": "MERGE-RAW-POSITION-RESOLVABLE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Resolution.hs",
+      "haskell_declaration": "mergePositionResolvable",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "positionResolvable"
+    },
+    {
+      "id": "MERGE-RESOLVER-NATIVE-SUCCESS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Resolution.hs",
+      "haskell_declaration": "resolveMergeCell",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "resolveCellAt_isSome"
+    },
+    {
+      "id": "MERGE-RAW-NATIVE-WITNESS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Transport.hs",
+      "haskell_declaration": "mergeLookupNative",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "lookup_native"
+    },
+    {
+      "id": "MERGE-RAW-RESOLVABLE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Transport.hs",
+      "haskell_declaration": "mergeOccurrenceResolvable",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "occurrence_resolvable"
+    },
+    {
+      "id": "PE-PREFIX-LOOKUP-OBJECT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "prefixTraceLookupObject",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "prefixTraceLookupObject"
+    },
+    {
+      "id": "MERGE-RAW-MEMBERSHIP-PRESERVED",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Transport.hs",
+      "haskell_declaration": "mergeCellContainsPreserved",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "resolvedContains_preserved"
+    },
+    {
+      "id": "MERGE-RAW-DATA-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs",
+      "haskell_declaration": "mergeDataMap",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "rawDataMap"
     }
   ],
   "modules": [
@@ -4901,6 +4957,7 @@
         "pageElementIndex",
         "folioTraceLookup",
         "prefixTraceLookup",
+        "prefixTraceLookupObject",
         "prefixTraceLookupPosition",
         "prefixTraceLookupBounded",
         "folioTraceLookupBounded",
@@ -5918,6 +5975,7 @@
       "types": [],
       "reflected": [
         "mergeResolvedAt",
+        "mergePositionResolvable",
         "mergeCellContains"
       ],
       "refinements": [
@@ -5934,6 +5992,7 @@
       "predicates": [],
       "refinement_aliases": [],
       "opaque_reflected": [
+        "atlasMergePageChain",
         "resolveMergeCell"
       ]
     },
@@ -5994,6 +6053,7 @@
         "genuineTraceNative",
         "prefixLookupPrevious",
         "folioLookupPreviousPadded",
+        "folioLookupPaddedPrevious",
         "folioLookupPaddedStep",
         "rebuildPreviousTrace",
         "folioPageOrderTypePadded",
@@ -6487,10 +6547,30 @@
         "mergePaddingBounds",
         "mergePaddedPreviousPosition",
         "mergeFullCellLookup",
+        "mergeLookupNative",
+        "prefix",
+        "nativeIndexPresent",
+        "mergeOccurrenceResolvable",
         "mergeOccurrenceTrace",
         "mergeArrowNativeTransport",
-        "mergeResolvedTransport"
+        "mergeResolvedTransport",
+        "mergeCellContainsPreserved"
       ]
+    },
+    {
+      "module": "AtlasMerge.Action",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs",
+      "lean_target": "Datra.Executable.AtlasMerge",
+      "coverage": "partial",
+      "types": [],
+      "reflected": [],
+      "refinements": [
+        "mergeDataMap"
+      ],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": []
     }
   ],
   "trust_boundary": [

@@ -159,6 +159,11 @@ theorem withNativeCell_resolve (X Y : Atlas) (page : Nat) (cell : ValidPageCell 
       rw [FolioData.traceHead_of_head (Y.pages.traceAt_head page value)]
       exact congrArg (fun resolved : Option Y.Element => resolved.map (SourceCell.right : Y.Element → SourceCell X Y)) (Y.pages.elementAt_occurrence ⟨page, value⟩)
 
+-- ALIGN: MERGE-RAW-POSITION-RESOLVABLE.
+def positionResolvable (X Y : Atlas) : Nat → Ordinal → Bool
+  | 0, _ => true
+  | page + 1, position => ((pageChain X Y page).chainIndex position).isSome
+
 /-- The executable resolver keeps failure separate from the fresh origin. -/
 -- ALIGN: MERGE-RESOLVED-LOOKUP-VALUE.
 def resolveCellAt (X Y : Atlas) : Nat → Ordinal → Option (SourceCell X Y)
@@ -167,6 +172,20 @@ def resolveCellAt (X Y : Atlas) : Nat → Ordinal → Option (SourceCell X Y)
       ((pageChain X Y page).chainIndex position).bind fun index =>
         withNativeCell X Y page index.object (fun source _ _ => SourceCell.left source)
           (fun source _ _ => SourceCell.right source)
+
+-- ALIGN: MERGE-RESOLVER-NATIVE-SUCCESS.
+theorem resolveCellAt_isSome (X Y : Atlas) (page : Nat) (position : Ordinal) :
+    (resolveCellAt X Y page position).isSome = positionResolvable X Y page position := by
+  cases page with
+  | zero => rfl
+  | succ page =>
+      cases found : (pageChain X Y page).chainIndex position with
+      | none => simp [resolveCellAt, positionResolvable, found]
+      | some index =>
+          simpa only [resolveCellAt, positionResolvable, found, Option.bind_some,
+            Option.isSome_some] using
+            withNativeCell_isSome X Y page index.object
+              (fun source _ _ => SourceCell.left source) (fun source _ _ => SourceCell.right source)
 
 theorem resolveCellAt_position (X Y : Atlas) (page : Nat) (cell : ValidPageCell X Y page) :
     resolveCellAt X Y (page + 1) ((pageChain X Y page).position cell) =

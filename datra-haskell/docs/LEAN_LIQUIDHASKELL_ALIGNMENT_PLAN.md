@@ -214,10 +214,17 @@ Padded lookup adds the final position to the preceding trace. Both components
 are padded beyond the merge's maximum depth, so their predecessor retains the
 encoded merge position and the page order type. Successful resolutions of any
 raw merge arrow therefore satisfy the component transport relation, including
-padded arrows and arrows into the fresh origin. Full assembly still needs total
-resolution of valid raw occurrences and the checked data-action constructor.
+padded arrows and arrows into the fresh origin. Valid raw occurrences always
+resolve: genuine lookup yields an accepted native cell at the requested position,
+and padded lookup descends one page before lifting the cell through the native
+preimage. The decoder's checked success equation connects this witness to its
+existing lookup. Both checkers prove raw-arrow membership preservation, and
+the merge data insertion consumes that proof through a checked action module.
+Full Atlas assembly still needs to retain the owning-trace certificates at its
+action boundary and check its structural laws and inclusion callbacks.
 Negative checks reject missing padding bounds, unaccepted native cells, missing suffix transport,
-missing target-owner evidence, unrelated encoded positions or resolver
+missing owning-lookup or target-owner evidence, a data insertion without both
+owning traces, an unaccepted source datum, unrelated encoded positions or resolver
 coordinates, disjointness applied to the
 same cell and extent membership without an accepted source rank. The correspondence
 inventory includes the logical predicate and refinement-type aliases used to

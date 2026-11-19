@@ -2,28 +2,32 @@
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple-local" @-}
+{-@ qualif MergeAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | Recover component transport from the constructed merge's native traces.
 module AtlasMerge.Transport
   ( mergeNativeTransport, mergePrefixNativeTransport
-  , mergeOccurrenceTraceValid, mergeArrowNativeTransport, mergeResolvedTransport ) where
+  , mergeOccurrenceTraceValid, mergeOccurrenceResolvable, mergeArrowNativeTransport, mergeResolvedTransport
+  , mergeCellContainsPreserved ) where
 
 import Atlas.Internal (Atlas, atlasFolio)
-import AtlasMerge.Assembly (atlasMergeLength, atlasMergeFolio, atlasMergePrefix, atlasMergePrefixTrace, atlasMergeCellLookup)
+import AtlasMerge.Assembly (atlasMergeLength, atlasMergeFolio, atlasMergePrefix, atlasMergePrefixTrace, atlasMergeCellLookup, atlasMergePageLookup)
 import AtlasMerge.Page
-  ( AtlasMergePageCell (..), atlasMergePageChain, mergePageContains, mergePagePosition, previousMergeCell )
-import AtlasMerge.Resolution (mergeResolvedAt)
-import AtlasMerge.Source (AtlasMergeSource (..), mergeSourceValid, mergeSourceTransport)
+  ( AtlasMergePageCell (..), atlasMergePageChain, mergePageContains, mergePagePosition, previousMergeCell, nextMergeCell )
+import AtlasMerge.Resolution (mergeResolvedAt, mergePositionResolvable, resolveMergeCell, mergeCellContains)
+import AtlasMerge.Source (AtlasMergeSource (..), mergeSourceValid, mergeSourceTransport, mergeSourceContainsPreserved)
+import AtlasMerge.Data (AtlasMergeDatum, retagMergeDatum)
 import qualified AtlasExtent.Internal as Extent (cellNativeTrace)
-import Chain.Internal (chainPositionInjective)
-import Folio.Internal (folioLength)
+import Chain.Internal (Chain, chainPositionInjective, chainPositionBelow, chainPositionSurjective, chainPosition, chainLookup, chainIndex)
+import DatraOrdinal (Ordinal)
+import Folio.Internal (Folio, folioLength, lastChain)
 import Numeric.Natural (Natural)
-import PageElements.Internal (genuinePageElementTrace, folioTraceLookup, folioPageOrderType)
+import PageElements.Internal (genuinePageElementTrace, folioTraceLookup, folioPageOrderType, folioFinalPrefixLookup, prefixTraceLookup, prefixTraceLookupObject, traceLookupPresent)
 import PageElements.Structure
   ( PageElement (..), PageElementArrow (..), SomePageElement (..)
   , traceSuffix, traceSuffixTransitive, traceSuffixSameLength, traceSuffixDropHead )
 import PageElements.TraceChain
-  ( genuineTraceHead, previousTraceSuffix, paddedPreviousHead, folioPageOrderTypePadded, folioLookupPaddedStep )
+  ( genuineTraceHead, previousTraceSuffix, paddedPreviousHead, folioPageOrderTypePadded, folioLookupPaddedStep, folioLookupPaddedPrevious, previousTrace )
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -153,6 +157,64 @@ mergeOccurrenceTraceValid left right occurrence =
   folioTraceLookup (atlasMergeFolio left right) (pageElementPage occurrence) (pageElementPosition occurrence)
     == Just (pageElementTrace occurrence)
 
+-- | Recover an accepted native cell at the requested position, descending only
+-- through the finite number of padded pages in the request.
+-- ALIGN: MERGE-RAW-NATIVE-WITNESS.
+{-@ mergeLookupNative :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0} -> position:Ordinal
+      -> positions:{[Ordinal] | folioTraceLookup (atlasMergeFolio left right) page position == Just positions}
+      -> {result:Maybe {cell:AtlasMergePageCell |
+           mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell
+           && mergePagePosition (folioPageOrderType (atlasFolio left) (page - 1)) cell == position} |
+           traceLookupPresent result} / [page] @-}
+{-@ ple mergeLookupNative @-}
+mergeLookupNative :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Ordinal -> [Ordinal]
+  -> Maybe AtlasMergePageCell
+mergeLookupNative left right page position positions
+  | page < atlasMergeLength left right =
+      let {-@ prefix :: {result:Folio () {cell:AtlasMergePageCell |
+                mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell} |
+                folioLength result == page + 1
+                && chainPosition (lastChain result) == mergePagePosition (folioPageOrderType (atlasFolio left) (page - 1))} @-}
+          prefix = atlasMergePrefix left right page
+      in atlasMergePageLookup left right page position `seq`
+        folioLength prefix `seq` folioFinalPrefixLookup prefix position `seq`
+        prefixTraceLookup prefix 0 position `seq`
+        prefixTraceLookupObject prefix position
+  | otherwise =
+      folioLength (atlasMergeFolio left right) `seq`
+      folioLookupPaddedPrevious (atlasMergeFolio left right) page position positions `seq`
+      case mergeLookupNative left right (page - 1) position (previousTrace positions) of
+        Nothing -> Nothing
+        Just previous ->
+          let cell = nextMergeCell left right (page - 1) previous
+          in mergePaddedPreviousPosition left right (page - 1) cell `seq` Just cell
+
+{-@ nativeIndexPresent :: chain:Chain a -> value:a
+      -> {traceLookupPresent (chainIndex chain (chainPosition chain value))} @-}
+{-@ ple nativeIndexPresent @-}
+nativeIndexPresent :: Chain a -> a -> ()
+nativeIndexPresent chain value =
+  chainPositionBelow chain value `seq`
+  chainPositionSurjective chain (chainPosition chain value) `seq`
+  case chainLookup chain (chainPosition chain value) of
+    Nothing -> ()
+    Just _ -> ()
+
+-- ALIGN: MERGE-RAW-RESOLVABLE.
+{-@ mergeOccurrenceResolvable :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> occurrence:{PageElement ms object | mergeOccurrenceTraceValid left right occurrence}
+      -> {mergePositionResolvable left right occurrence} @-}
+{-@ ple mergeOccurrenceResolvable @-}
+mergeOccurrenceResolvable :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElement ms object -> ()
+mergeOccurrenceResolvable left right occurrence
+  | pageElementPage occurrence == 0 = ()
+  | otherwise =
+      case mergeLookupNative left right (pageElementPage occurrence) (pageElementPosition occurrence)
+          (pageElementTrace occurrence) of
+        Nothing -> ()
+        Just cell -> nativeIndexPresent (atlasMergePageChain left right (pageElementPage occurrence - 1)) cell
+
 {-@ mergeOccurrenceTrace :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> occurrence:{PageElement ms object | mergeOccurrenceTraceValid left right occurrence
            && pageElementPage occurrence > 0}
@@ -228,3 +290,23 @@ mergeResolvedTransport left right arrow@(PageElementArrow _ _)
 mergeResolvedTransport _ _ _ _ MergeOrigin = ()
 mergeResolvedTransport _ _ (PageElementArrow _ _) MergeOrigin (MergeLeftSource (SomePageElement _)) = ()
 mergeResolvedTransport _ _ (PageElementArrow _ _) MergeOrigin (MergeRightSource (SomePageElement _)) = ()
+
+-- ALIGN: MERGE-RAW-MEMBERSHIP-PRESERVED.
+{-@ mergeCellContainsPreserved :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> arrow:{PageElementArrow ms sourceObject targetObject |
+           mergeOccurrenceTraceValid left right (arrowSource arrow)
+           && mergeOccurrenceTraceValid left right (arrowTarget arrow)}
+      -> datum:{AtlasMergeDatum sourceObject | mergeCellContains left right (arrowSource arrow) datum}
+      -> {mergeCellContains left right (arrowTarget arrow) (retagMergeDatum datum)} @-}
+{-@ ple mergeCellContainsPreserved @-}
+mergeCellContainsPreserved :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+  -> PageElementArrow ms sourceObject targetObject -> AtlasMergeDatum sourceObject -> ()
+mergeCellContainsPreserved left right arrow datum =
+  case resolveMergeCell left right (arrowSource arrow) of
+    Nothing -> ()
+    Just source ->
+      mergeOccurrenceResolvable left right (arrowTarget arrow) `seq`
+      case resolveMergeCell left right (arrowTarget arrow) of
+        Nothing -> ()
+        Just target -> mergeResolvedTransport left right arrow source target `seq`
+          mergeSourceContainsPreserved left right source target datum

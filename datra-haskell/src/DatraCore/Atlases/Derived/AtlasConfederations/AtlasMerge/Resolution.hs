@@ -12,6 +12,7 @@ module AtlasMerge.Resolution
   , mergeSourceCell
   , resolveMergeCell
   , mergeResolvedAt
+  , mergePositionResolvable
   , mergeCellContains
   ) where
 
@@ -97,13 +98,24 @@ mergeResolvedAt left occurrence (MergeRightSource (SomePageElement source)) =
     && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage source))
          (AtlasMergeRightCell (pageElementTrace source)) == pageElementPosition occurrence
 
--- | Keep the successful callback as an explicit value for the data action.
+-- | Observe whether the existing native decoder can resolve this position.
+-- ALIGN: MERGE-RAW-POSITION-RESOLVABLE.
+{-@ opaque-reflect atlasMergePageChain @-}
+{-@ reflect mergePositionResolvable @-}
+mergePositionResolvable :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElement ms object -> Bool
+mergePositionResolvable left right occurrence
+  | pageElementPage occurrence == 0 = True
+  | otherwise = traceLookupPresent
+      (chainIndex (atlasMergePageChain left right (pageElementPage occurrence - 1)) (pageElementPosition occurrence))
+
 -- ALIGN: MERGE-RESOLVED-LOOKUP-VALUE.
+-- ALIGN: MERGE-RESOLVER-NATIVE-SUCCESS.
 {-@ opaque-reflect resolveMergeCell @-}
 {-@ resolveMergeCell :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> occurrence:PageElement ms object
-      -> Maybe ({source:AtlasMergeSource ls rs | mergeSourceValid left right source
-           && mergeResolvedAt left occurrence source}) @-}
+      -> {resolved:Maybe ({source:AtlasMergeSource ls rs | mergeSourceValid left right source
+           && mergeResolvedAt left occurrence source}) |
+           traceLookupPresent resolved == mergePositionResolvable left right occurrence} @-}
 resolveMergeCell :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElement ms object
   -> Maybe (AtlasMergeSource ls rs)
 resolveMergeCell left right occurrence

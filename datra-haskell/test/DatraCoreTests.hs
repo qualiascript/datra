@@ -2038,23 +2038,41 @@ testDeepAtlasMerge =
                           elements pageNumber (finiteOrdinal position)
                 assert "Atlas merge follows the deeper input folio"
                   (atlasCardinality mergedAtlas == 4)
-                case (at 2 2, at 3 5, at 100 5) of
-                  (Just someRight, Just someLeft, Just somePaddedLeft) ->
+                case (at 2 2, at 3 5, at 50 5, at 100 5) of
+                  (Just someRight, Just someLeft, Just somePaddedMiddle, Just somePaddedLeft) ->
                     withPageElement someRight $ \rightCell ->
                       withPageElement someLeft $ \leftCell ->
-                        withPageElement somePaddedLeft $ \paddedLeft -> do
-                          assert "Atlas merge pads the shallower input"
-                            ( isJust
-                                (unrank (atlasDataAt mergedAtlas rightCell) 1)
-                              && isNothing
-                                (unrank (atlasDataAt mergedAtlas rightCell) 0)
-                            )
-                          assert "Atlas merge transports deeper component data"
-                            ( isJust
-                                (unrank (atlasDataAt mergedAtlas leftCell) 4)
-                              && isJust
-                                (unrank (atlasDataAt mergedAtlas paddedLeft) 4)
-                            )
+                        withPageElement somePaddedMiddle $ \paddedMiddle ->
+                          withPageElement somePaddedLeft $ \paddedLeft -> do
+                            assert "Atlas merge pads the shallower input"
+                              ( isJust
+                                  (unrank (atlasDataAt mergedAtlas rightCell) 1)
+                                && isNothing
+                                  (unrank (atlasDataAt mergedAtlas rightCell) 0)
+                              )
+                            assert "Atlas merge transports deeper component data"
+                              ( isJust
+                                  (unrank (atlasDataAt mergedAtlas leftCell) 4)
+                                && isJust
+                                  (unrank (atlasDataAt mergedAtlas paddedLeft) 4)
+                              )
+                            let sourceData = atlasDataAt mergedAtlas paddedLeft
+                                middleData = atlasDataAt mergedAtlas paddedMiddle
+                                targetData = atlasDataAt mergedAtlas leftCell
+                                first = mapAtlasData mergedAtlas (pageElementArrow paddedLeft paddedMiddle)
+                                second = mapAtlasData mergedAtlas (pageElementArrow paddedMiddle leftCell)
+                                direct = mapAtlasData mergedAtlas (pageElementArrow paddedLeft leftCell)
+                            case unrank sourceData 4 of
+                              Nothing -> fail "test setup failed: missing padded merge datum"
+                              Just datum -> do
+                                let middle = applyInsertion first datum
+                                    target = applyInsertion second middle
+                                assert "merge data action preserves ranks through padded targets and genuine pages"
+                                  ( rank middleData middle == 4
+                                    && rank targetData target == rank targetData (applyInsertion direct datum)
+                                    && fmap (rank sourceData) (preimage first middle) == Just 4
+                                    && fmap (rank middleData) (preimage second target) == Just 4
+                                  )
                   _ -> fail "test setup failed: expected deep Atlas merge cells"
 
 testAtlasConfederation :: IO ()

@@ -33,6 +33,8 @@ module PageElements.Internal
   , folioTraceLookup
   , prefixTraceLookup
   , prefixTraceLookupPosition
+  , folioFinalPrefixLookup
+  , prefixTraceLookupObject
   , pageElementTraceAt
   , genuinePageElementTrace
   , appendedPageTrace
@@ -277,6 +279,16 @@ prefixTraceLookup prefix padding position =
   case chainIndex (lastChain prefix) position of
     Nothing -> Nothing
     Just index -> Just (pageElementTraceAt prefix padding (chainObjectAt index))
+
+-- ALIGN: PE-PREFIX-LOOKUP-OBJECT.
+{-@ prefixTraceLookupObject :: prefix:Folio origin current -> position:Ordinal
+      -> {result:Maybe {value:current | chainPosition (lastChain prefix) value == position} |
+           traceLookupPresent result == traceLookupPresent (prefixTraceLookup prefix 0 position)} @-}
+prefixTraceLookupObject :: Folio origin current -> Ordinal -> Maybe current
+prefixTraceLookupObject prefix position =
+  case chainIndex (lastChain prefix) position of
+    Nothing -> Nothing
+    Just index -> Just (chainObjectAt index)
 
 -- | Native prefix lookup reconstructs the trace of every actual final-page value.
 {-@ prefixTraceLookupPosition :: prefix:Folio origin current -> padding:Natural -> value:current

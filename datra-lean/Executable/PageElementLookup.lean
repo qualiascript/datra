@@ -232,6 +232,17 @@ def prefixTraceLookup (pages : FolioData origin final) (padding : Nat) (position
     Option (List Ordinal) :=
   (final.chain.chainIndex position).map (fun index => pages.paddedTrace padding index.object)
 
+-- ALIGN: PE-PREFIX-LOOKUP-OBJECT.
+def prefixTraceLookupObject (_pages : FolioData origin final) (position : Ordinal) :
+    Option {value : final.Carrier // final.chain.position value = position} :=
+  (final.chain.chainIndex position).pmap (fun index found =>
+    ⟨index.object, index.position_eq.trans (final.chain.chainIndex_requested position index found)⟩)
+    (fun _ found => found)
+
+theorem prefixTraceLookupObject_present (pages : FolioData origin final) (position : Ordinal) :
+    (pages.prefixTraceLookupObject position).isSome = (pages.prefixTraceLookup 0 position).isSome := by
+  simp [prefixTraceLookupObject, prefixTraceLookup]
+
 -- ALIGN: PE-PREFIX-LOOKUP-BOUNDS.
 theorem prefixTraceLookup_bounded (pages : FolioData origin final) (padding : Nat) (position : Ordinal) :
     (pages.prefixTraceLookup padding position).isSome = Ordinal.ordinalLT position final.chain.orderType := by

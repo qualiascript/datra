@@ -227,6 +227,38 @@ theorem paddedTrace_previous (pages : FolioData origin final) (padding : Nat) (v
   | nil => simp [found] at head
   | cons position rest => rfl
 
+theorem prefixTraceLookup_previous (pages : FolioData origin final) (padding : Nat)
+    (positive : 0 < padding) (position : Ordinal) :
+    (pages.prefixTraceLookup padding position).map previousTrace =
+      pages.prefixTraceLookup (padding - 1) position := by
+  obtain ⟨padding, rfl⟩ := Nat.exists_eq_succ_of_ne_zero (Nat.ne_zero_of_lt positive)
+  cases found : final.chain.chainIndex position with
+  | none => simp [prefixTraceLookup, found]
+  | some index => simp [prefixTraceLookup, found, paddedTrace_previous]
+
+-- ALIGN: PE-PADDED-LOOKUP-PREVIOUS.
+theorem traceLookup_padded_previous (pages : FolioData origin final) (valid : pages.Valid)
+    (page : Nat) (padded : pages.length ≤ page) (position : Ordinal) (positions : List Ordinal)
+    (found : pages.traceLookup page position = some positions) :
+    pages.traceLookup (page - 1) position = some (previousTrace positions) := by
+  cases pages with
+  | origin count selected unique =>
+      have positive : 0 < page := by change count = 1 at valid; simp only [length] at padded; omega
+      simp only [traceLookup] at found ⊢
+      rw [← prefixTraceLookup_previous _ page positive position, found]
+      rfl
+  | snoc count pagesPrevious transition =>
+      have count_eq := valid.2
+      simp only [length] at padded
+      have before : pagesPrevious.length ≤ page - 1 := by omega
+      have after : pagesPrevious.length ≤ page := by omega
+      have positive : 0 < page - pagesPrevious.length := by omega
+      simp only [traceLookup, if_pos after] at found
+      simp only [traceLookup, if_pos before]
+      rw [show page - 1 - pagesPrevious.length = (page - pagesPrevious.length) - 1 by omega,
+        ← prefixTraceLookup_previous _ _ positive position, found]
+      rfl
+
 theorem prefixTraceLookup_previous_head (pages : FolioData origin final) (padding : Nat)
     (positive : 0 < padding) (position : Ordinal) (trace : List Ordinal)
     (found : pages.prefixTraceLookup padding position = some trace) :

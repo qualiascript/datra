@@ -110,6 +110,52 @@ theorem folio_cellLookup_all (X Y : Atlas) (page : Nat) (cell : ValidPageCell X 
 def rawTraceValid {Scope : Type} {owner : Scope} (X Y : Atlas) (occurrence : PageElement owner) : Prop :=
   (folio X Y).data.traceLookup occurrence.page occurrence.position = some occurrence.trace
 
+-- ALIGN: MERGE-RAW-NATIVE-WITNESS.
+theorem lookup_native (X Y : Atlas) (page : Nat) (position : Ordinal) (positions : List Ordinal)
+    (found : (folio X Y).data.traceLookup (page + 1) position = some positions) :
+    ∃ cell : ValidPageCell X Y page, pagePosition X Y page cell.val = position := by
+  induction page generalizing positions with
+  | zero =>
+      have positive : 0 < mergeDepth X Y :=
+        (X.pages.length_positive X.pagination.folio.valid).trans_le (Nat.le_max_left _ _)
+      rw [folio_pageLookup_prefix X Y 1 (by omega) positive] at found
+      rw [FolioData.traceLookup_final _ (prefixFolio X Y 0).valid _ _ (by
+        rw [prefixFolio_depth])] at found
+      obtain ⟨index, present, _⟩ := Option.map_eq_some_iff.mp found
+      exact ⟨index.object, index.position_eq.trans
+        ((pageChain X Y 0).chainIndex_requested position index present)⟩
+  | succ page ih =>
+      by_cases genuine : page + 2 ≤ mergeDepth X Y
+      · rw [folio_pageLookup_prefix X Y (page + 2) (by omega) genuine] at found
+        rw [show page + 2 - 1 = page + 1 by omega] at found
+        rw [FolioData.traceLookup_final _ (prefixFolio X Y (page + 1)).valid _ _ (by
+          rw [prefixFolio_depth]; omega)] at found
+        obtain ⟨index, present, _⟩ := Option.map_eq_some_iff.mp found
+        exact ⟨index.object, index.position_eq.trans
+          ((pageChain X Y (page + 1)).chainIndex_requested position index present)⟩
+      · have bound : (folio X Y).data.length ≤ page + 2 := by
+          rw [folio_length]; change mergeDepth X Y + 1 ≤ page + 2; omega
+        have previous := FolioData.traceLookup_padded_previous (folio X Y).data (folio X Y).valid
+          (page + 2) bound position positions found
+        obtain ⟨cell, same⟩ := ih (FolioData.previousTrace positions) (by simpa using previous)
+        refine ⟨nextValidCell X Y page cell, ?_⟩
+        rw [paddedPreviousPosition X Y page (by omega),
+          show previousValidCell X Y page (nextValidCell X Y page cell) = cell from
+            (pageTransition X Y page).rightInverse cell]
+        exact same
+
+-- ALIGN: MERGE-RAW-RESOLVABLE.
+theorem occurrence_resolvable {Scope : Type} {owner : Scope} (X Y : Atlas)
+    (occurrence : PageElement owner) (valid : rawTraceValid X Y occurrence) :
+    positionResolvable X Y occurrence.page occurrence.position = true := by
+  cases pageEq : occurrence.page with
+  | zero => rfl
+  | succ page =>
+      obtain ⟨cell, same⟩ := lookup_native X Y page occurrence.position occurrence.trace (by
+        simpa only [rawTraceValid, pageEq] using valid)
+      rw [positionResolvable, ← same]
+      exact congrArg Option.isSome ((pageChain X Y page).chainIndex_position cell)
+
 theorem occurrence_trace {Scope : Type} {owner : Scope} (X Y : Atlas)
     (occurrence : PageElement owner) (valid : rawTraceValid X Y occurrence)
     (positive : 0 < occurrence.page)
@@ -147,6 +193,41 @@ def resolvedAt {Scope : Type} {owner : Scope} (X Y : Atlas) (occurrence : PageEl
       pagePosition X Y source.val.page (.left source.val.trace) = occurrence.position
   | .right source => source.val.page + 1 = occurrence.page ∧
       pagePosition X Y source.val.page (.right source.val.trace) = occurrence.position
+
+theorem resolvePageCell_resolvedAt {Scope : Type} {owner : Scope} (X Y : Atlas)
+    (occurrence : PageElement owner) (page : Nat) (cell : ValidPageCell X Y page)
+    (pageEq : page + 1 = occurrence.page)
+    (positionEq : pagePosition X Y page cell.val = occurrence.position) :
+    resolvedAt X Y occurrence (resolvePageCell X Y page cell) := by
+  obtain ⟨value, same⟩ := cell.property
+  have encoded : encodedPageCell X Y page value = cell := Subtype.ext same
+  rw [← encoded] at positionEq ⊢
+  cases value with
+  | inl value =>
+      rw [resolvePageCell_left]
+      exact ⟨pageEq, positionEq⟩
+  | inr value =>
+      rw [resolvePageCell_right]
+      exact ⟨pageEq, positionEq⟩
+
+theorem resolveCellAt_resolvedAt {Scope : Type} {owner : Scope} (X Y : Atlas)
+    (occurrence : PageElement owner) (selected : SourceCell X Y)
+    (found : resolveCellAt X Y occurrence.page occurrence.position = some selected) :
+    resolvedAt X Y occurrence selected := by
+  cases pageEq : occurrence.page with
+  | zero =>
+      simp only [pageEq, resolveCellAt, Option.some.injEq] at found
+      subst selected
+      exact pageEq
+  | succ page =>
+      rw [pageEq, resolveCellAt] at found
+      cases indexFound : (pageChain X Y page).chainIndex occurrence.position with
+      | none => simp [indexFound] at found
+      | some index =>
+          simp only [indexFound, Option.bind_some, withNativeCell_resolve, Option.some.injEq] at found
+          rw [← found]
+          exact resolvePageCell_resolvedAt X Y occurrence page index.object pageEq.symm
+            (index.position_eq.trans ((pageChain X Y page).chainIndex_requested _ index indexFound))
 
 theorem leftSource_native (X Y : Atlas) (source : X.Element) :
     PageCell.left source.val.trace ∈ Set.range (pageEncode X Y source.val.page) := by
@@ -189,5 +270,33 @@ theorem resolvedTransport {Scope : Type} {owner : Scope} (X Y : Atlas)
     first
     | exact ⟨by change t.val.page ≤ s.val.page; omega, transported⟩
     | exact Bool.noConfusion transported
+
+def resolvedContains {Scope : Type} {owner : Scope} {cell : PageElementCell}
+    (X Y : Atlas) (occurrence : PageElement owner) (datum : Datum cell) : Bool :=
+  match resolveCellAt X Y occurrence.page occurrence.position with
+  | none => false
+  | some selected => contains selected datum
+
+-- ALIGN: MERGE-RAW-MEMBERSHIP-PRESERVED.
+theorem resolvedContains_preserved {Scope : Type} {owner : Scope} {a b : PageElementCell}
+    (X Y : Atlas) {source target : PageElement owner} (arrow : PageElement.Arrow source target)
+    (sourceValid : rawTraceValid X Y source) (targetValid : rawTraceValid X Y target)
+    (datum : Datum a) (accepted : resolvedContains X Y source datum = true) :
+    resolvedContains X Y target (retag (target := b) datum) = true := by
+  have targetPresent : (resolveCellAt X Y target.page target.position).isSome = true := by
+    rw [resolveCellAt_isSome]
+    exact occurrence_resolvable X Y target targetValid
+  cases sourceFound : resolveCellAt X Y source.page source.position with
+  | none => simp [resolvedContains, sourceFound] at accepted
+  | some selectedSource =>
+      cases targetFound : resolveCellAt X Y target.page target.position with
+      | none => simp [targetFound] at targetPresent
+      | some selectedTarget =>
+          have transported := resolvedTransport X Y arrow sourceValid targetValid selectedSource selectedTarget
+            (resolveCellAt_resolvedAt X Y source selectedSource sourceFound)
+            (resolveCellAt_resolvedAt X Y target selectedTarget targetFound)
+          simpa only [resolvedContains, targetFound] using
+            contains_transport_retag (b := b) ((sourceTransport_iff _ _).mp transported) datum
+              (by simpa only [resolvedContains, sourceFound] using accepted)
 
 end Datra.Executable.AtlasMerge
