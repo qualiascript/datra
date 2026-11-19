@@ -194,6 +194,13 @@ def prefixFolio (X Y : Atlas) (n : Nat) : Folio DomanialInclusion.singletonPage 
   Folio.buildPrefix DomanialInclusion.singletonPage () (fun value => by cases value; rfl)
     (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y) n
 
+-- ALIGN: MERGE-PREFIX-TRACE-STEP.
+theorem prefixFolio_trace_succ (X Y : Atlas) (n : Nat) (cell : ValidPageCell X Y (n + 1)) :
+    (prefixFolio X Y (n + 1)).data.genuineTrace cell =
+      pagePosition X Y (n + 1) cell.val ::
+        (prefixFolio X Y n).data.genuineTrace (previousValidCell X Y n cell) := by
+  rfl
+
 -- ALIGN: MERGE-FOLIO-PREFIX.
 def extendFolio (X Y : Atlas) (start count : Nat)
     (initial : Folio DomanialInclusion.singletonPage (mergePage X Y start)) :

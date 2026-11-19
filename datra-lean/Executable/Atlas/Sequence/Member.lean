@@ -75,5 +75,19 @@ def transition (member : Member) (page : Nat)
   member.atlas.pages.traceTransitionBetween member.atlas.pagination.folio.valid page
     source target sourcePosition targetPosition
 
+-- ALIGN: SEQUENCE-MEMBER-STORED-MAP.
+theorem transition_map (member : Member) (page : Nat)
+    (source : Chain (member.Trace (page + 1))) (target : Chain (member.Trace page))
+    (sourcePosition : source.position = fun trace => FolioData.traceHead trace.val)
+    (targetPosition : target.position = fun trace => FolioData.traceHead trace.val) :
+    (member.transition page source target sourcePosition targetPosition).map.map = member.previous page := rfl
+
+-- ALIGN: SEQUENCE-MEMBER-STORED-PREIMAGE.
+theorem transition_preimage (member : Member) (page : Nat)
+    (source : Chain (member.Trace (page + 1))) (target : Chain (member.Trace page))
+    (sourcePosition : source.position = fun trace => FolioData.traceHead trace.val)
+    (targetPosition : target.position = fun trace => FolioData.traceHead trace.val) :
+    (member.transition page source target sourcePosition targetPosition).map.preimage = member.next page := rfl
+
 end Member
 end Datra.Executable.AtlasSequence

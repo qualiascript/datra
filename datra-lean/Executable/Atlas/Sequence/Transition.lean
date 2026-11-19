@@ -2,6 +2,24 @@ import Executable.Atlas.Sequence.TraceChain
 
 namespace Datra.Executable.AtlasSequence
 
+-- ALIGN: SEQUENCE-CELL-PREVIOUS.
+def nativePreviousCell : (members : List Member) → (page : Nat) →
+    NativeCarrier members (page + 1) → NativeCarrier members page
+  | [], _, cell => cell
+  | member :: rest, page, cell =>
+      nativePartsEquiv member rest page
+        (Sum.map (member.previous page) (nativePreviousCell rest page)
+          ((nativePartsEquiv member rest (page + 1)).symm cell))
+
+-- ALIGN: SEQUENCE-CELL-NEXT.
+def nativeNextCell : (members : List Member) → (page : Nat) →
+    NativeCarrier members page → NativeCarrier members (page + 1)
+  | [], _, cell => cell
+  | member :: rest, page, cell =>
+      nativePartsEquiv member rest (page + 1)
+        (Sum.map (member.next page) (nativeNextCell rest page)
+          ((nativePartsEquiv member rest page).symm cell))
+
 /-- Each transition is the recursive sum of the native member transitions. -/
 -- ALIGN: SEQUENCE-NATIVE-TRANSITION.
 def nativeTraceTransition : (members : List Member) → (page : Nat) →
@@ -13,6 +31,32 @@ def nativeTraceTransition : (members : List Member) → (page : Nat) →
           (member.transition page (member.pageChain (page + 1)) (member.pageChain page) rfl rfl)
           (nativeTraceTransition rest page))
         (nativePartsEquiv member rest (page + 1)) (nativePartsEquiv member rest page)
+
+-- ALIGN: SEQUENCE-TRANSITION-STORED-MAP.
+theorem nativeTraceTransition_map_eq (members : List Member) (page : Nat) :
+    (nativeTraceTransition members page).map.map = nativePreviousCell members page := by
+  induction members with
+  | nil => rfl
+  | cons member rest ih =>
+      funext cell
+      change nativePartsEquiv member rest page
+        (Sum.map (member.previous page) (nativeTraceTransition rest page).map.map
+          ((nativePartsEquiv member rest (page + 1)).symm cell)) = _
+      rw [ih]
+      rfl
+
+-- ALIGN: SEQUENCE-TRANSITION-STORED-PREIMAGE.
+theorem nativeTraceTransition_preimage_eq (members : List Member) (page : Nat) :
+    (nativeTraceTransition members page).map.preimage = nativeNextCell members page := by
+  induction members with
+  | nil => rfl
+  | cons member rest ih =>
+      funext cell
+      change nativePartsEquiv member rest (page + 1)
+        (Sum.map (member.next page) (nativeTraceTransition rest page).map.preimage
+          ((nativePartsEquiv member rest page).symm cell)) = _
+      rw [ih]
+      rfl
 
 theorem nativeTraceTransition_source (members : List Member) (page : Nat) :
     (nativeTraceTransition members page).source = nativePageChain members (page + 1) := by

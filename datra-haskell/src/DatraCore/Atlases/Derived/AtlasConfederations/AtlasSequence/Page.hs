@@ -13,9 +13,11 @@ module AtlasSequence.Page
   , sequencePagePosition
   , atlasSequencePageChain
   , sequencePageTransition
+  , previousSequenceCell
+  , nextSequenceCell
   ) where
 
-import AtlasSequence.Member (AtlasSequenceMember, memberPageContains, memberPageOrder, memberPageChain, memberPageTransition)
+import AtlasSequence.Member (AtlasSequenceMember, memberPageContains, memberPageOrder, memberPageChain, memberPageTransition, memberPreviousTrace, memberPageNext)
 import Chain.Internal
   ( Chain, chain, chainPosition, chainOrderType, chainOrdinalLT, positionMatches
   , reindexChain, reindexedPosition )
@@ -23,10 +25,10 @@ import Chain.Position (withChainPosition)
 import Chain.Sum (sumChains, sumChainPosition)
 import Chain.Order (chainPrecedes)
 import Consolidation.Core (restrictedConsolidation)
-import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedConsolidation)
+import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedConsolidation, orderedApply, orderedPreimage, orderedFunctions, withConsolidationFunctions)
 import Consolidation.Endpoints (withConsolidationEndpoints)
-import Consolidation.Reindex (reindexConsolidation)
-import Consolidation.Sum (sumConsolidations)
+import Consolidation.Reindex (reindexConsolidation, reindexApply, reindexPreimage)
+import Consolidation.Sum (sumConsolidations, sumApply, sumPreimage)
 import DatraOrdinal.Internal (Ordinal (..), finiteOrdinal, addOrdinals, coefficientsLT)
 import Numeric.Natural (Natural)
 import PageElements.TraceChain (traceHead)
@@ -226,8 +228,37 @@ sequencePositionEquation :: AtlasSequenceMember -> [AtlasSequenceMember] -> Natu
   -> Chain AtlasSequencePageCell -> AtlasSequencePageCell -> ()
 sequencePositionEquation _ _ _ _ (AtlasSequencePageCell _ _) = ()
 
+-- | Transport an accepted cell within its own member of the sequence.
+-- ALIGN: SEQUENCE-CELL-PREVIOUS.
+{-@ reflect previousSequenceCell @-}
+{-@ previousSequenceCell :: members:[AtlasSequenceMember] -> page:{Natural | page > 0}
+      -> {cell:AtlasSequencePageCell | sequencePageContains members page cell}
+      -> {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} / [len members] @-}
+{-@ ple previousSequenceCell @-}
+previousSequenceCell :: [AtlasSequenceMember] -> Natural -> AtlasSequencePageCell -> AtlasSequencePageCell
+previousSequenceCell [] _ = emptyCellMap
+previousSequenceCell (member : rest) page =
+  consMap (memberPageContains member page) (sequencePageContains rest page)
+    (memberPageContains member (page - 1)) (sequencePageContains rest (page - 1))
+    (memberPreviousTrace member (page - 1)) (previousSequenceCell rest page)
+
+-- ALIGN: SEQUENCE-CELL-NEXT.
+{-@ reflect nextSequenceCell @-}
+{-@ nextSequenceCell :: members:[AtlasSequenceMember] -> page:{Natural | page > 0}
+      -> {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell}
+      -> {cell:AtlasSequencePageCell | sequencePageContains members page cell} / [len members] @-}
+{-@ ple nextSequenceCell @-}
+nextSequenceCell :: [AtlasSequenceMember] -> Natural -> AtlasSequencePageCell -> AtlasSequencePageCell
+nextSequenceCell [] _ = emptyCellMap
+nextSequenceCell (member : rest) page =
+  consMap (memberPageContains member (page - 1)) (sequencePageContains rest (page - 1))
+    (memberPageContains member page) (sequencePageContains rest page)
+    (memberPageNext member (page - 1)) (nextSequenceCell rest page)
+
 -- | Compose the member maps while retaining the two canonical trace carriers.
 -- ALIGN: SEQUENCE-NATIVE-TRANSITION.
+-- ALIGN: SEQUENCE-TRANSITION-STORED-MAP.
+-- ALIGN: SEQUENCE-TRANSITION-STORED-PREIMAGE.
 -- ALIGN: SEQUENCE-PAGE-PREVIOUS.
 -- ALIGN: SEQUENCE-PAGE-NEXT.
 {-@ sequenceTraceTransition :: members:[AtlasSequenceMember] -> page:Natural
@@ -235,14 +266,20 @@ sequencePositionEquation _ _ _ _ (AtlasSequencePageCell _ _) = ()
            {cell:AtlasSequencePageCell | sequencePageContains members (page + 1) cell}
            {cell:AtlasSequencePageCell | sequencePageContains members page cell} |
              chainPosition (orderedSource result) == sequencePagePosition members (page + 1)
-             && chainPosition (orderedTarget result) == sequencePagePosition members page} / [len members] @-}
+             && chainPosition (orderedTarget result) == sequencePagePosition members page
+             && orderedApply result == previousSequenceCell members (page + 1)
+             && orderedPreimage result == nextSequenceCell members (page + 1)} / [len members] @-}
 {-@ ple sequenceTraceTransition @-}
 sequenceTraceTransition :: [AtlasSequenceMember] -> Natural
   -> OrderedConsolidation AtlasSequencePageCell AtlasSequencePageCell
 sequenceTraceTransition [] page =
   let source = atlasSequencePageChain [] (page + 1)
       target = atlasSequencePageChain [] page
-  in emptyTransition source target
+      mapping = emptyTransition source target
+  in withConsolidationFunctions emptyContains emptyContains mapping
+       (previousSequenceCell [] (page + 1)) (nextSequenceCell [] (page + 1))
+       (\cell -> previousSequenceCell [] (page + 1) cell `seq` ())
+       (\cell -> nextSequenceCell [] (page + 1) cell `seq` ())
 sequenceTraceTransition members@(member : rest) page =
   let sourceFirst = memberPageContains member (page + 1)
       sourceRest = sequencePageContains rest (page + 1)
@@ -258,8 +295,30 @@ sequenceTraceTransition members@(member : rest) page =
         (sequencePagePosition members (page + 1)) sourcePositions
       target = withChainPosition (consContains targetFirst targetRest) (orderedTarget combined)
         (sequencePagePosition members page) targetPositions
-  in withConsolidationEndpoints (consContains sourceFirst sourceRest) (consContains targetFirst targetRest)
-       combined source target sourcePositions targetPositions
+      mapping = withConsolidationEndpoints (consContains sourceFirst sourceRest) (consContains targetFirst targetRest)
+        combined source target sourcePositions targetPositions
+  in withConsolidationFunctions (consContains sourceFirst sourceRest) (consContains targetFirst targetRest) mapping
+       (previousSequenceCell members (page + 1)) (nextSequenceCell members (page + 1))
+       (\cell -> previousSequenceCell members (page + 1) cell `seq` ())
+       (\cell -> nextSequenceCell members (page + 1) cell `seq` ())
+
+-- | Map a head/tail sum through its member-index representation.
+{-@ reflect consMap @-}
+{-@ consMap :: sourceFirst:([Ordinal] -> Bool) -> sourceRest:(AtlasSequencePageCell -> Bool)
+      -> targetFirst:([Ordinal] -> Bool) -> targetRest:(AtlasSequencePageCell -> Bool)
+      -> first:({positions:[Ordinal] | sourceFirst positions} -> {positions:[Ordinal] | targetFirst positions})
+      -> remaining:({cell:AtlasSequencePageCell | sourceRest cell} -> {cell:AtlasSequencePageCell | targetRest cell})
+      -> cell:{AtlasSequencePageCell | consContains sourceFirst sourceRest cell}
+      -> {result:AtlasSequencePageCell | consContains targetFirst targetRest result} @-}
+{-@ ple consMap @-}
+consMap :: ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
+  -> ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
+  -> ([Ordinal] -> [Ordinal]) -> (AtlasSequencePageCell -> AtlasSequencePageCell)
+  -> AtlasSequencePageCell -> AtlasSequencePageCell
+consMap sourceFirst sourceRest targetFirst targetRest first remaining cell =
+  case consParts sourceFirst sourceRest cell of
+    Left positions -> consCell targetFirst targetRest (Left (first positions))
+    Right rest -> consCell targetFirst targetRest (Right (remaining rest))
 
 {-@ consTransition :: sourceFirst:([Ordinal] -> Bool) -> sourceRest:(AtlasSequencePageCell -> Bool)
       -> targetFirst:([Ordinal] -> Bool) -> targetRest:(AtlasSequencePageCell -> Bool)
@@ -272,7 +331,9 @@ sequenceTraceTransition members@(member : rest) page =
              chainPosition (orderedSource result) == consPosition sourceFirst sourceRest
                (chainOrderType (orderedSource first)) (chainPosition (orderedSource remaining))
              && chainPosition (orderedTarget result) == consPosition targetFirst targetRest
-               (chainOrderType (orderedTarget first)) (chainPosition (orderedTarget remaining))} @-}
+               (chainOrderType (orderedTarget first)) (chainPosition (orderedTarget remaining))
+             && orderedApply result == consMap sourceFirst sourceRest targetFirst targetRest (orderedApply first) (orderedApply remaining)
+             && orderedPreimage result == consMap targetFirst targetRest sourceFirst sourceRest (orderedPreimage first) (orderedPreimage remaining)} @-}
 consTransition :: ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
   -> ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
   -> OrderedConsolidation [Ordinal] [Ordinal]
@@ -285,6 +346,12 @@ consTransition sourceFirst sourceRest targetFirst targetRest first remaining =
         (consPartsRoundTrip sourceFirst sourceRest) (consCellRoundTrip sourceFirst sourceRest)
         (consCell targetFirst targetRest) (consParts targetFirst targetRest)
         (consPartsRoundTrip targetFirst targetRest) (consCellRoundTrip targetFirst targetRest)
+      mapped = withConsolidationFunctions (consContains sourceFirst sourceRest) (consContains targetFirst targetRest)
+        native
+        (consMap sourceFirst sourceRest targetFirst targetRest (orderedApply first) (orderedApply remaining))
+        (consMap targetFirst targetRest sourceFirst sourceRest (orderedPreimage first) (orderedPreimage remaining))
+        (consForwardEquation sourceFirst sourceRest targetFirst targetRest first remaining summed native)
+        (consBackwardEquation sourceFirst sourceRest targetFirst targetRest first remaining summed native)
       sourcePositions = consPositionEquation sourceFirst sourceRest
         (orderedSource first) (orderedSource remaining) (orderedSource summed) (orderedSource native)
       targetPositions = consPositionEquation targetFirst targetRest
@@ -294,7 +361,7 @@ consTransition sourceFirst sourceRest targetFirst targetRest first remaining =
       target = withChainPosition (consContains targetFirst targetRest) (orderedTarget native)
         (consPosition targetFirst targetRest (chainOrderType (orderedTarget first)) (chainPosition (orderedTarget remaining))) targetPositions
   in withConsolidationEndpoints (consContains sourceFirst sourceRest) (consContains targetFirst targetRest)
-       native source target sourcePositions targetPositions
+       mapped source target sourcePositions targetPositions
 
 {-@ sumConsTransitions :: sourceFirst:([Ordinal] -> Bool) -> sourceRest:(AtlasSequencePageCell -> Bool)
       -> targetFirst:([Ordinal] -> Bool) -> targetRest:(AtlasSequencePageCell -> Bool)
@@ -304,7 +371,9 @@ consTransition sourceFirst sourceRest targetFirst targetRest first remaining =
            (Either {positions:[Ordinal] | sourceFirst positions} {cell:AtlasSequencePageCell | sourceRest cell})
            (Either {positions:[Ordinal] | targetFirst positions} {cell:AtlasSequencePageCell | targetRest cell}) |
              chainPosition (orderedSource result) == sumChainPosition (orderedSource first) (orderedSource remaining)
-             && chainPosition (orderedTarget result) == sumChainPosition (orderedTarget first) (orderedTarget remaining)} @-}
+             && chainPosition (orderedTarget result) == sumChainPosition (orderedTarget first) (orderedTarget remaining)
+             && orderedApply result == sumApply first remaining
+             && orderedPreimage result == sumPreimage first remaining} @-}
 sumConsTransitions :: ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
   -> ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
   -> OrderedConsolidation [Ordinal] [Ordinal]
@@ -322,7 +391,9 @@ sumConsTransitions _ _ _ _ = sumConsolidations
            {cell:AtlasSequencePageCell | sequencePageContains members page cell}
            {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
              chainPosition (orderedSource result) == sequencePagePosition members page
-             && orderedTarget result == target} @-}
+             && orderedTarget result == target
+             && orderedApply result == previousSequenceCell members page
+             && orderedPreimage result == nextSequenceCell members page} @-}
 {-@ ple sequencePageTransition @-}
 sequencePageTransition :: [AtlasSequenceMember] -> Natural -> Chain AtlasSequencePageCell
   -> OrderedConsolidation AtlasSequencePageCell AtlasSequencePageCell
@@ -358,12 +429,15 @@ emptyMonotone _ _ _ second = second
       -> target:Chain {cell:AtlasSequencePageCell | emptyContains cell}
       -> {result:OrderedConsolidation {cell:AtlasSequencePageCell | emptyContains cell}
            {cell:AtlasSequencePageCell | emptyContains cell} |
-             orderedSource result == source && orderedTarget result == target} @-}
+             orderedSource result == source && orderedTarget result == target
+             && orderedApply result == emptyCellMap && orderedPreimage result == emptyCellMap} @-}
 emptyTransition :: Chain AtlasSequencePageCell -> Chain AtlasSequencePageCell
   -> OrderedConsolidation AtlasSequencePageCell AtlasSequencePageCell
-emptyTransition source target = orderedConsolidation source target
-  (restrictedConsolidation emptyContains emptyContains emptyCellMap emptyCellMap
-    (emptyMonotone target) emptyInverse)
+emptyTransition source target =
+  let result = orderedConsolidation source target
+        (restrictedConsolidation emptyContains emptyContains emptyCellMap emptyCellMap
+          (emptyMonotone target) emptyInverse)
+  in orderedFunctions result `seq` result
 
 {-@ headCell :: first:([Ordinal] -> Bool) -> rest:(AtlasSequencePageCell -> Bool)
       -> positions:{[Ordinal] | first positions}
@@ -371,3 +445,69 @@ emptyTransition source target = orderedConsolidation source target
 {-@ ple headCell @-}
 headCell :: ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool) -> [Ordinal] -> AtlasSequencePageCell
 headCell first rest positions = consCell first rest (Left positions)
+
+{-@ consForwardEquation :: sourceFirst:([Ordinal] -> Bool) -> sourceRest:(AtlasSequencePageCell -> Bool)
+      -> targetFirst:([Ordinal] -> Bool) -> targetRest:(AtlasSequencePageCell -> Bool)
+      -> first:OrderedConsolidation {positions:[Ordinal] | sourceFirst positions} {positions:[Ordinal] | targetFirst positions}
+      -> remaining:OrderedConsolidation {cell:AtlasSequencePageCell | sourceRest cell} {cell:AtlasSequencePageCell | targetRest cell}
+      -> summed:{OrderedConsolidation
+           (Either {positions:[Ordinal] | sourceFirst positions} {cell:AtlasSequencePageCell | sourceRest cell})
+           (Either {positions:[Ordinal] | targetFirst positions} {cell:AtlasSequencePageCell | targetRest cell}) |
+             orderedApply summed == sumApply first remaining}
+      -> native:{OrderedConsolidation
+           {cell:AtlasSequencePageCell | consContains sourceFirst sourceRest cell}
+           {cell:AtlasSequencePageCell | consContains targetFirst targetRest cell} |
+             orderedApply native == reindexApply summed (consCell targetFirst targetRest) (consParts sourceFirst sourceRest)}
+      -> cell:{AtlasSequencePageCell | consContains sourceFirst sourceRest cell}
+      -> {consMap sourceFirst sourceRest targetFirst targetRest (orderedApply first) (orderedApply remaining) cell
+           == orderedApply native cell} @-}
+{-@ ple consForwardEquation @-}
+consForwardEquation :: ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
+  -> ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
+  -> OrderedConsolidation [Ordinal] [Ordinal]
+  -> OrderedConsolidation AtlasSequencePageCell AtlasSequencePageCell
+  -> OrderedConsolidation (Either [Ordinal] AtlasSequencePageCell) (Either [Ordinal] AtlasSequencePageCell)
+  -> OrderedConsolidation AtlasSequencePageCell AtlasSequencePageCell -> AtlasSequencePageCell -> ()
+consForwardEquation sourceFirst sourceRest targetFirst targetRest first remaining summed _ cell =
+  consMap sourceFirst sourceRest targetFirst targetRest (orderedApply first) (orderedApply remaining) cell `seq`
+    reindexApply summed (consCell targetFirst targetRest) (consParts sourceFirst sourceRest) cell `seq`
+      case consParts sourceFirst sourceRest cell of
+        Left positions ->
+          sumApply first remaining (Left positions) `seq`
+            consCell targetFirst targetRest (Left (orderedApply first positions)) `seq` ()
+        Right rest ->
+          sumApply first remaining (Right rest) `seq`
+            consCell targetFirst targetRest (Right (orderedApply remaining rest)) `seq` ()
+
+{-@ consBackwardEquation :: sourceFirst:([Ordinal] -> Bool) -> sourceRest:(AtlasSequencePageCell -> Bool)
+      -> targetFirst:([Ordinal] -> Bool) -> targetRest:(AtlasSequencePageCell -> Bool)
+      -> first:OrderedConsolidation {positions:[Ordinal] | sourceFirst positions} {positions:[Ordinal] | targetFirst positions}
+      -> remaining:OrderedConsolidation {cell:AtlasSequencePageCell | sourceRest cell} {cell:AtlasSequencePageCell | targetRest cell}
+      -> summed:{OrderedConsolidation
+           (Either {positions:[Ordinal] | sourceFirst positions} {cell:AtlasSequencePageCell | sourceRest cell})
+           (Either {positions:[Ordinal] | targetFirst positions} {cell:AtlasSequencePageCell | targetRest cell}) |
+             orderedPreimage summed == sumPreimage first remaining}
+      -> native:{OrderedConsolidation
+           {cell:AtlasSequencePageCell | consContains sourceFirst sourceRest cell}
+           {cell:AtlasSequencePageCell | consContains targetFirst targetRest cell} |
+             orderedPreimage native == reindexPreimage summed (consCell sourceFirst sourceRest) (consParts targetFirst targetRest)}
+      -> cell:{AtlasSequencePageCell | consContains targetFirst targetRest cell}
+      -> {consMap targetFirst targetRest sourceFirst sourceRest (orderedPreimage first) (orderedPreimage remaining) cell
+           == orderedPreimage native cell} @-}
+{-@ ple consBackwardEquation @-}
+consBackwardEquation :: ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
+  -> ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
+  -> OrderedConsolidation [Ordinal] [Ordinal]
+  -> OrderedConsolidation AtlasSequencePageCell AtlasSequencePageCell
+  -> OrderedConsolidation (Either [Ordinal] AtlasSequencePageCell) (Either [Ordinal] AtlasSequencePageCell)
+  -> OrderedConsolidation AtlasSequencePageCell AtlasSequencePageCell -> AtlasSequencePageCell -> ()
+consBackwardEquation sourceFirst sourceRest targetFirst targetRest first remaining summed _ cell =
+  consMap targetFirst targetRest sourceFirst sourceRest (orderedPreimage first) (orderedPreimage remaining) cell `seq`
+    reindexPreimage summed (consCell sourceFirst sourceRest) (consParts targetFirst targetRest) cell `seq`
+      case consParts targetFirst targetRest cell of
+        Left positions ->
+          sumPreimage first remaining (Left positions) `seq`
+            consCell sourceFirst sourceRest (Left (orderedPreimage first positions)) `seq` ()
+        Right rest ->
+          sumPreimage first remaining (Right rest) `seq`
+            consCell sourceFirst sourceRest (Right (orderedPreimage remaining rest)) `seq` ()

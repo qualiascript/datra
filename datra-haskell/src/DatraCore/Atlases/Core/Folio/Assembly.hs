@@ -4,9 +4,10 @@
 {-@ LIQUID "--ple-local" @-}
 {-@ LIQUID "--higherorder" @-}
 {-@ qualif Accepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
+{-@ qualif PageAccepted(v:@(0), p:func(0, [int; @(0); bool]), n:int) { p n v } @-}
 
 -- | Shared origin and append operations retaining accepted page carriers.
-module Folio.Assembly (collapseToOrigin, appendOrderedPage, extendPages, extendPagesLookup, extendPagesThroughLookup) where
+module Folio.Assembly (collapseToOrigin, appendOrderedPage, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace) where
 
 import Chain.Internal (Chain, chainPosition)
 import Chain.Order (chainPrecedes)
@@ -16,7 +17,7 @@ import DatraOrdinal.Laws (ordinalLTIrreflexive)
 import DatraOrdinal (Ordinal)
 import Folio.Presentation (FolioData, appendPageData, folioLengthData, lastPageData)
 import Numeric.Natural (Natural)
-import PageElements.Internal (folioTraceLookup, appendedEarlierLookup)
+import PageElements.Internal (folioTraceLookup, appendedEarlierLookup, genuinePageElementTrace, appendedPageTrace, snocElementTrace)
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -149,3 +150,34 @@ extendPagesThroughLookup contains position next page middle depth pages index or
       let transition = next page (lastPageData pages)
           extended = appendOrderedPage (contains (page - 1)) (contains page) pages transition
       in extendPagesThroughLookup contains position next (page + 1) middle depth extended index ordinal
+
+-- | The last appended cell follows the final transition into the preceding prefix.
+-- ALIGN: FOLIO-EXTEND-FINAL-TRACE.
+{-@ extendPagesFinalTrace :: contains:(Natural -> a -> Bool)
+      -> position:(index:Natural -> {cell:a | contains index cell} -> Ordinal)
+      -> next:(index:{Natural | index > 0}
+           -> target:{Chain {cell:a | contains (index - 1) cell} |
+                chainPosition target == position (index - 1)}
+           -> {mapping:OrderedConsolidation {cell:a | contains index cell} {cell:a | contains (index - 1) cell} |
+                chainPosition (orderedSource mapping) == position index && orderedTarget mapping == target})
+      -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
+      -> pages:{FolioData origin {cell:a | contains (page - 1) cell} |
+           chainPosition (lastPageData pages) == position (page - 1)}
+      -> value:{a | contains depth value}
+      -> {genuinePageElementTrace (extendPages contains position next page (depth + 1) pages) value
+           == snocElementTrace (extendPages contains position next page depth pages)
+                (orderedSource (next depth (lastPageData (extendPages contains position next page depth pages))))
+                (next depth (lastPageData (extendPages contains position next page depth pages))) value}
+      / [depth - page] @-}
+{-@ ple extendPagesFinalTrace @-}
+extendPagesFinalTrace :: (Natural -> a -> Bool) -> (Natural -> a -> Ordinal)
+  -> (Natural -> Chain a -> OrderedConsolidation a a)
+  -> Natural -> Natural -> FolioData origin a -> a -> ()
+extendPagesFinalTrace contains position next page depth pages value
+  | page == depth =
+      let transition = next page (lastPageData pages)
+      in appendedPageTrace pages (orderedSource transition) transition value
+  | otherwise =
+      let transition = next page (lastPageData pages)
+          extended = appendOrderedPage (contains (page - 1)) (contains page) pages transition
+      in extendPagesFinalTrace contains position next (page + 1) depth extended value

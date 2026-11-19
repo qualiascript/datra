@@ -6,21 +6,21 @@
 
 -- | Assemble the sequence folio from checked native page transitions.
 module AtlasSequence.Assembly
-  ( atlasSequenceLength, atlasSequenceFolio, atlasSequencePrefix, atlasSequencePrefixLookup, atlasSequencePageLookup, atlasSequenceCellLookup
+  ( atlasSequenceLength, atlasSequenceFolio, atlasSequencePrefix, atlasSequencePrefixLookup, atlasSequencePageLookup, atlasSequenceCellLookup, atlasSequencePrefixTrace
   , appendRemainingPages, appendRemainingLookup ) where
 
 import AtlasSequence.Member (AtlasSequenceMember, memberLength, memberList, memberPageOrigin, memberPageContains)
 import AtlasSequence.Page
-  ( AtlasSequencePageCell (..), atlasSequencePageChain, sequencePageContains, sequencePagePosition, sequencePageTransition, headCell )
+  ( AtlasSequencePageCell (..), atlasSequencePageChain, sequencePageContains, sequencePagePosition, sequencePageTransition, previousSequenceCell, headCell )
 import Chain.Internal (chainPosition)
 import Chain.Singleton (singletonChain)
 import Data.List.NonEmpty (NonEmpty (..))
 import Folio.Internal (Folio)
-import Folio.Assembly (collapseToOrigin, extendPages, extendPagesLookup, extendPagesThroughLookup)
+import Folio.Assembly (collapseToOrigin, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace)
 import Folio.Presentation (folioData, appendPageData, folioLengthData, lastPageData)
 import Numeric.Natural (Natural)
 import DatraOrdinal (Ordinal)
-import PageElements.Internal (folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup)
+import PageElements.Internal (folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup, prependCopies)
 
 {-@ opaque-reflect memberList @-}
 
@@ -165,3 +165,20 @@ atlasSequenceCellLookup :: NonEmpty AtlasSequenceMember -> Natural -> AtlasSeque
 atlasSequenceCellLookup members page cell =
   atlasSequencePageLookup members page (sequencePagePosition (memberList members) (page - 1) cell) `seq`
     finalPageTraceLookup (atlasSequencePrefix members page) cell
+
+-- | Follow the last native sequence map into the preceding constructed prefix.
+-- ALIGN: SEQUENCE-PREFIX-TRACE-STEP.
+{-@ atlasSequencePrefixTrace :: members:NonEmpty AtlasSequenceMember
+      -> depth:{Natural | depth > 0}
+      -> cell:{AtlasSequencePageCell | sequencePageContains (memberList members) depth cell}
+      -> {genuinePageElementTrace (atlasSequencePrefix members (depth + 1)) cell
+           == prependCopies 1 (sequencePagePosition (memberList members) depth cell)
+                (genuinePageElementTrace (atlasSequencePrefix members depth)
+                  (previousSequenceCell (memberList members) depth cell))} @-}
+{-@ ple atlasSequencePrefixTrace @-}
+atlasSequencePrefixTrace :: NonEmpty AtlasSequenceMember -> Natural -> AtlasSequencePageCell -> ()
+atlasSequencePrefixTrace members depth cell =
+  let entries = memberList members
+  in sequencePageTransition entries depth (lastPageData (atlasSequencePrefix members depth)) `seq`
+    extendPagesFinalTrace (sequencePageContains entries) (sequencePagePosition entries)
+      (sequencePageTransition entries) 1 depth (firstSequencePage members) cell

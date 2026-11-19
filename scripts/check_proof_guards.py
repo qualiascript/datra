@@ -132,6 +132,23 @@ proofGuard mapping source target =
 
 MERGE_ASSEMBLY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs"
 MERGE_ASSEMBLY_GUARDS = {
+    "merge prefix trace cannot replace its head": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> depth:{Natural | depth > 0}
+      -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) depth cell}
+      -> position:Ordinal
+      -> {genuinePageElementTrace (atlasMergePrefix left right (depth + 1)) cell
+           == prependCopies 1 position
+                (genuinePageElementTrace (atlasMergePrefix left right depth) (previousMergeCell left right depth cell))} @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> Ordinal -> ()
+proofGuard left right depth cell _ = atlasMergePrefixTrace left right depth cell
+""",
+    "merge prefix trace requires an accepted next-page cell": """
+{-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+      -> depth:{Natural | depth > 0} -> AtlasMergePageCell -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> ()
+proofGuard = atlasMergePrefixTrace
+""",
     "merge genuine cell lookup requires an accepted native cell": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> page:{Natural | page > 0 && page < atlasMergeLength left right} -> AtlasMergePageCell -> () @-}
@@ -216,6 +233,26 @@ proofGuard member page source target = memberPageTransition member page source t
 
 SEQUENCE_PAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs"
 SEQUENCE_PAGE_GUARDS = {
+    "sequence stored predecessor cannot be replaced by identity": """
+{-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0}
+      -> target:{Chain {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
+           chainPosition target == sequencePagePosition members (page - 1)}
+      -> cell:{AtlasSequencePageCell | sequencePageContains members page cell}
+      -> {result:AtlasSequencePageCell | result == cell} @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> Chain AtlasSequencePageCell
+  -> AtlasSequencePageCell -> AtlasSequencePageCell
+proofGuard members page target cell = orderedApply (sequencePageTransition members page target) cell
+""",
+    "sequence stored preimage cannot be replaced by identity": """
+{-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0}
+      -> target:{Chain {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
+           chainPosition target == sequencePagePosition members (page - 1)}
+      -> cell:{AtlasSequencePageCell | sequencePageContains members (page - 1) cell}
+      -> {result:AtlasSequencePageCell | result == cell} @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> Chain AtlasSequencePageCell
+  -> AtlasSequencePageCell -> AtlasSequencePageCell
+proofGuard members page target cell = orderedPreimage (sequencePageTransition members page target) cell
+""",
     "sequence transitions cannot widen their canonical carriers": """
 {-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0}
       -> target:{Chain {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
@@ -253,6 +290,22 @@ proofGuard = consCell
 
 SEQUENCE_ASSEMBLY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Assembly.hs"
 SEQUENCE_ASSEMBLY_GUARDS = {
+    "sequence prefix trace cannot replace its head": """
+{-@ proofGuard :: members:NonEmpty AtlasSequenceMember -> depth:{Natural | depth > 0}
+      -> cell:{AtlasSequencePageCell | sequencePageContains (memberList members) depth cell}
+      -> position:Ordinal
+      -> {genuinePageElementTrace (atlasSequencePrefix members (depth + 1)) cell
+           == prependCopies 1 position
+                (genuinePageElementTrace (atlasSequencePrefix members depth)
+                  (previousSequenceCell (memberList members) depth cell))} @-}
+proofGuard :: NonEmpty AtlasSequenceMember -> Natural -> AtlasSequencePageCell -> Ordinal -> ()
+proofGuard members depth cell _ = atlasSequencePrefixTrace members depth cell
+""",
+    "sequence prefix trace requires an accepted next-page cell": """
+{-@ proofGuard :: NonEmpty AtlasSequenceMember -> depth:{Natural | depth > 0} -> AtlasSequencePageCell -> () @-}
+proofGuard :: NonEmpty AtlasSequenceMember -> Natural -> AtlasSequencePageCell -> ()
+proofGuard = atlasSequencePrefixTrace
+""",
     "sequence genuine cell lookup requires an accepted native cell": """
 {-@ proofGuard :: members:NonEmpty AtlasSequenceMember
       -> page:{Natural | page > 0 && page < atlasSequenceLength members} -> AtlasSequencePageCell -> () @-}
@@ -789,7 +842,7 @@ proofGuard arrow = pageElementArrowPosition arrow
 PAGE_INDEX_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Internal.hs"
 PAGE_INDEX_GUARDS = {
     "final cell lookup cannot substitute another trace": """
-{-@ proofGuard :: pages:Folio origin current -> value:current -> other:current
+{-@ proofGuard :: pages:{Folio origin current | folioLength pages > 1} -> value:current -> other:current
       -> {folioTraceLookup pages (folioLength pages - 1) (chainPosition (lastChain pages) value)
            == Just (genuinePageElementTrace pages other)} @-}
 proofGuard :: Folio origin current -> current -> current -> ()

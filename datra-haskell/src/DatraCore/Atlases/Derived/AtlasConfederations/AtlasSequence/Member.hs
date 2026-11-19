@@ -4,6 +4,7 @@
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple-local" @-}
+{-@ qualif MemberAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | A sequence member retains the canonical carriers of its own folio.
 module AtlasSequence.Member
@@ -17,13 +18,15 @@ module AtlasSequence.Member
   , memberPageChain
   , memberPageOrigin
   , memberPagePrevious
+  , memberPreviousTrace
   , memberPageNext
   , memberPageTransition
   ) where
 
 import Atlas.Internal (Atlas, atlasFolio)
 import Chain.Internal (Chain, chainPosition, chainOrderType)
-import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget)
+import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget,
+  orderedApply, orderedPreimage, withConsolidationFunctions)
 import Data.List.NonEmpty (NonEmpty (..))
 import DatraOrdinal (Ordinal)
 import Folio.Presentation (folioLengthData)
@@ -31,7 +34,7 @@ import Numeric.Natural (Natural)
 import PageElements.Internal (folioPageOrderType)
 import PageElements.TraceChain
   ( pageTraceContains, traceHead, pageTraceChain, pageTraceOrigin
-  , previousTrace, pageTracePrevious, pageTraceNext, pageTraceTransition )
+  , previousTrace, previousPageTrace, pageTracePrevious, pageTraceNext, pageTraceTransition )
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -91,7 +94,16 @@ memberPageOrigin (AtlasSequenceMember valueAtlas) = pageTraceOrigin (atlasFolio 
 memberPagePrevious :: AtlasSequenceMember -> Natural -> [Ordinal] -> ()
 memberPagePrevious (AtlasSequenceMember valueAtlas) page = pageTracePrevious (atlasFolio valueAtlas) page
 
+{-@ reflect memberPreviousTrace @-}
+{-@ memberPreviousTrace :: member:AtlasSequenceMember -> page:Natural
+      -> positions:{[Ordinal] | memberPageContains member (page + 1) positions}
+      -> {result:[Ordinal] | memberPageContains member page result && result == previousTrace positions} @-}
+memberPreviousTrace :: AtlasSequenceMember -> Natural -> [Ordinal] -> [Ordinal]
+memberPreviousTrace member page positions =
+  memberPagePrevious member page positions `seq` previousTrace positions
+
 -- ALIGN: SEQUENCE-MEMBER-PAGE-NEXT.
+{-@ reflect memberPageNext @-}
 {-@ ple memberPageNext @-}
 {-@ memberPageNext :: member:AtlasSequenceMember -> page:Natural
       -> positions:{[Ordinal] | memberPageContains member page positions}
@@ -101,6 +113,8 @@ memberPageNext :: AtlasSequenceMember -> Natural -> [Ordinal] -> [Ordinal]
 memberPageNext (AtlasSequenceMember valueAtlas) page = pageTraceNext (atlasFolio valueAtlas) page
 
 -- ALIGN: SEQUENCE-MEMBER-PAGE-TRANSITION.
+-- ALIGN: SEQUENCE-MEMBER-STORED-MAP.
+-- ALIGN: SEQUENCE-MEMBER-STORED-PREIMAGE.
 {-@ ple memberPageTransition @-}
 {-@ memberPageTransition :: member:AtlasSequenceMember -> page:Natural
       -> source:{Chain {positions:[Ordinal] | memberPageContains member (page + 1) positions} |
@@ -110,10 +124,18 @@ memberPageNext (AtlasSequenceMember valueAtlas) page = pageTraceNext (atlasFolio
       -> {result:OrderedConsolidation
            {positions:[Ordinal] | memberPageContains member (page + 1) positions}
            {positions:[Ordinal] | memberPageContains member page positions} |
-             orderedSource result == source && orderedTarget result == target} @-}
+             orderedSource result == source && orderedTarget result == target
+             && orderedApply result == memberPreviousTrace member page
+             && orderedPreimage result == memberPageNext member page} @-}
 memberPageTransition :: AtlasSequenceMember -> Natural -> Chain [Ordinal] -> Chain [Ordinal]
   -> OrderedConsolidation [Ordinal] [Ordinal]
-memberPageTransition (AtlasSequenceMember valueAtlas) page = pageTraceTransition (atlasFolio valueAtlas) page
+memberPageTransition member@(AtlasSequenceMember valueAtlas) page source target =
+  let pages = atlasFolio valueAtlas
+      mapping = pageTraceTransition pages page source target
+  in withConsolidationFunctions (pageTraceContains pages (page + 1)) (pageTraceContains pages page)
+       mapping (memberPreviousTrace member page) (memberPageNext member page)
+       (\positions -> memberPreviousTrace member page positions `seq` previousPageTrace pages page positions `seq` ())
+       (\positions -> memberPageNext member page positions `seq` ())
 
 -- ALIGN: SEQUENCE-MEMBER-LENGTH.
 {-@ reflect memberLength @-}

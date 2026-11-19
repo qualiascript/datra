@@ -52,6 +52,17 @@ def nativePrefixFolio {count : Nat} (positive : 0 < count) (members : Fin count 
     (Folio.collapseToOrigin (pageChain members 0) Chain.singletonChain (firstPageCell positive members)).map
     (nativeConsolidation members) page
 
+-- ALIGN: SEQUENCE-PREFIX-TRACE-STEP.
+theorem nativePrefixFolio_trace_succ {count : Nat} (positive : 0 < count) (members : Fin count → Atlas)
+    (page : Nat) (cell : ValidPageCell members (page + 1)) :
+    (nativePrefixFolio positive members (page + 1)).data.genuineTrace cell =
+      pagePosition members (page + 1) cell.val ::
+        (nativePrefixFolio positive members page).data.genuineTrace (previousValidCell members page cell) := by
+  change (pageChain members (page + 1)).position cell ::
+    (nativePrefixFolio positive members page).data.genuineTrace ((nativeConsolidation members page).map cell) = _
+  rw [nativeConsolidation_eq, pageChain_position]
+  rfl
+
 theorem nativePrefixFolio_length {count : Nat} (positive : 0 < count) (members : Fin count → Atlas) (page : Nat) :
     (nativePrefixFolio positive members page).data.length = page + 2 :=
   Folio.buildPrefix_length _ _ _ _ _ _ _

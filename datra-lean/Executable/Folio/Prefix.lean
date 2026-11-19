@@ -62,6 +62,48 @@ theorem cast_length {origin : Page} (pages : Nat → Page) {first second : Nat}
   cases same
   rfl
 
+theorem cast_append {origin : Page} (pages : Nat → Page)
+    (step : ∀ n, Consolidation (pages (n + 1)).chain (pages n).chain) {first second : Nat}
+    (same : first = second) (initial : Folio origin (pages first)) :
+    cast (congrArg (fun n => Folio origin (pages (n + 1))) same)
+      (⟨initial.data.append (pages (first + 1)) (step first),
+        initial.data.append_valid initial.valid _ _⟩ : Folio origin (pages (first + 1))) =
+      ⟨(cast (congrArg (fun n => Folio origin (pages n)) same) initial).data.append
+          (pages (second + 1)) (step second),
+        FolioData.append_valid _ (cast (congrArg (fun n => Folio origin (pages n)) same) initial).valid _ _⟩ := by
+  cases same
+  rfl
+
+theorem extendPrefix_succ {origin : Page} (pages : Nat → Page)
+    (step : ∀ n, Consolidation (pages (n + 1)).chain (pages n).chain)
+    (start count : Nat) (initial : Folio origin (pages start)) :
+    extendPrefix pages step start (count + 1) initial =
+      ⟨(extendPrefix pages step start count initial).data.append (pages (start + count + 1)) (step (start + count)),
+        FolioData.append_valid _ (extendPrefix pages step start count initial).valid _ _⟩ := by
+  induction count generalizing start with
+  | zero => rfl
+  | succ count ih =>
+      let next : Folio origin (pages (start + 1)) :=
+        ⟨initial.data.append (pages (start + 1)) (step start),
+          initial.data.append_valid initial.valid _ _⟩
+      change cast (congrArg (fun n => Folio origin (pages n))
+          (show start + 1 + (count + 1) = start + (count + 1 + 1) by omega))
+        (extendPrefix pages step (start + 1) (count + 1) next) = _
+      exact (congrArg (cast (congrArg (fun n => Folio origin (pages n))
+          (show start + 1 + (count + 1) = start + (count + 1 + 1) by omega)))
+        (ih (start + 1) next)).trans
+          (cast_append pages step (show start + 1 + count = start + (count + 1) by omega) _)
+
+-- ALIGN: FOLIO-EXTEND-FINAL-TRACE.
+theorem extendPrefix_final_trace {origin : Page} (pages : Nat → Page)
+    (step : ∀ n, Consolidation (pages (n + 1)).chain (pages n).chain)
+    (start count : Nat) (initial : Folio origin (pages start)) (value : (pages (start + count + 1)).Carrier) :
+    (extendPrefix pages step start (count + 1) initial).data.genuineTrace value =
+      (pages (start + count + 1)).chain.position value ::
+        (extendPrefix pages step start count initial).data.genuineTrace ((step (start + count)).map value) := by
+  rw [extendPrefix_succ]
+  rfl
+
 theorem extendPrefix_length {origin : Page} (pages : Nat → Page)
     (step : ∀ n, Consolidation (pages (n + 1)).chain (pages n).chain)
     (start count : Nat) (initial : Folio origin (pages start)) :

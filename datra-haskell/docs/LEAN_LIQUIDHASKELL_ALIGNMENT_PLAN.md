@@ -260,15 +260,34 @@ operations. The extension interface retains each page's accepted carrier,
 canonical position function, actual preceding endpoint, and exact resulting
 length. Appending preserves lookups at every earlier genuine page; lookup on the
 new page returns the trace obtained from its stored transition. The shared
-extension proves that every lookup within its supplied prefix remains unchanged.
-Both Atlas constructors expose that proof. Lean models the same tail-recursive
+extension proves that every lookup within its supplied prefix remains unchanged,
+including a prefix obtained by stopping the same extension at an intermediate
+depth. Both Atlas constructors expose their actual finite prefixes and reduce
+genuine-page lookups in the completed folio to the corresponding prefix.
+Accepted native cells on appended pages resolve to that prefix's exact transport
+trace; the singleton origin has its separate checked lookup law. The initial
+merge and sequence pages have checked accepted-carrier, length, and canonical
+position certificates. The shared extension identifies its final trace with
+the last stored transition into the preceding constructed prefix. Merge and
+sequence specialize this to the canonical cell position followed by the preceding
+prefix's trace of `previousMergeCell` and `previousSequenceCell`, respectively.
+Sequence member transitions, recursive sums, carrier reindexing, and endpoint
+wrappers retain the exact predecessor and chosen-preimage functions. A shared
+head/tail mapping operation handles both directions of the indexed-cell encoding;
+its function replacements have checked pointwise equality with the original maps.
+Lean proves that tail-recursive extension by one more
+page is exactly the corresponding append, yielding the same trace equation.
+Lean models the same tail-recursive
 extension and proves equality with the structural finite-prefix builder,
 including the transition maps and chosen preimages. The component assemblies
 specialize this shared operation. Lean proves equality of the
 native sequence transitions, chosen preimages, and assembled finite folio with
 the sequence model, including agreement of the recursive maximum with the
-specified depth. Negative checks reject malformed prefixes and page-zero
-transitions. The nonempty-member-list adapter has a checked positive-length
+specified depth. Negative checks reject malformed prefixes, page-zero
+transitions, unaccepted native cells, padded pages used as genuine pages,
+intermediate prefixes beyond the final depth, substituted cell traces, and
+incorrect prefix-trace heads, and identity substitutions for sequence transitions.
+The nonempty-member-list adapter has a checked positive-length
 contract and an opaque logical symbol; its constructor decomposition is checked
 without exposing foreign datatype selectors to downstream reflection.
 

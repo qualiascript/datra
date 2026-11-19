@@ -4074,6 +4074,69 @@
       "haskell_declaration": "atlasSequenceCellLookup",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "nativeFolio_cellLookup_prefix"
+    },
+    {
+      "id": "FOLIO-EXTEND-FINAL-TRACE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Folio/Assembly.hs",
+      "haskell_declaration": "extendPagesFinalTrace",
+      "lean_namespace": "Datra.Executable.Folio",
+      "lean_declaration": "extendPrefix_final_trace"
+    },
+    {
+      "id": "MERGE-PREFIX-TRACE-STEP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs",
+      "haskell_declaration": "atlasMergePrefixTrace",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "prefixFolio_trace_succ"
+    },
+    {
+      "id": "SEQUENCE-CELL-PREVIOUS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs",
+      "haskell_declaration": "previousSequenceCell",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "nativePreviousCell"
+    },
+    {
+      "id": "SEQUENCE-CELL-NEXT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs",
+      "haskell_declaration": "nextSequenceCell",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "nativeNextCell"
+    },
+    {
+      "id": "SEQUENCE-TRANSITION-STORED-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs",
+      "haskell_declaration": "sequenceTraceTransition",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "nativeTraceTransition_map_eq"
+    },
+    {
+      "id": "SEQUENCE-TRANSITION-STORED-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs",
+      "haskell_declaration": "sequenceTraceTransition",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "nativeTraceTransition_preimage_eq"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-STORED-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Member.hs",
+      "haskell_declaration": "memberPageTransition",
+      "lean_namespace": "Datra.Executable.AtlasSequence.Member",
+      "lean_declaration": "transition_map"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-STORED-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Member.hs",
+      "haskell_declaration": "memberPageTransition",
+      "lean_namespace": "Datra.Executable.AtlasSequence.Member",
+      "lean_declaration": "transition_preimage"
+    },
+    {
+      "id": "SEQUENCE-PREFIX-TRACE-STEP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Assembly.hs",
+      "haskell_declaration": "atlasSequencePrefixTrace",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "nativePrefixFolio_trace_succ"
     }
   ],
   "modules": [
@@ -5901,7 +5964,8 @@
         "atlasMergePrefixLookup",
         "atlasMergeFolio",
         "atlasMergePageLookup",
-        "atlasMergeCellLookup"
+        "atlasMergeCellLookup",
+        "atlasMergePrefixTrace"
       ],
       "opaque_reflected": [
         "firstMergePage"
@@ -5935,6 +5999,8 @@
       "reflected": [
         "memberPageContains",
         "memberPageOrder",
+        "memberPreviousTrace",
+        "memberPageNext",
         "memberLength"
       ],
       "types": [
@@ -5950,6 +6016,7 @@
         "memberPageChain",
         "memberPageOrigin",
         "memberPagePrevious",
+        "memberPreviousTrace",
         "memberPageNext",
         "memberPageTransition",
         "memberLength",
@@ -5976,6 +6043,9 @@
         "consParts",
         "emptyLookup",
         "sequenceMembersCons",
+        "previousSequenceCell",
+        "nextSequenceCell",
+        "consMap",
         "emptyCellMap"
       ],
       "types": [
@@ -6002,7 +6072,10 @@
         "emptyInjective",
         "atlasSequencePageChain",
         "sequencePositionEquation",
+        "previousSequenceCell",
+        "nextSequenceCell",
         "sequenceTraceTransition",
+        "consMap",
         "consTransition",
         "sumConsTransitions",
         "sequencePageTransition",
@@ -6010,7 +6083,9 @@
         "emptyInverse",
         "emptyMonotone",
         "emptyTransition",
-        "headCell"
+        "headCell",
+        "consForwardEquation",
+        "consBackwardEquation"
       ],
       "opaque_reflected": []
     },
@@ -6041,7 +6116,8 @@
         "appendOrderedPage",
         "extendPages",
         "extendPagesLookup",
-        "extendPagesThroughLookup"
+        "extendPagesThroughLookup",
+        "extendPagesFinalTrace"
       ]
     },
     {
@@ -6079,7 +6155,8 @@
         "atlasSequencePrefixLookup",
         "atlasSequenceFolio",
         "atlasSequencePageLookup",
-        "atlasSequenceCellLookup"
+        "atlasSequenceCellLookup",
+        "atlasSequencePrefixTrace"
       ]
     }
   ],

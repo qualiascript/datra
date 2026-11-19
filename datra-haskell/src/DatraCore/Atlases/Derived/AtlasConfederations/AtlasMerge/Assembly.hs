@@ -6,7 +6,7 @@
 
 -- | Assemble the finite merge folio with certified native page endpoints.
 module AtlasMerge.Assembly
-  ( atlasMergeLength, atlasMergeFolio, atlasMergePrefix, atlasMergePrefixLookup, atlasMergePageLookup, atlasMergeCellLookup
+  ( atlasMergeLength, atlasMergeFolio, atlasMergePrefix, atlasMergePrefixLookup, atlasMergePageLookup, atlasMergeCellLookup, atlasMergePrefixTrace
   , appendRemainingPages, appendRemainingLookup ) where
 
 import Atlas.Internal (Atlas, atlasFolio)
@@ -16,12 +16,12 @@ import AtlasMerge.Page
 import Chain.Internal (Chain, chainPosition)
 import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedApply, orderedPreimage)
 import Chain.Singleton (singletonChain)
-import Folio.Assembly (collapseToOrigin, extendPages, extendPagesLookup, extendPagesThroughLookup)
+import Folio.Assembly (collapseToOrigin, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace)
 import Folio.Internal (Folio)
 import Folio.Presentation (folioData, appendPageData, folioLengthData, lastPageData)
 import DatraOrdinal (Ordinal)
 import Numeric.Natural (Natural)
-import PageElements.Internal (folioPageOrderType, folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup)
+import PageElements.Internal (folioPageOrderType, folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup, prependCopies)
 import PageElements.TraceChain (pageTraceOrigin)
 
 {-@ embed Natural as int @-}
@@ -183,3 +183,19 @@ atlasMergeCellLookup :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural 
 atlasMergeCellLookup left right page cell =
   atlasMergePageLookup left right page (mergePagePosition (folioPageOrderType (atlasFolio left) (page - 1)) cell) `seq`
     finalPageTraceLookup (atlasMergePrefix left right page) cell
+
+-- | Follow the final native merge transition into the preceding constructed prefix.
+-- ALIGN: MERGE-PREFIX-TRACE-STEP.
+{-@ atlasMergePrefixTrace :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> depth:{Natural | depth > 0}
+      -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) depth cell}
+      -> {genuinePageElementTrace (atlasMergePrefix left right (depth + 1)) cell
+           == prependCopies 1 (mergePagePosition (folioPageOrderType (atlasFolio left) depth) cell)
+                (genuinePageElementTrace (atlasMergePrefix left right depth) (previousMergeCell left right depth cell))} @-}
+{-@ ple atlasMergePrefixTrace @-}
+atlasMergePrefixTrace :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> ()
+atlasMergePrefixTrace left right depth cell =
+  mergePositionAt left 0 `seq` mergePositionAt left (depth - 1) `seq` mergePositionAt left depth `seq`
+    mergeTransitionAt left right depth (lastPageData (atlasMergePrefix left right depth)) `seq`
+      extendPagesFinalTrace (mergePageContains (atlasFolio left) (atlasFolio right))
+        (mergePositionAt left) (mergeTransitionAt left right) 1 depth (firstMergePage left right) cell
