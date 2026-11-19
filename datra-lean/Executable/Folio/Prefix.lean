@@ -97,6 +97,32 @@ theorem extendPrefix_lookup {origin : Page} (pages : Nat → Page)
           ((ih (start + 1) next bound).trans
             (initial.data.append_traceLookup_before (pages (start + 1)) (step start) page earlier position))
 
+-- ALIGN: FOLIO-EXTEND-INTERMEDIATE-LOOKUP.
+theorem extendPrefix_through_lookup {origin : Page} (pages : Nat → Page)
+    (step : ∀ n, Consolidation (pages (n + 1)).chain (pages n).chain)
+    (start first remaining : Nat) (initial : Folio origin (pages start))
+    (page : Nat) (earlier : page < initial.data.length + first) (position : Ordinal) :
+    (extendPrefix pages step start (first + remaining) initial).data.traceLookup page position =
+      (extendPrefix pages step start first initial).data.traceLookup page position := by
+  induction first generalizing start with
+  | zero =>
+      exact (congrArg (fun count => (extendPrefix pages step start count initial).data.traceLookup page position)
+        (Nat.zero_add remaining)).trans
+          (extendPrefix_lookup pages step start remaining initial page earlier position)
+  | succ first ih =>
+      let next : Folio origin (pages (start + 1)) :=
+        ⟨initial.data.append (pages (start + 1)) (step start),
+          initial.data.append_valid initial.valid _ _⟩
+      have bound : page < next.data.length + first := by
+        change page < initial.data.length + 1 + first
+        omega
+      rw [show first + 1 + remaining = (first + remaining) + 1 by omega]
+      exact (cast_traceLookup pages (show start + 1 + (first + remaining) = start + ((first + remaining) + 1) by omega)
+        (extendPrefix pages step (start + 1) (first + remaining) next) page position).trans
+          ((ih (start + 1) next bound).trans
+            (cast_traceLookup pages (show start + 1 + first = start + (first + 1) by omega)
+              (extendPrefix pages step (start + 1) first next) page position).symm)
+
 /-- A fresh singleton origin followed by a finite prefix of a page family.
 Binary merge and flattened sequence share this folio constructor. -/
 def buildPrefix (origin : Page) (selected : origin.Carrier) (unique : ∀ x, x = selected)
@@ -140,6 +166,19 @@ theorem extendPrefix_buildPrefix (origin : Page) (selected : origin.Carrier) (un
         cases same
         rfl
       exact castBuild (by omega)
+
+theorem buildPrefix_lookup_prefix (origin : Page) (selected : origin.Carrier) (unique : ∀ x, x = selected)
+    (pages : Nat → Page) (collapse : Consolidation (pages 0).chain origin.chain)
+    (step : ∀ n, Consolidation (pages (n + 1)).chain (pages n).chain)
+    (first final : Nat) (bound : first ≤ final) (page : Nat) (earlier : page < first + 2) (position : Ordinal) :
+    (buildPrefix origin selected unique pages collapse step final).data.traceLookup page position =
+      (buildPrefix origin selected unique pages collapse step first).data.traceLookup page position := by
+  have found := extendPrefix_lookup pages step first (final - first)
+    (buildPrefix origin selected unique pages collapse step first) page
+    (by simpa only [buildPrefix_length] using earlier) position
+  rw [extendPrefix_buildPrefix] at found
+  exact (congrArg (fun n => (buildPrefix origin selected unique pages collapse step n).data.traceLookup page position)
+    (Nat.add_sub_of_le bound)).symm.trans found
 
 variable (origin : Page) (selected : origin.Carrier) (unique : ∀ x, x = selected)
     (pages : Nat → Page) (collapse : Consolidation (pages 0).chain origin.chain)

@@ -132,6 +132,22 @@ proofGuard mapping source target =
 
 MERGE_ASSEMBLY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Assembly.hs"
 MERGE_ASSEMBLY_GUARDS = {
+    "merge genuine cell lookup requires an accepted native cell": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0 && page < atlasMergeLength left right} -> AtlasMergePageCell -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> ()
+proofGuard = atlasMergeCellLookup
+""",
+    "merge genuine lookup rejects a padded page": """
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Ordinal -> ()
+proofGuard left right position = atlasMergePageLookup left right (atlasMergeLength left right) position
+""",
+    "merge intermediate lookup rejects a longer prefix": """
+{-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> depth:{Natural | depth > 0} -> Ordinal -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> Ordinal -> ()
+proofGuard left right depth position = atlasMergePrefixLookup left right (depth + 1) depth 0 position
+""",
+
     "merge extension preserves only existing prefix lookups": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> page:{Natural | page > 0} -> depth:{Natural | page < depth}
@@ -237,6 +253,22 @@ proofGuard = consCell
 
 SEQUENCE_ASSEMBLY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Assembly.hs"
 SEQUENCE_ASSEMBLY_GUARDS = {
+    "sequence genuine cell lookup requires an accepted native cell": """
+{-@ proofGuard :: members:NonEmpty AtlasSequenceMember
+      -> page:{Natural | page > 0 && page < atlasSequenceLength members} -> AtlasSequencePageCell -> () @-}
+proofGuard :: NonEmpty AtlasSequenceMember -> Natural -> AtlasSequencePageCell -> ()
+proofGuard = atlasSequenceCellLookup
+""",
+    "sequence genuine lookup rejects a padded page": """
+proofGuard :: NonEmpty AtlasSequenceMember -> Ordinal -> ()
+proofGuard members position = atlasSequencePageLookup members (atlasSequenceLength members) position
+""",
+    "sequence intermediate lookup rejects a longer prefix": """
+{-@ proofGuard :: NonEmpty AtlasSequenceMember -> depth:{Natural | depth > 0} -> Ordinal -> () @-}
+proofGuard :: NonEmpty AtlasSequenceMember -> Natural -> Ordinal -> ()
+proofGuard members depth position = atlasSequencePrefixLookup members (depth + 1) depth 0 position
+""",
+
     "sequence extension preserves only existing prefix lookups": """
 {-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0} -> depth:{Natural | page < depth}
       -> pages:{Folio () {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
@@ -756,6 +788,14 @@ proofGuard arrow = pageElementArrowPosition arrow
 
 PAGE_INDEX_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Internal.hs"
 PAGE_INDEX_GUARDS = {
+    "final cell lookup cannot substitute another trace": """
+{-@ proofGuard :: pages:Folio origin current -> value:current -> other:current
+      -> {folioTraceLookup pages (folioLength pages - 1) (chainPosition (lastChain pages) value)
+           == Just (genuinePageElementTrace pages other)} @-}
+proofGuard :: Folio origin current -> current -> current -> ()
+proofGuard pages value _ = finalPageTraceLookup pages value
+""",
+
     "appended lookup cannot treat the new page as an earlier page": """
 {-@ proofGuard :: previous:Folio origin earlier -> pageChain:Chain current
       -> transition:{OrderedConsolidation current earlier |

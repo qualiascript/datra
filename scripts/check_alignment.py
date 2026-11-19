@@ -9,7 +9,7 @@ from lean_sources import lean_code, project_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE = ROOT / "datra-haskell/src/DatraCore"
-MANIFEST = ROOT / "datra-haskell/docs/lean-correspondence.json"
+MANIFEST = ROOT / "datra-lean/lean-correspondence.json"
 
 
 def private_liquid_imports(text):

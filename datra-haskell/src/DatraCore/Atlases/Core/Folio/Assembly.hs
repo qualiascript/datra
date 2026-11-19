@@ -6,7 +6,7 @@
 {-@ qualif Accepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | Shared origin and append operations retaining accepted page carriers.
-module Folio.Assembly (collapseToOrigin, appendOrderedPage, extendPages, extendPagesLookup) where
+module Folio.Assembly (collapseToOrigin, appendOrderedPage, extendPages, extendPagesLookup, extendPagesThroughLookup) where
 
 import Chain.Internal (Chain, chainPosition)
 import Chain.Order (chainPrecedes)
@@ -122,3 +122,30 @@ extendPagesLookup contains position next page depth pages index ordinal
           extended = appendOrderedPage (contains (page - 1)) (contains page) pages transition
       in extendPagesLookup contains position next (page + 1) depth extended index ordinal `seq`
         appendedEarlierLookup pages (orderedSource transition) transition index ordinal
+
+-- | Resolve an intermediate page through the prefix ending at that page.
+-- ALIGN: FOLIO-EXTEND-INTERMEDIATE-LOOKUP.
+{-@ extendPagesThroughLookup :: contains:(Natural -> a -> Bool)
+      -> position:(index:Natural -> {cell:a | contains index cell} -> Ordinal)
+      -> next:(index:{Natural | index > 0}
+           -> target:{Chain {cell:a | contains (index - 1) cell} |
+                chainPosition target == position (index - 1)}
+           -> {mapping:OrderedConsolidation {cell:a | contains index cell} {cell:a | contains (index - 1) cell} |
+                chainPosition (orderedSource mapping) == position index && orderedTarget mapping == target})
+      -> page:{Natural | page > 0} -> middle:{Natural | page <= middle} -> depth:{Natural | middle <= depth}
+      -> pages:{FolioData origin {cell:a | contains (page - 1) cell} |
+           chainPosition (lastPageData pages) == position (page - 1)}
+      -> index:{Natural | index < folioLengthData pages + middle - page} -> ordinal:Ordinal
+      -> {folioTraceLookup (extendPages contains position next page depth pages) index ordinal
+           == folioTraceLookup (extendPages contains position next page middle pages) index ordinal}
+      / [middle - page] @-}
+{-@ ple extendPagesThroughLookup @-}
+extendPagesThroughLookup :: (Natural -> a -> Bool) -> (Natural -> a -> Ordinal)
+  -> (Natural -> Chain a -> OrderedConsolidation a a)
+  -> Natural -> Natural -> Natural -> FolioData origin a -> Natural -> Ordinal -> ()
+extendPagesThroughLookup contains position next page middle depth pages index ordinal
+  | page == middle = extendPagesLookup contains position next page depth pages index ordinal
+  | otherwise =
+      let transition = next page (lastPageData pages)
+          extended = appendOrderedPage (contains (page - 1)) (contains page) pages transition
+      in extendPagesThroughLookup contains position next (page + 1) middle depth extended index ordinal

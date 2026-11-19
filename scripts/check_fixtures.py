@@ -53,7 +53,7 @@ def run_trace_positions():
 def run():
     vectors = json.loads((ROOT / "datra-haskell/test/fixtures/alignment/ordinals.json").read_text())
     lean_lines = ["import datra", "open Datra.Executable.Ordinal"]
-    manifest = json.loads((ROOT / "datra-haskell/docs/lean-correspondence.json").read_text())
+    manifest = json.loads((ROOT / "datra-lean/lean-correspondence.json").read_text())
     lean_lines.extend(f"#check {entry['lean_namespace']}.{entry['lean_declaration']}"
                       for entry in manifest["theorems"])
     haskell_lines = ["module Main where", "import DatraOrdinal", "import qualified PageElements.Structure as PE",

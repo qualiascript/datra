@@ -373,6 +373,12 @@ theorem traceLookup_final (pages : FolioData origin final) (valid : pages.Valid)
       rw [traceLookup, if_pos lower]
       simp only [depth, Nat.add_sub_cancel, previous.length_eq_depth valid.1]
 
+-- ALIGN: FOLIO-FINAL-CELL-LOOKUP.
+theorem traceLookup_last_value (pages : FolioData origin final) (valid : pages.Valid) (value : final.Carrier) :
+    pages.traceLookup (pages.length - 1) (final.chain.position value) = some (pages.genuineTrace value) := by
+  rw [pages.length_eq_depth valid, pages.traceLookup_final valid _ _ le_rfl]
+  simp [prefixTraceLookup, Chain.chainIndex_position, Chain.chainIndexOf, paddedTrace]
+
 -- ALIGN: PE-NATIVE-ORIGIN-LOOKUP.
 theorem traceLookup_origin (pages : FolioData origin final) (valid : pages.Valid) :
     pages.traceLookup 0 (origin.chain.position pages.originValue) =

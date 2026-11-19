@@ -44,12 +44,25 @@ theorem nativeConsolidation_eq {count : Nat} (members : Fin count → Atlas) (pa
   · funext cell; exact nativePageTransition_map members page cell
   · funext cell; exact nativePageTransition_preimage members page cell
 
+-- ALIGN: SEQUENCE-CONSTRUCTED-PREFIX.
 def nativePrefixFolio {count : Nat} (positive : 0 < count) (members : Fin count → Atlas) (page : Nat) :
     Folio DomanialInclusion.singletonPage (sequencePage members page) :=
   Folio.buildPrefix DomanialInclusion.singletonPage () (fun value => by cases value; rfl)
     (sequencePage members)
     (Folio.collapseToOrigin (pageChain members 0) Chain.singletonChain (firstPageCell positive members)).map
     (nativeConsolidation members) page
+
+theorem nativePrefixFolio_length {count : Nat} (positive : 0 < count) (members : Fin count → Atlas) (page : Nat) :
+    (nativePrefixFolio positive members page).data.length = page + 2 :=
+  Folio.buildPrefix_length _ _ _ _ _ _ _
+
+-- ALIGN: SEQUENCE-CONSTRUCTED-PREFIX-LOOKUP.
+theorem nativePrefixFolio_lookup_prefix {count : Nat} (inhabited : 0 < count) (members : Fin count → Atlas)
+    (middle depth : Nat) (positive : 0 < middle) (bound : middle ≤ depth)
+    (page : Nat) (earlier : page ≤ middle) (position : Ordinal) :
+    (nativePrefixFolio inhabited members (depth - 1)).data.traceLookup page position =
+      (nativePrefixFolio inhabited members (middle - 1)).data.traceLookup page position :=
+  Folio.buildPrefix_lookup_prefix _ _ _ _ _ _ _ _ (by omega) _ (by omega) _
 
 theorem nativePrefixFolio_eq {count : Nat} (positive : 0 < count) (members : Fin count → Atlas) (page : Nat) :
     nativePrefixFolio positive members page = prefixFolio positive members page := by
@@ -82,6 +95,28 @@ theorem nativeExtendPrefix_eq {count : Nat} (positive : 0 < count) (members : Fi
 def nativeFolio {count : Nat} (positive : 0 < count) (members : Fin count → Atlas) :
     Folio DomanialInclusion.singletonPage (sequencePage members (sequenceDepth members - 1)) :=
   nativePrefixFolio positive members (sequenceDepth members - 1)
+
+-- ALIGN: SEQUENCE-GENUINE-PAGE-LOOKUP.
+theorem nativeFolio_pageLookup_prefix {count : Nat} (inhabited : 0 < count) (members : Fin count → Atlas)
+    (page : Nat) (positive : 0 < page) (bound : page ≤ sequenceDepth members) (position : Ordinal) :
+    (nativeFolio inhabited members).data.traceLookup page position =
+      (nativePrefixFolio inhabited members (page - 1)).data.traceLookup page position :=
+  nativePrefixFolio_lookup_prefix inhabited members page (sequenceDepth members) positive bound page le_rfl position
+
+-- ALIGN: SEQUENCE-GENUINE-CELL-LOOKUP.
+theorem nativeFolio_cellLookup_prefix {count : Nat} (inhabited : 0 < count) (members : Fin count → Atlas)
+    (page : Nat) (positive : 0 < page) (bound : page ≤ sequenceDepth members)
+    (cell : ValidPageCell members (page - 1)) :
+    (nativeFolio inhabited members).data.traceLookup page (pagePosition members (page - 1) cell.val) =
+      some ((nativePrefixFolio inhabited members (page - 1)).data.genuineTrace cell) := by
+  rw [nativeFolio_pageLookup_prefix inhabited members page positive bound]
+  have found := (nativePrefixFolio inhabited members (page - 1)).data.traceLookup_last_value
+    (nativePrefixFolio inhabited members (page - 1)).valid cell
+  have last : (nativePrefixFolio inhabited members (page - 1)).data.length - 1 = page := by
+    rw [nativePrefixFolio_length]
+    omega
+  rw [last] at found
+  simpa only [sequencePage, pageChain_position] using found
 
 -- ALIGN: SEQUENCE-NATIVE-FOLIO-INTERPRETATION.
 theorem nativeFolio_eq {count : Nat} (positive : 0 < count) (members : Fin count → Atlas) :

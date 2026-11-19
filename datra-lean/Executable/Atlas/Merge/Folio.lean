@@ -189,6 +189,7 @@ def collapseToOrigin (X Y : Atlas) :
 def mergePage (X Y : Atlas) (n : Nat) : Page := ⟨ValidPageCell X Y n, pageChain X Y n⟩
 
 /-- Structural finite prefix with the fresh singleton origin. -/
+-- ALIGN: MERGE-CONSTRUCTED-PREFIX.
 def prefixFolio (X Y : Atlas) (n : Nat) : Folio DomanialInclusion.singletonPage (mergePage X Y n) :=
   Folio.buildPrefix DomanialInclusion.singletonPage () (fun value => by cases value; rfl)
     (mergePage X Y) (collapseToOrigin X Y) (pageTransition X Y) n
@@ -215,12 +216,40 @@ theorem extendFolio_prefix (X Y : Atlas) (start count : Nat) :
 theorem prefixFolio_length (X Y : Atlas) (n : Nat) : (prefixFolio X Y n).data.length = n + 2 := by
   exact Folio.buildPrefix_length _ _ _ _ _ _ n
 
+-- ALIGN: MERGE-CONSTRUCTED-PREFIX-LOOKUP.
+theorem prefixFolio_lookup_prefix (X Y : Atlas) (middle depth : Nat)
+    (positive : 0 < middle) (bound : middle ≤ depth) (page : Nat) (earlier : page ≤ middle) (position : Ordinal) :
+    (prefixFolio X Y (depth - 1)).data.traceLookup page position =
+      (prefixFolio X Y (middle - 1)).data.traceLookup page position :=
+  Folio.buildPrefix_lookup_prefix _ _ _ _ _ _ _ _ (by omega) _ (by omega) _
+
 def mergeDepth (X Y : Atlas) : Nat := max X.pages.length Y.pages.length
 
 -- ALIGN: MERGE-FOLIO.
 def folio (X Y : Atlas) :
     Folio DomanialInclusion.singletonPage (mergePage X Y (mergeDepth X Y - 1)) :=
   prefixFolio X Y (mergeDepth X Y - 1)
+
+-- ALIGN: MERGE-GENUINE-PAGE-LOOKUP.
+theorem folio_pageLookup_prefix (X Y : Atlas) (page : Nat)
+    (positive : 0 < page) (bound : page ≤ mergeDepth X Y) (position : Ordinal) :
+    (folio X Y).data.traceLookup page position =
+      (prefixFolio X Y (page - 1)).data.traceLookup page position :=
+  prefixFolio_lookup_prefix X Y page (mergeDepth X Y) positive bound page le_rfl position
+
+-- ALIGN: MERGE-GENUINE-CELL-LOOKUP.
+theorem folio_cellLookup_prefix (X Y : Atlas) (page : Nat)
+    (positive : 0 < page) (bound : page ≤ mergeDepth X Y) (cell : ValidPageCell X Y (page - 1)) :
+    (folio X Y).data.traceLookup page (pagePosition X Y (page - 1) cell.val) =
+      some ((prefixFolio X Y (page - 1)).data.genuineTrace cell) := by
+  rw [folio_pageLookup_prefix X Y page positive bound]
+  have found := (prefixFolio X Y (page - 1)).data.traceLookup_last_value
+    (prefixFolio X Y (page - 1)).valid cell
+  have last : (prefixFolio X Y (page - 1)).data.length - 1 = page := by
+    rw [prefixFolio_length]
+    omega
+  rw [last] at found
+  exact found
 
 -- ALIGN: MERGE-FOLIO-LENGTH.
 theorem folio_length (X Y : Atlas) : (folio X Y).data.length = max X.pages.length Y.pages.length + 1 := by

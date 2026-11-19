@@ -6,7 +6,8 @@
 
 -- | Assemble the sequence folio from checked native page transitions.
 module AtlasSequence.Assembly
-  ( atlasSequenceLength, atlasSequenceFolio, appendRemainingPages, appendRemainingLookup ) where
+  ( atlasSequenceLength, atlasSequenceFolio, atlasSequencePrefix, atlasSequencePrefixLookup, atlasSequencePageLookup, atlasSequenceCellLookup
+  , appendRemainingPages, appendRemainingLookup ) where
 
 import AtlasSequence.Member (AtlasSequenceMember, memberLength, memberList, memberPageOrigin, memberPageContains)
 import AtlasSequence.Page
@@ -15,11 +16,11 @@ import Chain.Internal (chainPosition)
 import Chain.Singleton (singletonChain)
 import Data.List.NonEmpty (NonEmpty (..))
 import Folio.Internal (Folio)
-import Folio.Assembly (collapseToOrigin, extendPages, extendPagesLookup)
+import Folio.Assembly (collapseToOrigin, extendPages, extendPagesLookup, extendPagesThroughLookup)
 import Folio.Presentation (folioData, appendPageData, folioLengthData, lastPageData)
 import Numeric.Natural (Natural)
 import DatraOrdinal (Ordinal)
-import PageElements.Internal (folioTraceLookup)
+import PageElements.Internal (folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup)
 
 {-@ opaque-reflect memberList @-}
 
@@ -89,6 +90,44 @@ appendRemainingLookup members page depth pages index position =
   extendPagesLookup (sequencePageContains members) (sequencePagePosition members)
     (sequencePageTransition members) page depth pages index position
 
+-- | The first member supplies the checked origin choice for every prefix.
+{-@ opaque-reflect firstSequencePage @-}
+{-@ firstSequencePage :: members:NonEmpty AtlasSequenceMember
+      -> {result:Folio () {cell:AtlasSequencePageCell | sequencePageContains (memberList members) 0 cell} |
+           folioLengthData result == 2
+           && chainPosition (lastPageData result) == sequencePagePosition (memberList members) 0} @-}
+firstSequencePage :: NonEmpty AtlasSequenceMember -> Folio () AtlasSequencePageCell
+firstSequencePage members =
+  let entries = memberList members
+      origin = folioData singletonChain () (\() -> ())
+      firstChain = atlasSequencePageChain entries 0
+      firstTransition = collapseToOrigin (sequencePageContains entries 0)
+        firstChain (lastPageData origin) (firstSequenceCell members)
+      firstPage = appendPageData origin firstChain firstTransition
+  in firstPage
+
+-- ALIGN: SEQUENCE-CONSTRUCTED-PREFIX.
+{-@ reflect atlasSequencePrefix @-}
+{-@ atlasSequencePrefix :: members:NonEmpty AtlasSequenceMember -> depth:{Natural | depth > 0}
+      -> {result:Folio () {cell:AtlasSequencePageCell | sequencePageContains (memberList members) (depth - 1) cell} |
+           folioLengthData result == depth + 1
+           && chainPosition (lastPageData result) == sequencePagePosition (memberList members) (depth - 1)} @-}
+atlasSequencePrefix :: NonEmpty AtlasSequenceMember -> Natural -> Folio () AtlasSequencePageCell
+atlasSequencePrefix members depth = appendRemainingPages (memberList members) 1 depth (firstSequencePage members)
+
+-- ALIGN: SEQUENCE-CONSTRUCTED-PREFIX-LOOKUP.
+{-@ atlasSequencePrefixLookup :: members:NonEmpty AtlasSequenceMember
+      -> middle:{Natural | middle > 0} -> depth:{Natural | middle <= depth}
+      -> index:{Natural | index <= middle} -> position:Ordinal
+      -> {folioTraceLookup (atlasSequencePrefix members depth) index position
+           == folioTraceLookup (atlasSequencePrefix members middle) index position} @-}
+{-@ ple atlasSequencePrefixLookup @-}
+atlasSequencePrefixLookup :: NonEmpty AtlasSequenceMember -> Natural -> Natural -> Natural -> Ordinal -> ()
+atlasSequencePrefixLookup members middle depth index position =
+  let entries = memberList members
+  in extendPagesThroughLookup (sequencePageContains entries) (sequencePagePosition entries)
+    (sequencePageTransition entries) 1 middle depth (firstSequencePage members) index position
+
 -- ALIGN: SEQUENCE-COLLAPSE-ORIGIN.
 -- ALIGN: SEQUENCE-FOLIO.
 -- ALIGN: SEQUENCE-NATIVE-FOLIO.
@@ -96,17 +135,33 @@ appendRemainingLookup members page depth pages index position =
 -- ALIGN: SEQUENCE-PADDED-PAGE-RESOLUTION.
 -- ALIGN: SEQUENCE-FINITE-INDEX-INTERPRETATION.
 -- ALIGN: SEQUENCE-FINITE-INTERVAL-INTERPRETATION.
+{-@ reflect atlasSequenceFolio @-}
 {-@ atlasSequenceFolio :: members:NonEmpty AtlasSequenceMember
       -> {result:Folio () {cell:AtlasSequencePageCell |
            sequencePageContains (memberList members) (atlasSequenceLength members - 2) cell} |
              folioLengthData result == atlasSequenceLength members} @-}
 atlasSequenceFolio :: NonEmpty AtlasSequenceMember -> Folio () AtlasSequencePageCell
-atlasSequenceFolio members =
-  let entries = memberList members
-      depth = atlasSequenceLength members - 1
-      origin = folioData singletonChain () (\() -> ())
-      firstChain = atlasSequencePageChain entries 0
-      firstTransition = collapseToOrigin (sequencePageContains entries 0)
-        firstChain (lastPageData origin) (firstSequenceCell members)
-      firstPage = appendPageData origin firstChain firstTransition
-  in appendRemainingPages entries 1 depth firstPage
+atlasSequenceFolio members = atlasSequencePrefix members (atlasSequenceLength members - 1)
+
+-- ALIGN: SEQUENCE-GENUINE-PAGE-LOOKUP.
+{-@ atlasSequencePageLookup :: members:NonEmpty AtlasSequenceMember
+      -> page:{Natural | page > 0 && page < atlasSequenceLength members} -> position:Ordinal
+      -> {folioTraceLookup (atlasSequenceFolio members) page position
+           == folioTraceLookup (atlasSequencePrefix members page) page position} @-}
+{-@ ple atlasSequencePageLookup @-}
+atlasSequencePageLookup :: NonEmpty AtlasSequenceMember -> Natural -> Ordinal -> ()
+atlasSequencePageLookup members page position =
+  atlasSequencePrefixLookup members page (atlasSequenceLength members - 1) page position
+
+-- ALIGN: SEQUENCE-GENUINE-CELL-LOOKUP.
+{-@ atlasSequenceCellLookup :: members:NonEmpty AtlasSequenceMember
+      -> page:{Natural | page > 0 && page < atlasSequenceLength members}
+      -> cell:{AtlasSequencePageCell | sequencePageContains (memberList members) (page - 1) cell}
+      -> {folioTraceLookup (atlasSequenceFolio members) page
+             (sequencePagePosition (memberList members) (page - 1) cell)
+           == Just (genuinePageElementTrace (atlasSequencePrefix members page) cell)} @-}
+{-@ ple atlasSequenceCellLookup @-}
+atlasSequenceCellLookup :: NonEmpty AtlasSequenceMember -> Natural -> AtlasSequencePageCell -> ()
+atlasSequenceCellLookup members page cell =
+  atlasSequencePageLookup members page (sequencePagePosition (memberList members) (page - 1) cell) `seq`
+    finalPageTraceLookup (atlasSequencePrefix members page) cell
