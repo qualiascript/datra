@@ -4307,11 +4307,11 @@
       "lean_declaration": "rawTraceValid"
     },
     {
-      "id": "MERGE-GENUINE-ARROW-NATIVE-TRANSPORT",
+      "id": "MERGE-ARROW-NATIVE-TRANSPORT",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Transport.hs",
-      "haskell_declaration": "mergeGenuineArrowNativeTransport",
+      "haskell_declaration": "mergeArrowNativeTransport",
       "lean_namespace": "Datra.Executable.AtlasMerge",
-      "lean_declaration": "genuineArrow_nativeTransport"
+      "lean_declaration": "arrow_nativeTransport"
     },
     {
       "id": "ATLAS-CELL-NATIVE-TRACE",
@@ -4321,11 +4321,46 @@
       "lean_declaration": "Atlas.cellNativeTrace"
     },
     {
-      "id": "MERGE-RESOLVED-FINITE-TRANSPORT",
+      "id": "MERGE-RESOLVED-TRANSPORT",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Transport.hs",
-      "haskell_declaration": "mergeResolvedFiniteTransport",
+      "haskell_declaration": "mergeResolvedTransport",
       "lean_namespace": "Datra.Executable.AtlasMerge",
-      "lean_declaration": "resolvedFiniteTransport"
+      "lean_declaration": "resolvedTransport"
+    },
+    {
+      "id": "PE-PADDED-LOOKUP-STEP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "folioLookupPaddedStep",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceLookup_padded_step"
+    },
+    {
+      "id": "PE-PADDED-PAGE-ORDER-TYPE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "folioPageOrderTypePadded",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "pageOrderType_padded"
+    },
+    {
+      "id": "PE-PADDED-PREVIOUS-HEAD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/TraceChain.hs",
+      "haskell_declaration": "paddedPreviousHead",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "paddedPreviousHead"
+    },
+    {
+      "id": "MERGE-PADDED-PREVIOUS-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Transport.hs",
+      "haskell_declaration": "mergePaddedPreviousPosition",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "paddedPreviousPosition"
+    },
+    {
+      "id": "MERGE-FULL-CELL-LOOKUP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Transport.hs",
+      "haskell_declaration": "mergeFullCellLookup",
+      "lean_namespace": "Datra.Executable.AtlasMerge",
+      "lean_declaration": "folio_cellLookup_all"
     }
   ],
   "modules": [
@@ -5959,6 +5994,9 @@
         "genuineTraceNative",
         "prefixLookupPrevious",
         "folioLookupPreviousPadded",
+        "folioLookupPaddedStep",
+        "rebuildPreviousTrace",
+        "folioPageOrderTypePadded",
         "paddedLookupPreviousValid",
         "folioLookupPreviousValid",
         "pageTracePrevious",
@@ -6446,9 +6484,12 @@
         "mergePreviousTransport",
         "mergePrefixSamePage",
         "mergePrefixNativeTransport",
-        "mergeGenuineOccurrenceTrace",
-        "mergeGenuineArrowNativeTransport",
-        "mergeResolvedFiniteTransport"
+        "mergePaddingBounds",
+        "mergePaddedPreviousPosition",
+        "mergeFullCellLookup",
+        "mergeOccurrenceTrace",
+        "mergeArrowNativeTransport",
+        "mergeResolvedTransport"
       ]
     }
   ],

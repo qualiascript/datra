@@ -62,35 +62,79 @@ theorem prefix_nativeTransport (X Y : Atlas) (sourcePage targetPage : Nat)
         exact nativeTransport_trans _ _ _ (previous_nativeTransport source.val)
           (ih targetPage earlier (previousValidCell X Y page source) target dropped)
 
+-- ALIGN: MERGE-PADDED-PREVIOUS-POSITION.
+theorem paddedPreviousPosition (X Y : Atlas) (page : Nat)
+    (padded : mergeDepth X Y ≤ page + 1) (cell : ValidPageCell X Y (page + 1)) :
+    pagePosition X Y (page + 1) cell.val =
+      pagePosition X Y page (previousValidCell X Y page cell).val := by
+  have leftPadded : X.pages.length ≤ page + 1 := (Nat.le_max_left _ _).trans padded
+  have rightPadded : Y.pages.length ≤ page + 1 := (Nat.le_max_right _ _).trans padded
+  rcases cell with ⟨cell, accepted⟩
+  cases cell with
+  | left positions =>
+      have head := FolioData.paddedPreviousHead X.pages X.pagination.folio.valid (page + 1) leftPadded
+        ⟨positions, leftTrace_accepted X Y (page + 1) positions accepted⟩
+      exact head.symm
+  | right positions =>
+      have head := FolioData.paddedPreviousHead Y.pages Y.pagination.folio.valid (page + 1) rightPadded
+        ⟨positions, rightTrace_accepted X Y (page + 1) positions accepted⟩
+      have order := FolioData.pageOrderType_padded X.pages X.pagination.folio.valid (page + 1) leftPadded
+      change Ordinal.addOrdinals (X.pages.pageAt (page + 1)).chain.orderType (FolioData.traceHead positions) =
+        Ordinal.addOrdinals (X.pages.pageAt page).chain.orderType (FolioData.traceHead (FolioData.previousTrace positions))
+      rw [show (page + 1) - 1 = page by omega] at order
+      rw [order, head]
+
+-- ALIGN: MERGE-FULL-CELL-LOOKUP.
+theorem folio_cellLookup_all (X Y : Atlas) (page : Nat) (cell : ValidPageCell X Y page) :
+    (folio X Y).data.traceLookup (page + 1) (pagePosition X Y page cell.val) =
+      some ((prefixFolio X Y page).data.genuineTrace cell) := by
+  have positive : 0 < mergeDepth X Y :=
+    (X.pages.length_positive X.pagination.folio.valid).trans_le (Nat.le_max_left _ _)
+  induction page with
+  | zero => exact folio_cellLookup_prefix X Y 1 (by omega) positive cell
+  | succ page ih =>
+      by_cases genuine : page + 2 ≤ mergeDepth X Y
+      · exact folio_cellLookup_prefix X Y (page + 2) (by omega) genuine cell
+      · have padded : mergeDepth X Y ≤ page + 1 := by omega
+        have position := paddedPreviousPosition X Y page padded cell
+        have found := ih (previousValidCell X Y page cell)
+        have bound : (folio X Y).data.length ≤ page + 2 := by
+          rw [folio_length]
+          change mergeDepth X Y + 1 ≤ page + 2
+          omega
+        rw [prefixFolio_trace_succ]
+        apply FolioData.traceLookup_padded_step (folio X Y).data (folio X Y).valid (page + 2) bound
+        simpa only [Nat.add_sub_cancel, position] using found
+
 -- ALIGN: MERGE-RAW-TRACE-VALIDITY.
 def rawTraceValid {Scope : Type} {owner : Scope} (X Y : Atlas) (occurrence : PageElement owner) : Prop :=
   (folio X Y).data.traceLookup occurrence.page occurrence.position = some occurrence.trace
 
-theorem genuineOccurrence_trace {Scope : Type} {owner : Scope} (X Y : Atlas)
+theorem occurrence_trace {Scope : Type} {owner : Scope} (X Y : Atlas)
     (occurrence : PageElement owner) (valid : rawTraceValid X Y occurrence)
-    (positive : 0 < occurrence.page) (bound : occurrence.page ≤ mergeDepth X Y)
+    (positive : 0 < occurrence.page)
     (cell : ValidPageCell X Y (occurrence.page - 1))
     (position : pagePosition X Y (occurrence.page - 1) cell.val = occurrence.position) :
     occurrence.trace = (prefixFolio X Y (occurrence.page - 1)).data.genuineTrace cell := by
-  have lookup := folio_cellLookup_prefix X Y occurrence.page positive bound cell
-  rw [position, valid] at lookup
+  have lookup := folio_cellLookup_all X Y (occurrence.page - 1) cell
+  rw [Nat.sub_add_cancel positive, position, valid] at lookup
   exact Option.some.inj lookup
 
--- ALIGN: MERGE-GENUINE-ARROW-NATIVE-TRANSPORT.
-theorem genuineArrow_nativeTransport {Scope : Type} {owner : Scope} (X Y : Atlas)
+-- ALIGN: MERGE-ARROW-NATIVE-TRANSPORT.
+theorem arrow_nativeTransport {Scope : Type} {owner : Scope} (X Y : Atlas)
     {source target : PageElement owner} (arrow : PageElement.Arrow source target)
     (sourceValid : rawTraceValid X Y source) (targetValid : rawTraceValid X Y target)
-    (positive : 0 < target.page) (bound : source.page ≤ mergeDepth X Y)
+    (positive : 0 < target.page)
     (sourceCell : ValidPageCell X Y (source.page - 1))
     (targetCell : ValidPageCell X Y (target.page - 1))
     (sourcePosition : pagePosition X Y (source.page - 1) sourceCell.val = source.position)
     (targetPosition : pagePosition X Y (target.page - 1) targetCell.val = target.position) :
     nativeTransport sourceCell.val targetCell.val = true := by
   have precedes := arrow.precedes
-  have sourceTrace := genuineOccurrence_trace X Y source sourceValid (positive.trans_le precedes)
-    bound sourceCell sourcePosition
-  have targetTrace := genuineOccurrence_trace X Y target targetValid positive
-    (precedes.trans bound) targetCell targetPosition
+  have sourceTrace := occurrence_trace X Y source sourceValid (positive.trans_le precedes)
+    sourceCell sourcePosition
+  have targetTrace := occurrence_trace X Y target targetValid positive
+    targetCell targetPosition
   apply prefix_nativeTransport X Y (source.page - 1) (target.page - 1)
     (Nat.sub_le_sub_right precedes 1) sourceCell targetCell
   rw [← sourceTrace, ← targetTrace]
@@ -114,11 +158,11 @@ theorem rightSource_native (X Y : Atlas) (source : Y.Element) :
   rcases source with ⟨_, occurrence, rfl⟩
   exact ⟨.inr occurrence.value, rfl⟩
 
--- ALIGN: MERGE-RESOLVED-FINITE-TRANSPORT.
-theorem resolvedFiniteTransport {Scope : Type} {owner : Scope} (X Y : Atlas)
+-- ALIGN: MERGE-RESOLVED-TRANSPORT.
+theorem resolvedTransport {Scope : Type} {owner : Scope} (X Y : Atlas)
     {source target : PageElement owner} (arrow : PageElement.Arrow source target)
     (sourceValid : rawTraceValid X Y source) (targetValid : rawTraceValid X Y target)
-    (bound : source.page ≤ mergeDepth X Y) (selectedSource selectedTarget : SourceCell X Y)
+    (selectedSource selectedTarget : SourceCell X Y)
     (sourceAt : resolvedAt X Y source selectedSource) (targetAt : resolvedAt X Y target selectedTarget) :
     sourceTransport selectedSource selectedTarget := by
   have order : target.page ≤ source.page := arrow.precedes
@@ -137,7 +181,7 @@ theorem resolvedFiniteTransport {Scope : Type} {owner : Scope} (X Y : Atlas)
       first
       | exact ⟨.left t.val.trace, targetPage ▸ leftSource_native X Y t⟩
       | exact ⟨.right t.val.trace, targetPage ▸ rightSource_native X Y t⟩
-    have transported := genuineArrow_nativeTransport X Y arrow sourceValid targetValid positive bound
+    have transported := arrow_nativeTransport X Y arrow sourceValid targetValid positive
       sourceCell targetCell
       (by simpa only [sourceCell, ← sourcePage] using sourceAt.2)
       (by simpa only [targetCell, ← targetPage] using targetAt.2)

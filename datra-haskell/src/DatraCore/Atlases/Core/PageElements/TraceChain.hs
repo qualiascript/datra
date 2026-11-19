@@ -16,6 +16,9 @@ module PageElements.TraceChain
   , previousTrace
   , previousTraceSuffix
   , genuineTraceHead
+  , folioLookupPaddedStep
+  , folioPageOrderTypePadded
+  , paddedPreviousHead
   , pageTracePrevious
   , tracePrecedes
   , pageTracePreviousMonotone
@@ -211,6 +214,36 @@ folioLookupPreviousPadded (OriginFolio count pageChain witness) page position =
 folioLookupPreviousPadded pages@(SnocPage (FolioStep _ previous _)) page position =
   prefixLookupPrevious pages (page - folioLength previous) position
 
+-- | Padding adds the requested position to the preceding complete trace.
+-- ALIGN: PE-PADDED-LOOKUP-STEP.
+{-@ folioLookupPaddedStep :: pages:Folio origin final
+      -> page:{Natural | page >= folioLength pages} -> position:Ordinal
+      -> previous:{[Ordinal] | folioTraceLookup pages (page - 1) position == Just previous}
+      -> {folioTraceLookup pages page position == Just (prependCopies 1 position previous)} @-}
+folioLookupPaddedStep :: Folio origin final -> Natural -> Ordinal -> [Ordinal] -> ()
+folioLookupPaddedStep pages page position _ =
+  folioTraceLengthPositive pages `seq` folioLookupPreviousPadded pages page position `seq`
+    folioTraceLookupHead pages page position `seq`
+    case folioTraceLookup pages page position of
+      Nothing -> ()
+      Just positions -> rebuildPreviousTrace position positions
+
+{-@ rebuildPreviousTrace :: position:Ordinal
+      -> positions:{[Ordinal] | len positions > 1 && traceStartsWith position positions}
+      -> {positions == prependCopies 1 position (previousTrace positions)} @-}
+rebuildPreviousTrace :: Ordinal -> [Ordinal] -> ()
+rebuildPreviousTrace _ [] = ()
+rebuildPreviousTrace _ (_ : []) = ()
+rebuildPreviousTrace _ (_ : _ : _) = ()
+
+-- ALIGN: PE-PADDED-PAGE-ORDER-TYPE.
+{-@ folioPageOrderTypePadded :: pages:Folio origin final
+      -> page:{Natural | page >= folioLength pages}
+      -> {folioPageOrderType pages page == folioPageOrderType pages (page - 1)} @-}
+folioPageOrderTypePadded :: Folio origin final -> Natural -> ()
+folioPageOrderTypePadded (OriginFolio {}) _ = ()
+folioPageOrderTypePadded (SnocPage (FolioStep _ _ _)) _ = ()
+
 {-@ reflect previousLookupValid @-}
 previousLookupValid :: Folio origin final -> Natural -> Maybe [Ordinal] -> Bool
 previousLookupValid _ _ Nothing = True
@@ -278,6 +311,7 @@ finalPrefixLookup :: Folio origin final -> Ordinal -> ()
 finalPrefixLookup (OriginFolio {}) _ = ()
 finalPrefixLookup (SnocPage (FolioStep _ _ _)) _ = ()
 
+-- ALIGN: PE-PADDED-PREVIOUS-HEAD.
 {-@ paddedPreviousHead :: pages:Folio origin final
       -> page:{Natural | page >= folioLength pages}
       -> positions:{[Ordinal] | pageTraceContains pages page positions}

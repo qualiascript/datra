@@ -132,19 +132,32 @@ proofGuard mapping source target =
 
 MERGE_TRANSPORT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Transport.hs"
 MERGE_TRANSPORT_GUARDS = {
+    "merge full lookup requires an accepted native cell": """
+{-@ proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0} -> AtlasMergePageCell -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> ()
+proofGuard = mergeFullCellLookup
+""",
+    "merge padded positions require both component bounds": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page >= folioLength (atlasFolio left)}
+      -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) page cell}
+      -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> ()
+proofGuard = mergePaddedPreviousPosition
+""",
     "merge resolved transport requires target resolver coordinates": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> arrow:{PageElementArrow ms s t |
            mergeOccurrenceTraceValid left right (arrowSource arrow)
-           && mergeOccurrenceTraceValid left right (arrowTarget arrow)
-           && pageElementPage (arrowSource arrow) < atlasMergeLength left right}
+           && mergeOccurrenceTraceValid left right (arrowTarget arrow)}
       -> source:{AtlasMergeSource ls rs | mergeSourceValid left right source
            && mergeResolvedAt left (arrowSource arrow) source}
       -> target:{AtlasMergeSource ls rs | mergeSourceValid left right target}
       -> () @-}
 proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElementArrow ms s t
   -> AtlasMergeSource ls rs -> AtlasMergeSource ls rs -> ()
-proofGuard = mergeResolvedFiniteTransport
+proofGuard = mergeResolvedTransport
 """,
     "merge prefix transport requires the suffix arrow": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
@@ -159,8 +172,7 @@ proofGuard = mergePrefixNativeTransport
     "merge raw transport requires the target owning trace": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> arrow:{PageElementArrow ms s t | mergeOccurrenceTraceValid left right (arrowSource arrow)
-           && pageElementPage (arrowTarget arrow) > 0
-           && pageElementPage (arrowSource arrow) < atlasMergeLength left right}
+           && pageElementPage (arrowTarget arrow) > 0}
       -> source:{AtlasMergePageCell |
            mergePageContains (atlasFolio left) (atlasFolio right) (pageElementPage (arrowSource arrow) - 1) source
            && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage (arrowSource arrow) - 1)) source
@@ -172,15 +184,14 @@ proofGuard = mergePrefixNativeTransport
       -> () @-}
 proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElementArrow ms s t
   -> AtlasMergePageCell -> AtlasMergePageCell -> ()
-proofGuard = mergeGenuineArrowNativeTransport
+proofGuard = mergeArrowNativeTransport
 """,
     "merge raw transport requires the target encoded position": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> arrow:{PageElementArrow ms s t |
            mergeOccurrenceTraceValid left right (arrowSource arrow)
            && mergeOccurrenceTraceValid left right (arrowTarget arrow)
-           && pageElementPage (arrowTarget arrow) > 0
-           && pageElementPage (arrowSource arrow) < atlasMergeLength left right}
+           && pageElementPage (arrowTarget arrow) > 0}
       -> source:{AtlasMergePageCell |
            mergePageContains (atlasFolio left) (atlasFolio right) (pageElementPage (arrowSource arrow) - 1) source
            && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage (arrowSource arrow) - 1)) source
@@ -190,7 +201,7 @@ proofGuard = mergeGenuineArrowNativeTransport
       -> () @-}
 proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElementArrow ms s t
   -> AtlasMergePageCell -> AtlasMergePageCell -> ()
-proofGuard = mergeGenuineArrowNativeTransport
+proofGuard = mergeArrowNativeTransport
 """,
 }
 
@@ -500,6 +511,13 @@ proofGuard left right value = sumApply left right (Right value)
 
 PAGE_TRACE_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/TraceChain.hs"
 PAGE_TRACE_GUARDS = {
+    "padded trace lookup requires a padded page": """
+{-@ proofGuard :: pages:Folio origin final -> page:Natural -> position:Ordinal
+      -> previous:{[Ordinal] | folioTraceLookup pages (page - 1) position == Just previous}
+      -> () @-}
+proofGuard :: Folio origin final -> Natural -> Ordinal -> [Ordinal] -> ()
+proofGuard = folioLookupPaddedStep
+""",
     "trace consolidations require the actual position functions": """
 {-@ proofGuard :: pages:Folio origin final -> page:Natural
       -> Chain {positions:[Ordinal] | pageTraceContains pages (page + 1) positions}

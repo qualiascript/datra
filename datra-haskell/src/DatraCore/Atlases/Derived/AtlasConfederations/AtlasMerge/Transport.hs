@@ -6,7 +6,7 @@
 -- | Recover component transport from the constructed merge's native traces.
 module AtlasMerge.Transport
   ( mergeNativeTransport, mergePrefixNativeTransport
-  , mergeOccurrenceTraceValid, mergeGenuineArrowNativeTransport, mergeResolvedFiniteTransport ) where
+  , mergeOccurrenceTraceValid, mergeArrowNativeTransport, mergeResolvedTransport ) where
 
 import Atlas.Internal (Atlas, atlasFolio)
 import AtlasMerge.Assembly (atlasMergeLength, atlasMergeFolio, atlasMergePrefix, atlasMergePrefixTrace, atlasMergeCellLookup)
@@ -16,12 +16,14 @@ import AtlasMerge.Resolution (mergeResolvedAt)
 import AtlasMerge.Source (AtlasMergeSource (..), mergeSourceValid, mergeSourceTransport)
 import qualified AtlasExtent.Internal as Extent (cellNativeTrace)
 import Chain.Internal (chainPositionInjective)
+import Folio.Internal (folioLength)
 import Numeric.Natural (Natural)
 import PageElements.Internal (genuinePageElementTrace, folioTraceLookup, folioPageOrderType)
 import PageElements.Structure
   ( PageElement (..), PageElementArrow (..), SomePageElement (..)
   , traceSuffix, traceSuffixTransitive, traceSuffixSameLength, traceSuffixDropHead )
-import PageElements.TraceChain (genuineTraceHead, previousTraceSuffix)
+import PageElements.TraceChain
+  ( genuineTraceHead, previousTraceSuffix, paddedPreviousHead, folioPageOrderTypePadded, folioLookupPaddedStep )
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -99,6 +101,51 @@ mergePrefixNativeTransport left right sourcePage targetPage source target
         mergePreviousTransport left right sourcePage source `seq`
         mergeNativeTransportTransitive source previous target
 
+{-@ mergePaddingBounds :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page >= atlasMergeLength left right - 1}
+      -> {page >= folioLength (atlasFolio left) && page >= folioLength (atlasFolio right)} @-}
+{-@ ple mergePaddingBounds @-}
+mergePaddingBounds :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> ()
+mergePaddingBounds left right _ = atlasMergeLength left right `seq`
+  folioLength (atlasFolio left) `seq` folioLength (atlasFolio right) `seq` ()
+
+-- ALIGN: MERGE-PADDED-PREVIOUS-POSITION.
+{-@ mergePaddedPreviousPosition :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page >= atlasMergeLength left right - 1}
+      -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) page cell}
+      -> {mergePagePosition (folioPageOrderType (atlasFolio left) page) cell
+           == mergePagePosition (folioPageOrderType (atlasFolio left) (page - 1))
+                (previousMergeCell left right page cell)} @-}
+{-@ ple mergePaddedPreviousPosition @-}
+mergePaddedPreviousPosition :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> ()
+mergePaddedPreviousPosition left right page (AtlasMergeLeftCell positions) =
+  mergePaddingBounds left right page `seq` paddedPreviousHead (atlasFolio left) page positions
+mergePaddedPreviousPosition left right page (AtlasMergeRightCell positions) =
+  mergePaddingBounds left right page `seq` folioPageOrderTypePadded (atlasFolio left) page `seq`
+    paddedPreviousHead (atlasFolio right) page positions
+
+-- | The actual finite folio also agrees with extended prefixes on padded pages.
+-- ALIGN: MERGE-FULL-CELL-LOOKUP.
+{-@ mergeFullCellLookup :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> page:{Natural | page > 0}
+      -> cell:{AtlasMergePageCell | mergePageContains (atlasFolio left) (atlasFolio right) (page - 1) cell}
+      -> {folioTraceLookup (atlasMergeFolio left right) page
+             (mergePagePosition (folioPageOrderType (atlasFolio left) (page - 1)) cell)
+           == Just (genuinePageElementTrace (atlasMergePrefix left right page) cell)} / [page] @-}
+{-@ ple mergeFullCellLookup @-}
+mergeFullCellLookup :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> ()
+mergeFullCellLookup left right page cell
+  | page < atlasMergeLength left right = atlasMergeCellLookup left right page cell
+  | otherwise =
+      let previous = previousMergeCell left right (page - 1) cell
+          position = mergePagePosition (folioPageOrderType (atlasFolio left) (page - 1)) cell
+          previousTrace = genuinePageElementTrace (atlasMergePrefix left right (page - 1)) previous
+      in mergePaddedPreviousPosition left right (page - 1) cell `seq`
+        mergeFullCellLookup left right (page - 1) previous `seq`
+        folioLength (atlasMergeFolio left right) `seq`
+        folioLookupPaddedStep (atlasMergeFolio left right) page position previousTrace `seq`
+        atlasMergePrefixTrace left right (page - 1) cell
+
 -- ALIGN: MERGE-RAW-TRACE-VALIDITY.
 {-@ reflect mergeOccurrenceTraceValid @-}
 mergeOccurrenceTraceValid :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElement ms object -> Bool
@@ -106,28 +153,27 @@ mergeOccurrenceTraceValid left right occurrence =
   folioTraceLookup (atlasMergeFolio left right) (pageElementPage occurrence) (pageElementPosition occurrence)
     == Just (pageElementTrace occurrence)
 
-{-@ mergeGenuineOccurrenceTrace :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+{-@ mergeOccurrenceTrace :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> occurrence:{PageElement ms object | mergeOccurrenceTraceValid left right occurrence
-           && pageElementPage occurrence > 0 && pageElementPage occurrence < atlasMergeLength left right}
+           && pageElementPage occurrence > 0}
       -> cell:{AtlasMergePageCell |
            mergePageContains (atlasFolio left) (atlasFolio right) (pageElementPage occurrence - 1) cell
            && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage occurrence - 1)) cell
                 == pageElementPosition occurrence}
       -> {pageElementTrace occurrence
            == genuinePageElementTrace (atlasMergePrefix left right (pageElementPage occurrence)) cell} @-}
-{-@ ple mergeGenuineOccurrenceTrace @-}
-mergeGenuineOccurrenceTrace :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+{-@ ple mergeOccurrenceTrace @-}
+mergeOccurrenceTrace :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
   -> PageElement ms object -> AtlasMergePageCell -> ()
-mergeGenuineOccurrenceTrace left right occurrence cell =
-  atlasMergeCellLookup left right (pageElementPage occurrence) cell
+mergeOccurrenceTrace left right occurrence cell =
+  mergeFullCellLookup left right (pageElementPage occurrence) cell
 
--- ALIGN: MERGE-GENUINE-ARROW-NATIVE-TRANSPORT.
-{-@ mergeGenuineArrowNativeTransport :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+-- ALIGN: MERGE-ARROW-NATIVE-TRANSPORT.
+{-@ mergeArrowNativeTransport :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> arrow:{PageElementArrow ms sourceObject targetObject |
            mergeOccurrenceTraceValid left right (arrowSource arrow)
            && mergeOccurrenceTraceValid left right (arrowTarget arrow)
-           && pageElementPage (arrowTarget arrow) > 0
-           && pageElementPage (arrowSource arrow) < atlasMergeLength left right}
+           && pageElementPage (arrowTarget arrow) > 0}
       -> source:{AtlasMergePageCell |
            mergePageContains (atlasFolio left) (atlasFolio right) (pageElementPage (arrowSource arrow) - 1) source
            && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage (arrowSource arrow) - 1)) source
@@ -137,49 +183,48 @@ mergeGenuineOccurrenceTrace left right occurrence cell =
            && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage (arrowTarget arrow) - 1)) target
                 == pageElementPosition (arrowTarget arrow)}
       -> {mergeNativeTransport source target} @-}
-{-@ ple mergeGenuineArrowNativeTransport @-}
-mergeGenuineArrowNativeTransport :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+{-@ ple mergeArrowNativeTransport @-}
+mergeArrowNativeTransport :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
   -> PageElementArrow ms sourceObject targetObject -> AtlasMergePageCell -> AtlasMergePageCell -> ()
-mergeGenuineArrowNativeTransport left right arrow@(PageElementArrow _ _) source target =
-  mergeGenuineOccurrenceTrace left right (arrowSource arrow) source `seq`
-    mergeGenuineOccurrenceTrace left right (arrowTarget arrow) target `seq`
+mergeArrowNativeTransport left right arrow@(PageElementArrow _ _) source target =
+  mergeOccurrenceTrace left right (arrowSource arrow) source `seq`
+    mergeOccurrenceTrace left right (arrowTarget arrow) target `seq`
     mergePrefixNativeTransport left right (pageElementPage (arrowSource arrow) - 1)
       (pageElementPage (arrowTarget arrow) - 1) source target
 
--- ALIGN: MERGE-RESOLVED-FINITE-TRANSPORT.
-{-@ mergeResolvedFiniteTransport :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+-- ALIGN: MERGE-RESOLVED-TRANSPORT.
+{-@ mergeResolvedTransport :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> arrow:{PageElementArrow ms sourceObject targetObject |
            mergeOccurrenceTraceValid left right (arrowSource arrow)
-           && mergeOccurrenceTraceValid left right (arrowTarget arrow)
-           && pageElementPage (arrowSource arrow) < atlasMergeLength left right}
+           && mergeOccurrenceTraceValid left right (arrowTarget arrow)}
       -> source:{AtlasMergeSource ls rs | mergeSourceValid left right source
            && mergeResolvedAt left (arrowSource arrow) source}
       -> target:{AtlasMergeSource ls rs | mergeSourceValid left right target
            && mergeResolvedAt left (arrowTarget arrow) target}
       -> {mergeSourceTransport source target} @-}
-{-@ ple mergeResolvedFiniteTransport @-}
-mergeResolvedFiniteTransport :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+{-@ ple mergeResolvedTransport @-}
+mergeResolvedTransport :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
   -> PageElementArrow ms sourceObject targetObject -> AtlasMergeSource ls rs -> AtlasMergeSource ls rs -> ()
-mergeResolvedFiniteTransport left right arrow@(PageElementArrow _ _)
+mergeResolvedTransport left right arrow@(PageElementArrow _ _)
     (MergeLeftSource (SomePageElement source)) (MergeLeftSource (SomePageElement target)) =
   Extent.cellNativeTrace left source `seq` Extent.cellNativeTrace left target `seq`
-    mergeGenuineArrowNativeTransport left right arrow
+    mergeArrowNativeTransport left right arrow
       (AtlasMergeLeftCell (pageElementTrace source)) (AtlasMergeLeftCell (pageElementTrace target))
-mergeResolvedFiniteTransport left right arrow@(PageElementArrow _ _)
+mergeResolvedTransport left right arrow@(PageElementArrow _ _)
     (MergeLeftSource (SomePageElement source)) (MergeRightSource (SomePageElement target)) =
   Extent.cellNativeTrace left source `seq` Extent.cellNativeTrace right target `seq`
-    mergeGenuineArrowNativeTransport left right arrow
+    mergeArrowNativeTransport left right arrow
       (AtlasMergeLeftCell (pageElementTrace source)) (AtlasMergeRightCell (pageElementTrace target))
-mergeResolvedFiniteTransport left right arrow@(PageElementArrow _ _)
+mergeResolvedTransport left right arrow@(PageElementArrow _ _)
     (MergeRightSource (SomePageElement source)) (MergeLeftSource (SomePageElement target)) =
   Extent.cellNativeTrace right source `seq` Extent.cellNativeTrace left target `seq`
-    mergeGenuineArrowNativeTransport left right arrow
+    mergeArrowNativeTransport left right arrow
       (AtlasMergeRightCell (pageElementTrace source)) (AtlasMergeLeftCell (pageElementTrace target))
-mergeResolvedFiniteTransport left right arrow@(PageElementArrow _ _)
+mergeResolvedTransport left right arrow@(PageElementArrow _ _)
     (MergeRightSource (SomePageElement source)) (MergeRightSource (SomePageElement target)) =
   Extent.cellNativeTrace right source `seq` Extent.cellNativeTrace right target `seq`
-    mergeGenuineArrowNativeTransport left right arrow
+    mergeArrowNativeTransport left right arrow
       (AtlasMergeRightCell (pageElementTrace source)) (AtlasMergeRightCell (pageElementTrace target))
-mergeResolvedFiniteTransport _ _ _ _ MergeOrigin = ()
-mergeResolvedFiniteTransport _ _ (PageElementArrow _ _) MergeOrigin (MergeLeftSource (SomePageElement _)) = ()
-mergeResolvedFiniteTransport _ _ (PageElementArrow _ _) MergeOrigin (MergeRightSource (SomePageElement _)) = ()
+mergeResolvedTransport _ _ _ _ MergeOrigin = ()
+mergeResolvedTransport _ _ (PageElementArrow _ _) MergeOrigin (MergeLeftSource (SomePageElement _)) = ()
+mergeResolvedTransport _ _ (PageElementArrow _ _) MergeOrigin (MergeRightSource (SomePageElement _)) = ()

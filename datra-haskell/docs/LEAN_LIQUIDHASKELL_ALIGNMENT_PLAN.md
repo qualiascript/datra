@@ -208,12 +208,15 @@ proves membership in the component's native trace chain. Both checkers derive
 native component transport from a suffix arrow between constructed merge
 prefixes: equal-page suffixes identify the same native cell by chain-position
 injectivity, and earlier-page suffixes follow the stored predecessor recursively.
-For genuine raw pages, the owning-folio lookup equation identifies the raw trace
-with that constructed prefix. Successful resolutions of a finite raw merge arrow
-therefore satisfy the component transport relation, including arrows into the
-fresh origin. The remaining assembly obligations are padded arrows and total
-resolution of valid raw occurrences; the unchecked data-action constructor does
-not yet supply the full proof. Negative checks reject missing suffix transport,
+The owning-folio lookup equation identifies each non-origin raw trace with its
+constructed prefix, including prefixes beyond the stored folio's length.
+Padded lookup adds the final position to the preceding trace. Both components
+are padded beyond the merge's maximum depth, so their predecessor retains the
+encoded merge position and the page order type. Successful resolutions of any
+raw merge arrow therefore satisfy the component transport relation, including
+padded arrows and arrows into the fresh origin. Full assembly still needs total
+resolution of valid raw occurrences and the checked data-action constructor.
+Negative checks reject missing padding bounds, unaccepted native cells, missing suffix transport,
 missing target-owner evidence, unrelated encoded positions or resolver
 coordinates, disjointness applied to the
 same cell and extent membership without an accepted source rank. The correspondence

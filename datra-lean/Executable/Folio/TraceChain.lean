@@ -175,6 +175,87 @@ theorem previousTrace_suffix (positions : List Ordinal) :
           apply (Trace.traceSuffix_iff _ _).mpr
           exact List.suffix_cons _ _
 
+theorem prefixTraceLookup_succ (pages : FolioData origin final) (padding : Nat) (position : Ordinal) :
+    pages.prefixTraceLookup (padding + 1) position =
+      (pages.prefixTraceLookup padding position).map (position :: ·) := by
+  cases found : final.chain.chainIndex position with
+  | none => simp [prefixTraceLookup, found]
+  | some index =>
+      have same := index.position_eq.trans (final.chain.chainIndex_requested position index found)
+      simp [prefixTraceLookup, found, paddedTrace, List.replicate_succ, same]
+
+-- ALIGN: PE-PADDED-LOOKUP-STEP.
+theorem traceLookup_padded_step (pages : FolioData origin final) (valid : pages.Valid)
+    (page : Nat) (padded : pages.length ≤ page) (position : Ordinal) (previous : List Ordinal)
+    (found : pages.traceLookup (page - 1) position = some previous) :
+    pages.traceLookup page position = some (position :: previous) := by
+  cases pages with
+  | origin count selected unique =>
+      have positive : 0 < page := by change count = 1 at valid; simp only [length] at padded; omega
+      simp only [traceLookup] at found ⊢
+      have step := prefixTraceLookup_succ (FolioData.origin _ count selected unique) (page - 1) position
+      rw [Nat.sub_add_cancel positive] at step
+      rw [step, found]
+      rfl
+  | snoc count pagesPrevious transition =>
+      have count_eq := valid.2
+      simp only [length] at padded
+      have before : pagesPrevious.length ≤ page - 1 := by omega
+      have after : pagesPrevious.length ≤ page := by omega
+      simp only [traceLookup, if_pos before] at found
+      simp only [traceLookup, if_pos after]
+      rw [show page - pagesPrevious.length = (page - 1 - pagesPrevious.length) + 1 by omega,
+        prefixTraceLookup_succ, found]
+      rfl
+
+-- ALIGN: PE-PADDED-PAGE-ORDER-TYPE.
+theorem pageOrderType_padded (pages : FolioData origin final) (valid : pages.Valid)
+    (page : Nat) (padded : pages.length ≤ page) :
+    (pages.pageAt page).chain.orderType = (pages.pageAt (page - 1)).chain.orderType := by
+  have length := pages.length_eq_depth valid
+  have same : pages.paddedIndex page = pages.paddedIndex (page - 1) := by
+    apply Fin.ext
+    simp only [paddedIndex]
+    omega
+  exact congrArg (fun i => (pages.page (pages.indexEquivFin.symm i)).chain.orderType) same
+
+theorem paddedTrace_previous (pages : FolioData origin final) (padding : Nat) (value : final.Carrier) :
+    previousTrace (pages.paddedTrace (padding + 1) value) = pages.paddedTrace padding value := by
+  change previousTrace (final.chain.position value :: pages.paddedTrace padding value) = _
+  have head := pages.paddedTrace_head padding value
+  cases found : pages.paddedTrace padding value with
+  | nil => simp [found] at head
+  | cons position rest => rfl
+
+theorem prefixTraceLookup_previous_head (pages : FolioData origin final) (padding : Nat)
+    (positive : 0 < padding) (position : Ordinal) (trace : List Ordinal)
+    (found : pages.prefixTraceLookup padding position = some trace) :
+    traceHead (previousTrace trace) = traceHead trace := by
+  cases indexFound : final.chain.chainIndex position with
+  | none => simp [prefixTraceLookup, indexFound] at found
+  | some index =>
+      simp only [prefixTraceLookup, indexFound, Option.map_some, Option.some.injEq] at found
+      rw [← found]
+      obtain ⟨padding, rfl⟩ := Nat.exists_eq_succ_of_ne_zero (Nat.ne_zero_of_lt positive)
+      rw [paddedTrace_previous, traceHead_of_head (pages.paddedTrace_head padding index.object),
+        traceHead_of_head (pages.paddedTrace_head (padding + 1) index.object)]
+
+-- ALIGN: PE-PADDED-PREVIOUS-HEAD.
+theorem paddedPreviousHead (pages : FolioData origin final) (valid : pages.Valid)
+    (page : Nat) (padded : pages.length ≤ page) (trace : pages.TraceCarrier page) :
+    traceHead (previousTrace trace.val) = traceHead trace.val := by
+  have found := trace.property
+  cases pages with
+  | origin count selected unique =>
+      have positive : 0 < page := by change count = 1 at valid; simp only [length] at padded; omega
+      exact prefixTraceLookup_previous_head _ page positive _ _ found
+  | snoc count pagesPrevious transition =>
+      have count_eq := valid.2
+      simp only [length] at padded
+      have after : pagesPrevious.length ≤ page := by omega
+      simp only [traceLookup, if_pos after] at found
+      exact prefixTraceLookup_previous_head _ (page - pagesPrevious.length) (by omega) _ _ found
+
 theorem previousTrace_traceAt (pages : FolioData origin final) (page : Nat)
     (value : (pages.pageAt (page + 1)).Carrier) :
     previousTrace (pages.traceAt (page + 1) value) =

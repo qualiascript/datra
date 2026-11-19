@@ -30,7 +30,9 @@ import PageElements.TraceChain (pageTraceOrigin)
 -- ALIGN: MERGE-FOLIO-LENGTH-INTERPRETATION.
 {-@ reflect atlasMergeLength @-}
 {-@ atlasMergeLength :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
-      -> {count:Natural | count > 1} @-}
+      -> {count:Natural | count > 1
+           && count > folioLengthData (atlasFolio left)
+           && count > folioLengthData (atlasFolio right)} @-}
 atlasMergeLength :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural
 {-@ ple atlasMergeLength @-}
 atlasMergeLength left right =
