@@ -18,20 +18,27 @@ module Evaluation.Numerical
   , numericallyEquivalent
   ) where
 
+import AtlasMapFederationExpression
+  ( AtlasMapFederationExpression (SequentialAtlasMapFederation) )
+import DatraLanguage.AST.Operator
+  ( Operator (AdditionOperator, MultiplicationOperator, SubtractionOperator)
+  , operatorPreferredSymbol
+  )
 import DatraOrdinal
   ( Ordinal
   , finiteOrdinal
   , naturalAtOrdinal
   )
 import Evaluation.Error
-  ( InterpretingError (..)
-  , OperandSide (..)
+  ( FunctionFailure (NoApplicableFunctionAlternative)
+  , InterpretingError (..)
   )
 import Evaluation.Construction
   ( makeExplicit
   , makeFormulation
   , makeInteger
   )
+import Evaluation.Identifier (integerComplementValue)
 import Evaluation.Value
 import NaturalRange qualified
 import Numeric.Natural (Natural)
@@ -42,13 +49,8 @@ import NumericalOperators.Semantics
   , multiplyNumericalDenotations
   , numericalDenotationOrdinal
   )
+import NumericalOperators.NumericalOperand (someSuperEllipsis)
 import SuperEllipsisInsertion (fullSomeSuperEllipsisInsertion)
-
-data IntegerLimit
-  = NegativeInfinity
-  | FiniteInteger Integer
-  | PositiveInfinity
-  deriving (Eq, Ord, Show)
 
 addValues
   :: InterpretedValue
@@ -57,13 +59,13 @@ addValues
 addValues left right = do
   case (integerLimitProjection left, integerLimitProjection right) of
     (Just leftLimit, Just rightLimit) ->
-      addIntegerLimits "+" leftLimit rightLimit
+      addIntegerLimits AdditionOperator leftLimit rightLimit
     _ -> case (numericalProjection left, numericalProjection right) of
       (Just (IntegerNumerical _), _) -> integerBinary (+) left right
       (_, Just (IntegerNumerical _)) -> integerBinary (+) left right
       _ -> do
-        leftValue <- requireFiniteNumerical LeftOperand left
-        rightValue <- requireFiniteNumerical RightOperand right
+        leftValue <- requireFiniteNumerical left
+        rightValue <- requireFiniteNumerical right
         pure (makeNumericalResult
           (addNumericalDenotations leftValue rightValue))
 
@@ -72,9 +74,9 @@ subtractValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 subtractValues left right = do
-  leftValue <- requireIntegerLimit LeftOperand left
-  rightValue <- requireIntegerLimit RightOperand right
-  addIntegerLimits "-" leftValue (negateIntegerLimit rightValue)
+  leftValue <- requireIntegerLimit left
+  rightValue <- requireIntegerLimit right
+  addIntegerLimits SubtractionOperator leftValue (negateIntegerLimit rightValue)
 
 plusValue
   :: InterpretedValue
@@ -82,14 +84,14 @@ plusValue
 plusValue value =
   case integerLimitProjection value of
     Just integer -> Right (makeIntegerLimit integer)
-    Nothing -> makeNumericalResult <$> requireFiniteNumerical LeftOperand value
+    Nothing -> makeNumericalResult <$> requireFiniteNumerical value
 
 minusValue
   :: InterpretedValue
   -> Either InterpretingError InterpretedValue
 minusValue value =
   makeIntegerLimit . negateIntegerLimit
-    <$> requireIntegerLimit LeftOperand value
+    <$> requireIntegerLimit value
 
 multiplyValues
   :: InterpretedValue
@@ -103,8 +105,8 @@ multiplyValues left right = do
       (Just (IntegerNumerical _), _) -> integerBinary (*) left right
       (_, Just (IntegerNumerical _)) -> integerBinary (*) left right
       _ -> do
-        leftValue <- requireFiniteNumerical LeftOperand left
-        rightValue <- requireFiniteNumerical RightOperand right
+        leftValue <- requireFiniteNumerical left
+        rightValue <- requireFiniteNumerical right
         pure (makeNumericalResult
           (multiplyNumericalDenotations leftValue rightValue))
 
@@ -118,7 +120,7 @@ exponentiateValues base exponentValue = do
     Just integer ->
       pure (makeIntegerLimit (powerIntegerLimit integer naturalPower))
     Nothing -> do
-      baseValue <- requireFiniteNumerical LeftOperand base
+      baseValue <- requireFiniteNumerical base
       pure (makeNumericalResult
         (exponentiateNumericalDenotation baseValue naturalPower))
 
@@ -128,12 +130,12 @@ integerBinary
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 integerBinary operation left right = do
-  leftValue <- requireFiniteInteger LeftOperand left
-  rightValue <- requireFiniteInteger RightOperand right
+  leftValue <- requireFiniteInteger left
+  rightValue <- requireFiniteInteger right
   pure (makeInteger (operation leftValue rightValue))
 
 addIntegerLimits
-  :: String
+  :: Operator
   -> IntegerLimit
   -> IntegerLimit
   -> Either InterpretingError InterpretedValue
@@ -150,10 +152,14 @@ multiplyIntegerLimits
   :: IntegerLimit
   -> IntegerLimit
   -> Either InterpretingError InterpretedValue
-multiplyIntegerLimits (FiniteInteger 0) PositiveInfinity = indeterminate "*"
-multiplyIntegerLimits (FiniteInteger 0) NegativeInfinity = indeterminate "*"
-multiplyIntegerLimits PositiveInfinity (FiniteInteger 0) = indeterminate "*"
-multiplyIntegerLimits NegativeInfinity (FiniteInteger 0) = indeterminate "*"
+multiplyIntegerLimits (FiniteInteger 0) PositiveInfinity =
+  indeterminate MultiplicationOperator
+multiplyIntegerLimits (FiniteInteger 0) NegativeInfinity =
+  indeterminate MultiplicationOperator
+multiplyIntegerLimits PositiveInfinity (FiniteInteger 0) =
+  indeterminate MultiplicationOperator
+multiplyIntegerLimits NegativeInfinity (FiniteInteger 0) =
+  indeterminate MultiplicationOperator
 multiplyIntegerLimits (FiniteInteger left) (FiniteInteger right) =
   Right (makeInteger (left * right))
 multiplyIntegerLimits left right =
@@ -162,8 +168,9 @@ multiplyIntegerLimits left right =
       then PositiveInfinity
       else NegativeInfinity))
 
-indeterminate :: String -> Either InterpretingError value
-indeterminate = Left . IndeterminateInfinityOperation
+indeterminate :: Operator -> Either InterpretingError value
+indeterminate =
+  Left . IndeterminateInfinityOperation . operatorPreferredSymbol
 
 integerLimitSign :: IntegerLimit -> Ordering
 integerLimitSign NegativeInfinity = LT
@@ -185,35 +192,63 @@ powerIntegerLimit NegativeInfinity power
   | otherwise = NegativeInfinity
 
 makeIntegerLimit :: IntegerLimit -> InterpretedValue
-makeIntegerLimit NegativeInfinity = makeInfiniteLimit "NegInf"
-makeIntegerLimit PositiveInfinity = makeInfiniteLimit "PosInf"
+makeIntegerLimit NegativeInfinity = makeNegativeInfinity
+makeIntegerLimit PositiveInfinity = makePositiveInfinity
 makeIntegerLimit (FiniteInteger integer) = makeInteger integer
 
--- Infinity is an integer-limit atom, not the character sequence used to spell
--- its enum literal. Keeping it to one map position lets a closed valued range
--- place the endpoint exactly at its transfinite boundary.
-makeInfiniteLimit :: String -> InterpretedValue
-makeInfiniteLimit name = value
+-- Negative infinity is the complemented positive-infinity magnitude, exactly
+-- like the negative half of Std.IntLimit.  It is not a second infinity atom.
+makeNegativeInfinity :: InterpretedValue
+makeNegativeInfinity = withOrderedAtlasMapView value
   where
-    semantics = AsciiStringSemantics name
+    values =
+      [ makePositiveInfinity
+      , integerComplementValue
+      ]
+    finalValues = foldl
+      appendOrdinalOrderedValues
+      emptyOrdinalOrderedValues
+      (map singletonOrdinalOrderedValues values)
+    components = map interpretedSemantics values
+    semantics = IntegerLimitSemantics NegativeInfinity
+    valueMap = InterpretedMap
+      2
+      finalValues
+      (Right . ordinalOrderedValueAt finalValues)
+      components
+    value = makeInterpretedValue
+      (composedStructuralDatraType (map interpretedDatraType values))
+      SequentialMapForm
+      NoInsertion
+      valueMap
+      (SequentialAtlasMapFederation
+        (map interpretedAtlasMapFederation values))
+      TotalInterpretedMap
+      semantics
+
+-- Infinity is a typed integer-limit atom. Keeping it to one map position lets
+-- a closed valued range place the endpoint exactly at its transfinite boundary.
+makePositiveInfinity :: InterpretedValue
+makePositiveInfinity = value
+  where
+    underlying = FormulationSemantics 1
+    semantics = IntegerLimitSemantics PositiveInfinity
     value =
       makeSingletonInterpretedValue
         structuralDatraType
-        (AsciiStringForm name)
+        (FormulationForm (someSuperEllipsis 1))
         (ValidInsertion (fullSomeSuperEllipsisInsertion 0))
-        (singletonMap semantics value)
+        (singletonMap underlying value)
         TotalInterpretedMap
         semantics
 
 requireIntegerLimit
-  :: OperandSide
-  -> InterpretedValue
+  :: InterpretedValue
   -> Either InterpretingError IntegerLimit
-requireIntegerLimit side value =
+requireIntegerLimit value =
   case integerLimitProjection value of
     Just limit -> Right limit
-    Nothing ->
-      Left (ExpectedFiniteIntegerOperand side (interpretedValueKind value))
+    Nothing -> noApplicableAlternative
 
 compareIntegerLimitValues
   :: InterpretedValue
@@ -221,31 +256,32 @@ compareIntegerLimitValues
   -> Either InterpretingError Ordering
 compareIntegerLimitValues left right =
   compare
-    <$> requireIntegerLimit LeftOperand left
-    <*> requireIntegerLimit RightOperand right
+    <$> requireIntegerLimit left
+    <*> requireIntegerLimit right
 
 requireFiniteInteger
-  :: OperandSide
-  -> InterpretedValue
+  :: InterpretedValue
   -> Either InterpretingError Integer
-requireFiniteInteger side value =
+requireFiniteInteger value =
   case numericalProjection value >>= finiteInteger of
     Just integer -> Right integer
-    Nothing ->
-      Left (ExpectedFiniteIntegerOperand side (interpretedValueKind value))
+    Nothing -> noApplicableAlternative
 
 requireFiniteNumerical
-  :: OperandSide
-  -> InterpretedValue
+  :: InterpretedValue
   -> Either InterpretingError NumericalDenotation
-requireFiniteNumerical side value =
+requireFiniteNumerical value =
   case numericalProjection value of
     Just (FormulationNumerical 0) ->
       Right (ExplicitDenotation (finiteOrdinal 1))
     Just (ExplicitNumerical 1 ordinalValue)
       | Just _ <- naturalAtOrdinal ordinalValue ->
           Right (ExplicitDenotation ordinalValue)
-    _ -> Left (ExpectedFiniteIntegerOperand side (interpretedValueKind value))
+    _ -> noApplicableAlternative
+
+noApplicableAlternative :: Either InterpretingError value
+noApplicableAlternative =
+  Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 
 requireNaturalExponent
   :: InterpretedValue
@@ -290,11 +326,10 @@ integerLimitSemantics semantics =
   case semantics of
     CoalizationSemantics operand -> integerLimitSemantics operand
     IntegerSemantics integer -> Just (FiniteInteger integer)
+    IntegerLimitSemantics limit -> Just limit
     ExplicitSemantics 1 ordinalValue ->
       FiniteInteger . toInteger <$> naturalAtOrdinal ordinalValue
     FormulationSemantics 1 -> Just PositiveInfinity
-    AsciiStringSemantics "PosInf" -> Just PositiveInfinity
-    AsciiStringSemantics "NegInf" -> Just NegativeInfinity
     SkipSemantics _ -> Just (FiniteInteger 1)
     MapSemantics 0 [] -> Just (FiniteInteger 0)
     MapSemantics _ [magnitude, complement] -> do
@@ -326,7 +361,7 @@ integerLimitSemantics semantics =
     absentComplement (PresentedSemantics _ _ value) = absentComplement value
     absentComplement (MapSemantics 0 []) = True
     absentComplement
-        (DependentIdentifierTypeSemantics
+        (DependentArgumentTypeSemantics
           (SimpleIdentifierDependency "Nothing")
           (MapSemantics 0 [])
           True
@@ -335,7 +370,7 @@ integerLimitSemantics semantics =
 
     presentComplement (PresentedSemantics _ _ value) = presentComplement value
     presentComplement
-        (DependentIdentifierTypeSemantics
+        (DependentArgumentTypeSemantics
           (SimpleIdentifierDependency "Just")
           (AsciiStringSemantics "Complement")
           _
@@ -358,8 +393,11 @@ numericalSemantics semantics =
     ExplicitSemantics level ordinalValue ->
       Just (ExplicitNumerical level ordinalValue)
     IntegerSemantics integer -> Just (IntegerNumerical integer)
+    IntegerLimitSemantics PositiveInfinity -> Just (FormulationNumerical 1)
+    IntegerLimitSemantics NegativeInfinity -> Nothing
+    IntegerLimitSemantics (FiniteInteger integer) ->
+      Just (IntegerNumerical integer)
     FormulationSemantics level -> Just (FormulationNumerical level)
-    AsciiStringSemantics "PosInf" -> Just (FormulationNumerical 1)
     SkipSemantics _ -> Just (ExplicitNumerical 1 (finiteOrdinal 1))
     MapSemantics 0 [] -> Just (ExplicitNumerical 1 (finiteOrdinal 0))
     _ -> do
@@ -376,7 +414,7 @@ numericalSpecification
   -> Maybe (ValueSemantics, ValueSemantics)
 numericalSpecification semantics =
   case semanticValueSemantics semantics of
-    DependentIdentifierTypeSemantics _ underlying True _ ->
+    DependentArgumentTypeSemantics _ underlying True _ ->
       Just (underlying, underlying)
     AssignmentSemantics _ target source -> Just (source, target)
     SpecificationSemantics source target -> Just (source, target)
@@ -394,9 +432,8 @@ isValuedNumericalTarget semantics
     CoalizationSemantics operand -> isValuedNumericalTarget operand
     ExplicitSemantics _ _ -> True
     IntegerSemantics _ -> True
+    IntegerLimitSemantics _ -> True
     FormulationSemantics _ -> True
-    AsciiStringSemantics "PosInf" -> True
-    AsciiStringSemantics "NegInf" -> True
     EitherSemantics left right ->
       isValuedNumericalTarget left && isValuedNumericalTarget right
     ValuedNaturalRangeSemantics _ _ -> True
@@ -404,7 +441,7 @@ isValuedNumericalTarget semantics
     ValuedIntegerRangeSemantics _ _ -> True
     IntegerTypeSemantics -> True
     MapSemantics 0 [] -> True
-    DependentIdentifierTypeSemantics _ underlying True _ ->
+    DependentArgumentTypeSemantics _ underlying True _ ->
       isValuedNumericalTarget underlying
     AssignmentSemantics _ target _ -> isValuedNumericalTarget target
     SpecificationSemantics _ target -> isValuedNumericalTarget target
@@ -454,7 +491,8 @@ nonnegativeMagnitude semantics =
     _ -> Nothing
   where
     isPositiveInfinity (PresentedSemantics _ _ value) = isPositiveInfinity value
-    isPositiveInfinity (AsciiStringSemantics "PosInf") = True
+    isPositiveInfinity (IntegerLimitSemantics PositiveInfinity) = True
+    isPositiveInfinity (FormulationSemantics 1) = True
     isPositiveInfinity _ = False
 
 optionalComplement :: ValueSemantics -> Bool
@@ -473,7 +511,7 @@ optionalComplement semantics =
     isAbsent (PresentedSemantics _ _ value) = isAbsent value
     isAbsent (MapSemantics 0 []) = True
     isAbsent
-        (DependentIdentifierTypeSemantics
+        (DependentArgumentTypeSemantics
           (SimpleIdentifierDependency "Nothing")
           (MapSemantics 0 [])
           True
@@ -482,7 +520,7 @@ optionalComplement semantics =
 
     isComplement (PresentedSemantics _ _ value) = isComplement value
     isComplement
-        (DependentIdentifierTypeSemantics
+        (DependentArgumentTypeSemantics
           (SimpleIdentifierDependency "Just")
           (AsciiStringSemantics "Complement")
           _

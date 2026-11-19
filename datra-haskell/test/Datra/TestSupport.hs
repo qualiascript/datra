@@ -8,8 +8,6 @@ module Datra.TestSupport
   , programCase
   , programFileCase
   , programFailureCase
-  , programCaseInMode
-  , programFailureCaseInMode
   , runExpression
   , runModuleProgram
   , runProgram
@@ -22,12 +20,11 @@ import DatraLanguage.Diagnostics.Application
   )
 import DatraTypes (InterpretedValue, InterpretingError)
 import Interpreting
-  ( EvaluationMode
+  ( StandardLibraryVisibility (AllStandardLibrary)
   , interpretExpressionReason
   , interpretWithImports
-  , interpretWithImportsInMode
   , rewriteParsedDatraSourceWithImports
-  , parseDatraSourceLocatedWithImportsAndStandardLibrary
+  , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   )
 import ModuleLoading (loadSourceImports)
 import Rendering (renderInterpretedValue)
@@ -53,27 +50,16 @@ data ModuleFailure
 runExpression :: String -> Either SourceFailure InterpretedValue
 runExpression source = do
   expression <- first SourceParseFailure
-    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-      True [] "<expression>" ("(" <> source <> "\n)"))
+    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+      AllStandardLibrary [] "test/Datra/TestSupport.hs" ("(" <> source <> "\n)"))
   first SourceEvaluationFailure (interpretExpressionReason expression)
 
 runProgram :: String -> Either SourceFailure InterpretedValue
 runProgram source = do
   expression <- first SourceParseFailure
-    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-      True [] "<program>" source)
+    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+      AllStandardLibrary [] "test/Datra/TestSupport.hs" source)
   first SourceEvaluationFailure (interpretWithImports [] expression)
-
-runProgramInMode
-  :: EvaluationMode
-  -> String
-  -> Either SourceFailure InterpretedValue
-runProgramInMode mode source = do
-  expression <- first SourceParseFailure
-    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
-      True [] "<program>" source)
-  first SourceEvaluationFailure
-    (interpretWithImportsInMode mode [] expression)
 
 runModuleProgram :: FilePath -> String -> IO (Either ModuleFailure InterpretedValue)
 runModuleProgram origin source = do
@@ -110,15 +96,6 @@ programFileCase expectedLineCount name path expected = testCase name $ do
     (length (lines source))
   runModuleProgram path source >>= assertRendered expected
 
-programCaseInMode
-  :: EvaluationMode
-  -> TestName
-  -> String
-  -> String
-  -> TestTree
-programCaseInMode mode name source expected =
-  testCase name (assertRendered expected (runProgramInMode mode source))
-
 moduleCase :: FilePath -> TestName -> String -> String -> TestTree
 moduleCase origin name source expected = testCase name $ do
   result <- runModuleProgram origin source
@@ -139,16 +116,6 @@ programFailureCase
   -> TestTree
 programFailureCase name source expected =
   testCase name (assertFailureResult name expected (runProgram source))
-
-programFailureCaseInMode
-  :: EvaluationMode
-  -> TestName
-  -> String
-  -> SourceFailure
-  -> TestTree
-programFailureCaseInMode mode name source expected =
-  testCase name
-    (assertFailureResult name expected (runProgramInMode mode source))
 
 moduleFailureCase
   :: FilePath

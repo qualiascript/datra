@@ -104,12 +104,10 @@ atomicFederationAccess value =
     PrimitiveAtlasMapFederation (IntegerRangeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation (EitherAtlasMapFederation _) -> Nothing
-    PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation _) ->
+    PrimitiveAtlasMapFederation (DependentArgumentTypeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation
         (IdentifierStringProjectionAtlasMapFederation _) ->
-      Nothing
-    PrimitiveAtlasMapFederation IdentifierValueTypeAtlasMapFederation ->
       Nothing
     PrimitiveAtlasMapFederation (ToStringAtlasMapFederation _ _) -> Nothing
     SequentialAtlasMapFederation _ -> Nothing

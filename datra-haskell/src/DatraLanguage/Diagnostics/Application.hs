@@ -2,15 +2,29 @@
 -- line boundaries. Human-language rendering belongs to the locale modules.
 module DatraLanguage.Diagnostics.Application
   ( ParseFailure (..)
+  , LiteralTemplateParseFailure (..)
   , ModuleLoadFailure (..)
-  , SyntaxExpansionFailure (..)
-  , SyntaxTemplateAdmissibilityFailure (..)
+  , CandidateRejectionReason (..)
+  , CandidateRejectionReport (..)
+  , SyntaxRewriteFailure (..)
   , CommandLineOptionFailure (..)
   ) where
 
-data ParseFailure = ParseFailure
-  { parseFailureMessage :: String }
+import DatraLanguage.AST (Expression)
+import DatraLanguage.Diagnostics (DatraError)
+
+data ParseFailure
+  = DatraSourceParseFailure String
+  | DatraLiteralTemplateParseFailure LiteralTemplateParseFailure
+  | SyntaxEnvironmentParseFailure String
+  | SyntaxRewriteParseFailure SyntaxRewriteFailure
   deriving (Eq, Show)
+
+data LiteralTemplateParseFailure
+  = MixedTemplateLiteral
+  | InvalidLiteralTemplateSpacing
+  | NullableLiteralTemplate
+  deriving (Eq, Ord, Show)
 
 data ModuleLoadFailure
   = ImportScanFailed FilePath ParseFailure
@@ -20,19 +34,33 @@ data ModuleLoadFailure
   | ImportedModuleParseFailed FilePath ParseFailure
   deriving (Eq, Show)
 
-data SyntaxExpansionFailure
-  = UnknownSyntaxControlAdapter String
+data CandidateRejectionReason
+  = TypedHoleMismatch
+  | GenericBoundMismatch
+  | CandidateReturnMismatch
+  | RequiredChildExhausted
+  deriving (Eq, Ord, Show)
+
+data CandidateRejectionReport = CandidateRejectionReport
+  { rejectedCandidateBranch :: Int
+  , rejectedCandidateCapture :: Int
+  , rejectedCandidateSource :: String
+  , rejectedCandidateExpected :: Maybe String
+  , rejectedCandidateActual :: Maybe String
+  , rejectedCandidateInputs :: [(Int, String)]
+  , rejectedCandidateReason :: CandidateRejectionReason
+  }
   deriving (Eq, Show)
 
-data SyntaxTemplateAdmissibilityFailure
-  = NeutralSyntaxTemplateParseFailure
-  | IncompleteCoreSyntaxOperator String
-  | SyntaxTemplateProjectionLoss
-  | SyntaxTemplateProjectionOrderMismatch
-  | UnstableSyntaxTemplateProjection
+data SyntaxRewriteFailure
+  = AmbiguousBareSkipApplication
+  | OverlappingDependentDeclarations String String
+  | NonInjectiveDependentDeclaration String
+  | InvalidDependentDeclarationModifiers [String] [String]
+  | ExpectedDependentDeclaration Expression
+  | RejectedSyntaxCandidates [DatraError CandidateRejectionReport]
   deriving (Eq, Show)
 
 data CommandLineOptionFailure
   = UnsupportedDiagnosticLocale String
-  | UnsupportedEvaluationMode String
   deriving (Eq, Show)

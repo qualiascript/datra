@@ -73,16 +73,28 @@ library
         AtlasSequence.Page
         AtlasSequence.Assembly
         DatraLanguage.AST
+        DatraLanguage.Application
+        DatraLanguage.ConcreteSyntax
+        DatraLanguage.AST.CanonicalForm
         DatraLanguage.AST.Source
         DatraLanguage.AST.Operator
         DatraLanguage.AST.Reserved
         DatraLanguage.AST.Reserved.Bootstrap
         DatraLanguage.AST.Syntax
-        DatraLanguage.SyntaxTemplate
-        DatraLanguage.NeutralLexer
+        DatraLanguage.DependentDeclaration
+        DatraTypes.FunctionType
+        DatraLanguage.ContextualRole
+        DatraLanguage.ContextualDeclaration
         DatraLanguage.Identifier
+        DatraLanguage.IdentifierExpression
+        DatraLanguage.Pretty
+        DatraLanguage.StringTemplate
         DatraTypes
         DatraTypes.DependentTypes
+        StringExpression
+        StringInterpolation
+        StringInterpolation.Exact
+        StringInterpolation.Matching
         AsciiMap
         AsciiString
         MapOperators
@@ -116,8 +128,7 @@ library
         IntegerRange
         ValuedIntegerRange
         IntegerType
-        IdentifierValueType
-        DependentIdentifierType
+        DependentArgumentType
         SimpleIdentifierType
         AtlasMapFederation
         AtlasMapFederationExpression
@@ -228,6 +239,8 @@ library
         NaturalRange.Interval
         IntegerRange.Interval
         IntegerRange.Encoding
+        EllipsisRange.Witness
+        NaturalPairing
         OrdinalSequence
         SuperEllipsisRange.Description
         Evaluation.Access
@@ -256,9 +269,10 @@ library
         Evaluation.Overload
         Evaluation.DatraType
         Evaluation.Range
+        Evaluation.RangeInsertion
         Evaluation.ResultContract
         Evaluation.Specification
-        Evaluation.Specification.ArgumentMap
+        Evaluation.Specification.ArgumentativeMap
         Evaluation.Specification.Composition
         Evaluation.Specification.Decision
         Evaluation.Specification.Federation
@@ -267,7 +281,7 @@ library
         Evaluation.Specification.Subfederation
         Evaluation.ToString
         Evaluation.ToString.Injectivity
-        Evaluation.TypeFamily.BuiltinMeta
+        Evaluation.TypeFamily.Primitive
         Evaluation.TypeFamily
         Evaluation.TypeFamily.Function
         Evaluation.TypeFamily.Structural
@@ -283,7 +297,8 @@ library
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9,
-        prettyprinter >= 1.7 && < 1.8
+        prettyprinter >= 1.7 && < 1.8,
+        transformers >= 0.5 && < 0.7
     if flag(liquid)
         cpp-options: -DDATRA_LIQUID
         build-depends:
@@ -352,22 +367,23 @@ executable datra-haskell
     import:           warnings
     main-is:          Main.hs
     other-modules:
+        CanonicalParsing
         Interpreting
         DatraHost
-        RuntimeModules
         ModuleLoading
         FunctionClosure
         GenericScopeProtection
-        BlockScope
         LibraryFiles
-        SyntaxDefinitions
-        SyntaxTemplateAdmissibility
-        SyntaxTemplateMatching
-        SyntaxTemplateProjection
-        SyntaxRewriting
         Parsing
+        SyntaxRewriting
+        SyntaxRewriting.Types
+        SyntaxRewriting.Candidates
+        SyntaxRewriting.PostRewrite
+        SyntaxRewriting.Diagnostics
+        SyntaxRewriting.Stack
         Rendering
         ScopeProtection
+        StringParsing
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell
@@ -416,21 +432,22 @@ test-suite datra-parsing-test
         app
     main-is:          DatraParsingTests.hs
     other-modules:
+        CanonicalParsing
         Interpreting
         DatraHost
-        RuntimeModules
         FunctionClosure
         GenericScopeProtection
         Rendering
         ScopeProtection
-        Parsing
-        BlockScope
+        StringParsing
         LibraryFiles
-        SyntaxDefinitions
-        SyntaxTemplateAdmissibility
-        SyntaxTemplateMatching
-        SyntaxTemplateProjection
+        Parsing
         SyntaxRewriting
+        SyntaxRewriting.Types
+        SyntaxRewriting.Candidates
+        SyntaxRewriting.PostRewrite
+        SyntaxRewriting.Diagnostics
+        SyntaxRewriting.Stack
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell
@@ -456,31 +473,32 @@ test-suite datra-interpreting-test
         app
     main-is:          DatraInterpretingTests.hs
     other-modules:
+        CanonicalParsing
         Datra.Interpreter.DatraTypeLawTests
         Datra.Interpreter.FunctionClosureTests
         Datra.Interpreter.FunctionTests
         Datra.Interpreter.IntegrationTests
         Datra.Interpreter.ModuleTests
-        Datra.Interpreter.OverloadAssertionTests
+        Datra.Interpreter.OverloadTests
         Datra.Interpreter.ScopeTests
         Datra.Interpreter.StandardLibraryTests
         Datra.TestSupport
         Interpreting
         DatraHost
-        RuntimeModules
         ModuleLoading
         FunctionClosure
         GenericScopeProtection
-        BlockScope
         LibraryFiles
-        SyntaxDefinitions
-        SyntaxTemplateAdmissibility
-        SyntaxTemplateMatching
-        SyntaxTemplateProjection
-        SyntaxRewriting
         Parsing
+        SyntaxRewriting
+        SyntaxRewriting.Types
+        SyntaxRewriting.Candidates
+        SyntaxRewriting.PostRewrite
+        SyntaxRewriting.Diagnostics
+        SyntaxRewriting.Stack
         Rendering
         ScopeProtection
+        StringParsing
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell

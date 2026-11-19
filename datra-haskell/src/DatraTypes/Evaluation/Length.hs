@@ -41,9 +41,8 @@ mapLengthValue value
 hasDeterminateMapLength :: ValueForm -> Bool
 hasDeterminateMapLength form =
   case form of
-    BuiltinMetaTypeForm {} -> False
+    PrimitiveTypeForm {} -> False
     FunctionForm {} -> False
-    IdentifierValueTypeForm -> False
     ToStringForm -> False
     TemplateForm {} -> False
     DependentSumForm {} -> False

@@ -20,8 +20,8 @@ import Numeric.Natural (Natural)
 coalizeValue :: InterpretedValue -> InterpretedValue
 coalizeValue value
   | CoalizationForm _ <- interpretedForm value = value
-  | otherwise =
-      makeInterpretedValue
+  | otherwise = preserveOrderedView
+      (makeInterpretedValue
         (interpretedDatraType value)
         (CoalizationForm value)
         (interpretedInsertionCapability value)
@@ -29,7 +29,7 @@ coalizeValue value
         (CoalizedAtlasMapFederation
           (interpretedAtlasMapFederation value))
         totality
-        (CoalizationSemantics (interpretedSemantics value))
+        (CoalizationSemantics (interpretedSemantics value)))
   where
     operandMap = interpretedMap value
     coalizedMap = operandMap
@@ -39,6 +39,10 @@ coalizeValue value
     totality
       | interpretedValueHasTotalMap value = TotalInterpretedMap
       | otherwise = NonTotalInterpretedMap
+    preserveOrderedView coalized =
+      case orderedAtlasMapView value of
+        Just values -> withOrderedAtlasMapValues values coalized
+        Nothing -> coalized
 
 -- | Materialize the boundary previously inferred by canonical rendering: a
 -- map-valued member whose page reaches the surrounding page must be coalized
@@ -63,7 +67,7 @@ federationIsCoalition federation =
     PrimitiveAtlasMapFederation
         (ValuedIntegerRangeAtlasMapFederation _) -> True
     PrimitiveAtlasMapFederation
-        (DependentIdentifierTypeAtlasMapFederation _) -> True
+        (DependentArgumentTypeAtlasMapFederation _) -> True
     PrimitiveAtlasMapFederation
         (EitherAtlasMapFederation alternatives) ->
       federationIsCoalition

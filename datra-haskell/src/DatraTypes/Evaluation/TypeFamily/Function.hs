@@ -5,7 +5,7 @@ module Evaluation.TypeFamily.Function
   , decideFunctionSubfederation
   ) where
 
-import DatraLanguage.SyntaxTemplate (FunctionSyntax)
+import StringExpression (FunctionSyntax)
 import Evaluation.Error
   ( FunctionFailure (..)
   , InterpretingError (FunctionEvaluationFailed)
@@ -32,11 +32,11 @@ specifyFunction decideSubfederation specify source target =
         DecisionProved () -> Right (makeFunctionValue signature
           { functionSource = case functionSource original of
               Nothing -> Nothing
-              Just sourceText
+              Just implementationSource
                 | interpretedSemanticResult (functionDomain original) == interpretedSemanticResult (functionDomain signature)
-                , interpretedSemanticResult (functionCodomain original) == interpretedSemanticResult (functionCodomain signature) -> Just sourceText
-              Just sourceText -> Just
-                ("(" <> sourceText <> ") ~> (" <> functionSignatureSource signature <> ")")
+                , interpretedSemanticResult (functionCodomain original) == interpretedSemanticResult (functionCodomain signature) -> Just implementationSource
+              Just implementationSource -> Just (specifyFunctionSource
+                implementationSource (functionSignatureSource signature))
           , functionPrepare = Just (\argument -> do
               preparedCall <- case functionPrepare original of
                 Just prepare -> prepare argument
@@ -60,6 +60,7 @@ specifyFunction decideSubfederation specify source target =
             (show (interpretedSemanticResult source))
             (show (interpretedSemanticResult target))))
     _ -> Left (FunctionEvaluationFailed ExpectedFunctionValue)
+
 validateFunctionInput
   :: (InterpretedValue -> InterpretedValue -> Decision ())
   -> (InterpretedValue
@@ -100,7 +101,7 @@ decideFunctionSubfederation decideSubfederation source target
               (functionCodomain targetFunction)
           ])
   | interpretedSemanticResult source == interpretedSemanticResult target = DecisionProved ()
-  | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
+  | PrimitiveTypeForm _ <- interpretedForm source = DecisionRefuted
   | otherwise = DecisionRefuted
 
 patternCompatible

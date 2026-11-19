@@ -15,6 +15,8 @@ module DatraOrdinal
   , powerOrdinal
   , subtractOrdinal
   , naturalAtOrdinal
+  , naturalsBelow
+  , finiteOrdinalPositions
   , splitFiniteTail
   , ordinalAtNaturalRank
   , naturalRankOfOrdinal
@@ -34,6 +36,18 @@ import DatraOrdinal.Internal
   , subtractOrdinal
   )
 import Numeric.Natural (Natural)
+
+-- | Enumerate the naturals strictly below a finite bound without subtracting
+-- from zero.
+naturalsBelow :: Natural -> [Natural]
+naturalsBelow bound = takeWhile (< bound) [0 ..]
+
+-- | Materialize positions only when an ordinal is finite. Transfinite callers
+-- must retain their ordinal-indexed representation instead of crossing into a
+-- Haskell list.
+finiteOrdinalPositions :: Ordinal -> Maybe [Ordinal]
+finiteOrdinalPositions orderType =
+  map finiteOrdinal . naturalsBelow <$> naturalAtOrdinal orderType
 
 -- | Inspect the canonical Cantor-normal-form coefficients from the highest
 -- power of omega through the finite coefficient. The empty list denotes zero.

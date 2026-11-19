@@ -9,16 +9,22 @@ module DatraLanguage.AST.Reserved
   ) where
 
 data ReservedWord
-  = ThenWord
+  = DoWord
+  | BeginWord
+  | ThenWord
   | ElseWord
+  | YieldWord
   | ToWord
   | UpwardsWord
   | DownwardsWord
   deriving (Bounded, Enum, Eq, Show)
 
 reservedWordText :: ReservedWord -> String
+reservedWordText DoWord = "do"
+reservedWordText BeginWord = "begin"
 reservedWordText ThenWord = "then"
 reservedWordText ElseWord = "else"
+reservedWordText YieldWord = "yield"
 reservedWordText ToWord = "to"
 reservedWordText UpwardsWord = "up"
 reservedWordText DownwardsWord = "down"
@@ -27,9 +33,9 @@ reservedWordText DownwardsWord = "down"
 -- Some are currently parser forms or interpreter/FFI bootstraps; a future
 -- Datra standard library can provide ordinary definitions for the same names.
 data ReservedSymbol
-  = BooleanTypeSymbol
+  = AnyTypeSymbol
+  | BooleanTypeSymbol
   | StringTypeSymbol
-  | IdentifierValueTypeSymbol
   | IntegerTypeSymbol
   | NaturalTypeSymbol
   | IfSymbol
@@ -47,9 +53,9 @@ reservedSymbols
 
 -- | The unique simple-identifier spelling reserved for a context binding.
 reservedSymbolIdentifierString :: ReservedSymbol -> String
+reservedSymbolIdentifierString AnyTypeSymbol = "Any"
 reservedSymbolIdentifierString BooleanTypeSymbol = "Bool"
 reservedSymbolIdentifierString StringTypeSymbol = "Str"
-reservedSymbolIdentifierString IdentifierValueTypeSymbol = "IdenStr"
 reservedSymbolIdentifierString IntegerTypeSymbol = "Int"
 reservedSymbolIdentifierString NaturalTypeSymbol = "Nat"
 reservedSymbolIdentifierString IfSymbol = "if"

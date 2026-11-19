@@ -3,26 +3,37 @@
 
 module DatraParsingTests (main) where
 
+import Control.Applicative ((<|>))
 import Data.Char (chr, toUpper)
-import Data.List (isInfixOf)
+import Data.Either (isLeft)
+import Data.List.NonEmpty (NonEmpty (..))
 import DatraLanguage.AST
   ( Expression (..)
+  , DependentDeclaration (..)
+  , IdentifierExpression (..)
   , GenericBinder (..)
   , GenericBinderId (..)
-  , GenericIdentifier (..)
-  , GenericIntroduction (..)
+  , GenericArgument (..)
   , GenericPolarity (..)
-  , GenericReference (..)
-  , GenericReferenceRole (..)
-  , IdentifierString (IdentifierString)
-  , StringTemplatePart (..)
+  , IdentifierExpressionComposition (..)
+  , LiteralTemplate (..)
+  , LiteralTemplateAtom (..)
+  , LiteralTemplateLiteral (..)
+  , LiteralTemplateSequence (..)
+  , SimpleIdentifierString (SimpleIdentifierString)
+  , SymbolLiteral (..)
+  , StringTemplateInterpolation (..)
   , pattern FunctionType
-  , pattern GenericFunctionType
-  , contextualAccess
+  , dependentArgumentExpression
   , expressionChildren
   , normalizeExpression
-  , renderExpression
   , toOperatorExpression
+  )
+import DatraLanguage.Pretty (renderExpression)
+import DatraLanguage.DependentDeclaration
+  ( DeclarationModifier (..)
+  , applyDeclarationModifier
+  , dependentDeclaration
   )
 import DatraLanguage.AST.Syntax
   ( natural
@@ -39,49 +50,60 @@ import DatraLanguage.AST.Syntax
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST.Source (renderSourceExpression)
-import DatraLanguage.SyntaxTemplate qualified as SyntaxTemplate
-import DatraLanguage.SyntaxTemplate (TemplateSelection (..))
+import StringExpression (TemplateSelection (..))
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
+  , withoutSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (parseFailureMessage) )
+  ( LiteralTemplateParseFailure (..)
+  , ParseFailure (..)
+  )
+import DatraLanguage.Diagnostics.Localization
+  ( Locale (English)
+  , renderDatraError
+  )
 import DatraLanguage.Identifier qualified as Identifier
 import Interpreting
-  ( StandardLibraryVisibility (NoStandardLibrary, QualifiedStandardLibrary)
-  , parseDatraSourceLocatedWithImportsAndStandardLibrary
+  ( StandardLibraryVisibility
+      (AllStandardLibrary, NoStandardLibrary, QualifiedStandardLibrary)
   , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   )
 import Parsing
+  ( ResourceEnvelope (..)
+  , parseDatraRawLocatedWithSourceName
+  , parseSourceExpression
+  , expressionParser
+  )
+import CanonicalParsing (parseDatraAstLocatedWithSourceName)
+import DatraTypes.FunctionType
   ( FunctionTypeIdentifier (..)
   , PreparedFunctionDomain (..)
   , PreparedFunctionDomainKind (..)
   , PreparedFunctionDomainMember (..)
-  , ResourceEnvelope (..)
   , functionTypeIdentifiers
-  , freshNeutralWitnessIdentifiers
-  , neutralExpressionWitnessSources
   , prepareFunctionDomain
   , prepareFunctionDomainExpression
-  , parseDatra
-  , parseDatraAst
-  , parseDatraRawLocatedWithSourceName
-  , parseNeutralPhrase
   )
-import SyntaxDefinitions
-  ( SyntaxHoleKind (..)
-  , SyntaxPiece (..)
+import StringInterpolation
+  ( DeclarativeCapture (..)
+  , DeclarativeMatcherPlan (..)
+  , IdentifierApplicationPattern (..)
+  , LiteralExpressionPattern (..)
+  , LiteralExpressionPatternPart (..)
+  , LiteralTemplatePattern (..)
+  , LiteralTemplatePatternPart (..)
+  , StringExpression (..)
   , SyntaxRule (..)
-  , SyntaxTemplate (..)
-  , SyntaxTemplateCompilationFailure (..)
-  , compileSyntaxTemplatesFromExpression
+  , SyntaxRuleSemantics (..)
+  , declarationRuleBranches
+  , declarationRules
   , expandSyntax
   )
-import SyntaxTemplateAdmissibility (validateSyntaxTemplate)
-import SyntaxTemplateMatching
-  ( SyntaxTemplateMatchFailure (..)
+import StringInterpolation.Matching
+  ( StringInterpolationMatchFailure (..)
   , matchSyntaxRules
   )
 import Numeric (showHex)
@@ -95,6 +117,24 @@ import Test.Tasty.HUnit (assertBool, assertEqual, assertFailure, testCase)
 main :: IO ()
 main = defaultMain testTree
 
+renderParseFailure :: ParseFailure -> String
+renderParseFailure = renderDatraError English . withoutSourceSpan
+
+testSourceName :: FilePath
+testSourceName = "test/DatraParsingTests.hs"
+
+parseDatra :: String -> Either ParseFailure Expression
+parseDatra source = do
+  (_, Located _ parsed) <-
+    parseDatraRawLocatedWithSourceName testSourceName source
+  pure (case parsed of
+    SyntaxBoundary value -> value
+    value -> value)
+
+parseDatraAst :: String -> Either ParseFailure Expression
+parseDatraAst source = locatedValue <$>
+  parseDatraAstLocatedWithSourceName testSourceName source
+
 testTree :: TestTree
 testTree =
   testGroup "Datra parser"
@@ -104,6 +144,21 @@ testTree =
         assertStandardSyntaxDeclarationsAdmissible
     , testCase "generic AST representation" testGenericAstRepresentation
     , testCase "generic source parsing" testGenericSourceParsing
+    , testCase "dependent declaration precedence"
+        testDependentDeclarationPrecedence
+    , testGroup "template parsing"
+        [ testCase "quoted string templates" testStringTemplateParsing
+        , testCase "literal templates" testLiteralTemplateParsing
+        , testCase "literal-template diagnostics"
+            testLiteralTemplateDiagnostics
+        ]
+    , testCase "identifier operator AST syntax"
+        assertIdentifierOperatorAstSyntax
+    , testCase "dependent arguments and argumentative maps"
+        testRenamedArgumentConcepts
+    , testCase "dependent comment syntax" testDependentCommentSyntax
+    , testCase "syntax separator elision" testSyntaxSeparatorElision
+    , testCase "unresolved postfix syntax" testUnresolvedPostfixSyntax
     , testCase "syntax regressions" regressionTests
     , testGroup "properties"
         [ testProperty "rendered ASTs parse canonically" propAstRoundTrip
@@ -111,31 +166,310 @@ testTree =
         ]
     ]
 
+testStringTemplateParsing :: IO ()
+testStringTemplateParsing = do
+  assertTemplateParsed
+    "quoted templates retain literal text around shared simple interpolation"
+    "\"before %value after\""
+    (StringTemplate
+      [ templateLiteral "before "
+      , StringTemplateInterpolation (ref "value")
+      , templateLiteral " after"
+      ])
+  assertTemplateParsed
+    "quoted templates use the shared compound-interpolation parser"
+    "\"sum: %(2 + 3)\""
+    (StringTemplate
+      [ templateLiteral "sum: "
+      , StringTemplateInterpolation
+          (Addition (ref "2") (ref "3"))
+      ])
+  assertTemplateParsed
+    "quoted-template escapes remain literal text"
+    "\"\\%%value\""
+    (StringTemplate
+      [ templateLiteral "%"
+      , StringTemplateInterpolation (ref "value")
+      ])
+
+testLiteralTemplateParsing :: IO ()
+testLiteralTemplateParsing = do
+  assertTemplateParsed
+    "literal-template sequences retain literals, captures, and optionality"
+    "`do %_Block? yield %_Expr`"
+    (literalTemplate
+      [ identifierTemplateLiteral "do"
+      , OptionalExpression (templateCapture (ref "_Block"))
+      , identifierTemplateLiteral "yield"
+      , templateCapture (ref "_Expr")
+      ])
+  assertTemplateParsed
+    "literal-template alternatives reuse the ordinary Either AST"
+    "`verify %_Expr | hard %_Expr`"
+    (LiteralTemplateExpression
+      (LiteralTemplate
+        (EitherExpression
+          (templateSequence
+          [ identifierTemplateLiteral "verify"
+          , templateCapture (ref "_Expr")
+          ])
+          (templateSequence
+          [ identifierTemplateLiteral "hard"
+          , templateCapture (ref "_Expr")
+          ]))))
+  assertTemplateParsed
+    "literal-template groups and compound captures reuse expression parsing"
+    "`if %Bool then %_Expr (else %(_fallback : _Expr))?`"
+    (literalTemplate
+      [ identifierTemplateLiteral "if"
+      , templateCapture (ref "Bool")
+      , identifierTemplateLiteral "then"
+      , templateCapture (ref "_Expr")
+      , OptionalExpression
+          (IdentifierComposition
+            (LiteralTemplateGroupAtom
+              (LiteralTemplate
+                (templateSequence
+                  [ identifierTemplateLiteral "else"
+                  , templateCapture
+                      (AST.dependentArgumentType "_fallback" (ref "_Expr"))
+                  ]))))
+      ])
+  assertTemplateParsed
+    "literal-template symbolic components preserve their lexical class"
+    "`%Nat + %Nat`"
+    (literalTemplate
+      [ templateCapture (ref "Nat")
+      , IdentifierComposition
+          (LiteralTemplateLiteralAtom
+            (SymbolTemplateLiteral (SymbolLiteral "+")))
+      , templateCapture (ref "Nat")
+      ])
+  where
+    literalTemplate parts = LiteralTemplateExpression
+      (LiteralTemplate (templateSequence parts))
+    templateSequence parts = IdentifierComposition
+      (LiteralTemplateSequence (nonEmpty parts))
+    templateCapture = IdentifierComposition . LiteralTemplateCaptureAtom
+    nonEmpty (first : remaining) = first :| remaining
+    nonEmpty [] = error "test literal template must be nonempty"
+    identifierTemplateLiteral text = IdentifierComposition
+      (LiteralTemplateLiteralAtom
+        (IdentifierTemplateLiteral (SimpleIdentifierString text)))
+
+assertTemplateParsed :: String -> String -> Expression -> IO ()
+assertTemplateParsed label source expected =
+  case parseSourceExpression source of
+    Left failure -> assertFailure
+      (label <> ": unexpected parse failure: " <> renderParseFailure failure)
+    Right actual -> assertEqual label expected actual
+
+testLiteralTemplateDiagnostics :: IO ()
+testLiteralTemplateDiagnostics = do
+  assertTemplateFailure MixedTemplateLiteral "`do+yield`"
+  mapM_ (assertTemplateFailure InvalidLiteralTemplateSpacing)
+    [ "` do %_Expr`"
+    , "`do  %_Expr`"
+    , "`do\t%_Expr`"
+    , "`do\n%_Expr`"
+    , "`do %_Expr `"
+    , "`do%_Expr`"
+    ]
+  mapM_ (assertTemplateFailure NullableLiteralTemplate)
+    [ "`(whatever)?`"
+    , "`a? b?`"
+    , "`a | b?`"
+    ]
+  where
+    assertTemplateFailure expected source =
+      case parseSourceExpression source of
+        Left (DatraLiteralTemplateParseFailure actual) ->
+          assertEqual source expected actual
+        Left failure -> assertFailure
+          (source <> ": wrong parse failure: " <> renderParseFailure failure)
+        Right actual -> assertFailure
+          (source <> ": unexpectedly parsed as " <> show actual)
+
+testRenamedArgumentConcepts :: IO ()
+testRenamedArgumentConcepts = do
+  assertParsed "dependent argument source form"
+    "value : Int"
+    (AST.dependentArgumentType "value" (ref "Int"))
+  assertParsed "argumentative map source form"
+    "{value : Int; 2}"
+    (ArgumentativeMap
+      [ AST.dependentArgumentType "value" (ref "Int")
+      , natural 2
+      ])
+
+testDependentCommentSyntax :: IO ()
+testDependentCommentSyntax = do
+  let source = "(123 #this is a comment)"
+  case parseDatraRawLocatedWithSourceName testSourceName source of
+    Right (_, Located _ actual) -> assertEqual
+      "the enclosing parenthesized boundary owns the comment extent"
+      (SyntaxBoundary (ref "123"))
+      actual
+    Left failure -> assertFailure (renderParseFailure failure)
+  case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+      NoStandardLibrary [] testSourceName source of
+    Right (Located _ actual) -> assertEqual
+      "the first dependent rule reduces the comment member before later syntax"
+      (SyntaxBoundary (ref "123"))
+      actual
+    Left failure -> assertFailure (renderParseFailure failure)
+  case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+      NoStandardLibrary [] testSourceName
+      "(left # ignored to the line boundary\nright)" of
+    Right (Located _ actual) -> assertEqual
+      "a newline ends only the comment member"
+      (SyntaxBoundary (ref "left" <:> ref "right"))
+      actual
+    Left failure -> assertFailure (renderParseFailure failure)
+  case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+      NoStandardLibrary [] testSourceName
+      "(value # if and or not + ~> !!!)" of
+    Right (Located _ actual) -> assertEqual
+      "comment syntax has precedence over every spelling in its remainder"
+      (SyntaxBoundary (ref "value"))
+      actual
+    Left failure -> assertFailure (renderParseFailure failure)
+
+testSyntaxSeparatorElision :: IO ()
+testSyntaxSeparatorElision = do
+  assertRaw
+    "horizontal spacing is parser layout"
+    "(left right)"
+    (UnresolvedApplication [ref "left", ref "right"])
+  assertRaw
+    "ordinary application remains left associative"
+    "(left middle right)"
+    (UnresolvedApplication [ref "left", ref "middle", ref "right"])
+  assertRaw
+    "line syntax is retained before matching"
+    "(left\nright)"
+    (UnresolvedApplication [ref "left", LineBreak, ref "right"])
+  assertRewritten
+    "horizontal syntax introduces application without a unit argument"
+    "(left right)"
+    (SyntaxBoundary (FunctionApplication (ref "left") (ref "right")))
+  assertRewritten
+    "rewriting preserves ordinary left-associative application"
+    "(left middle right)"
+    (SyntaxBoundary (FunctionApplication
+      (FunctionApplication (ref "left") (ref "middle"))
+      (ref "right")))
+  assertRewritten
+    "line syntax introduces a sequence without a unit member"
+    "(left\nright)"
+    (SyntaxBoundary (ref "left" <:> ref "right"))
+  assertRewritten
+    "repeated line syntax produces one flat sequence"
+    "(left\nmiddle\nright)"
+    (SyntaxBoundary (ref "left" <:> ref "middle" <:> ref "right"))
+  where
+    assertRaw label source expected =
+      case parseDatraRawLocatedWithSourceName testSourceName source of
+        Right (_, Located _ actual) -> assertEqual label
+          (SyntaxBoundary expected)
+          actual
+        Left failure -> assertFailure (renderParseFailure failure)
+    assertRewritten label source expected =
+      case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+          NoStandardLibrary [] testSourceName source of
+        Right (Located _ actual) -> assertEqual label expected actual
+        Left failure -> assertFailure (renderParseFailure failure)
+
+testUnresolvedPostfixSyntax :: IO ()
+testUnresolvedPostfixSyntax = do
+  let compact = UnresolvedApplication
+        [ref "Nat", UnresolvedSyntaxLiteral "++"]
+      spaced = compact
+      lineSeparated = UnresolvedApplication
+        [ref "Nat", LineBreak, UnresolvedSyntaxLiteral "++"]
+      punctuated = UnresolvedApplication
+        [ref "hello", UnresolvedSyntaxLiteral "!!!!"]
+      exact sourceText = SyntaxRule
+        { declarativeMatcherPlan = LiteralExpressionMatcher
+            (LiteralExpressionPattern
+              [LiteralExpressionPatternLiteral sourceText])
+        , syntaxSemantics = SyntaxAdapter (ref "exact-match")
+        }
+      structural = SyntaxRule
+        { declarativeMatcherPlan = LiteralTemplateMatcher
+            (LiteralTemplatePattern
+              [ LiteralTemplatePatternLiteral
+                  (IdentifierTemplateLiteral (SimpleIdentifierString "Nat"))
+              , LiteralTemplatePatternLiteral
+                  (SymbolTemplateLiteral (SymbolLiteral "++"))
+              ])
+        , syntaxSemantics = SyntaxAdapter (ref "structural-match")
+        }
+      identifierApplication = SyntaxRule
+        { declarativeMatcherPlan = IdentifierApplicationMatcher
+            (IdentifierApplicationPattern
+              (ref "Nat")
+              (ExpressionString (AtlasMap [])))
+        , syntaxSemantics = SyntaxAdapter (ref "application-match")
+        }
+  assertRaw "numeric-looking heads remain identifiers before declarations"
+    "(2++)"
+    (UnresolvedApplication [ref "2", UnresolvedSyntaxLiteral "++"])
+  assertRaw "identifier-headed compact postfix syntax remains matchable"
+    "(Nat++)" compact
+  assertRaw "horizontal spacing does not add an AST operand"
+    "(Nat ++)" spaced
+  assertRaw "exact syntax is not restricted to a pure identifier"
+    "(hello!!!!)" punctuated
+  assertBool "horizontal layout does not change exact application syntax"
+    ( matches (exact "Nat++") compact
+      && matches (exact "Nat++") spaced
+      && not (matches (exact "Nat++") lineSeparated)
+    )
+  assertBool "horizontal layout is absent from exact source rendering"
+    ( not (matches (exact "Nat ++") spaced)
+      && not (matches (exact "Nat ++") compact)
+    )
+  assertBool "line breaks contribute an exact newline"
+    ( matches (exact "Nat\n++") lineSeparated
+      && not (matches (exact "Nat\n++") compact)
+      && not (matches (exact "Nat\n++") spaced)
+    )
+  assertBool "exact syntax accepts arbitrary retained punctuation"
+    (matches (exact "hello!!!!") punctuated)
+  assertBool "literal-template matching crosses line breaks"
+    ( all (matches structural) [compact, spaced, lineSeparated] )
+  assertBool "identifier application ends at a logical line break"
+    ( matches identifierApplication compact
+      && not (matches identifierApplication lineSeparated)
+    )
+  where
+    matches rule expressionValue = case
+        matchRules (const (const True)) [rule] expressionValue of
+      Right _ -> True
+      Left _ -> False
+    assertRaw label source expected =
+      case parseDatraRawLocatedWithSourceName testSourceName source of
+        Right (_, Located _ parsed) ->
+          assertEqual label (SyntaxBoundary expected) parsed
+        Left failure -> assertFailure (renderParseFailure failure)
+
 testGenericAstRepresentation :: IO ()
 testGenericAstRepresentation = do
   let binderIdentity = GenericBinderId 0
       binder = GenericBinder
         { genericBinderId = binderIdentity
-        , genericBinderPolarity = GenericProduct
-        , genericBinderIdentifier = genericIdentifier "_T" False
-        , genericBinderBound = ref "IntLimit"
-        , genericBinderSource = Nothing
+        , genericBinderArgument =
+            genericArgument GenericProduct "_T" False (ref "IntLimit")
         }
-      declaration = GenericReferenceExpression (GenericReference
-        binderIdentity
-        GenericDeclarationReference)
-      reference = GenericReferenceExpression (GenericReference
-        binderIdentity
-        GenericUseReference)
-      signature = GenericFunctionType
+      declaration = genericIntroduction binder
+      reference = ref "_T"
+      signature = FunctionTypeExpression
         [binder]
         (FunctionApplication (ref "Args") declaration)
         reference
-      rawIntroduction = GenericIntroductionExpression (GenericIntroduction
-        GenericSum
-        (genericIdentifier "T" True)
-          (ref "Any")
-          Nothing)
+      rawIntroduction = GenericIntroductionExpression
+        (genericArgument GenericSum "T" True AnyType)
   assert "raw generic introductions retain polarity and optional public names"
     (renderSourceExpression rawIntroduction == "^T?")
   assert "resolved function types reconstruct the declaration anchor"
@@ -149,8 +483,8 @@ testGenericAstRepresentation = do
   assert "normalization preserves the ordered generic prefix"
     (normalizeExpression signature == signature)
   assertEqual
-    "canonical AST rendering preserves binder identity and occurrence role"
-    "(generic-function-type (generic-prefix (generic-binder 0 & (ref $_T) (ref $IntLimit))) (apply-func (ref $Args) (generic-reference 0 declaration)) (generic-reference 0 use))"
+    "canonical function AST accepts an optional generic prefix"
+    "(-> (generic-prefix (generic-binder 0 & (ref $_T) (ref $IntLimit))) (apply-func (ref $Args) (generic-introduction & (ref $_T) (ref $IntLimit))) (ref $_T))"
     (renderExpression signature)
   assertAstRoundTrip "generic function AST" (renderExpression signature)
 
@@ -160,28 +494,27 @@ testGenericSourceParsing = do
   case unowned of
     GenericIntroductionExpression introduction ->
       assert "an unowned introduction remains a raw AST node"
-        ( genericIntroductionPolarity introduction == GenericProduct
-          && genericIntroductionIdentifier introduction
-            == genericIdentifier "T" True
-        )
+        (introduction == genericArgument GenericProduct "T" True AnyType)
     other -> fail ("unexpected raw generic introduction: " <> show other)
 
   parsed <- parseGenericSource
     "{value? : &T? :: Any} -> T"
   case parsed of
     FunctionTypeExpression [binder]
-        (ArgumentMap
-          [OptionalType
-            (IdentifierOperation (IdentifierString "value") declaration Nothing)])
+        (ArgumentativeMap
+          [DependentArgument
+            (OptionalType
+              (IdentifierExpression
+                (IdentifierReference (SimpleIdentifierString "value"))))
+            (Just declaration)])
         reference -> do
       assert "optional generic name is stored on the simple identifier"
-        ( genericBinderPolarity binder == GenericProduct
-          && genericBinderIdentifier binder == genericIdentifier "T" True
-        )
-      assert "the marked occurrence becomes the declaration reference"
-        (declaration == genericReference binder GenericDeclarationReference)
-      assert "the codomain occurrence becomes a use reference"
-        (reference == genericReference binder GenericUseReference)
+        (genericBinderArgument binder
+          == genericArgument GenericProduct "T" True (ref "Any"))
+      assert "the marked occurrence remains the generic introduction"
+        (declaration == genericIntroduction binder)
+      assert "the codomain occurrence is an ordinary identifier reference"
+        (reference == ref "T")
       assert "optional naming does not wrap the declaration as an optional value"
         (case declaration of OptionalType {} -> False; _ -> True)
     other -> fail ("unexpected optional generic AST: " <> show other)
@@ -191,9 +524,10 @@ testGenericSourceParsing = do
   case privateParsed of
     FunctionTypeExpression [binder] domain reference -> do
       assert "private generic identifiers retain ordinary privacy spelling"
-        (genericBinderIdentifier binder == genericIdentifier "_T" False)
-      assert "private generic codomain references use binder identity"
-        (reference == genericReference binder GenericUseReference)
+        (genericBinderArgument binder
+          == genericArgument GenericProduct "_T" False (ref "IntLimit"))
+      assert "private generic codomain references stay ordinary"
+        (reference == ref "_T")
       case prepareFunctionDomain [binder] domain of
         PreparedFunctionDomain PreparedArgumentFunctionDomain
             [ PreparedGenericFunctionDomainMember preparedBinder
@@ -225,13 +559,18 @@ testGenericSourceParsing = do
     FunctionTypeExpression [binder]
         domain@(SyntaxBoundary
           (AtlasMap
-            [ IdentifierOperation (IdentifierString "x") firstUse Nothing
-            , IdentifierOperation (IdentifierString "y") declaration Nothing
+            [ DependentArgument
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "x")))
+                (Just firstUse)
+            , DependentArgument
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "y")))
+                (Just declaration)
             ])) _ -> do
       assert "ordinary entries may use a generic before its written marker"
-        ( firstUse == genericReference binder GenericUseReference
-          && declaration
-            == genericReference binder GenericDeclarationReference
+        ( firstUse == ref "T"
+          && declaration == genericIntroduction binder
         )
       case prepareFunctionDomain [binder] domain of
         PreparedFunctionDomain PreparedOrderedFunctionDomain
@@ -243,11 +582,18 @@ testGenericSourceParsing = do
           ("unexpected prepared forward-use domain: " <> show prepared)
       case prepareFunctionDomainExpression [binder] domain of
         AtlasMap
-            [ IdentifierOperation (IdentifierString "T") _ Nothing
-            , IdentifierOperation (IdentifierString "x")
-                (IdentifierReference (IdentifierString "T")) Nothing
-            , IdentifierOperation (IdentifierString "y")
-                (IdentifierReference (IdentifierString "T")) Nothing
+            [ DependentArgument
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "T")))
+                (Just _)
+            , DependentArgument
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "x")))
+                (Just (IdentifierReference (SimpleIdentifierString "T")))
+            , DependentArgument
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "y")))
+                (Just (IdentifierReference (SimpleIdentifierString "T")))
             ] -> pure ()
         prepared -> fail
           ("unexpected lowered forward-use domain: " <> show prepared)
@@ -258,9 +604,8 @@ testGenericSourceParsing = do
   case sumParsed of
     FunctionTypeExpression [binder] _ _ ->
       assert "sum generics use the same optional-name representation"
-        ( genericBinderPolarity binder == GenericSum
-          && genericBinderIdentifier binder == genericIdentifier "T" True
-        )
+        (genericBinderArgument binder
+          == genericArgument GenericSum "T" True (ref "Any"))
     other -> fail ("unexpected sum generic AST: " <> show other)
 
   mixed <- parseGenericSource
@@ -268,7 +613,7 @@ testGenericSourceParsing = do
   case mixed of
     FunctionTypeExpression binders domain _ -> do
       assert "mixed generic prefixes retain source polarity order"
-        (map genericBinderPolarity binders
+        (map (genericArgumentPolarity . genericBinderArgument) binders
           == [GenericSum, GenericProduct, GenericSum])
       case prepareFunctionDomain binders domain of
         PreparedFunctionDomain PreparedArgumentFunctionDomain members ->
@@ -279,10 +624,19 @@ testGenericSourceParsing = do
             )
         prepared -> fail ("unexpected prepared mixed domain: " <> show prepared)
       case prepareFunctionDomainExpression binders domain of
-        ArgumentMap
-            ( IdentifierOperation (IdentifierString "S") _ Nothing
-            : IdentifierOperation (IdentifierString "T") _ Nothing
-            : IdentifierOperation (IdentifierString "U") _ Nothing
+        ArgumentativeMap
+            ( DependentArgument
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "S")))
+                (Just _)
+            : DependentArgument
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "T")))
+                (Just _)
+            : DependentArgument
+                (IdentifierExpression
+                  (IdentifierReference (SimpleIdentifierString "U")))
+                (Just _)
             : _
             ) -> pure ()
         prepared -> fail ("unexpected lowered mixed domain: " <> show prepared)
@@ -293,7 +647,8 @@ testGenericSourceParsing = do
   case quoted of
     FunctionTypeExpression [binder] _ _ ->
       assert "quoted simple identifiers remain valid generic names"
-        (genericBinderIdentifier binder == genericIdentifier "T-name" True)
+        (genericBinderArgument binder
+          == genericArgument GenericProduct "T-name" True AnyType)
     other -> fail ("unexpected quoted generic AST: " <> show other)
 
   assertGenericRejected "parenthesized generic identifier is rejected"
@@ -307,10 +662,10 @@ testGenericSourceParsing = do
   case duplicate of
     FunctionTypeExpression [first, second] _ _ ->
       assert "duplicate generic declarations remain available to compilation"
-        ( genericBinderIdentifier first == genericIdentifier "T" False
-          && genericBinderIdentifier second == genericIdentifier "T" True
-          && genericBinderPolarity first == GenericProduct
-          && genericBinderPolarity second == GenericSum
+        ( genericBinderArgument first
+            == genericArgument GenericProduct "T" False AnyType
+          && genericBinderArgument second
+            == genericArgument GenericSum "T" True AnyType
           && genericBinderId first /= genericBinderId second
         )
     other -> fail ("duplicate generic declarations were not retained: "
@@ -320,20 +675,25 @@ testGenericSourceParsing = do
     "{T? : Any; marker? : &T} -> (T : Any)"
   case collision of
     FunctionTypeExpression [_]
-        domain@(ArgumentMap
-          [ OptionalType (IdentifierOperation domainName _ Nothing)
-          , OptionalType (IdentifierOperation _ _ Nothing)
+        domain@(ArgumentativeMap
+          [ DependentArgument
+              (OptionalType
+                (IdentifierExpression (IdentifierReference domainName)))
+              (Just _)
+          , DependentArgument (OptionalType _) (Just _)
           ])
         codomain@(SyntaxBoundary
-          (IdentifierOperation codomainName _ Nothing)) -> do
+          (DependentArgument
+            (IdentifierExpression (IdentifierReference codomainName))
+            (Just _))) -> do
       assert "ordinary collision candidates remain declarations for semantic validation"
-        ( domainName == IdentifierString "T"
-          && codomainName == IdentifierString "T"
+        ( domainName == SimpleIdentifierString "T"
+          && codomainName == SimpleIdentifierString "T"
         )
       assertEqual "parsing classifies complete function-type scope identifiers"
-        [ SimpleFunctionTypeIdentifier (IdentifierString "T")
-        , SimpleFunctionTypeIdentifier (IdentifierString "marker")
-        , SimpleFunctionTypeIdentifier (IdentifierString "T")
+        [ SimpleFunctionTypeIdentifier (SimpleIdentifierString "T")
+        , SimpleFunctionTypeIdentifier (SimpleIdentifierString "marker")
+        , SimpleFunctionTypeIdentifier (SimpleIdentifierString "T")
         ]
         (functionTypeIdentifiers domain <> functionTypeIdentifiers codomain)
     other -> fail ("generic collision candidates were not retained: "
@@ -352,28 +712,38 @@ testGenericSourceParsing = do
         _ -> fail ("nested generic function was not preserved: " <> show domain)
     other -> fail ("unexpected nested generic AST: " <> show other)
   where
-    genericReference binder role =
-      GenericReferenceExpression
-        (GenericReference (genericBinderId binder) role)
     descendants expressionValue =
       expressionValue : concatMap descendants (expressionChildren expressionValue)
     preparedPolarity member =
       case member of
         PreparedGenericFunctionDomainMember binder ->
-          Just (genericBinderPolarity binder)
+          Just (genericArgumentPolarity (genericBinderArgument binder))
         PreparedOrdinaryFunctionDomainMember _ -> Nothing
     isOrdinary PreparedOrdinaryFunctionDomainMember {} = True
     isOrdinary _ = False
 
-genericIdentifier :: String -> Bool -> GenericIdentifier
-genericIdentifier name optionalName =
-  GenericIdentifier (IdentifierString name) optionalName
+genericArgument
+  :: GenericPolarity
+  -> String
+  -> Bool
+  -> Expression
+  -> GenericArgument Expression
+genericArgument polarity name optionalName bound = GenericArgument
+  { genericArgumentPolarity = polarity
+  , genericArgumentName = SimpleIdentifierString name
+  , genericArgumentOptional = optionalName
+  , genericArgumentBound = bound
+  }
+
+genericIntroduction :: GenericBinder Expression -> Expression
+genericIntroduction binder =
+  GenericIntroductionExpression (genericBinderArgument binder)
 
 parseGenericSource :: String -> IO Expression
 parseGenericSource source =
   case parseDatra ("(" <> source <> "\n)") of
     Left failure -> fail
-      ("unexpected generic parse failure: " <> parseFailureMessage failure)
+      ("unexpected generic parse failure: " <> renderParseFailure failure)
     Right expressionValue -> pure expressionValue
 
 assertGenericRejected :: String -> String -> IO ()
@@ -387,13 +757,13 @@ testBraceSeparatorSemantics :: IO ()
 testBraceSeparatorSemantics = do
   assertAstOutput "comma concatenates inside braces"
     "{1, 2}"
-    (ArgumentMap [MapConcatenation (natural 1) (natural 2)])
-  assertAstOutput "semicolon sequences argument-map members"
+    (ArgumentativeMap [MapConcatenation (natural 1) (natural 2)])
+  assertAstOutput "semicolon sequences argumentative-map members"
     "{1; 2}"
-    (ArgumentMap [natural 1, natural 2])
-  assertParsed "postfix comma remains inside argument-map syntax"
+    (ArgumentativeMap [natural 1, natural 2])
+  assertParsed "postfix comma remains inside argumentative-map syntax"
     "{Args Int,}"
-    (ArgumentMap
+    (ArgumentativeMap
       [MapConcatenation
         (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap [])])
   assertParsed "postfix comma is the same operator in parentheses"
@@ -401,24 +771,84 @@ testBraceSeparatorSemantics = do
     (MapConcatenation
       (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap []))
 
+testDependentDeclarationPrecedence :: IO ()
+testDependentDeclarationPrecedence = do
+  assertSourceExpression
+    "literal template binds before dependent declaration assignment"
+    source
+    expected
+  assertSourceExpressionRejected
+    "the scalar identifier operator rejects Atlas operands"
+    "$($hello; Int)"
+  assertSourceExpressionNormalized
+    "the scalar identifier operator accepts string expressions"
+    "$($left, $right)"
+    (IdentifierExpression
+      (MapConcatenation
+        (IdentifierExpression (ref "left"))
+        (IdentifierExpression (ref "right"))))
+  assertSourceExpressionRejected
+    "the obsolete literal-template operator is rejected"
+    "$!($hello)"
+  case ( dependentDeclaration expected
+       , declarationRuleBranches expected
+       ) of
+    (Just declaration, branches) ->
+      assertEqual
+        "compiled syntax branches retain dependent-declaration identity and order"
+        [ (declaration, 0)
+        , (declaration, 1)
+        ]
+        [ (owner, branch) | (owner, branch, _) <- branches ]
+    _ -> assertFailure "dependent declaration did not compile into syntax rules"
+  where
+    source = "`verify %_Expr | hard %_Expr` := body"
+    expected = MapSpecification (ref "body")
+      (DependentArgument
+        (LiteralTemplateExpression
+          (LiteralTemplate
+            (EitherExpression
+              (sequenceValue "verify")
+              (sequenceValue "hard"))))
+        Nothing)
+    sequenceValue literal = IdentifierComposition
+      (LiteralTemplateSequence
+        ( IdentifierComposition
+            (LiteralTemplateLiteralAtom
+              (IdentifierTemplateLiteral (SimpleIdentifierString literal))) :|
+          [ IdentifierComposition
+              (LiteralTemplateCaptureAtom (ref "_Expr"))
+          ]))
+    assertSourceExpression label input wanted =
+      case parseSourceExpression input of
+        Left failure -> assertFailure (renderParseFailure failure)
+        Right actual -> assertEqual label wanted actual
+    assertSourceExpressionRejected label input =
+      assertBool label (isLeft (parseSourceExpression input))
+    assertSourceExpressionNormalized label input wanted =
+      case parseSourceExpression input of
+        Left failure -> assertFailure (renderParseFailure failure)
+        Right actual -> assertEqual label
+          (normalizeExpression wanted)
+          (normalizeExpression actual)
+
 regressionTests :: IO ()
 regressionTests = do
-  assert "private identifiers have no public shadowing-consistency policy"
-    ( Identifier.identifierPolicy "_private"
-        == Identifier.PrivateIdentifier
+  assert "compact underscore identifiers are private"
+    (Identifier.isPrivateIdentifier "_private")
+  assert "apostrophe identifiers are ordinary public identifiers"
+    (not (Identifier.isPrivateIdentifier "'fixed"))
+  assert "natural identifiers retain their full decimal language"
+    (Identifier.identifierNaturalValue "007" == Just 7)
+  assert "canonical natural decoding rejects leading zeroes"
+    ( Identifier.canonicalNaturalValue "0" == Just 0
+      && Identifier.canonicalNaturalValue "7" == Just 7
+      && Identifier.canonicalNaturalValue "007" == Nothing
     )
-  assert "apostrophe identifiers require shadowing consistency"
-    ( Identifier.identifierPolicy "'fixed"
-        == Identifier.PublicIdentifier Identifier.ConsistentShadowing
-    )
-  assert "quoted private names use the same policy as compact names"
-    ( Identifier.identifierPolicy "_ private"
-        == Identifier.PrivateIdentifier
-    )
-  assert "quoted apostrophe names require shadowing consistency"
-    ( Identifier.identifierPolicy "''not compact"
-        == Identifier.PublicIdentifier Identifier.ConsistentShadowing
-    )
+  assert "quoted private names use the same privacy rule as compact names"
+    (Identifier.isPrivateIdentifier "_ private")
+  assert "quoted apostrophe names are ordinary public identifiers"
+    (not (Identifier.isPrivateIdentifier "''not compact"))
   assertParsed "an explicit resource does not introduce surface this"
     "this" (ref "this")
   assertParsed "an explicit resource does not introduce surface it"
@@ -429,222 +859,130 @@ regressionTests = do
       | otherwise -> fail
           ("implicit resource rewrote surface this: " <> show actual)
     Left failure -> fail
-      ("implicit resource unexpectedly failed: " <> parseFailureMessage failure)
+      ("implicit resource unexpectedly failed: " <> renderParseFailure failure)
   case parseSource "begin yield 5" of
     Right actual
       | actual == Begin [] (Begin [] (natural 5)) -> pure ()
       | otherwise -> fail
           ("top-level begin had the wrong block shape: " <> show actual)
     Left failure -> fail
-      ("top-level begin unexpectedly failed: " <> parseFailureMessage failure)
+      ("top-level begin unexpectedly failed: " <> renderParseFailure failure)
   assertParsed "a nested begin introduces surface this"
     "value := begin yield this"
     (AST.assignment "value"
-      (Begin [] (contextualAccess (IdentifierString "_this")))
-      (Begin [] (contextualAccess (IdentifierString "_this"))))
+      (Begin [] (ref "this"))
+      (Begin [] (ref "this")))
   assertParsed "explicit contextual depth remains an ordinary application"
     "_this 2"
     (FunctionApplication
-      (IdentifierReference (IdentifierString "_this"))
+      (IdentifierReference (SimpleIdentifierString "_this"))
       (EllipsisNatural 2))
-  assert "only contextual depth zero renders with surface syntax"
+  assert "contextual depth renders as an ordinary application"
     ( renderSourceExpression
         (FunctionApplication
-          (IdentifierReference (IdentifierString "_this"))
+          (IdentifierReference (SimpleIdentifierString "_this"))
           (EllipsisNatural 2))
         == "_this 2"
     )
-  assert "literal template text cannot manufacture interpolation holes"
-    ((SyntaxTemplate.literalSyntaxTemplate "%Int++" :: SyntaxTemplate ())
-      == SyntaxTemplate [SyntaxLiteral "%Int++"])
-  assert "the neutral reader retains an unknown postfix symbolic literal"
-    (case parseDatraRawLocatedWithSourceName "<postfix-syntax>" "(2++)" of
-      Right (_, Located _ parsed) ->
-        parsed == SyntaxBoundary
-          (FunctionApplication (natural 2) (ref "++"))
-      Left _ -> False)
-  let compilePattern source = case parseNeutralPhrase source of
-        Left _ -> Left ExpectedSyntaxTemplateOperand
-        Right expressionValue ->
-          compileSyntaxTemplatesFromExpression expressionValue
-  assert "whole-template validation rejects an incomplete core prefix"
-    (case compilePattern "\"call ~\"" of
-      Left (InadmissibleSyntaxTemplate "call ~" _) -> True
-      _ -> False)
-  assert "whole-template validation accepts a complete value-of expression"
-    (case compilePattern "\"call ~name\"" of
-      Right _ -> True
-      _ -> False)
-  assert "whole-template validation rejects consumed grouping boundaries"
-    (case compilePattern "\"call (%Int)\"" of
-      Left (InadmissibleSyntaxTemplate _ _) -> True
-      _ -> False)
-  let holeKinds =
-        [ ExpressionSyntaxHole (ref "_Expr")
-        , BlockSyntaxHole (ref "_Block")
-        , FunctionBodySyntaxHole (ref "_FunctionBody")
-        , DeclarationSyntaxHole (ref "_Declaration")
-        , DependentIdentifierSyntaxHole (ref "_DependentIdentifier")
-        , ValueSyntaxHole (ref "Int")
-        ]
-  assert "admissibility covers every typed hole kind"
-    (all
-      (\kind -> validateSyntaxTemplate
-        (SyntaxTemplate [SyntaxHole kind]) == Right ())
-      holeKinds)
-  assert "expression witnesses remain recoverable after a literal prefix"
-    (validateSyntaxTemplate
-      (SyntaxTemplate
-        [ SyntaxLiteral "call"
-        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
-        ]) == Right ())
-  assert "expression witnesses remain recoverable before a literal suffix"
-    (validateSyntaxTemplate
-      (SyntaxTemplate
-        [ SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
-        , SyntaxLiteral "after"
-        ]) == Right ())
-  assert "multiple holes retain both adjacent literal boundaries"
-    (validateSyntaxTemplate
-      (SyntaxTemplate
-        [ SyntaxLiteral "left"
-        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
-        , SyntaxLiteral "middle"
-        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
-        ]) == Right ())
-  assert "the parser-owned expression witness inventory remains parseable"
-    (all
-      (\source -> case parseNeutralPhrase source of
-        Right _ -> True
-        Left _ -> False)
-      (neutralExpressionWitnessSources "_witness" "_operand"))
-  let witnessLiterals = ["A", "AAAA", "literal"]
-      freshMarkers = take 4
-        (freshNeutralWitnessIdentifiers witnessLiterals)
-  assert "witness identifiers are derived fresh from template literals"
-    ( length freshMarkers == 4
-      && all
-        (\marker -> all (not . isInfixOf marker) witnessLiterals)
-        freshMarkers
-    )
-  assertParsed "compact signed skips remain numerical operands"
-    "assert -* = +*"
-    (Assert False (Equality (Minus Skip) (Plus Skip)))
-  let syntaxControl implementation = SyntaxRule
-        { syntaxName = "test-control"
-        , syntaxTemplate = SyntaxTemplate []
-        , syntaxSignature = ref "Any"
-        , syntaxRecursive = False
-        , syntaxModule = Nothing
-        , syntaxImplementation = datraRef implementation
-        }
-  assert "external syntax implementations are not selected by namespace"
-    (expandSyntax (syntaxControl ["syntax", "unknown"])
-      (TemplateSelection (ref "test-control") [])
-      == Right (FunctionApplication
-        (ref "test-control")
-        (AtlasMap [])))
-  let zeroCaptureSyntax = (syntaxControl ["syntax", "unknown"])
-        { syntaxName = "answer"
-        , syntaxSignature = FunctionType (natural 42) (ref "Nat")
+  let zeroCaptureSyntax = SyntaxRule
+        { declarativeMatcherPlan =
+            LiteralExpressionMatcher (LiteralExpressionPattern [])
+        , syntaxSemantics = SyntaxAdapter (ref "answer")
         }
   assert "zero-hole syntax supplies the empty capture tail"
     (expandSyntax zeroCaptureSyntax
       (TemplateSelection (ref "answer") [])
-      == Right (FunctionApplication
+      == FunctionApplication
         (ref "answer")
-        (AtlasMap [])))
-  let syntaxFunction name pieces implementation = SyntaxRule
-        { syntaxName = name
-        , syntaxTemplate = SyntaxTemplate (SyntaxLiteral name : pieces)
-        , syntaxSignature = FunctionType
-            (AtlasMap [ref "Int", ref "IntLimit"])
-            (ref "IntValRange")
-        , syntaxRecursive = False
-        , syntaxModule = Nothing
-        , syntaxImplementation = datraRef implementation
+        (AtlasMap []))
+  let syntaxFunction name pieces = SyntaxRule
+        { declarativeMatcherPlan = LiteralTemplateMatcher
+            (LiteralTemplatePattern
+              (literalPattern name :
+                [ case kind of
+                    LiteralString literal ->
+                      literalPattern literal
+                    ValueString target ->
+                      LiteralTemplatePatternCapture target
+                    ExpressionString target ->
+                      LiteralTemplatePatternCapture target
+                    BlockString target -> LiteralTemplatePatternCapture target
+                    FunctionBodyString target ->
+                      LiteralTemplatePatternCapture target
+                    DeclarationString target ->
+                      LiteralTemplatePatternCapture target
+                    DependentArgumentString target ->
+                      LiteralTemplatePatternCapture target
+                    IdentifierExpressionString target ->
+                      LiteralTemplatePatternCapture target
+                    StringLiteralString target ->
+                      LiteralTemplatePatternCapture target
+                | StringTemplateInterpolation kind <- pieces
+                ]))
+        , syntaxSemantics = SyntaxAdapter (ref name)
         }
-      intHole = SyntaxHole (ValueSyntaxHole (ref "Int"))
-      intLimitHole = SyntaxHole (ValueSyntaxHole (ref "IntLimit"))
+      literalPattern literal = LiteralTemplatePatternLiteral
+        (if Identifier.isIdentifierValue literal
+          then IdentifierTemplateLiteral (SimpleIdentifierString literal)
+          else SymbolTemplateLiteral (SymbolLiteral literal))
+      intHole = StringTemplateInterpolation (ValueString (ref "Int"))
+      intLimitHole = StringTemplateInterpolation (ValueString (ref "IntLimit"))
       fromPhrase = foldl FunctionApplication (ref "from")
         [natural 0, ref "to", ref "Infinity"]
       matchesNumericHole kind value = case (kind, value) of
-        (ValueSyntaxHole (IdentifierReference (IdentifierString "Int")),
+        (ValueString (IdentifierReference (SimpleIdentifierString "Int")),
           EllipsisNatural _) -> True
-        (ValueSyntaxHole (IdentifierReference (IdentifierString "Int")),
+        (ValueString (IdentifierReference (SimpleIdentifierString "Int")),
           Minus (EllipsisNatural _)) -> True
-        (ValueSyntaxHole (IdentifierReference (IdentifierString "IntLimit")),
+        (ValueString (IdentifierReference (SimpleIdentifierString "IntLimit")),
           EllipsisNatural _) -> True
-        (ValueSyntaxHole (IdentifierReference (IdentifierString "IntLimit")),
+        (ValueString (IdentifierReference (SimpleIdentifierString "IntLimit")),
           Minus (EllipsisNatural _)) -> True
-        (ValueSyntaxHole (IdentifierReference (IdentifierString "IntLimit")),
+        (ValueString (IdentifierReference (SimpleIdentifierString "IntLimit")),
           IdentifierReference
-            (IdentifierString "Infinity")) -> True
+            (SimpleIdentifierString "Infinity")) -> True
         _ -> False
       wrongFrom = syntaxFunction "from"
-        [intHole, SyntaxLiteral "to", intHole]
-        ["wrong-from"]
+        [intHole, syntaxLiteral "to", intHole]
       correctFrom = syntaxFunction "from"
-        [intHole, SyntaxLiteral "to", intLimitHole]
-        ["from"]
+        [intHole, syntaxLiteral "to", intLimitHole]
       unrelated = syntaxFunction "unrelated"
         [ intHole
-        , SyntaxLiteral "to"
+        , syntaxLiteral "to"
         , intLimitHole
-        , SyntaxLiteral "with-more-template-text"
+        , syntaxLiteral "extra"
         ]
-        ["unrelated"]
   assert "Int template holes reject an Infinity AST"
     (matchRules matchesNumericHole [wrongFrom] fromPhrase
-      == Left NoMatchingSyntaxTemplate)
+      == Left NoMatchingStringInterpolation)
   assert "IntLimit template holes accept an Infinity AST"
-    (case expandSyntax correctFrom
-        (TemplateSelection fromPhrase [natural 0, ref "Infinity"]) of
-      Right expected ->
-        matchRules matchesNumericHole [correctFrom] fromPhrase
-          == Right expected
-      Left _ -> False)
+    (let expected = expandSyntax correctFrom
+          (TemplateSelection fromPhrase [natural 0, ref "Infinity"])
+     in matchRules matchesNumericHole [correctFrom] fromPhrase
+          == Right expected)
   assert "the explicit AST head selects the syntax binding"
     ( matchRules matchesNumericHole
         [unrelated, correctFrom]
         fromPhrase
         == matchRules matchesNumericHole [correctFrom] fromPhrase
     )
-  assert "syntax templates rewrite an AST after it is read"
-    (case parseSourceLocated False
-        "<syntax-template-test>" "(from 0 to Infinity)" of
+  assert "string interpolations rewrite an AST after it is read"
+    (case parseSourceLocated NoStandardLibrary
+        testSourceName "(from 0 to Infinity)" of
       Right (Located _ parsedPhrase) ->
         matchRules matchesNumericHole [correctFrom] parsedPhrase
           == matchRules matchesNumericHole [correctFrom] fromPhrase
-      Left _ -> False)
-  let beginAliasBootstrap = unlines
-        [ "_Expr := 'datra.Expr"
-        , "_Block := 'datra.Block"
-        , "'begin := \"begin %_Block yield %_Expr\" % (_Block; _Expr -> _Expr) 'datra.begin"
-        , "yield Example := begin"
-        , "  'begin := 'begin"
-        , "yield 'begin"
-        ]
-      isBeginAlias expressionValue =
-        expressionValue == AST.assignment
-          "'begin" (ref "'begin") (ref "'begin")
-          || any isBeginAlias (expressionChildren expressionValue)
-  assert "'begin := 'begin remains a declaration beside its own template"
-    (case parseSourceLocated False
-        "<begin-alias-regression>" beginAliasBootstrap of
-      Right (Located _ parsed) -> isBeginAlias parsed
       Left _ -> False)
   let nestedTailPhrase = foldl FunctionApplication (ref "from")
         [natural 0, AtlasMap [ref "to", ref "Infinity"]]
   assert "matching does not flatten through a nested AST boundary"
     (matchRules matchesNumericHole [correctFrom] nestedTailPhrase
-      == Left NoMatchingSyntaxTemplate)
+      == Left NoMatchingStringInterpolation)
   let greedyRule = syntaxFunction "greedy"
-        [ SyntaxHole (ValueSyntaxHole (ref "Prefix"))
-        , SyntaxLiteral "marker"
-        , SyntaxHole (ValueSyntaxHole (ref "Tail"))
+        [ StringTemplateInterpolation (ValueString (ref "Prefix"))
+        , syntaxLiteral "marker"
+        , StringTemplateInterpolation (ValueString (ref "Tail"))
         ]
-        ["greedy"]
       greedyPhrase = foldl FunctionApplication (ref "greedy")
         [ natural 1
         , ref "marker"
@@ -655,63 +993,53 @@ regressionTests = do
       greedyPrefix = foldl FunctionApplication (natural 1)
         [ref "marker", natural 2]
       matchesGreedyHole kind value = case kind of
-        ValueSyntaxHole (IdentifierReference (IdentifierString "Prefix")) ->
+        ValueString (IdentifierReference (SimpleIdentifierString "Prefix")) ->
           True
-        ValueSyntaxHole (IdentifierReference (IdentifierString "Tail")) ->
+        ValueString (IdentifierReference (SimpleIdentifierString "Tail")) ->
           value == natural 3
         _ -> False
   assert "holes match greedily inside the current AST boundary"
-    (case expandSyntax greedyRule
-        (TemplateSelection greedyPhrase [greedyPrefix, natural 3]) of
-      Right expected ->
-        matchRules matchesGreedyHole [greedyRule] greedyPhrase
-          == Right expected
-      Left _ -> False)
+    (let expected = expandSyntax greedyRule
+          (TemplateSelection greedyPhrase [greedyPrefix, natural 3])
+     in matchRules matchesGreedyHole [greedyRule] greedyPhrase
+          == Right expected)
   let contextualShort = syntaxFunction "contextual"
         [intHole]
-        ["contextual-short"]
       contextualLong = syntaxFunction "contextual"
-        [intHole, SyntaxLiteral "marker", intHole]
-        ["contextual-long"]
+        [intHole, syntaxLiteral "marker", intHole]
       contextualPhrase = foldl FunctionApplication (ref "contextual")
         [natural 1, ref "marker", natural 2, ref "after"]
   assert "the first declaration wins and leaves its unmatched AST suffix"
-    (case expandSyntax contextualShort
-        (TemplateSelection contextualPhrase [natural 1]) of
-      Right expanded ->
-        matchRules matchesNumericHole
+    (let expanded = expandSyntax contextualShort
+          (TemplateSelection contextualPhrase [natural 1])
+     in matchRules matchesNumericHole
           [contextualShort, contextualLong]
           contextualPhrase
           == Right (foldl FunctionApplication expanded
-            [ref "marker", natural 2, ref "after"])
-      Left _ -> False)
+            [ref "marker", natural 2, ref "after"]))
   let rankedShort = syntaxFunction "ranked"
-        [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
-        ["ranked-short"]
+        [StringTemplateInterpolation (ExpressionString (ref "_Expr"))]
       rankedLong = syntaxFunction "ranked"
-        [ SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
-        , SyntaxLiteral "marker"
-        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
+        [ StringTemplateInterpolation (ExpressionString (ref "_Expr"))
+        , syntaxLiteral "marker"
+        , StringTemplateInterpolation (ExpressionString (ref "_Expr"))
         ]
-        ["ranked-long"]
       rankedPhrase = foldl FunctionApplication (ref "ranked")
         [natural 1, ref "marker", natural 2]
   let rankedCapture = foldl FunctionApplication (natural 1)
         [ref "marker", natural 2]
   assert "the first declaration greedily takes its longest valid match"
-    (case expandSyntax rankedShort
-        (TemplateSelection rankedPhrase [rankedCapture]) of
-      Right expected ->
-        matchRules (const (const True))
+    (let expected = expandSyntax rankedShort
+          (TemplateSelection rankedPhrase [rankedCapture])
+     in matchRules (const (const True))
           [rankedShort, rankedLong]
           rankedPhrase
-          == Right expected
-      Left _ -> False)
+          == Right expected)
   assertAstOutput "function arrows associate right"
     "Int -> Int -> Int" (FunctionType (ref "Int") (FunctionType (ref "Int") (ref "Int")))
   assertAstOutput "application associates left before arithmetic"
     "f 2 3 + 4" (Addition
-      (FunctionApplication (FunctionApplication (IdentifierReference (IdentifierString "f")) (natural 2)) (natural 3))
+      (FunctionApplication (FunctionApplication (IdentifierReference (SimpleIdentifierString "f")) (natural 2)) (natural 3))
       (natural 4))
   assertAstOutput "left overload"
     "a << b"
@@ -725,15 +1053,6 @@ regressionTests = do
   assertAstOutput "reverse safe overload reverses operands"
     "a >>> b"
     (SafeOverload (ref "b") (ref "a"))
-  assertAstOutput "assert captures a complete Boolean expression"
-    "assert f 5 = 120"
-    (Assert False
-      (Equality
-        (FunctionApplication (ref "f") (natural 5))
-        (natural 120)))
-  assertAstOutput "hard assert"
-    "assert hard false"
-    (Assert True (ref "false"))
   assertAstOutput "fun expands to an inline fixed point"
     "fun 5"
     (Fun (natural 5))
@@ -765,12 +1084,12 @@ regressionTests = do
   assertAstOutput "skip composes in an ordered map"
     "(*, 3)"
     (MapConcatenation Skip (natural 3))
-  assertAstOutput "skip composes in an argument map"
+  assertAstOutput "skip composes in an argumentative map"
     "{*; 3}"
-    (ArgumentMap [Skip, natural 3])
-  assertAstOutput "comma concatenates inside an argument map"
+    (ArgumentativeMap [Skip, natural 3])
+  assertAstOutput "comma concatenates inside an argumentative map"
     "{*, 3}"
-    (ArgumentMap [MapConcatenation Skip (natural 3)])
+    (ArgumentativeMap [MapConcatenation Skip (natural 3)])
   assertAstOutput "rank-zero formulation remains an ordinary value"
     "((...) ^ 0, 3)"
     (MapConcatenation
@@ -780,70 +1099,61 @@ regressionTests = do
     [ Import ["library_one", "std"] (FunctionBody [] (natural 1))
     , InModule "std" (ref "_this")
     , ScopeAccess (ref "_this") (ref "abc")
-    , SyntaxType (StringTemplate
-        [ StringTemplateInterpolation (ref "Int")
-        , StringTemplateLiteral " next"
-        ])
-        (FunctionType (ref "Int") (ref "Int"))
-    , FunctionBody [] (IdentifierReference (IdentifierString "x"))
-    , Assert True (BooleanLiteral True)
+    , FunctionBody [] (IdentifierReference (SimpleIdentifierString "x"))
     , Overload (natural 1) (natural 2)
     , Coalization (AtlasMap [natural 1, natural 2])
     , datraRef ["add"]
-    , GenericIntroductionExpression (GenericIntroduction
-        GenericProduct (genericIdentifier "T" True) (ref "Any") Nothing)
-    , GenericIntroductionExpression (GenericIntroduction
-        GenericSum (genericIdentifier "T" False) (ref "Any") Nothing)
+    , GenericIntroductionExpression
+        (genericArgument GenericProduct "T" True AnyType)
+    , GenericIntroductionExpression
+        (genericArgument GenericSum "T" False AnyType)
     , Begin []
         (AST.assignment "Example"
           (Begin
-            [AST.assignment "x" (natural 1) (natural 1)]
+            [declarationEntry (AST.assignment "x" (natural 1) (natural 1))]
             (FunctionApplication (ref "public") (ref "_this")))
           (Begin
-            [AST.assignment "x" (natural 1) (natural 1)]
+            [declarationEntry (AST.assignment "x" (natural 1) (natural 1))]
             (FunctionApplication (ref "public") (ref "_this"))))
     ]
   assertAstOutput "eval is available as an ordinary user identifier"
-    "eval : Nat" (AST.dependentIdentifierType "eval" (ref "Nat"))
+    "eval : Nat" (AST.dependentArgumentType "eval" (ref "Nat"))
   assertAstOutput "eval identifier respects identifier boundaries"
-    "evaluate : Nat" (AST.dependentIdentifierType "evaluate" (ref "Nat"))
-  assertAstOutput "argument map uses existing map arity"
+    "evaluate : Nat" (AST.dependentArgumentType "evaluate" (ref "Nat"))
+  assertAstOutput "argumentative map uses existing map arity"
     "{b := 8; 2}"
-    (ArgumentMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
-  assertAstOutput "empty argument map" "{}" (ArgumentMap [])
+    (ArgumentativeMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
+  assertAstOutput "empty argumentative map" "{}" (ArgumentativeMap [])
   assertAstOutput "comma retains ordinary concatenation in braces"
     "{b := 8, 2}"
-    (ArgumentMap
+    (ArgumentativeMap
       [MapConcatenation
         (AST.assignment "b" (natural 8) (natural 8))
         (natural 2)])
   assertAstOutput "parenthesized concatenation remains one argument"
     "{(1, 2); 3}"
-    (ArgumentMap [MapConcatenation (natural 1) (natural 2), natural 3])
+    (ArgumentativeMap [MapConcatenation (natural 1) (natural 2), natural 3])
   assertAstOutput "a trailing comma remains map concatenation"
     "{1, 2,}"
-    (ArgumentMap
+    (ArgumentativeMap
       [MapConcatenation
         (MapConcatenation (natural 1) (natural 2)) (AtlasMap [])])
   assertAstOutput "a unary trailing comma splices an argument federation"
     "{Args Int,}"
-    (ArgumentMap
+    (ArgumentativeMap
       [MapConcatenation
         (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap [])])
   variadic <- parseGenericSource
     "{Args (&_T :: IntLimit),} -> _T?"
   case variadic of
     FunctionTypeExpression [binder]
-        (ArgumentMap [MapConcatenation
-          (FunctionApplication (IdentifierReference (IdentifierString "Args"))
+        (ArgumentativeMap [MapConcatenation
+          (FunctionApplication (IdentifierReference (SimpleIdentifierString "Args"))
             declaration)
           (AtlasMap [])])
         (OptionalType reference) ->
-      let expectedDeclaration = GenericReferenceExpression
-            (GenericReference (genericBinderId binder)
-              GenericDeclarationReference)
-          expectedReference = GenericReferenceExpression
-            (GenericReference (genericBinderId binder) GenericUseReference)
+      let expectedDeclaration = genericIntroduction binder
+          expectedReference = ref "_T"
           actualDeclaration = case declaration of
             SyntaxBoundary value -> value
             value -> value
@@ -852,24 +1162,27 @@ regressionTests = do
           (expectedDeclaration, expectedReference)
           (actualDeclaration, reference)
     other -> fail ("unexpected generic variadic domain: " <> show other)
-  assertAstOutput "unary argument map" "{2}" (ArgumentMap [natural 2])
-  assertAstOutput "argument map supports newline separators"
-    "{1\n2}" (ArgumentMap [natural 1, natural 2])
-  assertParsed "argument map AST round trip"
+  assertAstOutput "unary argumentative map" "{2}" (ArgumentativeMap [natural 2])
+  assertAstOutput "argumentative map supports newline separators"
+    "{1\n2}" (ArgumentativeMap [natural 1, natural 2])
+  assertParsed "argumentative map AST round trip"
     "{a? : Nat; b? : Str}"
-    (ArgumentMap
-      [ OptionalType (AST.dependentIdentifierType "a" (ref "Nat"))
-      , OptionalType (AST.dependentIdentifierType "b" (ref "Str"))
+    (ArgumentativeMap
+      [ OptionalType (AST.dependentArgumentType "a" (ref "Nat"))
+      , OptionalType (AST.dependentArgumentType "b" (ref "Str"))
       ])
   assertRejected "private argument names cannot be optional"
     "{_x? : Nat; y : Nat}"
   let block = Begin
-        [AST.dependentIdentifierType "a" (Multiplication (natural 2) (natural 3)), AST.dependentIdentifierType "b" (natural 5)]
-        (Addition (IdentifierReference (IdentifierString "a")) (IdentifierReference (IdentifierString "b")))
+        [ declarationEntry (AST.dependentArgumentType "a"
+            (Multiplication (natural 2) (natural 3)))
+        , declarationEntry (AST.dependentArgumentType "b" (natural 5))
+        ]
+        (Addition (IdentifierReference (SimpleIdentifierString "a")) (IdentifierReference (SimpleIdentifierString "b")))
   assertParsed "begin newline bindings" "begin\n a : 2 * 3\n b : 5\nyield a + b" block
   let assignedBlock = Begin
-        [ AST.assignment "a" (natural 2) (natural 2)
-        , AST.assignment "b" (natural 3) (natural 3)
+        [ declarationEntry (AST.assignment "a" (natural 2) (natural 2))
+        , declarationEntry (AST.assignment "b" (natural 3) (natural 3))
         ]
         (Addition (ref "a") (ref "b"))
   assertParsed "assignment infers a grouped begin block"
@@ -892,7 +1205,7 @@ regressionTests = do
       ])
   assertAstOutput "module remains an ordinary identifier"
     "module : Nat"
-    (AST.dependentIdentifierType "module" (ref "Nat"))
+    (AST.dependentArgumentType "module" (ref "Nat"))
   assertParsed "declared import lowers paths and its function body structurally"
     "import \"library_one\" do yield 7"
     (Import ["library_one"] (FunctionBody [] (natural 7)))
@@ -903,28 +1216,29 @@ regressionTests = do
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
     "begin let x := 10 yield x"
-    (Begin [Let (AST.assignment "x" (natural 10) (natural 10))]
-      (IdentifierReference (IdentifierString "x")))
+    (Begin [declarationEntry (modified DeclarationLet
+        (AST.assignment "x" (natural 10) (natural 10)))]
+      (IdentifierReference (SimpleIdentifierString "x")))
   assertParsed "references are parsed independently of lexical lookup" "(begin x : 1 yield x), x"
-    (MapConcatenation (Begin [AST.dependentIdentifierType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
-      (IdentifierReference (IdentifierString "x")))
+    (MapConcatenation (Begin
+        [declarationEntry (AST.dependentArgumentType "x" (natural 1))]
+        (IdentifierReference (SimpleIdentifierString "x")))
+      (IdentifierReference (SimpleIdentifierString "x")))
   assertParsed "let accepts an assigned declaration" "let x := 1"
-    (Let (AST.assignment "x" (natural 1) (natural 1)))
+    (modified DeclarationLet (AST.assignment "x" (natural 1) (natural 1)))
   assertParsed "val marks one assigned declaration" "val x := 1"
-    (Val (AST.assignment "x" (natural 1) (natural 1)))
+    (modified DeclarationVal (AST.assignment "x" (natural 1) (natural 1)))
   assertParsed "let composes outside val" "let val x := 1"
-    (Let (Val (AST.assignment "x" (natural 1) (natural 1))))
-  assertParsed "val preserves the rejected inner-let ordering"
-    "val let x := 1"
-    (Val (Let (AST.assignment "x" (natural 1) (natural 1))))
+    (modified DeclarationLet (modified DeclarationVal
+      (AST.assignment "x" (natural 1) (natural 1))))
   assertParsed "an incomplete begin form remains ordinary application syntax"
     "begin x : 1"
     (FunctionApplication
       (ref "begin")
-      (AST.dependentIdentifierType "x" (natural 1)))
+      (AST.dependentArgumentType "x" (natural 1)))
   assert "an incomplete do form is not expanded to a function body"
     (case parseSource
-        "(f := ({n? : Nat} -> () do assert n of Nat)\n)" of
+        "(f := ({n? : Nat} -> () do verify n of Nat)\n)" of
       Right actual -> not (containsFunctionBody actual)
       Left _ -> False)
   assert "a newline after a signature does not create a function body"
@@ -933,8 +1247,8 @@ regressionTests = do
       Left _ -> False)
   let identityBody = FunctionBody [] (ref "value")
       optionalInput =
-        ArgumentMap
-          [OptionalType (AST.dependentIdentifierType "value" (ref "Any"))]
+        ArgumentativeMap
+          [OptionalType (AST.dependentArgumentType "value" (ref "Any"))]
       arrowBody input output = FunctionApplication
         (FunctionType input output)
         identityBody
@@ -946,10 +1260,10 @@ regressionTests = do
     "{value? : Any} do yield value"
     (appliedBody optionalInput)
   assertParsed "a host function body infers Any after a non-function type"
-    "Nat 'datra.val"
-    (FunctionApplication (ref "Nat") (datraRef ["val"]))
+    "Nat datra.fun_body"
+    (FunctionApplication (ref "Nat") (datraRef ["fun_body"]))
   assertParsed "a leading host member remains a standalone value"
-    "'datra.Any"
+    "datra.Any"
     (datraRef ["Any"])
   assertParsed "a parenthesized type retains its signature boundary"
     "(Nat) do yield value"
@@ -959,8 +1273,8 @@ regressionTests = do
         (GenericIntroductionExpression introduction) body) ->
       assert "a generic introduction remains an ordinary body application"
         ( body == identityBody
-          && genericIntroductionIdentifier introduction
-            == genericIdentifier "T" True
+          && introduction
+            == genericArgument GenericProduct "T" True AnyType
         )
     result -> fail ("unexpected generic function body: " <> show result)
   assertParsed "function domains accept forward specifications"
@@ -979,14 +1293,6 @@ regressionTests = do
   assertParsed "inferred function domains accept reverse specifications"
     "(Any <~ Nat) do yield value"
     (appliedBody (MapSpecification (ref "Nat") (ref "Any")))
-  assertParsed "function domains accept subfederations"
-    "(Nat of Any) -> Any do yield value"
-    (arrowBody
-      (Subfederation (ref "Nat") (ref "Any"))
-      (ref "Any"))
-  assertParsed "inferred function domains accept subfederations"
-    "(Nat of Any) do yield value"
-    (appliedBody (Subfederation (ref "Nat") (ref "Any")))
   assertParsed "an explicit code-block codomain is preserved"
     "{value? : Any} -> Nat do yield value"
     (arrowBody optionalInput (ref "Nat"))
@@ -994,93 +1300,10 @@ regressionTests = do
     "{value? : Any} -> >< (Nat; Nat) do yield value"
     (arrowBody optionalInput
       (Coalization (AtlasMap [ref "Nat", ref "Nat"])))
-  assertParsed "a declared syntax signature is not a shorthand function domain"
-    "\"step %Int next\" % (Int -> Int) do yield value"
-    (FunctionApplication
-      (SyntaxType (StringTemplate
-          [ StringTemplateLiteral "step "
-          , StringTemplateInterpolation (ref "Int")
-          , StringTemplateLiteral " next"
-          ])
-        (FunctionType (ref "Int") (ref "Int")))
-      identityBody)
-  assertParsed "a declared syntax signature can infer its Any codomain"
-    "\"step %Int next\" % Int do yield value"
-    (FunctionApplication
-      (SyntaxType (StringTemplate
-          [ StringTemplateLiteral "step "
-          , StringTemplateInterpolation (ref "Int")
-          , StringTemplateLiteral " next"
-          ])
-        (ref "Int"))
-      identityBody)
-  let optionalIntInput = ArgumentMap
-        [OptionalType (AST.dependentIdentifierType "value" (ref "Int"))]
-  assertParsed "a declared syntax signature accepts a multiline body"
-    "\"step %Nat next\" % ({value?:Int} -> Int) do\n  yield value"
-    (FunctionApplication
-      (SyntaxType (StringTemplate
-          [ StringTemplateLiteral "step "
-          , StringTemplateInterpolation (ref "Nat")
-          , StringTemplateLiteral " next"
-          ])
-        (FunctionType optionalIntInput (ref "Int")))
-      identityBody)
-  assertAstOutput "% accepts an inhabited total map of template strings"
-    "(\"%Int++\"; \"increment %Int\") % (Int -> Int)"
-    (SyntaxType
-      (AtlasMap
-        [ StringTemplate
-            [ StringTemplateInterpolation (ref "Int")
-            , StringTemplateLiteral "++"
-            ]
-        , StringTemplate
-            [ StringTemplateLiteral "increment "
-            , StringTemplateInterpolation (ref "Int")
-            ]
-        ])
-      (FunctionType (ref "Int") (ref "Int")))
-  assertParsed "% remains syntax rather than performing parser validation"
-    "\"call (%Int)\" % (Int -> Int)"
-    (SyntaxType
-      (StringTemplate
-        [ StringTemplateLiteral "call ("
-        , StringTemplateInterpolation (ref "Int")
-        , StringTemplateLiteral ")"
-        ])
-      (FunctionType (ref "Int") (ref "Int")))
-  assertRejected "the obsolete percent-arrow syntax-type operator is rejected"
-    "\"step %Int next\" %> (Int -> Int) do yield value"
-  assertRejected "the old doubled-percent syntax-type operator is rejected"
-    "\"step %Int next\" %% (Int -> Int) do yield value"
-  assertRejected "prefix percent extraction is rejected"
-    "%\"call (%Int)\""
-  let syntaxAdapterType = SyntaxType
-        (StringTemplate
-          [ StringTemplateLiteral "handler "
-          , StringTemplateInterpolation (ref "_Expr")
-          ])
-        (FunctionType (ref "Any") (ref "Any"))
-      syntaxAdapter = datraRef ["syntax", "test"]
-  assertParsed "inline host syntax adapters use the host member as their body"
-    "\"handler %_Expr\" % (Any -> Any) 'datra.syntax.test"
-    (FunctionApplication syntaxAdapterType syntaxAdapter)
-  assertParsed "a syntax type is an ordinary value without a body"
-    "\"handler %_Expr\" % (Any -> Any)"
-    syntaxAdapterType
-  assertParsed "declared host syntax adapters use the function body form"
-    "handler := \"handler %_Expr\" % (Any -> Any) 'datra.syntax.test"
-    (AST.assignment "handler"
-      (FunctionApplication syntaxAdapterType syntaxAdapter)
-      (FunctionApplication syntaxAdapterType syntaxAdapter))
-  assertParsed "an explicit syntax type can annotate its implementation"
-    "handler : \"handler %_Expr\" % (Any -> Any) := 'datra.syntax.test"
-    (IdentifierOperation
-      (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := \"take %_Expr\" % (Int -> Int) 'datra.fun"
+        , "`take %_Expr` := (Int -> Int) datra.fun_body"
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -1089,59 +1312,55 @@ regressionTests = do
     _ -> False
   assert "AST capture behavior follows the interpolated value's type" $ case
       parseSource (unlines
-        [ "(Capture := 'datra.Expr"
+        [ "(Capture := datra.Expr"
         , "CaptureAlias := Capture"
-        , "take := \"take %CaptureAlias\" % (Any -> Any) 'datra.fun"
+        , "`take %CaptureAlias` := (Any -> Any) datra.fun_body"
         , "take Infinity)"
         ]) of
     Right (AtlasMap values) -> case reverse values of
       Fun captured : _ -> captured == ref "Infinity"
       _ -> False
     _ -> False
-  assert "an identifier capture is in scope for later typed captures" $ case
+  assert "a dependent argument capture is in scope for later typed captures" $ case
       parseSource (unlines
-        [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-        , "_Expr := 'datra.Expr"
-        , "gate := \"gate %_DependentIdentifier bound %_Expr body %Int\" %"
-            <> " ((Any; Any; Int) -> Int) 'datra.test.gate"
+        [ "(_DependentArgument := datra.DependentArgument"
+        , "_Expr := datra.Expr"
+        , "`gate %_DependentArgument bound %_Expr body %Int` :="
+            <> " ((Any; Any; Int) -> Int) datra.test.gate"
         , "gate x bound Int body x)"
         ]) of
     Right (AtlasMap [_, _, _, rewritten]) ->
       rewritten == FunctionApplication (ref "gate")
         (AtlasMap [ref "x", ref "Int", ref "x"])
     _ -> False
-  let dependentIdentifierTemplate = StringTemplate
-        [ StringTemplateLiteral "abc"
+  let dependentArgumentTemplate = StringTemplate
+        [ templateLiteral "abc"
         , StringTemplateInterpolation
             (ref "it")
         ]
-  assert "an identifier capture does not introduce contextual it" $ case
+  assert "a dependent argument capture does not introduce contextual it" $ case
       parseSource (unlines
-        [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-        , "capture := \"capture %_DependentIdentifier\" %"
-            <> " (Any -> Any) 'datra.fun"
+        [ "(_DependentArgument := datra.DependentArgument"
+        , "`capture %_DependentArgument` := (Any -> Any) datra.fun_body"
         , "capture \"abc%(it)\")"
         ]) of
     Right (AtlasMap [_, _, Fun captured]) ->
-      captured == dependentIdentifierTemplate
+      captured == dependentArgumentTemplate
     _ -> False
-  assert "an optional identifier capture does not introduce contextual it" $
+  assert "an optional dependent argument capture does not introduce contextual it" $
     case parseSource (unlines
-      [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-      , "capture := \"capture %_DependentIdentifier\" %"
-          <> " (Any -> Any) 'datra.fun"
+      [ "(_DependentArgument := datra.DependentArgument"
+      , "`capture %_DependentArgument` := (Any -> Any) datra.fun_body"
       , "capture \"abc%(it)\"?)"
       ]) of
       Right (AtlasMap [_, _, Fun captured]) ->
-        captured == OptionalType dependentIdentifierTemplate
+        captured == OptionalType dependentArgumentTemplate
       _ -> False
   case parseSource (unlines
-      [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-      , "_Declaration := 'datra.Declaration"
-      , "captureId := \"captureId %_DependentIdentifier\" %"
-          <> " (Any -> Any) 'datra.fun"
-      , "captureDeclaration := \"captureDeclaration %_Declaration\" %"
-          <> " (Any -> Any) 'datra.fun"
+      [ "(_DependentArgument := datra.DependentArgument"
+      , "_DependentDeclaration := datra.DependentDeclaration"
+      , "`captureId %_DependentArgument` := (Any -> Any) datra.fun_body"
+      , "`captureDeclaration %_DependentDeclaration` := (Any -> Any) datra.fun_body"
       , "captureId x"
       , "captureId (x : Int)"
       , "captureDeclaration x := 1"
@@ -1153,16 +1372,16 @@ regressionTests = do
           , unmatched, annotated
           ])
         | identifier == ref "x"
-          && dependent == AST.dependentIdentifierType "x" (ref "Int")
+          && dependent == AST.dependentArgumentType "x" (ref "Int")
           && declaration == AST.assignment "x" (natural 1) (natural 1)
           && unmatched == FunctionApplication
             (ref "captureDeclaration")
-            (AST.dependentIdentifierType "x" (ref "Int"))
+            (AST.dependentArgumentType "x" (ref "Int"))
           && annotated == FunctionApplication
             (ref "captureDeclaration")
             (AST.assignment "x" (ref "Int") (natural 1)) -> pure ()
       actual -> assertFailure
-        ("identifier expressions and declarations use distinct captures: "
+        ("dependent argument expressions and declarations use distinct captures: "
           <> show actual)
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
@@ -1172,7 +1391,7 @@ regressionTests = do
   assertRejected "previous external symbol is rejected" "!~\"datra.Int\""
   assertRejected "legacy external symbol is rejected" "!^\"datra.Int\""
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
-    (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
+    (name <> " : Nat") (AST.dependentArgumentType name (ref "Nat")))
     ["Nat", "Int", "Str", "IdenStr", "Bool", "true", "false", "nothing"]
   assertLocatedParse
   assertResourceEnvelopes
@@ -1232,14 +1451,14 @@ regressionTests = do
     "from 2 up"
     (fromUpwards 2)
   assertParsed "unregistered keyword names parse as applications" "within 2 to 5"
-    (foldl FunctionApplication (IdentifierReference (IdentifierString "within"))
-      [natural 2, IdentifierReference (IdentifierString "to"), natural 5])
+    (foldl FunctionApplication (IdentifierReference (SimpleIdentifierString "within"))
+      [natural 2, IdentifierReference (SimpleIdentifierString "to"), natural 5])
   assertParsed "the range library binding is an ordinary name" "range : Nat"
-    (AST.dependentIdentifierType "range" (ref "Nat"))
+    (AST.dependentArgumentType "range" (ref "Nat"))
   assertAstOutput
     "the former valued-range prefix is available as an identifier"
     "within : Nat"
-    (AST.dependentIdentifierType "within" (ref "Nat"))
+    (AST.dependentArgumentType "within" (ref "Nat"))
   assertAstOutput
     "Nat library reference"
     "Nat"
@@ -1301,36 +1520,9 @@ regressionTests = do
       (natural 0)
       (AST.eitherType (natural 1) (natural 2)))
   assertAstOutput
-    "Boolean and, or, and not"
-    "false and not true or true"
-    (AST.or
-      (AST.and (ref "false") (AST.not (ref "true")))
-      (ref "true"))
-  assertAstOutput
-    "parenthesized blocks stay inside a nested Boolean operand"
-    "(5 of (begin yield 5)) and not (6 of (begin yield 5))"
-    (AST.and
-      (AST.subfederation (natural 5) (Begin [] (natural 5)))
-      (AST.not
-        (AST.subfederation (natural 6) (Begin [] (natural 5)))))
-  assertAstOutput
     "federation equality"
     "1 = 1"
     (AST.equal (natural 1) (natural 1))
-  assertAstOutput
-    "subfederation morphism check"
-    "1 of Int"
-    (AST.subfederation (natural 1) (ref "Int"))
-  assertAstOutput
-    "a trailing skip can be a declared syntax operand"
-    "1 of *"
-    (AST.subfederation (natural 1) Skip)
-  assertAstOutput
-    "equality binds inside a subfederation check"
-    "1 of Int = true"
-    (AST.subfederation
-      (natural 1)
-      (AST.equal (ref "Int") (ref "true")))
   assertAstOutput
     "Maybe is an ordinary type application"
     "Maybe Nat"
@@ -1354,86 +1546,35 @@ regressionTests = do
     (MaybeThen
       (ref "values")
       (FunctionApplication (ref "maximum") (ref "_it")))
-  assertAstOutput "list sequencing is explicit composition"
-    "values !? it in maximum"
-    (MaybeThen
-      (ref "values")
-      (In (contextualAccess (IdentifierString "_it")) (ref "maximum")))
-  let inlineLimitFunction = Fun
-        (FunctionApplication
-          (FunctionType
-            (ArgumentMap
-              [ OptionalType
-                  (AST.dependentIdentifierType "candidate" (ref "IntLimit"))
-              , OptionalType
-                  (AST.dependentIdentifierType "remaining"
-                    (FunctionApplication (ref "List") (ref "IntLimit")))
-              ])
-            (ref "IntLimit"))
-          (FunctionBody [] (ref "candidate")))
-  assertAstOutput "list sequencing accepts an ungrouped inline fixed point"
-    ("values !? it in fun {candidate? : IntLimit; "
-      <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
-    (MaybeThen
-      (ref "values")
-      (In (contextualAccess (IdentifierString "_it")) inlineLimitFunction))
-  assert "Maybe sequencing source rendering uses its sole symbol"
-    ( renderSourceExpression
-        (MaybeThen
-          (ref "values")
-          (In (contextualAccess (IdentifierString "_it")) (ref "maximum")))
-        == "values !? (it in maximum)"
-    )
-  assertAstOutput "list sequencing accepts an optional named left operand"
-    "(values? : List Int) !? it in maximum"
-    (MaybeThen
-      (OptionalType
-        (AST.dependentIdentifierType "values"
-          (FunctionApplication (ref "List") (ref "Int"))))
-      (In (contextualAccess (IdentifierString "_it")) (ref "maximum")))
-  assertAstOutput "list sequencing follows forward specification"
-    "(values ~> List Int) !? it in maximum"
-    (MaybeThen
-      (MapSpecification
-        (ref "values")
-        (FunctionApplication (ref "List") (ref "Int")))
-      (In (contextualAccess (IdentifierString "_it")) (ref "maximum")))
-  assertAstOutput "subfederation greedily captures right-side sequencing"
-    "values of (List Int) !? it in maximum"
-    (Subfederation
-      (ref "values")
-      (MaybeThen
-        (FunctionApplication (ref "List") (ref "Int"))
-        (In (contextualAccess (IdentifierString "_it")) (ref "maximum"))))
   assertAstOutput
     "optional identifier slot"
     "a? : Nat"
     (OptionalType
-      (AST.dependentIdentifierType "a" (ref "Nat")))
+      (AST.dependentArgumentType "a" (ref "Nat")))
   assertParsed "ordinary library names can name fields" "Str : Nat"
-    (AST.dependentIdentifierType "Str" (ref "Nat"))
+    (AST.dependentArgumentType "Str" (ref "Nat"))
   assertAstOutput
-    "reserved names can be full-string identifier expressions"
-    "\"Str\" : Nat"
-    (AST.dependentIdentifierType "Str" (ref "Nat"))
+    "reserved names can be explicit string literal expressions"
+    "$\"Str\" : Nat"
+    (AST.dependentArgumentType "Str" (ref "Nat"))
   assertAstOutput
     "contextual range words remain bare identifier expressions"
     "to : Nat"
-    (AST.dependentIdentifierType "to" (ref "Nat"))
+    (AST.dependentArgumentType "to" (ref "Nat"))
   assertAstOutput
     "contextual range directions remain bare identifier expressions"
     "(up : Nat; down : Nat)"
-    (AST.dependentIdentifierType "up" (ref "Nat")
-      <:> AST.dependentIdentifierType "down" (ref "Nat"))
+    (AST.dependentArgumentType "up" (ref "Nat")
+      <:> AST.dependentArgumentType "down" (ref "Nat"))
   assertAstOutput
     "uppercase built-in names remain bare identifier expressions"
     "False : Nat"
-    (AST.dependentIdentifierType "False" (ref "Nat"))
+    (AST.dependentArgumentType "False" (ref "Nat"))
   assertAstOutput
-    "full-string identifier expressions compose with optional syntax"
-    "\"Abc\"? : Nat"
+    "explicit string literal expressions compose with optional syntax"
+    "$\"Abc\"? : Nat"
     (OptionalType
-      (AST.dependentIdentifierType "Abc" (ref "Nat")))
+      (AST.dependentArgumentType "Abc" (ref "Nat")))
   assertAstOutput
     "optional assigned identifier slot"
     "a? : Nat := 5"
@@ -1442,9 +1583,9 @@ regressionTests = do
   let optionalIntegerSlots =
         MapConcatenation
           (OptionalType
-            (AST.dependentIdentifierType "a" (ref "Int")))
+            (AST.dependentArgumentType "a" (ref "Int")))
           (OptionalType
-            (AST.dependentIdentifierType "b" (ref "Int")))
+            (AST.dependentArgumentType "b" (ref "Int")))
       integerPair = MapConcatenation (natural 12) (natural 23)
   assertAstOutput
     "optional identifier slots are concatenation operands"
@@ -1466,25 +1607,13 @@ regressionTests = do
         (AST.assignment "b" (natural 23) (natural 23))
         ~> optionalIntegerSlots
     )
-  assertAstOutput
-    "optional identifier range subfederation check"
-    "(2, b := 5) of (a? : Int, b? : from 3 to 8)"
-    (AST.subfederation
-      (MapConcatenation
-        (natural 2)
-        (AST.assignment "b" (natural 5) (natural 5)))
-      (MapConcatenation
-        (OptionalType
-          (AST.dependentIdentifierType "a" (ref "Int")))
-        (OptionalType
-          (AST.dependentIdentifierType "b" (fromTo 3 8)))))
   let optionalAssigned identifierString value =
         OptionalType
           (AST.assignment
             identifierString (ref "Int") (natural value))
       optionalIdentifier identifierString =
         OptionalType
-          (AST.dependentIdentifierType identifierString (ref "Int"))
+          (AST.dependentArgumentType identifierString (ref "Int"))
   assertAstOutput
     "parenthesized reverse specification stays in its concatenation slot"
     "a? : Int := 12, (b? : Int) <~ (b? : Int := 23)"
@@ -1515,7 +1644,7 @@ regressionTests = do
     ("if candidate >= (next : compute input) "
       <> "then candidate else next")
     (Begin
-      [nextDeclaration]
+      [declarationEntry nextDeclaration]
       (AST.conditional
         (AST.greaterOrEqual (ref "candidate") (ref "next"))
         (ref "candidate")
@@ -1524,8 +1653,9 @@ regressionTests = do
     "condition-local declarations are not comparison-specific"
     "if valid (parsed : parse input) then parsed else fallback"
     (Begin
-      [ let parsed = FunctionApplication (ref "parse") (ref "input")
-        in AST.assignment "parsed" parsed parsed
+      [ declarationEntry
+          (let parsed = FunctionApplication (ref "parse") (ref "input")
+          in AST.assignment "parsed" parsed parsed)
       ]
       (AST.conditional
         (FunctionApplication (ref "valid") (ref "parsed"))
@@ -1537,7 +1667,7 @@ regressionTests = do
     (AST.conditional
       (FunctionApplication
         (ref "valid")
-        (AST.dependentIdentifierType "parsed"
+        (AST.dependentArgumentType "parsed"
           (FunctionApplication (ref "parse") (ref "input"))))
       (ref "accepted")
       (ref "fallback"))
@@ -1546,29 +1676,13 @@ regressionTests = do
     "if false then 1"
     (AST.conditionalWithoutElse (ref "false") (natural 1))
   assertAstOutput
-    "conditional combines optionals, equality, logic, and identifiers"
-    ( "if (Maybe Nat = (Nat | Nothing := ())) and not false "
-        <> "then (a? : Nat := 5) else (Nothing := ())"
-    )
-    (AST.conditional
-      (AST.and
-        (AST.equal
-          (FunctionApplication (ref "Maybe") (ref "Nat"))
-          (AST.eitherType
-            (ref "Nat")
-            (AST.assignment "Nothing" AST.emptyMap AST.emptyMap)))
-        (AST.not (ref "false")))
-      (OptionalType
-        (AST.assignment "a" (ref "Nat") (natural 5)))
-      (AST.assignment "Nothing" AST.emptyMap AST.emptyMap))
-  assertAstOutput
     "natural value specified into Nat"
     "2 ~> Nat"
     (natural 2 ~> ref "Nat")
   assertParsed "unprefixed range words have ordinary application syntax" "2 to 5"
-    (FunctionApplication (FunctionApplication (natural 2) (IdentifierReference (IdentifierString "to"))) (natural 5))
+    (FunctionApplication (FunctionApplication (natural 2) (IdentifierReference (SimpleIdentifierString "to"))) (natural 5))
   assertParsed "unprefixed direction is an ordinary reference" "2 up"
-    (FunctionApplication (natural 2) (IdentifierReference (IdentifierString "up")))
+    (FunctionApplication (natural 2) (IdentifierReference (SimpleIdentifierString "up")))
   assertAstOutput
     "specification binds after access and concatenation"
     "1, 2 @ range 0 up ~> range 0 to 10"
@@ -1615,13 +1729,13 @@ regressionTests = do
   assertAstOutput
     "simple identifier type"
     "x : Nat"
-    (AST.dependentIdentifierType "x" (ref "Nat"))
+    (AST.dependentArgumentType "x" (ref "Nat"))
   assertAstOutput
     "unit identifier equals its identifier string"
     "$Value = (Value : ())"
     (AST.equal
       (AST.asciiString "Value")
-      (AST.dependentIdentifierType "Value" AST.emptyMap))
+      (AST.dependentArgumentType "Value" AST.emptyMap))
   assertAstOutput
     "full identifier assignment"
     "x : Nat := 5"
@@ -1630,13 +1744,13 @@ regressionTests = do
     "assignment specified into its identifier target"
     "(a : Nat := 5) ~> (a : Nat)"
     ( AST.assignment "a" (ref "Nat") (natural 5)
-        ~> AST.dependentIdentifierType "a" (ref "Nat")
+        ~> AST.dependentArgumentType "a" (ref "Nat")
     )
   assertAstOutput
     "reverse specification between different identifier strings"
     "(a : Nat) <~ (b := 10)"
     ( AST.assignment "b" (natural 10) (natural 10)
-        ~> AST.dependentIdentifierType "a" (ref "Nat")
+        ~> AST.dependentArgumentType "a" (ref "Nat")
     )
   assertAstOutput
     "reverse assignment chain widens nested annotations"
@@ -1647,7 +1761,7 @@ regressionTests = do
     ( AST.assignment "d" (natural 28) (natural 28)
         ~> AST.assignment "d" (fromTo 25 35) (natural 28)
         ~> AST.assignment "d" (fromTo 20 40) (natural 28)
-        ~> AST.dependentIdentifierType "d" (fromTo 0 100)
+        ~> AST.dependentArgumentType "d" (fromTo 0 100)
     )
   assertAstOutput
     "reverse assignment chain accepts unparenthesized multiline operands"
@@ -1663,7 +1777,7 @@ regressionTests = do
           "d"
           (rangeTo 12 85)
           (natural 23 <..> natural 66)
-        ~> AST.dependentIdentifierType "d" (rangeTo 10 100)
+        ~> AST.dependentArgumentType "d" (rangeTo 10 100)
     )
   assertAstOutput
     "reverse assignment chain retains an incompatible intermediate annotation"
@@ -1671,8 +1785,8 @@ regressionTests = do
         <> "(x : from 5 to 20) <~ (x := 8)"
     )
     ( AST.assignment "x" (natural 8) (natural 8)
-        ~> AST.dependentIdentifierType "x" (fromTo 5 20)
-        ~> AST.dependentIdentifierType "x" (fromTo 1 10)
+        ~> AST.dependentArgumentType "x" (fromTo 5 20)
+        ~> AST.dependentArgumentType "x" (fromTo 1 10)
     )
   assertAstOutput
     "binary identifier assignment"
@@ -1691,13 +1805,13 @@ regressionTests = do
         ((natural 1 <:> natural 2) <@> natural 0)
     )
   assertAstOutput
-    "accessing an identifier operation requires grouping"
+    "accessing a dependent argument requires grouping"
     "(x : Nat) @ 0"
-    (AST.dependentIdentifierType "x" (ref "Nat") <@> natural 0)
+    (AST.dependentArgumentType "x" (ref "Nat") <@> natural 0)
   assertAstOutput
     "bracket access uses the identifier map view"
     "(x : Nat)[0]"
-    (AST.dependentIdentifierType "x" (ref "Nat") <@> natural 0)
+    (AST.dependentArgumentType "x" (ref "Nat") <@> natural 0)
   assertAstOutput
     "bracket access uses the assignment specification view"
     "(x : Nat := 5)[1]"
@@ -1705,67 +1819,94 @@ regressionTests = do
   assertAstOutput
     "unparenthesized access belongs to the identifier type operand"
     "x : Nat @ 0"
-    (AST.dependentIdentifierType "x" (ref "Nat" <@> natural 0))
+    (AST.dependentArgumentType "x" (ref "Nat" <@> natural 0))
   assertAstOutput
     "identifier arithmetic operands compose without grouping"
     "x : 5 + y : 10 = 15"
     (AST.equal
       ((AST.+)
-        (AST.dependentIdentifierType "x" (natural 5))
-        (AST.dependentIdentifierType "y" (natural 10)))
+        (AST.dependentArgumentType "x" (natural 5))
+        (AST.dependentArgumentType "y" (natural 10)))
       (natural 15))
   assertAstOutput
     "transfinite identifier arithmetic preserves precedence"
     "x : ...^2 + y : 1 = ...^2 + 1"
     (AST.equal
       ((AST.+)
-        (AST.dependentIdentifierType "x" ((AST.^) (...) (natural 2)))
-        (AST.dependentIdentifierType "y" (natural 1)))
+        (AST.dependentArgumentType "x" ((AST.^) (...) (natural 2)))
+        (AST.dependentArgumentType "y" (natural 1)))
       ((AST.+) ((AST.^) (...) (natural 2)) (natural 1)))
   assertAstOutput
     "identifier strings share canonical continuation characters"
     "A_0'z : Nat"
-    (AST.dependentIdentifierType "A_0'z" (ref "Nat"))
-  assertRejected
-    "identifier operations reject expression left sides"
+    (AST.dependentArgumentType "A_0'z" (ref "Nat"))
+  assertAstOutput
+    "parenthesized expression heads are deferred to string-subtype checking"
     "(2 + 2) : Nat := 4"
-  assertRejected
-    "identifier operations reject dollar-prefixed left sides"
+    (MapSpecification (natural 4)
+      (DependentArgument
+        (SyntaxBoundary ((AST.+) (natural 2) (natural 2)))
+        (Just (ref "Nat"))))
+  assertAstOutput
+    "parenthesized names evaluate dependent declaration templates"
+    "(abc) := 123"
+    (MapSpecification (natural 123)
+      (DependentArgument (SyntaxBoundary (ref "abc")) Nothing))
+  assertAstOutput
+    "parenthesized names evaluate dependent argument templates"
+    "(abc) : Nat"
+    (DependentArgument (SyntaxBoundary (ref "abc")) (Just (ref "Nat")))
+  assertAstOutput
+    "bare names remain literal declarations"
+    "abc := 123"
+    (AST.assignment "abc" (natural 123) (natural 123))
+  assertAstOutput
+    "explicit literal-expression heads are accepted"
     "$x : Nat := 4"
-  assertParsed "bare identifiers are references" "x" (IdentifierReference (IdentifierString "x"))
+    (MapSpecification (natural 4)
+      (DependentArgument
+        (IdentifierExpression (ref "x"))
+        (Just (ref "Nat"))))
+  assertParsed "bare identifiers are references" "x" (IdentifierReference (SimpleIdentifierString "x"))
   assertParsed "apostrophe-prefixed identifiers are references"
-    "'x" (IdentifierReference (IdentifierString "'x"))
+    "'x" (IdentifierReference (SimpleIdentifierString "'x"))
   assertParsed "apostrophe prefixes may be followed by a digit"
-    "'2x" (IdentifierReference (IdentifierString "'2x"))
+    "'2x" (IdentifierReference (SimpleIdentifierString "'2x"))
   assertParsed "underscore prefixes may be followed by a digit"
-    "_2x" (IdentifierReference (IdentifierString "_2x"))
+    "_2x" (IdentifierReference (SimpleIdentifierString "_2x"))
   assertParsed "bare identifiers allow separated underscores"
-    "my_pow" (IdentifierReference (IdentifierString "my_pow"))
+    "my_pow" (IdentifierReference (SimpleIdentifierString "my_pow"))
   assertAstOutput "separated-underscore identifiers can be declared"
     "my_pow := 4" (AST.assignment "my_pow" (natural 4) (natural 4))
   assertParsed "bare identifiers allow consecutive underscores"
-    "my__pow" (IdentifierReference (IdentifierString "my__pow"))
+    "my__pow" (IdentifierReference (SimpleIdentifierString "my__pow"))
   assertParsed "bare identifiers allow a trailing underscore"
-    "my_pow_" (IdentifierReference (IdentifierString "my_pow_"))
-  assertRejected "a bare underscore requires an alphanumeric second character" "_"
-  assertRejected "a leading underscore cannot be followed by underscore" "__value"
-  assertRejected "a leading underscore cannot be followed by apostrophe" "_'value"
-  assertRejected "a bare apostrophe requires an alphanumeric second character" "'"
-  assertRejected "a leading apostrophe cannot be followed by underscore" "'_value"
-  assertRejected "a leading apostrophe cannot be followed by apostrophe" "''value"
+    "my_pow_" (IdentifierReference (SimpleIdentifierString "my_pow_"))
+  assertParsed "a bare underscore is an identifier"
+    "_" (ref "_")
+  assertParsed "leading underscores are unrestricted"
+    "__value" (ref "__value")
+  assertParsed "underscore-apostrophe order is unrestricted"
+    "_'value" (ref "_'value")
+  assertParsed "a bare apostrophe is an identifier"
+    "'" (ref "'")
+  assertParsed "apostrophe-underscore order is unrestricted"
+    "'_value" (ref "'_value")
+  assertParsed "leading apostrophes are unrestricted"
+    "''value" (ref "''value")
+  assertRejected "an identifier cannot start with a digit" "345abc"
   assertParsed
-    "IdentifierString produces an ASCII string literal"
+    "SimpleIdentifierString produces an ASCII string literal"
     "$text"
     (AsciiStringLiteral "text")
   assertRejected
     "compact strings cannot be entirely numeric"
     "$12"
-  assertAstOutput
-    "compact strings consume a digit-leading alphanumeric token whole"
+  assertRejected
+    "compact strings cannot start with a digit"
     "$345abc"
-    (AsciiStringLiteral "345abc")
   assertAstOutput
-    "IdentifierString accepts all canonical continuation characters"
+    "SimpleIdentifierString accepts all canonical continuation characters"
     "$A_0'z"
     (AST.asciiString "A_0'z")
   assertAstOutput
@@ -1784,18 +1925,20 @@ regressionTests = do
     "compact strings allow a trailing underscore"
     "$abc_"
     (AST.asciiString "abc_")
-  assertRejected
-    "compact strings reject doubled leading underscores"
+  assertAstOutput
+    "compact strings allow doubled leading underscores"
     "$__abc"
-  assertRejected
-    "a lone compact underscore lacks an alphanumeric second character"
+    (AST.asciiString "__abc")
+  assertAstOutput
+    "a lone compact underscore is an identifier string"
     "$_"
+    (AST.asciiString "_")
   assertAstOutput
     "standard strings may contain a trailing underscore"
     "\"abc_\""
     (AST.asciiString "abc_")
   assertAstOutput
-    "StandardString canonicalizes to IdentifierString when possible"
+    "StandardString canonicalizes to SimpleIdentifierString when possible"
     "\"text\""
     (AST.asciiString "text")
   assertAstOutput
@@ -1854,7 +1997,7 @@ regressionTests = do
     "string template interpolates a compound expression"
     "\"example%(2 + 2)\""
     (StringTemplate
-      [ StringTemplateLiteral "example"
+      [ templateLiteral "example"
       , StringTemplateInterpolation
           (Addition (natural 2) (natural 2))
       ])
@@ -1870,15 +2013,6 @@ regressionTests = do
     "IdenStr is available to string templates"
     "\"%IdenStr\""
     (StringTemplate [StringTemplateInterpolation (ref "IdenStr")])
-  assertAstOutput
-    "digit-leading compact strings retain an apostrophe before an operator"
-    "$12' of \"%(Nat)'\""
-    (AST.subfederation
-      (AsciiStringLiteral "12'")
-      (StringTemplate
-        [ StringTemplateInterpolation (ref "Nat")
-        , StringTemplateLiteral "'"
-        ]))
   assertRejected
     "the removed weak interpolation marker is rejected"
     "\"%!Str\""
@@ -1887,7 +2021,7 @@ regressionTests = do
     "\"%Int?\""
     (StringTemplate
       [ StringTemplateInterpolation (ref "Int")
-      , StringTemplateLiteral "?"
+      , templateLiteral "?"
       ])
   assertParsed
     "Maybe interpolation uses an explicit expression"
@@ -1900,14 +2034,14 @@ regressionTests = do
     "\"%Int\\?\""
     (StringTemplate
       [ StringTemplateInterpolation (ref "Int")
-      , StringTemplateLiteral "?"
+      , templateLiteral "?"
       ])
   assertParsed
     "an escaped question mark is accepted as ordinary string text"
     "\"\\?\""
     (AsciiStringLiteral "?")
   assertParsed "simple interpolation can reference the lexical scope" "\"%abc\""
-    (StringTemplate [StringTemplateInterpolation (IdentifierReference (IdentifierString "abc"))])
+    (StringTemplate [StringTemplateInterpolation (IdentifierReference (SimpleIdentifierString "abc"))])
   assertParsed
     "a compact string can itself be interpolated"
     "\"%$abc\""
@@ -1925,32 +2059,32 @@ regressionTests = do
     "a nested quoted string is one simple interpolation"
     "\"hello, %\"world\"!\""
     (StringTemplate
-      [ StringTemplateLiteral "hello, "
+      [ templateLiteral "hello, "
       , StringTemplateInterpolation (AsciiStringLiteral "world")
-      , StringTemplateLiteral "!"
+      , templateLiteral "!"
       ])
   assertParsed
     "operators outside parentheses remain template text"
     "\"%2 + 2\""
     (StringTemplate
       [ StringTemplateInterpolation (natural 2)
-      , StringTemplateLiteral " + 2"
+      , templateLiteral " + 2"
       ])
   assertParsed
     "interpolation comments terminate at the closing parenthesis"
     "\"a%(2 # ignored)b\""
     (StringTemplate
-      [ StringTemplateLiteral "a"
+      [ templateLiteral "a"
       , StringTemplateInterpolation (natural 2)
-      , StringTemplateLiteral "b"
+      , templateLiteral "b"
       ])
   assertParsed
     "interpolation comments terminate at newline without emitting it"
     "\"a%(2 # ignored\n)b\""
     (StringTemplate
-      [ StringTemplateLiteral "a"
+      [ templateLiteral "a"
       , StringTemplateInterpolation (natural 2)
-      , StringTemplateLiteral "b"
+      , templateLiteral "b"
       ])
   assertParsed
     "template comments ignore interpolation and retain their newline"
@@ -1960,27 +2094,27 @@ regressionTests = do
     "escaped hashes and percents remain literal template text"
     "\"\\#\\%%4\""
     (StringTemplate
-      [ StringTemplateLiteral "#%"
+      [ templateLiteral "#%"
       , StringTemplateInterpolation (natural 4)
       ])
   assertAstOutput
     "parentheses inside nested strings do not close interpolation"
     "\"x%(\"a)b\")y\""
     (StringTemplate
-      [ StringTemplateLiteral "x"
+      [ templateLiteral "x"
       , StringTemplateInterpolation (AsciiStringLiteral "a)b")
-      , StringTemplateLiteral "y"
+      , templateLiteral "y"
       ])
   assertAstOutput
     "nested grouping composes inside interpolation"
     "\"x%((2 + 3) * 4)y\""
     (StringTemplate
-      [ StringTemplateLiteral "x"
+      [ templateLiteral "x"
       , StringTemplateInterpolation
           (Multiplication
             (Addition (natural 2) (natural 3))
             (natural 4))
-      , StringTemplateLiteral "y"
+      , templateLiteral "y"
       ])
   assertRejected "an empty interpolation is rejected" "\"%()\""
   assertRejected
@@ -1989,12 +2123,6 @@ regressionTests = do
   assertRejected
     "an unescaped percent without an interpolation is rejected"
     "\"literal % character\""
-  assertAstOutput
-    "string literals are members of Str"
-    "(\"my_string\" of Str) = true"
-    (AST.equal
-      (AST.subfederation (AST.asciiString "my_string") (ref "Str"))
-      (ref "true"))
   assertAllHexadecimalAsciiEscapes
   assertAstOutput
     "StandardString preserves multiline leading and trailing characters"
@@ -2071,7 +2199,7 @@ regressionTests = do
   assertAstOutput "lookup retains a string-template operand"
     "~\"arg%Nat\""
     (Lookup (StringTemplate
-      [ StringTemplateLiteral "arg"
+      [ templateLiteral "arg"
       , StringTemplateInterpolation (ref "Nat")
       ]))
   assertAstOutput "lookup accepts a computed parenthesized operand"
@@ -2080,7 +2208,7 @@ regressionTests = do
     "~\"arg%Nat\"[0]"
     (MapAccess
       (Lookup (StringTemplate
-        [ StringTemplateLiteral "arg"
+        [ templateLiteral "arg"
         , StringTemplateInterpolation (ref "Nat")
         ]))
       (natural 0))
@@ -2103,11 +2231,12 @@ regressionTests = do
   let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
   assertAstOutput "assignment retains its complete alternative value"
     "x := $up | $down"
-    (IdentifierOperation (IdentifierString "x") alternatives (Just alternatives))
+    (MapSpecification alternatives
+      (DependentArgument (IdentifierExpression (ref "x")) Nothing))
   assert "assignment rendering does not regroup a federation"
     (renderSourceExpression
-      (IdentifierOperation
-        (IdentifierString "x") alternatives (Just alternatives))
+      (MapSpecification alternatives
+        (DependentArgument (IdentifierExpression (ref "x")) Nothing))
       == "x := $up | $down")
   assert "quoted identifier references render as strict current-scope access"
     (renderSourceExpression (ref "___Std.Int") == "this.\"___Std.Int\"")
@@ -2256,14 +2385,6 @@ regressionTests = do
     "2\n3"
     (natural 2 <:> natural 3)
   assertAstOutput
-    "a parenthesized syntax operand ends before the next map element"
-    "1 of (Nat -> Int)\n\"x\""
-    ( Subfederation
-        (natural 1)
-        (FunctionType (ref "Nat") (ref "Int"))
-        <:> AsciiStringLiteral "x"
-    )
-  assertAstOutput
     "a newline after an operator continues the expression"
     "2 +\n3\n4"
     ((natural 2 AST.+ natural 3) <:> natural 4)
@@ -2358,16 +2479,16 @@ regressionTests = do
     "(1; 2; # trailing separator\n)"
     (natural 1 <:> natural 2)
   assertRejected "multiple trailing semicolons are rejected" "(1; 2;;)"
-  assertRejected "IdentifierString rejects a missing body" "$"
-  assertAstOutput "IdentifierString accepts a leading apostrophe"
+  assertRejected "SimpleIdentifierString rejects a missing body" "$"
+  assertAstOutput "SimpleIdentifierString accepts a leading apostrophe"
     "$'bad" (AST.asciiString "'bad")
-  assertRejected "IdentifierString rejects an apostrophe without a body" "$'"
-  assertRejected "IdentifierString requires alphanumeric after apostrophe" "$'_bad"
+  assertRejected "SimpleIdentifierString rejects an apostrophe without a body" "$'"
+  assertRejected "SimpleIdentifierString requires alphanumeric after apostrophe" "$'_bad"
   assertParsed "a hyphen terminates a compact string and starts subtraction" "$bad-name"
-    (Subtraction (AsciiStringLiteral "bad") (IdentifierReference (IdentifierString "name")))
+    (Subtraction (AsciiStringLiteral "bad") (IdentifierReference (SimpleIdentifierString "name")))
   assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
   assertParsed "percent introduces a lexical interpolation" "\"bad%value\""
-    (StringTemplate [StringTemplateLiteral "bad", StringTemplateInterpolation (IdentifierReference (IdentifierString "value"))])
+    (StringTemplate [templateLiteral "bad", StringTemplateInterpolation (IdentifierReference (SimpleIdentifierString "value"))])
   assertRejected "StandardString rejects the obsolete dollar escape" "\"bad\\$value\""
   assertRejected "StandardString rejects an unterminated literal" "\"bad"
   assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
@@ -2387,7 +2508,7 @@ regressionTests = do
   assertParsed "AST range pattern captures a target expression" "range 1 to (2 + 3)"
     (rangeCall "range" (natural 1) (UpperBound (Addition (natural 2) (natural 3))))
   assertParsed "range-like names remain whole references" "range1to2"
-    (IdentifierReference (IdentifierString "range1to2"))
+    (IdentifierReference (SimpleIdentifierString "range1to2"))
   assertAstOutput
     "parentheses permit an explicitly nested range"
     "((1..2)..)"
@@ -2428,12 +2549,19 @@ regressionTests = do
     (natural 1 <:> natural 2)
 
 matchRules
-  :: (SyntaxHoleKind Expression -> Expression -> Bool)
+  :: (StringExpression Expression -> Expression -> Bool)
   -> [SyntaxRule]
   -> Expression
-  -> Either SyntaxTemplateMatchFailure Expression
+  -> Either StringInterpolationMatchFailure Expression
 matchRules holeMatches rules expressionValue =
-  matchSyntaxRules holeMatches rules expressionValue
+  matchSyntaxRules expressionParser
+    matches rules expressionValue
+  where
+    matches capture value = case capture of
+      StringExpressionCapture stringExpression ->
+        holeMatches stringExpression value
+      LiteralTemplateCapture target ->
+        holeMatches (ValueString target) value
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
@@ -2444,7 +2572,7 @@ propAstRoundTrip = H.property $ do
   let rendered = renderExpression expressionValue
   case parseDatraAst rendered of
     Left message -> do
-      H.footnote (parseFailureMessage message)
+      H.footnote (renderParseFailure message)
       H.failure
     Right roundTripped -> renderExpression roundTripped H.=== rendered
 
@@ -2461,7 +2589,7 @@ genExpression =
   Gen.recursive Gen.choice
     [ EllipsisNatural <$> Gen.integral (Range.linear 0 1000)
     , pure EllipsisLiteral
-    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "Template"]
+    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange"]
     , IdentifierReference <$> genIdentifierString
     , pure (ref "_this")
     , datraRef <$> Gen.element
@@ -2471,7 +2599,7 @@ genExpression =
     , genRangeExpression
     ]
     [ AtlasMap <$> Gen.list (Range.linear 0 6) genExpression
-    , ArgumentMap <$> Gen.list (Range.linear 0 6) genExpression
+    , ArgumentativeMap <$> Gen.list (Range.linear 0 6) genExpression
     , pure Skip
     , MapSequence <$> Gen.list (Range.linear 0 6) genExpression
     , Gen.subterm2 genExpression genExpression FunctionType
@@ -2480,27 +2608,22 @@ genExpression =
     , Gen.subterm genExpression
         (Import ["std", "path/library_two"])
     , Gen.subterm genExpression (InModule "std")
-    , Gen.subterm genExpression
-        (SyntaxType (StringTemplate
-          [ StringTemplateInterpolation (ref "Int")
-          , StringTemplateLiteral " next"
-          ]))
-    , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
-    , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
-    , Gen.subterm genExpression Let
+    , Gen.subterm2 genExpression genExpression
+        (\binding result -> FunctionBody [generatedDeclaration binding] result)
+    , Gen.subterm2 genExpression genExpression
+        (\binding result -> Begin [generatedDeclaration binding] result)
     , Gen.subterm genExpression (StringTemplate . (:[]) . StringTemplateInterpolation)
+    , Gen.subterm genExpression IdentifierExpression
     , Gen.subterm2 genExpression genExpression MapExpansion
     , Gen.subterm2 genExpression genExpression SuperEllipsisRange
     , Gen.subterm genExpression SuperEllipsisRangePlus
     , Gen.subterm genExpression SuperEllipsisRangeMinus
-    , Gen.subterm2 genExpression genExpression In
     , Gen.subterm2 genExpression genExpression Addition
     , Gen.subterm2 genExpression genExpression Subtraction
     , Gen.subterm genExpression Plus
     , Gen.subterm genExpression Minus
     , Gen.subterm2 genExpression genExpression Multiplication
     , Gen.subterm2 genExpression genExpression Exponentiation
-    , Gen.subterm2 genExpression genExpression Subfederation
     , Gen.subterm2 genExpression genExpression Equality
     , Gen.subterm2 genExpression genExpression Inequality
     , Gen.subterm2 genExpression genExpression EitherType
@@ -2509,10 +2632,9 @@ genExpression =
     , Gen.subterm2 genExpression genExpression MapSpecification
     , Gen.subterm2 genExpression genExpression Overload
     , Gen.subterm2 genExpression genExpression SafeOverload
-    , IdentifierOperation
-        <$> genIdentifierString
-        <*> genExpression
-        <*> Gen.maybe genExpression
+    , DependentArgument
+        <$> (IdentifierExpression . IdentifierReference <$> genIdentifierString)
+        <*> (Just <$> genExpression)
     ]
 
 genRangeExpression :: H.Gen Expression
@@ -2523,7 +2645,7 @@ genRangeExpression = rangeCall
   where
     endpoint = integer <$> Gen.integral (Range.linear (-1000) 1000)
 
-genIdentifierString :: H.Gen IdentifierString
+genIdentifierString :: H.Gen SimpleIdentifierString
 genIdentifierString = do
   prefix <- Gen.choice
     [ (: []) <$> Gen.element (['a' .. 'z'] <> ['A' .. 'Z'])
@@ -2541,7 +2663,7 @@ genIdentifierString = do
           <> ['a' .. 'z']
           <> ['A' .. 'Z']
           <> ['0' .. '9']))
-  pure (IdentifierString (prefix <> rest))
+  pure (SimpleIdentifierString (prefix <> rest))
 
 joinWith :: String -> [String] -> String
 joinWith _ [] = ""
@@ -2582,16 +2704,16 @@ assertAllHexadecimalAsciiEscapes = do
 
 assertLocatedParse :: IO ()
 assertLocatedParse =
-  case parseSourceLocated True "<input>" "(1; 2)" of
+  case parseSourceLocated AllStandardLibrary testSourceName "(1; 2)" of
     Left message -> fail
-      ("located parse unexpectedly failed: " <> parseFailureMessage message)
+      ("located parse unexpectedly failed: " <> renderParseFailure message)
     Right
         (Located
           (SourceSpan source start end)
           (AtlasMap [EllipsisNatural 1, EllipsisNatural 2])) ->
       assert
         "located parsing uses an in-memory source span"
-        ( source == "<input>"
+        ( source == testSourceName
           && start == SourcePosition 0 1 1
           && end == SourcePosition 6 1 7
         )
@@ -2617,19 +2739,21 @@ assertResourceEnvelopes = do
       Right actual -> do
         assert ("program AST: " <> source) (actual == expected)
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
-      Left message -> fail (parseFailureMessage message))
-    [ ("a := 6\nyield a", Begin [AST.assignment "a" (natural 6) (natural 6)] (IdentifierReference (IdentifierString "a")))
+      Left message -> fail (renderParseFailure message))
+    [ ("a := 6\nyield a", Begin
+        [declarationEntry (AST.assignment "a" (natural 6) (natural 6))]
+        (IdentifierReference (SimpleIdentifierString "a")))
     , ( "yield 5 >> {a? : Nat := 3}"
       , Begin []
           (Overload
-            (ArgumentMap
+            (ArgumentativeMap
               [OptionalType (AST.assignment "a" (ref "Nat") (natural 3))])
             (natural 5))
       )
     , ( "yield \"a\" >>> {x? : Nat := 2; Str}"
       , Begin []
           (SafeOverload
-            (ArgumentMap
+            (ArgumentativeMap
               [ OptionalType
                   (AST.assignment "x" (ref "Nat") (natural 2))
               , ref "Str"
@@ -2639,14 +2763,16 @@ assertResourceEnvelopes = do
     , ( "yield Nat <~ (fun 5)"
       , Begin [] (MapSpecification (Fun (natural 5)) (ref "Nat"))
       )
-    , ("a := 6", Begin [AST.assignment "a" (natural 6) (natural 6)] (AtlasMap []))
+    , ("a := 6", Begin
+        [declarationEntry (AST.assignment "a" (natural 6) (natural 6))]
+        (AtlasMap []))
     , ("", Begin [] (AtlasMap []))
     ]
   where
     assertEnvelope label source expected =
-      case parseDatraRawLocatedWithSourceName "<input>" source of
+      case parseDatraRawLocatedWithSourceName testSourceName source of
         Left message -> fail
-          (label <> ": unexpected failure: " <> parseFailureMessage message)
+          (label <> ": unexpected failure: " <> renderParseFailure message)
         Right (actual, _) -> assert label (actual == expected)
 
 assertBundledModuleBlockShape :: IO ()
@@ -2659,12 +2785,16 @@ assertBundledModuleBlockShape = do
       case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
           visibility [] path source of
         Left failure -> fail
-          (path <> ": unexpected parse failure: " <> parseFailureMessage failure)
+          (path <> ": unexpected parse failure: " <> renderParseFailure failure)
         Right located -> case openedBody (locatedValue located) of
-          Begin [] (IdentifierOperation
-              (IdentifierString actualName) annotation given)
-            | actualName == expectedName
-            , Begin {} <- maybe annotation id given -> pure ()
+          Begin [] dependent
+            | Just
+                ( IdentifierReference (SimpleIdentifierString actualName)
+                , annotation
+                , given
+                ) <- dependentArgumentExpression dependent
+            , actualName == expectedName
+            , Just (Begin {}) <- given <|> annotation -> pure ()
           actual -> fail
             (path <> ": expected an outer block yielding a named inner block, got "
               <> show actual)
@@ -2677,24 +2807,24 @@ assertStandardSyntaxDeclarationsAdmissible = do
   source <- readFile "libs/std.datra"
   case parseDatraRawLocatedWithSourceName "libs/std.datra" source of
     Left failure -> fail
-      ("Std neutral parse failed: " <> parseFailureMessage failure)
+      ("Std source parse failed: " <> renderParseFailure failure)
     Right (_, Located _ raw) -> do
-      let operands = syntaxTemplateOperands raw
-          failures =
-            [ failure
-            | operand <- operands
-            , Left failure <- [compileSyntaxTemplatesFromExpression operand]
-            ]
-      assert "Std contains syntax declarations" (not (null operands))
-      assert "every Std syntax declaration is admissible" (null failures)
+      let declarations = syntaxDeclarations raw
+      assert "Std contains syntax declarations" (not (null declarations))
+      assert "every Std syntax declaration is admissible"
+        (all
+          (not . null . declarationRules)
+          declarations)
   where
-    syntaxTemplateOperands expressionValue = current
-      <> concatMap syntaxTemplateOperands
+    syntaxDeclarations expressionValue = current
+      <> concatMap syntaxDeclarations
         (expressionChildren expressionValue)
       where
-        current = case expressionValue of
-          SyntaxType templates _ -> [templates]
-          _ -> []
+        current = case dependentDeclaration expressionValue of
+          Just declaration -> case dependentDeclarationHead declaration of
+            IdentifierExpressionBody (IdentifierReference {}) -> []
+            _ -> [expressionValue]
+          Nothing -> []
 
 assertAstSyntax :: IO ()
 assertAstSyntax = do
@@ -2707,7 +2837,7 @@ assertAstSyntax = do
     ( renderExpression
         (StringTemplate
           [ StringTemplateInterpolation (ref "Int")
-          , StringTemplateLiteral "?"
+          , templateLiteral "?"
           ])
         == "\"%((ref $Int))?\""
     )
@@ -2733,11 +2863,6 @@ assertAstSyntax = do
         (((natural 2 <..> natural 5) ~> ref "Nat"))
         == "(~> (<..> 2 5) (ref $Nat))"
     )
-  assert "the syntax-type operator uses the percent AST symbol"
-    ( renderExpression
-        (SyntaxType (ref "Template") (FunctionType (ref "Int") (ref "Int")))
-        == "(% (ref $Template) (-> (ref $Int) (ref $Int)))"
-    )
   assertEqual
     "bounded from calls retain their scoped signature and checked captures"
     "(apply-func (in-module $Std (ref $'from)) (<:> 2 5))"
@@ -2749,11 +2874,33 @@ assertAstSyntax = do
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
 
+assertIdentifierOperatorAstSyntax :: IO ()
+assertIdentifierOperatorAstSyntax = do
+  assert "scalar literal expressions retain their AST symbol"
+    (renderExpression (IdentifierExpression (ref "name"))
+      == "($ (ref $name))")
+  assert "literal templates render through their dedicated AST"
+    ( renderExpression template == "`hello %Int`"
+      && renderSourceExpression template == "`hello %Int`"
+    )
+  where
+    template = LiteralTemplateExpression
+      (LiteralTemplate
+        (IdentifierComposition
+          (LiteralTemplateSequence
+            ( IdentifierComposition
+                (LiteralTemplateLiteralAtom
+                  (IdentifierTemplateLiteral
+                    (SimpleIdentifierString "hello"))) :|
+              [ IdentifierComposition
+                  (LiteralTemplateCaptureAtom (ref "Int"))
+              ]))))
+
 assertAstOutput :: String -> String -> Expression -> IO ()
 assertAstOutput label source expected =
   case parseSource ("(" <> source <> "\n)") of
     Left message -> fail
-      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
+      (label <> ": unexpected parse failure: " <> renderParseFailure message)
     Right actual
       | canonicalAst actual == canonicalAst expected ->
           assertAstRoundTrip label (renderExpression actual)
@@ -2774,7 +2921,7 @@ assertAstRoundTrip label renderedAst =
     Left message ->
       fail
         (label <> ": emitted AST could not be parsed: "
-          <> parseFailureMessage message)
+          <> renderParseFailure message)
     Right roundTripped
       | roundTripped == renderedAst -> pure ()
       | otherwise ->
@@ -2797,7 +2944,7 @@ assertParsed :: String -> String -> Expression -> IO ()
 assertParsed label source expected =
   case parseSource ("(" <> source <> "\n)") of
     Left message -> fail
-      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
+      (label <> ": unexpected parse failure: " <> renderParseFailure message)
     Right actual
       | actual == expected -> pure ()
       | otherwise ->
@@ -2811,16 +2958,16 @@ assertParsed label source expected =
 
 parseSource :: String -> Either ParseFailure Expression
 parseSource source =
-  locatedValue <$> parseSourceLocated True "<input>" source
+  locatedValue <$> parseSourceLocated AllStandardLibrary testSourceName source
 
 parseSourceLocated
-  :: Bool
+  :: StandardLibraryVisibility
   -> FilePath
   -> String
   -> Either ParseFailure (Located Expression)
-parseSourceLocated includeStandardLibrary =
-  parseDatraSourceLocatedWithImportsAndStandardLibrary
-    includeStandardLibrary []
+parseSourceLocated visibility =
+  parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+    visibility []
 
 containsFunctionBody :: Expression -> Bool
 containsFunctionBody FunctionBody {} = True
@@ -2829,10 +2976,36 @@ containsFunctionBody value = any containsFunctionBody (expressionChildren value)
 -- Source expectations describe the emitted AST directly. Keep these independent
 -- of the parser's syntax expansion so they can catch changes in that expansion.
 ref :: String -> Expression
-ref = IdentifierReference . IdentifierString
+ref = IdentifierReference . SimpleIdentifierString
+
+templateLiteral :: String -> StringTemplateInterpolation Expression
+templateLiteral = StringTemplateInterpolation . AsciiStringLiteral
+
+syntaxLiteral
+  :: String
+  -> StringTemplateInterpolation (StringExpression value)
+syntaxLiteral = StringTemplateInterpolation . LiteralString
+
+declarationEntry :: Expression -> DependentDeclaration Expression
+declarationEntry expressionValue =
+  case dependentDeclaration expressionValue of
+    Just declaration -> declaration
+    Nothing -> error "test expression is not a dependent declaration"
+
+modified :: DeclarationModifier -> Expression -> Expression
+modified modifier expressionValue =
+  case applyDeclarationModifier modifier expressionValue of
+    Just result -> result
+    Nothing -> error "test declaration modifier is invalid"
+
+generatedDeclaration :: Expression -> DependentDeclaration Expression
+generatedDeclaration = DependentDeclaration
+  (IdentifierExpressionBody
+    (IdentifierReference (SimpleIdentifierString "generated")))
+  False False False []
 
 datraRef :: [String] -> Expression
-datraRef = foldl ScopeAccess (ref "'datra") . map ref
+datraRef = foldl ScopeAccess (ref "datra") . map ref
 
 integer :: Integer -> Expression
 integer value

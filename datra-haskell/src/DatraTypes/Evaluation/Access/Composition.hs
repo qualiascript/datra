@@ -15,6 +15,7 @@ import DatraOrdinal
   , addOrdinals
   , finiteOrdinal
   , naturalAtOrdinal
+  , naturalsBelow
   , omegaPower
   , ordinalLT
   , subtractOrdinal
@@ -234,8 +235,7 @@ insertionCoveredByRegions regions insertion =
       not (ordinalLT position (accessibleRegionLowerBound region))
         && ordinalLT position (accessibleRegionUpperBound region)
 
-    positions 0 = []
-    positions cardinality = [0 .. cardinality - 1]
+    positions = naturalsBelow
 
 intervalIsCovered
   :: [AccessibleOrdinalRegion]

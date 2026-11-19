@@ -1,4 +1,4 @@
--- | Argument maps are unions of ordered maps. Distribute optional names and
+-- | Argumentative maps are unions of ordered maps. Distribute optional names and
 -- other Either slots before permuting, so repeated unnamed alternatives are
 -- identified instead of being assigned artificial distinguishing tags.
 module Evaluation.Arguments
@@ -6,9 +6,9 @@ module Evaluation.Arguments
   , overloadArgumentRows
   , functionArgumentValue
   , argumentPresentations
-  , makeArgumentMap
-  , makeArgumentMapPreservingSingleton
-  , argumentMapMembers
+  , makeArgumentativeMap
+  , makeArgumentativeMapPreservingSingleton
+  , argumentativeMapMembers
   , argumentSourceHasConcreteMembers
   , makeDistinctUnion
   , argumentAlternatives
@@ -21,24 +21,24 @@ import Evaluation.Error
   ( FunctionFailure (..)
   , InterpretingError (FunctionEvaluationFailed)
   )
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow)
 import Evaluation.Map (makeAtlasMap, hasConcreteSource, concatenateValues)
 import Evaluation.Coalization (valueIsCoalition)
 import Evaluation.Value
 
-makeArgumentMap :: [InterpretedValue] -> Either InterpretingError InterpretedValue
-makeArgumentMap [] = Right (makeAtlasMap 0 [])
-makeArgumentMap [value] = Right value
-makeArgumentMap members = makeArgumentMapPreservingSingleton members
+makeArgumentativeMap :: [InterpretedValue] -> Either InterpretingError InterpretedValue
+makeArgumentativeMap [] = Right (makeAtlasMap 0 [])
+makeArgumentativeMap [value] = Right value
+makeArgumentativeMap members = makeArgumentativeMapPreservingSingleton members
 
--- Surface argument-map syntax retains its written singleton slot so matching
+-- Surface argumentative-map syntax retains its written singleton slot so matching
 -- can distinguish its candidate name. Internal reconstruction keeps the
--- historical scalar result of 'makeArgumentMap'.
-makeArgumentMapPreservingSingleton
+-- historical scalar result of 'makeArgumentativeMap'.
+makeArgumentativeMapPreservingSingleton
   :: [InterpretedValue]
   -> Either InterpretingError InterpretedValue
-makeArgumentMapPreservingSingleton [] = Right (makeAtlasMap 0 [])
-makeArgumentMapPreservingSingleton originalMembers = do
+makeArgumentativeMapPreservingSingleton [] = Right (makeAtlasMap 0 [])
+makeArgumentativeMapPreservingSingleton originalMembers = do
   union <- makeDistinctUnion
     [ makeAtlasMap 2 ordering
     | choices <- sequence (map argumentAlternatives members)
@@ -48,30 +48,30 @@ makeArgumentMapPreservingSingleton originalMembers = do
     (makeInterpretedValue
       (composedStructuralDatraType
         (map interpretedDatraType members))
-      (ArgumentMapForm members union)
+      (ArgumentativeMapForm members union)
       NoInsertion
       (interpretedMap union)
       (interpretedAtlasMapFederation union)
       (if interpretedValueHasTotalMap union
         then TotalInterpretedMap else NonTotalInterpretedMap)
-      (ArgumentMapSemantics
+      (ArgumentativeMapSemantics
         (all totalPage members) (map interpretedSemantics members)))
   where
     members = concatMap flattenFiniteConcatenation originalMembers
     totalPage member =
       hasConcreteSource member || valueIsCoalition member
 
-argumentMapMembers :: InterpretedValue -> Maybe [InterpretedValue]
-argumentMapMembers value = case interpretedForm value of
-  ArgumentMapForm members _ -> Just members
+argumentativeMapMembers :: InterpretedValue -> Maybe [InterpretedValue]
+argumentativeMapMembers value = case interpretedForm value of
+  ArgumentativeMapForm members _ -> Just members
   _ -> Nothing
 
 argumentSourceHasConcreteMembers :: InterpretedValue -> Bool
 argumentSourceHasConcreteMembers value =
   case interpretedForm value of
-    ArgumentMapForm members _ ->
+    ArgumentativeMapForm members _ ->
       all hasConcreteSource members
-    DependentIdentifierTypeForm identifier ->
+    DependentArgumentTypeForm identifier ->
       hasConcreteSource (evaluatedIdentifierUnderlying identifier)
     IdentifierStringProjectionForm identifier ->
       hasConcreteSource (evaluatedIdentifierUnderlying identifier)
@@ -147,7 +147,7 @@ argumentInputAlternatives value =
 
 argumentPresentations :: InterpretedValue -> Either InterpretingError [InterpretedValue]
 argumentPresentations value = case interpretedForm value of
-  ArgumentMapForm _ underlying -> pure (argumentAlternatives underlying)
+  ArgumentativeMapForm _ underlying -> pure (argumentAlternatives underlying)
   EitherForm _ -> pure (argumentAlternatives value)
   ConcatenatedMapForm left right -> do
     lefts <- argumentPresentations left
@@ -163,7 +163,7 @@ argumentRows value = case interpretedForm value of
     lefts <- concatenationOperandRows left
     rights <- concatenationOperandRows right
     pure [a <> b | a <- lefts, b <- rights]
-  ArgumentMapForm _ underlying ->
+  ArgumentativeMapForm _ underlying ->
     concat <$> traverse argumentRows (argumentInputAlternatives underlying)
   EitherForm _ ->
     concat <$> traverse argumentRows (argumentInputAlternatives value)
@@ -173,14 +173,16 @@ argumentRows value = case interpretedForm value of
   _ -> pure [[value]]
   where
     pages = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
-      Nothing -> Left (FunctionEvaluationFailed
-        FunctionArgumentsRequireFinitePages)
+      -- A transfinite map cannot be exhaustively reinterpreted as one row of
+      -- positional arguments. It remains one ordinary supplied value; the
+      -- selected function domain decides whether that value is admissible.
+      Nothing -> Right [value]
       Just count -> traverse (\position -> maybe
           (Left (FunctionEvaluationFailed
             (FunctionArgumentPageUnavailable position)))
           Right
           (interpretedMapValueAt (interpretedMap value) (finiteOrdinal position)))
-        (if count == 0 then [] else [0 .. count - 1])
+        (naturalsBelow count)
 
 concatenationOperandRows
   :: InterpretedValue

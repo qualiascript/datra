@@ -1,237 +1,271 @@
 -- | Source rendering for retained, unevaluated block specifications.
-module DatraLanguage.AST.Source (renderSourceExpression) where
+module DatraLanguage.AST.Source
+  ( renderSourceExpression
+  ) where
 
 import Data.List (intercalate)
+import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.AST
-import DatraLanguage.NeutralLexer (isOpaqueSymbolicSyntaxLiteral)
+import DatraLanguage.AST.CanonicalForm
+  ( CanonicalForm (FunctionForm, ImportForm), canonicalFormName )
+import DatraLanguage.AST.Operator qualified as AST
+import DatraLanguage.AST.Reserved qualified as Reserved
+import DatraLanguage.ConcreteSyntax
+  ( StructuralDelimiter (..)
+  , delimiterText
+  , literalTemplateDelimiterCharacter
+  , sourceLineFeed
+  , sourceSpace
+  )
+import DatraLanguage.ContextualRole
+  ( ContextualRole (ContextualThis), contextualSurfaceName )
+import DatraLanguage.Pretty
+  ( renderAsciiStringLiteral
+  , renderIdentifierString
+  , renderLiteralTemplate
+  , renderOperatorExpression
+  , renderStringTemplate
+  )
 
 renderSourceExpression :: Expression -> String
 renderSourceExpression =
-  source 0 . toOperatorExpression . restoreGenericSurface
-
--- Resolved function types retain their telescope separately from the marked
--- declaration occurrence. Reconstruct surface introductions only for source
--- rendering; the semantic AST remains binder-identity based.
-restoreGenericSurface :: Expression -> Expression
-restoreGenericSurface = restore []
-  where
-    restore enclosing expressionValue =
-      case expressionValue of
-        MapSpecification implementation
-            signature@(FunctionTypeExpression generics _ _) ->
-          MapSpecification
-            (restore (generics <> enclosing) implementation)
-            (restore enclosing signature)
-        FunctionTypeExpression generics domain codomain ->
-          let visible = generics <> enclosing
-          in FunctionTypeExpression generics
-              (restore visible domain)
-              (restore visible codomain)
-        GenericReferenceExpression reference ->
-          case lookupBinder (genericReferenceBinderId reference) enclosing of
-            Just binder ->
-              case genericReferenceRole reference of
-                GenericUseReference -> restore enclosing
-                  (genericIdentifierReference
-                    (genericBinderIdentifier binder))
-                GenericDeclarationReference ->
-                  GenericIntroductionExpression
-                    (GenericIntroduction
-                      (genericBinderPolarity binder)
-                      (genericBinderIdentifier binder)
-                      (restore enclosing (genericBinderBound binder))
-                      (genericBinderSource binder))
-            Nothing -> GenericReferenceExpression reference
-        _ -> mapExpressionChildren (restore enclosing) expressionValue
-
-    lookupBinder _ [] = Nothing
-    lookupBinder identity (binder : remaining)
-      | genericBinderId binder == identity = Just binder
-      | otherwise = lookupBinder identity remaining
-
-    genericIdentifierReference =
-      IdentifierReference . genericIdentifierName
+  source 0 . toOperatorExpression
 
 -- Parenthesize nested operations conservatively, while leaving each block
 -- entry and the yield expression readable at their own expression boundary.
 source :: Int -> OperatorExpression -> String
 source context expression =
   case expression of
-    FunValue operand -> wrapped 0 ("fun " <> source 0 operand)
+    FunValue operand -> wrapped 0
+      (canonicalFormName FunctionForm <> sourceSpace <> source 0 operand)
     GenericIntroductionValue introduction -> wrapped 0
       (genericPolarity introduction
-        <> renderGenericIdentifier
-          (genericIntroductionIdentifier introduction)
-        <> genericBound introduction)
-    GenericReferenceValue {} -> atom
+        <> renderGenericArgument introduction)
     InModuleValue _ value -> source context value
-    ImportValue paths body -> "import "
-      <> intercalate "; " (map renderAsciiStringLiteral paths)
-      <> " " <> source 0 body
-    SyntaxTypeValue templates signature -> wrapped 1
-      (source 2 templates <> " % " <> source 0 signature)
+    ImportValue paths body -> canonicalFormName ImportForm <> sourceSpace
+      <> intercalate (spaced AST.SequentialOperator)
+        (map renderAsciiStringLiteral paths)
+      <> sourceSpace <> source 0 body
     FunctionTypeValue _ input output -> wrapped 11
-      (source 12 input <> " -> " <> functionTypeOutput output)
-    FunctionApplicationValue
-        (IdentifierReferenceValue (IdentifierString "_this"))
-        argument
-      | isDefaultContextualArgument argument -> "this"
-    FunctionApplicationValue
-        (IdentifierReferenceValue (IdentifierString "_it"))
-        argument
-      | isDefaultContextualArgument argument -> "it"
+      (source 12 input <> spaced AST.FunctionTypeOperator <> functionTypeOutput output)
+    FunctionApplicationValue function LineBreakValue ->
+      wrapped 11 (source 11 function <> sourceLineFeed)
+    FunctionApplicationValue function (UnresolvedSyntaxValue literal) ->
+      wrapped 11 (source 11 function <> literal)
     FunctionApplicationValue function input -> wrapped 11
-      (source 11 function <> " " <> applicationInput input)
-    FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
-    BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
-    LetValue binding -> wrapped 0 ("let " <> source 0 binding)
-    IdentifierReferenceValue (IdentifierString name)
+      ( source 11 function
+        <> applicationSeparator function
+        <> applicationInput input
+      )
+    DeclarationValue declaration ->
+      sourceDeclaration declaration
+    FunctionBodyValue bindings result -> wrapped 0
+      (block Reserved.DoWord bindings result)
+    BeginValue bindings result -> wrapped 0
+      (block Reserved.BeginWord bindings result)
+    IdentifierReferenceValue (SimpleIdentifierString name)
       | renderIdentifierString name == name -> name
-      | isOpaqueSymbolicSyntaxLiteral name -> name
-      | otherwise -> "this." <> renderIdentifierString name
-    LookupValue operand -> unary "~" operand
-    IdentifierOperationValue (IdentifierString name) annotation given ->
-      identifierOperation
-        (renderIdentifierString name) False annotation given
-    IdentifierTemplateOperationValue parts annotation given ->
-      identifierOperation
-        (renderStringTemplate (source 0) (const Nothing) parts)
-        False
-        annotation
-        given
-    Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
-    Arguments members -> "{" <> argumentMembers members <> "}"
-    Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
-    Concatenate left EmptyMap -> wrapped 10 (source 10 left <> ",")
-    Concatenate left right -> binary 2 "," left right
-    Specify left right -> binary 1 "~>" left right
-    OverloadValue left right -> binary 1 "<<" left right
-    SafeOverloadValue left right -> binary 1 "<<<" left right
-    AssertValue hard condition -> wrapped 0
-      ("assert " <> (if hard then "hard " else "") <> source 0 condition)
+      | otherwise -> contextualSurfaceName ContextualThis
+          <> op AST.ScopeAccessOperator <> renderIdentifierString name
+    LineBreakValue -> sourceLineFeed
+    UnresolvedSyntaxValue literal -> literal
+    LookupValue operand -> unary (op AST.LookupOperator) operand
+    DependentArgumentValue name (Just annotation) ->
+      let (writtenName, optionalName) = dependentArgumentNameSource name
+      in dependentArgument writtenName optionalName (Just annotation) Nothing
+    DependentArgumentValue name Nothing -> source 13 name
+    Sequential members -> delimit OpenParenthesis CloseParenthesis
+      (intercalate (spaced AST.SequentialOperator)
+        (map (source 0) (NonEmpty.toList members)))
+    ArgumentativeMapValue members ->
+      delimit OpenBrace CloseBrace (argumentMembers members)
+    Expansion left right -> delimit OpenParenthesis CloseParenthesis
+      (source 0 left <> spaced AST.SequentialOperator <> source 0 right)
+    Concatenate left EmptyMap -> wrapped 10
+      (source 10 left <> op AST.ConcatenationOperator)
+    Concatenate left right -> binary 2 (op AST.ConcatenationOperator) left right
+    Specify given (DependentArgumentValue name annotation) ->
+      let (writtenName, optionalName) = dependentArgumentNameSource name
+      in dependentArgument writtenName optionalName annotation (Just given)
+    Specify left right -> binary 1 (op AST.SpecificationOperator) left right
+    OverloadValue left right -> binary 1 (op AST.OverloadOperator) left right
+    SafeOverloadValue left right -> binary 1 (op AST.SafeOverloadOperator) left right
     ConditionalValue condition yes no -> wrapped 0
-      ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
-    InValue value body -> binary 0 "in" value body
-    MaybeThenValue optional branch -> binary 1 "!?" optional branch
-    EitherValue left right -> binary 3 "|" left right
-    Or left right -> binary 4 "or" left right
-    And left right -> binary 5 "and" left right
-    Equal left right -> binary 6 "=" left right
-    NotEqual left right -> binary 6 "=/=" left right
-    Less left right -> binary 6 "<" left right
-    LessOrEqual left right -> binary 6 "<=" left right
-    Greater left right -> binary 6 ">" left right
-    GreaterOrEqual left right -> binary 6 ">=" left right
-    IsSubfederation left right -> binary 6 "of" left right
-    Add left right -> binary 7 "+" left right
-    Subtract left right -> binary 7 "-" left right
+      ( reservedSymbol Reserved.IfSymbol <> sourceSpace <> source 0 condition
+          <> sourceSpace <> reservedWord Reserved.ThenWord
+          <> sourceSpace <> source 0 yes
+          <> sourceSpace <> reservedWord Reserved.ElseWord
+          <> sourceSpace <> source 0 no
+      )
+    MaybeThenValue optional branch -> binary 1 (op AST.MaybeThenOperator) optional branch
+    EitherValue left right -> binary 3 (op AST.EitherOperator) left right
+    Equal left right -> binary 6 (op AST.EqualityOperator) left right
+    NotEqual left right -> binary 6 (op AST.InequalityOperator) left right
+    Less left right -> binary 6 (op AST.LessThanOperator) left right
+    LessOrEqual left right -> binary 6 (op AST.LessThanOrEqualOperator) left right
+    Greater left right -> binary 6 (op AST.GreaterThanOperator) left right
+    GreaterOrEqual left right -> binary 6 (op AST.GreaterThanOrEqualOperator) left right
+    Add left right -> binary 7 (op AST.AdditionOperator) left right
+    Subtract left right -> binary 7 (op AST.SubtractionOperator) left right
     Multiply left right -> wrapped 8
-      (multiplicand left <> " * " <> multiplicand right)
-    Power left right -> binary 9 "^" left right
-    Positive operand -> unary "+" operand
-    Negate operand -> unary "-" operand
-    Not operand -> unary "not " operand
-    CoalizationValue operand -> unary ">< " operand
-    ValValue declaration -> wrapped 0 ("val " <> source 0 declaration)
-    OptionalValue
-        (IdentifierOperationValue (IdentifierString name) annotation given) ->
-      identifierOperation
-        (renderIdentifierString name) True annotation given
-    OptionalValue
-        (IdentifierTemplateOperationValue parts annotation given) ->
-      identifierOperation
-        (renderStringTemplate (source 0) (const Nothing) parts)
-        True
-        annotation
-        given
-    OptionalValue operand -> wrapped 10 (source 10 operand <> "?")
+      (multiplicand left <> spaced AST.MultiplicationOperator <> multiplicand right)
+    Power left right -> binary 9 (op AST.ExponentiationOperator) left right
+    Positive operand -> unary (op AST.AdditionOperator) operand
+    Negate operand -> unary (op AST.MinusOperator) operand
+    CoalizationValue operand ->
+      unary (op AST.CoalizationOperator <> sourceSpace) operand
+    OptionalValue operand -> wrapped 10
+      (source 10 operand <> op AST.OptionalOperator)
     ScopeAccessValue operand
-        (IdentifierReferenceValue (IdentifierString name)) ->
-      wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
+        (IdentifierReferenceValue (SimpleIdentifierString name)) ->
+      wrapped 12 (source 12 operand <> op AST.ScopeAccessOperator <> renderIdentifierString name)
     ScopeAccessValue operand body ->
-      wrapped 12 (source 12 operand <> "." <> scopeBody body)
+      wrapped 12 (source 12 operand <> op AST.ScopeAccessOperator <> scopeBody body)
     -- Access associates to the left, so a second page selection can continue
     -- directly as @value[first][second]@.  Operands with genuinely looser
     -- precedence are still parenthesized by their own renderer.
-    Access operand position -> wrapped 10 (source 10 operand <> "[" <> source 0 position <> "]")
-    Range left right -> binary 9 ".." left right
-    RangePlus operand -> source 11 operand <> ".."
-    RangeMinus operand -> source 11 operand <> "..-"
-    InclusiveNaturalRange start end -> bounded "range" start end
-    InclusiveNaturalRangeUpwards start -> open "range" start "up"
-    InclusiveValuedNaturalRange start end -> bounded "from" start end
-    InclusiveValuedNaturalRangeUpwards start -> open "from" start "up"
-    InclusiveIntegerRange start end -> bounded "range" start end
-    InclusiveIntegerRangeUpwards start -> open "range" start "up"
-    InclusiveIntegerRangeDownwards start -> open "range" start "down"
-    InclusiveValuedIntegerRange start end -> bounded "from" start end
-    InclusiveValuedIntegerRangeUpwards start -> open "from" start "up"
-    InclusiveValuedIntegerRangeDownwards start -> open "from" start "down"
-    StringTemplateValue parts -> renderStringTemplate (source 0) (const Nothing) parts
+    Access operand position -> wrapped 10
+      (source 10 operand <> delimit OpenBracket CloseBracket (source 0 position))
+    Range left right -> binary 9 (op AST.RangeOperator) left right
+    RangePlus operand -> source 11 operand <> op AST.RangePlusOperator
+    RangeMinus operand -> source 11 operand <> op AST.RangeMinusOperator
+    InclusiveNaturalRange start end ->
+      bounded Reserved.RangeSymbol start end
+    InclusiveNaturalRangeUpwards start ->
+      open Reserved.RangeSymbol start Reserved.UpwardsWord
+    InclusiveValuedNaturalRange start end ->
+      bounded Reserved.FromSymbol start end
+    InclusiveValuedNaturalRangeUpwards start ->
+      open Reserved.FromSymbol start Reserved.UpwardsWord
+    InclusiveIntegerRange start end ->
+      bounded Reserved.RangeSymbol start end
+    InclusiveIntegerRangeUpwards start ->
+      open Reserved.RangeSymbol start Reserved.UpwardsWord
+    InclusiveIntegerRangeDownwards start ->
+      open Reserved.RangeSymbol start Reserved.DownwardsWord
+    InclusiveValuedIntegerRange start end ->
+      bounded Reserved.FromSymbol start end
+    InclusiveValuedIntegerRangeUpwards start ->
+      open Reserved.FromSymbol start Reserved.UpwardsWord
+    InclusiveValuedIntegerRangeDownwards start ->
+      open Reserved.FromSymbol start Reserved.DownwardsWord
+    StringTemplateValue parts -> renderStringTemplate
+      (source 0) stringLiteral (const Nothing) parts
+    IdentifierExpressionValue operand -> case operand of
+      IdentifierReferenceValue (SimpleIdentifierString name) ->
+        op AST.IdentifierExpressionOperator <> renderIdentifierString name
+      AsciiStringValue value -> op AST.IdentifierExpressionOperator <> renderAsciiStringLiteral value
+      _ -> op AST.IdentifierExpressionOperator <>
+        delimit OpenParenthesis CloseParenthesis (source 0 operand)
+    LiteralTemplateExpressionValue body ->
+      [literalTemplateDelimiterCharacter]
+        <> renderLiteralTemplate body
+        <> [literalTemplateDelimiterCharacter]
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom
     SkipValue -> atom
     AsciiStringValue _ -> atom
     NothingValue -> atom
-    IdentifierValueTypeValue -> atom
     EmptyMap -> atom
+    AnyTypeValue -> atom
     NaturalTypeValue -> atom
     IntegerTypeValue -> atom
     BooleanValue _ -> atom
     BooleanTypeValue -> atom
   where
     atom = renderOperatorExpression expression
+    stringLiteral (AsciiStringValue value) = Just value
+    stringLiteral _ = Nothing
     wrapped precedence text
-      | context > precedence = "(" <> text <> ")"
+      | context > precedence = delimit OpenParenthesis CloseParenthesis text
       | otherwise = text
     binary precedence operator left right = wrapped precedence
-      (source (precedence + 1) left <> " " <> operator <> " " <> source (precedence + 1) right)
+      ( source (precedence + 1) left <> sourceSpace <> operator
+          <> sourceSpace <> source (precedence + 1) right
+      )
     unary operator operand = wrapped 10 (operator <> source 11 operand)
-    multiplicand SkipValue = "(*)"
+    multiplicand SkipValue = delimit OpenParenthesis CloseParenthesis
+      (op AST.MultiplicationOperator)
     multiplicand operand = source 9 operand
-    applicationInput SkipValue = "(*)"
+    applicationInput SkipValue = delimit OpenParenthesis CloseParenthesis
+      (op AST.MultiplicationOperator)
     applicationInput operand@FunctionBodyValue {} = source 0 operand
     applicationInput operand = source 12 operand
+    applicationSeparator (FunctionApplicationValue _ LineBreakValue) = ""
+    applicationSeparator _ = sourceSpace
     functionTypeOutput output@FunctionTypeValue {} = source 11 output
     functionTypeOutput output = source 12 output
-    bounded keyword start end = keyword <> " " <> show start <> " to " <> show end
-    open keyword start direction = keyword <> " " <> show start <> " " <> direction
+    bounded keyword start end =
+      reservedSymbol keyword <> sourceSpace <> show start
+        <> sourceSpace <> reservedWord Reserved.ToWord
+        <> sourceSpace <> show end
+    open keyword start direction =
+      reservedSymbol keyword <> sourceSpace <> show start
+        <> sourceSpace <> reservedWord direction
     binderName name optional =
-      renderIdentifierString name <> if optional then "?" else ""
-    renderGenericIdentifier identifier =
+      renderIdentifierString name <>
+        if optional then op AST.OptionalOperator else ""
+    renderGenericArgument argument =
       binderName
-        (identifierStringText (genericIdentifierName identifier))
-        (genericIdentifierNameOptional identifier)
+        (simpleIdentifierStringText (genericArgumentName argument))
+        (genericArgumentOptional argument)
+        <> renderGenericBound (genericArgumentBound argument)
     genericPolarity introduction =
-      case genericIntroductionPolarity introduction of
-        GenericProduct -> "&"
-        GenericSum -> "^"
-    genericBound introduction =
-      case genericIntroductionBound introduction of
-        IdentifierReferenceValue (IdentifierString "Any") -> ""
-        bound -> " :: " <> source 0 bound
-    identifierOperation name optional annotation given = wrapped 1
-      (name <> (if optional then "?" else "") <> case given of
-        Just value | value == annotation -> " := " <> assignedValue value
-        _ -> " : " <> source 13 annotation
-          <> maybe "" (\value -> " := " <> assignedValue value) given)
+      case genericArgumentPolarity introduction of
+        GenericProduct -> op AST.GenericProductOperator
+        GenericSum -> op AST.ExponentiationOperator
+    renderGenericBound bound = case bound of
+      AnyTypeValue -> ""
+      _ -> spaced AST.GenericBoundOperator <> source 0 bound
+    dependentArgument name optional annotation given = wrapped 1
+      (name <> (if optional then op AST.OptionalOperator else "")
+        <> maybe "" (\value -> spaced AST.DependentArgumentTypeOperator <> source 13 value) annotation
+        <> maybe "" (\value -> spaced AST.AssignmentOperator <> assignedValue value) given)
+    dependentArgumentNameSource name = case name of
+      OptionalValue present -> (source 13 present, True)
+      _ -> (source 13 name, False)
     -- Federation binds inside assignment. Other assignment operands retain
     -- their existing conservative grouping.
     assignedValue value@EitherValue {} = source 3 value
     assignedValue value = source 7 value
-    block keyword bindings result = keyword <> " "
-      <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
-    argumentMembers = intercalate "; " . map (source 0)
+    block keyword bindings result = reservedWord keyword <> sourceSpace
+      <> intercalate (spaced AST.SequentialOperator)
+        ( map sourceDeclaration bindings
+            <> [ reservedWord Reserved.YieldWord
+                  <> sourceSpace <> source 0 result
+               ]
+        )
+    sourceDeclaration declaration =
+        modifier AST.LetOperator (dependentDeclarationIsLet declaration)
+          <> modifier AST.DefOperator (dependentDeclarationIsDefinition declaration)
+          <> modifier AST.ValOperator
+            (dependentDeclarationIsCanonicalValue declaration)
+          <> source 0 (identifierHeadValue
+            (dependentDeclarationHead declaration))
+          <> spaced AST.AssignmentOperator
+          <> assignedValue (dependentDeclarationImplementation declaration)
+    modifier operator present =
+      if present then op operator <> sourceSpace else ""
+    argumentMembers = intercalate (spaced AST.SequentialOperator) . map (source 0)
+
+    op = AST.operatorPreferredSymbol
+    spaced operator = sourceSpace <> op operator <> sourceSpace
+    delimit opening closing body =
+      delimiterText opening <> body <> delimiterText closing
+
+    reservedWord = Reserved.reservedWordText
+    reservedSymbol = Reserved.reservedSymbolIdentifierString
+
+identifierHeadValue :: IdentifierExpression OperatorExpression -> OperatorExpression
+identifierHeadValue headValue = case headValue of
+  IdentifierExpressionBody body -> IdentifierExpressionValue body
+  LiteralTemplateIdentifier body -> LiteralTemplateExpressionValue body
 
 scopeBody :: OperatorExpression -> String
 scopeBody body = case body of
   Sequential {} -> source 0 body
   Expansion {} -> source 0 body
   EmptyMap -> source 0 body
-  _ -> "(" <> source 0 body <> ")"
-
-isDefaultContextualArgument :: OperatorExpression -> Bool
-isDefaultContextualArgument (NaturalValue 0) = True
-isDefaultContextualArgument EmptyMap = True
-isDefaultContextualArgument _ = False
+  _ -> delimiterText OpenParenthesis <> source 0 body <>
+    delimiterText CloseParenthesis

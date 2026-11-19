@@ -33,7 +33,7 @@ optionalPresentType value = case interpretedForm value of
 -- their names so ordinary named function arguments keep their semantics.
 justUnderlying :: InterpretedValue -> Maybe InterpretedValue
 justUnderlying value = case interpretedForm value of
-  DependentIdentifierTypeForm identifier
+  DependentArgumentTypeForm identifier
     | SimpleIdentifierDependency "Just" <-
         evaluatedIdentifierDependency identifier ->
           Just (evaluatedIdentifierUnderlying identifier)

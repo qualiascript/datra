@@ -8,10 +8,10 @@ module DatraLanguage.AST.Reserved.Bootstrap
 import Data.Maybe (mapMaybe)
 import DatraLanguage.AST
   ( Expression
-      ( BooleanLiteral
+      ( AnyType
+      , BooleanLiteral
       , BooleanType
       , IntegerType
-      , IdentifierValueType
       , NaturalType
       , NothingLiteral
       )
@@ -26,10 +26,9 @@ import DatraLanguage.AST.Reserved
 reservedSymbolReplacements :: [(ReservedSymbol, Expression)]
 reservedSymbolReplacements = mapMaybe replacement reservedSymbols
   where
+    replacement AnyTypeSymbol = Just (AnyTypeSymbol, AnyType)
     replacement BooleanTypeSymbol = Just (BooleanTypeSymbol, BooleanType)
     replacement StringTypeSymbol = Nothing
-    replacement IdentifierValueTypeSymbol =
-      Just (IdentifierValueTypeSymbol, IdentifierValueType)
     replacement IntegerTypeSymbol = Just (IntegerTypeSymbol, IntegerType)
     replacement NaturalTypeSymbol = Just (NaturalTypeSymbol, NaturalType)
     replacement FalseSymbol = Just (FalseSymbol, BooleanLiteral False)
