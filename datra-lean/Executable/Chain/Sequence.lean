@@ -187,7 +187,6 @@ theorem validPosition_index_lt {orders : List Ordinal} {value : Nat × Ordinal}
   | none => simp [entry] at valid
   | some order => exact (List.getElem?_eq_some_iff.mp entry).1
 
--- ALIGN: SEQUENCE-MEMBER-INDEX-BOUND.
 theorem locate_index_lt (orders : List Ordinal) (value : Ordinal) (found : Nat × Ordinal)
     (decoded : locate orders value = some found) : found.1 < orders.length :=
   validPosition_index_lt (locate_sound orders value found decoded).1

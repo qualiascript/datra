@@ -2698,22 +2698,22 @@
     },
     {
       "id": "SEQUENCE-MEMBER-POSITION-RESOLVER",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Resolution.hs",
-      "haskell_declaration": "withMemberAtPosition",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs",
+      "haskell_declaration": "atlasSequencePageChain",
       "lean_namespace": "Datra.Executable.ChainSequence",
       "lean_declaration": "locate"
     },
     {
       "id": "SEQUENCE-MEMBER-POSITION-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Resolution.hs",
-      "haskell_declaration": "withMemberAtPosition",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs",
+      "haskell_declaration": "atlasSequencePageChain",
       "lean_namespace": "Datra.Executable.ChainSequence",
       "lean_declaration": "locate_position"
     },
     {
       "id": "SEQUENCE-MEMBER-POSITION-SOUND",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Resolution.hs",
-      "haskell_declaration": "withMemberAtPosition",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs",
+      "haskell_declaration": "atlasSequencePageChain",
       "lean_namespace": "Datra.Executable.ChainSequence",
       "lean_declaration": "locate_sound"
     },
@@ -2811,7 +2811,7 @@
     {
       "id": "SEQUENCE-COMPONENT-DECODER",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Resolution.hs",
-      "haskell_declaration": "withMemberAtPosition",
+      "haskell_declaration": "sequenceSourceCell",
       "lean_namespace": "Datra.Executable.AtlasSequence",
       "lean_declaration": "resolvePosition_pagePosition"
     },
@@ -3210,9 +3210,9 @@
     {
       "id": "SEQUENCE-MEMBER-INDEX-BOUND",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Resolution.hs",
-      "haskell_declaration": "withMemberAtPosition",
-      "lean_namespace": "Datra.Executable.ChainSequence",
-      "lean_declaration": "locate_index_lt"
+      "haskell_declaration": "withSequenceNativeCell",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "nativeCell_bound"
     },
     {
       "id": "ATLAS-IDENTITY-WITNESS",
@@ -4158,6 +4158,34 @@
       "haskell_declaration": "withMergeNativeCell",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "withNativeCell_resolve"
+    },
+    {
+      "id": "SEQUENCE-MEMBER-TRACE-RESOLUTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Member.hs",
+      "haskell_declaration": "withMemberTrace",
+      "lean_namespace": "Datra.Executable.AtlasSequence.Member",
+      "lean_declaration": "withTrace"
+    },
+    {
+      "id": "SEQUENCE-NATIVE-CELL-RESOLUTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Resolution.hs",
+      "haskell_declaration": "withSequenceNativeCell",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "withNativeCell"
+    },
+    {
+      "id": "SEQUENCE-NATIVE-CELL-RESOLUTION-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Resolution.hs",
+      "haskell_declaration": "withSequenceNativeCell",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "withNativeCell_resolve"
+    },
+    {
+      "id": "SEQUENCE-NATIVE-MEMBER-SELECTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs",
+      "haskell_declaration": "sequenceCellMember",
+      "lean_namespace": "Datra.Executable.AtlasSequence",
+      "lean_declaration": "nativeCell_memberAt"
     }
   ],
   "modules": [
@@ -5723,8 +5751,8 @@
       "types": [],
       "reflected": [],
       "refinements": [
-        "withMemberAtPosition",
-        "go",
+        "withSequenceNativeCell",
+        "resolve",
         "sequenceSourceCell"
       ],
       "lean_target": "Datra.Executable.AtlasSequence",
@@ -6020,6 +6048,8 @@
       "lean_target": "Datra.Executable.AtlasSequence.Member",
       "coverage": "aligned",
       "reflected": [
+        "atlasSequenceMember",
+        "memberAt",
         "memberPageContains",
         "memberPageOrder",
         "memberPreviousTrace",
@@ -6036,6 +6066,8 @@
         "Natural as int"
       ],
       "refinements": [
+        "withAtlasSequenceMember",
+        "withMemberTrace",
         "memberPageChain",
         "memberPageOrigin",
         "memberPagePrevious",
@@ -6057,6 +6089,8 @@
       "reflected": [
         "sequencePageContains",
         "consContains",
+        "sequenceCellIndex",
+        "sequenceCellTrace",
         "sequencePageOrder",
         "emptyContains",
         "emptyPosition",
@@ -6081,6 +6115,7 @@
         "Natural as int"
       ],
       "refinements": [
+        "sequenceCellMember",
         "sequencePagePosition",
         "consPosition",
         "consCell",

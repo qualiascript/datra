@@ -118,10 +118,15 @@ coordinates but different intermediate transports, including padded pages.
 Lean proves the corresponding trace and count laws. The shared Atlas lookup
 callback retains the source's origin-arrow condition. Merge and sequence
 resolve component cells through this callback, and their membership modules
-are LiquidHaskell-checked. The member-position scan also checks that its
-selected sequence index lies within the supplied member list. Negative checks
-reject changing the selected cell's owning Atlas, discarding its transport
-trace, or claiming an out-of-range member index. Their full Atlas assembly
+are LiquidHaskell-checked. Both resolvers consume accepted cells from their
+native page chains and retain the component's exact trace, page, and encoded
+position. Sequence selection first recovers the member at the native cell's
+index, with its list bound and accepted trace, then unpacks that member's Atlas.
+Its callback retains the exact owning-member equation. Lean proves that these
+accepted-trace callbacks always succeed and agree with component resolution.
+Negative checks reject unaccepted native cells, changing the selected member
+or component page, discarding the transport trace, and out-of-range indices.
+Their full Atlas assembly
 still needs the stronger validity and membership-preservation conditions for
 data arrows and inclusion callbacks; generative scope alone does not establish
 these value-dependent conditions.

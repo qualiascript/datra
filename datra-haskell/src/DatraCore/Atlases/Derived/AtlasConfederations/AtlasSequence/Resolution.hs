@@ -5,8 +5,7 @@
 
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
-{-@ LIQUID "--ple" @-}
-{-@ LIQUID "--higherorder" @-}
+{-@ LIQUID "--ple-local" @-}
 
 -- | Member selection and cell resolution with checked origin evidence.
 module AtlasSequence.Resolution
@@ -14,20 +13,19 @@ module AtlasSequence.Resolution
   , atlasSequenceMember
   , withAtlasSequenceMember
   , withMemberAt
-  , withMemberAtPosition
+  , withSequenceNativeCell
   , sequenceSourceCell
   , sequenceCellContains
   ) where
 
-import Atlas.Internal (Atlas, atlasFolio)
+import Atlas.Internal (Atlas)
 import qualified AtlasExtent.Internal as Extent hiding
   (atlasCellOriginRankInsertion, cellContainsRankImage, cellOriginRankPreimageSound)
-import AtlasSequence.Member (AtlasSequenceMember, atlasSequenceMember, withAtlasSequenceMember)
+import AtlasSequence.Member (AtlasSequenceMember, atlasSequenceMember, withAtlasSequenceMember, memberAt, memberList, withMemberTrace)
+import AtlasSequence.Page (AtlasSequencePageCell (..), sequencePageContains, sequenceCellMember, sequencePagePosition, atlasSequencePageChain)
 import AtlasSequence.Data (AtlasSequenceDatum (..))
-import Chain (chainOrderType)
+import Chain (chainIndex, chainObjectAt)
 import Data.List.NonEmpty (NonEmpty, toList)
-import DatraOrdinal (Ordinal, ordinalLT, subtractOrdinal)
-import Folio (withPageAt)
 import Numeric.Natural (Natural)
 -- Resolve the polymorphic success predicate in AtlasExtent's lookup contracts.
 import PageElements.Internal (traceLookupPresent)
@@ -43,80 +41,62 @@ withMemberAt
        Atlas atlasScope paginationScope cellData origin final
        -> result)
   -> Maybe result
-withMemberAt [] _ _ = Nothing
-withMemberAt (member : _) 0 useAtlas =
-  Just (withAtlasSequenceMember member useAtlas)
-withMemberAt (_ : members) memberIndex useAtlas =
-  withMemberAt members (memberIndex - 1) useAtlas
+withMemberAt members index useAtlas =
+  case memberAt members index of
+    Nothing -> Nothing
+    Just member -> Just (withAtlasSequenceMember member (\owner -> useAtlas owner))
 
--- ALIGN: SEQUENCE-MEMBER-POSITION-RESOLVER.
--- ALIGN: SEQUENCE-MEMBER-POSITION-ROUNDTRIP.
--- ALIGN: SEQUENCE-MEMBER-POSITION-SOUND.
--- ALIGN: SEQUENCE-COMPONENT-DECODER.
+-- | Consume the selected member's exact native trace from the sequence chain.
 -- ALIGN: SEQUENCE-MEMBER-INDEX-BOUND.
-{-@ withMemberAtPosition
-      :: members:[AtlasSequenceMember] -> Natural -> Ordinal
-      -> (forall atlasScope paginationScope cellData origin final.
-            memberIndex:{Natural | memberIndex < len members}
-            -> Atlas atlasScope paginationScope cellData origin final
-            -> Ordinal -> Maybe result)
-      -> Maybe result @-}
-withMemberAtPosition
-  :: forall result.
-     [AtlasSequenceMember]
-  -> Natural
-  -> Ordinal
-  -> (forall atlasScope paginationScope cellData origin final.
-       Natural
-       -> Atlas atlasScope paginationScope cellData origin final
-       -> Ordinal
-       -> Maybe result)
+-- ALIGN: SEQUENCE-NATIVE-CELL-RESOLUTION.
+-- ALIGN: SEQUENCE-NATIVE-CELL-RESOLUTION-INTERPRETATION.
+{-@ ple withSequenceNativeCell @-}
+{-@ withSequenceNativeCell :: members:[AtlasSequenceMember] -> page:Natural
+      -> cell:{AtlasSequencePageCell | sequencePageContains members page cell}
+      -> (forall a s d o f object.
+           index:{Natural | index < len members}
+           -> owner:Atlas a s d o f
+           -> source:{PageElement s object | memberAt members index == Just (atlasSequenceMember owner)
+                && Extent.cellHasOrigin owner source
+                && Extent.cellTraceValid owner source && pageElementPage source == page
+                && cell == AtlasSequencePageCell index (pageElementTrace source)} -> result)
+      -> {resolved:Maybe result | traceLookupPresent resolved} / [len members] @-}
+withSequenceNativeCell :: forall result. [AtlasSequenceMember] -> Natural -> AtlasSequencePageCell
+  -> (forall a s d o f object. Natural -> Atlas a s d o f -> PageElement s object -> result)
   -> Maybe result
-withMemberAtPosition = go 0
-  where
-    {-@ go :: offset:Natural -> rest:[AtlasSequenceMember] -> Natural -> Ordinal
-          -> (forall atlasScope paginationScope cellData origin final.
-                memberIndex:{Natural | offset <= memberIndex && memberIndex < offset + len rest}
-                -> Atlas atlasScope paginationScope cellData origin final
-                -> Ordinal -> Maybe result)
-          -> Maybe result / [len rest] @-}
-    go
-      :: Natural
-      -> [AtlasSequenceMember]
-      -> Natural
-      -> Ordinal
-      -> (forall atlasScope paginationScope cellData origin final.
-           Natural
-           -> Atlas atlasScope paginationScope cellData origin final
-           -> Ordinal
-           -> Maybe result)
-      -> Maybe result
-    go _ [] _ _ _ = Nothing
-    go memberIndex (member : members) pageNumber position usePosition =
-      withAtlasSequenceMember member $ \valueAtlas ->
-        withPageAt (atlasFolio valueAtlas) pageNumber $ \sourcePage ->
-          let sourceOrder = chainOrderType sourcePage
-          in if ordinalLT position sourceOrder
-              then usePosition memberIndex valueAtlas position
-              else do
-                remaining <- subtractOrdinal sourceOrder position
-                go
-                  (memberIndex + 1)
-                  members
-                  pageNumber
-                  remaining
-                  usePosition
+withSequenceNativeCell members page cell@(AtlasSequencePageCell index positions) useCell =
+  let member = sequenceCellMember members page cell
+      {-@ resolve :: forall a s d o f object. selected:{AtlasSequenceMember |
+                 memberAt members index == Just selected && index < len members}
+            -> owner:Atlas a s d o f
+            -> source:{PageElement s object | atlasSequenceMember owner == selected
+                 && Extent.cellHasOrigin owner source && Extent.cellTraceValid owner source
+                 && pageElementPage source == page && pageElementTrace source == positions} -> result @-}
+      resolve :: forall a s d o f object. AtlasSequenceMember -> Atlas a s d o f -> PageElement s object -> result
+      resolve _ owner source = useCell index owner source
+  in withMemberTrace member page positions (resolve member)
 
+-- ALIGN: SEQUENCE-COMPONENT-DECODER.
 -- ALIGN: SEQUENCE-SOURCE-RESOLUTION.
 -- ALIGN: SEQUENCE-SOURCE-RESOLUTION-EQUIV.
 -- ALIGN: SEQUENCE-NORMALIZED-RESOLUTION.
+{-@ ple sequenceSourceCell @-}
 {-@ sequenceSourceCell
-      :: NonEmpty AtlasSequenceMember
-      -> PageElement mergeScope object
+      :: members:NonEmpty AtlasSequenceMember
+      -> occurrence:PageElement mergeScope object
       -> result
       -> (forall atlasScope scope cellData origin final sourceObject.
-            Natural -> valueAtlas:Atlas atlasScope scope cellData origin final
-            -> source:{PageElement scope sourceObject | Extent.cellHasOrigin valueAtlas source && Extent.cellTraceValid valueAtlas source}
+            index:{Natural | index < len (memberList members)}
+            -> valueAtlas:Atlas atlasScope scope cellData origin final
+            -> source:{PageElement scope sourceObject |
+                 memberAt (memberList members) index == Just (atlasSequenceMember valueAtlas)
+                 && Extent.cellHasOrigin valueAtlas source
+                 && Extent.cellTraceValid valueAtlas source
+                 && pageElementPage source + 1 == pageElementPage occurrence
+                 && sequencePageContains (memberList members) (pageElementPage source)
+                      (AtlasSequencePageCell index (pageElementTrace source))
+                 && sequencePagePosition (memberList members) (pageElementPage source)
+                      (AtlasSequencePageCell index (pageElementTrace source)) == pageElementPosition occurrence}
             -> result)
       -> Maybe result @-}
 sequenceSourceCell
@@ -132,9 +112,9 @@ sequenceSourceCell members occurrence atOrigin useMember
   | otherwise =
       let sourcePage = pageElementPage occurrence - 1
           position = pageElementPosition occurrence
-      in withMemberAtPosition (toList members) sourcePage position $
-          \memberIndex valueAtlas sourcePosition ->
-            Extent.withAtlasCellAt valueAtlas sourcePage sourcePosition (useMember memberIndex valueAtlas)
+      in case chainIndex (atlasSequencePageChain (memberList members) sourcePage) position of
+          Nothing -> Nothing
+          Just selected -> withSequenceNativeCell (memberList members) sourcePage (chainObjectAt selected) (\index owner source -> useMember index owner source)
 
 -- ALIGN: SEQUENCE-CELL-MEMBERSHIP.
 -- ALIGN: SEQUENCE-CELL-ROOT-IMAGE.

@@ -6,19 +6,11 @@ open CategoryTheory
 
 variable {count : Nat}
 
-def resolvePageValue (members : Fin count → Atlas) (n : Nat) (source : PageValue members n) :
-    SourceCell members :=
-  .member source.1 (FolioData.ValidElement.ofOccurrence ⟨n, source.2⟩)
-
-def resolvePageCell (members : Fin count → Atlas) (n : Nat) (cell : ValidPageCell members n) :
-    SourceCell members := resolvePageValue members n (decodedPageCell members n cell)
-
 theorem resolvePageCell_encode (members : Fin count → Atlas) (n : Nat) (source : PageValue members n) :
     resolvePageCell members n (encodedPageCell members n source) =
       .member source.1 (FolioData.ValidElement.ofOccurrence ⟨n, source.2⟩) := by
   unfold resolvePageCell
   rw [decodedPageCell_encode]
-  rfl
 
 theorem pageTransition_encode (members : Fin count → Atlas) (n : Nat) (source : PageValue members (n + 1)) :
     (pageTransition members n).map (encodedPageCell members (n + 1) source) =

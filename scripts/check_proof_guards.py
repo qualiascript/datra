@@ -233,6 +233,13 @@ proofGuard member page source target = memberPageTransition member page source t
 
 SEQUENCE_PAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs"
 SEQUENCE_PAGE_GUARDS = {
+    "sequence native selection cannot switch its member": """
+{-@ proofGuard :: members:[AtlasSequenceMember] -> page:Natural
+      -> cell:{AtlasSequencePageCell | sequencePageContains members page cell}
+      -> {member:AtlasSequenceMember | memberAt members (sequenceCellIndex cell) /= Just member} @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> AtlasSequencePageCell -> AtlasSequenceMember
+proofGuard = sequenceCellMember
+""",
     "sequence stored predecessor cannot be replaced by identity": """
 {-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0}
       -> target:{Chain {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
@@ -1136,12 +1143,24 @@ proofGuard left other right occurrence =
 
 SEQUENCE_RESOLUTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Resolution.hs"
 SEQUENCE_RESOLUTION_GUARDS = {
+    "native sequence resolution requires an accepted cell": """
+proofGuard :: [AtlasSequenceMember] -> Natural -> AtlasSequencePageCell -> Maybe ()
+proofGuard members page cell = withSequenceNativeCell members page cell (\\_ _ _ -> ())
+""",
+    "native sequence resolution cannot shift the component page": """
+{-@ proofGuard :: members:[AtlasSequenceMember] -> page:Natural
+      -> cell:{AtlasSequencePageCell | sequencePageContains members page cell} -> Maybe Bool @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> AtlasSequencePageCell -> Maybe Bool
+proofGuard members page cell = withSequenceNativeCell members page cell
+  (\\_ owner source -> Extent.cellContainsRank owner (source {pageElementPage = page + 1}) 0)
+""",
     "sequence member resolution cannot return an out-of-range index": """
-{-@ proofGuard :: members:[AtlasSequenceMember] -> Natural -> Ordinal
+{-@ proofGuard :: members:[AtlasSequenceMember] -> page:Natural
+      -> cell:{AtlasSequencePageCell | sequencePageContains members page cell}
       -> Maybe ({index:Natural | index >= len members}) @-}
-proofGuard :: [AtlasSequenceMember] -> Natural -> Ordinal -> Maybe Natural
-proofGuard members page position =
-  withMemberAtPosition members page position (\\index _ _ -> Just index)
+proofGuard :: [AtlasSequenceMember] -> Natural -> AtlasSequencePageCell -> Maybe Natural
+proofGuard members page cell =
+  withSequenceNativeCell members page cell (\\index _ _ -> index)
 """,
     "sequence resolution cannot discard the selected cell's trace": """
 {-@ proofGuard :: NonEmpty AtlasSequenceMember -> PageElement scope object -> Maybe Bool @-}

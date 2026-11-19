@@ -10,7 +10,9 @@
 module AtlasSequence.Member
   ( AtlasSequenceMember
   , atlasSequenceMember
+  , withMemberTrace
   , withAtlasSequenceMember
+  , memberAt
   , memberLength
   , memberList
   , memberPageContains
@@ -23,7 +25,9 @@ module AtlasSequence.Member
   , memberPageTransition
   ) where
 
-import Atlas.Internal (Atlas, atlasFolio)
+import Atlas.Internal (Atlas, atlasFolio, atlasPageElements)
+import qualified AtlasExtent.Internal as Extent hiding
+  (atlasCellOriginRankInsertion, cellContainsRankImage, cellOriginRankPreimageSound)
 import Chain.Internal (Chain, chainPosition, chainOrderType)
 import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget,
   orderedApply, orderedPreimage, withConsolidationFunctions)
@@ -31,7 +35,8 @@ import Data.List.NonEmpty (NonEmpty (..))
 import DatraOrdinal (Ordinal)
 import Folio.Presentation (folioLengthData)
 import Numeric.Natural (Natural)
-import PageElements.Internal (folioPageOrderType)
+import PageElements.Internal (folioPageOrderType, traceLookupPresent, pageElementsFolio)
+import PageElements.Structure (PageElement (..))
 import PageElements.TraceChain
   ( pageTraceContains, traceHead, pageTraceChain, pageTraceOrigin
   , previousTrace, previousPageTrace, pageTracePrevious, pageTraceNext, pageTraceTransition )
@@ -45,11 +50,16 @@ data AtlasSequenceMember where
     :: Atlas atlasScope paginationScope cellData origin final
     -> AtlasSequenceMember
 
+{-@ reflect atlasSequenceMember @-}
 atlasSequenceMember
   :: Atlas atlasScope paginationScope cellData origin final
   -> AtlasSequenceMember
 atlasSequenceMember = AtlasSequenceMember
 
+{-@ withAtlasSequenceMember :: member:AtlasSequenceMember
+      -> (forall a s d o f. {owner:Atlas a s d o f | atlasSequenceMember owner == member} -> result)
+      -> result @-}
+{-@ ple withAtlasSequenceMember @-}
 withAtlasSequenceMember
   :: AtlasSequenceMember
   -> (forall atlasScope paginationScope cellData origin final.
@@ -59,11 +69,38 @@ withAtlasSequenceMember
 withAtlasSequenceMember (AtlasSequenceMember valueAtlas) useAtlas =
   useAtlas valueAtlas
 
+-- | Retain the selected existential member at its natural-number index.
+{-@ reflect memberAt @-}
+memberAt :: [AtlasSequenceMember] -> Natural -> Maybe AtlasSequenceMember
+memberAt [] _ = Nothing
+memberAt (member : rest) index
+  | index == 0 = Just member
+  | otherwise = memberAt rest (index - 1)
+
+-- | Resolve an accepted native trace without losing its owning member.
+-- ALIGN: SEQUENCE-MEMBER-TRACE-RESOLUTION.
+{-@ withMemberTrace :: member:AtlasSequenceMember -> page:Natural
+      -> positions:{[Ordinal] | memberPageContains member page positions}
+      -> (forall a s d o f object.
+           owner:Atlas a s d o f
+           -> source:{PageElement s object | atlasSequenceMember owner == member
+                && Extent.cellHasOrigin owner source
+                && Extent.cellTraceValid owner source && pageElementPage source == page
+                && pageElementPosition source == traceHead positions
+                && pageElementTrace source == positions} -> result)
+      -> {resolved:Maybe result | traceLookupPresent resolved} @-}
+{-@ ple withMemberTrace @-}
+withMemberTrace :: AtlasSequenceMember -> Natural -> [Ordinal]
+  -> (forall a s d o f object. Atlas a s d o f -> PageElement s object -> result)
+  -> Maybe result
+withMemberTrace (AtlasSequenceMember owner) page positions useCell =
+  Extent.withAtlasCellTrace owner page positions (\source -> useCell owner source)
+
 -- ALIGN: SEQUENCE-MEMBER-PAGE-MEMBERSHIP.
 {-@ reflect memberPageContains @-}
 memberPageContains :: AtlasSequenceMember -> Natural -> [Ordinal] -> Bool
 memberPageContains (AtlasSequenceMember valueAtlas) page positions =
-  pageTraceContains (atlasFolio valueAtlas) page positions
+  pageTraceContains (pageElementsFolio (atlasPageElements valueAtlas)) page positions
 
 -- ALIGN: SEQUENCE-MEMBER-PAGE-ORDER.
 {-@ reflect memberPageOrder @-}

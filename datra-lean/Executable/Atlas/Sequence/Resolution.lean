@@ -18,7 +18,7 @@ theorem prefixPageAt_succ (positive : 0 < count) (members : Fin count → Atlas)
   Folio.buildPrefix_pageAt_succ _ _ _ _ _ _ n k
 
 /-- Locate the member, then decode its local position with checked lookup.
-This is the successful callback of withMemberAtPosition. -/
+The native page-chain lookup uses this ordinal-sum presentation. -/
 def resolvePosition (members : Fin count → Atlas) (n : Nat) (position : Ordinal) :
     Option (PageValue members n) :=
   (ChainSequence.locate (pageOrders members n) position).attach.map (fun found =>
@@ -69,6 +69,70 @@ theorem resolvePosition_pagePosition (members : Fin count → Atlas) (n : Nat) (
   rw [← cellEq, decodedPageCell_encode]
   exact (congrArg (resolvePosition members n) (pagePosition_encode members n value)).trans
     (resolvePosition_position members n value)
+
+/-- An accepted native tag selects an actual member of the finite family. -/
+-- ALIGN: SEQUENCE-MEMBER-INDEX-BOUND.
+theorem nativeCell_bound (members : Fin count → Atlas) (page : Nat) (cell : ValidPageCell members page) :
+    cell.val.member < count := by
+  obtain ⟨⟨index, value⟩, same⟩ := cell.property
+  rw [← same]
+  exact index.isLt
+
+def nativeCellIndex (members : Fin count → Atlas) (page : Nat) (cell : ValidPageCell members page) : Fin count :=
+  ⟨cell.val.member, nativeCell_bound members page cell⟩
+
+-- ALIGN: SEQUENCE-NATIVE-MEMBER-SELECTION.
+theorem nativeCell_memberAt (members : Fin count → Atlas) (page : Nat) (cell : ValidPageCell members page) :
+    (nativeMembers members)[cell.val.member]? = some ⟨members (nativeCellIndex members page cell)⟩ := by
+  simp [nativeMembers, nativeCellIndex, nativeCell_bound members page cell]
+
+theorem nativeCell_trace (members : Fin count → Atlas) (page : Nat) (cell : ValidPageCell members page) :
+    (members (nativeCellIndex members page cell)).pages.traceLookup page
+      (FolioData.traceHead cell.val.trace) = some cell.val.trace := by
+  have accepted := (nativeContains_iff_encoded members page cell.val).2 cell.property
+  simpa [nativeContains_members, nativeCell_bound members page cell, Member.contains, nativeCellIndex] using accepted
+
+-- ALIGN: SEQUENCE-NATIVE-CELL-RESOLUTION.
+def withNativeCell {result : Type*} (members : Fin count → Atlas) (page : Nat)
+    (cell : ValidPageCell members page)
+    (useCell : (index : Fin count) → (source : (members index).Element) →
+      source.val.page = page → cell.val = ⟨index.val, source.val.trace⟩ → result) : Option result :=
+  let index := nativeCellIndex members page cell
+  (members index).withCellTrace page ⟨cell.val.trace, nativeCell_trace members page cell⟩
+    (fun source location _ same => useCell index source location (by
+      apply PageCell.ext
+      · rfl
+      · exact same.symm))
+
+theorem withNativeCell_isSome {result : Type*} (members : Fin count → Atlas) (page : Nat)
+    (cell : ValidPageCell members page)
+    (useCell : (index : Fin count) → (source : (members index).Element) →
+      source.val.page = page → cell.val = ⟨index.val, source.val.trace⟩ → result) :
+    (withNativeCell members page cell useCell).isSome = true := by
+  unfold withNativeCell
+  apply Atlas.withCellTrace_isSome
+
+def resolvePageCell (members : Fin count → Atlas) (page : Nat) (cell : ValidPageCell members page) : SourceCell members :=
+  let value := decodedPageCell members page cell
+  .member value.1 (FolioData.ValidElement.ofOccurrence ⟨page, value.2⟩)
+
+-- ALIGN: SEQUENCE-NATIVE-CELL-RESOLUTION-INTERPRETATION.
+theorem withNativeCell_resolve (members : Fin count → Atlas) (page : Nat) (cell : ValidPageCell members page) :
+    withNativeCell members page cell (fun index source _ _ => SourceCell.member index source) =
+      some (resolvePageCell members page cell) := by
+  obtain ⟨⟨index, value⟩, same⟩ := cell.property
+  have encoded : encodedPageCell members page ⟨index, value⟩ = cell := Subtype.ext same
+  rw [← encoded]
+  simp only [resolvePageCell]
+  rw [decodedPageCell_encode]
+  change (members index).withCellTrace page ⟨(members index).pages.traceAt page value, _⟩
+    (fun source _ _ _ => SourceCell.member index source) = _
+  rw [Atlas.withCellTrace_forget]
+  change ((members index).pages.elementAt page
+    (FolioData.traceHead ((members index).pages.traceAt page value))).map (SourceCell.member index) = _
+  rw [FolioData.traceHead_of_head ((members index).pages.traceAt_head page value)]
+  exact congrArg (fun resolved : Option (members index).Element => resolved.map (SourceCell.member index))
+    ((members index).pages.elementAt_occurrence ⟨page, value⟩)
 
 theorem componentPage_clamp (members : Fin count → Atlas) (index : Fin count) (limit n : Nat)
     (bound : (members index).pages.depth - 1 ≤ limit) :

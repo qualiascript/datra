@@ -8,6 +8,7 @@
 module AtlasSequence.Page
   ( AtlasSequencePageCell (..)
   , sequencePageContains
+  , sequenceCellMember
   , headCell
   , sequencePageOrder
   , sequencePagePosition
@@ -17,7 +18,7 @@ module AtlasSequence.Page
   , nextSequenceCell
   ) where
 
-import AtlasSequence.Member (AtlasSequenceMember, memberPageContains, memberPageOrder, memberPageChain, memberPageTransition, memberPreviousTrace, memberPageNext)
+import AtlasSequence.Member (AtlasSequenceMember, memberAt, memberPageContains, memberPageOrder, memberPageChain, memberPageTransition, memberPreviousTrace, memberPageNext)
 import Chain.Internal
   ( Chain, chain, chainPosition, chainOrderType, chainOrdinalLT, positionMatches
   , reindexChain, reindexedPosition )
@@ -50,6 +51,28 @@ consContains :: ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool) -> AtlasS
 consContains first rest (AtlasSequencePageCell index positions)
   | index == 0 = first positions
   | otherwise = rest (AtlasSequencePageCell (index - 1) positions)
+
+-- | Select the owning member before unpacking its existential Atlas.
+-- ALIGN: SEQUENCE-NATIVE-MEMBER-SELECTION.
+{-@ sequenceCellMember :: members:[AtlasSequenceMember] -> page:Natural
+      -> cell:{AtlasSequencePageCell | sequencePageContains members page cell}
+      -> {member:AtlasSequenceMember | memberAt members (sequenceCellIndex cell) == Just member
+           && sequenceCellIndex cell < len members
+           && memberPageContains member page (sequenceCellTrace cell)} / [len members] @-}
+{-@ ple sequenceCellMember @-}
+sequenceCellMember :: [AtlasSequenceMember] -> Natural -> AtlasSequencePageCell -> AtlasSequenceMember
+sequenceCellMember [] _ _ = error "sequenceCellMember: unaccepted cell"
+sequenceCellMember (member : rest) page (AtlasSequencePageCell index positions)
+  | index == 0 = member
+  | otherwise = sequenceCellMember rest page (AtlasSequencePageCell (index - 1) positions)
+
+{-@ reflect sequenceCellIndex @-}
+sequenceCellIndex :: AtlasSequencePageCell -> Natural
+sequenceCellIndex (AtlasSequencePageCell index _) = index
+
+{-@ reflect sequenceCellTrace @-}
+sequenceCellTrace :: AtlasSequencePageCell -> [Ordinal]
+sequenceCellTrace (AtlasSequencePageCell _ positions) = positions
 
 -- ALIGN: SEQUENCE-PAGE-TOTAL-ORDER.
 {-@ reflect sequencePageOrder @-}
@@ -191,6 +214,9 @@ emptyBelow _ = ()
 emptyInjective :: AtlasSequencePageCell -> AtlasSequencePageCell -> ()
 emptyInjective _ _ = ()
 
+-- ALIGN: SEQUENCE-MEMBER-POSITION-RESOLVER.
+-- ALIGN: SEQUENCE-MEMBER-POSITION-ROUNDTRIP.
+-- ALIGN: SEQUENCE-MEMBER-POSITION-SOUND.
 -- ALIGN: SEQUENCE-PAGE-CHAIN.
 -- ALIGN: SEQUENCE-PAGE-LOOKUP.
 -- ALIGN: SEQUENCE-PAGE-LOOKUP-BOUNDS.

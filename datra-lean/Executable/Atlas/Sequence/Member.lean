@@ -28,6 +28,20 @@ def contains (member : Member) (page : Nat) (positions : List Ordinal) : Bool :=
 
 abbrev Trace (member : Member) (page : Nat) := member.atlas.pages.TraceCarrier page
 
+/-- Resolve precisely the accepted trace of this existential member. -/
+-- ALIGN: SEQUENCE-MEMBER-TRACE-RESOLUTION.
+def withTrace {result : Type*} (member : Member) (page : Nat) (positions : member.Trace page)
+    (useCell : (source : member.atlas.Element) → source.val.page = page →
+      source.val.position = FolioData.traceHead positions.val → source.val.trace = positions.val → result) :
+    Option result :=
+  member.atlas.withCellTrace page positions useCell
+
+theorem withTrace_isSome {result : Type*} (member : Member) (page : Nat) (positions : member.Trace page)
+    (useCell : (source : member.atlas.Element) → source.val.page = page →
+      source.val.position = FolioData.traceHead positions.val → source.val.trace = positions.val → result) :
+    (member.withTrace page positions useCell).isSome = true :=
+  member.atlas.withCellTrace_isSome page positions useCell
+
 theorem contains_iff (member : Member) (page : Nat) (positions : List Ordinal) :
     member.contains page positions = true ↔
       member.atlas.pages.traceLookup page (FolioData.traceHead positions) = some positions := by
