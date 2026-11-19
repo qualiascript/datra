@@ -1,6 +1,7 @@
 import Executable.Atlas.Derived
 import Executable.Atlas.DomanialInclusion
 import Executable.Folio.Prefix
+import Executable.Folio.Assembly
 import Executable.Folio.TraceChain
 
 namespace Datra.Executable.AtlasMerge
@@ -181,11 +182,9 @@ def firstPageCell (X Y : Atlas) : ValidPageCell X Y 0 :=
   encodedPageCell X Y 0 (.inl (componentZeroValue X))
 
 -- ALIGN: MERGE-COLLAPSE-ORIGIN.
-def collapseToOrigin (X Y : Atlas) : Consolidation (pageChain X Y 0) Chain.singletonChain where
-  map _ := ()
-  preimage _ := firstPageCell X Y
-  monotone _ _ _ := le_rfl
-  rightInverse value := by cases value; rfl
+def collapseToOrigin (X Y : Atlas) :
+    Consolidation (pageChain X Y 0) Chain.singletonChain :=
+  (Folio.collapseToOrigin (pageChain X Y 0) Chain.singletonChain (firstPageCell X Y)).map
 
 def mergePage (X Y : Atlas) (n : Nat) : Page := ⟨ValidPageCell X Y n, pageChain X Y n⟩
 

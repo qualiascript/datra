@@ -22,7 +22,6 @@ import Atlas
   , AtlasObject
   , AtlasObjectMap
   , atlas
-  , atlasCardinality
   , atlasRestrictedDataAction
   , atlasMembership
   , atlasFolio
@@ -34,12 +33,13 @@ import Atlas
   , atlasWitness
   )
 import AtlasExtent.Internal (atlasCellOriginRankInsertion)
+import AtlasSequence.Page (AtlasSequencePageCell)
+import AtlasSequence.Assembly (atlasSequenceLength, atlasSequenceFolio)
+import AtlasSequence.Member (memberPageOrder)
 import AtlasSequence.Resolution
   ( AtlasSequenceMember
   , atlasSequenceMember
   , withAtlasSequenceMember
-  , withMemberAt
-  , withMemberAtPosition
   , sequenceCellContains
   )
 import AtlasTransposal
@@ -48,21 +48,7 @@ import AtlasTransposal
   , atlasTransposalElement
   , withAtlasTransposalElement
   )
-import Chain
-  ( Chain
-  , chain
-  , chainIndex
-  , chainObjectAt
-  , chainOrderType
-  , chainPosition
-  )
-import Chain.Singleton (singletonChain)
-import Consolidation.Ordered (orderedPreimage)
-import Consolidation
-  ( Coconsolidation
-  , consolidation
-  , op
-  )
+import Chain (chainOrderType)
 import Data.List.NonEmpty (NonEmpty (..), toList)
 import DatraOrdinal
   ( Ordinal
@@ -80,16 +66,7 @@ import DomanialInsertion
   )
 import Dominion (Dominion)
 import AtlasSequence.Data
-import Folio
-  ( Folio
-  , appendPage
-  , originChain
-  , originValue
-  , pageOrder
-  , singletonFolio
-  , withFolioMap
-  , withPageAt
-  )
+import Folio (withPageAt)
 import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
   ( OrderedAtlasTransposal
@@ -107,41 +84,8 @@ import PageElements
 import PageElements.Structure (PageElement (..))
 import qualified Pagination
 
--- | A non-origin cell tagged by its member and source-cell transport trace.
-data AtlasSequencePageCell = AtlasSequencePageCell Natural [Ordinal]
-  deriving (Eq, Show)
-
 memberCount :: NonEmpty AtlasSequenceMember -> Natural
 memberCount = fromIntegral . length
-
-memberCardinality :: AtlasSequenceMember -> Natural
-memberCardinality member =
-  withAtlasSequenceMember member atlasCardinality
-
--- | A sequence has a fresh extent followed by all member pages in parallel.
--- ALIGN: SEQUENCE-FOLIO-LENGTH.
--- ALIGN: SEQUENCE-FOLIO-LENGTH-INTERPRETATION.
-atlasSequenceLength :: NonEmpty AtlasSequenceMember -> Natural
-atlasSequenceLength members =
-  maximum (fmap memberCardinality members) + 1
-
-cellTrace :: PageElement scope object -> [Ordinal]
-cellTrace (PageElement _ _ trace _) = trace
-
-componentTraceAt
-  :: Atlas atlasScope scope cellData origin final
-  -> Natural
-  -> Ordinal
-  -> Maybe [Ordinal]
-componentTraceAt valueAtlas pageNumber position = do
-  index <- pageElementIndex
-    (atlasPageElements valueAtlas) pageNumber position
-  pure (withPageElement (pageElement index) cellTrace)
-
-memberPageOrder :: AtlasSequenceMember -> Natural -> Ordinal
-memberPageOrder member pageNumber =
-  withAtlasSequenceMember member $ \valueAtlas ->
-    withPageAt (atlasFolio valueAtlas) pageNumber chainOrderType
 
 -- ALIGN: SEQUENCE-PAGE-PREFIX-ORDER.
 prefixPageOrder
@@ -159,154 +103,6 @@ prefixPageOrder members memberIndex pageNumber =
         rest
         (remaining - 1)
         (addOrdinals accumulated (memberPageOrder member pageNumber))
-
--- ALIGN: SEQUENCE-PAGE-CELL-POSITION.
--- ALIGN: SEQUENCE-PAGE-TRACE-ENCODING.
-sequenceCellPosition
-  :: [AtlasSequenceMember]
-  -> Natural
-  -> AtlasSequencePageCell
-  -> Ordinal
-sequenceCellPosition members pageNumber
-    (AtlasSequencePageCell memberIndex (position : _)) =
-  addOrdinals
-    (prefixPageOrder members memberIndex pageNumber)
-    position
-sequenceCellPosition _ _ _ = finiteOrdinal 0
-
--- ALIGN: SEQUENCE-PAGE-TOTAL-ORDER.
--- ALIGN: SEQUENCE-PAGE-CHAIN.
--- ALIGN: SEQUENCE-PAGE-LOOKUP.
--- ALIGN: SEQUENCE-PAGE-LOOKUP-BOUNDS.
--- ALIGN: SEQUENCE-PAGE-ORDER-INTERPRETATION.
--- ALIGN: SEQUENCE-FINITE-PAGE-EQUIVALENCE.
-atlasSequencePageChain
-  :: NonEmpty AtlasSequenceMember
-  -> Natural
-  -> Chain AtlasSequencePageCell
-atlasSequencePageChain members pageNumber =
-  let memberList = toList members
-      pageOrderType =
-        foldl
-          addOrdinals
-          (finiteOrdinal 0)
-          (fmap (`memberPageOrder` pageNumber) memberList)
-
-      cellAt position =
-        withMemberAtPosition memberList pageNumber position $
-          \memberIndex valueAtlas sourcePosition -> do
-            trace <- componentTraceAt
-              valueAtlas pageNumber sourcePosition
-            pure (AtlasSequencePageCell memberIndex trace)
-  in chain
-      pageOrderType
-      (sequenceCellPosition memberList pageNumber)
-      cellAt
-      (const ())
-      (\_ _ -> ())
-      (const ())
-
-firstSequenceCell :: NonEmpty AtlasSequenceMember -> AtlasSequencePageCell
-firstSequenceCell (member :| _) =
-  withAtlasSequenceMember member $ \valueAtlas ->
-    let pages = atlasFolio valueAtlas
-        position = chainPosition (originChain pages) (originValue pages)
-    in case componentTraceAt valueAtlas 0 position of
-        Just trace -> AtlasSequencePageCell 0 trace
-        Nothing -> AtlasSequencePageCell 0 [position]
-
--- ALIGN: SEQUENCE-COLLAPSE-ORIGIN.
-collapseToOrigin
-  :: NonEmpty AtlasSequenceMember
-  -> Coconsolidation () AtlasSequencePageCell
-collapseToOrigin members =
-  op (consolidation
-    (const ())
-    (const (firstSequenceCell members))
-    (\_ _ _ -> ())
-    (const ()))
-
--- ALIGN: SEQUENCE-PAGE-PREVIOUS.
-previousSequenceCell :: AtlasSequencePageCell -> AtlasSequencePageCell
-previousSequenceCell
-    (AtlasSequencePageCell memberIndex (_ : rest@(_ : _))) =
-  AtlasSequencePageCell memberIndex rest
-previousSequenceCell cell = cell
-
-componentPreimagePosition
-  :: Atlas atlasScope scope cellData origin final
-  -> Natural
-  -> Ordinal
-  -> Maybe Ordinal
-componentPreimagePosition valueAtlas targetPage sourcePosition = do
-  interval <- pageOrder (targetPage - 1) targetPage
-  withFolioMap (atlasFolio valueAtlas) interval $
-    \sourcePage targetPageChain transition -> do
-      sourceIndex <- chainIndex sourcePage sourcePosition
-      let sourceCell = chainObjectAt sourceIndex
-          targetCell = orderedPreimage transition sourceCell
-      pure (chainPosition targetPageChain targetCell)
-
--- ALIGN: SEQUENCE-PAGE-NEXT.
-nextSequenceCell
-  :: [AtlasSequenceMember]
-  -> Natural
-  -> AtlasSequencePageCell
-  -> AtlasSequencePageCell
-nextSequenceCell members targetPage previous =
-  case previous of
-    AtlasSequencePageCell memberIndex (sourcePosition : _) ->
-      case withMemberAt members memberIndex $ \valueAtlas ->
-        componentPreimagePosition valueAtlas targetPage sourcePosition
-          >>= componentTraceAt valueAtlas targetPage of
-        Just (Just trace) -> AtlasSequencePageCell memberIndex trace
-        _ -> previous
-    _ -> previous
-
--- ALIGN: SEQUENCE-PAGE-TRANSITION.
--- ALIGN: SEQUENCE-PAGE-TRANSITION-INTERPRETATION.
-sequencePageTransition
-  :: NonEmpty AtlasSequenceMember
-  -> Natural
-  -> Coconsolidation AtlasSequencePageCell AtlasSequencePageCell
-sequencePageTransition members targetPage =
-  op (consolidation
-    previousSequenceCell
-    (nextSequenceCell (toList members) targetPage)
-    (\_ _ rightCell -> previousSequenceCell rightCell)
-    (const ()))
-
--- ALIGN: SEQUENCE-FOLIO-PREFIX.
-appendRemainingPages
-  :: NonEmpty AtlasSequenceMember
-  -> Natural
-  -> Natural
-  -> Folio () AtlasSequencePageCell
-  -> Folio () AtlasSequencePageCell
-appendRemainingPages members pageNumber depth pages
-  | pageNumber >= depth = pages
-  | otherwise =
-      appendRemainingPages members (pageNumber + 1) depth
-        (appendPage
-          pages
-          (atlasSequencePageChain members pageNumber)
-          (sequencePageTransition members pageNumber))
-
--- ALIGN: SEQUENCE-FOLIO.
--- ALIGN: SEQUENCE-PADDED-PAGE-RESOLUTION.
--- ALIGN: SEQUENCE-FINITE-INDEX-INTERPRETATION.
--- ALIGN: SEQUENCE-FINITE-INTERVAL-INTERPRETATION.
-atlasSequenceFolio
-  :: NonEmpty AtlasSequenceMember
-  -> Folio () AtlasSequencePageCell
-atlasSequenceFolio members =
-  let depth = maximum (fmap memberCardinality members)
-      origin = singletonFolio singletonChain
-      firstPage = appendPage
-        origin
-        (atlasSequencePageChain members 0)
-        (collapseToOrigin members)
-  in appendRemainingPages members 1 depth firstPage
 
 -- ALIGN: SEQUENCE-DOMINION-ROUNDTRIP.
 -- ALIGN: SEQUENCE-DOMINION-INTERPRETATION.

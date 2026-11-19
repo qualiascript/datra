@@ -1,7 +1,9 @@
 import Executable.Atlas.Sequence
+import Executable.Atlas.Sequence.Member
 import Executable.Chain.Sequence
 import Executable.Atlas.DomanialInclusion
 import Executable.Folio.Prefix
+import Executable.Folio.Assembly
 
 namespace Datra.Executable.AtlasSequence
 
@@ -127,17 +129,14 @@ def pageEncodingEquiv (members : Fin count → Atlas) (n : Nat) :
       Subtype.ext (cellCoordinates_encode members n value)
     rw [samePosition, valueAtPosition_componentPosition]
 
--- ALIGN: SEQUENCE-PAGE-CHAIN.
 def pageChain (members : Fin count → Atlas) (n : Nat) : Chain (ValidPageCell members n) :=
   (componentSum members n).reindex (pageEncodingEquiv members n)
 
--- ALIGN: SEQUENCE-PAGE-CELL-POSITION.
 def pagePosition (members : Fin count → Atlas) (n : Nat) (cell : PageCell) : Ordinal :=
   match cell.trace with
   | [] => Ordinal.finiteOrdinal 0
   | first :: _ => Ordinal.addOrdinals (ChainSequence.prefixOrder (pageOrders members n) cell.member) first
 
--- ALIGN: SEQUENCE-PAGE-TRACE-ENCODING.
 theorem pagePosition_encode (members : Fin count → Atlas) (n : Nat) (value : PageValue members n) :
     pagePosition members n (pageEncode members n value) = (componentSum members n).position value := by
   cases n <;> rfl
@@ -179,7 +178,6 @@ def previousPageCell : PageCell → PageCell
   | ⟨index, _ :: next :: rest⟩ => ⟨index, next :: rest⟩
   | cell => cell
 
--- ALIGN: SEQUENCE-PAGE-PREVIOUS.
 theorem previousPageCell_encode (members : Fin count → Atlas) (n : Nat) (value : PageValue members (n + 1)) :
     previousPageCell (pageEncode members (n + 1) value) =
       pageEncode members n ((componentTransition members n).map value) := by
@@ -196,7 +194,6 @@ def nextPageCell (members : Fin count → Atlas) (n : Nat) (previous : PageCell)
           ((members index).pages.transport (n + 1) n (Nat.le_succ n)).preimage source.object⟩)).getD previous
     else previous
 
--- ALIGN: SEQUENCE-PAGE-NEXT.
 theorem nextPageCell_encode (members : Fin count → Atlas) (n : Nat) (value : PageValue members n) :
     nextPageCell members n (pageEncode members n value) =
       pageEncode members (n + 1) ((componentTransition members n).preimage value) := by
@@ -219,7 +216,6 @@ def nextValidCell (members : Fin count → Atlas) (n : Nat) (cell : ValidPageCel
     rw [← same, nextPageCell_encode]
     exact ⟨_, rfl⟩⟩
 
--- ALIGN: SEQUENCE-PAGE-TRANSITION.
 def pageTransition (members : Fin count → Atlas) (n : Nat) :
     Consolidation (pageChain members (n + 1)) (pageChain members n) where
   map := previousValidCell members n
@@ -247,11 +243,8 @@ def firstPageCell (positive : 0 < count) (members : Fin count → Atlas) : Valid
 
 -- ALIGN: SEQUENCE-COLLAPSE-ORIGIN.
 def collapseToOrigin (positive : 0 < count) (members : Fin count → Atlas) :
-    Consolidation (pageChain members 0) Chain.singletonChain where
-  map _ := ()
-  preimage _ := firstPageCell positive members
-  monotone _ _ _ := le_rfl
-  rightInverse value := by cases value; rfl
+    Consolidation (pageChain members 0) Chain.singletonChain :=
+  (Folio.collapseToOrigin (pageChain members 0) Chain.singletonChain (firstPageCell positive members)).map
 
 def sequencePage (members : Fin count → Atlas) (n : Nat) : Page := ⟨ValidPageCell members n, pageChain members n⟩
 

@@ -49,7 +49,6 @@ noncomputable def pageSumOrderIso (members : Fin count → Atlas) (n : Nat) :
     pageSumOrderIso members n (encodedPageCell members n value) = toLex value :=
   congrArg toLex ((pageEncodingEquiv members n).symm_apply_apply value)
 
--- ALIGN: SEQUENCE-PAGE-TRANSITION-INTERPRETATION.
 theorem pageTransition_interpretation (members : Fin count → Atlas) (n : Nat) (value : PageValue members (n + 1)) :
     pageSumOrderIso members n ((pageTransition members n).map (encodedPageCell members (n + 1) value)) =
       (Datra.Semantics.ConHom.finiteSum (fun i =>
@@ -57,6 +56,19 @@ theorem pageTransition_interpretation (members : Fin count → Atlas) (n : Nat) 
         (pageSumOrderIso members (n + 1) (encodedPageCell members (n + 1) value)) := by
   rw [pageTransition_encode, pageSumOrderIso_encode, pageSumOrderIso_encode]
   rfl
+
+-- ALIGN: SEQUENCE-PAGE-TRANSITION-INTERPRETATION.
+theorem nativePageTransitionTo_interpretation (members : Fin count → Atlas) (page : Nat)
+    (target : Chain (ValidPageCell members page))
+    (targetPosition : ∀ cell, target.position cell = pagePosition members page cell.val)
+    (value : PageValue members (page + 1)) :
+    pageSumOrderIso members page ((nativePageTransitionTo members page target targetPosition).map.map
+      (encodedPageCell members (page + 1) value)) =
+      (Datra.Semantics.ConHom.finiteSum (fun i =>
+        ((members i).pages.transport (page + 1) page (Nat.le_succ page)).toSemantics))
+        (pageSumOrderIso members (page + 1) (encodedPageCell members (page + 1) value)) := by
+  rw [nativePageTransitionTo_map]
+  exact pageTransition_interpretation members page value
 
 theorem sequenceDepth_interpretation (members : Fin count → Atlas) :
     sequenceDepth members = Datra.Semantics.sequenceDepth (fun i => (members i).toSemantics.Fo) := by

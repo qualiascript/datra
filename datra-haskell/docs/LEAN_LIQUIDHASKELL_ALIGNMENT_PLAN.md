@@ -170,7 +170,9 @@ component's canonical origin trace for the first transition's preimage.
 LiquidHaskell checks accepted carriers, prefix endpoints, positive depth,
 length, and termination throughout assembly. Lean proves that the endpoint
 chains, forward map, and chosen preimage agree with the mathematical merge
-transition. Sequence transitions still need the corresponding integration.
+transition. Sequence transitions recursively sum the checked member maps and
+retag the cells, preserving both the forward map and chosen preimage. Endpoint
+transport attaches the resulting map to the actual preceding page chain.
 The folio step's source accessor has a checked endpoint contract and an opaque
 logical symbol, so reflected lookup does not unfold an existential carrier's
 transition selector. The correspondence inventory records opaque reflection;
@@ -228,16 +230,38 @@ position on padded pages. The result belongs to the next page and its
 predecessor is exactly the original trace. Lean identifies both operations with
 the dependent page transport and its chosen preimage. Haskell merge folio
 assembly retains these checked transitions. Full merge Atlas assembly still
-requires checked data-transport and inclusion certificates; sequence page
-chains and folio assembly need the corresponding carrier and order contracts.
+requires checked data-transport and inclusion certificates. Sequence page chains
+use a checked recursive sum of the members' native trace chains. Each cons step
+preserves the first member's trace carrier and increments the tail's member
+tags through a checked equivalence. The empty tail has an empty accepted
+carrier. Canonical position transport retains the recursive ordinal-sum
+formula. Lean proves equality with the finite sequence page chain after carrier
+translation, including the decoder and rejection of out-of-range positions.
+The exposed member interface retains the owning folio's trace membership,
+page order, origin, predecessor, and chosen preimage, including padded pages.
+Sequence origin selection uses its first member's canonical origin trace.
+Negative checks reject arbitrary raw cells, changing a preimage's owning member,
+unrelated transition positions, and encodings that discard accepted carriers.
+The complete sequence folio is LiquidHaskell-checked: the maximum member length
+is positive, the first chosen cell belongs to its page, and every append retains
+the correct accepted carrier, prefix length, and exact preceding endpoint.
+The recursion terminates at the prescribed depth. Merge and sequence share
+checked origin-collapse and page-append operations. Lean proves equality of the
+native sequence transitions, chosen preimages, and assembled finite folio with
+the sequence model, including agreement of the recursive maximum with the
+specified depth. Negative checks reject malformed prefixes and page-zero
+transitions. The nonempty-member-list adapter has a checked positive-length
+contract and an opaque logical symbol; its constructor decomposition is checked
+without exposing foreign datatype selectors to downstream reflection.
 
 Consumers import exposed interfaces rather than another component's
 `LiquidInternal` module. The primitive interfaces are `DatraOrdinal.Laws`,
 `Chain.Sum`, `Chain.Position`, `Chain.Singleton`, `Consolidation.Core`, `Consolidation.Ordered`,
 `Consolidation.Sum`, `Consolidation.Reindex`, `Consolidation.Endpoints`,
-`DomanialInsertion.Core`, `Folio.Presentation`, `PageElements.Structure`,
+`DomanialInsertion.Core`, `Folio.Presentation`, `Folio.Assembly`, `PageElements.Structure`,
 `PageElements.TraceChain`, `AtlasMerge.Assembly`, `AtlasMerge.Data`, and
-`AtlasSequence.Data`. Their definitions and refinement contracts are checked in
+`AtlasSequence.Data`, `AtlasSequence.Member`, `AtlasSequence.Page`, and `AtlasSequence.Assembly`.
+Their definitions and refinement contracts are checked in
 the exposed modules, including the logical record selectors used by clients.
 The alignment checker enforces this import boundary in the library, tests, and
 application. Direct `LiquidInternal` imports stay within each interface's owner.

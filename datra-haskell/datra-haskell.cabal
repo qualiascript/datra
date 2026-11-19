@@ -63,11 +63,15 @@ library
         Consolidation.Endpoints
         DomanialInsertion.Core
         Folio.Presentation
+        Folio.Assembly
         PageElements.Structure
         PageElements.TraceChain
         AtlasMerge.Data
         AtlasMerge.Assembly
         AtlasSequence.Data
+        AtlasSequence.Member
+        AtlasSequence.Page
+        AtlasSequence.Assembly
         DatraLanguage.AST
         DatraLanguage.AST.Source
         DatraLanguage.AST.Operator

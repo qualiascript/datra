@@ -1,4 +1,4 @@
-import Executable.Atlas.Sequence.Folio
+import Executable.Atlas.Sequence.Assembly
 
 namespace Datra.Executable.AtlasSequence
 

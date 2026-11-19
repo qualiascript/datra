@@ -22,6 +22,7 @@ module AtlasSequence.Resolution
 import Atlas.Internal (Atlas, atlasFolio)
 import qualified AtlasExtent.Internal as Extent hiding
   (atlasCellOriginRankInsertion, cellContainsRankImage, cellOriginRankPreimageSound)
+import AtlasSequence.Member (AtlasSequenceMember, atlasSequenceMember, withAtlasSequenceMember)
 import AtlasSequence.Data (AtlasSequenceDatum (..))
 import Chain (chainOrderType)
 import Data.List.NonEmpty (NonEmpty, toList)
@@ -32,26 +33,6 @@ import PageElements.Structure (PageElement (..))
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
-
--- | An existential Atlas retained as one member of a flattened sequence.
-data AtlasSequenceMember where
-  AtlasSequenceMember
-    :: Atlas atlasScope paginationScope cellData origin final
-    -> AtlasSequenceMember
-
-atlasSequenceMember
-  :: Atlas atlasScope paginationScope cellData origin final
-  -> AtlasSequenceMember
-atlasSequenceMember = AtlasSequenceMember
-
-withAtlasSequenceMember
-  :: AtlasSequenceMember
-  -> (forall atlasScope paginationScope cellData origin final.
-       Atlas atlasScope paginationScope cellData origin final
-       -> result)
-  -> result
-withAtlasSequenceMember (AtlasSequenceMember valueAtlas) useAtlas =
-  useAtlas valueAtlas
 
 withMemberAt
   :: [AtlasSequenceMember]

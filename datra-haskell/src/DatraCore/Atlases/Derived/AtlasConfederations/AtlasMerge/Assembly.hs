@@ -12,10 +12,8 @@ import AtlasMerge.Page
   ( AtlasMergePageCell (..), atlasMergePageChain, mergePageContains, mergePagePosition, mergePageTransition )
 import Chain.Internal (Chain, chainPosition)
 import Chain.Singleton (singletonChain)
-import Chain.Order (chainPrecedes)
-import Consolidation.Core (restrictedConsolidation)
-import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedConsolidation)
-import DatraOrdinal.Laws (ordinalLTIrreflexive)
+import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget)
+import Folio.Assembly (collapseToOrigin, appendOrderedPage)
 import Folio.Internal (Folio)
 import Folio.Presentation (folioData, appendPageData, folioLengthData, lastPageData)
 import Numeric.Natural (Natural)
@@ -42,43 +40,6 @@ atlasMergeLength left right =
 firstMergeCell :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> AtlasMergePageCell
 firstMergeCell left _ = AtlasMergeLeftCell (pageTraceOrigin (atlasFolio left))
 
--- ALIGN: MERGE-COLLAPSE-ORIGIN.
-{-@ collapseToOrigin :: contains:(AtlasMergePageCell -> Bool)
-      -> source:Chain {cell:AtlasMergePageCell | contains cell} -> target:Chain ()
-      -> chosen:{AtlasMergePageCell | contains chosen}
-      -> {result:OrderedConsolidation {cell:AtlasMergePageCell | contains cell} () |
-           orderedSource result == source && orderedTarget result == target} @-}
-collapseToOrigin :: (AtlasMergePageCell -> Bool) -> Chain AtlasMergePageCell -> Chain ()
-  -> AtlasMergePageCell -> OrderedConsolidation AtlasMergePageCell ()
-{-@ ple collapseToOrigin @-}
-collapseToOrigin contains source target chosen =
-  orderedConsolidation source target
-    (restrictedConsolidation contains unitContains collapseValue (collapseChosen chosen)
-      (collapseMonotone target) (collapseInverse chosen))
-
-{-@ reflect unitContains @-}
-unitContains :: () -> Bool
-unitContains () = True
-
-{-@ reflect collapseValue @-}
-collapseValue :: a -> ()
-collapseValue _ = ()
-
-{-@ reflect collapseChosen @-}
-collapseChosen :: a -> () -> a
-collapseChosen chosen () = chosen
-
-{-@ collapseInverse :: chosen:a -> value:() -> {collapseValue (collapseChosen chosen value) == value} @-}
-{-@ ple collapseInverse @-}
-collapseInverse :: a -> () -> ()
-collapseInverse _ () = ()
-
-{-@ collapseMonotone :: target:Chain () -> first:a -> mappedFirst:() -> second:a
-      -> {result:() | result == collapseValue second && unitContains result && chainPrecedes target mappedFirst result} @-}
-{-@ ple collapseMonotone @-}
-collapseMonotone :: Chain () -> a -> () -> a -> ()
-collapseMonotone target _ () _ = ordinalLTIrreflexive (chainPosition target ()) `seq` ()
-
 -- ALIGN: MERGE-FOLIO-PREFIX.
 {-@ appendRemainingPages :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
@@ -96,21 +57,11 @@ appendRemainingPages left right page depth pages
   | otherwise =
       let transition = mergePageTransition left right page (lastPageData pages)
       in appendRemainingPages left right (page + 1) depth
-           (appendMergePage
+           (appendOrderedPage
              (mergePageContains (atlasFolio left) (atlasFolio right) (page - 1))
              (mergePageContains (atlasFolio left) (atlasFolio right) page) pages transition)
 
-{-@ appendMergePage :: previousContains:(AtlasMergePageCell -> Bool) -> nextContains:(AtlasMergePageCell -> Bool)
-      -> pages:Folio () {cell:AtlasMergePageCell | previousContains cell}
-      -> transition:{OrderedConsolidation {cell:AtlasMergePageCell | nextContains cell}
-           {cell:AtlasMergePageCell | previousContains cell} | orderedTarget transition == lastPageData pages}
-      -> {result:Folio () {cell:AtlasMergePageCell | nextContains cell} |
-           folioLengthData result == folioLengthData pages + 1 && lastPageData result == orderedSource transition} @-}
-appendMergePage :: (AtlasMergePageCell -> Bool) -> (AtlasMergePageCell -> Bool)
-  -> Folio () AtlasMergePageCell -> OrderedConsolidation AtlasMergePageCell AtlasMergePageCell
-  -> Folio () AtlasMergePageCell
-appendMergePage _ _ pages transition = appendPageData pages (orderedSource transition) transition
-
+-- ALIGN: MERGE-COLLAPSE-ORIGIN.
 -- ALIGN: MERGE-FOLIO.
 -- ALIGN: MERGE-COMPONENT-PAGE-INDEX.
 -- ALIGN: MERGE-FINITE-INDEX-INTERPRETATION.

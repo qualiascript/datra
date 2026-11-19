@@ -150,6 +150,91 @@ proofGuard contains source target chosen = collapseToOrigin contains source targ
 """,
 }
 
+SEQUENCE_MEMBER_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Member.hs"
+SEQUENCE_MEMBER_GUARDS = {
+    "sequence member predecessors require canonical traces": """
+{-@ proofGuard :: member:AtlasSequenceMember -> page:Natural -> positions:[Ordinal]
+      -> {memberPageContains member page (previousTrace positions)} @-}
+proofGuard :: AtlasSequenceMember -> Natural -> [Ordinal] -> ()
+proofGuard = memberPagePrevious
+""",
+    "sequence member preimages belong to their owning member": """
+{-@ proofGuard :: first:AtlasSequenceMember -> second:AtlasSequenceMember -> page:Natural
+      -> positions:{[Ordinal] | memberPageContains first page positions}
+      -> {result:[Ordinal] | memberPageContains second (page + 1) result} @-}
+proofGuard :: AtlasSequenceMember -> AtlasSequenceMember -> Natural -> [Ordinal] -> [Ordinal]
+proofGuard first _ page positions = memberPageNext first page positions
+""",
+    "sequence member transitions require the actual page positions": """
+{-@ proofGuard :: member:AtlasSequenceMember -> page:Natural
+      -> Chain {positions:[Ordinal] | memberPageContains member (page + 1) positions}
+      -> Chain {positions:[Ordinal] | memberPageContains member page positions} -> () @-}
+proofGuard :: AtlasSequenceMember -> Natural -> Chain [Ordinal] -> Chain [Ordinal] -> ()
+proofGuard member page source target = memberPageTransition member page source target `seq` ()
+""",
+}
+
+SEQUENCE_PAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Page.hs"
+SEQUENCE_PAGE_GUARDS = {
+    "sequence transitions cannot widen their canonical carriers": """
+{-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0}
+      -> target:{Chain {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
+           chainPosition target == sequencePagePosition members (page - 1)}
+      -> OrderedConsolidation AtlasSequencePageCell AtlasSequencePageCell @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> Chain AtlasSequencePageCell
+  -> OrderedConsolidation AtlasSequencePageCell AtlasSequencePageCell
+proofGuard = sequencePageTransition
+""",
+    "sequence transitions require the actual preceding page positions": """
+{-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0}
+      -> Chain {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} -> () @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> Chain AtlasSequencePageCell -> ()
+proofGuard members page target = sequencePageTransition members page target `seq` ()
+""",
+    "sequence transitions reject page zero": """
+{-@ proofGuard :: [AtlasSequenceMember] -> () @-}
+proofGuard :: [AtlasSequenceMember] -> ()
+proofGuard members = sequencePageTransition members 0 (atlasSequencePageChain members 0) `seq` ()
+""",
+    "sequence page chains reject arbitrary raw cells": """
+{-@ proofGuard :: [AtlasSequenceMember] -> Natural -> AtlasSequencePageCell -> Ordinal @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> AtlasSequencePageCell -> Ordinal
+proofGuard members page cell = chainPosition (atlasSequencePageChain members page) cell
+""",
+    "sequence cell encodings preserve their accepted carriers": """
+{-@ proofGuard :: first:([Ordinal] -> Bool) -> rest:(AtlasSequencePageCell -> Bool)
+      -> Either [Ordinal] AtlasSequencePageCell
+      -> {cell:AtlasSequencePageCell | consContains first rest cell} @-}
+proofGuard :: ([Ordinal] -> Bool) -> (AtlasSequencePageCell -> Bool)
+  -> Either [Ordinal] AtlasSequencePageCell -> AtlasSequencePageCell
+proofGuard = consCell
+""",
+}
+
+SEQUENCE_ASSEMBLY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Assembly.hs"
+SEQUENCE_ASSEMBLY_GUARDS = {
+    "sequence assembly requires the prefix length": """
+{-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
+      -> pages:{Folio () {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
+           folioLengthData pages == page
+           && chainPosition (lastPageData pages) == sequencePagePosition members (page - 1)} -> () @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> Natural -> Folio () AtlasSequencePageCell -> ()
+proofGuard members page depth pages = appendRemainingPages members page depth pages `seq` ()
+""",
+    "sequence assembly requires the prefix endpoint": """
+{-@ proofGuard :: members:[AtlasSequenceMember] -> page:{Natural | page > 0} -> depth:{Natural | page <= depth}
+      -> pages:{Folio () {cell:AtlasSequencePageCell | sequencePageContains members (page - 1) cell} |
+           folioLengthData pages == page + 1} -> () @-}
+proofGuard :: [AtlasSequenceMember] -> Natural -> Natural -> Folio () AtlasSequencePageCell -> ()
+proofGuard members page depth pages = appendRemainingPages members page depth pages `seq` ()
+""",
+    "sequence assembly requires an inhabited first member": """
+{-@ proofGuard :: () -> AtlasSequencePageCell @-}
+proofGuard :: () -> AtlasSequencePageCell
+proofGuard () = firstCellFromList []
+""",
+}
+
 REINDEX_CONSOLIDATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Reindex.hs"
 REINDEX_CONSOLIDATION_GUARDS = {
     "consolidation reindexing requires the source inverse": """
@@ -903,6 +988,9 @@ def run(pattern=None):
                                     (POSITION_SOURCE, POSITION_GUARDS),
                                     (ENDPOINTS_SOURCE, ENDPOINTS_GUARDS),
                                     (MERGE_ASSEMBLY_SOURCE, MERGE_ASSEMBLY_GUARDS),
+                                    (SEQUENCE_MEMBER_SOURCE, SEQUENCE_MEMBER_GUARDS),
+                                    (SEQUENCE_PAGE_SOURCE, SEQUENCE_PAGE_GUARDS),
+                                    (SEQUENCE_ASSEMBLY_SOURCE, SEQUENCE_ASSEMBLY_GUARDS),
                                     (PAGE_TRACE_SOURCE, PAGE_TRACE_GUARDS),
                                     (MERGE_PAGE_SOURCE, MERGE_PAGE_GUARDS),
                                     (STABLE_SOURCE, STABLE_GUARDS),
