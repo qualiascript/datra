@@ -1,11 +1,11 @@
--- | Deterministic positional matching for argument-map specification.
+-- | Deterministic positional matching for argumentative-map specification.
 --
 -- Written order wins whenever it is valid. Otherwise a single valid reorder
 -- is accepted, while multiple valid reorders are ambiguous. The generic
 -- federation selector is injected so this policy remains independent of the
 -- recursive composition dispatcher.
-module Evaluation.Specification.ArgumentMap
-  ( selectArgumentMapMember
+module Evaluation.Specification.ArgumentativeMap
+  ( selectArgumentativeMapMember
   , argumentReservations
   , positionalArgumentSource
   ) where
@@ -28,13 +28,13 @@ type FederationSelector =
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
 
-selectArgumentMapMember
+selectArgumentativeMapMember
   :: FederationSelector
   -> InterpretedValue
   -> [InterpretedValue]
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
-selectArgumentMapMember select source writtenMembers alternatives =
+selectArgumentativeMapMember select source writtenMembers alternatives =
   case argumentReservations select source writtenMembers of
     DecisionProved reservations ->
       let selected = selection reservations
@@ -56,12 +56,12 @@ selectArgumentMapMember select source writtenMembers alternatives =
             DecisionRefuted -> DecisionRefuted
             DecisionUndecidable -> DecisionUndecidable
     attachPreparedSource reservations member =
-      EvaluatedArgumentMapMember
+      EvaluatedArgumentativeMapMember
         (selectedDependentSource
           (positionalArgumentSource reservations source)
           member)
         member
-    -- Optional slots already expand into the argument map's alternative
+    -- Optional slots already expand into the argumentative map's alternative
     -- federation. Running the explicit permutation validator as well repeats
     -- the same search and can turn branch count into factorial work.
     isAlternativeMember member =
@@ -78,7 +78,7 @@ selectedDependentSource fallback member =
   case member of
     EvaluatedEitherMember _ selected ->
       selectedDependentSource fallback selected
-    EvaluatedDependentIdentifierTypeMember _ selected ->
+    EvaluatedDependentArgumentTypeMember _ selected ->
       selectedDependentSource fallback selected
     EvaluatedDependentSumMember selected -> selected
     _ -> fallback
@@ -286,29 +286,29 @@ selectPositionalSlot select identifierIsReserved source target =
             DecisionRefuted -> DecisionRefuted
             DecisionUndecidable -> DecisionUndecidable
           else case interpretedForm target of
-            DependentIdentifierTypeForm targetIdentifier ->
+            DependentArgumentTypeForm targetIdentifier ->
               mapDecision
-                (EvaluatedDependentIdentifierTypeMember Nothing)
+                (EvaluatedDependentArgumentTypeMember Nothing)
                 (select sourcePayload
                   (evaluatedIdentifierUnderlying targetIdentifier))
             _ -> select sourcePayload target
       Nothing ->
         case interpretedForm target of
-          DependentIdentifierTypeForm targetIdentifier ->
+          DependentArgumentTypeForm targetIdentifier ->
             case evaluatedIdentifierDependency targetIdentifier of
               SimpleIdentifierDependency _ ->
                 mapDecision
-                  (EvaluatedDependentIdentifierTypeMember Nothing)
+                  (EvaluatedDependentArgumentTypeMember Nothing)
                   (select source (evaluatedIdentifierUnderlying targetIdentifier))
-              DependentIdentifierDependency {} -> select source target
+              DependentArgumentDependency {} -> select source target
           _ -> select source target
 
 sourceIdentifierParts
   :: InterpretedValue
-  -> Maybe (EvaluatedDependentIdentifierType, InterpretedValue)
+  -> Maybe (EvaluatedDependentArgumentType, InterpretedValue)
 sourceIdentifierParts value =
   case interpretedForm value of
-    DependentIdentifierTypeForm identifier ->
+    DependentArgumentTypeForm identifier ->
       Just (identifier, evaluatedIdentifierUnderlying identifier)
     IdentifierStringProjectionForm identifier ->
       Just (identifier, evaluatedIdentifierUnderlying identifier)
@@ -329,7 +329,7 @@ sourceIdentifierParts value =
         )
     stripSourceIdentifier source =
       case interpretedForm source of
-        DependentIdentifierTypeForm identifier ->
+        DependentArgumentTypeForm identifier ->
           evaluatedIdentifierUnderlying identifier
         IdentifierStringProjectionForm identifier ->
           evaluatedIdentifierUnderlying identifier
@@ -378,13 +378,13 @@ argumentPermutationDecision select source writtenMembers =
 sourceComponents :: InterpretedValue -> Maybe [InterpretedValue]
 sourceComponents source =
   case interpretedForm source of
-    ArgumentMapForm members _ -> Just members
+    ArgumentativeMapForm members _ -> Just members
     ConcatenatedMapForm _ _ -> Just (concatenationOperands source)
     _ -> sequenceOperands source
 
 identifierMatchesTarget
   :: FederationSelector
-  -> EvaluatedDependentIdentifierType
+  -> EvaluatedDependentArgumentType
   -> InterpretedValue
   -> Decision Bool
 identifierMatchesTarget select source target =
@@ -395,8 +395,8 @@ identifierMatchesTarget select source target =
 
 identifierAdmitsSource
   :: FederationSelector
-  -> EvaluatedDependentIdentifierType
-  -> EvaluatedDependentIdentifierType
+  -> EvaluatedDependentArgumentType
+  -> EvaluatedDependentArgumentType
   -> Decision ()
 identifierAdmitsSource select source target
   | identifierDependenciesCompatible
@@ -413,10 +413,10 @@ identifierAdmitsSource select source target
 -- Simple identifiers reduce this relation to string equality.  Dependent
 -- identifiers use their stable family dependency, which is the identifier
 -- component of the structural subfederation rule.  Recurse through candidate
--- constructors without crossing into a nested argument-map scope.
+-- constructors without crossing into a nested argumentative-map scope.
 identifierCandidates
   :: InterpretedValue
-  -> [EvaluatedDependentIdentifierType]
+  -> [EvaluatedDependentArgumentType]
 identifierCandidates value
   | Just dependent <- dependentSumView value =
       identifierCandidates
@@ -426,7 +426,7 @@ identifierCandidates value
           (evaluatedDependentSumReservationTarget dependent))
   | otherwise =
     case interpretedForm value of
-    DependentIdentifierTypeForm identifier -> [identifier]
+    DependentArgumentTypeForm identifier -> [identifier]
     IdentifierStringProjectionForm identifier -> [identifier]
     AssignmentForm specification ->
       identifierCandidates (evaluatedSpecificationTarget specification)
@@ -440,5 +440,5 @@ identifierCandidates value
     ConcatenatedMapForm left right ->
       identifierCandidates left <> identifierCandidates right
     CoalizationForm operand -> identifierCandidates operand
-    ArgumentMapForm members _ -> concatMap identifierCandidates members
+    ArgumentativeMapForm members _ -> concatMap identifierCandidates members
     _ -> []

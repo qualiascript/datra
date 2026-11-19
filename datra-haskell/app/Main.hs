@@ -2,7 +2,8 @@ module Main (main) where
 
 import Data.Char (toLower)
 import Data.Bifunctor qualified as Bifunctor
-import DatraLanguage.AST (renderExpression)
+import DatraLanguage.Pretty (renderExpression)
+import DatraLanguage.ConcreteSyntax (sourceLineFeed)
 import DatraLanguage.Diagnostics
   ( Located (locatedValue)
   , withoutSourceSpan
@@ -15,9 +16,8 @@ import DatraLanguage.Diagnostics.Localization
   , renderDatraError
   )
 import Interpreting
-  ( EvaluationMode (DevelopmentMode, ProductionMode)
-  , StandardLibraryVisibility (..)
-  , interpretLocatedWithImportsInModeAndStandardLibraryVisibility
+  ( StandardLibraryVisibility (..)
+  , interpretLocatedWithImportsAndStandardLibraryVisibility
   , rewriteParsedDatraSourceWithImports
   )
 import ModuleLoading
@@ -25,7 +25,7 @@ import ModuleLoading
   , loadSourceImportsWithStandardLibraryVisibility
   )
 import Options.Applicative
-import Parsing
+import CanonicalParsing
   ( parseDatraAstLocatedWithSourceName )
 import Rendering
   ( renderInterpretedValue
@@ -34,9 +34,9 @@ import System.Exit (die)
 import System.FilePath ((</>), takeDirectory)
 
 data Command
-  = Build Input FilePath FilePath Locale EvaluationMode StandardLibraryVisibility
+  = Build Input FilePath FilePath Locale StandardLibraryVisibility
   | GenerateAst Input FilePath StandardLibraryVisibility
-  | InterpretAst Input FilePath Locale EvaluationMode StandardLibraryVisibility
+  | InterpretAst Input FilePath Locale StandardLibraryVisibility
 
 data Input
   = InputFile FilePath
@@ -106,7 +106,6 @@ buildParser =
       "FILE"
       "Write the interpreted value to FILE; use - for stdout"
     <*> localeOption
-    <*> modeOption
     <*> standardLibraryOption
 
 generateAstParser :: Parser Command
@@ -132,7 +131,6 @@ interpretAstParser =
       "FILE"
       "Write the interpreted value to FILE; use - for stdout"
     <*> localeOption
-    <*> modeOption
     <*> standardLibraryOption
 
 standardLibraryOption :: Parser StandardLibraryVisibility
@@ -222,44 +220,14 @@ localeName :: Locale -> String
 localeName English = "english"
 localeName Romanian = "romanian"
 
-modeOption :: Parser EvaluationMode
-modeOption =
-  option modeReader
-    ( long "mode"
-        <> metavar "MODE"
-        <> value DevelopmentMode
-        <> showDefaultWith modeName
-        <> help "Assertion mode: dev or prod"
-    )
-
-modeReader :: ReadM EvaluationMode
-modeReader = eitherReader $ \modeText ->
-  Bifunctor.first renderCommandLineOptionFailure
-    (parseModeOption modeText)
-
-parseModeOption
-  :: String
-  -> Either CommandLineOptionFailure EvaluationMode
-parseModeOption modeText =
-  case map toLower modeText of
-    "dev" -> Right DevelopmentMode
-    "development" -> Right DevelopmentMode
-    "prod" -> Right ProductionMode
-    "production" -> Right ProductionMode
-    _ -> Left (UnsupportedEvaluationMode modeText)
-
 renderCommandLineOptionFailure :: CommandLineOptionFailure -> String
 renderCommandLineOptionFailure =
   renderDatraError English . withoutSourceSpan
 
-modeName :: EvaluationMode -> String
-modeName DevelopmentMode = "dev"
-modeName ProductionMode = "prod"
-
 runCommand :: Command -> IO ()
 runCommand commandValue =
   case commandValue of
-    Build input astPath outputPath locale mode standardLibraryVisibility -> do
+    Build input astPath outputPath locale standardLibraryVisibility -> do
       let errorPath = errorPathFor input [outputPath, astPath]
       (sourceName, source) <- readInput input
       (imports, parsed) <- loadSourceImportsWithStandardLibraryVisibility
@@ -271,8 +239,8 @@ runCommand commandValue =
       writeOutput astPath
         (renderExpression (locatedValue locatedExpression))
       interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
-        (interpretLocatedWithImportsInModeAndStandardLibraryVisibility
-          standardLibraryVisibility mode imports locatedExpression)
+        (interpretLocatedWithImportsAndStandardLibraryVisibility
+          standardLibraryVisibility imports locatedExpression)
       writeOutput outputPath (renderInterpretedValue interpreted)
     GenerateAst input outputPath standardLibraryVisibility -> do
       let errorPath = errorPathFor input [outputPath]
@@ -285,7 +253,7 @@ runCommand commandValue =
           (rewriteParsedDatraSourceWithImports imports parsed)
       writeOutput outputPath
         (renderExpression (locatedValue locatedExpression))
-    InterpretAst input outputPath locale mode standardLibraryVisibility -> do
+    InterpretAst input outputPath locale standardLibraryVisibility -> do
       let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input
       locatedExpression <-
@@ -294,8 +262,8 @@ runCommand commandValue =
       imports <- loadExpressionImports sourceName (locatedValue locatedExpression)
         >>= diagnosticOrFail locale errorPath
       interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
-        (interpretLocatedWithImportsInModeAndStandardLibraryVisibility
-          standardLibraryVisibility mode imports locatedExpression)
+        (interpretLocatedWithImportsAndStandardLibraryVisibility
+          standardLibraryVisibility imports locatedExpression)
       writeOutput outputPath (renderInterpretedValue interpreted)
 
 errorPathFor :: Input -> [FilePath] -> FilePath
@@ -339,4 +307,4 @@ readInput (InputFile path) = do
 
 writeOutput :: FilePath -> String -> IO ()
 writeOutput "-" rendered = putStrLn rendered
-writeOutput path rendered = writeFile path (rendered <> "\n")
+writeOutput path rendered = writeFile path (rendered <> sourceLineFeed)

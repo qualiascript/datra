@@ -1,17 +1,21 @@
 -- | Evaluated dependent and constant identifier types.
 module Evaluation.Identifier
-  ( dependentIdentifierTypeValue
-  , dependentIdentifierTemplateTypeValue
+  ( dependentArgumentTypeValue
+  , dependentArgumentTemplateTypeValue
   , identifierTemplateTypeValue
   , identifierNameFederationFor
+  , identifierValueAtUnderlying
   , evaluatedIdentifierType
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , privateSimpleIdentifier
   , privateIdentifierUnderlying
   , simpleIdentifierTypeValue
+  , integerComplementValue
   , inferredIdentifierAssignmentValue
   , identifierStringProjectionValue
   , canonicalValueMarker
+  , definitionMarker
   , withTrailingIdentifierMarker
   , hasTrailingIdentifierMarker
   ) where
@@ -24,7 +28,6 @@ import AtlasMapFederationExpression
   )
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError)
-import Evaluation.Map (isEmptyMap)
 import Evaluation.Value
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Identifier (isPrivateIdentifier)
@@ -32,14 +35,19 @@ import DatraLanguage.Identifier (isPrivateIdentifier)
 -- | Compiler-owned metadata identifying an identifier whose declared name is
 -- its canonical presentation.
 canonicalValueMarker :: String
-canonicalValueMarker = "CanonicalValue"
+canonicalValueMarker = "val"
+
+-- | Compiler-owned metadata identifying a declaration whose binding cannot
+-- be replaced inconsistently by an overlapping declaration.
+definitionMarker :: String
+definitionMarker = "def"
 
 evaluatedIdentifierType
   :: InterpretedValue
-  -> Maybe EvaluatedDependentIdentifierType
+  -> Maybe EvaluatedDependentArgumentType
 evaluatedIdentifierType value =
   case interpretedForm value of
-    DependentIdentifierTypeForm identifier -> Just identifier
+    DependentArgumentTypeForm identifier -> Just identifier
     IdentifierStringProjectionForm identifier -> Just identifier
     AssignmentForm specification ->
       evaluatedIdentifierType (evaluatedSpecificationTarget specification)
@@ -48,26 +56,17 @@ evaluatedIdentifierType value =
     _ -> Nothing
 
 simpleIdentifierName :: InterpretedValue -> Maybe String
-simpleIdentifierName value =
-  case evaluatedIdentifierType value of
-    Just identifier ->
-      case evaluatedIdentifierDependency identifier of
-        SimpleIdentifierDependency name -> Just name
-        DependentIdentifierDependency {} -> Nothing
-    Nothing -> semanticName (interpretedSemantics value)
-  where
-    semanticName semantics = case semantics of
-      PresentedSemantics _ _ underlying -> semanticName underlying
-      AssignmentSemantics name _ _ -> Just name
-      DependentIdentifierTypeSemantics
-          (SimpleIdentifierDependency name) _ _ _ -> Just name
-      _ -> Nothing
+simpleIdentifierName = interpretedSimpleIdentifierName
 
-privateSimpleIdentifier :: EvaluatedDependentIdentifierType -> Bool
+identifierUnderlyingValue :: InterpretedValue -> Maybe InterpretedValue
+identifierUnderlyingValue value =
+  evaluatedIdentifierUnderlying <$> evaluatedIdentifierType value
+
+privateSimpleIdentifier :: EvaluatedDependentArgumentType -> Bool
 privateSimpleIdentifier identifier =
   case evaluatedIdentifierDependency identifier of
     SimpleIdentifierDependency name -> isPrivateIdentifier name
-    DependentIdentifierDependency {} -> False
+    DependentArgumentDependency {} -> False
 
 privateIdentifierUnderlying :: InterpretedValue -> Maybe InterpretedValue
 privateIdentifierUnderlying value = do
@@ -76,14 +75,14 @@ privateIdentifierUnderlying value = do
     then Just (evaluatedIdentifierUnderlying identifier)
     else Nothing
 
-dependentIdentifierTypeValue
+dependentArgumentTypeValue
   :: String
   -> (CanonicalResult -> String)
   -> InterpretedValue
   -> InterpretedValue
-dependentIdentifierTypeValue familyKey identifierStringFor =
-  makeDependentIdentifierTypeValue
-    (DependentIdentifierDependency familyKey identifierStringFor)
+dependentArgumentTypeValue familyKey identifierStringFor =
+  makeDependentArgumentTypeValue
+    (DependentArgumentDependency familyKey identifierStringFor)
     Nothing
     Nothing
     False
@@ -92,15 +91,15 @@ dependentIdentifierTypeValue familyKey identifierStringFor =
 -- specification as contextual @it@.  The already-instantiated federation is
 -- retained for ordinary map access; the family evaluator is retained for
 -- matching against narrower supplied specifications.
-dependentIdentifierTemplateTypeValue
+dependentArgumentTemplateTypeValue
   :: String
   -> InterpretedValue
   -> (InterpretedValue -> Either InterpretingError InterpretedValue)
   -> InterpretedValue
   -> InterpretedValue
-dependentIdentifierTemplateTypeValue familyKey nameFederation nameFamily =
-  makeDependentIdentifierTypeValue
-    (DependentIdentifierDependency familyKey (const familyKey))
+dependentArgumentTemplateTypeValue familyKey nameFederation nameFamily =
+  makeDependentArgumentTypeValue
+    (DependentArgumentDependency familyKey (const familyKey))
     (Just nameFederation)
     (Just nameFamily)
     True
@@ -114,17 +113,17 @@ identifierTemplateTypeValue
   -> InterpretedValue
   -> InterpretedValue
 identifierTemplateTypeValue familyKey nameFederation =
-  makeDependentIdentifierTypeValue
-    (DependentIdentifierDependency familyKey (const familyKey))
+  makeDependentArgumentTypeValue
+    (DependentArgumentDependency familyKey (const familyKey))
     (Just nameFederation)
     (Just (const (Right nameFederation)))
     True
 
 -- | Instantiate an identifier's name federation at the supplied
--- specification.  Constant identifiers and host-defined dependent identifiers
+-- specification.  Constant identifiers and host-defined dependent arguments
 -- use the same interface as source-level string-expression families.
 identifierNameFederationFor
-  :: EvaluatedDependentIdentifierType
+  :: EvaluatedDependentArgumentType
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 identifierNameFederationFor identifier supplied =
@@ -136,30 +135,60 @@ identifierNameFederationFor identifier supplied =
           (evaluatedIdentifierDependency identifier)
           (interpretedSemanticResult supplied)))
 
+-- | Select one underlying member of an identifier family without erasing
+-- the identifier that distinguishes that member. Canonical aliases are
+-- resolved before reaching this operation; values that still have an
+-- identifier form therefore denote identifier-family members themselves.
+identifierValueAtUnderlying
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe InterpretedValue
+identifierValueAtUnderlying family underlying = do
+  identifier <- evaluatedIdentifierType family
+  isCanonical <- case interpretedSemanticSemantics family of
+    DependentArgumentTypeSemantics _ _ _ canonical -> Just canonical
+    _ -> Nothing
+  nameFederation <- case evaluatedIdentifierDependency identifier of
+    SimpleIdentifierDependency _ ->
+      Just (evaluatedIdentifierNameFederation identifier)
+    DependentArgumentDependency {} ->
+      Just (either (const Nothing) Just
+        (identifierNameFederationFor identifier underlying))
+  pure (makeDependentArgumentTypeValue
+    (evaluatedIdentifierDependency identifier)
+    nameFederation
+    (evaluatedIdentifierNameFamily identifier)
+    isCanonical
+    underlying)
+
 simpleIdentifierTypeValue
   :: String
   -> InterpretedValue
   -> InterpretedValue
-simpleIdentifierTypeValue identifierString underlying
-  | isEmptyMap underlying =
-      makeAsciiString identifierString
-  | otherwise =
-      makeDependentIdentifierTypeValue
-        (SimpleIdentifierDependency identifierString)
-        Nothing
-        Nothing
-        True
-        underlying
+simpleIdentifierTypeValue identifierString underlying =
+  makeDependentArgumentTypeValue
+    (SimpleIdentifierDependency identifierString)
+    Nothing
+    Nothing
+    True
+    underlying
+
+-- | The ordinary Datra value selecting the complemented half of Int/IntLimit.
+-- Numerical construction depends on this typed constructor, not on its
+-- identifier spellings.
+integerComplementValue :: InterpretedValue
+integerComplementValue =
+  simpleIdentifierTypeValue "Just" (makeAsciiString "Complement")
 
 -- | An inferred assignment may bind a non-total value such as a type.  Its
--- federation remains the dependent identifier family, while its canonical
+-- federation remains the dependent argument family, while its canonical
 -- presentation records that the value was explicitly supplied.
 inferredIdentifierAssignmentValue
   :: String
   -> InterpretedValue
   -> InterpretedValue
 inferredIdentifierAssignmentValue identifierString underlying =
-  (makeDependentIdentifierTypeValue
+  (makeDependentArgumentTypeValue
       (SimpleIdentifierDependency identifierString)
       Nothing
       Nothing
@@ -178,26 +207,30 @@ inferredIdentifierAssignmentValue identifierString underlying =
 withTrailingIdentifierMarker :: String -> InterpretedValue -> InterpretedValue
 withTrailingIdentifierMarker marker value
   | hasTrailingIdentifierMarker marker value = value
-  | otherwise = value
+  | otherwise = marked
+  where
+    marked = value
       { interpretedMap = markedMap
       , interpretedTotalAtlasMap =
           case interpretedTotalAtlasMap value of
             Just _ -> Just (InterpretedTotalAtlasMap markedMap)
             Nothing -> Nothing
       }
-  where
     markerValue = makeAsciiString marker
     sourceMap = interpretedMap value
     markedMap = sourceMap
       { interpretedMapPageCardinality =
           interpretedMapPageCardinality sourceMap + 1
-      , interpretedMapFinalValues = appendOrdinalOrderedValues
-          (interpretedMapFinalValues sourceMap)
-          (singletonOrdinalOrderedValues markerValue)
+      , interpretedMapFinalValues = markedFinalValues
+      , interpretedMapCheckedValueAt =
+          Right . ordinalOrderedValueAt markedFinalValues
       , interpretedMapComponents =
           interpretedMapComponents sourceMap
             <> [interpretedSemantics markerValue]
       }
+    markedFinalValues = appendOrdinalOrderedValues
+      (interpretedMapFinalValues sourceMap)
+      (singletonOrdinalOrderedValues markerValue)
 
 hasTrailingIdentifierMarker :: String -> InterpretedValue -> Bool
 hasTrailingIdentifierMarker marker value =
@@ -214,7 +247,7 @@ hasTrailingIdentifierMarker marker value =
     valueMap = interpretedMap value
 
 identifierStringProjectionValue
-  :: EvaluatedDependentIdentifierType
+  :: EvaluatedDependentArgumentType
   -> InterpretedValue
 identifierStringProjectionValue evaluated = value
   where
@@ -244,17 +277,17 @@ identifierStringProjectionValue evaluated = value
         resultMap
         semantics
 
-makeDependentIdentifierTypeValue
+makeDependentArgumentTypeValue
   :: IdentifierDependency
   -> Maybe InterpretedValue
   -> Maybe (InterpretedValue -> Either InterpretingError InterpretedValue)
   -> Bool
   -> InterpretedValue
   -> InterpretedValue
-makeDependentIdentifierTypeValue
+makeDependentArgumentTypeValue
     dependency nameFederation nameFamily isCanonical underlying = value
   where
-    evaluated = EvaluatedDependentIdentifierType
+    evaluated = EvaluatedDependentArgumentType
       dependency underlying nameFederation nameFamily
     underlyingResult = interpretedSemanticResult underlying
     isTotal = interpretedValueHasTotalMap underlying
@@ -272,7 +305,7 @@ makeDependentIdentifierTypeValue
         (singletonOrdinalOrderedValues identifierStringValue)
         (singletonOrdinalOrderedValues underlying)
     semantics =
-      DependentIdentifierTypeSemantics
+      DependentArgumentTypeSemantics
         dependency
         (interpretedSemantics underlying)
         isTotal
@@ -285,14 +318,15 @@ makeDependentIdentifierTypeValue
         [ interpretedSemantics identifierStringValue
         , interpretedSemantics underlying
         ]
-    value =
+    base =
       makeEvaluatedIdentifierValue
         canonicalType
-        (DependentIdentifierTypeForm evaluated)
-        (DependentIdentifierTypeAtlasMapFederation evaluated)
+        (DependentArgumentTypeForm evaluated)
+        (DependentArgumentTypeAtlasMapFederation evaluated)
         isTotal
         valueMap
         semantics
+    value = base
     canonicalType = structuralDatraType
 
 -- | Totality is established by the caller from every component of the

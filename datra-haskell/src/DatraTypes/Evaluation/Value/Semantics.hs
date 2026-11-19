@@ -4,12 +4,14 @@
 -- this module deliberately contains none of those.  It is the stable meaning
 -- used by equality, specification, and rendering.
 module Evaluation.Value.Semantics
-  ( IdentifierDependency (..)
+  ( IntegerLimit (..)
+  , IdentifierDependency (..)
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
   , PresentationDependency (..)
   , ValuePresentation (..)
+  , FunctionSource (..)
   , ValueSemantics (..)
   , CanonicalResult (..)
   , canonicalResult
@@ -21,12 +23,19 @@ module Evaluation.Value.Semantics
   , stripPresentedDependencies
   ) where
 
+import DatraLanguage.AST (FunctionSource (..))
 import DatraOrdinal (Ordinal)
-import Evaluation.DatraType (BuiltinMetaType)
+import Evaluation.DatraType (PrimitiveType)
 import IntegerRange qualified
 import NaturalRange qualified
 import Numeric.Natural (Natural)
 import SuperEllipsisRange qualified as Range
+
+data IntegerLimit
+  = NegativeInfinity
+  | FiniteInteger Integer
+  | PositiveInfinity
+  deriving (Eq, Ord, Show)
 
 -- | Runtime string rule for an identifier type. The stable key makes two
 -- dependent rules comparable for subfederation decisions; simple identifiers
@@ -35,9 +44,9 @@ data IdentifierDependency
   = SimpleIdentifierDependency
       { simpleIdentifierString :: String
       }
-  | DependentIdentifierDependency
-      { dependentIdentifierFamilyKey :: String
-      , dependentIdentifierStringFor :: CanonicalResult -> String
+  | DependentArgumentDependency
+      { dependentArgumentFamilyKey :: String
+      , dependentArgumentStringFor :: CanonicalResult -> String
       }
 
 identifierDependencyStringFor
@@ -47,12 +56,12 @@ identifierDependencyStringFor
 identifierDependencyStringFor dependency value =
   case dependency of
     SimpleIdentifierDependency identifierString -> identifierString
-    DependentIdentifierDependency _ identifierStringFor ->
+    DependentArgumentDependency _ identifierStringFor ->
       identifierStringFor value
 
 -- | Choose the string that can represent an identifier before a particular
 -- federation member is known. A total underlying value supplies that member;
--- otherwise dependent identifiers retain their stable family key.
+-- otherwise dependent arguments retain their stable family key.
 identifierDependencyRepresentativeString
   :: IdentifierDependency
   -> Maybe CanonicalResult
@@ -60,7 +69,7 @@ identifierDependencyRepresentativeString
 identifierDependencyRepresentativeString dependency selectedValue =
   case dependency of
     SimpleIdentifierDependency identifierString -> identifierString
-    DependentIdentifierDependency familyKey identifierStringFor ->
+    DependentArgumentDependency familyKey identifierStringFor ->
       case selectedValue of
         Just value -> identifierStringFor value
         Nothing -> familyKey
@@ -76,8 +85,8 @@ identifierDependenciesCompatible left right =
     (SimpleIdentifierDependency leftString,
       SimpleIdentifierDependency rightString) ->
         leftString == rightString
-    (DependentIdentifierDependency leftKey _,
-      DependentIdentifierDependency rightKey _) ->
+    (DependentArgumentDependency leftKey _,
+      DependentArgumentDependency rightKey _) ->
         leftKey == rightKey
     _ -> False
 
@@ -92,12 +101,13 @@ data ValueSemantics
   = PresentedSemantics
       [PresentationDependency] ValuePresentation ValueSemantics
   | NeverSemantics
-  | BuiltinMetaTypeSemantics BuiltinMetaType
+  | PrimitiveTypeSemantics PrimitiveType
   | FunctionSemantics
-      ValueSemantics ValueSemantics (Maybe String)
-  | FunctionBodySemantics String
+      ValueSemantics ValueSemantics (Maybe FunctionSource)
+  | FunctionBodySemantics FunctionSource
   | ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
+  | IntegerLimitSemantics IntegerLimit
   | FormulationSemantics Natural
   | RangeSemantics Range.SuperEllipsisRangeDescription
   | NaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
@@ -105,17 +115,18 @@ data ValueSemantics
   | NaturalTypeSemantics
   | IntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
   | ValuedIntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
+  | IntegerLimitRangeSemantics IntegerLimit IntegerLimit
   | IntegerTypeSemantics
   | EitherSemantics ValueSemantics ValueSemantics
   | SkipSemantics ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
-  | IdentifierValueTypeSemantics
+  | IdentifierExpressionSemantics String
   | ToStringSemantics ValueSemantics
   | TemplateSemantics ValueSemantics
   | DependentSumSemantics String
-  | DependentIdentifierTypeSemantics
+  | DependentArgumentTypeSemantics
       IdentifierDependency
       ValueSemantics
       Bool
@@ -131,7 +142,7 @@ data ValueSemantics
       }
   | CoalizationSemantics ValueSemantics
   | MapSemantics Natural [ValueSemantics]
-  | ArgumentMapSemantics Bool [ValueSemantics]
+  | ArgumentativeMapSemantics Bool [ValueSemantics]
   | SpecificationSemantics ValueSemantics ValueSemantics
 
 -- | A canonical spelling whose dependencies remain local to its leaves.
@@ -148,9 +159,10 @@ data CanonicalResult
   | CanonicalNever
   | CanonicalNamedAccess CanonicalResult String
   | CanonicalApplication CanonicalResult CanonicalResult
-  | CanonicalBuiltinMetaType BuiltinMetaType
+  | CanonicalPrimitiveType PrimitiveType
   | CanonicalFunction
-      CanonicalResult CanonicalResult (Maybe String)
+      CanonicalResult CanonicalResult (Maybe FunctionSource)
+  | CanonicalFunctionBody FunctionSource
   | CanonicalExplicit Natural Ordinal
   | CanonicalInteger Integer
   | CanonicalFormulation Natural
@@ -160,13 +172,15 @@ data CanonicalResult
   | CanonicalNaturalType
   | CanonicalIntegerRange Integer IntegerRange.IntegerRangeTarget
   | CanonicalValuedIntegerRange Integer IntegerRange.IntegerRangeTarget
+  | CanonicalIntegerLimit IntegerLimit
+  | CanonicalIntegerLimitRange IntegerLimit IntegerLimit
   | CanonicalIntegerType
   | CanonicalEither CanonicalResult CanonicalResult
   | CanonicalSkip CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
-  | CanonicalIdentifierValueType
+  | CanonicalIdentifierExpression String
   | CanonicalToString CanonicalResult
   | CanonicalTemplate CanonicalResult
   | CanonicalDependentSum String
@@ -174,7 +188,7 @@ data CanonicalResult
       { canonicalIdentifierString :: String
       , canonicalSimpleIdentifierTypeAnnotation :: CanonicalResult
       }
-  | CanonicalDependentIdentifierType String CanonicalResult
+  | CanonicalDependentArgumentType String CanonicalResult
   | CanonicalIdentifierStringProjection String CanonicalResult
   | CanonicalAssignment
       { canonicalAssignmentIdentifierString :: String
@@ -183,7 +197,7 @@ data CanonicalResult
       }
   | CanonicalCoalization CanonicalResult
   | CanonicalMap Natural [CanonicalResult]
-  | CanonicalArgumentMap Bool [CanonicalResult]
+  | CanonicalArgumentativeMap Bool [CanonicalResult]
   | CanonicalSpecification CanonicalResult CanonicalResult
   deriving (Eq, Show)
 
@@ -233,9 +247,9 @@ mapValueSemanticsChildren recur semantics =
     ConcatenationSemantics members -> ConcatenationSemantics (map recur members)
     ToStringSemantics source -> ToStringSemantics (recur source)
     TemplateSemantics source -> TemplateSemantics (recur source)
-    DependentIdentifierTypeSemantics
+    DependentArgumentTypeSemantics
         dependency underlying isTotal isCanonical ->
-      DependentIdentifierTypeSemantics
+      DependentArgumentTypeSemantics
         dependency (recur underlying) isTotal isCanonical
     IdentifierStringProjectionSemantics dependency underlying isTotal ->
       IdentifierStringProjectionSemantics dependency (recur underlying) isTotal
@@ -244,8 +258,8 @@ mapValueSemanticsChildren recur semantics =
         identifierString (recur typeAnnotation) (recur givenValue)
     CoalizationSemantics operand -> CoalizationSemantics (recur operand)
     MapSemantics cardinality members -> MapSemantics cardinality (map recur members)
-    ArgumentMapSemantics total members ->
-      ArgumentMapSemantics total (map recur members)
+    ArgumentativeMapSemantics total members ->
+      ArgumentativeMapSemantics total (map recur members)
     SpecificationSemantics source target ->
       SpecificationSemantics (recur source) (recur target)
     _ -> semantics
@@ -298,13 +312,14 @@ canonicalResultWith retainPresentation semantics =
       | retainPresentation -> presentationResult presentation
       | otherwise -> canonicalResultWith False underlying
     NeverSemantics -> CanonicalNever
-    BuiltinMetaTypeSemantics kind -> CanonicalBuiltinMetaType kind
+    PrimitiveTypeSemantics kind -> CanonicalPrimitiveType kind
     FunctionSemantics input output body ->
       CanonicalFunction
         (recur input) (recur output) body
-    FunctionBodySemantics source -> CanonicalReference source
+    FunctionBodySemantics source -> CanonicalFunctionBody source
     ExplicitSemantics level value -> CanonicalExplicit level value
     IntegerSemantics value -> CanonicalInteger value
+    IntegerLimitSemantics value -> CanonicalIntegerLimit value
     FormulationSemantics level -> CanonicalFormulation level
     RangeSemantics description -> CanonicalRange description
     NaturalRangeSemantics start target -> CanonicalNaturalRange start target
@@ -314,6 +329,8 @@ canonicalResultWith retainPresentation semantics =
     IntegerRangeSemantics start target -> CanonicalIntegerRange start target
     ValuedIntegerRangeSemantics start target ->
       CanonicalValuedIntegerRange start target
+    IntegerLimitRangeSemantics start target ->
+      CanonicalIntegerLimitRange start target
     IntegerTypeSemantics -> CanonicalIntegerType
     EitherSemantics left right ->
       CanonicalEither (recur left) (recur right)
@@ -323,12 +340,13 @@ canonicalResultWith retainPresentation semantics =
     ConcatenationSemantics members ->
       CanonicalConcatenation (map recur members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
-    IdentifierValueTypeSemantics -> CanonicalIdentifierValueType
+    IdentifierExpressionSemantics identifier ->
+      CanonicalIdentifierExpression identifier
     ToStringSemantics source -> CanonicalToString (recur source)
     TemplateSemantics source ->
       CanonicalTemplate (recur source)
     DependentSumSemantics source -> CanonicalDependentSum source
-    DependentIdentifierTypeSemantics dependency underlying isTotal _ ->
+    DependentArgumentTypeSemantics dependency underlying isTotal _ ->
       let underlyingResult = recur underlying
       in case dependency of
         SimpleIdentifierDependency identifierString
@@ -337,8 +355,8 @@ canonicalResultWith retainPresentation semantics =
                 identifierString underlyingResult underlyingResult
           | otherwise ->
               CanonicalSimpleIdentifierType identifierString underlyingResult
-        DependentIdentifierDependency familyKey _ ->
-          CanonicalDependentIdentifierType familyKey underlyingResult
+        DependentArgumentDependency familyKey _ ->
+          CanonicalDependentArgumentType familyKey underlyingResult
     IdentifierStringProjectionSemantics dependency underlying isTotal ->
       let underlyingResult = recur underlying
       in if isTotal
@@ -357,8 +375,8 @@ canonicalResultWith retainPresentation semantics =
       CanonicalCoalization (recur operand)
     MapSemantics cardinality components ->
       CanonicalMap cardinality (map recur components)
-    ArgumentMapSemantics totalPages members ->
-      CanonicalArgumentMap totalPages (map recur members)
+    ArgumentativeMapSemantics totalPages members ->
+      CanonicalArgumentativeMap totalPages (map recur members)
     SpecificationSemantics source target ->
       canonicalSpecificationResult
         (recur source)

@@ -1,15 +1,25 @@
 -- | Central dispatch for inclusion between evaluated Datra types.
 module Evaluation.Specification.Subfederation
   ( decideValueSubfederation
+  , requireValueSubfederation
   , IdentifierNameDisjointness (..)
   , identifierNameDisjointness
   ) where
 
 import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (..)
+  ( AtlasMapFederationDecision (..)
+  , AtlasMapFederationExpression (..)
   )
 import Evaluation.Construction (makeAsciiString)
-import Evaluation.Error (InterpretingError (..))
+import Evaluation.Error
+  ( AtlasMapFederationOperation (AtlasMapFederationSubfederation)
+  , AtlasMapFederationRefutation
+      (AtlasMapFederationSubfederationHasMissingMember)
+  , AtlasMapFederationUncertainty
+      (NoAtlasMapFederationDecisionProcedure)
+  , InterpretingError (AtlasMapFederationOperationUndecidable)
+  )
+import Evaluation.Federation (requireFederationDecision)
 import Evaluation.Specification.Decision
 import Evaluation.TypeFamily
   ( TypeFamilyOperations (decideTypeFamilySubfederation)
@@ -33,7 +43,7 @@ identifierNameDisjointness
   -> IdentifierNameDisjointness
 identifierNameDisjointness candidate value =
   case interpretedForm value of
-    DependentIdentifierTypeForm identifier -> againstIdentifier identifier
+    DependentArgumentTypeForm identifier -> againstIdentifier identifier
     IdentifierStringProjectionForm identifier -> againstIdentifier identifier
     SpecificationForm specification ->
       identifierNameDisjointness candidate
@@ -48,7 +58,7 @@ identifierNameDisjointness candidate value =
         SimpleIdentifierDependency name
           | name == candidate -> IdentifierNameOverlap
           | otherwise -> IdentifierNameDisjoint
-        dependency@DependentIdentifierDependency {} ->
+        dependency@DependentArgumentDependency {} ->
           case evaluatedIdentifierNameFederation identifier of
             Just names -> fromDecision
               (decideValueSubfederation (makeAsciiString candidate) names)
@@ -80,9 +90,10 @@ decideValueSubfederation source target
       decideTypeFamilySubfederation
         (typeFamilyOperations
           (datraTypeFamily (interpretedDatraType target)))
-        decideValueSubfederation
+      decideValueSubfederation
         source
         target
+
   | interpretedSemanticResult source == interpretedSemanticResult target =
       DecisionProved ()
   | Just sourceDependent <- dependentSumView source
@@ -90,6 +101,13 @@ decideValueSubfederation source target
   , ListDependentSum sourceElement <-
       evaluatedDependentSumStructure sourceDependent
   , ListDependentSum targetElement <-
+      evaluatedDependentSumStructure targetDependent =
+      decideValueSubfederation sourceElement targetElement
+  | Just sourceDependent <- dependentSumView source
+  , Just targetDependent <- dependentSumView target
+  , StreamDependentSum sourceElement <-
+      evaluatedDependentSumStructure sourceDependent
+  , StreamDependentSum targetElement <-
       evaluatedDependentSumStructure targetDependent =
       decideValueSubfederation sourceElement targetElement
   | Just dependent <- dependentSumView target =
@@ -117,6 +135,24 @@ decideValueSubfederation source target
         decideValueSubfederation
         source
         target
+
+-- | Require the ordinary @source of target@ relation while retaining the
+-- evaluator's established distinction between a refuted and an undecidable
+-- inclusion. Constructs which impose a subtype invariant should use this
+-- instead of introducing a construct-specific type error.
+requireValueSubfederation
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError ()
+requireValueSubfederation source target =
+  requireFederationDecision
+    (case decideValueSubfederation source target of
+      DecisionProved () -> AtlasMapFederationProved ()
+      DecisionRefuted -> AtlasMapFederationRefuted
+        AtlasMapFederationSubfederationHasMissingMember
+      DecisionUndecidable -> AtlasMapFederationUndecidable
+        (NoAtlasMapFederationDecisionProcedure
+          AtlasMapFederationSubfederation))
 
 -- Sequential products retain their Atlas-map positions. Concatenation joins
 -- federations without introducing those positions, so equal final values do

@@ -41,29 +41,30 @@ compileParametersWithGenerics generics evaluate written static =
   compileWith False written static
   where
     inferenceBoundary = case written of
-      ArgumentMap _ -> True
+      ArgumentativeMap _ -> True
       _ -> False
     compileWith allowPrivateOptional writtenValue staticValue =
       case staticValue of
-        IdentifierOperation (IdentifierString name) annotation given ->
+        parameter
+          | Just (name, annotation, given) <- namedParameter parameter ->
           case genericByName name of
-            Just binder -> do
+            Just (binder, optional) -> do
               annotationValue <- evaluate annotation
               pure (genericArgumentSlotSchema
-                (genericDescriptor binder) annotationValue)
+                (genericDescriptor binder name optional) annotationValue)
             Nothing ->
               genericEvidenceArgumentSchema (genericReferences writtenValue)
                 <$> parameterSlot (Just name) False annotation given
         optional
-          | Just
-              (IdentifierOperation (IdentifierString name) annotation given, _)
-              <- optionalIdentifierExpression optional -> do
+          | Just (operation, _) <- optionalIdentifierExpression optional
+          , Just (name, annotation, given) <- namedParameter operation -> do
               validateOptionalName allowPrivateOptional name True
               case genericByName name of
-                Just binder -> do
+                Just (binder, genericOptional) -> do
                   annotationValue <- evaluate annotation
                   pure (genericArgumentSlotSchema
-                    (genericDescriptor binder) annotationValue)
+                    (genericDescriptor binder name genericOptional)
+                    annotationValue)
                 Nothing ->
                   genericEvidenceArgumentSchema (genericReferences writtenValue)
                     <$> parameterSlot (Just name) True annotation given
@@ -79,10 +80,10 @@ compileParametersWithGenerics generics evaluate written static =
               orderedArgumentSchema 2
                 <$> traverse (uncurry (compileWith True))
                   (zip writtenMembers staticMembers)
-        ArgumentMap staticMembers
-          | ArgumentMap writtenMembers <- writtenValue
+        ArgumentativeMap staticMembers
+          | ArgumentativeMap writtenMembers <- writtenValue
           , length writtenMembers == length staticMembers -> do
-              traverse_ validateArgumentMapName writtenMembers
+              traverse_ validateArgumentativeMapName writtenMembers
               unorderedArgumentSchema
                 <$> traverse (uncurry (compileWith False))
                   (zip writtenMembers staticMembers)
@@ -93,26 +94,19 @@ compileParametersWithGenerics generics evaluate written static =
     genericByName target = findGeneric generics
       where
         findGeneric [] = Nothing
-        findGeneric (binder : remaining) =
-          let GenericIdentifier (IdentifierString name) _ =
-                genericBinderIdentifier binder
-          in if name == target then Just binder else findGeneric remaining
-    genericDescriptor binder =
-      let GenericIdentifier (IdentifierString name) optional =
-            genericBinderIdentifier binder
-      in GenericArgumentBinder
-          { genericArgumentBinderId = genericBinderId binder
-          , genericArgumentPolarity = genericBinderPolarity binder
-          , genericArgumentName = name
-          , genericArgumentOptionalName = optional || not inferenceBoundary
-          , genericArgumentInferred =
-              inferenceBoundary && isPrivateIdentifier name
-          }
+        findGeneric (binder : remaining)
+          | simpleIdentifierStringText (genericArgumentName argument) == target =
+              Just (binder, genericArgumentOptional argument)
+          | otherwise = findGeneric remaining
+          where
+            argument = genericBinderArgument binder
+    genericDescriptor binder _ optional = genericArgumentBinder binder
+      (optional || not inferenceBoundary)
     genericReferences expressionValue = nubBinderIds (go expressionValue)
       where
         go current = case current of
-          IdentifierReference (IdentifierString name) ->
-            maybe [] (pure . genericBinderId) (genericByName name)
+          IdentifierReference (SimpleIdentifierString name) ->
+            maybe [] (pure . genericBinderId . fst) (genericByName name)
           _ -> concatMap go (expressionChildren current)
         nubBinderIds [] = []
         nubBinderIds (binderId : remaining) =
@@ -121,11 +115,11 @@ compileParametersWithGenerics generics evaluate written static =
       | optional && not allowPrivate && isPrivateIdentifier name =
           Left (PrivateParameterCannotBeOptional name)
       | otherwise = Right ()
-    validateArgumentMapName member =
+    validateArgumentativeMapName member =
       case member of
         optional
-          | Just (IdentifierOperation (IdentifierString name) _ _, _) <-
-              optionalIdentifierExpression optional
+          | Just (operation, _) <- optionalIdentifierExpression optional
+          , Just (name, _, _) <- namedParameter operation
           , isPrivateIdentifier name ->
               Left (PrivateParameterCannotBeOptional name)
         _ -> Right ()
@@ -133,6 +127,17 @@ compileParametersWithGenerics generics evaluate written static =
       annotationValue <- evaluate annotation
       argumentSlotSchema name optional annotationValue
         <$> traverse evaluate given
+
+    namedParameter value = case value of
+      DependentArgument nameExpression (Just annotation)
+        | Just (SimpleIdentifierString name) <-
+            literalIdentifierName nameExpression ->
+              Just (name, annotation, Nothing)
+      MapSpecification given (DependentArgument nameExpression annotation)
+        | Just (SimpleIdentifierString name) <-
+            literalIdentifierName nameExpression ->
+              Just (name, maybe given id annotation, Just given)
+      _ -> Nothing
 
 compileDependentParameter
   :: String

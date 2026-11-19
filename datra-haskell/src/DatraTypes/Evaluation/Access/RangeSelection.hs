@@ -49,7 +49,7 @@ accessSource :: InterpretedValue -> AccessSource
 accessSource value =
   case interpretedForm value of
     NeverForm -> ordinarySource []
-    BuiltinMetaTypeForm _ -> ordinarySource []
+    PrimitiveTypeForm _ -> ordinarySource []
     FunctionForm _ -> ordinarySource []
     FunctionBodyForm _ -> ordinarySource []
     RangeForm valueRange ->
@@ -69,7 +69,7 @@ accessSource value =
     NothingForm -> ordinarySource []
     EitherForm _ -> ordinarySource []
     SkipForm _ -> ordinarySource []
-    ArgumentMapForm _ _ -> ordinarySource []
+    ArgumentativeMapForm _ _ -> ordinarySource []
     FederationSpecificationForm _ _ _ -> ordinarySource []
     RangeConcatenationForm ranges _ ->
       rangeSource (map evaluatedDescribedRange ranges)
@@ -106,12 +106,12 @@ accessSource value =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
-    IdentifierValueTypeForm -> ordinarySource []
+    IdentifierExpressionForm _ -> ordinarySource []
     ToStringForm -> ordinarySource []
     TemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
     AssignmentForm _ -> ordinarySource []
-    DependentIdentifierTypeForm _ -> ordinarySource []
+    DependentArgumentTypeForm _ -> ordinarySource []
     IdentifierStringProjectionForm _ -> ordinarySource []
     DependentSumForm _ -> ordinarySource []
     CoalizationForm _ ->
@@ -157,12 +157,19 @@ semanticAccessSource (PresentedSemantics _ _ semantics) =
 semanticAccessSource semantics =
   case semantics of
     NeverSemantics -> ordinarySource []
-    BuiltinMetaTypeSemantics _ -> ordinarySource []
+    PrimitiveTypeSemantics _ -> ordinarySource []
     FunctionSemantics {} -> ordinarySource []
     FunctionBodySemantics {} -> ordinarySource []
     ExplicitSemantics level value ->
       ordinarySource [singletonDescribedRange level value]
     IntegerSemantics _ -> ordinarySource []
+    IntegerLimitSemantics PositiveInfinity ->
+      AccessSource
+        { sourceDescribedRanges = [formulationDescribedRange 1]
+        , sourceIsRangeLike = True
+        , sourceFormulationLevel = Just 1
+        }
+    IntegerLimitSemantics _ -> ordinarySource []
     FormulationSemantics level ->
       AccessSource
         { sourceDescribedRanges = [formulationDescribedRange level]
@@ -181,10 +188,11 @@ semanticAccessSource semantics =
       rangeSource [naturalDescribedRange 0 NaturalRange.UpwardsTarget]
     IntegerRangeSemantics _ _ -> rangeSource []
     ValuedIntegerRangeSemantics _ _ -> rangeSource []
+    IntegerLimitRangeSemantics _ _ -> rangeSource []
     IntegerTypeSemantics -> rangeSource []
     EitherSemantics _ _ -> ordinarySource []
     SkipSemantics _ -> ordinarySource []
-    ArgumentMapSemantics _ _ -> ordinarySource []
+    ArgumentativeMapSemantics _ _ -> ordinarySource []
     RangeConcatenationSemantics descriptions ->
       rangeSource (map describedRangeFromDescription descriptions)
     ConcatenationSemantics members ->
@@ -194,13 +202,13 @@ semanticAccessSource semantics =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
-    IdentifierValueTypeSemantics -> ordinarySource []
+    IdentifierExpressionSemantics _ -> ordinarySource []
     ToStringSemantics _ -> ordinarySource []
     TemplateSemantics _ -> ordinarySource []
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)
     SpecificationSemantics _ _ -> ordinarySource []
-    DependentIdentifierTypeSemantics _ _ _ _ -> ordinarySource []
+    DependentArgumentTypeSemantics _ _ _ _ -> ordinarySource []
     IdentifierStringProjectionSemantics _ _ _ -> ordinarySource []
     AssignmentSemantics _ _ _ -> ordinarySource []
     DependentSumSemantics _ -> ordinarySource []

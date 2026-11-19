@@ -1,6 +1,6 @@
 -- | Access through the two-position map view of an identifier type.
 module Evaluation.Access.Identifier
-  ( accessDependentIdentifierType
+  ( accessDependentArgumentType
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
@@ -8,6 +8,7 @@ import DatraOrdinal
   ( Ordinal
   , finiteOrdinal
   , naturalAtOrdinal
+  , naturalsBelow
   , omegaPower
   )
 import Evaluation.Access.Federation (requireInsertion)
@@ -26,12 +27,12 @@ import SuperEllipsisInsertion
   , someSuperEllipsisInsertionRank
   )
 
-accessDependentIdentifierType
+accessDependentArgumentType
   :: InterpretedValue
-  -> EvaluatedDependentIdentifierType
+  -> EvaluatedDependentArgumentType
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-accessDependentIdentifierType original identifier insertionValue = do
+accessDependentArgumentType original identifier insertionValue = do
   insertion <- requireInsertion insertionValue
   let insertionOrderType = someSuperEllipsisInsertionOrderType insertion
   Bifunctor.first AccessRejected
@@ -54,7 +55,7 @@ accessDependentIdentifierType original identifier insertionValue = do
       case dependency of
         SimpleIdentifierDependency identifierString ->
           makeAsciiString identifierString
-        DependentIdentifierDependency _ _ ->
+        DependentArgumentDependency _ _ ->
           maybe
             (identifierStringProjectionValue identifier)
             id
@@ -96,5 +97,4 @@ selectedPosition insertion position =
     Nothing -> Right (finiteOrdinal 0)
 
 finitePositions :: Natural -> [Natural]
-finitePositions 0 = []
-finitePositions cardinality = [0 .. cardinality - 1]
+finitePositions = naturalsBelow
