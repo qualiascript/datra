@@ -159,6 +159,21 @@ theorem withNativeCell_resolve (X Y : Atlas) (page : Nat) (cell : ValidPageCell 
       rw [FolioData.traceHead_of_head (Y.pages.traceAt_head page value)]
       exact congrArg (fun resolved : Option Y.Element => resolved.map (SourceCell.right : Y.Element → SourceCell X Y)) (Y.pages.elementAt_occurrence ⟨page, value⟩)
 
+/-- The executable resolver keeps failure separate from the fresh origin. -/
+-- ALIGN: MERGE-RESOLVED-LOOKUP-VALUE.
+def resolveCellAt (X Y : Atlas) : Nat → Ordinal → Option (SourceCell X Y)
+  | 0, _ => some .origin
+  | page + 1, position =>
+      ((pageChain X Y page).chainIndex position).bind fun index =>
+        withNativeCell X Y page index.object (fun source _ _ => SourceCell.left source)
+          (fun source _ _ => SourceCell.right source)
+
+theorem resolveCellAt_position (X Y : Atlas) (page : Nat) (cell : ValidPageCell X Y page) :
+    resolveCellAt X Y (page + 1) ((pageChain X Y page).position cell) =
+      some (resolvePageCell X Y page cell) := by
+  simp only [resolveCellAt, Chain.chainIndex_position, Option.bind_some, Chain.chainIndexOf]
+  exact withNativeCell_resolve X Y page cell
+
 theorem componentPage_clamp (X : Atlas) (limit n : Nat) (bound : X.pages.depth - 1 ≤ limit) :
     componentPage X (min n limit) = componentPage X n := by
   exact X.pages.pageAt_clamp limit n bound

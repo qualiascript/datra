@@ -194,7 +194,18 @@ accepted cell rank belongs to the extent, and that distinct cells on one
 genuine page cannot accept a common rank. The latter proof recovers source data
 from the checked inverses, then combines origin-rank injectivity with the
 stored disjointness law. Lean's merge and sequence transport proofs reuse these
-shared membership lemmas. Negative checks reject disjointness applied to the
+shared membership lemmas. Merge's executable membership now consumes an
+explicit resolved-source value: origin, left cell, or right cell. Its checked
+source predicate retains the component's origin and owning trace. The component
+transport relation allows movement within that component or into the fresh
+origin; LiquidHaskell proves that it preserves accepted ranks, including the
+phantom datum retag. Lean identifies this relation with its component-arrow
+relation and proves the matching preservation theorem. Raw merge lookup returns
+the same resolved values and retains their requested page and encoded position.
+The shared Atlas lookup exposes its complete optional cell and trace result,
+with the callback consuming that same lookup. The remaining assembly obligation
+is to derive the resolved transport relation from every valid raw merge arrow;
+the unchecked data-action constructor does not yet supply that proof. Negative checks reject disjointness applied to the
 same cell and extent membership without an accepted source rank. The correspondence
 inventory includes the logical predicate and refinement-type aliases used to
 state these contracts. Atlas actions retain their native folio domain and a

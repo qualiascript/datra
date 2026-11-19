@@ -70,6 +70,7 @@ inductive SourceCell (X Y : Atlas) where
   | left (source : X.Element)
   | right (source : Y.Element)
 
+-- ALIGN: MERGE-SOURCE-CELL-MEMBERSHIP.
 def contains {X Y : Atlas} (source : SourceCell X Y) {cell : PageElementCell} : Datum cell → Bool :=
   match source with
   | .origin => fun
@@ -82,6 +83,7 @@ def contains {X Y : Atlas} (source : SourceCell X Y) {cell : PageElementCell} : 
       | .left _ => false
       | .right n => Y.cellContainsRank y n
 
+-- ALIGN: MERGE-SOURCE-CELL-MEMBERSHIP-RETAG.
 @[simp] theorem contains_retag {X Y : Atlas} (source : SourceCell X Y) {a b : PageElementCell}
     (datum : Datum a) : contains source (retag (target := b) datum) = contains source datum := by
   cases source <;> cases datum <;> rfl
@@ -181,6 +183,26 @@ inductive Transport {X Y : Atlas} : SourceCell X Y → SourceCell X Y → Prop
   | left {source target : X.Element} (arrow : source ⟶ target) : Transport (.left source) (.left target)
   | right {source target : Y.Element} (arrow : source ⟶ target) : Transport (.right source) (.right target)
 
+-- ALIGN: MERGE-SOURCE-CELL-TRANSPORT.
+def sourceTransport {X Y : Atlas} : SourceCell X Y → SourceCell X Y → Prop
+  | _, .origin => True
+  | .left source, .left target => source.val.precedes target.val ∧ source.val.transported target.val
+  | .right source, .right target => source.val.precedes target.val ∧ source.val.transported target.val
+  | _, _ => False
+
+theorem sourceTransport_iff {X Y : Atlas} (source target : SourceCell X Y) :
+    sourceTransport source target ↔ Transport source target := by
+  cases source <;> cases target <;> simp only [sourceTransport]
+  · exact ⟨fun _ => .origin, fun _ => trivial⟩
+  · exact ⟨False.elim, fun h => by cases h⟩
+  · exact ⟨False.elim, fun h => by cases h⟩
+  · exact ⟨fun _ => .leftOrigin _, fun _ => trivial⟩
+  · exact ⟨fun h => .left ⟨h.1, h.2⟩, fun h => by cases h with | left arrow => exact ⟨arrow.precedes, arrow.transported⟩⟩
+  · exact ⟨False.elim, fun h => by cases h⟩
+  · exact ⟨fun _ => .rightOrigin _, fun _ => trivial⟩
+  · exact ⟨False.elim, fun h => by cases h⟩
+  · exact ⟨fun h => .right ⟨h.1, h.2⟩, fun h => by cases h with | right arrow => exact ⟨arrow.precedes, arrow.transported⟩⟩
+
 theorem contains_transport {X Y : Atlas} {source target : SourceCell X Y}
     (arrow : Transport source target) {cell : PageElementCell} (datum : Datum cell)
     (valid : contains source datum = true) : contains target datum = true := by
@@ -203,12 +225,19 @@ theorem contains_transport {X Y : Atlas} {source target : SourceCell X Y}
     | left n => contradiction
     | right n => exact Y.cellContainsRank_preserved f n valid
 
+-- ALIGN: MERGE-SOURCE-CELL-MEMBERSHIP-PRESERVED.
+theorem contains_transport_retag {X Y : Atlas} {source target : SourceCell X Y}
+    (arrow : Transport source target) {a b : PageElementCell} (datum : Datum a)
+    (valid : contains source datum = true) : contains target (retag (target := b) datum) = true := by
+  rw [contains_retag]
+  exact contains_transport arrow datum valid
+
 -- ALIGN: MERGE-DATA-INSERTION.
 def dataMap {X Y : Atlas} {source target : SourceCell X Y} (arrow : Transport source target)
     (sourceCell targetCell : PageElementCell) :
     DomanialInsertion (CertifiedDatum source sourceCell) (CertifiedDatum target targetCell) :=
   acceptedInsertion (contains source) (contains target)
-    (fun datum valid => by simpa using contains_transport arrow datum valid)
+    (fun datum valid => contains_transport_retag arrow datum valid)
 
 
 abbrev ExtentData (X : Atlas) := X.cellData (FolioData.ValidElement.originElement X.pages).val.cell

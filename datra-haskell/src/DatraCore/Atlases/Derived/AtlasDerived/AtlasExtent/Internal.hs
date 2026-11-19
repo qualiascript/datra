@@ -6,7 +6,7 @@
 
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
-{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--ple-local" @-}
 {-@ LIQUID "--higherorder" @-}
 
 -- | Hidden implementation of Atlas extents and dependent cell dominions.
@@ -28,6 +28,8 @@ module AtlasExtent.Internal
   , cellContainsRankInExtent
   , withAtlasCellAt
   , withAtlasCellTrace
+  , atlasCellAt
+  , cellLookupTrace
   ) where
 
 import Atlas.Internal
@@ -78,6 +80,7 @@ data AtlasCellDominion
     -> AtlasCellDominion scope cellData
 
 {-@ reflect atlasCellDominionElement @-}
+{-@ ple atlasCellDominionElement @-}
 atlasCellDominionElement :: AtlasCellDominion scope cellData -> SomePageElement scope
 atlasCellDominionElement (AtlasCellDominion (occurrence, _)) = SomePageElement occurrence
 
@@ -104,6 +107,7 @@ withAtlasCellDominion
       -> {result:AtlasCellDominion scope cellData |
            atlasCellDominionElement result == Elements.originPageElement (atlasPageElements owner)
            && Elements.somePageElementTraceValid (atlasPageElements owner) (atlasCellDominionElement result)} @-}
+{-@ ple atlasExtent @-}
 atlasExtent
   :: Atlas atlasScope scope cellData origin final
   -> AtlasCellDominion scope cellData
@@ -117,6 +121,7 @@ atlasExtent valueAtlas =
 -- occurrences satisfy it; arbitrary raw traces do not.
 -- ALIGN: ATLAS-CELL-HAS-ORIGIN.
 {-@ reflect cellHasOrigin @-}
+{-@ ple cellHasOrigin @-}
 cellHasOrigin
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -129,9 +134,56 @@ cellHasOrigin valueAtlas source =
 -- | The occurrence's entire trace agrees with lookup in its owning folio.
 -- ALIGN: ATLAS-CELL-TRACE-VALIDITY.
 {-@ reflect cellTraceValid @-}
+{-@ ple cellTraceValid @-}
 cellTraceValid :: Atlas atlasScope scope cellData origin final -> PageElement scope object -> Bool
 cellTraceValid valueAtlas source =
   Elements.pageElementTraceValid (atlasPageElements valueAtlas) source
+
+-- | Observe the entire optional trace without exposing the cell's phantom.
+{-@ reflect cellLookupTrace @-}
+{-@ ple cellLookupTrace @-}
+cellLookupTrace :: Maybe (SomePageElement scope) -> Maybe [Ordinal]
+cellLookupTrace Nothing = Nothing
+cellLookupTrace (Just source) = Just (Trace.somePageElementTrace source)
+
+-- | A first-order lookup value shared by the callbacks and membership proofs.
+-- ALIGN: ATLAS-CELL-LOOKUP-VALUE.
+-- ALIGN: ATLAS-CELL-LOOKUP-VALUE-TRACE.
+{-@ opaque-reflect atlasCellAt @-}
+{-@ atlasCellAt :: owner:Atlas atlasScope scope cellData origin final
+      -> page:Natural -> position:Ordinal
+      -> {resolved:Maybe ({source:SomePageElement scope |
+           somePageElementPrecedes source (Elements.originPageElement (atlasPageElements owner))
+           && somePageElementTransported source (Elements.originPageElement (atlasPageElements owner))
+           && Elements.somePageElementTraceValid (atlasPageElements owner) source
+           && Trace.somePageElementPage source == page
+           && Trace.somePageElementPosition source == position
+           && Elements.folioTraceLookup (Elements.pageElementsFolio (atlasPageElements owner)) page position
+                == Just (Trace.somePageElementTrace source)
+           && len (Trace.somePageElementTrace source) == page + 1
+           && Trace.traceStartsWith position (Trace.somePageElementTrace source)}) |
+             cellLookupTrace resolved
+               == Elements.folioTraceLookup (Elements.pageElementsFolio (atlasPageElements owner)) page position
+             && Elements.traceLookupPresent resolved == Elements.traceLookupPresent
+                  (Elements.folioTraceLookup (Elements.pageElementsFolio (atlasPageElements owner)) page position)} @-}
+{-@ ple atlasCellAt @-}
+atlasCellAt :: Atlas atlasScope scope cellData origin final -> Natural -> Ordinal
+  -> Maybe (SomePageElement scope)
+atlasCellAt owner page position =
+  case Elements.pageElementIndex (atlasPageElements owner) page position of
+    Nothing -> Nothing
+    Just index -> Just (atlasPageCell owner index)
+
+-- | Recover the cell predicates without unfolding the owning Atlas in a callback.
+{-@ cellEvidenceFromSome :: owner:Atlas a s d o f -> source:PageElement s object
+      -> {cellHasOrigin owner source ==
+            (somePageElementPrecedes (SomePageElement source) (Elements.originPageElement (atlasPageElements owner))
+             && somePageElementTransported (SomePageElement source) (Elements.originPageElement (atlasPageElements owner)))
+           && cellTraceValid owner source ==
+                Elements.somePageElementTraceValid (atlasPageElements owner) (SomePageElement source)} @-}
+{-@ ple cellEvidenceFromSome @-}
+cellEvidenceFromSome :: Atlas a s d o f -> PageElement s object -> ()
+cellEvidenceFromSome _ _ = ()
 
 -- | Resolve a dynamic page position and retain its checked origin arrow
 -- while the caller consumes the existential cell identity.
@@ -155,11 +207,15 @@ withAtlasCellAt
   -> (forall object. PageElement scope object -> result)
   -> Maybe result
 withAtlasCellAt valueAtlas page position useCell =
-  case Elements.pageElementIndex (atlasPageElements valueAtlas) page position of
-    Nothing -> Nothing
-    Just index ->
-      Elements.withPageElement (atlasPageCell valueAtlas index) $ \source ->
-        Just (useCell source)
+  let resolved = atlasCellAt valueAtlas page position
+  in case resolved of
+    Nothing -> Elements.traceLookupPresent resolved `seq`
+      Elements.traceLookupPresent (Nothing :: Maybe ()) `seq` Nothing
+    Just selected -> Elements.withPageElement selected $ \source ->
+      cellEvidenceFromSome valueAtlas source `seq`
+      Elements.traceLookupPresent resolved `seq`
+      let result = Just (useCell source)
+      in Elements.traceLookupPresent result `seq` result
 
 -- | Consume an accepted native trace without losing its exact cell evidence.
 -- ALIGN: ATLAS-CELL-TRACE-RESOLUTION.
@@ -173,6 +229,7 @@ withAtlasCellAt valueAtlas page position useCell =
              && pageElementTrace source == positions}
             -> result)
       -> {resolved:Maybe result | Elements.traceLookupPresent resolved} @-}
+{-@ ple withAtlasCellTrace @-}
 withAtlasCellTrace
   :: Atlas atlasScope scope cellData origin final -> Natural -> [Ordinal]
   -> (forall object. PageElement scope object -> result) -> Maybe result
@@ -187,6 +244,7 @@ withAtlasCellTrace valueAtlas page positions useCell =
       :: valueAtlas:Atlas atlasScope scope cellData origin final
       -> source:{PageElement scope object | cellHasOrigin valueAtlas source && cellTraceValid valueAtlas source}
       -> DomanialInsertion ({datum:cellData object | atlasAcceptsDatum valueAtlas source datum}) Natural @-}
+{-@ ple atlasCellOriginRankInsertion @-}
 atlasCellOriginRankInsertion
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -203,6 +261,7 @@ atlasCellOriginRankInsertion valueAtlas source =
       :: valueAtlas:Atlas atlasScope scope cellData origin final
       -> source:{PageElement scope object | cellHasOrigin valueAtlas source && cellTraceValid valueAtlas source}
       -> Natural -> Bool @-}
+{-@ ple cellContainsRank @-}
 cellContainsRank
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -215,6 +274,7 @@ cellContainsRank valueAtlas source valueRank =
 
 -- ALIGN: ATLAS-EXTENT-CONTAINS-RANK.
 {-@ reflect extentContainsRank @-}
+{-@ ple extentContainsRank @-}
 extentContainsRank
   :: Atlas atlasScope scope cellData origin final
   -> Natural
@@ -233,6 +293,7 @@ extentContainsRank valueAtlas valueRank =
       -> datum:{cellData object | atlasAcceptsDatum valueAtlas source datum}
       -> {cellContainsRank valueAtlas source
             (applyInsertion (atlasCellOriginRankInsertion valueAtlas source) datum)} @-}
+{-@ ple cellContainsRankImage @-}
 cellContainsRankImage
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object -> cellData object -> ()
@@ -250,6 +311,7 @@ cellContainsRankImage valueAtlas source datum =
            preimage (atlasCellOriginRankInsertion valueAtlas source) valueRank == Just datum
            && atlasAcceptsDatum valueAtlas source datum}
       -> {applyInsertion (atlasCellOriginRankInsertion valueAtlas source) datum == valueRank} @-}
+{-@ ple cellOriginRankPreimageSound @-}
 cellOriginRankPreimageSound
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object -> Natural -> cellData object -> ()
@@ -272,6 +334,7 @@ cellOriginRankPreimageSound valueAtlas source valueRank datum =
       -> {applyInsertion (atlasCellOriginRankInsertion valueAtlas (arrowTarget arrow))
             (applyInsertion (mapAtlasData valueAtlas arrow) datum)
            == applyInsertion (atlasCellOriginRankInsertion valueAtlas (arrowSource arrow)) datum} @-}
+{-@ ple cellOriginRankMap @-}
 cellOriginRankMap
   :: Atlas atlasScope scope cellData origin final
   -> PageElementArrow scope source target -> cellData source -> ()
@@ -292,6 +355,7 @@ cellOriginRankMap valueAtlas arrow datum =
            && cellTraceValid valueAtlas (arrowTarget arrow)}
       -> valueRank:{Natural | cellContainsRank valueAtlas (arrowSource arrow) valueRank}
       -> {cellContainsRank valueAtlas (arrowTarget arrow) valueRank} @-}
+{-@ ple cellContainsRankPreserved @-}
 cellContainsRankPreserved
   :: Atlas atlasScope scope cellData origin final
   -> PageElementArrow scope source target -> Natural -> ()
@@ -318,6 +382,7 @@ cellContainsRankPreserved valueAtlas arrow valueRank =
            && pageElementPosition right /= pageElementPosition left}
       -> valueRank:{Natural | cellContainsRank valueAtlas left valueRank}
       -> {not (cellContainsRank valueAtlas right valueRank)} @-}
+{-@ ple cellContainsRankDisjoint @-}
 cellContainsRankDisjoint
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope leftObject -> PageElement scope rightObject
@@ -349,6 +414,7 @@ cellContainsRankDisjoint valueAtlas left right valueRank =
       -> source:{PageElement scope object | cellHasOrigin valueAtlas source && cellTraceValid valueAtlas source}
       -> valueRank:{Natural | cellContainsRank valueAtlas source valueRank}
       -> {extentContainsRank valueAtlas valueRank} @-}
+{-@ ple cellContainsRankInExtent @-}
 cellContainsRankInExtent
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object -> Natural -> ()

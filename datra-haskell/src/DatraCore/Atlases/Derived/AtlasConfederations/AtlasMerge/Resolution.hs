@@ -10,18 +10,21 @@
 module AtlasMerge.Resolution
   ( withMergeNativeCell
   , mergeSourceCell
+  , resolveMergeCell
+  , mergeResolvedAt
   , mergeCellContains
   ) where
 
 import Atlas.Internal (Atlas, atlasFolio)
 import qualified AtlasExtent.Internal as Extent hiding
   (atlasCellOriginRankInsertion, cellContainsRankImage, cellOriginRankPreimageSound)
+import AtlasMerge.Source (AtlasMergeSource (..), leftMergeSource, rightMergeSource, mergeSourceValid, mergeSourceContains)
 import AtlasMerge.Data (AtlasMergeDatum (..))
 import AtlasMerge.Page (AtlasMergePageCell (..), atlasMergePageChain, mergePageContains, mergePagePosition)
 import Chain (chainIndex, chainObjectAt)
 import PageElements.Internal (traceLookupPresent, folioPageOrderType)
 import Numeric.Natural (Natural)
-import PageElements.Structure (PageElement (..))
+import PageElements.Structure (PageElement (..), SomePageElement (..))
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -74,20 +77,50 @@ mergeSourceCell
   -> (forall source. PageElement ls source -> result)
   -> (forall source. PageElement rs source -> result)
   -> Maybe result
-mergeSourceCell left right occurrence atOrigin useLeft useRight
-  | pageElementPage occurrence == 0 = Just atOrigin
+mergeSourceCell left right occurrence atOrigin useLeft useRight =
+  case resolveMergeCell left right occurrence of
+    Nothing -> Nothing
+    Just MergeOrigin -> Just atOrigin
+    Just (MergeLeftSource (SomePageElement source)) -> Just (useLeft source)
+    Just (MergeRightSource (SomePageElement source)) -> Just (useRight source)
+
+-- | The resolved cell has the same page and encoded position as the request.
+{-@ reflect mergeResolvedAt @-}
+mergeResolvedAt :: Atlas la ls ld lo lf -> PageElement ms object -> AtlasMergeSource ls rs -> Bool
+mergeResolvedAt _ occurrence MergeOrigin = pageElementPage occurrence == 0
+mergeResolvedAt left occurrence (MergeLeftSource (SomePageElement source)) =
+  pageElementPage source + 1 == pageElementPage occurrence
+    && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage source))
+         (AtlasMergeLeftCell (pageElementTrace source)) == pageElementPosition occurrence
+mergeResolvedAt left occurrence (MergeRightSource (SomePageElement source)) =
+  pageElementPage source + 1 == pageElementPage occurrence
+    && mergePagePosition (folioPageOrderType (atlasFolio left) (pageElementPage source))
+         (AtlasMergeRightCell (pageElementTrace source)) == pageElementPosition occurrence
+
+-- | Keep the successful callback as an explicit value for the data action.
+-- ALIGN: MERGE-RESOLVED-LOOKUP-VALUE.
+{-@ opaque-reflect resolveMergeCell @-}
+{-@ resolveMergeCell :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> occurrence:PageElement ms object
+      -> Maybe ({source:AtlasMergeSource ls rs | mergeSourceValid left right source
+           && mergeResolvedAt left occurrence source}) @-}
+resolveMergeCell :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> PageElement ms object
+  -> Maybe (AtlasMergeSource ls rs)
+resolveMergeCell left right occurrence
+  | pageElementPage occurrence == 0 = Just MergeOrigin
   | otherwise =
-      let componentPage :: Natural
-          componentPage = pageElementPage occurrence - 1
+      let componentPage = pageElementPage occurrence - 1
           position = pageElementPosition occurrence
       in case chainIndex (atlasMergePageChain left right componentPage) position of
           Nothing -> Nothing
           Just componentIndex ->
-            withMergeNativeCell left right componentPage (chainObjectAt componentIndex) useLeft useRight
+            withMergeNativeCell left right componentPage (chainObjectAt componentIndex)
+              (leftMergeSource left right) (rightMergeSource left right)
 
 -- ALIGN: MERGE-CELL-MEMBERSHIP.
 -- ALIGN: MERGE-RESOLVED-CELL.
 -- ALIGN: MERGE-BOUQUET-MEMBERSHIP.
+{-@ reflect mergeCellContains @-}
 mergeCellContains
   :: Atlas la ls ld lo lf
   -> Atlas ra rs rd ro rf
@@ -95,15 +128,6 @@ mergeCellContains
   -> AtlasMergeDatum datumObject
   -> Bool
 mergeCellContains left right occurrence datum =
-  case mergeSourceCell left right occurrence
-    (case datum of
-      AtlasMergeLeftDatum valueRank -> Extent.extentContainsRank left valueRank
-      AtlasMergeRightDatum valueRank -> Extent.extentContainsRank right valueRank)
-    (\source -> case datum of
-      AtlasMergeLeftDatum valueRank -> Extent.cellContainsRank left source valueRank
-      AtlasMergeRightDatum _ -> False)
-    (\source -> case datum of
-      AtlasMergeLeftDatum _ -> False
-      AtlasMergeRightDatum valueRank -> Extent.cellContainsRank right source valueRank) of
+  case resolveMergeCell left right occurrence of
     Nothing -> False
-    Just contains -> contains
+    Just source -> mergeSourceContains left right source datum

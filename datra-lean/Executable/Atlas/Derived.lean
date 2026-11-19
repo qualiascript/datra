@@ -219,24 +219,50 @@ def Atlas.cellHasOrigin (X : Atlas) (source : PageElement X.pages) : Prop :=
 theorem Atlas.validCell_hasOrigin (X : Atlas) (source : X.Element) : X.cellHasOrigin source.val :=
   ⟨source.toOrigin.precedes, source.toOrigin.transported⟩
 
+/-- The optional resolved cell, before a callback consumes its hidden identity. -/
+-- ALIGN: ATLAS-CELL-LOOKUP-VALUE.
+def Atlas.cellAt (X : Atlas) (page : Nat) (position : Ordinal) : Option X.Element :=
+  X.pages.elementAt page position
+
+-- ALIGN: ATLAS-CELL-LOOKUP-VALUE-TRACE.
+theorem Atlas.cellAt_traceLookup (X : Atlas) (page : Nat) (position : Ordinal) :
+    (X.cellAt page position).map (fun source => source.val.trace) = X.pages.traceLookup page position := by
+  cases found : X.cellAt page position with
+  | none =>
+      cases lookup : X.pages.traceLookup page position with
+      | none => rfl
+      | some positions =>
+          have bounded := X.pages.traceLookup_bounded X.pagination.folio.valid page position
+          have present := X.pages.elementAt_isSome page position
+          change X.pages.elementAt page position = none at found
+          rw [lookup] at bounded
+          rw [found] at present
+          simp_all
+  | some source =>
+      have accepted := source.traceValid X.pagination.folio.valid
+      simp only [FolioData.traceValid, decide_eq_true_eq] at accepted
+      have location := X.pages.elementAt_page_position page position source found
+      rw [location.1, location.2] at accepted
+      exact accepted.symm
+
 /-- Consume a dynamically looked-up cell with the origin-arrow evidence
 retained through the existential callback in Haskell. -/
 -- ALIGN: ATLAS-CELL-LOOKUP-ORIGIN.
 def Atlas.withCellAt {result : Type*} (X : Atlas) (page : Nat) (position : Ordinal)
     (useCell : (source : PageElement X.pages) → X.cellHasOrigin source → result) : Option result :=
-  (X.pages.elementAt page position).map fun source => useCell source.val (X.validCell_hasOrigin source)
+  (X.cellAt page position).map fun source => useCell source.val (X.validCell_hasOrigin source)
 
 theorem Atlas.withCellAt_roundtrip {result : Type*} (X : Atlas) (source : X.Element)
     (useCell : (source : PageElement X.pages) → X.cellHasOrigin source → result) :
     X.withCellAt source.val.page source.val.position useCell =
       some (useCell source.val (X.validCell_hasOrigin source)) := by
-  simp only [Atlas.withCellAt, FolioData.elementAt_roundtrip, Option.map_some]
+  simp only [Atlas.withCellAt, Atlas.cellAt, FolioData.elementAt_roundtrip, Option.map_some]
 
 theorem Atlas.withCellAt_isSome {result : Type*} (X : Atlas) (page : Nat) (position : Ordinal)
     (useCell : (source : PageElement X.pages) → X.cellHasOrigin source → result) :
     (X.withCellAt page position useCell).isSome =
       Ordinal.ordinalLT position (X.pages.pageAt page).chain.orderType := by
-  simp only [Atlas.withCellAt, Option.isSome_map, FolioData.elementAt_isSome]
+  simp only [Atlas.withCellAt, Atlas.cellAt, Option.isSome_map, FolioData.elementAt_isSome]
 
 theorem Atlas.elementAt_trace (X : Atlas) (page : Nat) (positions : X.pages.TraceCarrier page)
     (source : X.Element)

@@ -716,6 +716,19 @@ proofGuard = sequenceDatumMap (const True) (const False) (const ())
 
 EXTENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs"
 EXTENT_GUARDS = {
+    "explicit Atlas lookup cannot discard its trace result": """
+{-@ proofGuard :: owner:Atlas a s d o f -> page:Natural
+      -> positions:{[Ordinal] | pageTraceContains (Elements.pageElementsFolio (atlasPageElements owner)) page positions}
+      -> {resolved:Maybe (SomePageElement s) | cellLookupTrace resolved == Nothing} @-}
+proofGuard :: Atlas a s d o f -> Natural -> [Ordinal] -> Maybe (SomePageElement s)
+proofGuard owner page positions = atlasCellAt owner page (traceHead positions)
+""",
+    "explicit Atlas lookup cannot shift its returned page": """
+{-@ proofGuard :: owner:Atlas a s d o f -> page:Natural -> Ordinal
+      -> Maybe ({source:SomePageElement s | Trace.somePageElementPage source == page + 1}) @-}
+proofGuard :: Atlas a s d o f -> Natural -> Ordinal -> Maybe (SomePageElement s)
+proofGuard = atlasCellAt
+""",
     "native Atlas trace lookup requires an accepted trace": """
 proofGuard :: Atlas atlasScope scope cellData origin final -> Natural -> [Ordinal] -> Maybe ()
 proofGuard valueAtlas page positions = withAtlasCellTrace valueAtlas page positions (\\_ -> ())
@@ -1141,6 +1154,29 @@ proofGuard left other right occurrence =
 """,
 }
 
+MERGE_CELL_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Source.hs"
+MERGE_CELL_GUARDS = {
+    "resolved merge membership requires component transport": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> source:{AtlasMergeSource ls rs | mergeSourceValid left right source}
+      -> target:{AtlasMergeSource ls rs | mergeSourceValid left right target}
+      -> datum:{AtlasMergeDatum object | mergeSourceContains left right source datum} -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+  -> AtlasMergeSource ls rs -> AtlasMergeSource ls rs -> AtlasMergeDatum object -> ()
+proofGuard = mergeSourceContainsPreserved
+""",
+    "resolved merge membership cannot cross components": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> source:{PageElement ls a | Extent.cellHasOrigin left source && Extent.cellTraceValid left source}
+      -> target:{PageElement rs b | Extent.cellHasOrigin right target && Extent.cellTraceValid right target}
+      -> datum:{AtlasMergeDatum object | mergeSourceContains left right (leftMergeSource left right source) datum} -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+  -> PageElement ls a -> PageElement rs b -> AtlasMergeDatum object -> ()
+proofGuard left right source target datum = mergeSourceContainsPreserved left right
+  (leftMergeSource left right source) (rightMergeSource left right target) datum
+""",
+}
+
 SEQUENCE_RESOLUTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence/Resolution.hs"
 SEQUENCE_RESOLUTION_GUARDS = {
     "native sequence resolution requires an accepted cell": """
@@ -1224,6 +1260,7 @@ def run(pattern=None):
                                     (ATLAS_DATA_SOURCE, ATLAS_DATA_GUARDS),
                                     (MEMBERSHIP_DOMINION_SOURCE, MEMBERSHIP_DOMINION_GUARDS),
                                     (MERGE_RESOLUTION_SOURCE, MERGE_RESOLUTION_GUARDS),
+                                    (MERGE_CELL_SOURCE, MERGE_CELL_GUARDS),
                                     (SEQUENCE_RESOLUTION_SOURCE, SEQUENCE_RESOLUTION_GUARDS)]:
             source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
                             f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
