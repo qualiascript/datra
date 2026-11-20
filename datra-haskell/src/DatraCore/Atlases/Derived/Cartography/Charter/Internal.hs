@@ -73,11 +73,11 @@ import Atlas.Internal
   , atlasWithScope
   )
 import AtlasCoveredPageElement.Internal
-  ( AtlasCoverageWitness (..)
-  , findAtlasCoverage
+  ( findAtlasCoverage
   , findAtlasCoverageRank
   )
-import AtlasCoveredPageElement (atlasCoverageAt, atlasCoverageWitness)
+import AtlasCoveredPageElement
+  ( AtlasCoverageWitness, atlasCoverageAt, atlasCoverageWitness, withAtlasCoverageWitness )
 import AtlasMap (AtlasMap, atlasMap, atlasMapAtlas, atlasMapCoversDatum)
 import AtlasTransposal
   ( AtlasTransposalElement
@@ -239,8 +239,8 @@ chartCoverageWitness
   -> AtlasCoverageWitness
        (ChartedAtlasObject (AtlasObject atlasScope scope cellData))
 chartCoverageWitness valueAtlas source covered =
-  case findAtlasCoverage valueAtlas source (chartedCellDataValue covered) of
-    AtlasCoverageWitness region regionDatum _ _ ->
+  withAtlasCoverageWitness
+    (findAtlasCoverage valueAtlas source (chartedCellDataValue covered)) $ \region regionDatum ->
       atlasCoverageWitness
         (chartAtlas valueAtlas)
         source

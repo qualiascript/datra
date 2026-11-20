@@ -4620,6 +4620,13 @@
       "haskell_declaration": "atlasCoveredAt",
       "lean_namespace": "Datra.Executable.Atlas",
       "lean_declaration": "atlasCoveredAt"
+    },
+    {
+      "id": "ATLAS-COVERAGE-VALIDATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "coverageWitnessValid",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coverageWitnessValid_iff"
     }
   ],
   "modules": [
@@ -5424,28 +5431,38 @@
       "module": "AtlasCoveredPageElement.Internal",
       "types": [
         "AtlasCoverageWitness",
+        "CoverageRegionData",
         "AtlasCoveredPageElement"
       ],
       "reflected": [
+        "coverageWitnessOriginRank",
         "atlasOriginImageRank",
         "coveragePage",
         "coverageNormalize",
         "coverageFinalPage",
+        "coverageWitnessValid",
+        "coverageRegionDataValid",
         "coverageWitnessCovers",
+        "coverageWitnessAtRank",
         "withAtlasCoveredPageElement",
         "coverageResultCovers"
       ],
       "refinements": [
         "atlasOriginImageRank",
         "coverageWitnessAlongArrow",
+        "coverageRegionWitness",
         "atlasCoverageWitness",
         "atlasCoveredPageElement",
         "findAtlasCoverage",
         "findAtlasCoverageRank",
         "atlasCoveredPageElementAt",
         "atlasCoverageAt",
+        "coverageAtRegion",
+        "coveragePair",
         "searchAtlasCoverageFrom",
-        "coverageCandidate"
+        "coverageCandidate",
+        "coverageCandidateAtRegion",
+        "coverageMaybe"
       ],
       "lean_target": "Datra.Executable.Atlas.CoverageWitness",
       "coverage": "aligned",

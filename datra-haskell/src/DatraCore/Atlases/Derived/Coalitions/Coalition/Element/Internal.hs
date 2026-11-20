@@ -19,9 +19,11 @@ import Atlas
   ( Atlas, AtlasObject, AtlasObjectCellData, AtlasObjectPaginationScope
   , atlasOriginCell, mapAtlasData )
 import AtlasCoveredPageElement.Internal
-  ( AtlasCoveredPageElement (..), AtlasCoverageWitness (..)
+  ( AtlasCoveredPageElement (..)
   , findAtlasCoverageRank )
-import AtlasCoveredPageElement (atlasCoverageAt, atlasCoverageWitness)
+import AtlasCoveredPageElement
+  ( AtlasCoverageWitness, atlasCoverageAt, atlasCoverageWitness
+  , withAtlasCoverageWitness, coverageWitnessOriginRank )
 import AtlasTransversal (AtlasTransversal, mapAtlasTransversalCoveredPageElement)
 import DomanialInsertion (applyInsertion)
 import Dominion (Dominion, dominion)
@@ -53,9 +55,6 @@ coalitionElement
   -> CoalitionElement atlasObject
 coalitionElement = CoalitionElement
 
-coalitionCoverageRank :: AtlasCoverageWitness atlasObject -> Natural
-coalitionCoverageRank (AtlasCoverageWitness _ _ _ originRank) = originRank
-
 instance Eq (CoalitionElement atlasObject) where
   (==) = coalitionElementsEqual
 
@@ -66,13 +65,13 @@ coalitionElementsEqual left right = coalitionElementRank left == coalitionElemen
 instance Show (CoalitionElement atlasObject) where
   showsPrec _ (CoalitionElement _ _ coverage) =
     showString "CoalitionElement "
-      . shows (coalitionCoverageRank coverage)
+      . shows (coverageWitnessOriginRank coverage)
 
 -- | The rank of the underlying datum in the uncharted origin dominion.
 -- ALIGN: COALITION-CACHED-RANK.
 coalitionElementRank :: CoalitionElement atlasObject -> Natural
 coalitionElementRank (CoalitionElement _ _ coverage) =
-  coalitionCoverageRank coverage
+  coverageWitnessOriginRank coverage
 
 -- | Eliminate a coalition element at its exact dependent origin cell.
 -- ALIGN: COALITION-CONSTRUCTOR-ELIM.
@@ -111,8 +110,7 @@ coalitionElementCoverageAt
   -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
 coalitionElementCoverageAt valueAtlas target
     element@(CoalitionElement _ _ coverage) =
-  case coverage of
-    AtlasCoverageWitness region regionDatum _ _ ->
+  withAtlasCoverageWitness coverage $ \region regionDatum ->
       atlasCoverageWitness
         valueAtlas
         target
@@ -164,9 +162,7 @@ mapCoalitionElement targetAtlas transversal
                     (pageElementArrow mappedOrigin targetOrigin)
                 targetDatum =
                   applyInsertion toCanonicalOrigin mappedDatum
-            in case targetCoverage of
-                AtlasCoverageWitness
-                  targetRegion targetRegionDatum _ _ ->
+            in withAtlasCoverageWitness targetCoverage $ \targetRegion targetRegionDatum ->
                     CoalitionElement
                       targetOrigin
                       targetDatum

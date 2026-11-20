@@ -847,6 +847,25 @@ proofGuard sourceAtlas targetAtlas ordered badCoverage =
 """,
 }
 
+COVERAGE_REPRESENTATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs"
+COVERAGE_REPRESENTATION_GUARDS = {
+    "coverage witnesses reject matching caches on a nonfinal region": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> region:{PageElement s other | cellTraceValid owner region
+           && coveragePage region /= coverageFinalPage owner}
+      -> regionDatum:{d other | atlasAcceptsDatum owner region regionDatum}
+      -> {w:AtlasCoverageWitness (AtlasObject a s d) |
+           coverageWitnessCovers owner source datum w} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object
+  -> PageElement s other -> d other -> AtlasCoverageWitness (AtlasObject a s d)
+proofGuard owner source datum region regionDatum =
+  AtlasCoverageWitness (CoverageRegionData region regionDatum
+    (coverageFinalPage owner) (atlasOriginImageRank owner source datum))
+""",
+}
+
 COVERED_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/AtlasCoveredPageElement.hs"
 COVERED_API_GUARDS = {
     "coverage decoding rejects attaching its witness to another source": """
@@ -1597,6 +1616,7 @@ def run(pattern=None):
                                     (COALITION_ELEMENT_SOURCE, COALITION_ELEMENT_GUARDS),
                                     (TRANSVERSAL_SOURCE, TRANSVERSAL_GUARDS),
                                     (COVERED_API_SOURCE, COVERED_API_GUARDS),
+                                    (COVERAGE_REPRESENTATION_SOURCE, COVERAGE_REPRESENTATION_GUARDS),
                                     (ATLAS_MAP_SOURCE, ATLAS_MAP_GUARDS),
                                     (CHARTER_SOURCE, CHARTER_GUARDS),
                                     (RANK_IMAGE_SOURCE, RANK_IMAGE_GUARDS),

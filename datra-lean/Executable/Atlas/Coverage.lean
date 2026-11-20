@@ -14,10 +14,26 @@ structure CoverageWitness (X : Atlas) where
   regionPage : Nat
   regionOriginRank : Nat
 
+-- ALIGN: ATLAS-COVERAGE-VALIDATION.
+def coverageWitnessValid (X : Atlas) (witness : X.CoverageWitness) : Bool :=
+  witness.region.val.page == X.coverageFinalPage &&
+    (witness.regionPage == witness.region.val.page &&
+      witness.regionOriginRank == X.originImageRank witness.region witness.datum)
+
+def withAtlasCoverageWitness {X : Atlas} {result : Sort*}
+    (witness : X.CoverageWitness)
+    (useRegion : (region : X.Element) → X.cellData region.val.cell → result) : result :=
+  useRegion witness.region witness.datum
+
+def coverageWitnessOriginRank {X : Atlas} (witness : X.CoverageWitness) : Nat :=
+  witness.regionOriginRank
+
+
 def coverageWitnessCovers (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) (witness : X.CoverageWitness) : Bool :=
-  witness.regionPage == X.coverageFinalPage &&
-    X.originImageRank source datum == witness.regionOriginRank
+  X.coverageWitnessValid witness &&
+    (witness.regionPage == X.coverageFinalPage &&
+      X.originImageRank source datum == witness.regionOriginRank)
 
 -- ALIGN: ATLAS-COVERAGE-TRANSPORT.
 -- Transport preserves the origin image, so the cached witness covers both data.
@@ -40,6 +56,49 @@ def CoverageRegion.witness {X : Atlas} (region : X.CoverageRegion) : X.CoverageW
 def CoverageWitness.Valid {X : Atlas} (witness : X.CoverageWitness) : Prop :=
   ∃ region : X.CoverageRegion, witness = region.witness
 
+@[simp] theorem CoverageRegion.witness_valid {X : Atlas} (region : X.CoverageRegion) :
+    X.coverageWitnessValid region.witness = true := by
+  have page : (X.territory region.1).element.val.page = X.coverageFinalPage := rfl
+  simp [coverageWitnessValid, CoverageRegion.witness, page]
+
+@[simp] theorem CoverageRegion.witness_covers {X : Atlas} (source : X.Element)
+    (datum : X.cellData source.val.cell) (region : X.CoverageRegion) :
+    X.coverageWitnessCovers source datum region.witness =
+      (X.originImageRank source datum ==
+        X.originImageRank (X.territory region.1).element region.2) := by
+  rw [coverageWitnessCovers, region.witness_valid]
+  simp [CoverageRegion.witness]
+
+theorem CoverageWitness.Valid.checked {X : Atlas} {witness : X.CoverageWitness}
+    (valid : witness.Valid) : X.coverageWitnessValid witness = true := by
+  obtain ⟨region, rfl⟩ := valid
+  exact region.witness_valid
+
+-- The executable validator recovers the existential territory representative.
+theorem coverageWitnessValid_iff (X : Atlas) (witness : X.CoverageWitness) :
+    X.coverageWitnessValid witness = true ↔ witness.Valid := by
+  constructor
+  · rcases witness with ⟨region, datum, cachedPage, cachedRank⟩
+    intro checked
+    simp only [coverageWitnessValid, Bool.and_eq_true, beq_iff_eq] at checked
+    obtain ⟨atFinal, page, valueRank⟩ := checked
+    obtain ⟨index, hi⟩ := FolioData.ValidElement.lastElement_surjective X.pages region atFinal
+    subst cachedPage
+    subst cachedRank
+    have construct (r : X.Element) (value : X.cellData r.val.cell)
+        (h : (X.territory index).element = r) :
+        (⟨r, value, r.val.page, X.originImageRank r value⟩ : X.CoverageWitness).Valid := by
+      subst r
+      exact ⟨⟨index, value⟩, rfl⟩
+    exact construct region datum hi
+  · exact CoverageWitness.Valid.checked
+
+theorem coverageWitnessCovers_valid {X : Atlas} {source : X.Element}
+    {datum : X.cellData source.val.cell} {witness : X.CoverageWitness}
+    (covers : X.coverageWitnessCovers source datum witness = true) : witness.Valid := by
+  simp only [coverageWitnessCovers, Bool.and_eq_true] at covers
+  exact (coverageWitnessValid_iff X witness).mp covers.1
+
 theorem CoverageWitness.Valid.covered {X : Atlas} {witness : X.CoverageWitness}
     (valid : witness.Valid) : X.Covered witness.region witness.datum := by
   obtain ⟨⟨index, datum⟩, rfl⟩ := valid
@@ -59,7 +118,7 @@ theorem CoverageWitness.Valid.originImage_eq {X : Atlas} {source : X.Element}
     X.originImage source datum = X.originImage witness.region witness.datum := by
   obtain ⟨⟨index, regionDatum⟩, rfl⟩ := valid
   apply (X.originImageRank_eq_iff _ _ _ _).mp
-  simpa [coverageWitnessCovers, CoverageRegion.witness] using covers
+  simpa only [CoverageRegion.witness_covers, beq_iff_eq] using covers
 
 -- ALIGN: ATLAS-COVERAGE-WITNESS-SOUND.
 theorem coverageWitnessCovers_sound {X : Atlas} {source : X.Element}
@@ -67,7 +126,7 @@ theorem coverageWitnessCovers_sound {X : Atlas} {source : X.Element}
     (valid : witness.Valid) (covers : X.coverageWitnessCovers source datum witness = true) :
     X.Covered source datum := by
   obtain ⟨⟨index, regionDatum⟩, rfl⟩ := valid
-  exact ⟨index, regionDatum, by simpa [coverageWitnessCovers, CoverageRegion.witness] using covers⟩
+  exact ⟨index, regionDatum, by simpa only [CoverageRegion.witness_covers, beq_iff_eq] using covers⟩
 
 /-- The checked public constructor stores the normalized region and caches
 computed from that region, exactly as atlasCoverageWitness does. -/
@@ -97,7 +156,7 @@ theorem atlasCoverageWitness_spec (X : Atlas) (source region : X.Element)
       subst r
       exact ⟨⟨index, datum⟩, rfl⟩
     exact construct region.normalize regionDatum hi
-  · simp [coverageWitnessCovers, atlasCoverageWitness, conditions.1, conditions.2]
+  · simp [coverageWitnessCovers, coverageWitnessValid, atlasCoverageWitness, conditions.1, conditions.2]
 
 structure CoveredPageElement (X : Atlas) where
   source : X.Element
@@ -113,10 +172,10 @@ def CoveredPageElement.Valid {X : Atlas} (covered : X.CoveredPageElement) : Prop
 
 -- ALIGN: ATLAS-COVERED-BY-WITNESS.
 def atlasCoveredByWitness (X : Atlas) (source : X.Element)
-    (datum : X.cellData source.val.cell) (witness : {w : X.CoverageWitness // w.Valid})
-    (covers : X.coverageWitnessCovers source datum witness.val = true) :
+    (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
+    (covers : X.coverageWitnessCovers source datum witness = true) :
     {covered : X.CoveredPageElement // covered.Valid} :=
-  ⟨⟨source, datum, witness.val⟩, witness.property, covers⟩
+  ⟨⟨source, datum, witness⟩, coverageWitnessCovers_valid covers, covers⟩
 
 def atlasCoveredPageElement (X : Atlas) (source region : X.Element)
     (sourceDatum : X.cellData source.val.cell) (regionDatum : X.cellData region.val.cell)
@@ -210,7 +269,7 @@ theorem coverageCandidate_sound {X : Atlas} {source : X.Element}
       split at h
       · rename_i he
         cases Option.some.inj h
-        exact ⟨⟨region, rfl⟩, by simp [coverageWitnessCovers, CoverageRegion.witness, he]⟩
+        exact ⟨⟨region, rfl⟩, by simp [he]⟩
       · simp at h
 
 -- ALIGN: ATLAS-COVERAGE-CANDIDATE-COMPLETE.
@@ -291,7 +350,7 @@ theorem coverageAt_sound {X : Atlas} {source : X.Element} {candidate : Nat}
           · rename_i he
             have hh := Prod.mk.inj (Option.some.inj h)
             obtain ⟨rfl, rfl⟩ := hh
-            exact ⟨⟨region, rfl⟩, by simp [coverageWitnessCovers, CoverageRegion.witness, he]⟩
+            exact ⟨⟨region, rfl⟩, by simp [he]⟩
           · simp at h
 
 -- ALIGN: ATLAS-COVERED-DECODE.
@@ -300,7 +359,7 @@ def atlasCoveredAt (X : Atlas) (source : X.Element) (candidate : Nat) :
   match h : X.coverageAt source candidate with
   | none => none
   | some (datum, witness) =>
-    some (X.atlasCoveredByWitness source datum ⟨witness, (coverageAt_sound h).1⟩
+    some (X.atlasCoveredByWitness source datum witness
       (coverageAt_sound h).2)
 
 -- ALIGN: ATLAS-COVERAGE-DECODE-COMPLETE.

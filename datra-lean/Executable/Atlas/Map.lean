@@ -26,7 +26,7 @@ def withExtent {Result : Sort*} (value : AtlasMap X)
       (owner.cellData extent.val.cell → owner.CertifiedCoveredElement) → Result) : Result :=
   useExtent X rfl value.extent (X.dataAt value.extent) (fun datum =>
     X.atlasCoveredByWitness value.extent datum
-      ⟨(value.coversExtent datum).val, (value.coversExtent datum).property.1⟩
+      (value.coversExtent datum).val
       (value.coversExtent datum).property.2)
 
 def toExtent (value : AtlasMap X) (source : X.Element) : source ⟶ value.extent :=

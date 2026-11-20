@@ -9,6 +9,9 @@ module AtlasCoveredPageElement
   , AtlasCoveredPageElement
   , atlasCoverageWitness
   , coverageWitnessCovers
+  , coverageWitnessValid
+  , withAtlasCoverageWitness
+  , coverageWitnessOriginRank
   , coverageWitnessAlongArrow
   , atlasCoveredPageElement
   , atlasCoveredByWitness
@@ -24,6 +27,9 @@ import AtlasCoveredPageElement.Internal
   , AtlasCoveredPageElement
   , atlasCoverageWitness
   , coverageWitnessCovers
+  , coverageWitnessValid
+  , withAtlasCoverageWitness
+  , coverageWitnessOriginRank
   , coverageWitnessAlongArrow
   , atlasCoveredPageElement
   , withAtlasCoveredPageElement

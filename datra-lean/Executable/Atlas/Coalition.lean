@@ -50,9 +50,7 @@ theorem coalitionElementAt_originImage {X : Atlas} (c : X.CoalitionElement) (tar
 theorem coalitionElementAt_coverage {X : Atlas} (c : X.CoalitionElement) (target : X.Element)
     (arrow : c.source ⟶ target) (h : CoveredPageElement.Valid c) :
     X.coverageWitnessCovers target (coalitionElementAt c target arrow) c.witness = true := by
-  change (c.witness.regionPage == X.coverageFinalPage &&
-    X.originImageRank target (coalitionElementAt c target arrow) == c.witness.regionOriginRank) = true
-  simpa only [Atlas.originImageRank, coalitionElementAt_originImage] using h.2
+  simpa only [coverageWitnessCovers, Atlas.originImageRank, coalitionElementAt_originImage] using h.2
 
 def CoalitionElement.Valid {X : Atlas} (c : X.CoalitionElement) : Prop :=
   CoveredPageElement.Valid c ∧ c.source.normalize = FolioData.ValidElement.originElement X.pages
@@ -84,7 +82,7 @@ theorem CertifiedCoalitionElement.rank_spec {X : Atlas} (c : X.CertifiedCoalitio
     (X.dataAt (FolioData.ValidElement.originElement X.pages)).rank c.value.val = c.rank := by
   have h := c.property.1.2
   simp only [coverageWitnessCovers, Bool.and_eq_true, beq_iff_eq] at h
-  exact h.2
+  exact h.2.2
 
 theorem CertifiedCoalitionElement.rank_eq_iff {X : Atlas} (a b : X.CertifiedCoalitionElement) :
     a.rank = b.rank ↔ a.value = b.value := by

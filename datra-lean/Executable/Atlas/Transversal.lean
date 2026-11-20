@@ -79,7 +79,7 @@ def mapCovered {X Y : Atlas} : Transversal X Y → X.CertifiedCoveredElement →
   | .primitive action, c =>
       let witness := action.preserves c
       let image := transversalImage action.ordered c
-      Y.atlasCoveredByWitness image.1 image.2 ⟨witness.val, witness.property.1⟩ witness.property.2
+      Y.atlasCoveredByWitness image.1 image.2 witness.val witness.property.2
 
 theorem underlying_composite {X Y Z : Atlas} (second : Transversal Y Z) (first : Transversal X Y) :
     (composite second first).underlying.underlying.hom.finiteSemantics =
