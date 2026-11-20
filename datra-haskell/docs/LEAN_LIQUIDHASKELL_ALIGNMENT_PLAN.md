@@ -220,8 +220,23 @@ and padded lookup descends one page before lifting the cell through the native
 preimage. The decoder's checked success equation connects this witness to its
 existing lookup. Both checkers prove raw-arrow membership preservation, and
 the merge data insertion consumes that proof through a checked action module.
-Full Atlas assembly still needs to retain the owning-trace certificates at its
-action boundary and check its structural laws and inclusion callbacks.
+The complete raw data-action package retains the actual merge folio, membership
+predicate, Dominion callback, and arrow callback. A generic predicate-action
+constructor checks the rank-polymorphic packaging before the concrete phantom
+data family is supplied. Both checkers establish its identity, composition,
+normalization coherence, and disjointness. The shared Atlas disjointness witness
+normalizes arbitrary full-spine occurrences before using the stored genuine-page
+law. Component origin-rank disjointness therefore applies to padded pages inside
+a deeper merge. The checked merge constructor consumes all four callbacks through
+the public predicate-based Atlas constructor. Its pagination continuation retains
+the accepted final native-cell type. Lean assembles the corresponding raw action
+and laws into a canonical Atlas. Raw cell lookup agrees with component resolution,
+including padded occurrences. The canonical accepted carrier and indexed merge
+carrier are equivalent without changing stored data; this equivalence preserves
+ranking, optional unranking, forward maps, and partial inverses. Their data
+functors are naturally isomorphic, and the raw construction has a rank-preserving
+isomorphism to the written bouquet Atlas. The Haskell inclusion certificates
+still need verification.
 Negative checks reject missing padding bounds, unaccepted native cells, missing suffix transport,
 missing owning-lookup or target-owner evidence, a data insertion without both
 owning traces, an unaccepted source datum, unrelated encoded positions or resolver
@@ -341,8 +356,8 @@ Lean proves that this native lookup succeeds and returns the same component
 cell as the component-resolution model. Rejection checks prohibit unaccepted
 traces or cells, substituted traces, and shifted component pages.
 
-Consumers import exposed interfaces rather than another component's
-`LiquidInternal` module. The primitive interfaces are `DatraOrdinal.Laws`,
+Consumers must import exposed interfaces rather than another component's
+`Internal` or `LiquidInternal` module. The primitive interfaces are `DatraOrdinal.Laws`,
 `Chain.Sum`, `Chain.Position`, `Chain.Singleton`, `Consolidation.Core`, `Consolidation.Ordered`,
 `Consolidation.Sum`, `Consolidation.Reindex`, `Consolidation.Endpoints`,
 `DomanialInsertion.Core`, `Folio.Presentation`, `Folio.Assembly`, `PageElements.Structure`,
@@ -350,8 +365,12 @@ Consumers import exposed interfaces rather than another component's
 `AtlasSequence.Data`, `AtlasSequence.Member`, `AtlasSequence.Page`, and `AtlasSequence.Assembly`.
 Their definitions and refinement contracts are checked in
 the exposed modules, including the logical record selectors used by clients.
-The alignment checker enforces this import boundary in the library, tests, and
-application. Direct `LiquidInternal` imports stay within each interface's owner.
+The alignment checker enforces the `LiquidInternal` boundary in the library,
+tests, and application. The remaining cross-component `Internal` imports need
+migration to exposed interfaces; the strict completion gate rejects them. The
+merge modules use public component interfaces, including checked pagination and
+Atlas constructors and a prefix-lookup wrapper that retains the success and
+position contracts. Private implementation imports belong within their owning component.
 Merge, sequence, the empty Atlas, and Dominion inclusion share the checked
 singleton-chain constructor. Lean uses the same singleton chain and the common
 carrier-reindexing operation in its derived folios.

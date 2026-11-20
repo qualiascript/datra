@@ -21,9 +21,6 @@ import Atlas
   , AtlasMappedObject
   , AtlasObject
   , AtlasObjectMap
-  , atlas
-  , atlasRestrictedDataAction
-  , atlasMembership
   , atlasFolio
   , atlasHom
   , atlasMorphism
@@ -37,13 +34,11 @@ import AtlasMerge.Data
   , AtlasMergeDatum (..)
   , atlasMergeDatumSide
   , atlasMergeDatumRank
-  , mergeDatumDominion
   )
-import AtlasExtent.Internal (atlasCellOriginRankInsertion)
+import AtlasExtent (atlasCellOriginRankInsertion)
 import AtlasMerge.Page (AtlasMergePageCell (..))
 import AtlasMerge.Assembly (atlasMergeLength, atlasMergeFolio)
-import AtlasMerge.Resolution (mergeCellContains)
-import AtlasMerge.Action (mergeDataMap)
+import AtlasMerge.Action (atlasMerge)
 import AtlasTransposal
   ( AtlasTransposalElement
   , atlasTransposal
@@ -55,7 +50,7 @@ import DatraOrdinal
   ( Ordinal
   , addOrdinals
   )
-import DatraOrdinal.Internal (subtractOrdinal)
+import DatraOrdinal (subtractOrdinal)
 import DomanialInsertion
   ( DomanialInsertion
   , applyInsertion
@@ -63,7 +58,6 @@ import DomanialInsertion
   , domanialInsertion
   , preimage
   )
-import Dominion (Dominion)
 import Folio (withPageAt)
 import Numeric.Natural (Natural)
 import PageElements
@@ -75,69 +69,10 @@ import PageElements
 import PageElements.Structure
   ( PageElement (..)
   )
-import qualified Pagination
 import OrderedAtlasTransposal
   ( OrderedAtlasTransposal
   , orderedAtlasTransposal
   )
-
--- ALIGN: MERGE-UNRANK-SOUND.
--- ALIGN: MERGE-BOUQUET-DATA-DECODE.
--- ALIGN: MERGE-DOMINION-ROUNDTRIP.
--- ALIGN: MERGE-DOMINION-INTERPRETATION.
--- ALIGN: MERGE-DOMINION-RANK.
--- ALIGN: MERGE-INDEXED-DOMINION.
--- ALIGN: MERGE-INDEXED-INTERPRETATION.
--- ALIGN: MERGE-ATLAS-RANK-INTERPRETATION.
--- ALIGN: MERGE-BOUQUET-DATA-EQUIVALENCE.
--- ALIGN: MERGE-BOUQUET-DATA-RANK.
-mergeDominionAt
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> PageElement mergeScope object
-  -> Dominion (AtlasMergeDatum object)
-mergeDominionAt left right occurrence =
-  mergeDatumDominion (mergeCellContains left right occurrence)
-
--- | Merge two atlases.  The result has a fresh singleton origin whose
--- dominion is the disjoint union of the input extents; result page @n + 1@
--- combines the full-spine page @n@ of each input componentwise.
---
--- The continuation keeps the freshly generated pagination and Atlas scopes
--- from escaping, following the construction style of 'Atlas.atlas'.
--- ALIGN: MERGE-ATLAS-IDENTITY.
--- ALIGN: MERGE-ATLAS-COMPOSITION.
--- ALIGN: MERGE-ATLAS-COHERENCE.
--- ALIGN: MERGE-ATLAS-DISJOINT.
--- ALIGN: MERGE-ATLAS-CONSTRUCTION.
--- ALIGN: MERGE-FINITE-ELEMENTS-EQUIVALENCE.
--- ALIGN: MERGE-BOUQUET-ATLAS-ISOMORPHISM.
-atlasMerge
-  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
-  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
-  -> (forall mergeAtlasScope mergeScope.
-       Atlas
-         mergeAtlasScope
-         mergeScope
-         AtlasMergeDatum
-         ()
-         AtlasMergePageCell
-       -> result)
-  -> result
-atlasMerge left right useMerge =
-  let pages = atlasMergeFolio left right
-  in Pagination.pagination pages $ \mergePagination ->
-      atlas
-        mergePagination
-        (atlasRestrictedDataAction (Pagination.paginationPageElements mergePagination)
-          (atlasMembership (mergeCellContains left right))
-          (mergeDominionAt left right)
-          (mergeDataMap left right))
-        (\_ _ -> ())
-        (\_ _ _ _ -> ())
-        (\_ _ _ _ -> ())
-        (\_ _ _ _ _ _ _ -> ())
-        useMerge
 
 -- | Type-level object actions for the two canonical inclusions into an Atlas
 -- merge. Every input cell lands on the corresponding non-origin merge cell.

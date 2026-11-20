@@ -83,7 +83,7 @@ module PageElements.Internal
   , normalizePageElementIdempotent
   ) where
 
-import Chain.Internal
+import Chain
   ( Chain
   , ChainIndex
   , chainIndex
@@ -100,7 +100,7 @@ import Chain.Internal
 import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedApply)
 import DatraOrdinal (Ordinal)
 import Data.Kind (Type)
-import Folio.Internal
+import Folio
   ( Folio
   , folioLength
   , lastChain
@@ -227,6 +227,8 @@ pageElements pages useCategory =
 -- | Internal, deterministically scoped variant used by derived functors whose
 -- object action must return the same type-level category on every call.
 {-@ reflect pageElementsWithScope @-}
+{-@ pageElementsWithScope :: pages:Folio origin final
+      -> {category:PageElements scope origin final | pageElementsFolio category == pages} @-}
 pageElementsWithScope
   :: Folio origin final
   -> PageElements scope origin final

@@ -7,7 +7,7 @@
 -- | Reuse actual page chains after checking their positions pointwise.
 module Consolidation.Endpoints (withConsolidationEndpoints) where
 
-import Chain.Internal (Chain, chainPosition)
+import Chain (Chain, chainPosition)
 import Chain.Order (chainPrecedes)
 import Consolidation.Core (restrictedConsolidation)
 import Consolidation.Ordered

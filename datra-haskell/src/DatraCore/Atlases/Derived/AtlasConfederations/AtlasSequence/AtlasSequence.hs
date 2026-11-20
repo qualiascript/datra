@@ -32,7 +32,7 @@ import Atlas
   , atlasPageElements
   , atlasWitness
   )
-import AtlasExtent.Internal (atlasCellOriginRankInsertion)
+import AtlasExtent (atlasCellOriginRankInsertion)
 import AtlasSequence.Page (AtlasSequencePageCell)
 import AtlasSequence.Assembly (atlasSequenceLength, atlasSequenceFolio)
 import AtlasSequence.Member (memberPageOrder)

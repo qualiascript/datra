@@ -18,9 +18,8 @@ module AtlasSequence.Resolution
   , sequenceCellContains
   ) where
 
-import Atlas.Internal (Atlas)
-import qualified AtlasExtent.Internal as Extent hiding
-  (atlasCellOriginRankInsertion, cellContainsRankImage, cellOriginRankPreimageSound)
+import Atlas (Atlas)
+import qualified AtlasExtent as Extent
 import AtlasSequence.Member (AtlasSequenceMember, atlasSequenceMember, withAtlasSequenceMember, memberAt, memberList, withMemberTrace)
 import AtlasSequence.Page (AtlasSequencePageCell (..), sequencePageContains, sequenceCellMember, sequencePagePosition, atlasSequencePageChain)
 import AtlasSequence.Data (AtlasSequenceDatum (..))
@@ -28,7 +27,7 @@ import Chain (chainIndex, chainObjectAt)
 import Data.List.NonEmpty (NonEmpty, toList)
 import Numeric.Natural (Natural)
 -- Resolve the polymorphic success predicate in AtlasExtent's lookup contracts.
-import PageElements.Internal (traceLookupPresent)
+import PageElements (traceLookupPresent)
 import PageElements.Structure (PageElement (..))
 
 {-@ embed Natural as int @-}

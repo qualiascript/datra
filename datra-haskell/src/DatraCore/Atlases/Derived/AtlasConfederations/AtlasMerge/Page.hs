@@ -2,6 +2,7 @@
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple-local" @-}
+{-@ opaque-reflect chainOrderType @-}
 {-@ LIQUID "--higherorder" @-}
 {-@ qualif TraceAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
@@ -16,18 +17,18 @@ module AtlasMerge.Page
   , mergePageTransition
   ) where
 
-import Atlas.Internal (Atlas, atlasFolio)
-import Chain.Internal (Chain, chainPosition, chainOrderType, reindexChain, reindexedPosition)
+import Atlas (Atlas, atlasFolio)
+import Chain (Chain, chainPosition, chainOrderType, reindexChain, reindexedPosition)
 import Chain.Position (withChainPosition)
 import Chain.Sum (sumChains, sumChainPosition)
 import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedApply, orderedPreimage, withConsolidationFunctions)
 import Consolidation.Endpoints (withConsolidationEndpoints)
 import Consolidation.Reindex (reindexConsolidation, reindexApply, reindexPreimage)
 import Consolidation.Sum (sumConsolidations, sumApply, sumPreimage)
-import DatraOrdinal.Internal (Ordinal, addOrdinals)
-import Folio.Internal (Folio)
+import DatraOrdinal (Ordinal, addOrdinals)
+import Folio (Folio)
 import Numeric.Natural (Natural)
-import PageElements.Internal (folioPageOrderType)
+import PageElements (folioPageOrderType)
 import PageElements.TraceChain (traceHead, pageTraceChain, pageTraceContains, pageTraceTransition, previousTrace, previousPageTrace, pageTraceNext)
 
 {-@ embed Natural as int @-}

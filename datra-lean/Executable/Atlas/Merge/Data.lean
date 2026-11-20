@@ -21,6 +21,28 @@ theorem Datum.valid_iff (X Y : Atlas) (source : (pagination X Y).Element)
 abbrev IndexedDatum (X Y : Atlas) (cell : PageElementCell) :=
   {datum : Datum cell // datum.Valid X Y}
 
+theorem rawAcceptedCell_iff (X Y : Atlas) {cell : PageElementCell} (datum : Datum cell) :
+    (rawAction X Y).AcceptedCell cell datum ↔ datum.Valid X Y := by
+  constructor
+  · rintro ⟨source, same, accepted⟩
+    subst cell
+    change resolvedContains X Y source.normalize.val datum = true at accepted
+    exact ⟨source, rfl, (resolvedContains_normalized X Y source datum).symm.trans accepted⟩
+  · rintro ⟨source, same, accepted⟩
+    subst cell
+    refine ⟨source, rfl, ?_⟩
+    change resolvedContains X Y source.normalize.val datum = true
+    exact (resolvedContains_normalized X Y source datum).trans accepted
+
+/-- Runtime membership and the component-indexed model accept exactly the same
+data, without changing the stored rank or component tag. -/
+def rawIndexedEquiv (X Y : Atlas) (cell : PageElementCell) :
+    (rawAtlas X Y).cellData cell ≃ IndexedDatum X Y cell where
+  toFun datum := ⟨datum.val, (rawAcceptedCell_iff X Y datum.val).mp datum.property⟩
+  invFun datum := ⟨datum.val, (rawAcceptedCell_iff X Y datum.val).mpr datum.property⟩
+  left_inv _ := rfl
+  right_inv _ := rfl
+
 def indexedDatumEquiv (X Y : Atlas) (source : (pagination X Y).Element) :
     IndexedDatum X Y source.val.cell ≃
       CertifiedDatum (resolveStoredElement X Y source) source.val.cell where
@@ -39,6 +61,24 @@ def indexedDataMap {X Y : Atlas} {source target : (pagination X Y).Element} (arr
     DomanialInsertion (IndexedDatum X Y source.val.cell) (IndexedDatum X Y target.val.cell) :=
   (dataMap (resolveStoredElement_arrow X Y arrow) source.val.cell target.val.cell).reindex
     (indexedDatumEquiv X Y source).symm (indexedDatumEquiv X Y target).symm
+
+theorem indexedDominion_unrank (X Y : Atlas) (source : (pagination X Y).Element) (n : Nat) :
+    ((indexedDominion X Y source).unrank n).map Subtype.val =
+      lookupDatum (contains (resolveStoredElement X Y source)) n := by
+  simpa only [indexedDominion, Dominion.reindex, Option.map_map, Function.comp_def,
+    indexedDatumEquiv, Equiv.coe_fn_symm_mk] using
+      lookupDominion_unrank (contains (resolveStoredElement X Y source)) n
+
+theorem indexedDataMap_preimage {X Y : Atlas} {source target : (pagination X Y).Element}
+    (arrow : source ⟶ target) (datum : IndexedDatum X Y target.val.cell) :
+    ((indexedDataMap arrow).preimage datum).map Subtype.val =
+      preimageDatum (contains (resolveStoredElement X Y source)) datum.val := by
+  simpa only [indexedDataMap, DomanialInsertion.reindex, Option.map_map, Function.comp_def,
+    indexedDatumEquiv, Equiv.coe_fn_symm_mk, dataMap] using
+      acceptedInsertion_preimage (contains (resolveStoredElement X Y source))
+        (contains (resolveStoredElement X Y target))
+        (fun value accepted => contains_transport_retag (resolveStoredElement_arrow X Y arrow) value accepted)
+        (indexedDatumEquiv X Y target datum)
 
 def action (X Y : Atlas) : AtlasAction (pagination X Y).pages (IndexedDatum X Y) where
   dataAt := indexedDominion X Y
@@ -163,6 +203,83 @@ def atlasMerge (X Y : Atlas) : Atlas where
       composition := action_composition
       coherence := action_coherence X Y
       disjoint := fun samePage different _ _ => action_disjoint X Y samePage different }
+
+theorem rawIndexed_rank (X Y : Atlas) (source : (pagination X Y).Element)
+    (datum : (rawAtlas X Y).cellData source.val.cell) :
+    ((rawAtlas X Y).dataAt source).rank datum =
+      ((atlasMerge X Y).dataAt source).rank (rawIndexedEquiv X Y source.val.cell datum) := by
+  exact AtlasMembershipAction.canonical_rank (pagination X Y) (rawAction X Y)
+    (rawAction_laws X Y) source datum
+
+theorem rawIndexed_map (X Y : Atlas) {source target : (pagination X Y).Element}
+    (arrow : source ⟶ target) (datum : (rawAtlas X Y).cellData source.val.cell) :
+    rawIndexedEquiv X Y target.val.cell
+        (((rawAtlas X Y).data.action.normalizedMap arrow).map datum) =
+      ((atlasMerge X Y).data.action.normalizedMap arrow).map
+        (rawIndexedEquiv X Y source.val.cell datum) := by
+  apply Subtype.ext
+  change (((rawAtlas X Y).data.action.normalizedMap arrow).map datum).val = _
+  exact AtlasMembershipAction.canonical_map (pagination X Y) (rawAction X Y)
+    (rawAction_laws X Y) arrow datum
+
+theorem rawIndexed_unrank (X Y : Atlas) (source : (pagination X Y).Element) (n : Nat) :
+    (((rawAtlas X Y).dataAt source).unrank n).map Subtype.val =
+      (((atlasMerge X Y).dataAt source).unrank n).map Subtype.val := by
+  rw [show (((rawAtlas X Y).dataAt source).unrank n).map Subtype.val =
+      (((rawAction X Y).dataAtValid source.normalize).unrank n).map Subtype.val from
+    AtlasMembershipAction.canonical_unrank (pagination X Y) (rawAction X Y)
+      (rawAction_laws X Y) source n]
+  change ((lookupDominion (resolvedContains X Y source.normalize.val)).unrank n).map Subtype.val =
+    ((indexedDominion X Y source.normalize).unrank n).map Subtype.val
+  rw [lookupDominion_unrank, indexedDominion_unrank, resolveStoredElement_normalize]
+  congr 1
+  funext datum
+  exact resolvedContains_normalized X Y source datum
+
+theorem rawIndexed_preimage (X Y : Atlas) {source target : (pagination X Y).Element}
+    (arrow : source ⟶ target) (datum : (rawAtlas X Y).cellData target.val.cell) :
+    (((rawAtlas X Y).data.action.normalizedMap arrow).preimage datum).map Subtype.val =
+      (((atlasMerge X Y).data.action.normalizedMap arrow).preimage
+        (rawIndexedEquiv X Y target.val.cell datum)).map Subtype.val := by
+  rw [show (((rawAtlas X Y).data.action.normalizedMap arrow).preimage datum).map Subtype.val =
+      (((rawAction X Y).normalizedMap arrow).preimage
+        ((rawAction X Y).canonicalCarrierEquiv target datum)).map Subtype.val from
+    AtlasMembershipAction.canonical_preimage (pagination X Y) (rawAction X Y)
+      (rawAction_laws X Y) arrow datum]
+  have sourceValid : rawTraceValid X Y source.normalize.val := by
+    simpa only [FolioData.traceValid, decide_eq_true_eq] using
+      source.normalize.traceValid (folio X Y).valid
+  have targetValid : rawTraceValid X Y target.normalize.val := by
+    simpa only [FolioData.traceValid, decide_eq_true_eq] using
+      target.normalize.traceValid (folio X Y).valid
+  change ((rawDataMap X Y (FolioData.ValidElement.normalizeArrow arrow)
+      sourceValid targetValid _ _).preimage _).map Subtype.val =
+    ((indexedDataMap (FolioData.ValidElement.normalizeArrow arrow)).preimage _).map Subtype.val
+  rw [rawDataMap_preimage, indexedDataMap_preimage, resolveStoredElement_normalize]
+  congr 1
+  funext value
+  exact resolvedContains_normalized X Y source value
+
+/-- The checked raw construction and the indexed component construction have
+the same data functor through an equivalence preserving every stored datum. -/
+def rawIndexedFunctorIso (X Y : Atlas) :
+    (rawAtlas X Y).data.toFunctor ≅ (atlasMerge X Y).data.toFunctor :=
+  NatIso.ofComponents (fun source =>
+    { hom := (rawIndexedEquiv X Y source.val.cell).toEmbedding
+      inv := (rawIndexedEquiv X Y source.val.cell).symm.toEmbedding
+      hom_inv_id := by
+        apply Function.Embedding.ext
+        intro datum
+        exact (rawIndexedEquiv X Y source.val.cell).symm_apply_apply datum
+      inv_hom_id := by
+        apply Function.Embedding.ext
+        intro datum
+        exact (rawIndexedEquiv X Y source.val.cell).apply_symm_apply datum })
+    (by
+      intro source target arrow
+      apply Function.Embedding.ext
+      intro datum
+      exact (rawIndexed_map X Y arrow datum).symm)
 
 /-- The genuine-cell data family has the image-Dominion interpretation of
 the written merge, with exactly the executable parity ranking. -/

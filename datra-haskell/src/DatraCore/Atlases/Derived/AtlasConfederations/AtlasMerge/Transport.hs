@@ -10,19 +10,19 @@ module AtlasMerge.Transport
   , mergeOccurrenceTraceValid, mergeOccurrenceResolvable, mergeArrowNativeTransport, mergeResolvedTransport
   , mergeCellContainsPreserved ) where
 
-import Atlas.Internal (Atlas, atlasFolio)
+import Atlas (Atlas, atlasFolio)
 import AtlasMerge.Assembly (atlasMergeLength, atlasMergeFolio, atlasMergePrefix, atlasMergePrefixTrace, atlasMergeCellLookup, atlasMergePageLookup)
 import AtlasMerge.Page
   ( AtlasMergePageCell (..), atlasMergePageChain, mergePageContains, mergePagePosition, previousMergeCell, nextMergeCell )
 import AtlasMerge.Resolution (mergeResolvedAt, mergePositionResolvable, resolveMergeCell, mergeCellContains)
 import AtlasMerge.Source (AtlasMergeSource (..), mergeSourceValid, mergeSourceTransport, mergeSourceContainsPreserved)
 import AtlasMerge.Data (AtlasMergeDatum, retagMergeDatum)
-import qualified AtlasExtent.Internal as Extent (cellNativeTrace)
-import Chain.Internal (Chain, chainPositionInjective, chainPositionBelow, chainPositionSurjective, chainPosition, chainLookup, chainIndex)
+import qualified AtlasExtent as Extent (cellNativeTrace)
+import Chain (Chain, chainPositionInjective, chainPositionBelow, chainPositionSurjective, chainPosition, chainLookup, chainIndex)
 import DatraOrdinal (Ordinal)
-import Folio.Internal (Folio, folioLength, lastChain)
+import Folio (Folio, folioLength, lastChain)
 import Numeric.Natural (Natural)
-import PageElements.Internal (genuinePageElementTrace, folioTraceLookup, folioPageOrderType, folioFinalPrefixLookup, prefixTraceLookup, prefixTraceLookupObject, traceLookupPresent)
+import PageElements (genuinePageElementTrace, folioTraceLookup, folioPageOrderType, folioFinalPrefixLookup, prefixTraceLookup, prefixTraceLookupObject, traceLookupPresent)
 import PageElements.Structure
   ( PageElement (..), PageElementArrow (..), SomePageElement (..)
   , traceSuffix, traceSuffixTransitive, traceSuffixSameLength, traceSuffixDropHead )

@@ -26,13 +26,13 @@ module Expedition.Internal
 import Atlas (AtlasWitness)
 import AtlasMap (AtlasMap, atlasMapAtlas)
 import Data.Kind (Type)
-import DataTransformation.Internal
+import DataTransformation
   ( DataTransformationHom
   , DataTransformationValue
   , Yoneda
   , YonedaPresheaf
   )
-import Navigation.Internal
+import Navigation
   ( Navigation
   , mapNavigationHom
   , mapNavigation

@@ -212,6 +212,13 @@ theorem resolveStoredElement_runtime (X Y : Atlas) (source : (pagination X Y).El
   rw [FolioData.ValidElement.occurrence_toRaw]
   exact min_le_right _ _
 
+theorem resolvedContains_normalized (X Y : Atlas) (source : (pagination X Y).Element)
+    {cell : PageElementCell} (datum : Datum cell) :
+    resolvedContains X Y source.normalize.val datum =
+      contains (resolveStoredElement X Y source) datum := by
+  unfold resolvedContains
+  rw [resolveCellAt_valid, ← resolveStoredElement_runtime]
+
 -- ALIGN: MERGE-RESOLVED-CELL.
 theorem resolveStoredElement_cell_eq (X Y : Atlas) {source target : (pagination X Y).Element}
     (same : source.val.cell = target.val.cell) :

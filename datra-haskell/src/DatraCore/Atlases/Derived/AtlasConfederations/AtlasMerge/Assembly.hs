@@ -9,18 +9,18 @@ module AtlasMerge.Assembly
   ( atlasMergeLength, atlasMergeFolio, atlasMergePrefix, atlasMergePrefixLookup, atlasMergePageLookup, atlasMergeCellLookup, atlasMergePrefixTrace, atlasMergePrefixOriginTrace
   , appendRemainingPages, appendRemainingLookup ) where
 
-import Atlas.Internal (Atlas, atlasFolio)
+import Atlas (Atlas, atlasFolio)
 import AtlasMerge.Page
   ( AtlasMergePageCell (..), atlasMergePageChain, mergePageContains, mergePagePosition, mergePageTransition
   , previousMergeCell, nextMergeCell )
-import Chain.Internal (Chain, chainPosition)
+import Chain (Chain, chainPosition)
 import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedApply, orderedPreimage)
 import Folio.Assembly (OriginExtension, extendOrigin, originExtensionPages, originExtensionTrace, firstPageTrace, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace)
-import Folio.Internal (Folio)
+import Folio (Folio)
 import Folio.Presentation (folioLengthData, lastPageData)
 import DatraOrdinal (Ordinal)
 import Numeric.Natural (Natural)
-import PageElements.Internal (folioPageOrderType, folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup, prependCopies)
+import PageElements (folioPageOrderType, folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup, prependCopies)
 import PageElements.TraceChain (pageTraceOrigin)
 
 {-@ embed Natural as int @-}

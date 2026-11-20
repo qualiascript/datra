@@ -37,9 +37,9 @@ import Data.Kind (Type)
 import DomanialInsertion.Core
   ( DomanialInsertion (..)
   )
-import Dominion.Internal (Dominion)
+import Dominion (Dominion)
 import Numeric.Natural (Natural)
-import PageElements.Internal
+import PageElements
   ( PageElementDomain, pageElementDomainContains
   , pageElementDomainFinalPage, pageElementDomainTraceLimit
   )
@@ -154,7 +154,8 @@ atlasAction domain dataAt mapData = AtlasAction domain AllAtlasData dataAt mapDa
                 ({datum:cellData source | atlasMembershipAccepts membership (arrowSource arrow) datum})
                 ({datum:cellData target | atlasMembershipAccepts membership (arrowTarget arrow) datum}))
       -> {action:AtlasAction scope cellData | atlasActionMembership action == membership
-           && atlasActionDomain action == domain} @-}
+           && atlasActionDomain action == domain
+           && atlasActionDataAt action == dataAt && atlasActionMap action == mapData} @-}
 -- ALIGN: ATLAS-MEMBERSHIP-ACTION.
 atlasRestrictedAction
   :: PageElementDomain scope

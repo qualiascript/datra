@@ -6,7 +6,7 @@
 -- | Checked ordinal sums of consolidations with concrete chain endpoints.
 module Consolidation.Sum (sumConsolidations, sumConsolidationsBetween, sumApply, sumPreimage) where
 
-import Chain.Internal (Chain, chainPosition)
+import Chain (Chain, chainPosition)
 import Chain.Order (chainPrecedes)
 import Chain.Sum (sumChains, sumChainPosition, sumPrecedes, sumChainOrder)
 import Consolidation.Core (consolidation)

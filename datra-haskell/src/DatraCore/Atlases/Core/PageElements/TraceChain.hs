@@ -29,10 +29,10 @@ module PageElements.TraceChain
   ) where
 
 import Chain.Order (chainPrecedes)
-import Chain.Internal (Chain, chain, chainOrdinalLT, chainIndex, chainObjectAt, chainPosition, positionMatches)
-import DatraOrdinal.Internal (Ordinal, finiteOrdinal)
+import Chain (Chain, chain, chainOrdinalLT, chainIndex, chainObjectAt, chainPosition, chainOrderType, positionMatches)
+import DatraOrdinal (Ordinal, finiteOrdinal)
 import DatraOrdinal.Laws (ordinalLTIrreflexive)
-import Folio.Internal (Folio, folioLength, lastChain)
+import Folio (Folio, folioLength, lastChain)
 import Consolidation.Core (Consolidation, applyConsolidation, consolidationPreimage, restrictedConsolidation)
 import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget, orderedApply, orderedPreimage, orderedPreimageProof, orderedMonotone, orderedConsolidation)
 import Folio.Presentation (FolioData (..), FolioStep (..), stepSource

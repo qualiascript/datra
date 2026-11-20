@@ -138,16 +138,6 @@ theorem Atlas.coherenceWitness (X : Atlas) (source : X.Element) (arrow : source 
   rw [Subsingleton.elim arrow source.toNormalized]
   exact X.data.coherence source datum
 
--- ALIGN: ATLAS-DISJOINT-WITNESS.
-theorem Atlas.disjointWitness (X : Atlas) {left right origin : X.Element}
-    (samePage : left.val.page = right.val.page) (different : left.val.position ≠ right.val.position)
-    (bounded : left.val.page ≤ X.pages.depth - 1) (atOrigin : origin.val.page = 0)
-    (leftToOrigin : left ⟶ origin) (rightToOrigin : right ⟶ origin)
-    (leftDatum : X.cellData left.val.cell) (rightDatum : X.cellData right.val.cell) :
-    (X.data.action.normalizedMap leftToOrigin).map leftDatum ≠
-      (X.data.action.normalizedMap rightToOrigin).map rightDatum :=
-  X.data.disjoint samePage different bounded atOrigin leftToOrigin rightToOrigin leftDatum rightDatum
-
 /-- A dependent dominion retains its selected cell, as AtlasCellDominion does. -/
 structure Atlas.CellDominion (X : Atlas) where
   element : X.Element
@@ -178,3 +168,24 @@ theorem normalizedMap_normalizeArrow (action : AtlasAction pages cellData)
     (FolioData.ValidElement.normalize_idempotent y) _ _
 
 end Datra.Executable.AtlasAction
+
+
+namespace Datra.Executable
+open CategoryTheory
+
+-- ALIGN: ATLAS-DISJOINT-WITNESS.
+theorem Atlas.disjointWitness (X : Atlas) {left right origin : X.Element}
+    (samePage : left.val.page = right.val.page) (different : left.val.position ≠ right.val.position)
+    (atOrigin : origin.val.page = 0)
+    (leftToOrigin : left ⟶ origin) (rightToOrigin : right ⟶ origin)
+    (leftDatum : X.cellData left.val.cell) (rightDatum : X.cellData right.val.cell) :
+    (X.data.action.normalizedMap leftToOrigin).map leftDatum ≠
+      (X.data.action.normalizedMap rightToOrigin).map rightDatum := by
+  have distinct := X.data.disjoint (left := left.normalize) (right := right.normalize)
+    (congrArg (fun n => min n (X.pages.depth - 1)) samePage) different
+    (min_le_right _ _) (by change min origin.val.page (X.pages.depth - 1) = 0; simp [atOrigin])
+    (FolioData.ValidElement.normalizeArrow leftToOrigin)
+    (FolioData.ValidElement.normalizeArrow rightToOrigin) leftDatum rightDatum
+  simpa only [AtlasAction.normalizedMap_normalizeArrow] using distinct
+
+end Datra.Executable

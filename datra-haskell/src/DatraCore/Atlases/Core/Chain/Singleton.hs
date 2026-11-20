@@ -7,7 +7,7 @@
 module Chain.Singleton (singletonChain, singletonChainPosition) where
 
 import Chain.Internal (Chain, chain, chainOrderType, chainPosition, chainPositionBelow, chainOrdinalLT, positionMatches)
-import DatraOrdinal.Internal (Ordinal, finiteOrdinal)
+import DatraOrdinal (Ordinal, finiteOrdinal)
 import DatraOrdinal.Laws (ordinalBelowOne)
 
 -- ALIGN: CHAIN-SINGLETON.

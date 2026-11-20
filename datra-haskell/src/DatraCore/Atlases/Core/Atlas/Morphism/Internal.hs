@@ -38,6 +38,7 @@ module Atlas.Morphism.Internal
   , AtlasObjectCellData
   , AtlasWitness (..)
   , atlasWitness
+  , withAtlasWitness
   , AtlasHom (..)
   , AtlasEquality (..)
   , identityAtlasHom
@@ -90,7 +91,7 @@ import PageElements.Structure
   , arrowTarget
   , pageElementArrow
   )
-import PageElements.Internal (SomePageElement (..))
+import PageElements.Structure (SomePageElement (..))
 import PageElements.Structure (normalizeSomePageElementPreservesArrowAt)
 import Pagination
   ( PaginationMorphism
@@ -397,6 +398,15 @@ atlasWitness
   :: Atlas atlasScope paginationScope cellData origin final
   -> AtlasWitness (AtlasObject atlasScope paginationScope cellData)
 atlasWitness = AtlasWitness
+
+-- | Eliminate a witness while retaining its type-level Atlas identity.
+withAtlasWitness
+  :: AtlasWitness object
+  -> (forall atlasScope paginationScope cellData origin final.
+       object ~ AtlasObject atlasScope paginationScope cellData
+       => Atlas atlasScope paginationScope cellData origin final -> result)
+  -> result
+withAtlasWitness (AtlasWitness valueAtlas) useAtlas = useAtlas valueAtlas
 
 -- | A genuine 'Control.Category' arrow over type-level Atlas objects.
 --

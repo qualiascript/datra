@@ -25,18 +25,36 @@ def private_liquid_imports(text):
                                imported.removesuffix(".LiquidInternal") + ".Internal"}]
 
 
+def private_component_imports(text):
+    """Private implementation modules stay within their owning component."""
+    declaration = re.search(r"^\s*module\s+([\w.]+)", text, re.M)
+    component = declaration[1].split(".")[0] if declaration else "Main"
+    imports = re.findall(
+        r'^\s*import\s+(?:\{-#\s*SOURCE\s*#-\}\s*)?(?:safe\s+)?'
+        r'(?:qualified\s+)?(?:"[^"\n]+"\s+)?([A-Z][\w.]*)', text, re.M)
+    return [imported for imported in imports
+            if imported.endswith(".Internal") and imported.split(".")[0] != component]
+
+
 def check(require_complete=False):
     manifest = json.loads(MANIFEST.read_text())
     sources = project_sources()
     lean = "\n".join(path.read_text() for path in sources)
     errors = []
+    private_imports = []
     haskell_sources = (source for directory in ("src", "test", "app")
                        for source in (ROOT / "datra-haskell" / directory).rglob("*.hs"))
     for source in haskell_sources:
-        for imported in private_liquid_imports(source.read_text()):
+        text = source.read_text()
+        for imported in private_liquid_imports(text):
             owner = imported.removesuffix(".LiquidInternal")
             errors.append(f"{source.relative_to(ROOT)}: import {owner}'s exposed interface "
                           f"instead of {imported}")
+        for imported in private_component_imports(text):
+            private_imports.append(f"{source.relative_to(ROOT)}: import an exposed interface "
+                                   f"instead of {imported}")
+    if require_complete:
+        errors.extend(private_imports)
     unreachable = set((ROOT / "datra-lean").rglob("*.lean")) - set(sources)
     if unreachable:
         errors.append("Lean modules missing from datra.lean imports: " + ", ".join(
@@ -113,6 +131,8 @@ def check(require_complete=False):
     if errors:
         raise SystemExit("\n".join(errors))
     print(f"Alignment: {len(seen)} correspondences; {len(escapes)} inventoried trust directives")
+    if private_imports:
+        print(f"Remaining private implementation imports: {len(private_imports)}")
 
 
 if __name__ == "__main__":

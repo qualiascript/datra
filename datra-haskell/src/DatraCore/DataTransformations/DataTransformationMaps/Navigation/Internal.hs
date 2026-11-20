@@ -21,7 +21,7 @@ module Navigation.Internal
 
 import Atlas (AtlasWitness)
 import Data.Kind (Type)
-import DataTransformation.Internal
+import DataTransformation
   ( DataTransformationHom
   , DataTransformationValue
   , Yoneda

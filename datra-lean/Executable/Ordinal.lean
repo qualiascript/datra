@@ -235,6 +235,13 @@ theorem ordinalBelowOne (value : Ordinal) (below : ordinalLT value (finiteOrdina
   have bound := (ordinalLT_correct _ _).1 below
   simpa using (_root_.Ordinal.lt_one_iff_zero.1 (by simpa using bound))
 
+-- ALIGN: ORDINAL-NOT-BELOW-ZERO.
+theorem ordinalNotBelowZero (value : Ordinal) : ordinalLT value (finiteOrdinal 0) = false := by
+  apply Bool.eq_false_iff.mpr
+  intro below
+  have bound := (ordinalLT_correct _ _).mp below
+  simp at bound
+
 end Datra.Executable.Ordinal
 
 namespace Datra.Executable.Ordinal

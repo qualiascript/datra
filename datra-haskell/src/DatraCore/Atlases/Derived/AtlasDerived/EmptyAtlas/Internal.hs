@@ -1,7 +1,8 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE EmptyCase #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RankNTypes #-}
 #include "../../../../LiquidPlugin.h"
+{-@ LIQUID "--higherorder" @-}
 
 -- | Hidden implementation of the canonical empty Atlas.
 module EmptyAtlas.Internal
@@ -11,14 +12,16 @@ module EmptyAtlas.Internal
 
 import Atlas (Atlas, atlas, atlasDataAction)
 import Chain.Singleton (singletonChain)
+import Data.Kind (Type)
+import Data.Void (Void, absurd)
 import DomanialInsertion (DomanialInsertion, domanialInsertion)
 import Dominion (Dominion, dominion)
 import Folio (singletonFolio)
 import PageElements (PageElement, PageElementArrow)
 import qualified Pagination
 
--- | The uninhabited data family of the empty Atlas.
-data EmptyAtlasDatum object
+-- | The empty Atlas's cell-indexed carrier contains an impossible Void witness.
+data EmptyAtlasDatum (object :: Type) = EmptyAtlasDatum Void
 
 -- | Introduce the canonical Atlas whose only page has no data.
 -- ALIGN: EMPTY-ATLAS-CONSTRUCTOR.
@@ -61,4 +64,4 @@ emptyAtlas useAtlas =
 
 -- ALIGN: EMPTY-ATLAS-NO-DATA.
 absurdEmptyDatum :: EmptyAtlasDatum object -> result
-absurdEmptyDatum impossible = case impossible of {}
+absurdEmptyDatum (EmptyAtlasDatum impossible) = absurd impossible

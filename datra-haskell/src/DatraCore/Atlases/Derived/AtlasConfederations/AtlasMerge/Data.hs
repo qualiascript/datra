@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RoleAnnotations #-}
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
@@ -28,7 +29,8 @@ module AtlasMerge.Data
   ) where
 
 import Numeric.Natural (Natural)
-import Dominion.Internal (Dominion, dominion)
+import Data.Kind (Type)
+import Dominion (Dominion, dominion)
 import DomanialInsertion.Core (DomanialInsertion (..))
 
 {-@ embed Natural as int @-}
@@ -41,7 +43,7 @@ data AtlasMergeSide = AtlasMergeLeft | AtlasMergeRight
 -- | A tagged origin rank. Membership in a particular cell is a separate
 -- predicate checked by 'mergeDatumLookup'. The phantom retains cell identity.
 type role AtlasMergeDatum nominal
-data AtlasMergeDatum object
+data AtlasMergeDatum (object :: Type)
   = AtlasMergeLeftDatum Natural
   | AtlasMergeRightDatum Natural
   deriving (Eq, Show)
@@ -186,8 +188,10 @@ mergeDatumMap _ _ preserves datum = preserves datum `seq` retagMergeDatum datum
       -> targetContains:(AtlasMergeDatum target -> Bool)
       -> preserves:(datum:MergeDatumIn source {sourceContains}
            -> { targetContains (retagMergeDatum datum) })
-      -> DomanialInsertion (MergeDatumIn source {sourceContains})
-           (MergeDatumIn target {targetContains}) @-}
+      -> {mapping:DomanialInsertion (MergeDatumIn source {sourceContains})
+           (MergeDatumIn target {targetContains}) |
+           applyInsertion mapping == mergeDatumMap sourceContains targetContains preserves
+           && preimage mapping == mergeDatumPreimage sourceContains} @-}
 -- ALIGN: MERGE-ACCEPTED-INSERTION.
 -- ALIGN: MERGE-ACCEPTED-INSERTION-PREIMAGE.
 mergeDatumInsertion

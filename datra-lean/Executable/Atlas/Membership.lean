@@ -54,6 +54,19 @@ def AtlasMembershipAction.package {Scope : Type u} {owner : Scope}
       DomanialInsertion (membership.Carrier source) (membership.Carrier target)) :
     AtlasMembershipAction owner cellData := ⟨domain, membership, dataAt, mapData⟩
 
+-- ALIGN: ATLAS-PREDICATE-ACTION.
+def AtlasMembershipAction.packagePredicate {Scope : Type u} {owner : Scope}
+    {cellData : PageElementCell → Type} (domain : PageElementDomain owner)
+    (accepts : (occurrence : PageElement owner) → cellData occurrence.cell → Bool)
+    (dataAt : (occurrence : PageElement owner) → domain.contains occurrence = true →
+      Dominion {datum : cellData occurrence.cell // accepts occurrence datum = true})
+    (mapData : {source target : PageElement owner} →
+      domain.contains source = true → domain.contains target = true → source.Arrow target →
+      DomanialInsertion {datum : cellData source.cell // accepts source datum = true}
+        {datum : cellData target.cell // accepts target datum = true}) :
+    AtlasMembershipAction owner cellData :=
+  package domain (.predicate accepts) dataAt mapData
+
 -- ALIGN: ATLAS-DATUM-MEMBERSHIP.
 def AtlasMembershipAction.acceptsAt {Scope : Type u} {owner : Scope}
     {cellData : PageElementCell → Type} (action : AtlasMembershipAction owner cellData)
@@ -395,6 +408,7 @@ theorem Laws.normalized {action : AtlasMembershipAction pages cellData} [FolioOw
 interpretation. Cell compatibility follows from normalization and folio
 validity; it is not a further assumption on the user's membership predicate. -/
 -- ALIGN: ATLAS-MEMBERSHIP-ATLAS-INTERPRETATION.
+-- ALIGN: ATLAS-PREDICATE-CONSTRUCTION.
 def toCanonicalAtlas (pagination : Pagination)
     (action : AtlasMembershipAction pagination.pages cellData) [FolioOwner action] (laws : action.Laws) : Atlas :=
   toAtlas pagination action.normalize action.AcceptedCell action.normalized_compatible laws.normalized

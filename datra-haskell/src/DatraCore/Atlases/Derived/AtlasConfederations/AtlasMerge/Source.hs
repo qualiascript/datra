@@ -16,8 +16,8 @@ module AtlasMerge.Source
   , mergeSourceContainsPreserved
   ) where
 
-import Atlas.Internal (Atlas)
-import qualified AtlasExtent.Internal as Extent
+import Atlas (Atlas)
+import qualified AtlasExtent as Extent
   ( cellHasOrigin, cellTraceValid, extentContainsRank, cellContainsRank
   , cellContainsRankInExtent, cellContainsRankPreserved )
 import AtlasMerge.Data (AtlasMergeDatum (..), retagMergeDatum)

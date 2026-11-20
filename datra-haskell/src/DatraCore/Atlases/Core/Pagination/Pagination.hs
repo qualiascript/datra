@@ -1,3 +1,9 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE RankNTypes #-}
+#include "../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+
 -- | Paginations and their morphisms.
 --
 -- A pagination packages a folio with the category of page elements generated
@@ -32,7 +38,7 @@ import Pagination.Internal
   , mapPaginationArrow
   , mapPaginationElement
   , paginationMorphism
-  , pagination
+  , paginationWithScope
   , paginationFolio
   , paginationPageElements
   , paginationCardinality
@@ -42,3 +48,18 @@ import Pagination.Internal
   , paginationCoherenceIdempotent
   , withPageElementArrow
   )
+
+import Folio (Folio)
+import PageElements (pageElementsFolio)
+
+-- | Introduce a pagination with a fresh page-element scope.
+{-@ pagination :: pages:Folio origin final
+      -> (forall scope. value:{Pagination scope origin final |
+           pageElementsFolio (paginationPageElements value) == pages} -> result)
+      -> result @-}
+pagination
+  :: Folio origin final
+  -> (forall scope. Pagination scope origin final -> result)
+  -> result
+pagination pages usePagination =
+  usePagination (paginationWithScope pages)

@@ -11,7 +11,7 @@ module Folio.Assembly
   ( collapseToOrigin, OriginExtension, extendOrigin, originExtensionPages, originExtensionTrace, firstPageTrace
   , appendOrderedPage, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace ) where
 
-import Chain.Internal (Chain, chainPosition)
+import Chain (Chain, chainPosition)
 import Chain.Order (chainPrecedes)
 import Chain.Singleton (singletonChain, singletonChainPosition)
 import Consolidation.Core (restrictedConsolidation)
@@ -20,7 +20,7 @@ import DatraOrdinal.Laws (ordinalLTIrreflexive)
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import Folio.Presentation (FolioData, folioData, appendPageData, folioLengthData, lastPageData, originPageData, originValueData)
 import Numeric.Natural (Natural)
-import PageElements.Internal (folioTraceLookup, appendedEarlierLookup, genuinePageElementTrace, appendedPageTrace, snocElementTrace, folioOriginTrace)
+import PageElements (folioTraceLookup, appendedEarlierLookup, genuinePageElementTrace, appendedPageTrace, snocElementTrace, folioOriginTrace)
 import PageElements.Structure (trimTraceToSuffix, trimTraceWithinLength)
 
 {-@ embed Natural as int @-}

@@ -128,6 +128,10 @@ def lookupDominion {cell : PageElementCell} (accepts : Datum cell → Bool) :
     rw [Option.attach_eq_some _ ⟨datum.val, lookupDatum_roundtrip accepts datum.val datum.property⟩]
     rfl
 
+theorem lookupDominion_unrank {cell : PageElementCell} (accepts : Datum cell → Bool)
+    (n : Nat) : ((lookupDominion accepts).unrank n).map Subtype.val = lookupDatum accepts n := by
+  simp [lookupDominion, Option.map_map]
+
 -- ALIGN: MERGE-DATA-PREIMAGE.
 def preimageDatum {source target : PageElementCell} (accepts : Datum source → Bool)
     (datum : Datum target) : Option (Datum source) :=

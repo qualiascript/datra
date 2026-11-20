@@ -101,6 +101,19 @@ def normalizeArrow (finalPage : Nat) (traceLimit : Int) {x y : PageElement owner
   ⟨min_le_min_right _ arrow.precedes,
     Trace.trimTracePreservesSuffix _ _ _ arrow.transported⟩
 
+-- ALIGN: PE-ARROW-NORMALIZE-IDEMPOTENT.
+theorem normalizeArrow_idempotent (finalPage : Nat) (traceLimit : Int)
+    {x y : PageElement owner} (arrow : Arrow x y) :
+    HEq (normalizeArrow finalPage traceLimit (normalizeArrow finalPage traceLimit arrow))
+      (normalizeArrow finalPage traceLimit arrow) := by
+  have arrow_heq : ∀ {a b c d : PageElement owner}, a = c → b = d →
+      (f : Arrow a b) → (g : Arrow c d) → HEq f g := by
+    intro a b c d ha hb f g
+    subst c
+    subst d
+    exact heq_of_eq (Subsingleton.elim _ _)
+  exact arrow_heq (normalize_idempotent _ _ x) (normalize_idempotent _ _ y) _ _
+
 /-- Every raw occurrence reaches its normalized representative. -/
 def toNormalized (finalPage : Nat) (traceLimit : Int) (x : PageElement owner) :
     Arrow x (normalize finalPage traceLimit x) :=

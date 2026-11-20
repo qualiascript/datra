@@ -10,7 +10,7 @@ module Chain.Position (withChainPosition) where
 import Chain.Internal
   ( Chain, chain, chainPosition, chainLookup, chainOrderType, chainOrdinalLT
   , positionMatches, chainPositionBelow, chainPositionInjective, chainPositionSurjective )
-import DatraOrdinal.Internal (Ordinal)
+import DatraOrdinal (Ordinal)
 
 -- ALIGN: CHAIN-POSITION-TRANSPORT.
 {-@ withChainPosition :: contains:(a -> Bool) -> original:Chain {value:a | contains value} -> position:({value:a | contains value} -> Ordinal)

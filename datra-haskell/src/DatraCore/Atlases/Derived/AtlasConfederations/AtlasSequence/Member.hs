@@ -25,21 +25,22 @@ module AtlasSequence.Member
   , memberPageTransition
   ) where
 
-import Atlas.Internal (Atlas, atlasFolio, atlasPageElements)
-import qualified AtlasExtent.Internal as Extent hiding
-  (atlasCellOriginRankInsertion, cellContainsRankImage, cellOriginRankPreimageSound)
-import Chain.Internal (Chain, chainPosition, chainOrderType)
+import Atlas (Atlas, atlasFolio, atlasPageElements)
+import qualified AtlasExtent as Extent
+import Chain (Chain, chainPosition, chainOrderType)
 import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget,
   orderedApply, orderedPreimage, withConsolidationFunctions)
 import Data.List.NonEmpty (NonEmpty (..))
 import DatraOrdinal (Ordinal)
 import Folio.Presentation (folioLengthData)
 import Numeric.Natural (Natural)
-import PageElements.Internal (folioPageOrderType, traceLookupPresent, pageElementsFolio)
+import PageElements (folioPageOrderType, traceLookupPresent, pageElementsFolio)
 import PageElements.Structure (PageElement (..))
 import PageElements.TraceChain
   ( pageTraceContains, traceHead, pageTraceChain, pageTraceOrigin
   , previousTrace, previousPageTrace, pageTracePrevious, pageTraceNext, pageTraceTransition )
+
+{-@ opaque-reflect chainOrderType @-}
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}

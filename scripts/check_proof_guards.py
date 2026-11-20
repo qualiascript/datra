@@ -132,6 +132,52 @@ proofGuard mapping source target =
 
 MERGE_ACTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Action.hs"
 MERGE_ACTION_GUARDS = {
+    "public Atlas predicate construction requires action laws": """
+{-@ proofGuard :: pages:Pagination.Pagination scope origin final
+      -> accepts:(forall object. PageElement scope object -> cellData object -> Bool)
+      -> action:{AtlasDataAction scope cellData |
+           atlasActionDomain action == pageElementDomain (Pagination.paginationPageElements pages)
+           && atlasActionMembership action == atlasMembership accepts}
+      -> (forall atlasScope. Atlas atlasScope scope cellData origin final -> result)
+      -> result @-}
+proofGuard :: Pagination.Pagination scope origin final
+  -> (forall object. PageElement scope object -> cellData object -> Bool)
+  -> AtlasDataAction scope cellData
+  -> (forall atlasScope. Atlas atlasScope scope cellData origin final -> result) -> result
+proofGuard pages accepts action useAtlas = atlasForPredicate pages accepts action
+  (\\_ _ -> ()) (\\_ _ _ _ -> ()) (\\_ _ _ _ -> ()) (\\_ _ _ _ _ _ _ -> ()) useAtlas
+""",
+    "merge action composition requires aligned endpoints": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> category:{PageElements ms () (MergeFinalCell left right) | pageElementsFolio category == atlasMergeFolio left right}
+      -> second:{PageElementArrow ms middle target | pageElementTraceValid category (arrowSource second)
+           && pageElementTraceValid category (arrowTarget second)}
+      -> first:{PageElementArrow ms source middle | pageElementTraceValid category (arrowSource first)
+           && pageElementTraceValid category (arrowTarget first)}
+      -> datum:{AtlasMergeDatum source | mergeCellContains left right (normalizePageElement category (arrowSource first)) datum}
+      -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+  -> PageElements ms () AtlasMergePageCell -> PageElementArrow ms middle target
+  -> PageElementArrow ms source middle -> AtlasMergeDatum source -> ()
+proofGuard left right category second first datum =
+  mergeActionComposition left right category second first () datum
+""",
+    "merge action identity requires accepted source data": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> category:{PageElements ms () (MergeFinalCell left right) | pageElementsFolio category == atlasMergeFolio left right}
+      -> occurrence:{PageElement ms object | pageElementTraceValid category occurrence}
+      -> AtlasMergeDatum object -> () @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+  -> PageElements ms () AtlasMergePageCell -> PageElement ms object -> AtlasMergeDatum object -> ()
+proofGuard = mergeActionIdentity
+""",
+    "merge action package requires the actual owning folio": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> PageElements ms () (MergeFinalCell left right) -> AtlasDataAction ms AtlasMergeDatum @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+  -> PageElements ms () AtlasMergePageCell -> AtlasDataAction ms AtlasMergeDatum
+proofGuard = mergeDataAction
+""",
     "merge data insertion requires both owning traces": """
 {-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
       -> arrow:PageElementArrow ms s t
@@ -901,8 +947,7 @@ proofGuard owner other page position =
 """,
     "cell membership disjointness requires distinct positions": """
 {-@ proofGuard :: valueAtlas:Atlas a s d o f
-      -> cell:{PageElement s object | cellHasOrigin valueAtlas cell && cellTraceValid valueAtlas cell
-           && pageElementPage cell < Atlas.atlasCardinality valueAtlas}
+      -> cell:{PageElement s object | cellHasOrigin valueAtlas cell && cellTraceValid valueAtlas cell}
       -> valueRank:{Natural | cellContainsRank valueAtlas cell valueRank}
       -> {not (cellContainsRank valueAtlas cell valueRank)} @-}
 proofGuard :: Atlas a s d o f -> PageElement s object -> Natural -> ()
@@ -1148,6 +1193,24 @@ proofGuard _ _ = []
 
 ATLAS_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Internal.hs"
 ATLAS_GUARDS = {
+    "Atlas predicate packaging requires membership-preserving callbacks": """
+{-@ proofGuard :: category:PageElements scope origin final
+      -> accepts:(forall object. PageElement scope object -> cellData object -> Bool)
+      -> dataAt:(forall object. occurrence:{PageElement scope object | Elements.pageElementTraceValid category occurrence}
+           -> Dominion ({datum:cellData object | accepts occurrence datum}))
+      -> mapData:(forall source target. arrow:{PageElementArrow scope source target |
+           Elements.pageElementTraceValid category (arrowSource arrow)
+           && Elements.pageElementTraceValid category (arrowTarget arrow)}
+           -> DomanialInsertion (cellData source) (cellData target))
+      -> AtlasDataAction scope cellData @-}
+proofGuard :: PageElements scope origin final
+  -> (forall object. PageElement scope object -> cellData object -> Bool)
+  -> (forall object. PageElement scope object -> Dominion (cellData object))
+  -> (forall source target. PageElementArrow scope source target
+        -> DomanialInsertion (cellData source) (cellData target))
+  -> AtlasDataAction scope cellData
+proofGuard = atlasPredicateDataAction
+""",
     "Atlas normalization cannot switch the owning folio": """
 {-@ proofGuard :: owner:Atlas a s d o f -> other:Atlas a s d o f
       -> occurrence:{PageElement s object |
@@ -1208,7 +1271,7 @@ proofGuard :: Atlas a s d o f -> PageElement s object
   -> PageElementArrow s object object -> d object -> ()
 proofGuard = atlasCoherenceWitness
 """,
-    "Atlas disjointness witnesses require distinct cells on one genuine page": """
+    "Atlas disjointness witnesses require distinct cells on one page": """
 {-@ proofGuard :: owner:Atlas a s d o f
       -> left:{PageElement s left | AtlasValidCell owner left}
       -> right:{PageElement s right | AtlasValidCell owner right}
@@ -1280,6 +1343,36 @@ proofGuard = memberDominion
 
 MERGE_RESOLUTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge/Resolution.hs"
 MERGE_RESOLUTION_GUARDS = {
+    "merge cell disjointness requires distinct positions": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> cell:{PageElement ms a | pageElementPage cell > 0}
+      -> datum:{AtlasMergeDatum c | mergeCellContains left right cell datum}
+      -> {not (mergeCellContains left right cell datum)} @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+  -> PageElement ms a -> AtlasMergeDatum c -> ()
+proofGuard left right cell datum = mergeCellContainsDisjoint left right cell cell datum
+""",
+    "merge cell disjointness requires one page": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> first:{PageElement ms a | pageElementPage first > 0}
+      -> second:{PageElement ms b | pageElementPosition second /= pageElementPosition first}
+      -> datum:{AtlasMergeDatum c | mergeCellContains left right first datum}
+      -> {not (mergeCellContains left right second datum)} @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+  -> PageElement ms a -> PageElement ms b -> AtlasMergeDatum c -> ()
+proofGuard = mergeCellContainsDisjoint
+""",
+    "merge cell disjointness requires a positive raw page": """
+{-@ proofGuard :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> first:PageElement ms a
+      -> second:{PageElement ms b | pageElementPage second == pageElementPage first
+           && pageElementPosition second /= pageElementPosition first}
+      -> datum:{AtlasMergeDatum c | mergeCellContains left right first datum}
+      -> {not (mergeCellContains left right second datum)} @-}
+proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+  -> PageElement ms a -> PageElement ms b -> AtlasMergeDatum c -> ()
+proofGuard = mergeCellContainsDisjoint
+""",
     "native merge resolution requires an accepted cell": """
 proofGuard :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf -> Natural -> AtlasMergePageCell -> Maybe ()
 proofGuard left right page cell = withMergeNativeCell left right page cell (\\_ -> ()) (\\_ -> ())

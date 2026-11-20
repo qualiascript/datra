@@ -27,7 +27,7 @@ module AtlasSequence.Data
   ) where
 
 import Numeric.Natural (Natural)
-import Dominion.Internal (Dominion, dominion)
+import Dominion (Dominion, dominion)
 import DomanialInsertion.Core (DomanialInsertion (..))
 
 {-@ embed Natural as int @-}

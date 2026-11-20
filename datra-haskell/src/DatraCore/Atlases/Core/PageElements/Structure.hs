@@ -41,6 +41,7 @@ module PageElements.Structure
   , normalizeSomePageElementAt
   , normalizePageElementArrowAt
   , normalizePageElementIdempotentAt
+  , normalizePageElementArrowIdempotentAt
   , normalizePageElementReachableAt
   , normalizePageElementPreservesArrowAt
   , normalizeSomePageElementPreservesArrowAt
@@ -409,6 +410,8 @@ trimTracePreservesSuffix limit source@(_ : rest) target
 -- reflected because LiquidHaskell 0.9.4 does not reflect the overloaded
 -- Prelude 'min' method.
 {-@ reflect clampPage @-}
+{-@ clampPage :: page:Natural -> finalPage:Natural
+      -> {result:Natural | result <= page && result <= finalPage} @-}
 clampPage :: Natural -> Natural -> Natural
 clampPage page finalPage
   | page <= finalPage = page
@@ -459,6 +462,11 @@ clampPagePreservesPrecedes finalPage sourcePage targetPage
 -- page is at most the final genuine page.  Traces keep only the suffix from
 -- that page back to the origin.
 {-@ reflect normalizePageElementAt @-}
+{-@ normalizePageElementAt :: finalPage:Natural -> traceLimit:Int
+      -> value:PageElement scope object
+      -> {result:PageElement scope object | pageElementPage result <= finalPage
+           && pageElementPage result == clampPage (pageElementPage value) finalPage
+           && pageElementPosition result == pageElementPosition value} @-}
 -- ALIGN: PE-NORMALIZE-REPRESENTATION.
 normalizePageElementAt
   :: Natural
@@ -592,8 +600,23 @@ normalizeSomePageElementPreservesArrowAt
   (SomePageElement target) =
     normalizePageElementPreservesArrowAt finalPage traceLimit source target
 
+-- ALIGN: PE-ARROW-NORMALIZE-IDEMPOTENT.
+{-@ normalizePageElementArrowIdempotentAt :: finalPage:Natural -> traceLimit:Int
+      -> arrow:PageElementArrow scope source target
+      -> {normalizePageElementArrowAt finalPage traceLimit (normalizePageElementArrowAt finalPage traceLimit arrow)
+           == normalizePageElementArrowAt finalPage traceLimit arrow} @-}
+normalizePageElementArrowIdempotentAt :: Natural -> Int -> PageElementArrow scope source target -> ()
+normalizePageElementArrowIdempotentAt finalPage traceLimit arrow =
+  normalizePageElementIdempotentAt finalPage traceLimit (arrowSource arrow) `seq`
+    normalizePageElementIdempotentAt finalPage traceLimit (arrowTarget arrow)
+
 -- | Apply normalization to both endpoints of a typed page-element arrow.
 {-@ reflect normalizePageElementArrowAt @-}
+{-@ normalizePageElementArrowAt :: finalPage:Natural -> traceLimit:Int
+      -> sourceArrow:PageElementArrow scope source target
+      -> {result:PageElementArrow scope source target |
+           arrowSource result == normalizePageElementAt finalPage traceLimit (arrowSource sourceArrow)
+           && arrowTarget result == normalizePageElementAt finalPage traceLimit (arrowTarget sourceArrow)} @-}
 normalizePageElementArrowAt
   :: Natural
   -> Int

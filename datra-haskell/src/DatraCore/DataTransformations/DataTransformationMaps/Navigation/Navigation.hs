@@ -1,3 +1,7 @@
+{-# LANGUAGE CPP #-}
+#include "../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+
 -- | Monomorphisms from representable presheaves into DaTra sets.
 --
 -- A @Navigation atlas values@ is Lean's navigation @Yo(A) ⟶ D@. Its
@@ -9,6 +13,7 @@ module Navigation
   , navigationAtlas
   , navigationHom
   , mapNavigation
+  , mapNavigationHom
   , navigationPreimage
   , navigationLeftInverse
   ) where
@@ -16,6 +21,7 @@ module Navigation
 import Navigation.Internal
   ( Navigation
   , mapNavigation
+  , mapNavigationHom
   , navigation
   , navigationAtlas
   , navigationHom

@@ -17,6 +17,7 @@ module DatraOrdinal.Laws
   , ordinalLTAsymmetric
   , ordinalAddRightComparison
   , ordinalBelowOne
+  , ordinalNotBelowZero
   ) where
 
 import Numeric.Natural (Natural)
@@ -37,6 +38,12 @@ import DatraOrdinal.Internal
 {-@ invariant { value:Natural | value >= 0 } @-}
 
 {-@ type CanonicalCoefficients = { values:[Natural] | canonicalCoefficients values } @-}
+
+-- ALIGN: ORDINAL-NOT-BELOW-ZERO.
+{-@ ordinalNotBelowZero :: value:Ordinal -> {not (ordinalLT value (finiteOrdinal 0))} @-}
+ordinalNotBelowZero :: Ordinal -> ()
+ordinalNotBelowZero (Ordinal []) = ()
+ordinalNotBelowZero (Ordinal values@(_ : _)) = coefficientsLT values [] `seq` ()
 
 -- ALIGN: ORDINAL-BELOW-ONE.
 {-@ ordinalBelowOne :: value:Ordinal

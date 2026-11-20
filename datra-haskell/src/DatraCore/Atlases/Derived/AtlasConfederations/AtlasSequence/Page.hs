@@ -19,7 +19,7 @@ module AtlasSequence.Page
   ) where
 
 import AtlasSequence.Member (AtlasSequenceMember, memberAt, memberPageContains, memberPageOrder, memberPageChain, memberPageTransition, memberPreviousTrace, memberPageNext)
-import Chain.Internal
+import Chain
   ( Chain, chain, chainPosition, chainOrderType, chainOrdinalLT, positionMatches
   , reindexChain, reindexedPosition )
 import Chain.Position (withChainPosition)
@@ -30,9 +30,12 @@ import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedTarget
 import Consolidation.Endpoints (withConsolidationEndpoints)
 import Consolidation.Reindex (reindexConsolidation, reindexApply, reindexPreimage)
 import Consolidation.Sum (sumConsolidations, sumApply, sumPreimage)
-import DatraOrdinal.Internal (Ordinal (..), finiteOrdinal, addOrdinals, coefficientsLT)
+import DatraOrdinal (Ordinal, finiteOrdinal, addOrdinals)
+import DatraOrdinal.Laws (ordinalNotBelowZero)
 import Numeric.Natural (Natural)
 import PageElements.TraceChain (traceHead)
+
+{-@ opaque-reflect chainOrderType @-}
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -198,8 +201,7 @@ emptyLookup _ = Nothing
            => positionMatches (sequencePagePosition [] page) position (emptyLookup position)} @-}
 {-@ ple emptySurjective @-}
 emptySurjective :: Natural -> Ordinal -> ()
-emptySurjective _ (Ordinal []) = ()
-emptySurjective _ (Ordinal values@(_ : _)) = coefficientsLT values [] `seq` ()
+emptySurjective _ position = ordinalNotBelowZero position
 
 {-@ emptyBelow :: cell:{AtlasSequencePageCell | emptyContains cell}
       -> {chainOrdinalLT (emptyPosition cell) (finiteOrdinal 0)} @-}

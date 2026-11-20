@@ -7,7 +7,6 @@
 module Dominion.Internal
   ( Dominion (..)
   , MembershipDominion (..)
-  , membershipDominion
   , dominion
   , CountableSet (..)
   , embed
@@ -61,14 +60,6 @@ data MembershipDominion a = MembershipDominion
   { dominionMembership :: a -> Bool
   , memberDominion :: Dominion a
   }
-
-{-@ membershipDominion :: accepts:(a -> Bool)
-      -> value:Dominion ({datum:a | accepts datum})
-      -> {package:MembershipDominion a |
-           dominionMembership package == accepts && memberDominion package == value} @-}
--- ALIGN: DOMINION-MEMBERSHIP-PACKAGE.
-membershipDominion :: (a -> Bool) -> Dominion a -> MembershipDominion a
-membershipDominion = MembershipDominion
 
 newtype CountableSet a = CountableSet
   { elementAt :: Natural -> Maybe a

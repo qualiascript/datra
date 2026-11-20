@@ -19,7 +19,7 @@ module DomanialInsertion.Core
   , rankImagePreimageSound
   ) where
 
-import Dominion.Internal (Dominion (..))
+import Dominion (Dominion, dominion, rank, unrank, dominionCoherence)
 import Numeric.Natural (Natural)
 
 -- | An injective function between dominions. The executable left-inverse proof
@@ -134,8 +134,8 @@ pullbackRoundTrip
 @-}
 -- ALIGN: INSERTION-PULLBACK-ROUNDTRIP.
 pullbackRoundTrip :: Dominion b -> DomanialInsertion a b -> a -> ()
-pullbackRoundTrip (Dominion _ _ coherence) insertion value =
-  coherence (applyInsertion insertion value) `seq` insertionLeftInverse insertion value
+pullbackRoundTrip target insertion value =
+  dominionCoherence target (applyInsertion insertion value) `seq` insertionLeftInverse insertion value
 
 -- | Induce a source ranking. Its unranking retains the arbitrary off-image
 -- behavior permitted by Dominion's round-trip contract.
@@ -143,7 +143,7 @@ pullbackRoundTrip (Dominion _ _ coherence) insertion value =
 -- ALIGN: INSERTION-PULLBACK-INTERPRETATION.
 pullbackDominion :: Dominion b -> DomanialInsertion a b -> Dominion a
 pullbackDominion target insertion =
-  Dominion (rankImage target insertion) (pullbackUnrank target insertion)
+  dominion (rankImage target insertion) (pullbackUnrank target insertion)
     (pullbackRoundTrip target insertion)
 
 -- | Encode an insertion's image using the target Dominion's ranks.
@@ -194,8 +194,8 @@ rankImageRoundTrip
        (rankImage valueDominion insertion value) == Just value}
 @-}
 rankImageRoundTrip :: Dominion b -> DomanialInsertion a b -> a -> ()
-rankImageRoundTrip (Dominion _ _ coherence) insertion value =
-  coherence (applyInsertion insertion value) `seq` insertionLeftInverse insertion value
+rankImageRoundTrip valueDominion insertion value =
+  dominionCoherence valueDominion (applyInsertion insertion value) `seq` insertionLeftInverse insertion value
 
 -- ALIGN: INSERTION-RANK-SOUND.
 {-@

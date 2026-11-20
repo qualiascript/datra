@@ -14,16 +14,18 @@ module AtlasMerge.Resolution
   , mergeResolvedAt
   , mergePositionResolvable
   , mergeCellContains
+  , mergeCellContainsDisjoint
   ) where
 
-import Atlas.Internal (Atlas, atlasFolio)
-import qualified AtlasExtent.Internal as Extent hiding
-  (atlasCellOriginRankInsertion, cellContainsRankImage, cellOriginRankPreimageSound)
+import Atlas (Atlas, atlasFolio, atlasPageElements)
+import qualified AtlasExtent as Extent
+  (cellHasOrigin, cellTraceValid, withAtlasCellTrace, cellContainsRankDisjoint)
 import AtlasMerge.Source (AtlasMergeSource (..), leftMergeSource, rightMergeSource, mergeSourceValid, mergeSourceContains)
 import AtlasMerge.Data (AtlasMergeDatum (..))
 import AtlasMerge.Page (AtlasMergePageCell (..), atlasMergePageChain, mergePageContains, mergePagePosition)
 import Chain (chainIndex, chainObjectAt)
-import PageElements.Internal (traceLookupPresent, folioPageOrderType)
+import PageElements (traceLookupPresent, folioPageOrderType, pageElementTraceValidShape)
+import PageElements.TraceChain (traceHeadMatches)
 import Numeric.Natural (Natural)
 import PageElements.Structure (PageElement (..), SomePageElement (..))
 
@@ -143,3 +145,34 @@ mergeCellContains left right occurrence datum =
   case resolveMergeCell left right occurrence of
     Nothing -> False
     Just source -> mergeSourceContains left right source datum
+
+-- | Distinct cells of a positive merge page cannot share a tagged origin rank.
+-- Component cells may be on padded pages of their own Atlas.
+-- ALIGN: MERGE-RAW-CELL-DISJOINT.
+{-@ mergeCellContainsDisjoint :: left:Atlas la ls ld lo lf -> right:Atlas ra rs rd ro rf
+      -> first:{PageElement ms a | pageElementPage first > 0}
+      -> second:{PageElement ms b | pageElementPage second == pageElementPage first
+           && pageElementPosition second /= pageElementPosition first}
+      -> datum:{AtlasMergeDatum c | mergeCellContains left right first datum}
+      -> {not (mergeCellContains left right second datum)} @-}
+mergeCellContainsDisjoint :: Atlas la ls ld lo lf -> Atlas ra rs rd ro rf
+  -> PageElement ms a -> PageElement ms b -> AtlasMergeDatum c -> ()
+mergeCellContainsDisjoint left right first second datum =
+  case resolveMergeCell left right first of
+    Nothing -> ()
+    Just firstSource -> case resolveMergeCell left right second of
+      Nothing -> ()
+      Just secondSource -> case (firstSource, secondSource, datum) of
+        (MergeLeftSource (SomePageElement a), MergeLeftSource (SomePageElement b), AtlasMergeLeftDatum rankValue) ->
+          pageElementTraceValidShape (atlasPageElements left) a `seq`
+          pageElementTraceValidShape (atlasPageElements left) b `seq`
+          traceHeadMatches (pageElementPosition a) (pageElementTrace a) `seq`
+          traceHeadMatches (pageElementPosition b) (pageElementTrace b) `seq`
+          Extent.cellContainsRankDisjoint left a b rankValue
+        (MergeRightSource (SomePageElement a), MergeRightSource (SomePageElement b), AtlasMergeRightDatum rankValue) ->
+          pageElementTraceValidShape (atlasPageElements right) a `seq`
+          pageElementTraceValidShape (atlasPageElements right) b `seq`
+          traceHeadMatches (pageElementPosition a) (pageElementTrace a) `seq`
+          traceHeadMatches (pageElementPosition b) (pageElementTrace b) `seq`
+          Extent.cellContainsRankDisjoint right a b rankValue
+        _ -> ()

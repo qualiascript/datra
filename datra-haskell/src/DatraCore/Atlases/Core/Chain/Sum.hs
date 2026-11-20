@@ -26,7 +26,7 @@ import Chain.Internal
   , positionMatches
   )
 import Chain.Order (chainPrecedes)
-import DatraOrdinal.Internal
+import DatraOrdinal
   ( Ordinal
   , addOrdinals
   )

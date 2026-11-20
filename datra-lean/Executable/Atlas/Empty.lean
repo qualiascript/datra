@@ -3,11 +3,12 @@ import Executable.Atlas.DomanialInclusion
 namespace Datra.Executable.EmptyAtlas
 open CategoryTheory
 
-/-- The empty Haskell data family retains its phantom cell index. -/
-inductive Datum (_cell : PageElementCell) : Type
+/-- The Haskell carrier retains its phantom cell index and an impossible Void witness. -/
+structure Datum (_cell : PageElementCell) : Type where
+  impossible : Empty
 
 def absurdDatum {cell : PageElementCell} {Result : Sort*} (datum : Datum cell) : Result :=
-  nomatch datum
+  Empty.elim datum.impossible
 
 def dominionAt (cell : PageElementCell) : Dominion (Datum cell) where
   rank := absurdDatum

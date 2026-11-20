@@ -18,6 +18,14 @@ module Atlas.Internal
   , atlasMembership
   , atlasMembershipAccepts
   , atlasRestrictedDataAction
+  , atlasPredicateDataAction
+  , atlasActionDomain
+  , atlasActionMembership
+  , atlasActionElementValid
+  , atlasActionArrowValid
+  , atlasActionDataAt
+  , atlasActionMap
+  , atlasActionAccepts
   , atlas
   , atlasWithScope
   , atlasPagination
@@ -60,6 +68,10 @@ import Atlas.LiquidInternal
   , atlasActionDataAt
   , atlasActionAccepts
   , atlasActionMap
+  , atlasActionDomain
+  , atlasActionMembership
+  , atlasActionElementValid
+  , atlasActionArrowValid
   , atlasData
   , atlasDataIdentityLaw
   , atlasDataCompositionLaw
@@ -79,7 +91,7 @@ import Dominion (Dominion)
 import Folio (Folio, withPageAt)
 import Numeric.Natural (Natural)
 import PageElements (PageElementIndex, PageElements)
-import qualified PageElements.Internal as Elements
+import qualified PageElements as Elements
 import PageElements.Structure
   ( PageElementCell (..)
   , PageElement (..)
@@ -96,10 +108,11 @@ import PageElements.Structure
   , normalizePageElementAt
   , normalizePageElementArrowAt
   , normalizePageElementIdempotentAt
+  , normalizePageElementArrowIdempotentAt
   , traceStartsWith
   , positionAtPage
   )
-import Pagination.Internal
+import Pagination
   ( Pagination
   , PaginationMorphism
   , paginationCardinality
@@ -181,7 +194,8 @@ atlasDataAction category = atlasAction (Elements.pageElementDomain category)
                 ({datum:cellData source | atlasMembershipAccepts membership (arrowSource arrow) datum})
                 ({datum:cellData target | atlasMembershipAccepts membership (arrowTarget arrow) datum}))
       -> {action:AtlasDataAction scope cellData | Action.atlasActionMembership action == membership
-           && Action.atlasActionDomain action == Elements.pageElementDomain category} @-}
+           && Action.atlasActionDomain action == Elements.pageElementDomain category
+           && atlasActionDataAt action == dataAt && atlasActionMap action == mapData} @-}
 atlasRestrictedDataAction
   :: PageElements scope origin final
   -> AtlasMembership scope cellData
@@ -190,6 +204,36 @@ atlasRestrictedDataAction
         -> DomanialInsertion (cellData source) (cellData target))
   -> AtlasDataAction scope cellData
 atlasRestrictedDataAction category = Action.atlasRestrictedAction (Elements.pageElementDomain category)
+
+-- | Package a rank-polymorphic predicate with the callbacks it restricts.
+-- Keeping this step generic retains the callback types before a concrete
+-- phantom data family is supplied.
+-- ALIGN: ATLAS-PREDICATE-ACTION.
+{-@ opaque-reflect atlasMembership @-}
+{-@ atlasPredicateDataAction
+      :: category:PageElements scope origin final
+      -> accepts:(forall object. PageElement scope object -> cellData object -> Bool)
+      -> dataAt:(forall object. occurrence:{PageElement scope object | Elements.pageElementTraceValid category occurrence}
+           -> Dominion ({datum:cellData object | accepts occurrence datum}))
+      -> mapData:(forall source target. arrow:{PageElementArrow scope source target |
+           Elements.pageElementTraceValid category (arrowSource arrow)
+           && Elements.pageElementTraceValid category (arrowTarget arrow)}
+           -> DomanialInsertion
+                ({datum:cellData source | accepts (arrowSource arrow) datum})
+                ({datum:cellData target | accepts (arrowTarget arrow) datum}))
+      -> {action:AtlasDataAction scope cellData |
+           atlasActionDomain action == Elements.pageElementDomain category
+           && atlasActionMembership action == atlasMembership accepts
+           && atlasActionDataAt action == dataAt && atlasActionMap action == mapData} @-}
+atlasPredicateDataAction
+  :: PageElements scope origin final
+  -> (forall object. PageElement scope object -> cellData object -> Bool)
+  -> (forall object. PageElement scope object -> Dominion (cellData object))
+  -> (forall source target. PageElementArrow scope source target
+        -> DomanialInsertion (cellData source) (cellData target))
+  -> AtlasDataAction scope cellData
+atlasPredicateDataAction category accepts =
+  atlasRestrictedDataAction category (atlasMembership accepts)
 
 -- | Construct an atlas object from a pagination and its canonical data
 -- assignment.
@@ -543,6 +587,11 @@ atlasCardinality
 atlasCardinality value = paginationCardinality (atlasPagination value)
 
 -- | Collapse a tall occurrence to its last genuine representative.
+{-@ normalizeAtlasElement :: value:Atlas atlasScope scope cellData origin final
+      -> occurrence:PageElement scope object
+      -> {result:PageElement scope object |
+           pageElementPage result <= atlasDataFinalPage (storedAtlasData value)
+           && pageElementPosition result == pageElementPosition occurrence} @-}
 normalizeAtlasElement
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -555,6 +604,11 @@ normalizeAtlasElement value =
 
 -- | Normalize both endpoints of a tall page-element arrow.
 {-@ reflect normalizeAtlasArrow @-}
+{-@ normalizeAtlasArrow :: value:Atlas atlasScope scope cellData origin final
+      -> arrow:PageElementArrow scope source target
+      -> {result:PageElementArrow scope source target |
+           arrowSource result == normalizeAtlasElement value (arrowSource arrow)
+           && arrowTarget result == normalizeAtlasElement value (arrowTarget arrow)} @-}
 normalizeAtlasArrow
   :: Atlas atlasScope scope cellData origin final
   -> PageElementArrow scope source target
@@ -782,7 +836,6 @@ atlasCoherenceWitness value occurrence coherenceArrow datum =
       -> leftToOrigin:{PageElementArrow scope leftObject originObject | AtlasValidArrow value leftToOrigin}
       -> rightToOrigin:{PageElementArrow scope rightObject originObject | AtlasValidArrow value rightToOrigin && pageElementPage right == pageElementPage left
            && pageElementPosition right /= pageElementPosition left
-           && pageElementPage left <= atlasFinalPage (atlasPagination value)
            && arrowSource leftToOrigin == left
            && pageElementPage (arrowTarget leftToOrigin) == 0
            && arrowSource rightToOrigin == right
@@ -800,7 +853,24 @@ atlasDisjointWitness
   -> cellData rightObject
   -> ()
 atlasDisjointWitness value left right leftToOrigin rightToOrigin leftDatum rightDatum =
-  atlasDataDisjointLaw (storedAtlasData value) left right leftToOrigin rightToOrigin leftDatum rightDatum
+  let stored = storedAtlasData value
+      finalPage = atlasDataFinalPage stored
+      traceLimit = atlasDataTraceLimit stored
+      normalizedLeft = normalizeAtlasElement value left
+      normalizedRight = normalizeAtlasElement value right
+      normalizedLeftArrow = normalizeAtlasArrow value leftToOrigin
+      normalizedRightArrow = normalizeAtlasArrow value rightToOrigin
+  in normalizeAtlasElementTraceValid value left `seq`
+     normalizeAtlasElementTraceValid value right `seq`
+     normalizeAtlasArrowTraceValid value leftToOrigin `seq`
+     normalizeAtlasArrowTraceValid value rightToOrigin `seq`
+     normalizePageElementArrowIdempotentAt finalPage traceLimit leftToOrigin `seq`
+     normalizePageElementArrowIdempotentAt finalPage traceLimit rightToOrigin `seq`
+     atlasAcceptsDatumNormalized value left leftDatum `seq`
+     atlasAcceptsDatumNormalized value right rightDatum `seq`
+     mapAtlasData value leftToOrigin `seq`
+     mapAtlasData value rightToOrigin `seq`
+     atlasDataDisjointLaw stored normalizedLeft normalizedRight normalizedLeftArrow normalizedRightArrow leftDatum rightDatum
 
 -- | Eliminate the carrier of the @n@th page chain. Pages at or above the
 -- Atlas cardinality are the padded copies of the final genuine chain.

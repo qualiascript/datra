@@ -12,14 +12,14 @@ module AtlasSequence.Assembly
 import AtlasSequence.Member (AtlasSequenceMember, memberLength, memberList, memberPageOrigin, memberPageContains)
 import AtlasSequence.Page
   ( AtlasSequencePageCell (..), atlasSequencePageChain, sequencePageContains, sequencePagePosition, sequencePageTransition, previousSequenceCell, headCell )
-import Chain.Internal (chainPosition)
+import Chain (chainPosition)
 import Data.List.NonEmpty (NonEmpty (..))
-import Folio.Internal (Folio)
+import Folio (Folio)
 import Folio.Assembly (OriginExtension, extendOrigin, originExtensionPages, originExtensionTrace, firstPageTrace, extendPages, extendPagesLookup, extendPagesThroughLookup, extendPagesFinalTrace)
 import Folio.Presentation (folioLengthData, lastPageData)
 import Numeric.Natural (Natural)
 import DatraOrdinal (Ordinal)
-import PageElements.Internal (folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup, prependCopies)
+import PageElements (folioTraceLookup, genuinePageElementTrace, finalPageTraceLookup, prependCopies)
 
 {-@ opaque-reflect memberList @-}
 

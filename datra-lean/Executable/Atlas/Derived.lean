@@ -381,18 +381,17 @@ theorem Atlas.cellContainsRank_samePage (X : Atlas) (left right : X.Element)
   have distinct := X.disjointWitness
     (left := left.normalize) (right := right.normalize)
     (congrArg (fun n => min n (X.pages.depth - 1)) samePage) different
-    (min_le_right _ _) rfl left.normalize.toOrigin right.normalize.toOrigin a b
+    rfl left.normalize.toOrigin right.normalize.toOrigin a b
   apply distinct
   change X.originImage left.normalize a = X.originImage right.normalize b
   rw [X.originImage_normalize, X.originImage_normalize]
   exact (X.originImageRank_eq_iff left right a b).mp (ha.trans hb.symm)
 
 -- ALIGN: ATLAS-CELL-MEMBERSHIP-DISJOINT.
-/-- The checked runtime disjointness contract for two distinct genuine-page
+/-- The checked runtime disjointness contract for two distinct full-spine
 cells. Recovering data from both accepted ranks contradicts pagewise
 disjointness after origin-rank injectivity. -/
 theorem Atlas.cellContainsRank_disjoint (X : Atlas) (left right : X.Element)
-    (_genuine : left.val.page < X.pages.depth)
     (samePage : left.val.page = right.val.page)
     (different : left.val.position ≠ right.val.position) (valueRank : Nat)
     (inLeft : X.cellContainsRank left valueRank = true) :

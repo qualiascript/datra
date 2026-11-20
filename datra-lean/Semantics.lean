@@ -1237,6 +1237,20 @@ def OrdAtlTrapToAtlTrap : OrdAtlTrap ⥤ AtlTrap where
   obj X := WideSubcategory.mk X.obj
   map f := ⟨f.1, f.2.1⟩
 
+/-%%
+\begin{definition}[The Category of Atlas Transversals]
+The \textbf{Category of Atlas Transversals}, denoted $\mathsf{AtlTrav}$, is
+the wide subcategory of $\mathsf{OrdAtlTrap}$ whose morphisms preserve covered
+page elements: the exact image of every covered page element is covered.
+\end{definition}
+
+\begin{definition}[The Category of Stable Atlas Transversals]
+The \textbf{Category of Stable Atlas Transversals}, denoted
+$\mathsf{StaAtlTrav}$, is the wide subcategory of $\mathsf{AtlTrav}$ whose
+morphisms $F:X\to Y$ satisfy $F_{Pa}(0,0)=(0,0)$.
+\end{definition}
+%%-/
+
 /-- An atlas morphism preserves covered page elements when the exact image of
 each covered page element is covered. -/
 def PreservesCoveredPageElements {X Y : Atl} (F : X ⟶ Y) : Prop :=
@@ -1284,20 +1298,6 @@ def AtlTravToAtlTrap : AtlTrav ⥤ AtlTrap where
 
 def AtlTravInc : AtlTrav ⥤ Atl := wideSubcategoryInclusion IsTransversal
 
-/-%%
-\begin{definition}[The Category of Atlas Transversals]
-The \textbf{Category of Atlas Transversals}, denoted $\mathsf{AtlTrav}$, is
-the wide subcategory of $\mathsf{OrdAtlTrap}$ whose morphisms preserve covered
-page elements: the exact image of every covered page element is covered.
-\end{definition}
-
-\begin{definition}[The Category of Stable Atlas Transversals]
-The \textbf{Category of Stable Atlas Transversals}, denoted
-$\mathsf{StaAtlTrav}$, is the wide subcategory of $\mathsf{AtlTrav}$ whose
-morphisms $F:X\to Y$ satisfy $F_{Pa}(0,0)=(0,0)$.
-\end{definition}
-%%-/
-
 def IsStableTransversal : MorphismProperty AtlTrav := fun X Y F =>
   F.1.Pa.obj X.obj.Fo.originElement = Y.obj.Fo.originElement
 
@@ -1313,6 +1313,763 @@ def StaAtlTravToAtlTrav : StaAtlTrav ⥤ AtlTrav :=
   wideSubcategoryInclusion IsStableTransversal
 
 def StaAtlTravInc : StaAtlTrav ⥤ Atl := StaAtlTravToAtlTrav ⋙ AtlTravInc
+
+/-%%
+\section{Maps and Cartography}
+
+\begin{definition}[The Category of Atlas Maps]
+The \textbf{Category of Atlas Maps}, denoted $\mathsf{AtlMap}$, is the full
+subcategory of atlases for which every element of the extent is in the image
+of a final region.
+\end{definition}
+%%-/
+
+def IsAtlasMap : ObjectProperty Atl := fun A =>
+  ∀ v : extent A, Covered A A.Fo.originElement v
+
+abbrev AtlMap := IsAtlasMap.FullSubcategory
+
+/-%%
+\begin{definition}[Total Atlas Maps]
+A \textbf{Total Atlas Map} is an Atlas Map whose every final region contains
+exactly one element.
+\end{definition}
+%%-/
+
+/-- An Atlas Map is total when every one of its final regions is a singleton. -/
+def IsTotalAtlasMap (A : AtlMap) : Prop :=
+  ∀ k : TerritoryIndex A.obj,
+    Nonempty (territory A.obj k) ∧ Subsingleton (territory A.obj k)
+
+/-- Atlas Maps whose final regions are singletons. -/
+def TotalAtlasMap := {A : AtlMap // IsTotalAtlasMap A}
+
+/-%%
+\begin{definition}[The Atlas Map Inclusion Functor]
+The \textbf{Atlas Map Inclusion Functor}
+$\mathsf{AtlMapInc}:\mathsf{AtlMap}\to\Atl$ is the canonical inclusion.
+\end{definition}
+
+\begin{definition}[The Category of Atlas Transversal Maps]
+The \textbf{Category of Atlas Transversal Maps}, denoted
+$\mathsf{AtlTravMap}$, is the full subcategory of $\mathsf{AtlTrav}$ whose
+objects are Atlas Maps.
+\end{definition}
+%%-/
+
+def AtlMapInc : AtlMap ⥤ Atl := ObjectProperty.ι IsAtlasMap
+
+def IsAtlasMapTrav : ObjectProperty AtlTrav := fun A => IsAtlasMap A.obj
+abbrev AtlTravMap := IsAtlasMapTrav.FullSubcategory
+
+/-%%
+\begin{definition}[The Atlas Transversal Map Inclusion Functor]
+The canonical inclusion is denoted
+$\mathsf{AtlTravMapInc}:\mathsf{AtlTravMap}\to\mathsf{AtlTrav}$.
+\end{definition}
+%%-/
+
+def AtlTravMapInc : AtlTravMap ⥤ AtlTrav := ObjectProperty.ι IsAtlasMapTrav
+
+/-%%
+\begin{lemma}[Cartography Lemma]
+The inclusion $\mathsf{AtlTravMapInc}$ has a right adjoint, denoted the
+\textbf{Charter Functor}
+$\mathsf{Chr}:\mathsf{AtlTrav}\to\mathsf{AtlTravMap}$.
+
+\emph{Proof sketch.}  On an object $X:\mathsf{AtlTrav}$, the functor
+$\mathsf{Chr}$ sends $X$ to the universal arrow from
+$\mathsf{AtlTravMapInc}$ to $X$.  Write
+$X'=\mathsf{AtlTravMapInc}(\mathsf{Chr}(X))$, together with
+$H:X'\to X$, with $X'$ terminal among objects having this property.  The
+solution is the DaTra map satisfying $\Ter(X')\cong\Ter(X)$.  It is unique
+because $\mathsf{AtlTrav}$ preserves orders and terminal because $H_{Pa}$ is
+faithful.
+\end{lemma}
+%%-/
+
+/-- The dominion of covered data in a cell. -/
+def coveredDom (X : Atl) (x : X.El) : DomIns where
+  toDom :=
+    { Carrier := {t : X.Da.obj x // Covered X x t}
+      rank :=
+        ({ toFun := Subtype.val
+           inj' := Subtype.val_injective } :
+          Function.Embedding {t : X.Da.obj x // Covered X x t} (X.Da.obj x)).trans
+            (X.Da.obj x).toDom.rank }
+
+def coveredMap {X : Atl} {x y : X.El} (f : x ⟶ y) :
+    coveredDom X x ⟶ coveredDom X y where
+  toFun t := ⟨X.Da.map f t.1, by
+    rcases t.2 with ⟨k, l, h⟩
+    refine ⟨k, l, ?_⟩
+    have e : f ≫ X.Fo.toOrigin y = X.Fo.toOrigin x :=
+      CategoryOfElements.ext _ _ _ (Subsingleton.elim _ _)
+    change (X.Da.map f ≫ X.Da.map (X.Fo.toOrigin y)) t.1 = _
+    rw [← X.Da.map_comp, e]
+    exact h⟩
+  inj' := fun a b h => Subtype.ext <| (X.Da.map f).injective <| congrArg Subtype.val h
+
+def coveredFunctor (X : Atl) : X.El ⥤ DomIns where
+  obj := coveredDom X
+  map := coveredMap
+  map_id x := by
+    apply DomIns.hom_ext
+    intro t
+    apply Subtype.ext
+    change (X.Da.map (𝟙 x)) t.1 = t.1
+    rw [X.Da.map_id]
+    change Function.Embedding.refl _ t.1 = t.1
+    rfl
+  map_comp f g := by
+    apply DomIns.hom_ext
+    intro t
+    apply Subtype.ext
+    change (X.Da.map (f ≫ g)) t.1 =
+      (X.Da.map f ≫ X.Da.map g) t.1
+    rw [X.Da.map_comp]
+
+def chartAtlas (X : Atl) : Atl where
+  Pa := X.Pa
+  Da := coveredFunctor X
+  disjoint := by
+    intro m i j hij x y h
+    apply X.disjoint m i j hij x.1 y.1
+    exact congrArg Subtype.val h
+
+theorem chart_all_covered (X : Atl) (x : (chartAtlas X).El)
+    (t : (chartAtlas X).Da.obj x) : Covered (chartAtlas X) x t := by
+  rcases t.2 with ⟨k, l, h⟩
+  let l' : territory (chartAtlas X) k := ⟨l, covered_region X k l⟩
+  exact ⟨k, l', Subtype.ext h⟩
+
+theorem chart_isAtlasMap (X : Atl) : IsAtlasMap (chartAtlas X) :=
+  fun v => chart_all_covered X _ v
+
+def chartCounit (X : Atl) : chartAtlas X ⟶ X where
+  Pa := 𝟭 X.El
+  Da :=
+    { app := fun _ =>
+        { toFun := Subtype.val
+          inj' := Subtype.val_injective }
+      naturality := by intros; ext; rfl }
+
+def chartMap {X Y : AtlTrav} (f : X ⟶ Y) :
+    chartAtlas X.obj ⟶ chartAtlas Y.obj where
+  Pa := f.1.Pa
+  Da :=
+    { app := fun x =>
+        { toFun := fun t => ⟨f.1.Da.app x t.1,
+            (mapAtlasTransversalCoveredPageElement f ⟨x, t.1, t.2⟩).covered⟩
+          inj' := fun a b h => Subtype.ext <| (f.1.Da.app x).injective <|
+            congrArg Subtype.val h }
+      naturality := by
+        intro x y g
+        apply DomIns.hom_ext
+        intro t
+        apply Subtype.ext
+        exact congrFun (congrArg Function.Embedding.toFun (f.1.Da.naturality g)) t.1 }
+
+theorem chartMap_isTransversal {X Y : AtlTrav} (f : X ⟶ Y) :
+    IsTransversal (chartMap f) := by
+  refine ⟨f.2.1, ?_⟩
+  intro _
+  exact chart_all_covered Y.obj _ _
+
+def Chr : AtlTrav ⥤ AtlTravMap where
+  obj X := ⟨WideSubcategory.mk (chartAtlas X.obj), chart_isAtlasMap X.obj⟩
+  map f := ⟨chartMap f, chartMap_isTransversal f⟩
+  map_id _ := by
+    apply Subtype.ext
+    change chartMap (𝟙 _) = AtlHom.identity _
+    apply AtlHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x t
+      rfl
+  map_comp f g := by
+    apply Subtype.ext
+    change chartMap (_ ≫ _) = AtlHom.comp (chartMap _) (chartMap _)
+    apply AtlHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x t
+      rfl
+
+/-- The formal construction realizes the proof sketch by retaining in each
+cell exactly the data covered by final regions; its counit is the canonical
+inclusion into the original atlas. -/
+
+theorem originImage_origin (X : Atl) (v : extent X) :
+    originImage X X.Fo.originElement v = v := by
+  have e : X.Fo.toOrigin X.Fo.originElement =
+      𝟙 X.Fo.originElement :=
+    CategoryOfElements.ext _ _ _ (Subsingleton.elim _ _)
+  rw [originImage, e, X.Da.map_id]
+  change Function.Embedding.refl _ v = v
+  rfl
+
+theorem atlasMap_all_covered {X : Atl} (hX : IsAtlasMap X)
+    (x : X.El) (t : X.Da.obj x) : Covered X x t := by
+  rcases hX (originImage X x t) with ⟨k, l, h⟩
+  exact ⟨k, l, by
+    change originImage X X.Fo.originElement (originImage X x t) =
+      originImage X (X.Pa.cell X.Fo.lastBase k) l at h
+    simpa only [originImage_origin] using h⟩
+
+theorem chartCounit_isTransversal (X : Atl) : IsTransversal (chartCounit X) := by
+  refine ⟨⟨Function.injective_id, fun _ _ h => h⟩, ?_⟩
+  intro c
+  simpa [chartCounit] using c.datum.2
+
+def chartCounitTrav (X : AtlTrav) :
+    (WideSubcategory.mk (chartAtlas X.obj) : AtlTrav) ⟶ X :=
+  ⟨chartCounit X.obj, chartCounit_isTransversal X.obj⟩
+
+def chartLift {A : AtlTravMap} {X : AtlTrav}
+    (f : AtlTravMapInc.obj A ⟶ X) :
+    A ⟶ Chr.obj X := by
+  refine ⟨?_, ?_⟩
+  · exact
+      { Pa := f.1.Pa
+        Da :=
+          { app := fun x =>
+              { toFun := fun t => ⟨f.1.Da.app x t,
+                  (mapAtlasTransversalCoveredPageElement f
+                    ⟨x, t, atlasMap_all_covered A.property x t⟩).covered⟩
+                inj' := by
+                  intro a b h
+                  apply (f.1.Da.app x).injective
+                  exact congrArg (fun z => z.1) h }
+            naturality := by
+              intro x y g
+              apply DomIns.hom_ext
+              intro t
+              apply Subtype.ext
+              exact congrFun (congrArg Function.Embedding.toFun (f.1.Da.naturality g)) t } }
+  · refine ⟨f.2.1, ?_⟩
+    intro _
+    exact chart_all_covered X.obj _ _
+
+def chartHomEquiv (A : AtlTravMap) (X : AtlTrav) :
+    (AtlTravMapInc.obj A ⟶ X) ≃ (A ⟶ Chr.obj X) where
+  toFun := chartLift
+  invFun g := g ≫ chartCounitTrav X
+  left_inv f := by
+    apply Subtype.ext
+    apply AtlHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x t
+      rfl
+  right_inv g := by
+    apply Subtype.ext
+    apply AtlHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x t
+      apply Subtype.ext
+      rfl
+
+theorem chartHomEquiv_naturality_left {A A' : AtlTravMap} (f : A' ⟶ A)
+    {X : AtlTrav} (g : AtlTravMapInc.obj A ⟶ X) :
+    chartHomEquiv A' X (AtlTravMapInc.map f ≫ g) =
+      f ≫ chartHomEquiv A X g := by
+  apply Subtype.ext
+  apply AtlHom.ext
+  · rfl
+  · apply heq_of_eq
+    ext x t
+    apply Subtype.ext
+    rfl
+
+theorem chartHomEquiv_naturality_right {A : AtlTravMap} {X X' : AtlTrav}
+    (f : AtlTravMapInc.obj A ⟶ X) (g : X ⟶ X') :
+    chartHomEquiv A X' (f ≫ g) = chartHomEquiv A X f ≫ Chr.map g := by
+  apply Subtype.ext
+  apply AtlHom.ext
+  · rfl
+  · apply heq_of_eq
+    ext x t
+    apply Subtype.ext
+    rfl
+
+def cartographyAdjunction : AtlTravMapInc ⊣ Chr :=
+  Adjunction.mkOfHomEquiv
+    { homEquiv := chartHomEquiv
+      homEquiv_naturality_left_symm := by
+        intro X' X Y f g
+        apply (chartHomEquiv X' Y).injective
+        simpa using (chartHomEquiv_naturality_left f ((chartHomEquiv X Y).symm g)).symm
+      homEquiv_naturality_right := by
+        intro X Y Y' f g
+        exact chartHomEquiv_naturality_right f g }
+
+theorem cartographyLemma : Nonempty (AtlTravMapInc ⊣ Chr) :=
+  ⟨cartographyAdjunction⟩
+
+/-%%
+\section{Coalitions}
+
+\begin{definition}[The Coalizing Functor]
+The \textbf{Coalizing Functor}, denoted
+\[
+  \mathsf{Coa}:\mathsf{StaAtlTrav}\longrightarrow\DomIns,
+\]
+is the extent of the charted atlas:
+$\mathsf{Coa}=\Ex\circ\mathsf{Chr}$.
+\end{definition}
+%%-/
+
+def extentMap {X Y : Atl} (f : X ⟶ Y) : extent X ⟶ extent Y :=
+  f.Da.app X.Fo.originElement ≫
+    Y.Da.map (Y.Fo.toOrigin (f.Pa.obj X.Fo.originElement))
+
+theorem extentMap_originImage {X Y : Atl} (f : X ⟶ Y) (x : X.El)
+    (a : X.Da.obj x) :
+    extentMap f (originImage X x a) =
+      originImage Y (f.Pa.obj x) (f.Da.app x a) := by
+  simp only [extentMap, originImage]
+  have hn := f.Da.naturality (X.Fo.toOrigin x)
+  have hc : f.Pa.map (X.Fo.toOrigin x) ≫
+      Y.Fo.toOrigin (f.Pa.obj X.Fo.originElement) =
+      Y.Fo.toOrigin (f.Pa.obj x) := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  rw [← hc, Y.Da.map_comp]
+  exact congrFun (congrArg Function.Embedding.toFun
+    (congrArg (fun k => k ≫
+      Y.Da.map (Y.Fo.toOrigin (f.Pa.obj X.Fo.originElement))) hn)) a
+
+theorem extentMap_id (X : Atl) : extentMap (𝟙 X) = 𝟙 (extent X) := by
+  apply DomIns.hom_ext
+  intro t
+  change (X.Da.map (X.Fo.toOrigin X.Fo.originElement)) t = t
+  simpa [originImage] using originImage_origin X t
+
+theorem extentMap_comp {X Y Z : Atl} (f : X ⟶ Y) (g : Y ⟶ Z) :
+    extentMap (f ≫ g) = extentMap f ≫ extentMap g := by
+  apply DomIns.hom_ext
+  intro t
+  let oX := X.Fo.originElement
+  let y := f.Pa.obj oX
+  let oY := Y.Fo.originElement
+  let z := g.Pa.obj y
+  let z₀ := g.Pa.obj oY
+  have hn := g.Da.naturality (Y.Fo.toOrigin y)
+  have hz : g.Pa.map (Y.Fo.toOrigin y) ≫ Z.Fo.toOrigin z₀ =
+      Z.Fo.toOrigin z :=
+    CategoryOfElements.ext _ _ _ (Subsingleton.elim _ _)
+  have hn' : Y.Da.map (Y.Fo.toOrigin y) ≫ g.Da.app oY =
+      g.Da.app y ≫ Z.Da.map (g.Pa.map (Y.Fo.toOrigin y)) := hn
+  have hm : g.Da.app y ≫ Z.Da.map (Z.Fo.toOrigin z) =
+      Y.Da.map (Y.Fo.toOrigin y) ≫ g.Da.app oY ≫
+        Z.Da.map (Z.Fo.toOrigin z₀) := by
+    rw [← Category.assoc, hn', Category.assoc, ← Z.Da.map_comp, hz]
+  exact congrFun (congrArg Function.Embedding.toFun
+    (by simpa only [Category.assoc] using congrArg (fun q => f.Da.app oX ≫ q) hm)) t
+
+def Ex : Atl ⥤ DomIns where
+  obj := extent
+  map := extentMap
+  map_id := extentMap_id
+  map_comp := extentMap_comp
+
+def stableCoalitionMap {X Y : StaAtlTrav} (f : X ⟶ Y) :
+    coveredDom X.obj.obj X.obj.obj.Fo.originElement ⟶
+      coveredDom Y.obj.obj Y.obj.obj.Fo.originElement where
+  toFun t := by
+    have hc := (mapAtlasTransversalCoveredPageElement f.1
+      ⟨X.obj.obj.Fo.originElement, t.1, t.2⟩).covered
+    exact coveredMap (X := Y.obj.obj) (eqToHom f.2)
+      ⟨f.1.1.Da.app X.obj.obj.Fo.originElement t.1, hc⟩
+  inj' := fun a b h => by
+    apply Subtype.ext
+    apply (f.1.1.Da.app X.obj.obj.Fo.originElement).injective
+    apply (Y.obj.obj.Da.map (eqToHom f.2)).injective
+    exact congrArg Subtype.val h
+
+theorem stableCoalitionMap_val {X Y : StaAtlTrav} (f : X ⟶ Y)
+    (t : coveredDom X.obj.obj X.obj.obj.Fo.originElement) :
+    (stableCoalitionMap f t).1 = extentMap f.1.1 t.1 := by
+  change Y.obj.obj.Da.map (eqToHom f.2)
+      (f.1.1.Da.app X.obj.obj.Fo.originElement t.1) =
+    Y.obj.obj.Da.map (Y.obj.obj.Fo.toOrigin
+      (f.1.1.Pa.obj X.obj.obj.Fo.originElement))
+      (f.1.1.Da.app X.obj.obj.Fo.originElement t.1)
+  have hmor : eqToHom f.2 = Y.obj.obj.Fo.toOrigin
+      (f.1.1.Pa.obj X.obj.obj.Fo.originElement) := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  rw [hmor]
+
+/-- `Coa` is written directly on the covered origins.  This is definitionally
+the object part of `Ex ∘ Chr`; stability makes its action on arrows reduce to
+the component at the origin. -/
+def Coa : StaAtlTrav ⥤ DomIns where
+  obj X := coveredDom X.obj.obj X.obj.obj.Fo.originElement
+  map := stableCoalitionMap
+  map_id X := by
+    apply DomIns.hom_ext
+    intro t
+    apply Subtype.ext
+    rw [stableCoalitionMap_val]
+    exact congrFun (congrArg Function.Embedding.toFun (extentMap_id X.obj.obj)) t.1
+  map_comp f g := by
+    apply DomIns.hom_ext
+    intro t
+    apply Subtype.ext
+    rw [stableCoalitionMap_val]
+    change extentMap (f.1.1 ≫ g.1.1) t.1 =
+      (stableCoalitionMap g (stableCoalitionMap f t)).1
+    rw [stableCoalitionMap_val, stableCoalitionMap_val]
+    exact congrFun (congrArg Function.Embedding.toFun
+      (extentMap_comp f.1.1 g.1.1)) t.1
+
+/-%%
+\begin{definition}[The Coalition of an Atlas]
+The \textbf{coalition} of an atlas $X$ is the extent of its chart, regarding
+$X$ as an object of the wide category of stable transversals.
+\end{definition}
+%%-/
+
+def coalition (X : Atl) : DomIns := (Coa.obj
+  (WideSubcategory.mk (WideSubcategory.mk X) : StaAtlTrav))
+
+/-%%
+\begin{definition}[The Domanial Inclusion Functor]
+The \textbf{Domanial Inclusion Functor} sends a dominion to the atlas of
+cardinality $1$ whose coalition is that dominion.  Write
+$\mathsf{DomInc}:\DomIns\to\mathsf{StaAtlTrav}$ for this functor.  It is
+left adjoint to $\mathsf{Coa}$: for $X:\DomIns$ and
+$Y:\mathsf{StaAtlTrav}$, naturally in $X$ and $Y$,
+\[
+  \Hom_{\mathsf{StaAtlTrav}}(\mathsf{DomInc}(X),Y)
+  \cong \Hom_{\DomIns}(X,\mathsf{Coa}(Y)),
+\]
+and $\mathsf{Coa}(\mathsf{DomInc}(X))\cong X$.
+\end{definition}
+%%-/
+
+/-- The initial dominion. -/
+def emptyDominion : DomIns where
+  toDom :=
+    { Carrier := Empty
+      rank :=
+        { toFun := fun x => nomatch x
+          inj' := fun x => nomatch x } }
+
+def singletonChain : Chain where
+  Obj := Unit
+  linearOrder := inferInstance
+  wellFoundedLT := inferInstance
+  orderType_lt := by
+    have hpow : Ordinal.omega0 ^ (1 : Ordinal) <
+        Ordinal.omega0 ^ Ordinal.omega0 :=
+      (Ordinal.opow_lt_opow_iff_right Ordinal.one_lt_omega0).2
+        Ordinal.one_lt_omega0
+    have hω : Ordinal.omega0 < Ordinal.omega0 ^ Ordinal.omega0 := by
+      simpa only [Ordinal.opow_one] using hpow
+    simpa using lt_trans Ordinal.one_lt_omega0 hω
+
+def singletonObjEquiv : singletonChain.Obj ≃ Unit := Equiv.refl _
+
+def onePageFolio : Folio where
+  length := 1
+  positive := by omega
+  core := (Functor.const (Fin 1)).obj (op singletonChain)
+  originEquiv := singletonObjEquiv
+
+def onePagePag : Pag := ⟨onePageFolio⟩
+
+theorem onePage_cell_unique (x : onePagePag.El) :
+    x = onePageFolio.originElement := by
+  let hbase : x.1 = onePageFolio.originBase := by
+    apply unop_injective
+    apply Fin.eq_zero
+  apply Functor.Elements.ext x onePageFolio.originElement hbase
+  exact onePageFolio.origin_unique _
+
+def dominionAtlas (X : DomIns) : Atl where
+  Pa := onePagePag
+  Da := (Functor.const onePagePag.El).obj X
+  disjoint := by
+    intro m i j hij
+    exfalso
+    apply hij
+    apply onePageFolio.originEquiv.injective
+    exact Subsingleton.elim _ _
+
+theorem dominionAtlas_isMap (X : DomIns) : IsAtlasMap (dominionAtlas X) := by
+  intro v
+  let k : TerritoryIndex (dominionAtlas X) :=
+    onePageFolio.originValue
+  refine ⟨k, v, ?_⟩
+  change originImage (dominionAtlas X)
+    (dominionAtlas X).Fo.originElement v =
+      originImage (dominionAtlas X)
+        ((dominionAtlas X).Pa.cell (dominionAtlas X).Fo.lastBase k) v
+  rw [originImage_origin]
+  have hc : (dominionAtlas X).Pa.cell (dominionAtlas X).Fo.lastBase k =
+      (dominionAtlas X).Fo.originElement := onePage_cell_unique _
+  rw [hc, originImage_origin]
+
+def dominionMap {X Y : DomIns} (f : X ⟶ Y) :
+    dominionAtlas X ⟶ dominionAtlas Y where
+  Pa := 𝟭 onePagePag.El
+  Da :=
+    { app := fun _ => f
+      naturality := by intros; apply DomIns.hom_ext; intro; rfl }
+
+theorem dominionMap_isTransversal {X Y : DomIns} (f : X ⟶ Y) :
+    IsTransversal (dominionMap f) := by
+  refine ⟨⟨Function.injective_id, fun _ _ h => h⟩, ?_⟩
+  intro _
+  exact atlasMap_all_covered (dominionAtlas_isMap Y) _ _
+
+theorem dominionMap_isStable {X Y : DomIns} (f : X ⟶ Y) :
+    IsStableTransversal
+      (X := WideSubcategory.mk (dominionAtlas X))
+      (Y := WideSubcategory.mk (dominionAtlas Y))
+      ⟨dominionMap f, dominionMap_isTransversal f⟩ := rfl
+
+def DomInc : DomIns ⥤ StaAtlTrav where
+  obj X := WideSubcategory.mk (WideSubcategory.mk (dominionAtlas X))
+  map f := ⟨⟨dominionMap f, dominionMap_isTransversal f⟩,
+    dominionMap_isStable f⟩
+  map_id _ := by
+    apply Subtype.ext
+    apply Subtype.ext
+    apply AtlHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext
+      rfl
+  map_comp f g := by
+    apply Subtype.ext
+    apply Subtype.ext
+    apply AtlHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x t
+      change (f ≫ g) t = (f ≫ g) t
+      rfl
+
+def onePageToAtlasPa (Y : Atl) : onePagePag.El ⥤ Y.El :=
+  (Functor.const onePagePag.El).obj Y.Fo.originElement
+
+theorem onePageToAtlasPa_injective (Y : Atl) :
+    Function.Injective (onePageToAtlasPa Y).obj := by
+  intro x y _
+  exact onePage_cell_unique x |>.trans (onePage_cell_unique y).symm
+
+theorem onePage_elementLT_false (X : DomIns) (x y : (dominionAtlas X).El) :
+    ¬ elementLT (dominionAtlas X) x y := by
+  intro h
+  have hxy : x = y := onePage_cell_unique x |>.trans (onePage_cell_unique y).symm
+  subst y
+  let m := (dominionAtlas X).Fo.commonBase x.1 x.1
+  letI : LinearOrder ((dominionAtlas X).Fo.Cell m) :=
+    ((dominionAtlas X).Fo.core.obj m.unop).unop.linearOrder
+  exact lt_irrefl _ h
+
+/-- A stable transversal from a one-page atlas determines an embedding into
+the covered part of the target extent. -/
+def domIncToCoa {X : DomIns} {Y : StaAtlTrav} (f : DomInc.obj X ⟶ Y) :
+    X ⟶ Coa.obj Y where
+  toFun x := by
+    have hc := (mapAtlasTransversalCoveredPageElement f.1
+      ⟨onePageFolio.originElement, x,
+        atlasMap_all_covered (dominionAtlas_isMap X) _ x⟩).covered
+    exact coveredMap (X := Y.obj.obj) (eqToHom f.2)
+      ⟨f.1.1.Da.app onePageFolio.originElement x, hc⟩
+  inj' := fun a b h => by
+    apply (f.1.1.Da.app onePageFolio.originElement).injective
+    apply (Y.obj.obj.Da.map (eqToHom f.2)).injective
+    exact congrArg Subtype.val h
+
+/-- Conversely, an embedding into the coalition supplies the unique stable
+transversal from the corresponding one-page atlas. -/
+def coaToDomInc {X : DomIns} {Y : StaAtlTrav} (f : X ⟶ Coa.obj Y) :
+    DomInc.obj X ⟶ Y := by
+  let p : (dominionAtlas X).El ⥤ Y.obj.obj.El := onePageToAtlasPa Y.obj.obj
+  let a : (dominionAtlas X).Da ⟶ p ⋙ Y.obj.obj.Da :=
+    { app := fun _ =>
+        { toFun := fun x => (f x).1
+          inj' := fun x y h => f.injective (Subtype.ext h) }
+      naturality := by
+        intro x y g
+        apply DomIns.hom_ext
+        intro t
+        have hxy : x = y := onePage_cell_unique x |>.trans
+          (onePage_cell_unique y).symm
+        subst y
+        have hg : g = 𝟙 x := by
+          apply CategoryOfElements.ext
+          apply Subsingleton.elim
+        subst g
+        simp [p] }
+  let h : dominionAtlas X ⟶ Y.obj.obj := ⟨p, a⟩
+  have htrav : IsTransversal h := by
+    refine ⟨⟨onePageToAtlasPa_injective Y.obj.obj, ?_⟩, ?_⟩
+    · intro x y hxy
+      exact (onePage_elementLT_false X x y hxy).elim
+    · intro c
+      change Covered Y.obj.obj Y.obj.obj.Fo.originElement (f c.datum).1
+      exact (f c.datum).2
+  exact ⟨⟨h, htrav⟩, rfl⟩
+
+def coaDomIncIso (X : DomIns) : Coa.obj (DomInc.obj X) ≅ X where
+  hom :=
+    { toFun := fun x => x.1
+      inj' := fun x y h => Subtype.ext h }
+  inv :=
+    { toFun := fun x => ⟨x, atlasMap_all_covered
+          (dominionAtlas_isMap X) onePageFolio.originElement x⟩
+      inj' := fun x y h => congrArg Subtype.val h }
+  hom_inv_id := by
+    apply DomIns.hom_ext
+    intro x
+    apply Subtype.ext
+    rfl
+  inv_hom_id := by
+    apply DomIns.hom_ext
+    intro x
+    rfl
+
+/-- The hom-set equivalence expressing that one-page insertion is left
+adjoint to coalization. -/
+def domIncCoaHomEquiv (X : DomIns) (Y : StaAtlTrav) :
+    (DomInc.obj X ⟶ Y) ≃ (X ⟶ Coa.obj Y) where
+  toFun := domIncToCoa
+  invFun := coaToDomInc
+  left_inv := by
+    intro f
+    apply Subtype.ext
+    apply Subtype.ext
+    have hPa : (coaToDomInc (domIncToCoa f)).1.1.Pa = f.1.1.Pa := by
+      exact CategoryTheory.Functor.ext
+        (fun x => f.2.symm.trans
+          (congrArg f.1.1.Pa.obj (onePage_cell_unique x).symm))
+        (fun _ _ _ => by
+          apply CategoryOfElements.ext
+          apply Subsingleton.elim)
+    apply AtlHom.ext _ _ hPa
+    apply NatTrans.hext_right _ _
+      (congrArg (fun Q => Q ⋙ Y.obj.obj.Da) hPa)
+    intro x
+    dsimp [coaToDomInc, domIncToCoa, onePageToAtlasPa]
+    have hx : x = onePageFolio.originElement := onePage_cell_unique x
+    subst x
+    let e := f.1.1.Da.app onePageFolio.originElement
+    have hrec :
+        { toFun := fun x =>
+            (coveredMap (X := Y.obj.obj) (eqToHom f.2)
+              ⟨e x, by
+                exact (mapAtlasTransversalCoveredPageElement f.1
+                  ⟨onePageFolio.originElement, x,
+                    atlasMap_all_covered (dominionAtlas_isMap X) _ x⟩).covered⟩).1
+          inj' := by
+            intro a b hab
+            apply e.injective
+            apply (Y.obj.obj.Da.map (eqToHom f.2)).injective
+            exact hab } = e ≫ Y.obj.obj.Da.map (eqToHom f.2) := by
+      apply DomIns.hom_ext
+      intro t
+      rfl
+    exact (heq_of_eq hrec).trans
+      (embedding_comp_map_eqToHom_heq Y.obj.obj.Da f.2 e)
+  right_inv := by
+    intro f
+    apply DomIns.hom_ext
+    intro x
+    apply Subtype.ext
+    change Y.obj.obj.Da.map (𝟙 Y.obj.obj.Fo.originElement) (f x).1 = (f x).1
+    exact congrFun (congrArg Function.Embedding.toFun
+      (Y.obj.obj.Da.map_id Y.obj.obj.Fo.originElement)) (f x).1
+
+theorem domIncCoaHomEquiv_naturality_left {X X' : DomIns} (f : X' ⟶ X)
+    {Y : StaAtlTrav} (g : DomInc.obj X ⟶ Y) :
+    domIncCoaHomEquiv X' Y (DomInc.map f ≫ g) =
+      f ≫ domIncCoaHomEquiv X Y g := by
+  apply DomIns.hom_ext
+  intro x
+  apply Subtype.ext
+  rfl
+
+theorem domIncCoaHomEquiv_naturality_right {X : DomIns} {Y Y' : StaAtlTrav}
+    (f : DomInc.obj X ⟶ Y) (g : Y ⟶ Y') :
+    domIncCoaHomEquiv X Y' (f ≫ g) =
+      domIncCoaHomEquiv X Y f ≫ Coa.map g := by
+  apply DomIns.hom_ext
+  intro x
+  apply Subtype.ext
+  let t : Coa.obj (DomInc.obj X) :=
+    ⟨x, atlasMap_all_covered
+      (dominionAtlas_isMap X) onePageFolio.originElement x⟩
+  change (Coa.map (f ≫ g) t).1 = (Coa.map g (Coa.map f t)).1
+  exact congrArg Subtype.val <| congrFun
+    (congrArg Function.Embedding.toFun (Coa.map_comp f g)) t
+
+/-- The unconditional adjunction promised by the Domanial Inclusion
+construction. -/
+def dominionAdjunction : DomInc ⊣ Coa :=
+  Adjunction.mkOfHomEquiv
+    { homEquiv := domIncCoaHomEquiv
+      homEquiv_naturality_left_symm := by
+        intro X' X Y f g
+        apply (domIncCoaHomEquiv X' Y).injective
+        simpa using
+          (domIncCoaHomEquiv_naturality_left f
+            ((domIncCoaHomEquiv X Y).symm g)).symm
+      homEquiv_naturality_right := by
+        intro X Y Y' f g
+        exact domIncCoaHomEquiv_naturality_right f g }
+
+theorem dominionLemma : Nonempty (DomInc ⊣ Coa) :=
+  ⟨dominionAdjunction⟩
+
+/-%%
+\section{Atlas Confederations}
+
+\begin{definition}[Atlas Merge]
+The \textbf{Atlas Merge} is the object operation
+\[
+  \mathsf{AtlMerge}:\operatorname{Ob}(\Atl)\times
+    \operatorname{Ob}(\Atl)\longrightarrow\operatorname{Ob}(\Atl).
+\]
+For atlases $X$ and $Y$, the extent of $\mathsf{AtlMerge}(X,Y)$ is the
+disjoint union of their extents.  Both atlases are evaluated on their full
+spines: page $n+1$ of the merge is the tagged, componentwise combination of
+page $n$ of $X$ and page $n$ of $Y$.
+\end{definition}
+
+\begin{definition}[Atlas Confederation]
+An \textbf{Atlas Confederation} is the data carried by an atlas merge: a
+countable tagged family of atlas objects together with a merge presentation
+whose evaluation is the resulting atlas. The category of Atlas Confederations is
+denoted $\mathsf{AtlConf}$.  A morphism consists of a map of tags and, at each source
+tag, a stable atlas transversal to its selected target tag. There is a canonical object-level
+forgetful operation $U:\operatorname{Ob}(\mathsf{AtlConf})\to\operatorname{Ob}(\Atl)$ that
+discards the component tags and retains the resulting atlas.
+\end{definition}
+
+\begin{definition}[Atlas Federation]
+An \textbf{Atlas Federation} is an Atlas Confederation $(A_i)_{i\in I}$ such
+that, for distinct $i,j\in I$, there is some page of their full, eventually
+constant spines where either the cell-indexing chains have different order
+types, or a pair of page elements at the same ordinal (under the chains' order
+isomorphism) carries dominions with no common element; equivalently, there is
+no pair of morphisms from the one-element dominion to those two dominions.
+\end{definition}
+
+\begin{definition}[The Empty Atlas]
+The \textbf{Empty Atlas} is
+$\mathsf{AtlI}=\mathsf{DomInc}(\varnothing)$, also viewed as the empty Atlas
+Confederation, whose tag family is empty and whose stored result is
+$\mathsf{AtlI}$.
+\end{definition}
+%%-/
 
 /-! A merge presentation records how an atlas confederation was assembled.  Its
 evaluation as an atlas is defined below, once the concrete `AtlMerge`
@@ -1812,763 +2569,6 @@ instance : SymmetricCategory StableAtlasFamily where
       cases i <;>
         simp [stableAtlasBraided, stableAtlasBraiding,
           stableAtlasBraidingHom, stableAtlasMerge]
-
-/-%%
-\section{Maps and Cartography}
-
-\begin{definition}[The Category of Atlas Maps]
-The \textbf{Category of Atlas Maps}, denoted $\mathsf{AtlMap}$, is the full
-subcategory of atlases for which every element of the extent is in the image
-of a final region.
-\end{definition}
-%%-/
-
-def IsAtlasMap : ObjectProperty Atl := fun A =>
-  ∀ v : extent A, Covered A A.Fo.originElement v
-
-abbrev AtlMap := IsAtlasMap.FullSubcategory
-
-/-%%
-\begin{definition}[Total Atlas Maps]
-A \textbf{Total Atlas Map} is an Atlas Map whose every final region contains
-exactly one element.
-\end{definition}
-%%-/
-
-/-- An Atlas Map is total when every one of its final regions is a singleton. -/
-def IsTotalAtlasMap (A : AtlMap) : Prop :=
-  ∀ k : TerritoryIndex A.obj,
-    Nonempty (territory A.obj k) ∧ Subsingleton (territory A.obj k)
-
-/-- Atlas Maps whose final regions are singletons. -/
-def TotalAtlasMap := {A : AtlMap // IsTotalAtlasMap A}
-
-def AtlMapInc : AtlMap ⥤ Atl := ObjectProperty.ι IsAtlasMap
-
-/-%%
-\begin{definition}[The Atlas Map Inclusion Functor]
-The \textbf{Atlas Map Inclusion Functor}
-$\mathsf{AtlMapInc}:\mathsf{AtlMap}\to\Atl$ is the canonical inclusion.
-\end{definition}
-
-\begin{definition}[The Category of Atlas Transversal Maps]
-The \textbf{Category of Atlas Transversal Maps}, denoted
-$\mathsf{AtlTravMap}$, is the full subcategory of $\mathsf{AtlTrav}$ whose
-objects are Atlas Maps.
-\end{definition}
-%%-/
-
-def IsAtlasMapTrav : ObjectProperty AtlTrav := fun A => IsAtlasMap A.obj
-abbrev AtlTravMap := IsAtlasMapTrav.FullSubcategory
-
-/-%%
-\begin{definition}[The Atlas Transversal Map Inclusion Functor]
-The canonical inclusion is denoted
-$\mathsf{AtlTravMapInc}:\mathsf{AtlTravMap}\to\mathsf{AtlTrav}$.
-\end{definition}
-%%-/
-
-def AtlTravMapInc : AtlTravMap ⥤ AtlTrav := ObjectProperty.ι IsAtlasMapTrav
-
-/-- The dominion of covered data in a cell. -/
-def coveredDom (X : Atl) (x : X.El) : DomIns where
-  toDom :=
-    { Carrier := {t : X.Da.obj x // Covered X x t}
-      rank :=
-        ({ toFun := Subtype.val
-           inj' := Subtype.val_injective } :
-          Function.Embedding {t : X.Da.obj x // Covered X x t} (X.Da.obj x)).trans
-            (X.Da.obj x).toDom.rank }
-
-def coveredMap {X : Atl} {x y : X.El} (f : x ⟶ y) :
-    coveredDom X x ⟶ coveredDom X y where
-  toFun t := ⟨X.Da.map f t.1, by
-    rcases t.2 with ⟨k, l, h⟩
-    refine ⟨k, l, ?_⟩
-    have e : f ≫ X.Fo.toOrigin y = X.Fo.toOrigin x :=
-      CategoryOfElements.ext _ _ _ (Subsingleton.elim _ _)
-    change (X.Da.map f ≫ X.Da.map (X.Fo.toOrigin y)) t.1 = _
-    rw [← X.Da.map_comp, e]
-    exact h⟩
-  inj' := fun a b h => Subtype.ext <| (X.Da.map f).injective <| congrArg Subtype.val h
-
-def coveredFunctor (X : Atl) : X.El ⥤ DomIns where
-  obj := coveredDom X
-  map := coveredMap
-  map_id x := by
-    apply DomIns.hom_ext
-    intro t
-    apply Subtype.ext
-    change (X.Da.map (𝟙 x)) t.1 = t.1
-    rw [X.Da.map_id]
-    change Function.Embedding.refl _ t.1 = t.1
-    rfl
-  map_comp f g := by
-    apply DomIns.hom_ext
-    intro t
-    apply Subtype.ext
-    change (X.Da.map (f ≫ g)) t.1 =
-      (X.Da.map f ≫ X.Da.map g) t.1
-    rw [X.Da.map_comp]
-
-def chartAtlas (X : Atl) : Atl where
-  Pa := X.Pa
-  Da := coveredFunctor X
-  disjoint := by
-    intro m i j hij x y h
-    apply X.disjoint m i j hij x.1 y.1
-    exact congrArg Subtype.val h
-
-theorem chart_all_covered (X : Atl) (x : (chartAtlas X).El)
-    (t : (chartAtlas X).Da.obj x) : Covered (chartAtlas X) x t := by
-  rcases t.2 with ⟨k, l, h⟩
-  let l' : territory (chartAtlas X) k := ⟨l, covered_region X k l⟩
-  exact ⟨k, l', Subtype.ext h⟩
-
-theorem chart_isAtlasMap (X : Atl) : IsAtlasMap (chartAtlas X) :=
-  fun v => chart_all_covered X _ v
-
-def chartCounit (X : Atl) : chartAtlas X ⟶ X where
-  Pa := 𝟭 X.El
-  Da :=
-    { app := fun _ =>
-        { toFun := Subtype.val
-          inj' := Subtype.val_injective }
-      naturality := by intros; ext; rfl }
-
-def chartMap {X Y : AtlTrav} (f : X ⟶ Y) :
-    chartAtlas X.obj ⟶ chartAtlas Y.obj where
-  Pa := f.1.Pa
-  Da :=
-    { app := fun x =>
-        { toFun := fun t => ⟨f.1.Da.app x t.1,
-            (mapAtlasTransversalCoveredPageElement f ⟨x, t.1, t.2⟩).covered⟩
-          inj' := fun a b h => Subtype.ext <| (f.1.Da.app x).injective <|
-            congrArg Subtype.val h }
-      naturality := by
-        intro x y g
-        apply DomIns.hom_ext
-        intro t
-        apply Subtype.ext
-        exact congrFun (congrArg Function.Embedding.toFun (f.1.Da.naturality g)) t.1 }
-
-theorem chartMap_isTransversal {X Y : AtlTrav} (f : X ⟶ Y) :
-    IsTransversal (chartMap f) := by
-  refine ⟨f.2.1, ?_⟩
-  intro _
-  exact chart_all_covered Y.obj _ _
-
-def Chr : AtlTrav ⥤ AtlTravMap where
-  obj X := ⟨WideSubcategory.mk (chartAtlas X.obj), chart_isAtlasMap X.obj⟩
-  map f := ⟨chartMap f, chartMap_isTransversal f⟩
-  map_id _ := by
-    apply Subtype.ext
-    change chartMap (𝟙 _) = AtlHom.identity _
-    apply AtlHom.ext
-    · rfl
-    · apply heq_of_eq
-      ext x t
-      rfl
-  map_comp f g := by
-    apply Subtype.ext
-    change chartMap (_ ≫ _) = AtlHom.comp (chartMap _) (chartMap _)
-    apply AtlHom.ext
-    · rfl
-    · apply heq_of_eq
-      ext x t
-      rfl
-
-/-%%
-\begin{lemma}[Cartography Lemma]
-The inclusion $\mathsf{AtlTravMapInc}$ has a right adjoint, denoted the
-\textbf{Charter Functor}
-$\mathsf{Chr}:\mathsf{AtlTrav}\to\mathsf{AtlTravMap}$.
-
-\emph{Proof sketch.}  On an object $X:\mathsf{AtlTrav}$, the functor
-$\mathsf{Chr}$ sends $X$ to the universal arrow from
-$\mathsf{AtlTravMapInc}$ to $X$.  Write
-$X'=\mathsf{AtlTravMapInc}(\mathsf{Chr}(X))$, together with
-$H:X'\to X$, with $X'$ terminal among objects having this property.  The
-solution is the DaTra map satisfying $\Ter(X')\cong\Ter(X)$.  It is unique
-because $\mathsf{AtlTrav}$ preserves orders and terminal because $H_{Pa}$ is
-faithful.
-\end{lemma}
-%%-/
-
-/-- The formal construction realizes the proof sketch by retaining in each
-cell exactly the data covered by final regions; its counit is the canonical
-inclusion into the original atlas. -/
-
-theorem originImage_origin (X : Atl) (v : extent X) :
-    originImage X X.Fo.originElement v = v := by
-  have e : X.Fo.toOrigin X.Fo.originElement =
-      𝟙 X.Fo.originElement :=
-    CategoryOfElements.ext _ _ _ (Subsingleton.elim _ _)
-  rw [originImage, e, X.Da.map_id]
-  change Function.Embedding.refl _ v = v
-  rfl
-
-theorem atlasMap_all_covered {X : Atl} (hX : IsAtlasMap X)
-    (x : X.El) (t : X.Da.obj x) : Covered X x t := by
-  rcases hX (originImage X x t) with ⟨k, l, h⟩
-  exact ⟨k, l, by
-    change originImage X X.Fo.originElement (originImage X x t) =
-      originImage X (X.Pa.cell X.Fo.lastBase k) l at h
-    simpa only [originImage_origin] using h⟩
-
-theorem chartCounit_isTransversal (X : Atl) : IsTransversal (chartCounit X) := by
-  refine ⟨⟨Function.injective_id, fun _ _ h => h⟩, ?_⟩
-  intro c
-  simpa [chartCounit] using c.datum.2
-
-def chartCounitTrav (X : AtlTrav) :
-    (WideSubcategory.mk (chartAtlas X.obj) : AtlTrav) ⟶ X :=
-  ⟨chartCounit X.obj, chartCounit_isTransversal X.obj⟩
-
-def chartLift {A : AtlTravMap} {X : AtlTrav}
-    (f : AtlTravMapInc.obj A ⟶ X) :
-    A ⟶ Chr.obj X := by
-  refine ⟨?_, ?_⟩
-  · exact
-      { Pa := f.1.Pa
-        Da :=
-          { app := fun x =>
-              { toFun := fun t => ⟨f.1.Da.app x t,
-                  (mapAtlasTransversalCoveredPageElement f
-                    ⟨x, t, atlasMap_all_covered A.property x t⟩).covered⟩
-                inj' := by
-                  intro a b h
-                  apply (f.1.Da.app x).injective
-                  exact congrArg (fun z => z.1) h }
-            naturality := by
-              intro x y g
-              apply DomIns.hom_ext
-              intro t
-              apply Subtype.ext
-              exact congrFun (congrArg Function.Embedding.toFun (f.1.Da.naturality g)) t } }
-  · refine ⟨f.2.1, ?_⟩
-    intro _
-    exact chart_all_covered X.obj _ _
-
-def chartHomEquiv (A : AtlTravMap) (X : AtlTrav) :
-    (AtlTravMapInc.obj A ⟶ X) ≃ (A ⟶ Chr.obj X) where
-  toFun := chartLift
-  invFun g := g ≫ chartCounitTrav X
-  left_inv f := by
-    apply Subtype.ext
-    apply AtlHom.ext
-    · rfl
-    · apply heq_of_eq
-      ext x t
-      rfl
-  right_inv g := by
-    apply Subtype.ext
-    apply AtlHom.ext
-    · rfl
-    · apply heq_of_eq
-      ext x t
-      apply Subtype.ext
-      rfl
-
-theorem chartHomEquiv_naturality_left {A A' : AtlTravMap} (f : A' ⟶ A)
-    {X : AtlTrav} (g : AtlTravMapInc.obj A ⟶ X) :
-    chartHomEquiv A' X (AtlTravMapInc.map f ≫ g) =
-      f ≫ chartHomEquiv A X g := by
-  apply Subtype.ext
-  apply AtlHom.ext
-  · rfl
-  · apply heq_of_eq
-    ext x t
-    apply Subtype.ext
-    rfl
-
-theorem chartHomEquiv_naturality_right {A : AtlTravMap} {X X' : AtlTrav}
-    (f : AtlTravMapInc.obj A ⟶ X) (g : X ⟶ X') :
-    chartHomEquiv A X' (f ≫ g) = chartHomEquiv A X f ≫ Chr.map g := by
-  apply Subtype.ext
-  apply AtlHom.ext
-  · rfl
-  · apply heq_of_eq
-    ext x t
-    apply Subtype.ext
-    rfl
-
-def cartographyAdjunction : AtlTravMapInc ⊣ Chr :=
-  Adjunction.mkOfHomEquiv
-    { homEquiv := chartHomEquiv
-      homEquiv_naturality_left_symm := by
-        intro X' X Y f g
-        apply (chartHomEquiv X' Y).injective
-        simpa using (chartHomEquiv_naturality_left f ((chartHomEquiv X Y).symm g)).symm
-      homEquiv_naturality_right := by
-        intro X Y Y' f g
-        exact chartHomEquiv_naturality_right f g }
-
-theorem cartographyLemma : Nonempty (AtlTravMapInc ⊣ Chr) :=
-  ⟨cartographyAdjunction⟩
-
-/-%%
-\section{Coalitions}
-
-\begin{definition}[The Coalizing Functor]
-The \textbf{Coalizing Functor}, denoted
-\[
-  \mathsf{Coa}:\mathsf{StaAtlTrav}\longrightarrow\DomIns,
-\]
-is the extent of the charted atlas:
-$\mathsf{Coa}=\Ex\circ\mathsf{Chr}$.
-\end{definition}
-%%-/
-
-def extentMap {X Y : Atl} (f : X ⟶ Y) : extent X ⟶ extent Y :=
-  f.Da.app X.Fo.originElement ≫
-    Y.Da.map (Y.Fo.toOrigin (f.Pa.obj X.Fo.originElement))
-
-theorem extentMap_originImage {X Y : Atl} (f : X ⟶ Y) (x : X.El)
-    (a : X.Da.obj x) :
-    extentMap f (originImage X x a) =
-      originImage Y (f.Pa.obj x) (f.Da.app x a) := by
-  simp only [extentMap, originImage]
-  have hn := f.Da.naturality (X.Fo.toOrigin x)
-  have hc : f.Pa.map (X.Fo.toOrigin x) ≫
-      Y.Fo.toOrigin (f.Pa.obj X.Fo.originElement) =
-      Y.Fo.toOrigin (f.Pa.obj x) := by
-    apply CategoryOfElements.ext
-    apply Subsingleton.elim
-  rw [← hc, Y.Da.map_comp]
-  exact congrFun (congrArg Function.Embedding.toFun
-    (congrArg (fun k => k ≫
-      Y.Da.map (Y.Fo.toOrigin (f.Pa.obj X.Fo.originElement))) hn)) a
-
-theorem extentMap_id (X : Atl) : extentMap (𝟙 X) = 𝟙 (extent X) := by
-  apply DomIns.hom_ext
-  intro t
-  change (X.Da.map (X.Fo.toOrigin X.Fo.originElement)) t = t
-  simpa [originImage] using originImage_origin X t
-
-theorem extentMap_comp {X Y Z : Atl} (f : X ⟶ Y) (g : Y ⟶ Z) :
-    extentMap (f ≫ g) = extentMap f ≫ extentMap g := by
-  apply DomIns.hom_ext
-  intro t
-  let oX := X.Fo.originElement
-  let y := f.Pa.obj oX
-  let oY := Y.Fo.originElement
-  let z := g.Pa.obj y
-  let z₀ := g.Pa.obj oY
-  have hn := g.Da.naturality (Y.Fo.toOrigin y)
-  have hz : g.Pa.map (Y.Fo.toOrigin y) ≫ Z.Fo.toOrigin z₀ =
-      Z.Fo.toOrigin z :=
-    CategoryOfElements.ext _ _ _ (Subsingleton.elim _ _)
-  have hn' : Y.Da.map (Y.Fo.toOrigin y) ≫ g.Da.app oY =
-      g.Da.app y ≫ Z.Da.map (g.Pa.map (Y.Fo.toOrigin y)) := hn
-  have hm : g.Da.app y ≫ Z.Da.map (Z.Fo.toOrigin z) =
-      Y.Da.map (Y.Fo.toOrigin y) ≫ g.Da.app oY ≫
-        Z.Da.map (Z.Fo.toOrigin z₀) := by
-    rw [← Category.assoc, hn', Category.assoc, ← Z.Da.map_comp, hz]
-  exact congrFun (congrArg Function.Embedding.toFun
-    (by simpa only [Category.assoc] using congrArg (fun q => f.Da.app oX ≫ q) hm)) t
-
-def Ex : Atl ⥤ DomIns where
-  obj := extent
-  map := extentMap
-  map_id := extentMap_id
-  map_comp := extentMap_comp
-
-def stableCoalitionMap {X Y : StaAtlTrav} (f : X ⟶ Y) :
-    coveredDom X.obj.obj X.obj.obj.Fo.originElement ⟶
-      coveredDom Y.obj.obj Y.obj.obj.Fo.originElement where
-  toFun t := by
-    have hc := (mapAtlasTransversalCoveredPageElement f.1
-      ⟨X.obj.obj.Fo.originElement, t.1, t.2⟩).covered
-    exact coveredMap (X := Y.obj.obj) (eqToHom f.2)
-      ⟨f.1.1.Da.app X.obj.obj.Fo.originElement t.1, hc⟩
-  inj' := fun a b h => by
-    apply Subtype.ext
-    apply (f.1.1.Da.app X.obj.obj.Fo.originElement).injective
-    apply (Y.obj.obj.Da.map (eqToHom f.2)).injective
-    exact congrArg Subtype.val h
-
-theorem stableCoalitionMap_val {X Y : StaAtlTrav} (f : X ⟶ Y)
-    (t : coveredDom X.obj.obj X.obj.obj.Fo.originElement) :
-    (stableCoalitionMap f t).1 = extentMap f.1.1 t.1 := by
-  change Y.obj.obj.Da.map (eqToHom f.2)
-      (f.1.1.Da.app X.obj.obj.Fo.originElement t.1) =
-    Y.obj.obj.Da.map (Y.obj.obj.Fo.toOrigin
-      (f.1.1.Pa.obj X.obj.obj.Fo.originElement))
-      (f.1.1.Da.app X.obj.obj.Fo.originElement t.1)
-  have hmor : eqToHom f.2 = Y.obj.obj.Fo.toOrigin
-      (f.1.1.Pa.obj X.obj.obj.Fo.originElement) := by
-    apply CategoryOfElements.ext
-    apply Subsingleton.elim
-  rw [hmor]
-
-/-- `Coa` is written directly on the covered origins.  This is definitionally
-the object part of `Ex ∘ Chr`; stability makes its action on arrows reduce to
-the component at the origin. -/
-def Coa : StaAtlTrav ⥤ DomIns where
-  obj X := coveredDom X.obj.obj X.obj.obj.Fo.originElement
-  map := stableCoalitionMap
-  map_id X := by
-    apply DomIns.hom_ext
-    intro t
-    apply Subtype.ext
-    rw [stableCoalitionMap_val]
-    exact congrFun (congrArg Function.Embedding.toFun (extentMap_id X.obj.obj)) t.1
-  map_comp f g := by
-    apply DomIns.hom_ext
-    intro t
-    apply Subtype.ext
-    rw [stableCoalitionMap_val]
-    change extentMap (f.1.1 ≫ g.1.1) t.1 =
-      (stableCoalitionMap g (stableCoalitionMap f t)).1
-    rw [stableCoalitionMap_val, stableCoalitionMap_val]
-    exact congrFun (congrArg Function.Embedding.toFun
-      (extentMap_comp f.1.1 g.1.1)) t.1
-
-/-%%
-\begin{definition}[The Coalition of an Atlas]
-The \textbf{coalition} of an atlas $X$ is the extent of its chart, regarding
-$X$ as an object of the wide category of stable transversals.
-\end{definition}
-%%-/
-
-def coalition (X : Atl) : DomIns := (Coa.obj
-  (WideSubcategory.mk (WideSubcategory.mk X) : StaAtlTrav))
-
-/-- The initial dominion. -/
-def emptyDominion : DomIns where
-  toDom :=
-    { Carrier := Empty
-      rank :=
-        { toFun := fun x => nomatch x
-          inj' := fun x => nomatch x } }
-
-def singletonChain : Chain where
-  Obj := Unit
-  linearOrder := inferInstance
-  wellFoundedLT := inferInstance
-  orderType_lt := by
-    have hpow : Ordinal.omega0 ^ (1 : Ordinal) <
-        Ordinal.omega0 ^ Ordinal.omega0 :=
-      (Ordinal.opow_lt_opow_iff_right Ordinal.one_lt_omega0).2
-        Ordinal.one_lt_omega0
-    have hω : Ordinal.omega0 < Ordinal.omega0 ^ Ordinal.omega0 := by
-      simpa only [Ordinal.opow_one] using hpow
-    simpa using lt_trans Ordinal.one_lt_omega0 hω
-
-def singletonObjEquiv : singletonChain.Obj ≃ Unit := Equiv.refl _
-
-def onePageFolio : Folio where
-  length := 1
-  positive := by omega
-  core := (Functor.const (Fin 1)).obj (op singletonChain)
-  originEquiv := singletonObjEquiv
-
-def onePagePag : Pag := ⟨onePageFolio⟩
-
-theorem onePage_cell_unique (x : onePagePag.El) :
-    x = onePageFolio.originElement := by
-  let hbase : x.1 = onePageFolio.originBase := by
-    apply unop_injective
-    apply Fin.eq_zero
-  apply Functor.Elements.ext x onePageFolio.originElement hbase
-  exact onePageFolio.origin_unique _
-
-def dominionAtlas (X : DomIns) : Atl where
-  Pa := onePagePag
-  Da := (Functor.const onePagePag.El).obj X
-  disjoint := by
-    intro m i j hij
-    exfalso
-    apply hij
-    apply onePageFolio.originEquiv.injective
-    exact Subsingleton.elim _ _
-
-theorem dominionAtlas_isMap (X : DomIns) : IsAtlasMap (dominionAtlas X) := by
-  intro v
-  let k : TerritoryIndex (dominionAtlas X) :=
-    onePageFolio.originValue
-  refine ⟨k, v, ?_⟩
-  change originImage (dominionAtlas X)
-    (dominionAtlas X).Fo.originElement v =
-      originImage (dominionAtlas X)
-        ((dominionAtlas X).Pa.cell (dominionAtlas X).Fo.lastBase k) v
-  rw [originImage_origin]
-  have hc : (dominionAtlas X).Pa.cell (dominionAtlas X).Fo.lastBase k =
-      (dominionAtlas X).Fo.originElement := onePage_cell_unique _
-  rw [hc, originImage_origin]
-
-def dominionMap {X Y : DomIns} (f : X ⟶ Y) :
-    dominionAtlas X ⟶ dominionAtlas Y where
-  Pa := 𝟭 onePagePag.El
-  Da :=
-    { app := fun _ => f
-      naturality := by intros; apply DomIns.hom_ext; intro; rfl }
-
-theorem dominionMap_isTransversal {X Y : DomIns} (f : X ⟶ Y) :
-    IsTransversal (dominionMap f) := by
-  refine ⟨⟨Function.injective_id, fun _ _ h => h⟩, ?_⟩
-  intro _
-  exact atlasMap_all_covered (dominionAtlas_isMap Y) _ _
-
-theorem dominionMap_isStable {X Y : DomIns} (f : X ⟶ Y) :
-    IsStableTransversal
-      (X := WideSubcategory.mk (dominionAtlas X))
-      (Y := WideSubcategory.mk (dominionAtlas Y))
-      ⟨dominionMap f, dominionMap_isTransversal f⟩ := rfl
-
-/-%%
-\begin{definition}[The Domanial Inclusion Functor]
-The \textbf{Domanial Inclusion Functor} sends a dominion to the atlas of
-cardinality $1$ whose coalition is that dominion.  Write
-$\mathsf{DomInc}:\DomIns\to\mathsf{StaAtlTrav}$ for this functor.  It is
-left adjoint to $\mathsf{Coa}$: for $X:\DomIns$ and
-$Y:\mathsf{StaAtlTrav}$, naturally in $X$ and $Y$,
-\[
-  \Hom_{\mathsf{StaAtlTrav}}(\mathsf{DomInc}(X),Y)
-  \cong \Hom_{\DomIns}(X,\mathsf{Coa}(Y)),
-\]
-and $\mathsf{Coa}(\mathsf{DomInc}(X))\cong X$.
-\end{definition}
-%%-/
-
-def DomInc : DomIns ⥤ StaAtlTrav where
-  obj X := WideSubcategory.mk (WideSubcategory.mk (dominionAtlas X))
-  map f := ⟨⟨dominionMap f, dominionMap_isTransversal f⟩,
-    dominionMap_isStable f⟩
-  map_id _ := by
-    apply Subtype.ext
-    apply Subtype.ext
-    apply AtlHom.ext
-    · rfl
-    · apply heq_of_eq
-      ext
-      rfl
-  map_comp f g := by
-    apply Subtype.ext
-    apply Subtype.ext
-    apply AtlHom.ext
-    · rfl
-    · apply heq_of_eq
-      ext x t
-      change (f ≫ g) t = (f ≫ g) t
-      rfl
-
-def onePageToAtlasPa (Y : Atl) : onePagePag.El ⥤ Y.El :=
-  (Functor.const onePagePag.El).obj Y.Fo.originElement
-
-theorem onePageToAtlasPa_injective (Y : Atl) :
-    Function.Injective (onePageToAtlasPa Y).obj := by
-  intro x y _
-  exact onePage_cell_unique x |>.trans (onePage_cell_unique y).symm
-
-theorem onePage_elementLT_false (X : DomIns) (x y : (dominionAtlas X).El) :
-    ¬ elementLT (dominionAtlas X) x y := by
-  intro h
-  have hxy : x = y := onePage_cell_unique x |>.trans (onePage_cell_unique y).symm
-  subst y
-  let m := (dominionAtlas X).Fo.commonBase x.1 x.1
-  letI : LinearOrder ((dominionAtlas X).Fo.Cell m) :=
-    ((dominionAtlas X).Fo.core.obj m.unop).unop.linearOrder
-  exact lt_irrefl _ h
-
-/-- A stable transversal from a one-page atlas determines an embedding into
-the covered part of the target extent. -/
-def domIncToCoa {X : DomIns} {Y : StaAtlTrav} (f : DomInc.obj X ⟶ Y) :
-    X ⟶ Coa.obj Y where
-  toFun x := by
-    have hc := (mapAtlasTransversalCoveredPageElement f.1
-      ⟨onePageFolio.originElement, x,
-        atlasMap_all_covered (dominionAtlas_isMap X) _ x⟩).covered
-    exact coveredMap (X := Y.obj.obj) (eqToHom f.2)
-      ⟨f.1.1.Da.app onePageFolio.originElement x, hc⟩
-  inj' := fun a b h => by
-    apply (f.1.1.Da.app onePageFolio.originElement).injective
-    apply (Y.obj.obj.Da.map (eqToHom f.2)).injective
-    exact congrArg Subtype.val h
-
-/-- Conversely, an embedding into the coalition supplies the unique stable
-transversal from the corresponding one-page atlas. -/
-def coaToDomInc {X : DomIns} {Y : StaAtlTrav} (f : X ⟶ Coa.obj Y) :
-    DomInc.obj X ⟶ Y := by
-  let p : (dominionAtlas X).El ⥤ Y.obj.obj.El := onePageToAtlasPa Y.obj.obj
-  let a : (dominionAtlas X).Da ⟶ p ⋙ Y.obj.obj.Da :=
-    { app := fun _ =>
-        { toFun := fun x => (f x).1
-          inj' := fun x y h => f.injective (Subtype.ext h) }
-      naturality := by
-        intro x y g
-        apply DomIns.hom_ext
-        intro t
-        have hxy : x = y := onePage_cell_unique x |>.trans
-          (onePage_cell_unique y).symm
-        subst y
-        have hg : g = 𝟙 x := by
-          apply CategoryOfElements.ext
-          apply Subsingleton.elim
-        subst g
-        simp [p] }
-  let h : dominionAtlas X ⟶ Y.obj.obj := ⟨p, a⟩
-  have htrav : IsTransversal h := by
-    refine ⟨⟨onePageToAtlasPa_injective Y.obj.obj, ?_⟩, ?_⟩
-    · intro x y hxy
-      exact (onePage_elementLT_false X x y hxy).elim
-    · intro c
-      change Covered Y.obj.obj Y.obj.obj.Fo.originElement (f c.datum).1
-      exact (f c.datum).2
-  exact ⟨⟨h, htrav⟩, rfl⟩
-
-def coaDomIncIso (X : DomIns) : Coa.obj (DomInc.obj X) ≅ X where
-  hom :=
-    { toFun := fun x => x.1
-      inj' := fun x y h => Subtype.ext h }
-  inv :=
-    { toFun := fun x => ⟨x, atlasMap_all_covered
-          (dominionAtlas_isMap X) onePageFolio.originElement x⟩
-      inj' := fun x y h => congrArg Subtype.val h }
-  hom_inv_id := by
-    apply DomIns.hom_ext
-    intro x
-    apply Subtype.ext
-    rfl
-  inv_hom_id := by
-    apply DomIns.hom_ext
-    intro x
-    rfl
-
-/-- The hom-set equivalence expressing that one-page insertion is left
-adjoint to coalization. -/
-def domIncCoaHomEquiv (X : DomIns) (Y : StaAtlTrav) :
-    (DomInc.obj X ⟶ Y) ≃ (X ⟶ Coa.obj Y) where
-  toFun := domIncToCoa
-  invFun := coaToDomInc
-  left_inv := by
-    intro f
-    apply Subtype.ext
-    apply Subtype.ext
-    have hPa : (coaToDomInc (domIncToCoa f)).1.1.Pa = f.1.1.Pa := by
-      exact CategoryTheory.Functor.ext
-        (fun x => f.2.symm.trans
-          (congrArg f.1.1.Pa.obj (onePage_cell_unique x).symm))
-        (fun _ _ _ => by
-          apply CategoryOfElements.ext
-          apply Subsingleton.elim)
-    apply AtlHom.ext _ _ hPa
-    apply NatTrans.hext_right _ _
-      (congrArg (fun Q => Q ⋙ Y.obj.obj.Da) hPa)
-    intro x
-    dsimp [coaToDomInc, domIncToCoa, onePageToAtlasPa]
-    have hx : x = onePageFolio.originElement := onePage_cell_unique x
-    subst x
-    let e := f.1.1.Da.app onePageFolio.originElement
-    have hrec :
-        { toFun := fun x =>
-            (coveredMap (X := Y.obj.obj) (eqToHom f.2)
-              ⟨e x, by
-                exact (mapAtlasTransversalCoveredPageElement f.1
-                  ⟨onePageFolio.originElement, x,
-                    atlasMap_all_covered (dominionAtlas_isMap X) _ x⟩).covered⟩).1
-          inj' := by
-            intro a b hab
-            apply e.injective
-            apply (Y.obj.obj.Da.map (eqToHom f.2)).injective
-            exact hab } = e ≫ Y.obj.obj.Da.map (eqToHom f.2) := by
-      apply DomIns.hom_ext
-      intro t
-      rfl
-    exact (heq_of_eq hrec).trans
-      (embedding_comp_map_eqToHom_heq Y.obj.obj.Da f.2 e)
-  right_inv := by
-    intro f
-    apply DomIns.hom_ext
-    intro x
-    apply Subtype.ext
-    change Y.obj.obj.Da.map (𝟙 Y.obj.obj.Fo.originElement) (f x).1 = (f x).1
-    exact congrFun (congrArg Function.Embedding.toFun
-      (Y.obj.obj.Da.map_id Y.obj.obj.Fo.originElement)) (f x).1
-
-theorem domIncCoaHomEquiv_naturality_left {X X' : DomIns} (f : X' ⟶ X)
-    {Y : StaAtlTrav} (g : DomInc.obj X ⟶ Y) :
-    domIncCoaHomEquiv X' Y (DomInc.map f ≫ g) =
-      f ≫ domIncCoaHomEquiv X Y g := by
-  apply DomIns.hom_ext
-  intro x
-  apply Subtype.ext
-  rfl
-
-theorem domIncCoaHomEquiv_naturality_right {X : DomIns} {Y Y' : StaAtlTrav}
-    (f : DomInc.obj X ⟶ Y) (g : Y ⟶ Y') :
-    domIncCoaHomEquiv X Y' (f ≫ g) =
-      domIncCoaHomEquiv X Y f ≫ Coa.map g := by
-  apply DomIns.hom_ext
-  intro x
-  apply Subtype.ext
-  let t : Coa.obj (DomInc.obj X) :=
-    ⟨x, atlasMap_all_covered
-      (dominionAtlas_isMap X) onePageFolio.originElement x⟩
-  change (Coa.map (f ≫ g) t).1 = (Coa.map g (Coa.map f t)).1
-  exact congrArg Subtype.val <| congrFun
-    (congrArg Function.Embedding.toFun (Coa.map_comp f g)) t
-
-/-- The unconditional adjunction promised by the Domanial Inclusion
-construction. -/
-def dominionAdjunction : DomInc ⊣ Coa :=
-  Adjunction.mkOfHomEquiv
-    { homEquiv := domIncCoaHomEquiv
-      homEquiv_naturality_left_symm := by
-        intro X' X Y f g
-        apply (domIncCoaHomEquiv X' Y).injective
-        simpa using
-          (domIncCoaHomEquiv_naturality_left f
-            ((domIncCoaHomEquiv X Y).symm g)).symm
-      homEquiv_naturality_right := by
-        intro X Y Y' f g
-        exact domIncCoaHomEquiv_naturality_right f g }
-
-theorem dominionLemma : Nonempty (DomInc ⊣ Coa) :=
-  ⟨dominionAdjunction⟩
-
-/-%%
-\section{Atlas Confederations}
-
-\begin{definition}[Atlas Merge]
-The \textbf{Atlas Merge} is the object operation
-\[
-  \mathsf{AtlMerge}:\operatorname{Ob}(\Atl)\times
-    \operatorname{Ob}(\Atl)\longrightarrow\operatorname{Ob}(\Atl).
-\]
-For atlases $X$ and $Y$, the extent of $\mathsf{AtlMerge}(X,Y)$ is the
-disjoint union of their extents.  Both atlases are evaluated on their full
-spines: page $n+1$ of the merge is the tagged, componentwise combination of
-page $n$ of $X$ and page $n$ of $Y$.
-\end{definition}
-
-\begin{definition}[Atlas Confederation]
-An \textbf{Atlas Confederation} is the data carried by an atlas merge: a
-countable tagged family of atlas objects together with a merge presentation
-whose evaluation is the resulting atlas. The category of Atlas Confederations is
-denoted $\mathsf{AtlConf}$.  A morphism consists of a map of tags and, at each source
-tag, a stable atlas transversal to its selected target tag. There is a canonical object-level
-forgetful operation $U:\operatorname{Ob}(\mathsf{AtlConf})\to\operatorname{Ob}(\Atl)$ that
-discards the component tags and retains the resulting atlas.
-\end{definition}
-
-\begin{definition}[Atlas Federation]
-An \textbf{Atlas Federation} is an Atlas Confederation $(A_i)_{i\in I}$ such
-that, for distinct $i,j\in I$, there is some page of their full, eventually
-constant spines where either the cell-indexing chains have different order
-types, or a pair of page elements at the same ordinal (under the chains' order
-isomorphism) carries dominions with no common element; equivalently, there is
-no pair of morphisms from the one-element dominion to those two dominions.
-\end{definition}
-
-\begin{definition}[The Empty Atlas]
-The \textbf{Empty Atlas} is
-$\mathsf{AtlI}=\mathsf{DomInc}(\varnothing)$, also viewed as the empty Atlas
-Confederation, whose tag family is empty and whose stored result is
-$\mathsf{AtlI}$.
-\end{definition}
-%%-/
 
 def AtlI : Atl := dominionAtlas emptyDominion
 
@@ -4401,28 +4401,6 @@ def tallBouquetRightElement (X Y : Atl) (y : Y.tall.El) : (AtlMerge X Y).tall.El
 /-- The category of Atlas Confederations used for iterated stable atlas merging. -/
 abbrev AtlConf := StableAtlasFamily
 
-/-- The horizontal bifunctor is confederation merge on objects and applies a
-stable transversal independently to every tagged component on arrows. -/
-def AtlHorSum : AtlConf × AtlConf ⥤ AtlConf := StableAtlHorSum
-
-def AtlBrd (X Y : AtlConf) :
-    AtlHorSum.obj (X, Y) ≅ AtlHorSum.obj (Y, X) :=
-  stableAtlasBraiding X Y
-
-def AtlAsoc (X Y Z : AtlConf) :
-    AtlHorSum.obj (AtlHorSum.obj (X, Y), Z) ≅
-      AtlHorSum.obj (X, AtlHorSum.obj (Y, Z)) :=
-  stableAtlasAssociator X Y Z
-
-def AtlLu (X : AtlConf) : AtlHorSum.obj (stableAtlasUnit, X) ≅ X :=
-  stableAtlasLeftUnitor X
-
-def AtlRu (X : AtlConf) : AtlHorSum.obj (X, stableAtlasUnit) ≅ X :=
-  stableAtlasRightUnitor X
-
-theorem horizontalLemma : Nonempty (SymmetricCategory AtlConf) :=
-  ⟨inferInstance⟩
-
 /-%%
 \begin{definition}[The Atlas Horizontal Sum Bifunctor]
 The \textbf{Atlas Horizontal Sum Bifunctor}, denoted
@@ -4443,6 +4421,10 @@ remain stable atlas transversals.
 \end{definition}
 %%-/
 
+/-- The horizontal bifunctor is confederation merge on objects and applies a
+stable transversal independently to every tagged component on arrows. -/
+def AtlHorSum : AtlConf × AtlConf ⥤ AtlConf := StableAtlHorSum
+
 /-%%
 \begin{lemma}[Horizontal Lemma]
 The Atlas Horizontal Sum Bifunctor $\mathsf{AtlHorSum}$ exists.
@@ -4455,6 +4437,9 @@ tag swapping, respectively.
 \end{lemma}
 %%-/
 
+theorem horizontalLemma : Nonempty (SymmetricCategory AtlConf) :=
+  ⟨inferInstance⟩
+
 /-%%
 \begin{definition}[The Atlas Braider]
 The \textbf{Atlas Braider}
@@ -4463,6 +4448,10 @@ $\mathsf{AtlBrd}_{F,F'}:\mathsf{AtlHorSum}(F,F')\to
 $\mathsf{AtlBrd}_{F,F'}\circ\mathsf{AtlBrd}_{F',F}=\id$.
 \end{definition}
 %%-/
+
+def AtlBrd (X Y : AtlConf) :
+    AtlHorSum.obj (X, Y) ≅ AtlHorSum.obj (Y, X) :=
+  stableAtlasBraiding X Y
 
 /-%%
 \begin{definition}[The Atlas Associator]
@@ -4479,6 +4468,11 @@ component is the matching reassociation of the three extent summands.
 \end{definition}
 %%-/
 
+def AtlAsoc (X Y Z : AtlConf) :
+    AtlHorSum.obj (AtlHorSum.obj (X, Y), Z) ≅
+      AtlHorSum.obj (X, AtlHorSum.obj (Y, Z)) :=
+  stableAtlasAssociator X Y Z
+
 /-%%
 \begin{definition}[The Atlas Unitors]
 The \textbf{Atlas Left Unitor}
@@ -4488,6 +4482,12 @@ $\mathsf{Ru}:\mathsf{AtlHorSum}(F,\mathsf{AtlI})\to F$ remove the empty
 tag family.
 \end{definition}
 %%-/
+
+def AtlLu (X : AtlConf) : AtlHorSum.obj (stableAtlasUnit, X) ≅ X :=
+  stableAtlasLeftUnitor X
+
+def AtlRu (X : AtlConf) : AtlHorSum.obj (X, stableAtlasUnit) ≅ X :=
+  stableAtlasRightUnitor X
 
 instance : SymmetricCategory StableAtlasFamilyᵒᵖ where
   symmetry X Y := by
@@ -4531,6 +4531,16 @@ presheaf category. -/
 def datraToposPresentation : DaTra ≌ (Atlᵒᵖ ⥤ Type) :=
   CategoryTheory.Equivalence.refl
 
+/-- Forget the action of an atlas presheaf on non-transversal arrows. -/
+def DaTra.restrictToAtlTrav : DaTra ⥤ DaTrav :=
+  (Functor.whiskeringLeft AtlTravᵒᵖ Atlᵒᵖ Type).obj AtlTravInc.op
+
+/-- Extend a presheaf on stable atlas transversals to an ordinary (large-valued)
+DaTra presheaf along the inclusion of stable transversals into all atlas
+morphisms. -/
+noncomputable def StaDaTrav.extendToDaTra : StaDaTrav.{3} ⥤ DaTra.{3} :=
+  StaAtlTravInc.op.lan
+
 end
 end Datra.Semantics
 
@@ -4563,9 +4573,66 @@ An \textbf{expedition} is a navigation represented by an Atlas Map.
 structure Expedition.{v} (D : DaTra.{v}) extends Navigation D where
   atlasMap : IsAtlasMap A
 
-/-- Forget the action of an atlas presheaf on non-transversal arrows. -/
-def DaTra.restrictToAtlTrav : DaTra ⥤ DaTrav :=
-  (Functor.whiskeringLeft AtlTravᵒᵖ Atlᵒᵖ Type).obj AtlTravInc.op
+/-%%
+\begin{definition}[Data Transformation Maps]
+The \textbf{Category of Data Transformation Maps}, denoted
+$\mathsf{DaTraMap}$, is the full subcategory of DaTra Sets all of whose
+navigations are expeditions.
+\end{definition}
+%%-/
+
+def IsDaTraMap.{v} : ObjectProperty DaTra.{v} := fun D =>
+  ∀ nav : Navigation D, IsAtlasMap nav.A
+
+abbrev DaTraMap.{v} := IsDaTraMap.{v}.FullSubcategory
+
+/-%%
+\begin{definition}[Atlas Map Federations]
+An \textbf{Atlas Map Federation} is an Atlas Federation whose canonical
+forgotten DaTra Set is a Data Transformation Map.
+\end{definition}
+%%-/
+
+/-- Forget confederation tags and extend the resulting stable-Atlas presheaf
+along the inclusion into Atlas morphisms. -/
+noncomputable def confederationPresheafToDaTra :
+    (StableAtlasFamilyᵒᵖ ⥤ Type 3) ⥤ DaTra.{3} :=
+  (Functor.whiskeringLeft StaAtlTravᵒᵖ StableAtlasFamilyᵒᵖ (Type 3)).obj
+    stableAtlasAtomFunctor.op ⋙ StaDaTrav.extendToDaTra
+
+/-- The canonical DaTra Set obtained by forgetting an Atlas Federation's
+component tags. -/
+noncomputable def AtlasFederation.toDaTra
+    (F : AtlasFederation) : DaTra.{3} :=
+  confederationPresheafToDaTra.obj (uliftYoneda.obj F.1)
+
+/-- The defining property of an Atlas Map Federation. -/
+def IsAtlasMapFederation (F : AtlasFederation) : Prop :=
+  IsDaTraMap.{3} F.toDaTra
+
+/-- Atlas Federations whose canonical forgotten DaTra Sets are Data
+Transformation Maps. -/
+def AtlasMapFederation :=
+  {F : AtlasFederation // IsAtlasMapFederation F}
+
+/-%%
+\section{Stable Confederal Data}
+
+\begin{definition}[Stable Confederal Data]
+The \textbf{Category of Stable Confederal Data}, denoted
+$\mathsf{StaConfDa}$, is the presheaf category on Atlas Confederations whose
+component arrows lie in $\mathsf{StaAtlTrav}$. Correspondingly, each stable
+confederal data object has an underlying DaTra presheaf.
+\end{definition}
+
+\begin{definition}[The Empty Map]
+The \textbf{Empty Map}, denoted $I$, is the Day unit represented by the
+empty Atlas Confederation:
+\[
+  I=\Yo(\mathsf{AtlI}).
+\]
+\end{definition}
+%%-/
 
 /-- Presheaves on atlas confederations of stable atlas transversals. -/
 abbrev StaConfDaPresheaf := StableAtlasFamilyᵒᵖ ⥤ Type 3
@@ -4588,57 +4655,19 @@ def StaConfDa.restrictToStableAtlases : StaConfDa ⥤ StaDaTrav.{3} :=
     (Functor.whiskeringLeft StaAtlTravᵒᵖ StableAtlasFamilyᵒᵖ (Type 3)).obj
       stableAtlasAtomFunctor.op
 
-/-- Extend a presheaf on stable atlas transversals to an ordinary (large-valued)
-DaTra presheaf along the inclusion of stable transversals into all atlas
-morphisms. -/
-noncomputable def StaDaTrav.extendToDaTra : StaDaTrav.{3} ⥤ DaTra.{3} :=
-  StaAtlTravInc.op.lan
-
 /-- Forget stable confederal data to a DaTra presheaf: first discard the
 confederation tags by restricting to singleton confederations, then left Kan extend
 from stable atlas transversals to all atlas morphisms. -/
 noncomputable def StaConfDa.forgetToDaTra : StaConfDa ⥤ DaTra.{3} :=
-  StaConfDa.restrictToStableAtlases ⋙ StaDaTrav.extendToDaTra
-
-/-%%
-\begin{definition}[Data Transformation Maps]
-The \textbf{Category of Data Transformation Maps}, denoted
-$\mathsf{DaTraMap}$, is the full subcategory of DaTra Sets all of whose
-navigations are expeditions.
-\end{definition}
-%%-/
-
-def IsDaTraMap.{v} : ObjectProperty DaTra.{v} := fun D =>
-  ∀ nav : Navigation D, IsAtlasMap nav.A
-
-abbrev DaTraMap.{v} := IsDaTraMap.{v}.FullSubcategory
-
-/-%%
-\begin{definition}[Atlas Map Federations]
-An \textbf{Atlas Map Federation} is an Atlas Federation whose canonical
-forgotten DaTra Set is a Data Transformation Map.
-\end{definition}
-%%-/
+  StaConfDaInc ⋙ confederationPresheafToDaTra
 
 /-- Embed an Atlas Federation in stable confederal data by Yoneda. -/
 def AtlasFederation.toStableConfederalData
     (F : AtlasFederation) : StaConfDa :=
   ⟨uliftYoneda.obj F.1, trivial⟩
 
-/-- The canonical DaTra Set obtained by forgetting an Atlas Federation's
-component tags. -/
-noncomputable def AtlasFederation.toDaTra
-    (F : AtlasFederation) : DaTra.{3} :=
-  StaConfDa.forgetToDaTra.obj F.toStableConfederalData
-
-/-- The defining property of an Atlas Map Federation. -/
-def IsAtlasMapFederation (F : AtlasFederation) : Prop :=
-  IsDaTraMap.{3} F.toDaTra
-
-/-- Atlas Federations whose canonical forgotten DaTra Sets are Data
-Transformation Maps. -/
-def AtlasMapFederation :=
-  {F : AtlasFederation // IsAtlasMapFederation F}
+theorem AtlasFederation.toDaTra_eq_forget (F : AtlasFederation) :
+    F.toDaTra = StaConfDa.forgetToDaTra.obj F.toStableConfederalData := rfl
 
 theorem staConfDaInc_essImage (F : StaConfDaPresheaf) :
     StaConfDaInc.essImage F :=
@@ -4787,25 +4816,6 @@ noncomputable instance : SymmetricCategory StaConfDa where
     simp only [Functor.map_comp]
     exact MonoidalCategory.DayConvolution.symmetry
       (StaConfDaInc.obj F) (StaConfDaInc.obj G)
-
-/-%%
-\section{Stable Confederal Data}
-
-\begin{definition}[Stable Confederal Data]
-The \textbf{Category of Stable Confederal Data}, denoted
-$\mathsf{StaConfDa}$, is the presheaf category on Atlas Confederations whose
-component arrows lie in $\mathsf{StaAtlTrav}$. Correspondingly, each stable
-confederal data object has an underlying DaTra presheaf.
-\end{definition}
-
-\begin{definition}[The Empty Map]
-The \textbf{Empty Map}, denoted $I$, is the Day unit represented by the
-empty Atlas Confederation:
-\[
-  I=\Yo(\mathsf{AtlI}).
-\]
-\end{definition}
-%%-/
 
 /-- `StaConfDaMon` is definitionally the category of stable confederal data
 equipped with the Day convolution instance above. -/

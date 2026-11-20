@@ -8,7 +8,7 @@
 -- | Transport an ordered consolidation through checked carrier equivalences.
 module Consolidation.Reindex (reindexConsolidation, reindexApply, reindexPreimage) where
 
-import Chain.Internal (Chain, chainPosition, chainOrderType, reindexChain, reindexedPosition)
+import Chain (Chain, chainPosition, chainOrderType, reindexChain, reindexedPosition)
 import Chain.Order (chainPrecedes, reindexedPrecedes)
 import Consolidation.Core (restrictedConsolidation)
 import Consolidation.Ordered

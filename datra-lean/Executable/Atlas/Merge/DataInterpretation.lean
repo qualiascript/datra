@@ -204,4 +204,24 @@ noncomputable def interpretationIso (X Y : Atlas) :
     (atlasMerge X Y).toSemantics ≅ Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics :=
   (rankComparison X Y).iso
 
+/-- The runtime construction reaches the written bouquet through the exact
+raw-to-indexed carrier equivalence, retaining the parity rank at every cell. -/
+noncomputable def rawRankComparison (X Y : Atlas) :
+    (rawAtlas X Y).RankComparison (Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics) where
+  folio := finiteComparison X Y
+  dataEquiv source :=
+    (rawIndexedEquiv X Y
+      ((FolioData.ValidElement.fromFinite (pagination X Y).pages).obj source).val.cell).trans
+      (finiteDataEquiv X Y source)
+  data_rank source datum :=
+    (finiteDataEquiv_rank X Y source _).trans
+      (rawIndexed_rank X Y ((FolioData.ValidElement.fromFinite (pagination X Y).pages).obj source) datum).symm
+  source_map_rank _ datum := retag_rank datum.val
+  target_map_rank _ _ := rfl
+
+-- ALIGN: MERGE-RAW-ATLAS-INTERPRETATION.
+noncomputable def rawInterpretationIso (X Y : Atlas) :
+    (rawAtlas X Y).toSemantics ≅ Datra.Semantics.bouquetAtlas X.toSemantics Y.toSemantics :=
+  (rawRankComparison X Y).iso
+
 end Datra.Executable.AtlasMerge
