@@ -13,6 +13,7 @@ module Charter.Internal
   , ChartedAtlasObject
   , chartCellData
   , chartedCellDataValue
+  , chartedDatumValid
   , chartAtlas
   , chartAtlasMap
   , chartCounit
@@ -43,6 +44,7 @@ import Atlas
   , AtlasObjectPaginationScope
   , AtlasWitness
   , atlasHom
+  , atlasPredicateDataAction
   , identityAtlasObjectMap
   , atlasMorphism
   , atlasMorphismAction
@@ -66,7 +68,6 @@ import Atlas
 import Atlas.Internal
   ( atlasCoherenceWitness
   , atlasCompositionWitness
-  , atlasDataAction
   , atlasDisjointWitness
   , atlasIdentityWitness
   , atlasWithScope
@@ -112,6 +113,7 @@ import Charter.LiquidInternal
   , charterIdentityValue
   , chartedCellData
   , chartedCellDataValue
+  , chartedDatumValid
   , chartedCellDataRank
   , chartedCellCoverage
   , chartedDataMap
@@ -208,7 +210,8 @@ chartAtlas
 chartAtlas valueAtlas =
   atlasWithScope
     (atlasPagination valueAtlas)
-    (atlasDataAction (atlasPageElements valueAtlas)
+    (atlasPredicateDataAction (atlasPageElements valueAtlas)
+      (chartedDatumValid valueAtlas)
       (chartedDominion valueAtlas)
       (chartedInsertion valueAtlas))
     (\occurrence covered ->
@@ -283,6 +286,8 @@ chartMorphism morphism transversal backward leftInverse =
         (chartAtlas (atlasMorphismTarget action))
         (mapAtlasMorphismActionObject action)
         (\occurrence -> chartMapInsertion
+          (atlasMorphismSource action) occurrence
+          (atlasMorphismTarget action) (mapAtlasMorphismActionObject action occurrence)
           (mapAtlasMorphismActionComponent action occurrence)
           (\charted ->
             let sourceAtlas = atlasMorphismSource action
@@ -437,7 +442,7 @@ chartCounit valueAtlas backward leftInverse =
         charted
         valueAtlas
         id
-        (\occurrence -> chartCounitInsertion (backward occurrence) (leftInverse occurrence))
+        (\occurrence -> chartCounitInsertion valueAtlas occurrence (backward occurrence) (leftInverse occurrence))
         (\source _ ->
           somePageElementPrecedesReflexive source `seq`
             somePageElementTransportedReflexive source)

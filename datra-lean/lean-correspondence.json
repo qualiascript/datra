@@ -1077,7 +1077,7 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
       "haskell_declaration": "chartCounitInsertion",
       "lean_namespace": "Datra.Executable.Charter",
-      "lean_declaration": "counitInsertion"
+      "lean_declaration": "cachedCounitInsertion"
     },
     {
       "id": "CHARTER-FUNCTOR-IDENTITY",
@@ -1126,28 +1126,28 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
       "haskell_declaration": "chartCounitInsertion",
       "lean_namespace": "Datra.Executable.Charter",
-      "lean_declaration": "counitInsertion_interpretation"
+      "lean_declaration": "cachedCounitInsertion_interpretation"
     },
     {
       "id": "CHARTER-DOMINION-ROUNDTRIP",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
       "haskell_declaration": "chartedDominion",
       "lean_namespace": "Datra.Executable.Charter",
-      "lean_declaration": "chartedDominion_roundtrip"
+      "lean_declaration": "cachedDominion_roundtrip"
     },
     {
       "id": "CHARTER-DATA-INSERTION",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
       "haskell_declaration": "chartedInsertion",
       "lean_namespace": "Datra.Executable.Charter",
-      "lean_declaration": "chartedInsertion"
+      "lean_declaration": "cachedDataInsertion"
     },
     {
       "id": "CHARTER-DATA-INVERSE-SOUND",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
       "haskell_declaration": "chartedInsertion",
       "lean_namespace": "Datra.Executable.Charter",
-      "lean_declaration": "chartedPreimage_sound"
+      "lean_declaration": "cachedDataPreimage_sound"
     },
     {
       "id": "CHARTER-ATLAS-INTERPRETATION",
@@ -1182,14 +1182,14 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
       "haskell_declaration": "chartMapInsertion",
       "lean_namespace": "Datra.Executable.Charter",
-      "lean_declaration": "chartMapInsertion"
+      "lean_declaration": "cachedMapInsertion"
     },
     {
       "id": "CHARTER-MAP-INVERSE",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
       "haskell_declaration": "chartMapInsertion",
       "lean_namespace": "Datra.Executable.Charter",
-      "lean_declaration": "chartMapInsertion_preimage"
+      "lean_declaration": "cachedMapInsertion_preimage"
     },
     {
       "id": "ATLAS-MAP-COVERAGE",
@@ -4781,6 +4781,13 @@
       "haskell_declaration": "chartedDataMap",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "cachedDataMap"
+    },
+    {
+      "id": "CHARTER-CELL-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartedDatumValid",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartedDatumValid"
     }
   ],
   "modules": [
@@ -5897,6 +5904,8 @@
         "chartedCellDataValue",
         "chartedCellDataRank",
         "chartedCellData",
+        "chartedDatumValid",
+        "chartedAcceptedValue",
         "chartMapPreimage",
         "composeValues",
         "identityValue",
@@ -5908,8 +5917,11 @@
         "chartCellData",
         "chartedCellCoverage",
         "chartedCellDataEqual",
+        "insertionOn",
+        "chartedAcceptedValue",
         "chartCounitInsertion",
         "chartMapInsertion",
+        "chartMapPreimage",
         "chartMapRoundTrip",
         "chartedDataMap",
         "charterIdentityValue",

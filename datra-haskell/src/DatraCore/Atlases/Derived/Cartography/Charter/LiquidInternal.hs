@@ -11,6 +11,7 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
+{-@ qualif ChartedAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | Charted data with a canonical finite coverage code and checked carrier laws.
 module Charter.LiquidInternal
@@ -21,6 +22,7 @@ module Charter.LiquidInternal
   , chartMapInsertion
   , chartedCellData
   , chartedCellDataValue
+  , chartedDatumValid
   , chartedCellDataRank
   , chartedCellCoverage
   , chartedCellDataEqual
@@ -42,7 +44,7 @@ import AtlasCoveredPageElement
   , coverageRankCanonical, coverageRankCanonicalUnique, coverageRankWitness, coverageRankAlongArrow )
 import Numeric.Natural (Natural)
 import DomanialInsertion.Core
-  ( DomanialInsertion, domanialInsertion, applyInsertion, preimage, insertionLeftInverse )
+  ( DomanialInsertion (..), domanialInsertion )
 import PageElements.Structure (PageElement, PageElementArrow, arrowSource, arrowTarget)
 import Data.Kind (Type)
 
@@ -68,12 +70,25 @@ chartedCellDataRank (ChartedCellData _ code) = code
 chartedCellData :: d object -> Natural -> ChartedDatum a s d object
 chartedCellData = ChartedCellData
 
+-- | Membership of the charted carrier checks both the datum and its cache.
+-- ALIGN: CHARTER-CELL-MEMBERSHIP.
+{-@ reflect chartedDatumValid @-}
+chartedDatumValid :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d object -> Bool
+chartedDatumValid owner occurrence value =
+  if cellTraceValid owner occurrence then
+    if atlasAcceptsDatum owner occurrence (chartedCellDataValue value) then
+      coverageRankCandidate owner occurrence (chartedCellDataValue value) (chartedCellDataRank value)
+        && coverageRankCanonical owner occurrence (chartedCellDataValue value) (chartedCellDataRank value)
+    else False
+  else False
+
 -- | Introduce a charted datum from checked coverage and retain its canonical code.
 -- ALIGN: CHARTER-CELL-CONSTRUCTOR.
 {-@ chartCellData :: owner:Atlas a s d o f -> occurrence:PageElement s object -> datum:d object
       -> witness:CoverageWitness a s d -> {proof:() | coverageWitnessCovers owner occurrence datum witness}
       -> {value:ChartedDatum a s d object |
            chartedCellDataValue value == datum
+           && chartedDatumValid owner occurrence value
            && coverageRankCandidate owner occurrence datum (chartedCellDataRank value)
            && coverageRankCanonical owner occurrence datum (chartedCellDataRank value)} @-}
 chartCellData
@@ -114,80 +129,131 @@ chartedCellDataEqual
 chartedCellDataEqual owner occurrence (ChartedCellData left leftCode) (ChartedCellData _ rightCode) =
   coverageRankCanonicalUnique owner occurrence left leftCode rightCode
 
--- | The counit needs a partial inverse on every original datum. Searching for
--- coverage cannot supply that operation on uncovered data.
-{-@
-chartCounitInsertion
-  :: backward:(d object -> Maybe (ChartedDatum a p d object))
-  -> (charted:ChartedDatum a p d object ->
-       {backward (chartedCellDataValue charted) == Just charted})
-  -> DomanialInsertion (ChartedDatum a p d object) (d object)
-@-}
+-- | Retain carrier predicates while packaging higher-kinded callbacks.
+{-@ insertionOn :: acceptsSource:(a -> Bool) -> acceptsTarget:(b -> Bool)
+      -> forward:({x:a | acceptsSource x} -> {y:b | acceptsTarget y})
+      -> backward:({y:b | acceptsTarget y} -> Maybe ({x:a | acceptsSource x}))
+      -> (x:{a | acceptsSource x} -> {backward (forward x) == Just x})
+      -> DomanialInsertion ({x:a | acceptsSource x}) ({y:b | acceptsTarget y}) @-}
+insertionOn :: (a -> Bool) -> (b -> Bool) -> (a -> b) -> (b -> Maybe a) -> (a -> ())
+  -> DomanialInsertion a b
+insertionOn _ _ = domanialInsertion
+
+{-@ reflect chartedAcceptedValue @-}
+{-@ chartedAcceptedValue :: owner:Atlas a s d o f -> occurrence:PageElement s object
+      -> value:{ChartedDatum a s d object | chartedDatumValid owner occurrence value}
+      -> {datum:d object | datum == chartedCellDataValue value && atlasAcceptsDatum owner occurrence datum} @-}
+chartedAcceptedValue :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d object -> d object
+chartedAcceptedValue _ _ value = chartedCellDataValue value
+
+-- | The inverse is total on original accepted data and recovers every member
+-- of the canonical charted carrier. Uncovered inputs may return Nothing.
 -- ALIGN: CHARTER-COUNIT-INSERTION.
 -- ALIGN: CHARTER-COUNIT-INTERPRETATION.
+{-@ chartCounitInsertion
+      :: owner:Atlas a s d o f
+      -> occurrence:{PageElement s object | cellTraceValid owner occurrence}
+      -> backward:({datum:d object | atlasAcceptsDatum owner occurrence datum}
+           -> Maybe ({value:ChartedDatum a s d object | chartedDatumValid owner occurrence value}))
+      -> (value:{ChartedDatum a s d object | chartedDatumValid owner occurrence value}
+           -> {backward (chartedCellDataValue value) == Just value})
+      -> DomanialInsertion
+           ({value:ChartedDatum a s d object | chartedDatumValid owner occurrence value})
+           ({datum:d object | atlasAcceptsDatum owner occurrence datum}) @-}
 chartCounitInsertion
-  :: (d object -> Maybe (ChartedDatum a p d object))
-  -> (ChartedDatum a p d object -> ())
-  -> DomanialInsertion (ChartedDatum a p d object) (d object)
-chartCounitInsertion backward leftInverse =
-  domanialInsertion chartedCellDataValue backward leftInverse
+  :: Atlas a s d o f -> PageElement s object
+  -> (d object -> Maybe (ChartedDatum a s d object))
+  -> (ChartedDatum a s d object -> ())
+  -> DomanialInsertion (ChartedDatum a s d object) (d object)
+chartCounitInsertion owner occurrence backward leftInverse =
+  insertionOn (chartedDatumValid owner occurrence) (atlasAcceptsDatum owner occurrence)
+    (chartedAcceptedValue owner occurrence) backward
+    (\value -> chartedAcceptedValue owner occurrence value `seq` leftInverse value)
 
--- | Restrict a complete component to covered data. The source inverse checks
--- coverage of every candidate, including candidates outside the original image.
-{-@
-chartMapInsertion
-  :: original:DomanialInsertion (sd sourceObject)
-       (td targetObject)
-  -> forward:(value:ChartedDatum sa ss sd sourceObject ->
-       {result:ChartedDatum ta ts td targetObject |
-         chartedCellDataValue result == applyInsertion original (chartedCellDataValue value)})
-  -> backward:(sd sourceObject -> Maybe (ChartedDatum sa ss sd sourceObject))
-  -> (charted:ChartedDatum sa ss sd sourceObject ->
-       {backward (chartedCellDataValue charted) == Just charted})
-  -> DomanialInsertion (ChartedDatum sa ss sd sourceObject) (ChartedDatum ta ts td targetObject)
-@-}
+-- | Restrict a complete component to the canonical covered carriers.
 -- ALIGN: CHARTER-MAP-INSERTION.
 -- ALIGN: CHARTER-MAP-INVERSE.
+{-@ chartMapInsertion
+      :: sourceAtlas:Atlas sa ss sd so sf
+      -> source:{PageElement ss sourceObject | cellTraceValid sourceAtlas source}
+      -> targetAtlas:Atlas ta ts td to tf
+      -> target:{PageElement ts targetObject | cellTraceValid targetAtlas target}
+      -> original:DomanialInsertion
+           ({datum:sd sourceObject | atlasAcceptsDatum sourceAtlas source datum})
+           ({datum:td targetObject | atlasAcceptsDatum targetAtlas target datum})
+      -> forward:(value:{ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value} ->
+           {result:ChartedDatum ta ts td targetObject | chartedDatumValid targetAtlas target result
+             && chartedCellDataValue result == applyInsertion original (chartedCellDataValue value)})
+      -> backward:({datum:sd sourceObject | atlasAcceptsDatum sourceAtlas source datum}
+           -> Maybe ({value:ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value}))
+      -> (value:{ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value}
+           -> {backward (chartedCellDataValue value) == Just value})
+      -> DomanialInsertion
+           ({value:ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value})
+           ({value:ChartedDatum ta ts td targetObject | chartedDatumValid targetAtlas target value}) @-}
 chartMapInsertion
-  :: forall sa ss sd sourceObject ta ts td targetObject.
-     DomanialInsertion (sd sourceObject) (td targetObject)
+  :: Atlas sa ss sd so sf -> PageElement ss sourceObject
+  -> Atlas ta ts td to tf -> PageElement ts targetObject
+  -> DomanialInsertion (sd sourceObject) (td targetObject)
   -> (ChartedDatum sa ss sd sourceObject -> ChartedDatum ta ts td targetObject)
   -> (sd sourceObject -> Maybe (ChartedDatum sa ss sd sourceObject))
   -> (ChartedDatum sa ss sd sourceObject -> ())
   -> DomanialInsertion (ChartedDatum sa ss sd sourceObject) (ChartedDatum ta ts td targetObject)
-chartMapInsertion original forward backward leftInverse =
-  domanialInsertion
-    forward
-    (chartMapPreimage @sa @ss @sd @sourceObject @ta @ts @td @targetObject original backward)
-    (chartMapRoundTrip @sa @ss @sd @sourceObject @ta @ts @td @targetObject original forward backward leftInverse)
+chartMapInsertion sourceAtlas source targetAtlas target original forward backward leftInverse =
+  insertionOn (chartedDatumValid sourceAtlas source) (chartedDatumValid targetAtlas target) forward
+    (chartMapPreimage sourceAtlas source targetAtlas target original backward)
+    (chartMapRoundTrip sourceAtlas source targetAtlas target original forward backward leftInverse)
 
 {-@ reflect chartMapPreimage @-}
+{-@ chartMapPreimage
+      :: sourceAtlas:Atlas sa ss sd so sf
+      -> source:{PageElement ss sourceObject | cellTraceValid sourceAtlas source}
+      -> targetAtlas:Atlas ta ts td to tf
+      -> target:{PageElement ts targetObject | cellTraceValid targetAtlas target}
+      -> original:DomanialInsertion
+           ({datum:sd sourceObject | atlasAcceptsDatum sourceAtlas source datum})
+           ({datum:td targetObject | atlasAcceptsDatum targetAtlas target datum})
+      -> backward:({datum:sd sourceObject | atlasAcceptsDatum sourceAtlas source datum}
+           -> Maybe ({value:ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value}))
+      -> value:{ChartedDatum ta ts td targetObject | chartedDatumValid targetAtlas target value}
+      -> Maybe ({result:ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source result}) @-}
 chartMapPreimage
-  :: forall sa ss sd sourceObject ta ts td targetObject. DomanialInsertion (sd sourceObject) (td targetObject)
+  :: Atlas sa ss sd so sf -> PageElement ss sourceObject
+  -> Atlas ta ts td to tf -> PageElement ts targetObject
+  -> DomanialInsertion (sd sourceObject) (td targetObject)
   -> (sd sourceObject -> Maybe (ChartedDatum sa ss sd sourceObject))
   -> ChartedDatum ta ts td targetObject -> Maybe (ChartedDatum sa ss sd sourceObject)
-chartMapPreimage original backward value =
+chartMapPreimage _ _ _ _ original backward value =
   case preimage original (chartedCellDataValue value) of
     Nothing -> Nothing
     Just candidate -> backward candidate
 
 {-@ chartMapRoundTrip
-      :: original:DomanialInsertion (sd sourceObject) (td targetObject)
-      -> forward:(value:ChartedDatum sa ss sd sourceObject ->
-           {result:ChartedDatum ta ts td targetObject |
-             chartedCellDataValue result == applyInsertion original (chartedCellDataValue value)})
-      -> backward:(sd sourceObject -> Maybe (ChartedDatum sa ss sd sourceObject))
-      -> (charted:ChartedDatum sa ss sd sourceObject -> {backward (chartedCellDataValue charted) == Just charted})
-      -> value:ChartedDatum sa ss sd sourceObject
-      -> {chartMapPreimage original backward (forward value) == Just value} @-}
+      :: sourceAtlas:Atlas sa ss sd so sf
+      -> source:{PageElement ss sourceObject | cellTraceValid sourceAtlas source}
+      -> targetAtlas:Atlas ta ts td to tf
+      -> target:{PageElement ts targetObject | cellTraceValid targetAtlas target}
+      -> original:DomanialInsertion
+           ({datum:sd sourceObject | atlasAcceptsDatum sourceAtlas source datum})
+           ({datum:td targetObject | atlasAcceptsDatum targetAtlas target datum})
+      -> forward:(value:{ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value} ->
+           {result:ChartedDatum ta ts td targetObject | chartedDatumValid targetAtlas target result
+             && chartedCellDataValue result == applyInsertion original (chartedCellDataValue value)})
+      -> backward:({datum:sd sourceObject | atlasAcceptsDatum sourceAtlas source datum}
+           -> Maybe ({value:ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value}))
+      -> (value:{ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value}
+           -> {backward (chartedCellDataValue value) == Just value})
+      -> value:{ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value}
+      -> {chartMapPreimage sourceAtlas source targetAtlas target original backward (forward value) == Just value} @-}
 chartMapRoundTrip
-  :: forall sa ss sd sourceObject ta ts td targetObject.
-     DomanialInsertion (sd sourceObject) (td targetObject)
+  :: Atlas sa ss sd so sf -> PageElement ss sourceObject
+  -> Atlas ta ts td to tf -> PageElement ts targetObject
+  -> DomanialInsertion (sd sourceObject) (td targetObject)
   -> (ChartedDatum sa ss sd sourceObject -> ChartedDatum ta ts td targetObject)
   -> (sd sourceObject -> Maybe (ChartedDatum sa ss sd sourceObject))
   -> (ChartedDatum sa ss sd sourceObject -> ())
   -> ChartedDatum sa ss sd sourceObject -> ()
-chartMapRoundTrip original forward _ leftInverse value =
+chartMapRoundTrip _ _ _ _ original forward _ leftInverse value =
   forward value `seq`
     insertionLeftInverse original (chartedCellDataValue value) `seq` leftInverse value
 

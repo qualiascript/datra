@@ -60,12 +60,6 @@ def chartedDominion (X : Atlas) (source : X.Element) : Dominion (CertifiedCellDa
     rw [Option.attach_eq_some _ ⟨datum.val.value, h⟩]
     rfl
 
--- ALIGN: CHARTER-DOMINION-ROUNDTRIP.
-theorem chartedDominion_roundtrip (X : Atlas) (source : X.Element)
-    (datum : CertifiedCellData X source) :
-    (chartedDominion X source).unrank ((chartedDominion X source).rank datum) = some datum :=
-  (chartedDominion X source).coherence datum
-
 /-- The original insertion is only required to be a left inverse. A candidate
 outside its image must pass the target rank check before it can be charted. -/
 def chartedPreimage {X : Atlas} {source target : X.Element} (arrow : source ⟶ target)
@@ -80,7 +74,6 @@ def chartedPreimage {X : Atlas} {source target : X.Element} (arrow : source ⟶ 
           (by rw [(X.dataAt target).rank_injective same]; exact datum.property)⟩
       else none
 
--- ALIGN: CHARTER-DATA-INSERTION.
 def chartedInsertion {X : Atlas} {source target : X.Element} (arrow : source ⟶ target) :
     DomanialInsertion (CertifiedCellData X source) (CertifiedCellData X target) where
   map datum := ⟨⟨(X.data.action.normalizedMap arrow).map datum.val.value⟩,
@@ -89,7 +82,6 @@ def chartedInsertion {X : Atlas} {source target : X.Element} (arrow : source ⟶
   leftInverse datum := by
     simp only [chartedPreimage, DomanialInsertion.leftInverse, dite_true]
 
--- ALIGN: CHARTER-DATA-INVERSE-SOUND.
 theorem chartedPreimage_sound {X : Atlas} {source target : X.Element} (arrow : source ⟶ target)
     (datum : CertifiedCellData X target) (candidate : CertifiedCellData X source)
     (found : chartedPreimage arrow datum = some candidate) :
@@ -249,6 +241,19 @@ def CachedCellData.accepted {X : Atlas} {source : X.Element} {datum : CachedCell
     simpa only [CachedCellData.Valid, Atlas.coverageRankCanonical, beq_iff_eq] using valid
   exact (Atlas.atlasCoverageRankWithin_sound selected).2
 
+-- ALIGN: CHARTER-CELL-MEMBERSHIP.
+def chartedDatumValid (X : Atlas) (source : X.Element)
+    (datum : CachedCellData X source.val.cell) : Bool :=
+  X.coverageRankCandidate source datum.value datum.code &&
+    X.coverageRankCanonical source datum.value datum.code
+
+theorem chartedDatumValid_iff (X : Atlas) (source : X.Element)
+    (datum : CachedCellData X source.val.cell) : chartedDatumValid X source datum = true ↔ datum.Valid source := by
+  simp only [chartedDatumValid, Bool.and_eq_true]
+  constructor
+  · exact fun valid => valid.2
+  · exact fun valid => ⟨CachedCellData.accepted valid, valid⟩
+
 def chartedCellCoverage {X : Atlas} (source : X.Element) (datum : CachedCellData X source.val.cell)
     (accepted : X.coverageRankCandidate source datum.value datum.code = true) : X.CoverageWitness :=
   (X.coverageRankWitness source datum.value datum.code).get
@@ -332,6 +337,12 @@ def cachedDominion (X : Atlas) (source : X.Element) : Dominion (CertifiedCachedC
       ((chartedDominion X source).rank (cachedCellEquiv X source datum))).map _ = _
     rw [Dominion.coherence, Option.map_some, Equiv.symm_apply_apply]
 
+-- ALIGN: CHARTER-DOMINION-ROUNDTRIP.
+theorem cachedDominion_roundtrip (X : Atlas) (source : X.Element)
+    (datum : CertifiedCachedCellData X source) :
+    (cachedDominion X source).unrank ((cachedDominion X source).rank datum) = some datum :=
+  (cachedDominion X source).coherence datum
+
 theorem cachedDominion_rank (X : Atlas) (source : X.Element)
     (datum : CertifiedCachedCellData X source) :
     (cachedDominion X source).rank datum =
@@ -362,6 +373,7 @@ def cachedDataPreimage {X : Atlas} {source target : X.Element} (arrow : source �
         exact datum.property⟩
     else none
 
+-- ALIGN: CHARTER-DATA-INSERTION.
 def cachedDataInsertion {X : Atlas} {source target : X.Element} (arrow : source ⟶ target) :
     DomanialInsertion (CertifiedCachedCellData X source) (CertifiedCachedCellData X target) where
   map := cachedDataMap arrow
@@ -384,9 +396,22 @@ theorem cachedDataPreimage_interpretation {X : Atlas} {source target : X.Element
   · rfl
   · split <;> rfl
 
+-- ALIGN: CHARTER-DATA-INVERSE-SOUND.
+theorem cachedDataPreimage_sound {X : Atlas} {source target : X.Element} (arrow : source ⟶ target)
+    (datum : CertifiedCachedCellData X target) (candidate : CertifiedCachedCellData X source)
+    (found : cachedDataPreimage arrow datum = some candidate) :
+    (cachedDataInsertion arrow).map candidate = datum := by
+  have interpreted : chartedPreimage arrow (cachedCellEquiv X target datum) =
+      some (cachedCellEquiv X source candidate) := by
+    rw [← cachedDataPreimage_interpretation, found]
+    rfl
+  apply (cachedCellEquiv X target).injective
+  change cachedCellEquiv X target (cachedDataMap arrow candidate) = _
+  rw [cachedDataMap_interpretation]
+  exact chartedPreimage_sound arrow _ _ interpreted
+
 /-- A total partial inverse is supplied explicitly; uncovered data need not
 be searched for a final-region witness. -/
--- ALIGN: CHARTER-COUNIT-INSERTION.
 def counitInsertion {X : Atlas} {source : X.Element}
     (backward : X.cellData source.val.cell → Option (CertifiedCellData X source))
     (leftInverse : ∀ datum, backward datum.val.value = some datum) :
@@ -398,7 +423,6 @@ def counitInsertion {X : Atlas} {source : X.Element}
 /-- Restrict a complete transversal component. Unlike an Atlas data arrow,
 it need not reflect coverage, so its candidate passes through the explicit
 inverse of the source's covered-subtype inclusion. -/
--- ALIGN: CHARTER-MAP-INSERTION.
 def chartMapInsertion {X Y : Atlas} {source : X.Element} {target : Y.Element}
     (original : DomanialInsertion (X.cellData source.val.cell) (Y.cellData target.val.cell))
     (preserves : ∀ datum, X.Covered source datum → Y.Covered target (original.map datum))
@@ -409,15 +433,89 @@ def chartMapInsertion {X Y : Atlas} {source : X.Element} {target : Y.Element}
   preimage datum := (original.preimage datum.val.value).bind backward
   leftInverse datum := by simp only [original.leftInverse, Option.bind_some, leftInverse]
 
--- ALIGN: CHARTER-MAP-INVERSE.
-theorem chartMapInsertion_preimage {X Y : Atlas} {source : X.Element} {target : Y.Element}
+/-- Inverse contracts quantify over canonical cached data, not arbitrary
+pairs whose projection could never be injective. -/
+-- ALIGN: CHARTER-COUNIT-INSERTION.
+def cachedCounitInsertion {X : Atlas} {source : X.Element}
+    (backward : X.cellData source.val.cell → Option (CertifiedCachedCellData X source))
+    (leftInverse : ∀ datum, backward datum.val.value = some datum) :
+    DomanialInsertion (CertifiedCachedCellData X source) (X.cellData source.val.cell) where
+  map datum := datum.val.value
+  preimage := backward
+  leftInverse := leftInverse
+
+-- ALIGN: CHARTER-MAP-INSERTION.
+def cachedMapInsertion {X Y : Atlas} {source : X.Element} {target : Y.Element}
     (original : DomanialInsertion (X.cellData source.val.cell) (Y.cellData target.val.cell))
-    (preserves : ∀ datum, X.Covered source datum → Y.Covered target (original.map datum))
-    (backward : X.cellData source.val.cell → Option (CertifiedCellData X source))
+    (forward : CertifiedCachedCellData X source → CertifiedCachedCellData Y target)
+    (forwardValue : ∀ datum, (forward datum).val.value = original.map datum.val.value)
+    (backward : X.cellData source.val.cell → Option (CertifiedCachedCellData X source))
+    (leftInverse : ∀ datum, backward datum.val.value = some datum) :
+    DomanialInsertion (CertifiedCachedCellData X source) (CertifiedCachedCellData Y target) where
+  map := forward
+  preimage datum := (original.preimage datum.val.value).bind backward
+  leftInverse datum := by rw [forwardValue, original.leftInverse, Option.bind_some, leftInverse]
+
+-- ALIGN: CHARTER-MAP-INVERSE.
+theorem cachedMapInsertion_preimage {X Y : Atlas} {source : X.Element} {target : Y.Element}
+    (original : DomanialInsertion (X.cellData source.val.cell) (Y.cellData target.val.cell))
+    (forward : CertifiedCachedCellData X source → CertifiedCachedCellData Y target)
+    (forwardValue : ∀ datum, (forward datum).val.value = original.map datum.val.value)
+    (backward : X.cellData source.val.cell → Option (CertifiedCachedCellData X source))
     (leftInverse : ∀ datum, backward datum.val.value = some datum)
-    (datum : CertifiedCellData Y target) :
-    (chartMapInsertion original preserves backward leftInverse).preimage datum =
+    (datum : CertifiedCachedCellData Y target) :
+    (cachedMapInsertion original forward forwardValue backward leftInverse).preimage datum =
       (original.preimage datum.val.value).bind backward := rfl
+
+def forgetCachedInverse {X : Atlas} {source : X.Element}
+    (backward : X.cellData source.val.cell → Option (CertifiedCachedCellData X source))
+    (datum : X.cellData source.val.cell) : Option (CertifiedCellData X source) :=
+  (backward datum).map (cachedCellEquiv X source)
+
+theorem forgetCachedInverse_leftInverse {X : Atlas} {source : X.Element}
+    (backward : X.cellData source.val.cell → Option (CertifiedCachedCellData X source))
+    (leftInverse : ∀ datum, backward datum.val.value = some datum)
+    (datum : CertifiedCellData X source) : forgetCachedInverse backward datum.val.value = some datum := by
+  have law := congrArg (Option.map (cachedCellEquiv X source))
+    (leftInverse ((cachedCellEquiv X source).symm datum))
+  simpa only [Option.map_some, Equiv.apply_symm_apply] using law
+
+theorem cachedCounitInsertion_reindex {X : Atlas} {source : X.Element}
+    (backward : X.cellData source.val.cell → Option (CertifiedCachedCellData X source))
+    (leftInverse : ∀ datum, backward datum.val.value = some datum) :
+    (cachedCounitInsertion backward leftInverse).reindex (cachedCellEquiv X source) (Equiv.refl _) =
+      counitInsertion (forgetCachedInverse backward) (forgetCachedInverse_leftInverse backward leftInverse) := by
+  apply DomanialInsertion.ext <;> rfl
+
+theorem cachedMapInsertion_map_interpretation {X Y : Atlas} {source : X.Element} {target : Y.Element}
+    (original : DomanialInsertion (X.cellData source.val.cell) (Y.cellData target.val.cell))
+    (forward : CertifiedCachedCellData X source → CertifiedCachedCellData Y target)
+    (forwardValue : ∀ datum, (forward datum).val.value = original.map datum.val.value)
+    (preserves : ∀ datum, X.Covered source datum → Y.Covered target (original.map datum))
+    (backward : X.cellData source.val.cell → Option (CertifiedCachedCellData X source))
+    (leftInverse : ∀ datum, backward datum.val.value = some datum)
+    (datum : CertifiedCachedCellData X source) :
+    cachedCellEquiv Y target ((cachedMapInsertion original forward forwardValue backward leftInverse).map datum) =
+      (chartMapInsertion original preserves (forgetCachedInverse backward)
+        (forgetCachedInverse_leftInverse backward leftInverse)).map (cachedCellEquiv X source datum) := by
+  apply Subtype.ext
+  apply CellData.ext
+  exact forwardValue datum
+
+theorem cachedMapInsertion_preimage_interpretation {X Y : Atlas} {source : X.Element} {target : Y.Element}
+    (original : DomanialInsertion (X.cellData source.val.cell) (Y.cellData target.val.cell))
+    (forward : CertifiedCachedCellData X source → CertifiedCachedCellData Y target)
+    (forwardValue : ∀ datum, (forward datum).val.value = original.map datum.val.value)
+    (preserves : ∀ datum, X.Covered source datum → Y.Covered target (original.map datum))
+    (backward : X.cellData source.val.cell → Option (CertifiedCachedCellData X source))
+    (leftInverse : ∀ datum, backward datum.val.value = some datum)
+    (datum : CertifiedCachedCellData Y target) :
+    ((cachedMapInsertion original forward forwardValue backward leftInverse).preimage datum).map
+        (cachedCellEquiv X source) =
+      (chartMapInsertion original preserves (forgetCachedInverse backward)
+        (forgetCachedInverse_leftInverse backward leftInverse)).preimage (cachedCellEquiv Y target datum) := by
+  simp only [cachedMapInsertion, chartMapInsertion, Option.map_bind]
+  rfl
 
 def completeAction {X Y : Atlas} (f : Atlas.Transversal X Y) : PrimitiveAtlasMorphism X Y :=
   f.underlying.underlying.hom.materialize.action.normalized
@@ -1076,13 +1174,14 @@ theorem chartLower_subcategory {X Y : Atlas} (value : AtlasMap X)
   (cartographyHomEquiv_from value backward leftInverse f.transversal).symm
 
 -- ALIGN: CHARTER-COUNIT-INTERPRETATION.
-theorem counitInsertion_interpretation (X : Atlas) (source : X.toSemantics.El)
+theorem cachedCounitInsertion_interpretation (X : Atlas) (source : X.toSemantics.El)
     (backward : X.toSemantics.Da.obj source →
-      Option (CertifiedCellData X ((FolioData.ValidElement.fromFinite X.pages).obj source)))
+      Option (CertifiedCachedCellData X ((FolioData.ValidElement.fromFinite X.pages).obj source)))
     (leftInverse : ∀ datum, backward datum.val.value = some datum) :
-    (counitInsertion backward leftInverse).toSemantics =
-      (cellSemanticsEquiv X source).toEmbedding.trans
-        ((Datra.Semantics.chartCounit X.toSemantics).Da.app source) := by
+    (cachedCounitInsertion backward leftInverse).toSemantics =
+      (cachedCellEquiv X ((FolioData.ValidElement.fromFinite X.pages).obj source)).toEmbedding.trans
+        ((cellSemanticsEquiv X source).toEmbedding.trans
+          ((Datra.Semantics.chartCounit X.toSemantics).Da.app source)) := by
   apply Function.Embedding.ext
   intro datum
   rfl

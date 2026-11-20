@@ -564,10 +564,11 @@ recovery, canonical equality, and forward data transport have checked helpers.
 Lean proves that cached ranking, finite unranking, and both directions of data
 insertion agree with the covered-carrier model.
 The checked insertion helpers alone do not discharge those assembly obligations;
-these modules remain partially aligned. In particular, insertion and Dominion
-contracts must restrict their charted inputs to accepted data with canonical
-codes; a projection from arbitrary datum/code pairs cannot have a left inverse.
-The runtime Atlas membership and its inverse callbacks must retain that invariant.
+these modules remain partially aligned. The runtime Atlas membership checks
+accepted data and canonical codes. Counit and mapping insertion contracts restrict
+both their carriers and inverse callbacks to that membership; projecting arbitrary
+datum/code pairs would not be injective. The Dominion assembly still needs the
+same explicit membership contract and a checked finite decoding round trip.
 The charted carrier retains its datum and canonical coverage code. Construction obtains that code from checked coverage;
 finite decoding canonicalizes any successful input code. Intra-Atlas data
 arrows preserve the code by the checked transport law. Transversal mapping between

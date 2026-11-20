@@ -1124,23 +1124,47 @@ proofGuard :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d obje
 proofGuard = chartedCellDataEqual
 """,
     "charted components reject a source inverse that drops every covered value": """
-{-@
+{-@ proofGuard
+      :: sourceAtlas:Atlas sa ss sd so sf
+      -> source:{PageElement ss sourceObject | cellTraceValid sourceAtlas source}
+      -> targetAtlas:Atlas ta ts td to tf
+      -> target:{PageElement ts targetObject | cellTraceValid targetAtlas target}
+      -> original:DomanialInsertion
+           ({datum:sd sourceObject | atlasAcceptsDatum sourceAtlas source datum})
+           ({datum:td targetObject | atlasAcceptsDatum targetAtlas target datum})
+      -> forward:(value:{ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value} ->
+           {result:ChartedDatum ta ts td targetObject | chartedDatumValid targetAtlas target result
+             && chartedCellDataValue result == applyInsertion original (chartedCellDataValue value)})
+      -> DomanialInsertion
+           ({value:ChartedDatum sa ss sd sourceObject | chartedDatumValid sourceAtlas source value})
+           ({value:ChartedDatum ta ts td targetObject | chartedDatumValid targetAtlas target value}) @-}
 proofGuard
-  :: original:DomanialInsertion (sd sourceObject) (td targetObject)
-  -> forward:(value:ChartedDatum sa ss sd sourceObject ->
-       {result:ChartedDatum ta ts td targetObject |
-         chartedCellDataValue result == applyInsertion original (chartedCellDataValue value)})
-  -> DomanialInsertion (ChartedDatum sa ss sd sourceObject) (ChartedDatum ta ts td targetObject) @-}
-proofGuard
-  :: DomanialInsertion (sd sourceObject) (td targetObject)
+  :: Atlas sa ss sd so sf -> PageElement ss sourceObject
+  -> Atlas ta ts td to tf -> PageElement ts targetObject
+  -> DomanialInsertion (sd sourceObject) (td targetObject)
   -> (ChartedDatum sa ss sd sourceObject -> ChartedDatum ta ts td targetObject)
   -> DomanialInsertion (ChartedDatum sa ss sd sourceObject) (ChartedDatum ta ts td targetObject)
-proofGuard original forward = chartMapInsertion original forward (const Nothing) (const ())
+proofGuard sourceAtlas source targetAtlas target original forward =
+  chartMapInsertion sourceAtlas source targetAtlas target original forward (const Nothing) (const ())
 """,
     "chart counits reject an inverse that drops every covered value": """
-proofGuard
-  :: DomanialInsertion (ChartedDatum a s d object) (d object)
-proofGuard = chartCounitInsertion (const Nothing) (const ())
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> occurrence:{PageElement s object | cellTraceValid owner occurrence}
+      -> DomanialInsertion
+           ({value:ChartedDatum a s d object | chartedDatumValid owner occurrence value})
+           ({datum:d object | atlasAcceptsDatum owner occurrence datum}) @-}
+proofGuard :: Atlas a s d o f -> PageElement s object
+  -> DomanialInsertion (ChartedDatum a s d object) (d object)
+proofGuard owner occurrence = chartCounitInsertion owner occurrence (const Nothing) (const ())
+""",
+    "charted membership rejects a noncanonical cached code": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> occurrence:{PageElement s object | cellTraceValid owner occurrence}
+      -> datum:{d object | atlasAcceptsDatum owner occurrence datum}
+      -> code:{Natural | not (coverageRankCanonical owner occurrence datum code)}
+      -> {result:ChartedDatum a s d object | chartedDatumValid owner occurrence result} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> ChartedDatum a s d object
+proofGuard _ _ datum code = chartedCellData datum code
 """,
     "charted data rejects a witness that does not cover the datum": """
 {-@
