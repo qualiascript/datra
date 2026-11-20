@@ -3,7 +3,7 @@ import Executable.Atlas.Map
 namespace Datra.Executable.Charter
 open CategoryTheory
 
-/-- The erased Haskell wrapper is separate from its coverage invariant. -/
+/-- The mathematical datum obtained by forgetting the canonical cache. -/
 structure CellData (X : Atlas) (cell : PageElementCell) where
   value : X.cellData cell
 
@@ -210,11 +210,179 @@ def chartAtlasMap (X : Atlas) : AtlasMap (chartAtlas X) :=
   AtlasMap.atlasMap (chartAtlas X)
     (chartCoverageWitness X (FolioData.ValidElement.originElement X.pages))
 
+/-- The runtime carrier retains a datum and its canonical coverage code. -/
+structure CachedCellData (X : Atlas) (cell : PageElementCell) where
+  value : X.cellData cell
+  code : Nat
+
+def CachedCellData.Valid {X : Atlas} (source : X.Element)
+    (datum : CachedCellData X source.val.cell) : Prop :=
+  X.coverageRankCanonical source datum.value datum.code = true
+
+abbrev CertifiedCachedCellData (X : Atlas) (source : X.Element) :=
+  {datum : CachedCellData X source.val.cell // datum.Valid source}
+
 -- ALIGN: CHARTER-CELL-CONSTRUCTOR.
 def chartCellData {X : Atlas} (source : X.Element) (datum : X.cellData source.val.cell)
     (witness : {w : X.CoverageWitness // w.Valid})
-    (covers : X.coverageWitnessCovers source datum witness.val = true) : CertifiedCellData X source :=
-  ⟨⟨datum⟩, Atlas.coverageWitnessCovers_sound witness.property covers⟩
+    (covers : X.coverageWitnessCovers source datum witness.val = true) : CertifiedCachedCellData X source :=
+  let valid := (X.coverageWitnessValid_iff witness.val).mpr witness.property
+  ⟨⟨datum, X.atlasCoverageRank source datum witness.val valid covers⟩,
+    X.atlasCoverageRank_canonical source datum witness.val valid covers⟩
+
+-- ALIGN: CHARTER-CELL-CACHE-EXTENSIONALITY.
+theorem CachedCellData.ext {X : Atlas} {source : X.Element}
+    {left right : CachedCellData X source.val.cell}
+    (leftValid : left.Valid source) (rightValid : right.Valid source)
+    (same : left.value = right.value) : left = right := by
+  rcases left with ⟨left, leftCode⟩
+  rcases right with ⟨right, rightCode⟩
+  simp only at same
+  subst right
+  have codes := X.coverageRankCanonicalUnique source left leftCode rightCode leftValid rightValid
+  subst rightCode
+  rfl
+
+def CachedCellData.accepted {X : Atlas} {source : X.Element} {datum : CachedCellData X source.val.cell}
+    (valid : datum.Valid source) : X.coverageRankCandidate source datum.value datum.code = true := by
+  have selected : X.atlasCoverageRankWithin source datum.value datum.code = some datum.code := by
+    simpa only [CachedCellData.Valid, Atlas.coverageRankCanonical, beq_iff_eq] using valid
+  exact (Atlas.atlasCoverageRankWithin_sound selected).2
+
+def chartedCellCoverage {X : Atlas} (source : X.Element) (datum : CachedCellData X source.val.cell)
+    (accepted : X.coverageRankCandidate source datum.value datum.code = true) : X.CoverageWitness :=
+  (X.coverageRankWitness source datum.value datum.code).get
+    (X.coverageRankWitness_spec source datum.value datum.code accepted).1
+
+-- ALIGN: CHARTER-CELL-COVERAGE-CACHE.
+theorem chartedCellCoverage_spec {X : Atlas} (source : X.Element) (datum : CachedCellData X source.val.cell)
+    (accepted : X.coverageRankCandidate source datum.value datum.code = true) :
+    X.coverageWitnessCovers source datum.value (chartedCellCoverage source datum accepted) = true :=
+  (X.coverageRankWitness_spec source datum.value datum.code accepted).2 _ (Option.some_get _).symm
+
+def CachedCellData.covered {X : Atlas} {source : X.Element} {datum : CachedCellData X source.val.cell}
+    (valid : datum.Valid source) : X.Covered source datum.value :=
+  Atlas.coveredPageElementAt_sound ((X.coverageRankCandidate_iff source datum.value datum.code).mp (CachedCellData.accepted valid))
+
+/-- The cache has no effect on the covered carrier's mathematical equality. -/
+def cachedCellEquiv (X : Atlas) (source : X.Element) :
+    CertifiedCachedCellData X source ≃ CertifiedCellData X source where
+  toFun datum := ⟨⟨datum.val.value⟩, CachedCellData.covered datum.property⟩
+  invFun datum :=
+    let witness := X.findAtlasCoverage source datum.val.value datum.property
+    let checked := X.findAtlasCoverage_spec source datum.val.value datum.property
+    chartCellData source datum.val.value ⟨witness, checked.1⟩ checked.2
+  left_inv datum := by
+    apply Subtype.ext
+    apply CachedCellData.ext
+    · exact (chartCellData source datum.val.value _ _).property
+    · exact datum.property
+    · rfl
+  right_inv datum := by
+    apply Subtype.ext
+    apply CellData.ext
+    rfl
+
+theorem CachedCellData.rank_spec {X : Atlas} {source : X.Element}
+    {datum : CachedCellData X source.val.cell} (valid : datum.Valid source) :
+    datum.code = X.findAtlasCoverageRank source datum.value (CachedCellData.covered valid) := by
+  apply Atlas.atlasCoverageRankWithin_eq_find
+  simpa only [CachedCellData.Valid, Atlas.coverageRankCanonical, beq_iff_eq] using valid
+
+/-- Finite decoding canonicalizes the successful input code before storing it. -/
+def cachedUnrank (X : Atlas) (source : X.Element) (candidate : Nat) :
+    Option (CertifiedCachedCellData X source) :=
+  match found : X.coverageAt source candidate with
+  | none => none
+  | some (datum, witness) =>
+    some (chartCellData source datum ⟨witness, (Atlas.coverageAt_sound found).1⟩
+      (Atlas.coverageAt_sound found).2)
+
+theorem cachedUnrank_eq (X : Atlas) (source : X.Element) (candidate : Nat) :
+    cachedUnrank X source candidate =
+      (chartedUnrank X source candidate).map (cachedCellEquiv X source).symm := by
+  unfold cachedUnrank
+  split
+  · rename_i found
+    have decoded : X.coveredPageElementAt source candidate = none :=
+      congrArg (Option.map Prod.fst) found
+    unfold chartedUnrank
+    rw [Option.attach_eq_none_iff.mpr decoded]
+    rfl
+  · rename_i datum witness found
+    have decoded : X.coveredPageElementAt source candidate = some datum := by
+      simp [Atlas.coveredPageElementAt, found]
+    unfold chartedUnrank
+    rw [Option.attach_eq_some _ ⟨datum, decoded⟩]
+    simp only [Option.map_some]
+    congr 1
+    apply Subtype.ext
+    apply CachedCellData.ext
+    · exact (chartCellData source datum _ _).property
+    · exact ((cachedCellEquiv X source).symm _).property
+    · rfl
+
+/-- The executable rank reads the retained code; unranking uses finite decoding. -/
+def cachedDominion (X : Atlas) (source : X.Element) : Dominion (CertifiedCachedCellData X source) where
+  rank datum := datum.val.code
+  unrank := cachedUnrank X source
+  coherence datum := by
+    rw [cachedUnrank_eq, CachedCellData.rank_spec datum.property]
+    change ((chartedDominion X source).unrank
+      ((chartedDominion X source).rank (cachedCellEquiv X source datum))).map _ = _
+    rw [Dominion.coherence, Option.map_some, Equiv.symm_apply_apply]
+
+theorem cachedDominion_rank (X : Atlas) (source : X.Element)
+    (datum : CertifiedCachedCellData X source) :
+    (cachedDominion X source).rank datum =
+      (chartedDominion X source).rank (cachedCellEquiv X source datum) :=
+  CachedCellData.rank_spec datum.property
+
+/-- An Atlas data arrow preserves the canonical code together with the datum. -/
+-- ALIGN: CHARTER-CELL-CACHE-TRANSPORT.
+def cachedDataMap {X : Atlas} {source target : X.Element} (arrow : source ⟶ target)
+    (datum : CertifiedCachedCellData X source) : CertifiedCachedCellData X target :=
+  ⟨⟨(X.data.action.normalizedMap arrow).map datum.val.value, datum.val.code⟩, by
+    change X.coverageRankCanonical target _ _ = true
+    rw [← (X.coverageRankAlongArrow arrow datum.val.value datum.val.code).2]
+    exact datum.property⟩
+
+def cachedDataPreimage {X : Atlas} {source target : X.Element} (arrow : source ⟶ target)
+    (datum : CertifiedCachedCellData X target) : Option (CertifiedCachedCellData X source) :=
+  let original := X.data.action.normalizedMap arrow
+  match original.preimage datum.val.value with
+  | none => none
+  | some candidate =>
+    if same : (X.dataAt target).rank (original.map candidate) =
+        (X.dataAt target).rank datum.val.value then
+      some ⟨⟨candidate, datum.val.code⟩, by
+        change X.coverageRankCanonical source candidate datum.val.code = true
+        rw [(X.coverageRankAlongArrow arrow candidate datum.val.code).2,
+          (X.dataAt target).rank_injective same]
+        exact datum.property⟩
+    else none
+
+def cachedDataInsertion {X : Atlas} {source target : X.Element} (arrow : source ⟶ target) :
+    DomanialInsertion (CertifiedCachedCellData X source) (CertifiedCachedCellData X target) where
+  map := cachedDataMap arrow
+  preimage := cachedDataPreimage arrow
+  leftInverse datum := by
+    simp only [cachedDataPreimage, cachedDataMap, DomanialInsertion.leftInverse, dite_true]
+
+/-- Forgetting the cache commutes with both directions of the data insertion. -/
+theorem cachedDataMap_interpretation {X : Atlas} {source target : X.Element} (arrow : source ⟶ target)
+    (datum : CertifiedCachedCellData X source) :
+    cachedCellEquiv X target (cachedDataMap arrow datum) =
+      (chartedInsertion arrow).map (cachedCellEquiv X source datum) := rfl
+
+theorem cachedDataPreimage_interpretation {X : Atlas} {source target : X.Element}
+    (arrow : source ⟶ target) (datum : CertifiedCachedCellData X target) :
+    (cachedDataPreimage arrow datum).map (cachedCellEquiv X source) =
+      chartedPreimage arrow (cachedCellEquiv X target datum) := by
+  simp only [cachedDataPreimage, chartedPreimage, cachedCellEquiv, Equiv.coe_fn_mk]
+  split
+  · rfl
+  · split <;> rfl
 
 /-- A total partial inverse is supplied explicitly; uncovered data need not
 be searched for a final-region witness. -/
@@ -521,42 +689,54 @@ theorem counitInsertion_preimage {X : Atlas} {source : X.Element}
     (counitInsertion backward leftInverse).preimage datum = backward datum := rfl
 
 def mapCellData {X Y : Atlas} {source target : PageElementCell}
-    (f : X.cellData source → Y.cellData target) (datum : CellData X source) : CellData Y target :=
-  ⟨f datum.value⟩
+    (f : X.cellData source → Y.cellData target) (code : Y.cellData target → Nat)
+    (datum : CachedCellData X source) : CachedCellData Y target :=
+  ⟨f datum.value, code (f datum.value)⟩
 
 -- ALIGN: CHARTER-FUNCTOR-IDENTITY.
-theorem mapCellData_identity {X : Atlas} {cell : PageElementCell} (datum : CellData X cell) :
-    mapCellData id datum = datum := rfl
+theorem mapCellData_identity {X : Atlas} {cell : PageElementCell}
+    (code : X.cellData cell → Nat) (datum : CachedCellData X cell) (canonical : code datum.value = datum.code) :
+    mapCellData id code datum = datum := by
+  cases datum
+  simp_all [mapCellData]
 
 -- ALIGN: CHARTER-FUNCTOR-COMPOSITION.
 theorem mapCellData_composition {X Y Z : Atlas} {source middle target : PageElementCell}
     (first : X.cellData source → Y.cellData middle) (second : Y.cellData middle → Z.cellData target)
-    (datum : CellData X source) :
-    mapCellData second (mapCellData first datum) = mapCellData (second ∘ first) datum := rfl
+    (middleCode : Y.cellData middle → Nat) (targetCode : Z.cellData target → Nat)
+    (datum : CachedCellData X source) :
+    mapCellData second targetCode (mapCellData first middleCode datum) =
+      mapCellData (second ∘ first) targetCode datum := rfl
 
 def homToValue {A : Type} {X : Atlas} {cell : PageElementCell}
-    (f : A → X.cellData cell) (value : A) : CellData X cell := ⟨f value⟩
+    (f : A → X.cellData cell) (code : X.cellData cell → Nat) (value : A) : CachedCellData X cell :=
+  ⟨f value, code (f value)⟩
 
 def homFromValue {A : Type} {X : Atlas} {cell : PageElementCell}
-    (f : A → CellData X cell) (value : A) : X.cellData cell := (f value).value
+    (f : A → CachedCellData X cell) (value : A) : X.cellData cell := (f value).value
 
 -- ALIGN: CHARTER-HOM-LEFT-INVERSE.
 theorem homLeftInverse {A : Type} {X : Atlas} {cell : PageElementCell}
-    (f : A → X.cellData cell) (value : A) : homFromValue (homToValue f) value = f value := rfl
+    (f : A → X.cellData cell) (code : X.cellData cell → Nat) (value : A) :
+    homFromValue (homToValue f code) value = f value := rfl
 
 -- ALIGN: CHARTER-HOM-RIGHT-INVERSE.
 theorem homRightInverse {A : Type} {X : Atlas} {cell : PageElementCell}
-    (f : A → CellData X cell) (value : A) : homToValue (homFromValue f) value = f value := rfl
+    (f : A → CachedCellData X cell) (code : X.cellData cell → Nat)
+    (canonical : ∀ value, code (f value).value = (f value).code) (value : A) :
+    homToValue (homFromValue f) code value = f value := by
+  simp only [homToValue, homFromValue, canonical]
 
 -- ALIGN: CHARTER-HOM-NATURALITY-LEFT.
 theorem homNaturalityLeft {A B : Type} {X : Atlas} {cell : PageElementCell}
-    (before : A → B) (f : B → X.cellData cell) (value : A) :
-    homToValue (f ∘ before) value = homToValue f (before value) := rfl
+    (before : A → B) (f : B → X.cellData cell) (code : X.cellData cell → Nat) (value : A) :
+    homToValue (f ∘ before) code value = homToValue f code (before value) := rfl
 
 -- ALIGN: CHARTER-HOM-NATURALITY-RIGHT.
 theorem homNaturalityRight {A : Type} {X Y : Atlas} {source target : PageElementCell}
-    (f : A → X.cellData source) (after : X.cellData source → Y.cellData target) (value : A) :
-    homToValue (after ∘ f) value = mapCellData after (homToValue f value) := rfl
+    (f : A → X.cellData source) (after : X.cellData source → Y.cellData target)
+    (middleCode : X.cellData source → Nat) (targetCode : Y.cellData target → Nat) (value : A) :
+    homToValue (after ∘ f) targetCode value = mapCellData after targetCode (homToValue f middleCode value) := rfl
 
 /-- At a genuine cell the runtime wrapper and its invariant are exactly the
 covered subtype used by the written Charter definition. -/

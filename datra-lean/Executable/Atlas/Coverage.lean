@@ -1,5 +1,6 @@
 import Executable.Atlas.Derived
 import Executable.Atlas.Elements
+import Executable.NaturalSearch
 
 namespace Datra.Executable.Atlas
 open CategoryTheory
@@ -230,7 +231,7 @@ noncomputable def CoveredPageElement.toSemantics {X : Atlas}
     ((X.covered_normalize_iff element.source element.datum).mpr (CoveredPageElement.covered valid))
 
 /-- The same paired enumeration and checked chain lookup as atlasCoverageAt
-and coverageCandidate. No assumption is made about unranking unused ranks. -/
+and coverageAt. No assumption is made about unranking unused ranks. -/
 def decodeCoverageRegion (X : Atlas) (candidate : Nat) : Option X.CoverageRegion := do
   let (positionCode, datumRank) := Ordinal.unpairNatural candidate
   let index ← X.pagination.final.chain.chainIndex
@@ -245,15 +246,27 @@ def CoverageRegion.code {X : Atlas} (region : X.CoverageRegion) : Nat :=
 
 -- ALIGN: ATLAS-COVERAGE-WITNESS-CODE.
 def coverageWitnessCode (X : Atlas) (witness : X.CoverageWitness)
-    (_valid : X.coverageWitnessValid witness = true) : Nat :=
-  Ordinal.pairNatural
-    (CoverageEnumeration.encodeNaturalList witness.region.val.position.coefficients)
-    ((X.dataAt witness.region).rank witness.datum)
+    (valid : X.coverageWitnessValid witness = true) : Nat :=
+  have atFinal : witness.region.val.page = X.pages.depth - 1 := by
+    simp only [coverageWitnessValid, Bool.and_eq_true, beq_iff_eq] at valid
+    exact valid.1
+  (X.withTerritoryOf witness.region atFinal (fun _ target _ _ _ arrow =>
+    Ordinal.pairNatural
+      (CoverageEnumeration.encodeNaturalList target.val.position.coefficients)
+      ((X.dataAt target).rank ((X.data.action.normalizedMap arrow).map witness.datum)))).getD 0
+
+theorem coverageWitnessCode_direct (X : Atlas) (witness : X.CoverageWitness)
+    (valid : X.coverageWitnessValid witness = true) :
+    X.coverageWitnessCode witness valid =
+      Ordinal.pairNatural
+        (CoverageEnumeration.encodeNaturalList witness.region.val.position.coefficients)
+        ((X.dataAt witness.region).rank witness.datum) := by
+  simp only [coverageWitnessCode, Atlas.withTerritoryOf_eq_self, X.data.identity, Option.getD_some]
 
 @[simp] theorem CoverageRegion.witness_code {X : Atlas} (region : X.CoverageRegion)
     (valid : X.coverageWitnessValid region.witness = true) :
     X.coverageWitnessCode region.witness valid = region.code := by
-  simp only [coverageWitnessCode, CoverageRegion.witness, Atlas.territory_position, CoverageRegion.code]
+  simp only [coverageWitnessCode_direct, CoverageRegion.witness, Atlas.territory_position, CoverageRegion.code]
   rfl
 
 theorem decodeCoverageRegion_code (X : Atlas) (region : X.CoverageRegion) :
@@ -265,56 +278,98 @@ theorem decodeCoverageRegion_code (X : Atlas) (region : X.CoverageRegion) :
   simp [decodeCoverageRegion, CoverageRegion.code, Ordinal.unpairNatural_pair,
     CoverageEnumeration.ordinal_decode_encode, hi, Dominion.coherence]
 
-def coverageCandidate (X : Atlas) (source : X.Element)
-    (datum : X.cellData source.val.cell) (candidate : Nat) : Option X.CoverageWitness :=
-  match X.decodeCoverageRegion candidate with
+def coverageRegionWitness (X : Atlas) (region : X.Element)
+    (datum : X.cellData region.val.cell) : X.CoverageWitness :=
+  ⟨region, datum, region.val.page, X.originImageRank region datum⟩
+
+/-- A decoded region datum is pulled back through the source's checked insertion. -/
+def coveragePullback (X : Atlas) (source region : X.Element)
+    (regionDatum : X.cellData region.val.cell) :
+    Option (X.cellData source.val.cell × X.CoverageWitness) :=
+  match (X.cellOriginRankInsertion source).preimage (X.originImageRank region regionDatum) with
   | none => none
-  | some region =>
-    if X.originImageRank source datum =
-        X.originImageRank (X.territory region.1).element region.2 then
-      some region.witness
+  | some datum =>
+    if X.originImageRank source datum = X.originImageRank region regionDatum then
+      some (datum, X.coverageRegionWitness region regionDatum)
     else none
 
--- ALIGN: ATLAS-COVERAGE-CANDIDATE-SOUND.
-theorem coverageCandidate_sound {X : Atlas} {source : X.Element}
-    {datum : X.cellData source.val.cell} {candidate : Nat} {witness : X.CoverageWitness}
-    (h : X.coverageCandidate source datum candidate = some witness) :
-    witness.Valid ∧ X.coverageWitnessCovers source datum witness = true := by
-  unfold coverageCandidate at h
-  cases hd : X.decodeCoverageRegion candidate with
-  | none => simp [hd] at h
-  | some region =>
-      simp only [hd] at h
-      split at h
-      · rename_i he
-        cases Option.some.inj h
-        exact ⟨⟨region, rfl⟩, by simp [he]⟩
-      · simp at h
+def coverageDecodedDatum {Datum Witness : Type*} : Option (Datum × Witness) → Option Datum
+  | none => none
+  | some (datum, _) => some datum
 
--- ALIGN: ATLAS-COVERAGE-CANDIDATE-COMPLETE.
-theorem coverageCandidate_complete {X : Atlas} {source : X.Element}
-    {datum : X.cellData source.val.cell} (covered : X.Covered source datum) :
-    ∃ candidate witness, X.coverageCandidate source datum candidate = some witness := by
-  obtain ⟨index, value, he⟩ := covered
-  let region : X.CoverageRegion := ⟨index, value⟩
-  exact ⟨region.code, region.witness, by
-    simp [coverageCandidate, decodeCoverageRegion_code, region, he]⟩
+-- ALIGN: ATLAS-COVERAGE-PULLBACK-INVERSE.
+theorem coveragePullbackInverse (X : Atlas) (source region : X.Element)
+    (datum : X.cellData source.val.cell) (regionDatum : X.cellData region.val.cell)
+    (_atFinal : region.val.page = X.coverageFinalPage)
+    (same : X.originImageRank region regionDatum = X.originImageRank source datum) :
+    coverageDecodedDatum (X.coveragePullback source region regionDatum) = some datum := by
+  have inverse : (X.cellOriginRankInsertion source).preimage
+      (X.originImageRank region regionDatum) = some datum := by
+    rw [same, ← X.cellOriginRankInsertion_map source datum]
+    exact (X.cellOriginRankInsertion source).leftInverse datum
+  simp only [coveragePullback, inverse]
+  simp [same, coverageDecodedDatum]
 
-/-- A left inverse can return arbitrary values outside its image. The final
-rank comparison checks that a proposed pullback really has the required image. -/
+def coverageAtRegion (X : Atlas) (source region : X.Element) (datumRank : Nat) :
+    Option (X.cellData source.val.cell × X.CoverageWitness) :=
+  match (X.dataAt region).unrank datumRank with
+  | none => none
+  | some datum => X.coveragePullback source region datum
+
+-- ALIGN: ATLAS-COVERAGE-REGION-INVERSE.
+theorem coverageAtRegionInverse (X : Atlas) (source region : X.Element)
+    (datum : X.cellData source.val.cell) (regionDatum : X.cellData region.val.cell)
+    (atFinal : region.val.page = X.coverageFinalPage)
+    (same : X.originImageRank region regionDatum = X.originImageRank source datum) :
+    coverageDecodedDatum (X.coverageAtRegion source region ((X.dataAt region).rank regionDatum)) = some datum := by
+  simp only [coverageAtRegion, Dominion.coherence]
+  exact X.coveragePullbackInverse source region datum regionDatum atFinal same
+
+def coverageAtIndex (X : Atlas) (source : X.Element) (datumRank : Nat)
+    (index : X.TerritoryIndex) : Option (X.cellData source.val.cell × X.CoverageWitness) :=
+  X.withTerritory index (fun region _ => X.coverageAtRegion source region datumRank)
+
+-- ALIGN: ATLAS-COVERAGE-SELECTED-REGION.
+theorem coverageAtIndexSelected (X : Atlas) (source : X.Element) (index : X.TerritoryIndex)
+    (datumRank : Nat) (region : X.Element) (selected : region = X.territoryElement index) :
+    X.coverageAtIndex source datumRank index = X.coverageAtRegion source region datumRank := by
+  subst region
+  rfl
+
+/-- Decode the position, then unrank and pull back the selected region datum. -/
 def coverageAt (X : Atlas) (source : X.Element) (candidate : Nat) :
     Option (X.cellData source.val.cell × X.CoverageWitness) :=
-  match X.decodeCoverageRegion candidate with
+  let (positionCode, datumRank) := Ordinal.unpairNatural candidate
+  match X.pagination.final.chain.chainIndex
+      (Ordinal.ordinal (CoverageEnumeration.decodeNaturalList positionCode)) with
   | none => none
-  | some region =>
-    match (X.cellOriginRankInsertion source).preimage
-        (X.originImageRank (X.territory region.1).element region.2) with
-    | none => none
-    | some datum =>
-      if X.originImageRank source datum =
-          X.originImageRank (X.territory region.1).element region.2 then
-        some (datum, region.witness)
-      else none
+  | some index => X.coverageAtIndex source datumRank index
+
+-- ALIGN: ATLAS-COVERAGE-INDEX-DECODE.
+theorem coverageIndexEncode (X : Atlas) (source : X.Element)
+    (index : X.TerritoryIndex) (datumRank : Nat) :
+    X.coverageAt source (Ordinal.pairNatural
+      (CoverageEnumeration.encodeNaturalList index.position.coefficients) datumRank) =
+        X.coverageAtIndex source datumRank index := by
+  have indexed : X.pagination.final.chain.chainIndex index.position = some index := by
+    rw [← index.position_eq, Chain.chainIndex_position]
+    exact congrArg some (X.pagination.final.chain.indexEquiv.left_inv index)
+  simp [coverageAt, Ordinal.unpairNatural_pair, CoverageEnumeration.ordinal_decode_encode, indexed]
+
+theorem coverageAt_eq_decode (X : Atlas) (source : X.Element) (candidate : Nat) :
+    X.coverageAt source candidate =
+      match X.decodeCoverageRegion candidate with
+      | none => none
+      | some region => X.coveragePullback source (X.territory region.1).element region.2 := by
+  rcases paired : Ordinal.unpairNatural candidate with ⟨positionCode, datumRank⟩
+  simp only [coverageAt, coverageAtIndex, Atlas.withTerritory, Atlas.territoryElement, decodeCoverageRegion, paired]
+  cases indexed : X.pagination.final.chain.chainIndex
+      (Ordinal.ordinal (CoverageEnumeration.decodeNaturalList positionCode)) with
+  | none => simp
+  | some index =>
+      cases decoded : (X.territory index).dominion.unrank datumRank <;>
+        simp only [Atlas.territory] at decoded <;>
+        simp [coverageAtRegion, Atlas.territory, decoded]
 
 /-- The checked rank inverse is exactly the origin pullback followed by
 its image test, including outside the source insertion's image. -/
@@ -332,7 +387,8 @@ theorem coverageAt_eq_pullback (X : Atlas) (source : X.Element) (candidate : Nat
               X.originImageRank (X.territory region.1).element region.2 then
             some (datum, region.witness)
           else none := by
-  unfold coverageAt
+  rw [coverageAt_eq_decode]
+  unfold coveragePullback coverageRegionWitness
   cases X.decodeCoverageRegion candidate with
   | none => rfl
   | some region =>
@@ -401,33 +457,6 @@ theorem coverageAt_complete {X : Atlas} {source : X.Element}
 
 /-- Candidate success is exactly the existential mathematical coverage
 predicate; malformed caches cannot provide an alternative route to success. -/
-theorem coverageCandidate_exists_iff (X : Atlas) (source : X.Element)
-    (datum : X.cellData source.val.cell) :
-    (∃ candidate, (X.coverageCandidate source datum candidate).isSome = true) ↔
-      X.Covered source datum := by
-  constructor
-  · rintro ⟨candidate, h⟩
-    obtain ⟨witness, hw⟩ := Option.isSome_iff_exists.mp h
-    obtain ⟨valid, covers⟩ := coverageCandidate_sound hw
-    exact coverageWitnessCovers_sound valid covers
-  · intro covered
-    obtain ⟨candidate, witness, hw⟩ := coverageCandidate_complete covered
-    exact ⟨candidate, Option.isSome_iff_exists.mpr ⟨witness, hw⟩⟩
-
-/-- Nat.find executes the ascending search from zero, and the coverage proof
-establishes its termination without supplying an executable bound. -/
-def findAtlasCoverage (X : Atlas) (source : X.Element)
-    (datum : X.cellData source.val.cell) (covered : X.Covered source datum) : X.CoverageWitness :=
-  let existsCandidate := (X.coverageCandidate_exists_iff source datum).mpr covered
-  (X.coverageCandidate source datum (Nat.find existsCandidate)).get (Nat.find_spec existsCandidate)
-
--- ALIGN: ATLAS-COVERAGE-SEARCH-SPEC.
-theorem findAtlasCoverage_spec (X : Atlas) (source : X.Element)
-    (datum : X.cellData source.val.cell) (covered : X.Covered source datum) :
-    (X.findAtlasCoverage source datum covered).Valid ∧
-      X.coverageWitnessCovers source datum (X.findAtlasCoverage source datum covered) = true :=
-  coverageCandidate_sound (Option.some_get _).symm
-
 def coveredPageElementAt (X : Atlas) (source : X.Element) (candidate : Nat) :
     Option (X.cellData source.val.cell) := (X.coverageAt source candidate).map Prod.fst
 
@@ -446,11 +475,13 @@ theorem coveredPageElementAt_sound {X : Atlas} {source : X.Element} {candidate :
 
 /-- Equality is tested using the source Dominion's rank, as in the runtime
 Charter enumeration; no decidable equality on dependent cell data is needed. -/
+def coverageValueMatches {Value : Type} (values : Dominion Value) (datum : Value) : Option Value → Bool
+  | none => false
+  | some value => values.rank value == values.rank datum
+
 def coverageRankCandidate (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) (candidate : Nat) : Bool :=
-  match X.coveredPageElementAt source candidate with
-  | none => false
-  | some value => (X.dataAt source).rank value == (X.dataAt source).rank datum
+  coverageValueMatches (X.dataAt source) datum (X.coveredPageElementAt source candidate)
 
 theorem coverageRankCandidate_iff (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) (candidate : Nat) :
@@ -458,8 +489,72 @@ theorem coverageRankCandidate_iff (X : Atlas) (source : X.Element)
       X.coveredPageElementAt source candidate = some datum := by
   unfold coverageRankCandidate
   cases hc : X.coveredPageElementAt source candidate with
-  | none => simp
-  | some value => simp [Dominion.rank_injective (X.dataAt source) |>.eq_iff]
+  | none => simp [coverageValueMatches]
+  | some value => simp [coverageValueMatches, Dominion.rank_injective (X.dataAt source) |>.eq_iff]
+
+theorem coverageDecodedDatum_eq_map {Value Witness : Type*} (result : Option (Value × Witness)) :
+    coverageDecodedDatum result = result.map Prod.fst := by
+  cases result <;> rfl
+
+theorem coveragePullbackMatches (X : Atlas) (source region : X.Element)
+    (datum : X.cellData source.val.cell) (regionDatum : X.cellData region.val.cell)
+    (atFinal : region.val.page = X.coverageFinalPage) :
+    coverageValueMatches (X.dataAt source) datum
+      ((X.coveragePullback source region regionDatum).map Prod.fst) =
+      (X.originImageRank source datum == X.originImageRank region regionDatum) := by
+  by_cases same : X.originImageRank source datum = X.originImageRank region regionDatum
+  · have inverse := X.coveragePullbackInverse source region datum regionDatum atFinal same.symm
+    rw [coverageDecodedDatum_eq_map] at inverse
+    simp [inverse, coverageValueMatches, same]
+  · unfold coveragePullback
+    cases decoded : (X.cellOriginRankInsertion source).preimage (X.originImageRank region regionDatum) with
+    | none => simp [coverageValueMatches, same]
+    | some value =>
+        by_cases matched : X.originImageRank source value = X.originImageRank region regionDatum
+        · have different : value ≠ datum := by
+            intro equal
+            subst value
+            exact same matched
+          have ranks : (X.dataAt source).rank value ≠ (X.dataAt source).rank datum := by
+            intro equal
+            exact different ((X.dataAt source).rank_injective equal)
+          simp [matched, coverageValueMatches, ranks, same]
+        · simp [matched, coverageValueMatches, same]
+
+-- ALIGN: ATLAS-COVERAGE-CANDIDATE-SAME-ORIGIN.
+theorem coverageRankCandidateSameOrigin (X : Atlas) (source target : X.Element)
+    (datum : X.cellData source.val.cell) (targetDatum : X.cellData target.val.cell)
+    (same : X.originImageRank source datum = X.originImageRank target targetDatum) (candidate : Nat) :
+    X.coverageRankCandidate source datum candidate = X.coverageRankCandidate target targetDatum candidate := by
+  simp only [coverageRankCandidate, coveredPageElementAt, coverageAt_eq_decode]
+  cases decoded : X.decodeCoverageRegion candidate with
+  | none => rfl
+  | some region =>
+      rw [coveragePullbackMatches X source _ datum region.2 rfl,
+        coveragePullbackMatches X target _ targetDatum region.2 rfl, same]
+
+/-- Recover the coverage evidence at an already certified enumeration index. -/
+def coverageRankWitness (X : Atlas) (source : X.Element)
+    (_datum : X.cellData source.val.cell) (candidate : Nat) : Option X.CoverageWitness :=
+  (X.coverageAt source candidate).map Prod.snd
+
+-- ALIGN: ATLAS-COVERAGE-RANK-WITNESS.
+theorem coverageRankWitness_spec (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (candidate : Nat)
+    (accepted : X.coverageRankCandidate source datum candidate = true) :
+    (X.coverageRankWitness source datum candidate).isSome = true ∧
+      ∀ witness, X.coverageRankWitness source datum candidate = some witness →
+        X.coverageWitnessCovers source datum witness = true := by
+  have exactDatum := (X.coverageRankCandidate_iff source datum candidate).mp accepted
+  unfold coveredPageElementAt at exactDatum
+  cases decoded : X.coverageAt source candidate with
+  | none => simp [decoded] at exactDatum
+  | some result =>
+      rcases result with ⟨value, witness⟩
+      have same : value = datum := by simpa [decoded] using exactDatum
+      subst value
+      have sound := coverageAt_sound decoded
+      simp [coverageRankWitness, decoded, sound.2]
 
 theorem coverageWitnessCode_matches {X : Atlas} {source : X.Element}
     {datum : X.cellData source.val.cell} (witness : X.CoverageWitness)
@@ -476,7 +571,40 @@ theorem coverageWitnessCode_matches {X : Atlas} {source : X.Element}
       (X.originImageRank (X.territory region.1).element region.2) = some datum := by
     rw [← same, ← X.cellOriginRankInsertion_map source datum]
     exact (X.cellOriginRankInsertion source).leftInverse datum
-  simp [coveredPageElementAt, coverageAt, decodeCoverageRegion_code, inverse, same]
+  simp [coveredPageElementAt, coverageAt_eq_decode, coveragePullback, coverageRegionWitness, decodeCoverageRegion_code, inverse, same]
+
+-- ALIGN: ATLAS-COVERAGE-SELECTED-INDEX-INVERSE.
+theorem coverageSelectedIndexInverse (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (index : X.TerritoryIndex)
+    (region : X.Element) (selected : region = X.territoryElement index)
+    (regionDatum : X.cellData region.val.cell)
+    (atFinal : region.val.page = X.coverageFinalPage)
+    (same : X.originImageRank region regionDatum = X.originImageRank source datum) :
+    X.coverageRankCandidate source datum (Ordinal.pairNatural
+      (CoverageEnumeration.encodeNaturalList index.position.coefficients)
+      ((X.dataAt region).rank regionDatum)) = true := by
+  apply (X.coverageRankCandidate_iff source datum _).2
+  unfold coveredPageElementAt
+  rw [X.coverageIndexEncode, X.coverageAtIndexSelected source index _ region selected]
+  have inverse := X.coverageAtRegionInverse source region datum regionDatum atFinal same
+  cases decoded : X.coverageAtRegion source region ((X.dataAt region).rank regionDatum) with
+  | none => simp [decoded, coverageDecodedDatum] at inverse
+  | some result => simpa [decoded, coverageDecodedDatum] using inverse
+
+-- ALIGN: ATLAS-COVERAGE-WITNESS-BOUND.
+def coverageWitnessBound (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
+    (valid : X.coverageWitnessValid witness = true)
+    (_covers : X.coverageWitnessCovers source datum witness = true) : Nat :=
+  X.coverageWitnessCode witness valid
+
+theorem coverageWitnessBound_spec (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
+    (valid : X.coverageWitnessValid witness = true)
+    (covers : X.coverageWitnessCovers source datum witness = true) :
+    X.coverageRankCandidate source datum
+      (X.coverageWitnessBound source datum witness valid covers) = true :=
+  coverageWitnessCode_matches witness valid covers
 
 theorem coverageRankCandidate_exists_iff (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) :
@@ -490,80 +618,29 @@ theorem coverageRankCandidate_exists_iff (X : Atlas) (source : X.Element)
     exact ⟨candidate, (X.coverageRankCandidate_iff source datum candidate).mpr (by
       simp [coveredPageElementAt, h])⟩
 
-/-- Ascending search of an inclusive finite interval. -/
+/-- Ascending coverage search delegates to the shared finite search. -/
 def searchCoverageRank (X : Atlas) (source : X.Element)
-    (datum : X.cellData source.val.cell) (candidate : Nat) : Nat → Option Nat
-  | 0 => if X.coverageRankCandidate source datum candidate then some candidate else none
-  | remaining + 1 =>
-    if X.coverageRankCandidate source datum candidate then some candidate
-    else X.searchCoverageRank source datum (candidate + 1) remaining
+    (datum : X.cellData source.val.cell) (candidate remaining : Nat) : Option Nat :=
+  NaturalSearch.search (X.coverageRankCandidate source datum) candidate remaining
 
 theorem searchCoverageRank_sound {X : Atlas} {source : X.Element}
     {datum : X.cellData source.val.cell} {candidate remaining found : Nat}
     (h : X.searchCoverageRank source datum candidate remaining = some found) :
     candidate ≤ found ∧ found ≤ candidate + remaining ∧
-      X.coverageRankCandidate source datum found = true := by
-  induction remaining generalizing candidate with
-  | zero =>
-    cases ht : X.coverageRankCandidate source datum candidate with
-    | false => simp [searchCoverageRank, ht] at h
-    | true =>
-      have hf : candidate = found := by simpa [searchCoverageRank, ht] using h
-      subst found
-      exact ⟨le_rfl, by omega, ht⟩
-  | succ remaining ih =>
-    cases ht : X.coverageRankCandidate source datum candidate with
-    | false =>
-      have hr := ih (candidate := candidate + 1) (by simpa [searchCoverageRank, ht] using h)
-      exact ⟨by omega, by omega, hr.2.2⟩
-    | true =>
-      have hf : candidate = found := by simpa [searchCoverageRank, ht] using h
-      subst found
-      exact ⟨le_rfl, by omega, ht⟩
+      X.coverageRankCandidate source datum found = true := NaturalSearch.sound h
 
 theorem searchCoverageRank_least {X : Atlas} {source : X.Element}
     {datum : X.cellData source.val.cell} {candidate remaining found earlier : Nat}
     (h : X.searchCoverageRank source datum candidate remaining = some found)
     (lower : candidate ≤ earlier) (before : earlier < found) :
-    X.coverageRankCandidate source datum earlier = false := by
-  induction remaining generalizing candidate with
-  | zero =>
-    cases ht : X.coverageRankCandidate source datum candidate with
-    | false => simp [searchCoverageRank, ht] at h
-    | true =>
-      have hf : candidate = found := by simpa [searchCoverageRank, ht] using h
-      omega
-  | succ remaining ih =>
-    cases ht : X.coverageRankCandidate source datum candidate with
-    | false =>
-      by_cases he : earlier = candidate
-      · simpa [he] using ht
-      · exact ih (candidate := candidate + 1)
-          (by simpa [searchCoverageRank, ht] using h) (by omega)
-    | true =>
-      have hf : candidate = found := by simpa [searchCoverageRank, ht] using h
-      omega
+    X.coverageRankCandidate source datum earlier = false := NaturalSearch.least h lower before
 
 theorem searchCoverageRank_complete {X : Atlas} {source : X.Element}
     {datum : X.cellData source.val.cell} {candidate remaining successful : Nat}
     (lower : candidate ≤ successful) (upper : successful ≤ candidate + remaining)
     (accepted : X.coverageRankCandidate source datum successful = true) :
-    ∃ found, X.searchCoverageRank source datum candidate remaining = some found := by
-  induction remaining generalizing candidate with
-  | zero =>
-    have he : successful = candidate := by omega
-    subst successful
-    exact ⟨candidate, by simp [searchCoverageRank, accepted]⟩
-  | succ remaining ih =>
-    cases ht : X.coverageRankCandidate source datum candidate with
-    | false =>
-      have ne : successful ≠ candidate := by
-        intro he
-        subst successful
-        simp [ht] at accepted
-      obtain ⟨found, hf⟩ := ih (candidate := candidate + 1) (by omega) (by omega)
-      exact ⟨found, by simpa [searchCoverageRank, ht] using hf⟩
-    | true => exact ⟨candidate, by simp [searchCoverageRank, ht]⟩
+    ∃ found, X.searchCoverageRank source datum candidate remaining = some found :=
+  NaturalSearch.complete lower upper accepted
 
 def atlasCoverageRankWithin (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) (bound : Nat) : Option Nat :=
@@ -612,18 +689,119 @@ theorem atlasCoverageRankWithin_eq_find {X : Atlas} {source : X.Element}
   rw [accepted] at rejected
   contradiction
 
--- ALIGN: ATLAS-COVERAGE-RANK-ROUNDTRIP.
+/-- A successful search remains successful when trimmed to its selected rank. -/
+theorem atlasCoverageRankWithin_trim {X : Atlas} {source : X.Element}
+    {datum : X.cellData source.val.cell} {limit found : Nat}
+    (selected : X.atlasCoverageRankWithin source datum limit = some found) :
+    X.atlasCoverageRankWithin source datum found = some found := by
+  simpa only [atlasCoverageRankWithin, searchCoverageRank, Nat.sub_zero] using NaturalSearch.trim selected
+
+def coverageRankCanonical (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (candidate : Nat) : Bool :=
+  X.atlasCoverageRankWithin source datum candidate == some candidate
+
+-- ALIGN: ATLAS-COVERAGE-CANONICAL-SAME-ORIGIN.
+theorem coverageRankCanonicalSameOrigin (X : Atlas) (source target : X.Element)
+    (datum : X.cellData source.val.cell) (targetDatum : X.cellData target.val.cell)
+    (same : X.originImageRank source datum = X.originImageRank target targetDatum) (candidate : Nat) :
+    X.coverageRankCanonical source datum candidate = X.coverageRankCanonical target targetDatum candidate := by
+  unfold coverageRankCanonical atlasCoverageRankWithin searchCoverageRank
+  rw [NaturalSearch.congruent _ _ (X.coverageRankCandidateSameOrigin source target datum targetDatum same)]
+
+-- ALIGN: ATLAS-COVERAGE-RANK-TRANSPORT.
+theorem coverageRankAlongArrow (X : Atlas) {source target : X.Element}
+    (arrow : source ⟶ target) (datum : X.cellData source.val.cell) (candidate : Nat) :
+    X.coverageRankCandidate source datum candidate =
+      X.coverageRankCandidate target ((X.data.action.normalizedMap arrow).map datum) candidate ∧
+    X.coverageRankCanonical source datum candidate =
+      X.coverageRankCanonical target ((X.data.action.normalizedMap arrow).map datum) candidate := by
+  have same : X.originImageRank source datum =
+      X.originImageRank target ((X.data.action.normalizedMap arrow).map datum) := by
+    simp only [Atlas.originImageRank, X.originImage_map]
+  exact ⟨X.coverageRankCandidateSameOrigin source target datum _ same candidate,
+    X.coverageRankCanonicalSameOrigin source target datum _ same candidate⟩
+
+-- ALIGN: ATLAS-COVERAGE-CANONICAL-UNIQUE.
+theorem coverageRankCanonicalUnique (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (left right : Nat)
+    (leftCanonical : X.coverageRankCanonical source datum left = true)
+    (rightCanonical : X.coverageRankCanonical source datum right = true) : left = right := by
+  simp only [coverageRankCanonical, beq_iff_eq] at leftCanonical rightCanonical
+  have accepted := (atlasCoverageRankWithin_sound leftCanonical).2
+  have covered := coveredPageElementAt_sound ((X.coverageRankCandidate_iff source datum left).mp accepted)
+  exact (atlasCoverageRankWithin_eq_find covered leftCanonical).trans
+    (atlasCoverageRankWithin_eq_find covered rightCanonical).symm
+
+-- ALIGN: ATLAS-COVERAGE-WITNESS-RANK.
+def atlasCoverageRank (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
+    (valid : X.coverageWitnessValid witness = true)
+    (covers : X.coverageWitnessCovers source datum witness = true) : Nat :=
+  (X.atlasCoverageRankWithin source datum
+    (X.coverageWitnessBound source datum witness valid covers)).getD 0
+
+theorem atlasCoverageRank_eq_find (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
+    (valid : X.coverageWitnessValid witness = true)
+    (covers : X.coverageWitnessCovers source datum witness = true) :
+    X.atlasCoverageRank source datum witness valid covers =
+      X.findAtlasCoverageRank source datum
+        (coverageWitnessCovers_sound ((coverageWitnessValid_iff X witness).mp valid) covers) := by
+  obtain ⟨found, selected⟩ := atlasCoverageRankWithin_witness witness valid covers
+  simp only [atlasCoverageRank, coverageWitnessBound, selected, Option.getD_some]
+  exact atlasCoverageRankWithin_eq_find _ selected
+
+theorem atlasCoverageRank_spec (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
+    (valid : X.coverageWitnessValid witness = true)
+    (covers : X.coverageWitnessCovers source datum witness = true) :
+    X.coverageRankCandidate source datum
+      (X.atlasCoverageRank source datum witness valid covers) = true := by
+  obtain ⟨found, selected⟩ := atlasCoverageRankWithin_witness witness valid covers
+  simp only [atlasCoverageRank, coverageWitnessBound, selected, Option.getD_some]
+  exact (atlasCoverageRankWithin_sound selected).2
+
+theorem atlasCoverageRank_canonical (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
+    (valid : X.coverageWitnessValid witness = true)
+    (covers : X.coverageWitnessCovers source datum witness = true) :
+    X.coverageRankCanonical source datum
+      (X.atlasCoverageRank source datum witness valid covers) = true := by
+  obtain ⟨found, selected⟩ := atlasCoverageRankWithin_witness witness valid covers
+  simp only [atlasCoverageRank, coverageWitnessBound, selected, Option.getD_some,
+    coverageRankCanonical, beq_iff_eq]
+  exact atlasCoverageRankWithin_trim selected
+
 theorem findAtlasCoverageRank_roundtrip (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) (covered : X.Covered source datum) :
     X.coveredPageElementAt source (X.findAtlasCoverageRank source datum covered) = some datum :=
   (X.coverageRankCandidate_iff source datum _).mp
     (Nat.find_spec ((X.coverageRankCandidate_exists_iff source datum).mpr covered))
 
--- ALIGN: ATLAS-COVERAGE-RANK-MINIMAL.
 theorem findAtlasCoverageRank_minimal (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) (covered : X.Covered source datum) {candidate : Nat}
     (h : X.coveredPageElementAt source candidate = some datum) :
     X.findAtlasCoverageRank source datum covered ≤ candidate :=
   Nat.find_min' _ ((X.coverageRankCandidate_iff source datum candidate).mpr h)
+
+/-- The covered semantic carrier selects its least code and uses the same
+finite witness decoder as the cached runtime carrier. -/
+def findAtlasCoverage (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (covered : X.Covered source datum) : X.CoverageWitness :=
+  let candidate := X.findAtlasCoverageRank source datum covered
+  let accepted := (X.coverageRankCandidate_iff source datum candidate).mpr
+    (X.findAtlasCoverageRank_roundtrip source datum covered)
+  (X.coverageRankWitness source datum candidate).get
+    (X.coverageRankWitness_spec source datum candidate accepted).1
+
+theorem findAtlasCoverage_spec (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (covered : X.Covered source datum) :
+    (X.findAtlasCoverage source datum covered).Valid ∧
+      X.coverageWitnessCovers source datum (X.findAtlasCoverage source datum covered) = true := by
+  have accepted := (X.coverageRankCandidate_iff source datum _).mpr
+    (X.findAtlasCoverageRank_roundtrip source datum covered)
+  have covers : X.coverageWitnessCovers source datum (X.findAtlasCoverage source datum covered) = true :=
+    (X.coverageRankWitness_spec source datum _ accepted).2 _ (Option.some_get _).symm
+  exact ⟨coverageWitnessCovers_valid covers, covers⟩
 
 end Datra.Executable.Atlas

@@ -6,6 +6,7 @@
 -- inclusion.
 module Charter
   ( ChartedCellData
+  , ChartedDatum
   , ChartedAtlasObject
   , chartCellData
   , chartedCellDataValue

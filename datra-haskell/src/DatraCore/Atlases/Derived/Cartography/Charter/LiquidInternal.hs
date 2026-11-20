@@ -12,20 +12,19 @@
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
 
--- | Proof-transparent carrier operations used by the Charter functor.
---
--- This module deliberately uses no @data@ declaration. The charted carrier is
--- a zero-cost newtype, while the four equations below are the pointwise data
--- equations in Lean's two inverse and two naturality proofs for
--- @chartHomEquiv@.
+-- | Charted data with a canonical finite coverage code and checked carrier laws.
 module Charter.LiquidInternal
   ( ChartedCellData
+  , ChartedDatum
   , chartCellData
   , chartCounitInsertion
   , chartMapInsertion
   , chartedCellData
   , chartedCellDataValue
-  , mapChartedCellData
+  , chartedCellDataRank
+  , chartedCellCoverage
+  , chartedCellDataEqual
+  , chartedDataMap
   , charterIdentityValue
   , charterCompositionValue
   , chartHomToValue
@@ -36,67 +35,100 @@ module Charter.LiquidInternal
   , chartHomNaturalityRightValue
   ) where
 
-import Atlas (Atlas, AtlasObject, AtlasObjectCellData)
-import AtlasCoveredPageElement (CoverageWitness, coverageWitnessCovers)
-import DomanialInsertion
+import Atlas (Atlas, AtlasObject, AtlasObjectCellData, AtlasObjectAtlasScope, AtlasObjectPaginationScope, atlasAcceptsDatum, mapAtlasData)
+import AtlasExtent (cellTraceValid)
+import AtlasCoveredPageElement
+  ( CoverageWitness, coverageWitnessCovers, atlasCoverageRank, coverageRankCandidate
+  , coverageRankCanonical, coverageRankCanonicalUnique, coverageRankWitness, coverageRankAlongArrow )
+import Numeric.Natural (Natural)
+import DomanialInsertion.Core
   ( DomanialInsertion, domanialInsertion, applyInsertion, preimage, insertionLeftInverse )
-import PageElements (PageElement)
+import PageElements.Structure (PageElement, PageElementArrow, arrowSource, arrowTarget)
 import Data.Kind (Type)
 
--- | A datum retained by the charted Atlas. Coverage at its selected page
--- occurrence is a constructor obligation. The hidden wrapper stores only the
--- original datum; the coverage proof is erased at runtime.
-type role ChartedCellData nominal nominal
-newtype ChartedCellData atlasObject (object :: Type) =
-  ChartedCellData (AtlasObjectCellData atlasObject object)
+-- | A covered datum and the unique least code of its final-region enumeration.
+-- The constructor is hidden; public introduction checks coverage before ranking.
+type ChartedCellData atlasObject =
+  ChartedDatum (AtlasObjectAtlasScope atlasObject) (AtlasObjectPaginationScope atlasObject)
+    (AtlasObjectCellData atlasObject)
+
+type role ChartedDatum nominal nominal nominal nominal
+data ChartedDatum (atlasScope :: Type) (scope :: Type) (cellData :: Type -> Type) (object :: Type) =
+  ChartedCellData (cellData object) Natural
 
 {-@ reflect chartedCellDataValue @-}
-chartedCellDataValue
-  :: ChartedCellData atlasObject object
-  -> AtlasObjectCellData atlasObject object
-chartedCellDataValue (ChartedCellData value) = value
+chartedCellDataValue :: ChartedDatum a s d object -> d object
+chartedCellDataValue (ChartedCellData value _) = value
+
+{-@ reflect chartedCellDataRank @-}
+chartedCellDataRank :: ChartedDatum a s d object -> Natural
+chartedCellDataRank (ChartedCellData _ code) = code
 
 {-@ reflect chartedCellData @-}
-chartedCellData
-  :: AtlasObjectCellData atlasObject object
-  -> ChartedCellData atlasObject object
+chartedCellData :: d object -> Natural -> ChartedDatum a s d object
 chartedCellData = ChartedCellData
 
--- | Introduce a charted datum from checked coverage evidence.
-{-@
-chartCellData
-  :: valueAtlas:Atlas atlasScope scope cellData origin final
-  -> occurrence:PageElement scope object
-  -> datum:cellData object
-  -> witness:CoverageWitness atlasScope scope cellData
-  -> {proof:() | coverageWitnessCovers valueAtlas occurrence datum witness}
-  -> ChartedCellData (AtlasObject atlasScope scope cellData) object
-@-}
+-- | Introduce a charted datum from checked coverage and retain its canonical code.
 -- ALIGN: CHARTER-CELL-CONSTRUCTOR.
+{-@ chartCellData :: owner:Atlas a s d o f -> occurrence:PageElement s object -> datum:d object
+      -> witness:CoverageWitness a s d -> {proof:() | coverageWitnessCovers owner occurrence datum witness}
+      -> {value:ChartedDatum a s d object |
+           chartedCellDataValue value == datum
+           && coverageRankCandidate owner occurrence datum (chartedCellDataRank value)
+           && coverageRankCanonical owner occurrence datum (chartedCellDataRank value)} @-}
 chartCellData
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> cellData object
-  -> CoverageWitness atlasScope scope cellData
-  -> ()
-  -> ChartedCellData (AtlasObject atlasScope scope cellData) object
-chartCellData _ _ datum _ proof = proof `seq` chartedCellData datum
+  :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWitness a s d -> ()
+  -> ChartedDatum a s d object
+chartCellData owner occurrence datum witness proof =
+  proof `seq` chartedCellData datum (atlasCoverageRank owner occurrence datum witness)
+
+-- | Recover evidence from the stored successful code, with no witness search.
+-- ALIGN: CHARTER-CELL-COVERAGE-CACHE.
+{-@ chartedCellCoverage :: owner:Atlas a s d o f
+      -> occurrence:{PageElement s object | cellTraceValid owner occurrence}
+      -> value:{ChartedDatum a s d object |
+           atlasAcceptsDatum owner occurrence (chartedCellDataValue value)
+           && coverageRankCandidate owner occurrence (chartedCellDataValue value) (chartedCellDataRank value)}
+      -> {witness:CoverageWitness a s d | coverageWitnessCovers owner occurrence (chartedCellDataValue value) witness} @-}
+chartedCellCoverage
+  :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d object -> CoverageWitness a s d
+chartedCellCoverage owner occurrence value =
+  case coverageRankWitness owner occurrence (chartedCellDataValue value) (chartedCellDataRank value) of
+    Just witness -> witness
+    Nothing -> error "chartedCellCoverage: invalid certified code"
+
+-- | Canonical codes make equality depend only on the accepted datum.
+-- ALIGN: CHARTER-CELL-CACHE-EXTENSIONALITY.
+{-@ chartedCellDataEqual :: owner:Atlas a s d o f
+      -> occurrence:{PageElement s object | cellTraceValid owner occurrence}
+      -> left:{ChartedDatum a s d object |
+           atlasAcceptsDatum owner occurrence (chartedCellDataValue left)
+           && coverageRankCanonical owner occurrence (chartedCellDataValue left) (chartedCellDataRank left)}
+      -> right:{ChartedDatum a s d object |
+           chartedCellDataValue right == chartedCellDataValue left
+           && coverageRankCanonical owner occurrence (chartedCellDataValue right) (chartedCellDataRank right)}
+      -> {left == right} @-}
+chartedCellDataEqual
+  :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d object
+  -> ChartedDatum a s d object -> ()
+chartedCellDataEqual owner occurrence (ChartedCellData left leftCode) (ChartedCellData _ rightCode) =
+  coverageRankCanonicalUnique owner occurrence left leftCode rightCode
 
 -- | The counit needs a partial inverse on every original datum. Searching for
 -- coverage cannot supply that operation on uncovered data.
 {-@
 chartCounitInsertion
-  :: backward:(AtlasObjectCellData atlasObject object -> Maybe (ChartedCellData atlasObject object))
-  -> (charted:ChartedCellData atlasObject object ->
+  :: backward:(d object -> Maybe (ChartedDatum a p d object))
+  -> (charted:ChartedDatum a p d object ->
        {backward (chartedCellDataValue charted) == Just charted})
-  -> DomanialInsertion (ChartedCellData atlasObject object) (AtlasObjectCellData atlasObject object)
+  -> DomanialInsertion (ChartedDatum a p d object) (d object)
 @-}
 -- ALIGN: CHARTER-COUNIT-INSERTION.
 -- ALIGN: CHARTER-COUNIT-INTERPRETATION.
 chartCounitInsertion
-  :: (AtlasObjectCellData atlasObject object -> Maybe (ChartedCellData atlasObject object))
-  -> (ChartedCellData atlasObject object -> ())
-  -> DomanialInsertion (ChartedCellData atlasObject object) (AtlasObjectCellData atlasObject object)
+  :: (d object -> Maybe (ChartedDatum a p d object))
+  -> (ChartedDatum a p d object -> ())
+  -> DomanialInsertion (ChartedDatum a p d object) (d object)
 chartCounitInsertion backward leftInverse =
   domanialInsertion chartedCellDataValue backward leftInverse
 
@@ -104,66 +136,81 @@ chartCounitInsertion backward leftInverse =
 -- coverage of every candidate, including candidates outside the original image.
 {-@
 chartMapInsertion
-  :: original:DomanialInsertion (AtlasObjectCellData source sourceObject)
-       (AtlasObjectCellData target targetObject)
-  -> backward:(AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
-  -> (charted:ChartedCellData source sourceObject ->
+  :: original:DomanialInsertion (sd sourceObject)
+       (td targetObject)
+  -> forward:(value:ChartedDatum sa ss sd sourceObject ->
+       {result:ChartedDatum ta ts td targetObject |
+         chartedCellDataValue result == applyInsertion original (chartedCellDataValue value)})
+  -> backward:(sd sourceObject -> Maybe (ChartedDatum sa ss sd sourceObject))
+  -> (charted:ChartedDatum sa ss sd sourceObject ->
        {backward (chartedCellDataValue charted) == Just charted})
-  -> DomanialInsertion (ChartedCellData source sourceObject) (ChartedCellData target targetObject)
+  -> DomanialInsertion (ChartedDatum sa ss sd sourceObject) (ChartedDatum ta ts td targetObject)
 @-}
 -- ALIGN: CHARTER-MAP-INSERTION.
 -- ALIGN: CHARTER-MAP-INVERSE.
 chartMapInsertion
-  :: forall source sourceObject target targetObject.
-     DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
-  -> (AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
-  -> (ChartedCellData source sourceObject -> ())
-  -> DomanialInsertion (ChartedCellData source sourceObject) (ChartedCellData target targetObject)
-chartMapInsertion original backward leftInverse =
+  :: forall sa ss sd sourceObject ta ts td targetObject.
+     DomanialInsertion (sd sourceObject) (td targetObject)
+  -> (ChartedDatum sa ss sd sourceObject -> ChartedDatum ta ts td targetObject)
+  -> (sd sourceObject -> Maybe (ChartedDatum sa ss sd sourceObject))
+  -> (ChartedDatum sa ss sd sourceObject -> ())
+  -> DomanialInsertion (ChartedDatum sa ss sd sourceObject) (ChartedDatum ta ts td targetObject)
+chartMapInsertion original forward backward leftInverse =
   domanialInsertion
-    (chartMapApply original)
-    (chartMapPreimage original backward)
-    (chartMapRoundTrip @source @sourceObject @target @targetObject original backward leftInverse)
-
-{-@ reflect chartMapApply @-}
-chartMapApply
-  :: DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
-  -> ChartedCellData source sourceObject -> ChartedCellData target targetObject
-chartMapApply original value = mapChartedCellData (applyInsertion original) value
+    forward
+    (chartMapPreimage @sa @ss @sd @sourceObject @ta @ts @td @targetObject original backward)
+    (chartMapRoundTrip @sa @ss @sd @sourceObject @ta @ts @td @targetObject original forward backward leftInverse)
 
 {-@ reflect chartMapPreimage @-}
 chartMapPreimage
-  :: DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
-  -> (AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
-  -> ChartedCellData target targetObject -> Maybe (ChartedCellData source sourceObject)
+  :: forall sa ss sd sourceObject ta ts td targetObject. DomanialInsertion (sd sourceObject) (td targetObject)
+  -> (sd sourceObject -> Maybe (ChartedDatum sa ss sd sourceObject))
+  -> ChartedDatum ta ts td targetObject -> Maybe (ChartedDatum sa ss sd sourceObject)
 chartMapPreimage original backward value =
   case preimage original (chartedCellDataValue value) of
     Nothing -> Nothing
     Just candidate -> backward candidate
 
 {-@ chartMapRoundTrip
-      :: original:DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
-      -> backward:(AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
-      -> (charted:ChartedCellData source sourceObject -> {backward (chartedCellDataValue charted) == Just charted})
-      -> value:ChartedCellData source sourceObject
-      -> {chartMapPreimage original backward (chartMapApply original value) == Just value} @-}
+      :: original:DomanialInsertion (sd sourceObject) (td targetObject)
+      -> forward:(value:ChartedDatum sa ss sd sourceObject ->
+           {result:ChartedDatum ta ts td targetObject |
+             chartedCellDataValue result == applyInsertion original (chartedCellDataValue value)})
+      -> backward:(sd sourceObject -> Maybe (ChartedDatum sa ss sd sourceObject))
+      -> (charted:ChartedDatum sa ss sd sourceObject -> {backward (chartedCellDataValue charted) == Just charted})
+      -> value:ChartedDatum sa ss sd sourceObject
+      -> {chartMapPreimage original backward (forward value) == Just value} @-}
 chartMapRoundTrip
-  :: forall source sourceObject target targetObject.
-     DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
-  -> (AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
-  -> (ChartedCellData source sourceObject -> ())
-  -> ChartedCellData source sourceObject -> ()
-chartMapRoundTrip original _ leftInverse value =
-  insertionLeftInverse original (chartedCellDataValue value) `seq` leftInverse value
+  :: forall sa ss sd sourceObject ta ts td targetObject.
+     DomanialInsertion (sd sourceObject) (td targetObject)
+  -> (ChartedDatum sa ss sd sourceObject -> ChartedDatum ta ts td targetObject)
+  -> (sd sourceObject -> Maybe (ChartedDatum sa ss sd sourceObject))
+  -> (ChartedDatum sa ss sd sourceObject -> ())
+  -> ChartedDatum sa ss sd sourceObject -> ()
+chartMapRoundTrip original forward _ leftInverse value =
+  forward value `seq`
+    insertionLeftInverse original (chartedCellDataValue value) `seq` leftInverse value
 
-{-@ reflect mapChartedCellData @-}
-mapChartedCellData
-  :: (AtlasObjectCellData source sourceObject
-      -> AtlasObjectCellData target targetObject)
-  -> ChartedCellData source sourceObject
-  -> ChartedCellData target targetObject
-mapChartedCellData function (ChartedCellData value) =
-  ChartedCellData (function value)
+-- | Transport an accepted charted datum and its certified code together.
+-- ALIGN: CHARTER-CELL-CACHE-TRANSPORT.
+{-@ chartedDataMap :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
+      -> value:{ChartedDatum a s d source |
+           atlasAcceptsDatum owner (arrowSource arrow) (chartedCellDataValue value)
+           && coverageRankCandidate owner (arrowSource arrow) (chartedCellDataValue value) (chartedCellDataRank value)
+           && coverageRankCanonical owner (arrowSource arrow) (chartedCellDataValue value) (chartedCellDataRank value)}
+      -> {result:ChartedDatum a s d target |
+           chartedCellDataValue result == applyInsertion (mapAtlasData owner arrow) (chartedCellDataValue value)
+           && chartedCellDataRank result == chartedCellDataRank value
+           && atlasAcceptsDatum owner (arrowTarget arrow) (chartedCellDataValue result)
+           && coverageRankCandidate owner (arrowTarget arrow) (chartedCellDataValue result) (chartedCellDataRank result)
+           && coverageRankCanonical owner (arrowTarget arrow) (chartedCellDataValue result) (chartedCellDataRank result)} @-}
+chartedDataMap :: Atlas a s d o f -> PageElementArrow s source target
+  -> ChartedDatum a s d source -> ChartedDatum a s d target
+chartedDataMap owner arrow (ChartedCellData value code) =
+  coverageRankAlongArrow owner arrow value code `seq`
+    ChartedCellData (applyInsertion (mapAtlasData owner arrow) value) code
 
 {-@ reflect composeValues @-}
 composeValues :: (b -> c) -> (a -> b) -> a -> c
@@ -173,135 +220,115 @@ composeValues after before value = after (before value)
 identityValue :: a -> a
 identityValue value = value
 
--- | Pointwise identity law for the Charter arrow action.
-{-@
-charterIdentityValue
-  :: value:ChartedCellData atlasObject object
-  -> { proof:() |
-       mapChartedCellData identityValue value == value }
-@-}
--- ALIGN: CHARTER-FUNCTOR-IDENTITY.
-charterIdentityValue
-  :: ChartedCellData atlasObject object
-  -> ()
-charterIdentityValue _ = ()
+-- | Across Atlas objects, the target supplies its own canonical rank function.
+{-@ reflect recodeChartedCellData @-}
+recodeChartedCellData
+  :: (sd sourceObject -> td targetObject)
+  -> (td targetObject -> Natural)
+  -> ChartedDatum sa ss sd sourceObject -> ChartedDatum ta ts td targetObject
+recodeChartedCellData function code value =
+  let target = function (chartedCellDataValue value)
+  in ChartedCellData target (code target)
 
--- | Pointwise composition law for the Charter arrow action.
-{-@
-charterCompositionValue
-  :: first:(AtlasObjectCellData source sourceObject
-       -> AtlasObjectCellData middle middleObject)
-  -> second:(AtlasObjectCellData middle middleObject
-       -> AtlasObjectCellData target targetObject)
-  -> value:ChartedCellData source sourceObject
-  -> { proof:() |
-       mapChartedCellData second (mapChartedCellData first value)
-         == mapChartedCellData (composeValues second first) value }
-@-}
+-- ALIGN: CHARTER-FUNCTOR-IDENTITY.
+{-@ charterIdentityValue :: code:(d object -> Natural)
+      -> value:{ChartedDatum a p d object | code (chartedCellDataValue value) == chartedCellDataRank value}
+      -> {recodeChartedCellData identityValue code value == value} @-}
+charterIdentityValue
+  :: (d object -> Natural) -> ChartedDatum a p d object -> ()
+charterIdentityValue _ (ChartedCellData _ _) = ()
+
 -- ALIGN: CHARTER-FUNCTOR-COMPOSITION.
+{-@ charterCompositionValue
+      :: first:(sd sourceObject -> md middleObject)
+      -> second:(md middleObject -> td targetObject)
+      -> middleCode:(md middleObject -> Natural)
+      -> targetCode:(td targetObject -> Natural)
+      -> value:ChartedDatum sa ss sd sourceObject
+      -> {recodeChartedCellData second targetCode (recodeChartedCellData first middleCode value)
+           == recodeChartedCellData (composeValues second first) targetCode value} @-}
 charterCompositionValue
-  :: forall source sourceObject middle middleObject target targetObject.
-     (AtlasObjectCellData source sourceObject
-      -> AtlasObjectCellData middle middleObject)
-  -> (AtlasObjectCellData middle middleObject
-      -> AtlasObjectCellData target targetObject)
-  -> ChartedCellData source sourceObject
-  -> ()
-charterCompositionValue _ _ _ = ()
+  :: forall sa ss sd sourceObject ma ms md middleObject ta ts td targetObject.
+     (sd sourceObject -> md middleObject)
+  -> (md middleObject -> td targetObject)
+  -> (md middleObject -> Natural)
+  -> (td targetObject -> Natural)
+  -> ChartedDatum sa ss sd sourceObject -> ()
+charterCompositionValue _ _ _ _ _ = ()
 
 -- | Data component of @chartLift@: apply the original component and retain
 -- its covered result in the charted target.
 {-@ reflect chartHomToValue @-}
 chartHomToValue
-  :: (sourceValue -> AtlasObjectCellData target targetObject)
+  :: (sourceValue -> td targetObject)
+  -> (td targetObject -> Natural)
   -> sourceValue
-  -> ChartedCellData target targetObject
-chartHomToValue function value = ChartedCellData (function value)
+  -> ChartedDatum ta ts td targetObject
+chartHomToValue function code value = ChartedCellData (function value) (code (function value))
 
 -- | Data component of composition with the chart counit.
 {-@ reflect chartHomFromValue @-}
 chartHomFromValue
-  :: (sourceValue -> ChartedCellData target targetObject)
+  :: (sourceValue -> ChartedDatum ta ts td targetObject)
   -> sourceValue
-  -> AtlasObjectCellData target targetObject
+  -> td targetObject
 chartHomFromValue function value =
   chartedCellDataValue (function value)
 
--- | Lean's @chartHomEquiv.left_inv@, pointwise on cell data.
-{-@
-chartHomLeftInverseValue
-  :: function:(sourceValue -> AtlasObjectCellData target targetObject)
-  -> value:sourceValue
-  -> { proof:() |
-       chartHomFromValue (chartHomToValue function) value
-         == function value }
-@-}
+-- | Forgetting a lifted value recovers the original datum.
 -- ALIGN: CHARTER-HOM-LEFT-INVERSE.
+{-@ chartHomLeftInverseValue
+      :: function:(sourceValue -> td targetObject)
+      -> code:(td targetObject -> Natural) -> value:sourceValue
+      -> {chartHomFromValue (chartHomToValue function code) value == function value} @-}
 chartHomLeftInverseValue
-  :: forall sourceValue target targetObject.
-     (sourceValue -> AtlasObjectCellData target targetObject)
-  -> sourceValue
-  -> ()
-chartHomLeftInverseValue _ _ = ()
+  :: forall sourceValue ta ts td targetObject.
+     (sourceValue -> td targetObject)
+  -> (td targetObject -> Natural) -> sourceValue -> ()
+chartHomLeftInverseValue _ _ _ = ()
 
--- | Lean's @chartHomEquiv.right_inv@, pointwise on cell data. Newtype eta is
--- the Haskell counterpart of Lean's final @Subtype.ext; proof evidence is not
--- part of the runtime equality.
-{-@
-chartHomRightInverseValue
-  :: function:(sourceValue -> ChartedCellData target targetObject)
-  -> value:sourceValue
-  -> { proof:() |
-       chartHomToValue (chartHomFromValue function) value
-         == function value }
-@-}
+-- | Reconstructing a canonical code recovers the complete charted value.
 -- ALIGN: CHARTER-HOM-RIGHT-INVERSE.
+{-@ chartHomRightInverseValue
+      :: function:(sourceValue -> ChartedDatum ta ts td targetObject)
+      -> code:(td targetObject -> Natural)
+      -> (value:sourceValue -> {code (chartedCellDataValue (function value)) == chartedCellDataRank (function value)})
+      -> value:sourceValue
+      -> {chartHomToValue (chartHomFromValue function) code value == function value} @-}
 chartHomRightInverseValue
-  :: forall sourceValue target targetObject.
-     (sourceValue -> ChartedCellData target targetObject)
-  -> sourceValue
-  -> ()
-chartHomRightInverseValue _ _ = ()
+  :: forall sourceValue ta ts td targetObject.
+     (sourceValue -> ChartedDatum ta ts td targetObject)
+  -> (td targetObject -> Natural) -> (sourceValue -> ()) -> sourceValue -> ()
+chartHomRightInverseValue function _ canonical value =
+  canonical value `seq` case function value of ChartedCellData _ _ -> ()
 
--- | Naturality of @chartHomEquiv@ in its Atlas-map argument: Charter
--- commutes with precomposition.
-{-@
-chartHomNaturalityLeftValue
-  :: before:(firstValue -> secondValue)
-  -> function:(secondValue -> AtlasObjectCellData target targetObject)
-  -> value:firstValue
-  -> { proof:() |
-       chartHomToValue (composeValues function before) value
-         == chartHomToValue function (before value) }
-@-}
 -- ALIGN: CHARTER-HOM-NATURALITY-LEFT.
+{-@ chartHomNaturalityLeftValue
+      :: before:(firstValue -> secondValue)
+      -> function:(secondValue -> td targetObject)
+      -> code:(td targetObject -> Natural) -> value:firstValue
+      -> {chartHomToValue (composeValues function before) code value == chartHomToValue function code (before value)} @-}
 chartHomNaturalityLeftValue
-  :: forall firstValue secondValue target targetObject.
-     (firstValue -> secondValue)
-  -> (secondValue -> AtlasObjectCellData target targetObject)
-  -> firstValue
-  -> ()
-chartHomNaturalityLeftValue _ _ _ = ()
+  :: forall firstValue secondValue ta ts td targetObject.
+     (firstValue -> secondValue) -> (secondValue -> td targetObject)
+  -> (td targetObject -> Natural) -> firstValue -> ()
+chartHomNaturalityLeftValue _ _ _ _ = ()
 
--- | Naturality in the Atlas-transversal argument: Charter commutes with
--- postcomposition.
-{-@
-chartHomNaturalityRightValue
-  :: function:(sourceValue -> AtlasObjectCellData middle middleObject)
-  -> after:(AtlasObjectCellData middle middleObject
-       -> AtlasObjectCellData target targetObject)
-  -> value:sourceValue
-  -> { proof:() |
-       chartHomToValue (composeValues after function) value
-         == mapChartedCellData after
-              (chartHomToValue function value) }
-@-}
+-- | Recoding in the target makes naturality independent of intermediate codes.
 -- ALIGN: CHARTER-HOM-NATURALITY-RIGHT.
+{-@ chartHomNaturalityRightValue
+      :: function:(sourceValue -> md middleObject)
+      -> after:(md middleObject -> td targetObject)
+      -> middleCode:(md middleObject -> Natural)
+      -> targetCode:(td targetObject -> Natural)
+      -> value:sourceValue
+      -> {chartHomToValue (composeValues after function) targetCode value
+           == recodeChartedCellData after targetCode (chartHomToValue function middleCode value)} @-}
 chartHomNaturalityRightValue
-  :: forall sourceValue middle middleObject target targetObject.
-     (sourceValue -> AtlasObjectCellData middle middleObject)
-  -> (AtlasObjectCellData middle middleObject
-      -> AtlasObjectCellData target targetObject)
-  -> sourceValue
-  -> ()
-chartHomNaturalityRightValue _ _ _ = ()
+  :: forall sourceValue ma ms md middleObject ta ts td targetObject.
+     (sourceValue -> md middleObject)
+  -> (md middleObject -> td targetObject)
+  -> (md middleObject -> Natural)
+  -> (td targetObject -> Natural)
+  -> sourceValue -> ()
+chartHomNaturalityRightValue _ _ _ _ _ = ()

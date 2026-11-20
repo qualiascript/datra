@@ -63,10 +63,66 @@ def Atlas.territory (X : Atlas) (index : X.TerritoryIndex) : X.CellDominion :=
   ⟨FolioData.ValidElement.lastElement X.pages index,
     X.dataAt (FolioData.ValidElement.lastElement X.pages index)⟩
 
+-- ALIGN: ATLAS-TERRITORY-SELECTED-ELEMENT.
+def Atlas.territoryElement (X : Atlas) (index : X.TerritoryIndex) : X.Element :=
+  (X.territory index).element
+
+def Atlas.withTerritory {Result : Sort*} (X : Atlas) (index : X.TerritoryIndex)
+    (useTerritory : (source : X.Element) → source = X.territoryElement index → Result) : Result :=
+  useTerritory (X.territoryElement index) rfl
+
 -- ALIGN: ATLAS-TERRITORY-POSITION.
 theorem Atlas.territory_position (X : Atlas) (index : X.TerritoryIndex) :
     (X.territory index).element.val.position = index.position :=
   FolioData.ValidElement.lastElement_position X.pages index
+
+/-- Reconstruct a valid final occurrence and retain its coordinate-preserving arrow. -/
+def Atlas.withTerritoryOf {Result : Type*} (X : Atlas) (source : X.Element)
+    (atFinal : source.val.page = X.pages.depth - 1)
+    (useTerritory : (index : X.TerritoryIndex) → (target : X.Element) →
+      target = X.territoryElement index → target.val.page = source.val.page →
+      target.val.position = source.val.position → (source ⟶ target) → Result) : Option Result :=
+  match found : FolioData.ValidElement.finalPageElementIndex X.pages source with
+  | none => none
+  | some index =>
+      let target := (X.territory index).element
+      have page : target.val.page = source.val.page := atFinal.symm
+      have position : target.val.position = source.val.position :=
+        (X.territory_position index).trans
+          ((FolioData.ValidElement.finalPageElementIndex_spec X.pages source atFinal).2 index found)
+      some (useTerritory index target rfl page position
+        (eqToHom (FolioData.ValidElement.eq_of_page_position page.symm position.symm)))
+
+-- ALIGN: ATLAS-TERRITORY-RECONSTRUCT.
+theorem Atlas.withTerritoryOf_spec {Result : Type*} (X : Atlas) (source : X.Element)
+    (atFinal : source.val.page = X.pages.depth - 1)
+    (useTerritory : (index : X.TerritoryIndex) → (target : X.Element) →
+      target = X.territoryElement index → target.val.page = source.val.page →
+      target.val.position = source.val.position → (source ⟶ target) → Result) :
+    (X.withTerritoryOf source atFinal useTerritory).isSome = true := by
+  have existsIndex := (FolioData.ValidElement.finalPageElementIndex_spec X.pages source atFinal).1
+  unfold withTerritoryOf
+  split <;> simp_all
+
+theorem Atlas.withTerritoryOf_eq_self {Result : Type*} (X : Atlas) (source : X.Element)
+    (atFinal : source.val.page = X.pages.depth - 1)
+    (useTerritory : (target : X.Element) → target.val.page = source.val.page →
+      target.val.position = source.val.position → (source ⟶ target) → Result) :
+    X.withTerritoryOf source atFinal (fun _ target _ => useTerritory target) =
+      some (useTerritory source rfl rfl (𝟙 source)) := by
+  have reduce (target : X.Element) (page : target.val.page = source.val.page)
+      (position : target.val.position = source.val.position) :
+      useTerritory target page position
+        (eqToHom (FolioData.ValidElement.eq_of_page_position page.symm position.symm)) =
+          useTerritory source rfl rfl (𝟙 source) := by
+    have same := FolioData.ValidElement.eq_of_page_position page position
+    subst target
+    rfl
+  have existsIndex := (FolioData.ValidElement.finalPageElementIndex_spec X.pages source atFinal).1
+  unfold withTerritoryOf
+  split
+  next absent => simp [absent] at existsIndex
+  next index found => exact congrArg some (reduce _ _ _)
 
 -- ALIGN: ATLAS-TERRITORY-INTERPRETATION.
 theorem Atlas.territory_interpretation (X : Atlas) (index : X.TerritoryIndex) :

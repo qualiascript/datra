@@ -43,6 +43,38 @@ proofGuard (CompositeAtlasHom _ _) = ()
 """,
 }
 
+NATURAL_SEARCH_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/NaturalSearch.hs"
+NATURAL_SEARCH_GUARDS = {
+    "finite search congruence requires equality of the tested predicates": """
+{-@ proofGuard :: left:(Natural -> Bool) -> right:(Natural -> Bool)
+      -> candidate:Natural -> remaining:Natural
+      -> {search left candidate remaining == search right candidate remaining} @-}
+proofGuard :: (Natural -> Bool) -> (Natural -> Bool) -> Natural -> Natural -> ()
+proofGuard left right = congruent left right (const ())
+""",
+
+    "finite search cannot return a rank beyond its interval": """
+{-@ proofGuard :: matches:(Natural -> Bool) -> candidate:Natural -> remaining:Natural
+      -> Maybe {found:Natural | found > candidate + remaining} @-}
+proofGuard :: (Natural -> Bool) -> Natural -> Natural -> Maybe Natural
+proofGuard = search
+""",
+    "finite search trimming requires the actually selected rank": """
+{-@ proofGuard :: matches:(Natural -> Bool) -> candidate:Natural -> remaining:Natural
+      -> found:{Natural | candidate <= found && matches found}
+      -> {search matches candidate (found - candidate) == Just found} @-}
+proofGuard :: (Natural -> Bool) -> Natural -> Natural -> Natural -> ()
+proofGuard = trim
+""",
+    "canonical uniqueness requires least ranks, not merely successful ranks": """
+{-@ proofGuard :: matches:(Natural -> Bool)
+      -> left:{Natural | matches left} -> right:{Natural | matches right}
+      -> {left == right} @-}
+proofGuard :: (Natural -> Bool) -> Natural -> Natural -> ()
+proofGuard = unique
+""",
+}
+
 CHAIN_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Chain/Internal.hs"
 CONSOLIDATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Core.hs"
 CONSOLIDATION_GUARDS = {
@@ -857,8 +889,95 @@ proofGuard sourceAtlas targetAtlas ordered badCoverage =
 """,
 }
 
+COVERAGE_PUBLIC_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/AtlasCoveredPageElement.hs"
+COVERAGE_PUBLIC_GUARDS = {
+    "public coverage transport requires valid cells and an accepted datum": """
+{-@ proofGuard :: owner:Atlas a s d o f -> PageElementArrow s source target -> d source -> Natural -> () @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s source target -> d source -> Natural -> ()
+proofGuard = coverageRankAlongArrow
+""",
+    "public coverage transport cannot shift the preserved code": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
+      -> datum:{d source | atlasAcceptsDatum owner (arrowSource arrow) datum}
+      -> candidate:Natural
+      -> {coverageRankCandidate owner (arrowSource arrow) datum candidate
+           == coverageRankCandidate owner (arrowTarget arrow) (applyInsertion (mapAtlasData owner arrow) datum) (candidate + 1)} @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s source target -> d source -> Natural -> ()
+proofGuard = coverageRankAlongArrow
+""",
+}
+
 COVERAGE_REPRESENTATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs"
 COVERAGE_REPRESENTATION_GUARDS = {
+    "coverage code transport requires equal origin images": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s sourceObject | cellTraceValid owner source}
+      -> datum:{d sourceObject | atlasAcceptsDatum owner source datum}
+      -> target:{PageElement s targetObject | cellTraceValid owner target}
+      -> targetDatum:{d targetObject | atlasAcceptsDatum owner target targetDatum}
+      -> candidate:Natural
+      -> {coverageRankCanonical owner source datum candidate == coverageRankCanonical owner target targetDatum candidate} @-}
+proofGuard :: Atlas a s d o f -> PageElement s sourceObject -> d sourceObject
+  -> PageElement s targetObject -> d targetObject -> Natural -> ()
+proofGuard = coverageRankCanonicalSameOrigin
+""",
+
+    "rank witness recovery requires a certified successful index": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum} -> Natural
+      -> {result:Maybe (CoverageWitness a s d) | result /= Nothing} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Maybe (CoverageWitness a s d)
+proofGuard = coverageRankWitness
+""",
+
+    "coverage witness bounds require coverage of the requested datum": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> witness:{CoverageWitness a s d | coverageWitnessValid owner witness}
+      -> {candidate:Natural | coverageRankCandidate owner source datum candidate} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWitness a s d -> Natural
+proofGuard = coverageWitnessBound
+""",
+    "witness-bounded ranking requires coverage of the requested datum": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> CoverageWitness a s d -> Natural @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWitness a s d -> Natural
+proofGuard = atlasCoverageRank
+""",
+
+    "region decoding requires the exact source origin image": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> region:{PageElement s other | cellTraceValid owner region
+           && coveragePage region == coverageFinalPage owner}
+      -> regionDatum:{d other | atlasAcceptsDatum owner region regionDatum}
+      -> {coverageDecodedDatum
+           (coverageAtRegion owner source (rank (atlasDataAt owner region) regionDatum) region) == Just datum} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object
+  -> PageElement s other -> d other -> ()
+proofGuard = coverageAtRegionInverse
+""",
+    "region decoding rejects shifting the encoded datum rank": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> region:{PageElement s other | cellTraceValid owner region
+           && coveragePage region == coverageFinalPage owner}
+      -> regionDatum:{d other | atlasAcceptsDatum owner region regionDatum
+           && atlasOriginImageRank owner region regionDatum == atlasOriginImageRank owner source datum}
+      -> {coverageDecodedDatum
+           (coverageAtRegion owner source (rank (atlasDataAt owner region) regionDatum + 1) region) == Just datum} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object
+  -> PageElement s other -> d other -> ()
+proofGuard = coverageAtRegionInverse
+""",
     "bounded coverage ranking rejects a result beyond its limit": """
 {-@ proofGuard :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
@@ -967,15 +1086,60 @@ proofGuard = atlasMapCoversDatum
 
 CHARTER_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs"
 CHARTER_GUARDS = {
+    "charted data transport cannot shift its certified code": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
+      -> value:{ChartedDatum a s d source |
+           atlasAcceptsDatum owner (arrowSource arrow) (chartedCellDataValue value)
+           && coverageRankCandidate owner (arrowSource arrow) (chartedCellDataValue value) (chartedCellDataRank value)
+           && coverageRankCanonical owner (arrowSource arrow) (chartedCellDataValue value) (chartedCellDataRank value)}
+      -> {result:ChartedDatum a s d target |
+           chartedCellDataRank result == chartedCellDataRank value + 1} @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s source target
+  -> ChartedDatum a s d source -> ChartedDatum a s d target
+proofGuard = chartedDataMap
+""",
+    "charted coverage rejects an unsuccessful cached code": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> occurrence:{PageElement s object | cellTraceValid owner occurrence}
+      -> value:{ChartedDatum a s d object |
+           atlasAcceptsDatum owner occurrence (chartedCellDataValue value)
+           && not (coverageRankCandidate owner occurrence (chartedCellDataValue value) (chartedCellDataRank value))}
+      -> CoverageWitness a s d @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d object -> CoverageWitness a s d
+proofGuard = chartedCellCoverage
+""",
+    "charted equality rejects a noncanonical cached code": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> occurrence:{PageElement s object | cellTraceValid owner occurrence}
+      -> left:{ChartedDatum a s d object |
+           atlasAcceptsDatum owner occurrence (chartedCellDataValue left)
+           && coverageRankCanonical owner occurrence (chartedCellDataValue left) (chartedCellDataRank left)}
+      -> right:{ChartedDatum a s d object |
+           chartedCellDataValue right == chartedCellDataValue left
+           && not (coverageRankCanonical owner occurrence (chartedCellDataValue right) (chartedCellDataRank right))}
+      -> {left == right} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d object -> ChartedDatum a s d object -> ()
+proofGuard = chartedCellDataEqual
+""",
     "charted components reject a source inverse that drops every covered value": """
+{-@
 proofGuard
-  :: DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
-  -> DomanialInsertion (ChartedCellData source sourceObject) (ChartedCellData target targetObject)
-proofGuard original = chartMapInsertion original (const Nothing) (const ())
+  :: original:DomanialInsertion (sd sourceObject) (td targetObject)
+  -> forward:(value:ChartedDatum sa ss sd sourceObject ->
+       {result:ChartedDatum ta ts td targetObject |
+         chartedCellDataValue result == applyInsertion original (chartedCellDataValue value)})
+  -> DomanialInsertion (ChartedDatum sa ss sd sourceObject) (ChartedDatum ta ts td targetObject) @-}
+proofGuard
+  :: DomanialInsertion (sd sourceObject) (td targetObject)
+  -> (ChartedDatum sa ss sd sourceObject -> ChartedDatum ta ts td targetObject)
+  -> DomanialInsertion (ChartedDatum sa ss sd sourceObject) (ChartedDatum ta ts td targetObject)
+proofGuard original forward = chartMapInsertion original forward (const Nothing) (const ())
 """,
     "chart counits reject an inverse that drops every covered value": """
 proofGuard
-  :: DomanialInsertion (ChartedCellData atlasObject object) (AtlasObjectCellData atlasObject object)
+  :: DomanialInsertion (ChartedDatum a s d object) (d object)
 proofGuard = chartCounitInsertion (const Nothing) (const ())
 """,
     "charted data rejects a witness that does not cover the datum": """
@@ -986,14 +1150,14 @@ proofGuard
   -> datum:cellData object
   -> witness:{w:CoverageWitness atlasScope scope cellData |
        not (coverageWitnessCovers valueAtlas occurrence datum w)}
-  -> ChartedCellData (AtlasObject atlasScope scope cellData) object
+  -> ChartedDatum atlasScope scope cellData object
 @-}
 proofGuard
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> cellData object
   -> CoverageWitness atlasScope scope cellData
-  -> ChartedCellData (AtlasObject atlasScope scope cellData) object
+  -> ChartedDatum atlasScope scope cellData object
 proofGuard valueAtlas occurrence datum witness =
   chartCellData valueAtlas occurrence datum witness ()
 """,
@@ -1224,8 +1388,36 @@ proofGuard arrow = pageElementArrowPosition arrow
 """,
 }
 
+TERRITORY_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasTerritory/AtlasTerritory.hs"
+TERRITORY_GUARDS = {
+    "territory reconstruction cannot drop a valid final occurrence": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source
+           && pageElementPage source == folioLength (atlasFolio owner) - 1}
+      -> {result:Maybe () | not (Elements.traceLookupPresent result)} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> Maybe ()
+proofGuard owner source = withAtlasTerritoryOf owner source (const (const ()))
+""",
+    "territory reconstruction preserves the selected position": r"""
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source
+           && pageElementPage source == folioLength (atlasFolio owner) - 1}
+      -> Maybe {different:Bool | different} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> Maybe Bool
+proofGuard owner source = withAtlasTerritoryOf owner source $ \_index arrow ->
+  pageElementPosition (arrowTarget arrow) /= pageElementPosition source
+""",
+}
+
 PAGE_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/PageElements.hs"
 PAGE_API_GUARDS = {
+    "final region indexing requires a final-page occurrence": """
+{-@ proofGuard :: category:PageElements scope origin final
+      -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence}
+      -> Maybe (ChainIndex final) @-}
+proofGuard :: PageElements scope origin final -> PageElement scope object -> Maybe (ChainIndex final)
+proofGuard = finalPageElementIndex
+""",
     "public final page lookup retains the requested chain position": """
 {-@ proofGuard :: category:PageElements scope origin final
       -> index:{ChainIndex final |
@@ -1656,6 +1848,7 @@ def run(pattern=None):
         for dependency in library["depends"]:
             command.extend(["-package-id", dependency])
         for source_path, guards in [(SOURCE, GUARDS), (CHAIN_SOURCE, CHAIN_GUARDS),
+                                    (NATURAL_SEARCH_SOURCE, NATURAL_SEARCH_GUARDS),
                                     (CHAIN_SINGLETON_SOURCE, CHAIN_SINGLETON_GUARDS),
                                     (CONSOLIDATION_SOURCE, CONSOLIDATION_GUARDS),
                                     (ORDERED_CONSOLIDATION_SOURCE, ORDERED_CONSOLIDATION_GUARDS),
@@ -1677,6 +1870,7 @@ def run(pattern=None):
                                     (TRANSVERSAL_SOURCE, TRANSVERSAL_GUARDS),
                                     (COVERED_API_SOURCE, COVERED_API_GUARDS),
                                     (COVERAGE_REPRESENTATION_SOURCE, COVERAGE_REPRESENTATION_GUARDS),
+                                    (COVERAGE_PUBLIC_SOURCE, COVERAGE_PUBLIC_GUARDS),
                                     (ATLAS_MAP_SOURCE, ATLAS_MAP_GUARDS),
                                     (CHARTER_SOURCE, CHARTER_GUARDS),
                                     (RANK_IMAGE_SOURCE, RANK_IMAGE_GUARDS),
@@ -1686,6 +1880,7 @@ def run(pattern=None):
                                     (FOLIO_SOURCE, FOLIO_GUARDS),
                                     (FOLIO_API_SOURCE, FOLIO_API_GUARDS),
                                     (PAGE_ARROW_SOURCE, PAGE_ARROW_GUARDS),
+                                    (TERRITORY_SOURCE, TERRITORY_GUARDS),
                                     (PAGE_API_SOURCE, PAGE_API_GUARDS),
                                     (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),
                                     (ATLAS_SOURCE, ATLAS_GUARDS),

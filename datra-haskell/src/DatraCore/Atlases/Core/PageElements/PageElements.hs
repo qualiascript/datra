@@ -8,6 +8,7 @@ module PageElements
   , pageElementsFolio
   , originPageElement
   , lastPageElement
+  , finalPageElementIndex
   , somePageElementTraceValid
   , PageElementDomain
   , pageElementDomain
@@ -128,9 +129,9 @@ import PageElements.Internal
   , somePageElementTransportedReflexive
   )
 
-import qualified PageElements.Internal as Internal (prefixTraceLookupObject, pageElementTraceValidOrigin, lastPageElement)
+import qualified PageElements.Internal as Internal (prefixTraceLookupObject, pageElementTraceValidOrigin, lastPageElement, finalPageElementIndex)
 import PageElements.Structure (SomePageElement (..))
-import Chain (ChainIndex, chainPosition, chainObjectAt, chainIndexPosition)
+import Chain (ChainIndex, chainIndex, chainPosition, chainObjectAt, chainIndexPosition, chainIndexOrderType, chainOrderType)
 import DatraOrdinal (Ordinal)
 import Folio (Folio, lastChain, folioLength)
 import qualified PageElements.Structure as Trace
@@ -162,3 +163,17 @@ pageElementTraceValidOrigin = Internal.pageElementTraceValidOrigin
            && Trace.somePageElementPosition result == chainIndexPosition index} @-}
 lastPageElement :: PageElements scope origin final -> ChainIndex final -> SomePageElement scope
 lastPageElement = Internal.lastPageElement
+
+-- | Resolve a certified final occurrence through the owning final chain.
+{-@ finalPageElementIndex :: category:PageElements scope origin final
+      -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence
+           && pageElementPage occurrence == folioLength (pageElementsFolio category) - 1}
+      -> {result:Maybe ({index:ChainIndex final |
+           chainIndexPosition index == pageElementPosition occurrence
+           && chainIndexOrderType index == chainOrderType (lastChain (pageElementsFolio category))
+           && chainPosition (lastChain (pageElementsFolio category)) (chainObjectAt index)
+                == pageElementPosition occurrence}) | traceLookupPresent result
+           && result == chainIndex (lastChain (pageElementsFolio category)) (pageElementPosition occurrence)} @-}
+finalPageElementIndex
+  :: PageElements scope origin final -> PageElement scope object -> Maybe (ChainIndex final)
+finalPageElementIndex = Internal.finalPageElementIndex

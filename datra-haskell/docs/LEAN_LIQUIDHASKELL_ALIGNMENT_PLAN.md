@@ -66,7 +66,7 @@ arrow, unit, counit, lift, and lower operations have semantic bridges. Its full
 identity, composition, inverse, and naturality laws follow through a transported
 hom equivalence. The Atlas-map and transversal-map wrappers preserve their
 stored arrows, and their inclusion actions agree with the semantic full
-subcategories. Charter coverage witnesses reuse the original Atlas search's
+subcategories. Charter coverage witnesses reuse the original Atlas decoder's
 region and recompute the charted caches, matching the Haskell algorithm.
 
 Primitive transversal actions store their exact-image coverage law in a checked
@@ -91,24 +91,56 @@ contracts, and `AtlasCoverageWitness` is its object-indexed form. Public
 elimination retains the final-region, membership, and cached-rank certificates;
 rank observation keeps the constructor private. Coalition uses the shared
 covered-element carrier, its finite decoder, and its public constructors and
-eliminators.
+eliminators. Its ranking uses the public witness-bounded search through the exposed coverage
+interface.
 
 Finite coverage decoding retains source-datum membership and coverage of that
 exact returned datum. Its public interface can package the result as a covered
 page element. Ordinal and coverage enumeration share one total Cantor pair and
 finite-list codec, with both inverse laws and the decreasing bounds checked in
 LiquidHaskell and Lean. Both languages check an inclusive bounded coverage search
-and its least-match law. A valid retained witness supplies an encoded candidate;
-Lean proves that this candidate matches and that bounded ranking agrees with the
-least rank. LiquidHaskell still needs the decoder round-trip and dependent datum
-rank-coherence proof before this bound can replace the private unrestricted
-searches. Final-page selection retains the requested chain position through the
-public page-element and territory interfaces. The singleton case uses the general
-fact that a chain with a unique carrier value has position zero; appended and
-singleton folios share the final-page lookup and trace-chain construction.
+and its least-match law. A covering witness supplies a checked successful
+encoded candidate. The public rank operation searches only through that candidate;
+LiquidHaskell checks termination and successful decoding, and Lean proves equality
+with the least rank. The interval search and its least-result, trimming, and
+uniqueness laws are shared predicate-based operations in `NaturalSearch`.
+A canonical code is the successful rank selected by searching through that code;
+two canonical codes for one datum are equal. The public rank operation retains
+this certificate, and a public finite decoder recovers coverage evidence at an
+already certified code. These laws are checked in both languages. Charter retains
+the datum and its canonical code. Checked introduction, witness recovery, and
+cache extensionality make equality independent of which final-region witness
+establishes coverage. Local pullback
+matches a requested datum exactly when their origin images agree. Consequently,
+equal origin images have identical successful-code tests and identical canonical
+codes. The public transport law derives this equality for every valid Atlas data
+arrow using origin-rank preservation. The finite search's pointwise-congruence
+law and the decoder argument are checked in both languages. Charter construction
+stores this code, and its checked data-arrow helper preserves it. Transversal mapping
+uses target coverage to compute the target Atlas's canonical code. The assembly
+contracts connecting these operations remain to be checked.
+Encoding first reconstructs the territory occurrence selected by the retained
+region's position and transports the datum along its checked arrow before taking
+the local rank. The public final-page index lookup and territory reconstruction
+retain successful lookup, owning validity, and the requested coordinates. Lean
+proves that this reconstruction preserves the mathematical code. Both checkers
+prove that unranking the selected region datum and pulling it back through the
+source insertion recovers the original source datum when their origin images
+agree. The checked position codec recovers the exact selected index, and the
+territory eliminator retains equality with the selected region. Together these
+laws certify the finite bound in both languages. Charter uses the public finite
+ranking and witness-recovery interfaces. Final-page selection retains the requested chain position
+through the public page-element and territory interfaces. The singleton case
+uses the general fact that a chain with a unique carrier value has position zero;
+appended and singleton folios share the final-page lookup and trace-chain
+construction.
 Focused negative checks reject unproved carrier uniqueness, bounded ranks beyond
 the supplied limit, minimality without a successful selected rank, and a changed
 final-page position through either the implementation or its public interface.
+The reconstruction checks also reject nonfinal input, absent territory lookup,
+changed positions, mismatched source origin images, and a shifted region rank.
+Witness bounds and finite ranking require evidence covering the requested datum;
+validity of an unrelated region alone is insufficient.
 
 The shared Atlas extent module is LiquidHaskell-checked. Its origin-rank
 insertion requires explicit page-order and trace-transport conditions connecting
@@ -526,10 +558,23 @@ must also establish the membership conditions and arrow-preservation evidence
 required by its checked helpers.
 
 The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
-ranking round trip, charted witness caches, and propagation of coverage and
-inverse certificates across public entry points still need checked contracts.
+ranking round trip and propagation of coverage and inverse certificates across
+public entry points still need checked contracts. Cached construction, witness
+recovery, canonical equality, and forward data transport have checked helpers.
+Lean proves that cached ranking, finite unranking, and both directions of data
+insertion agree with the covered-carrier model.
 The checked insertion helpers alone do not discharge those assembly obligations;
-these modules remain partially aligned.
+these modules remain partially aligned. In particular, insertion and Dominion
+contracts must restrict their charted inputs to accepted data with canonical
+codes; a projection from arbitrary datum/code pairs cannot have a left inverse.
+The runtime Atlas membership and its inverse callbacks must retain that invariant.
+The charted carrier retains its datum and canonical coverage code. Construction obtains that code from checked coverage;
+finite decoding canonicalizes any successful input code. Intra-Atlas data
+arrows preserve the code by the checked transport law. Transversal mapping between
+Atlases must obtain target coverage from the transversal and compute the target's
+canonical code. Witness recovery uses the stored code directly. Equality and
+inverse laws must include the canonical-code uniqueness argument, so different
+initial region witnesses do not distinguish charted values.
 
 ### Haskell and LiquidHaskell
 

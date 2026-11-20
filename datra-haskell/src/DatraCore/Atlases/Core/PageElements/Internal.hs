@@ -63,6 +63,7 @@ module PageElements.Internal
   , pageElement
   , originPageElement
   , lastPageElement
+  , finalPageElementIndex
   , pageElementPage
   , pageElementPosition
   , withPageElement
@@ -94,6 +95,7 @@ import Chain
   , chainOrderType
   , chainOrdinalLT
   , chainIndexPosition
+  , chainIndexOrderType
   , chainObjectAt
   , chainPosition
   , chainLookup
@@ -654,6 +656,36 @@ lastPageElement (PageElements pages) index =
       folioTraceLookupHead pages page position `seq`
         pageElement (PageElementIndex (indexWithTrace page pages 0 value
           (genuinePageElementTrace pages value)))
+
+-- | A valid final-page occurrence has a successful index in the owning
+-- final chain, including when the retained occurrence hides another carrier.
+-- ALIGN: PE-FINAL-POSITION-INDEX.
+{-@ finalPageElementIndex :: category:PageElements scope origin final
+      -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence
+           && pageElementPage occurrence == folioLength (pageElementsFolio category) - 1}
+      -> {result:Maybe ({index:ChainIndex final |
+           chainIndexPosition index == pageElementPosition occurrence
+           && chainIndexOrderType index == chainOrderType (lastChain (pageElementsFolio category))
+           && chainPosition (lastChain (pageElementsFolio category)) (chainObjectAt index)
+                == pageElementPosition occurrence}) | traceLookupPresent result
+           && result == chainIndex (lastChain (pageElementsFolio category)) (pageElementPosition occurrence)} @-}
+finalPageElementIndex
+  :: PageElements scope origin final -> PageElement scope object -> Maybe (ChainIndex final)
+finalPageElementIndex (PageElements pages) occurrence =
+  let position = pageElementPosition occurrence
+      page = folioLength pages - 1
+  in folioTraceLookupBounded pages page position `seq`
+      folioFinalPageOrder pages `seq`
+      chainPositionSurjective (lastChain pages) position `seq`
+        case chainLookup (lastChain pages) position of
+          Nothing -> Nothing
+          Just _ -> chainIndex (lastChain pages) position
+
+{-@ folioFinalPageOrder :: pages:Folio origin final
+      -> {folioPageOrderType pages (folioLength pages - 1) == chainOrderType (lastChain pages)} @-}
+folioFinalPageOrder :: Folio origin final -> ()
+folioFinalPageOrder pages@(OriginFolio {}) = folioLength pages `seq` ()
+folioFinalPageOrder (SnocPage step@(FolioStep _ _ _)) = stepSource step `seq` ()
 
 -- | The exact trace of the unique origin occurrence.
 {-@ reflect folioOriginTrace @-}

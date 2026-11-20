@@ -6,12 +6,10 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
--- | Runtime construction of the Charter functor and its hom-set
--- correspondence. The module intentionally introduces no @data@
--- declaration: the only new carrier is the proof-transparent newtype in
--- "Charter.LiquidInternal".
+-- | Runtime construction of Charter from data with canonical coverage codes.
 module Charter.Internal
   ( ChartedCellData
+  , ChartedDatum
   , ChartedAtlasObject
   , chartCellData
   , chartedCellDataValue
@@ -41,6 +39,7 @@ import Atlas
   , AtlasMorphism
   , AtlasObject
   , AtlasObjectCellData
+  , AtlasObjectAtlasScope
   , AtlasObjectPaginationScope
   , AtlasWitness
   , atlasHom
@@ -72,12 +71,9 @@ import Atlas.Internal
   , atlasIdentityWitness
   , atlasWithScope
   )
-import AtlasCoveredPageElement.Internal
-  ( findAtlasCoverage
-  , findAtlasCoverageRank
-  )
 import AtlasCoveredPageElement
-  ( AtlasCoverageWitness, atlasCoverageAt, atlasCoverageWitness, withAtlasCoverageWitness )
+  ( AtlasCoverageWitness, atlasCoverageAt, atlasCoverageWitness, withAtlasCoverageWitness
+  , atlasCoveredByWitness, atlasCoveredPageElementWitness, withAtlasCoveredPageElement )
 import AtlasMap (AtlasMap, atlasMap, atlasMapAtlas, atlasMapCoversDatum)
 import AtlasTransposal
   ( AtlasTransposalElement
@@ -90,6 +86,7 @@ import AtlasTransversal
   , atlasTransversal
   , withTransversalImage
   , atlasTransversalHom
+  , mapAtlasTransversalCoveredPageElement
   , atlasTransversalLeftInverse
   , atlasTransversalPreimage
   , atlasTransversalPreservesOrder
@@ -103,6 +100,7 @@ import AtlasTransversalMap
   )
 import Charter.LiquidInternal
   ( ChartedCellData
+  , ChartedDatum
   , chartCellData
   , chartCounitInsertion
   , chartMapInsertion
@@ -114,7 +112,9 @@ import Charter.LiquidInternal
   , charterIdentityValue
   , chartedCellData
   , chartedCellDataValue
-  , mapChartedCellData
+  , chartedCellDataRank
+  , chartedCellCoverage
+  , chartedDataMap
   )
 import DomanialInsertion
   ( DomanialInsertion
@@ -128,6 +128,7 @@ import Dominion
   , dominion
   , rank
   )
+import Numeric.Natural (Natural)
 import OrderedAtlasTransposal (orderedAtlasTransposal)
 import PageElements.Structure
   ( PageElement
@@ -148,10 +149,8 @@ type ChartedAtlasObject source =
     (AtlasObjectPaginationScope source)
     (ChartedCellData source)
 
--- | The covered sub-dominion at a cell. Lean only needs the old rank composed
--- with subtype projection. Haskell's stronger 'Dominion' API also requires an
--- executable @unrank@, so both directions use the canonical enumeration of
--- final-region witnesses.
+-- | The covered sub-dominion stores its canonical enumeration rank. Finite
+-- unranking retains the decoded witness and canonicalizes its code.
 -- ALIGN: CHARTER-DOMINION-ROUNDTRIP.
 chartedDominion
   :: Atlas atlasScope scope cellData origin final
@@ -160,11 +159,11 @@ chartedDominion
 chartedDominion valueAtlas occurrence =
   dominion chartRank chartUnrank chartRoundTrip
   where
-    chartRank =
-      findAtlasCoverageRank valueAtlas occurrence . chartedCellDataValue
+    chartRank = chartedCellDataRank
 
-    chartUnrank =
-      fmap (chartedCellData . fst) . atlasCoverageAt valueAtlas occurrence
+    chartUnrank candidate = do
+      (datum, witness) <- atlasCoverageAt valueAtlas occurrence candidate
+      pure (chartCellData valueAtlas occurrence datum witness ())
 
     chartRoundTrip _ = ()
 
@@ -181,7 +180,7 @@ chartedInsertion valueAtlas pageArrow =
   where
     original = mapAtlasData valueAtlas pageArrow
 
-    forward = mapChartedCellData (applyInsertion original)
+    forward = chartedDataMap valueAtlas pageArrow
 
     backward target = do
       -- A left inverse may return an arbitrary candidate outside its image.
@@ -190,7 +189,7 @@ chartedInsertion valueAtlas pageArrow =
           targetRank = rank (atlasDataAt valueAtlas (arrowTarget pageArrow))
       candidate <- preimage original targetValue
       if targetRank (applyInsertion original candidate) == targetRank targetValue
-        then Just (chartedCellData candidate)
+        then Just (chartedCellData candidate (chartedCellDataRank target))
         else Nothing
 
     leftInverse source =
@@ -239,14 +238,14 @@ chartCoverageWitness
   -> AtlasCoverageWitness
        (ChartedAtlasObject (AtlasObject atlasScope scope cellData))
 chartCoverageWitness valueAtlas source covered =
-  withAtlasCoverageWitness valueAtlas
-    (findAtlasCoverage valueAtlas source (chartedCellDataValue covered)) $ \region regionDatum ->
+  let original = chartedCellCoverage valueAtlas source covered
+  in withAtlasCoverageWitness valueAtlas original $ \region regionDatum ->
       atlasCoverageWitness
         (chartAtlas valueAtlas)
         source
         covered
         region
-        (chartedCellData regionDatum)
+        (chartCellData valueAtlas region regionDatum original ())
         ()
 
 -- | Charter lands in Atlas maps: every charted datum already carries the
@@ -262,6 +261,8 @@ chartMorphism
   :: AtlasMorphism
        sourceAtlasScope targetAtlasScope
        sourceScope targetScope sourceCellData targetCellData
+  -> AtlasTransversal (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+       (AtlasObject targetAtlasScope targetScope targetCellData)
   -> (forall object. PageElement sourceScope object -> sourceCellData object
         -> Maybe (ChartedCellData (AtlasObject sourceAtlasScope sourceScope sourceCellData) object))
   -> (forall object. PageElement sourceScope object
@@ -272,7 +273,7 @@ chartMorphism
        sourceScope targetScope
        (ChartedCellData (AtlasObject sourceAtlasScope sourceScope sourceCellData))
        (ChartedCellData (AtlasObject targetAtlasScope targetScope targetCellData))
-chartMorphism morphism backward leftInverse =
+chartMorphism morphism transversal backward leftInverse =
   withAtlasMorphismAction morphism $ \completeAction ->
     let action = normalizeAtlasMorphismAction completeAction
     in atlasMorphism
@@ -283,6 +284,17 @@ chartMorphism morphism backward leftInverse =
         (mapAtlasMorphismActionObject action)
         (\occurrence -> chartMapInsertion
           (mapAtlasMorphismActionComponent action occurrence)
+          (\charted ->
+            let sourceAtlas = atlasMorphismSource action
+                targetAtlas = atlasMorphismTarget action
+                sourceDatum = chartedCellDataValue charted
+                sourceCoverage = chartedCellCoverage sourceAtlas occurrence charted
+                covered = atlasCoveredByWitness sourceAtlas occurrence sourceDatum sourceCoverage
+                mapped = mapAtlasTransversalCoveredPageElement transversal covered
+                targetOccurrence = mapAtlasMorphismActionObject action occurrence
+                targetDatum = applyInsertion (mapAtlasMorphismActionComponent action occurrence) sourceDatum
+            in chartCellData targetAtlas targetOccurrence targetDatum
+                 (atlasCoveredPageElementWitness mapped) ())
           (backward occurrence) (leftInverse occurrence))
         (atlasMorphismActionPreservesArrow action)
         (\pageArrow covered ->
@@ -291,16 +303,16 @@ chartMorphism morphism backward leftInverse =
 chartHom
   :: AtlasWitness source
   -> AtlasWitness target
-  -> AtlasHom source target
+  -> AtlasTransversal source target
   -> (forall object. PageElement (AtlasObjectPaginationScope source) object
         -> AtlasObjectCellData source object -> Maybe (ChartedCellData source object))
   -> (forall object. PageElement (AtlasObjectPaginationScope source) object
         -> ChartedCellData source object -> ())
   -> AtlasHom (ChartedAtlasObject source) (ChartedAtlasObject target)
-chartHom sourceWitness targetWitness hom backward leftInverse =
+chartHom sourceWitness targetWitness transversal backward leftInverse =
   withAtlasWitness sourceWitness $ \_ ->
   withAtlasWitness targetWitness $ \_ ->
-  atlasHom (chartMorphism (materializeAtlasHom sourceWitness hom) backward leftInverse)
+  atlasHom (chartMorphism (materializeAtlasHom sourceWitness (atlasTransversalHom transversal)) transversal backward leftInverse)
 
 relabelElement
   :: AtlasWitness (AtlasObject targetAtlasScope scope targetCellData)
@@ -327,7 +339,7 @@ chartMap sourceWitness targetWitness transversal backward leftInverse =
   withAtlasWitness sourceWitness $ \sourceAtlas ->
   withAtlasWitness targetWitness $ \targetAtlas ->
   let sourceChartWitness = atlasWitness (chartAtlas sourceAtlas)
-      hom = chartHom sourceWitness targetWitness (atlasTransversalHom transversal) backward leftInverse
+      hom = chartHom sourceWitness targetWitness transversal backward leftInverse
 
       chartedTransposal =
         atlasTransposal
@@ -377,7 +389,8 @@ charterFunctorHom
 charterFunctorHom = chartMap
 
 charterFunctorIdentity
-  :: ChartedCellData atlasObject object
+  :: (AtlasObjectCellData atlasObject object -> Natural)
+  -> ChartedCellData atlasObject object
   -> ()
 charterFunctorIdentity = charterIdentityValue
 
@@ -387,11 +400,13 @@ charterFunctorComposition
       -> AtlasObjectCellData middle middleObject)
   -> (AtlasObjectCellData middle middleObject
       -> AtlasObjectCellData target targetObject)
+  -> (AtlasObjectCellData middle middleObject -> Natural)
+  -> (AtlasObjectCellData target targetObject -> Natural)
   -> ChartedCellData source sourceObject
   -> ()
 charterFunctorComposition =
   charterCompositionValue
-    @source @sourceObject @middle @middleObject @target @targetObject
+    @(AtlasObjectAtlasScope source) @(AtlasObjectPaginationScope source) @(AtlasObjectCellData source) @sourceObject @(AtlasObjectAtlasScope middle) @(AtlasObjectPaginationScope middle) @(AtlasObjectCellData middle) @middleObject @(AtlasObjectAtlasScope target) @(AtlasObjectPaginationScope target) @(AtlasObjectCellData target) @targetObject
 
 -- | Counit component: forget the coverage subtype. Its explicit inverse
 -- handles uncovered original data without an unbounded coverage search.
@@ -410,9 +425,8 @@ chartCounit valueAtlas backward leftInverse =
     charted
     valueAtlas
     ordered
-    (\covered -> withTransversalImage charted ordered covered $
-      \targetOccurrence targetDatum ->
-        findAtlasCoverage valueAtlas targetOccurrence targetDatum)
+    (\covered -> withAtlasCoveredPageElement covered $ \occurrence datum ->
+      chartedCellCoverage valueAtlas occurrence datum)
   where
     charted = chartAtlas valueAtlas
     chartedWitness = atlasWitness charted
@@ -458,8 +472,8 @@ chartUnit sourceMap =
           (\occurrence ->
             domanialInsertion
               (\datum ->
-                atlasMapCoversDatum sourceMap occurrence datum `seq`
-                  chartedCellData datum)
+                chartCellData valueAtlas occurrence datum
+                  (atlasMapCoversDatum sourceMap occurrence datum) ())
               (Just . chartedCellDataValue)
               (const ()))
           (\source _ ->
@@ -543,30 +557,34 @@ chartHomEquivFrom = chartLower
 chartHomEquivLeftInverse
   :: forall sourceValue target targetObject.
      (sourceValue -> AtlasObjectCellData target targetObject)
+  -> (AtlasObjectCellData target targetObject -> Natural)
   -> sourceValue
   -> ()
 chartHomEquivLeftInverse =
-  chartHomLeftInverseValue @sourceValue @target @targetObject
+  chartHomLeftInverseValue @sourceValue @(AtlasObjectAtlasScope target) @(AtlasObjectPaginationScope target) @(AtlasObjectCellData target) @targetObject
 
 -- ALIGN: CHARTER-HOM-RIGHT-INVERSE-FULL.
 chartHomEquivRightInverse
   :: forall sourceValue target targetObject.
      (sourceValue -> ChartedCellData target targetObject)
+  -> (AtlasObjectCellData target targetObject -> Natural)
+  -> (sourceValue -> ())
   -> sourceValue
   -> ()
 chartHomEquivRightInverse =
-  chartHomRightInverseValue @sourceValue @target @targetObject
+  chartHomRightInverseValue @sourceValue @(AtlasObjectAtlasScope target) @(AtlasObjectPaginationScope target) @(AtlasObjectCellData target) @targetObject
 
 -- ALIGN: CHARTER-HOM-NATURALITY-LEFT-FULL.
 chartHomEquivNaturalityLeft
   :: forall firstValue secondValue target targetObject.
      (firstValue -> secondValue)
   -> (secondValue -> AtlasObjectCellData target targetObject)
+  -> (AtlasObjectCellData target targetObject -> Natural)
   -> firstValue
   -> ()
 chartHomEquivNaturalityLeft =
   chartHomNaturalityLeftValue
-    @firstValue @secondValue @target @targetObject
+    @firstValue @secondValue @(AtlasObjectAtlasScope target) @(AtlasObjectPaginationScope target) @(AtlasObjectCellData target) @targetObject
 
 -- ALIGN: CHARTER-HOM-NATURALITY-RIGHT-FULL.
 chartHomEquivNaturalityRight
@@ -574,11 +592,13 @@ chartHomEquivNaturalityRight
      (sourceValue -> AtlasObjectCellData middle middleObject)
   -> (AtlasObjectCellData middle middleObject
       -> AtlasObjectCellData target targetObject)
+  -> (AtlasObjectCellData middle middleObject -> Natural)
+  -> (AtlasObjectCellData target targetObject -> Natural)
   -> sourceValue
   -> ()
 chartHomEquivNaturalityRight =
   chartHomNaturalityRightValue
-    @sourceValue @middle @middleObject @target @targetObject
+    @sourceValue @(AtlasObjectAtlasScope middle) @(AtlasObjectPaginationScope middle) @(AtlasObjectCellData middle) @middleObject @(AtlasObjectAtlasScope target) @(AtlasObjectPaginationScope target) @(AtlasObjectCellData target) @targetObject
 
 -- | Proof aliases rather than record-shaped proof tokens. Their polymorphic
 -- function values are the hom-equivalence and naturality witnesses checked in

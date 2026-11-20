@@ -687,6 +687,22 @@ theorem lastElement_surjective (pages : FolioData origin final) (x : pages.Valid
   · rfl
   · exact (cast_heq _ _).trans ((cast_heq _ _).trans (cast_heq _ _))
 
+/-- Resolve a final occurrence through the owning final chain's decoder. -/
+def finalPageElementIndex (pages : FolioData origin final) (x : pages.ValidElement) :
+    Option (ChainIndex final.chain) := final.chain.chainIndex x.val.position
+
+-- ALIGN: PE-FINAL-POSITION-INDEX.
+theorem finalPageElementIndex_spec (pages : FolioData origin final) (x : pages.ValidElement)
+    (atFinal : x.val.page = pages.depth - 1) :
+    (finalPageElementIndex pages x).isSome = true ∧
+      ∀ index, finalPageElementIndex pages x = some index → index.position = x.val.position := by
+  constructor
+  · obtain ⟨index, rfl⟩ := lastElement_surjective pages x atFinal
+    simp only [finalPageElementIndex, lastElement_position, ← index.position_eq,
+      Chain.chainIndex_position, Option.isSome_some]
+  · intro index found
+    exact final.chain.chainIndex_requested _ index found
+
 private theorem origin_subsingleton (pages : FolioData origin final) :
     Subsingleton (pages.pageAt 0).Carrier := by
   have h : pages.pageAt 0 = origin := by

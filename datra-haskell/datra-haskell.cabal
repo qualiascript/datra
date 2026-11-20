@@ -52,6 +52,7 @@ library
     import:           warnings
     exposed-modules:
         NaturalEncoding
+        NaturalSearch
         DatraOrdinal.Laws
         Chain.Sum
         Chain.Order

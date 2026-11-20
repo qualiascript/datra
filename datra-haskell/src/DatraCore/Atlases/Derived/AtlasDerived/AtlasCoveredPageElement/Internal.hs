@@ -7,7 +7,9 @@
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
-{-@ LIQUID "--max-case-expand=8" @-}
+{-@ LIQUID "--higherorder" @-}
+{-@ LIQUID "--max-case-expand=0" @-}
+{-@ LIQUID "--smt-timeout=10000" @-}
 {-@ embed Natural as int @-}
 
 -- | Hidden implementation of coverage by final Atlas regions.
@@ -21,17 +23,23 @@ module AtlasCoveredPageElement.Internal
   , withAtlasCoverageWitness
   , coverageWitnessOriginRank
   , coverageWitnessCode
+  , coverageWitnessBound
   , coverageWitnessAlongArrow
   , coverageFinalPage
   , coverageNormalize
   , atlasOriginImageRank
-  , findAtlasCoverage
-  , findAtlasCoverageRank
   , atlasCoverageAt
   , coverageResultCovers
   , coverageRankCandidate
+  , coverageRankWitness
   , atlasCoverageRankWithin
+  , atlasCoverageRank
   , atlasCoverageRankLeast
+  , coverageRankCanonical
+  , coverageRankCanonicalUnique
+  , coverageRankCandidateSameOrigin
+  , coverageRankCanonicalSameOrigin
+  , coverageRankAlongArrow
   , atlasCoveredPageElementAt
   , atlasCoveredPageElement
   , withAtlasCoveredPageElement
@@ -55,17 +63,26 @@ import Atlas
 import AtlasExtent (atlasCellOriginRankInsertion, cellTraceHasOrigin, cellTraceValid, cellOriginRankMap)
 import AtlasTerritory
   ( withAtlasTerritory
+  , withAtlasTerritoryOf
   , atlasTerritoryChain
+  , atlasTerritoryElement
   )
-import DomanialInsertion.Core (applyInsertion, preimage)
-import Chain (chainIndex)
+import DomanialInsertion.Core (applyInsertion, preimage, insertionLeftInverse)
+import Chain (ChainIndex, chainIndex, chainIndexPosition, chainObjectAt, chainPosition)
 import DatraOrdinal (ordinal, ordinalCoefficients)
-import Dominion (rank, unrank)
+import DatraOrdinal.Laws (ordinalDecodeEncode)
+
+{-@ reflect ordinalCoefficients @-}
+import Dominion (Dominion, rank, unrank, dominionCoherence)
+
+{-@ opaque-reflect rank @-}
+import qualified NaturalSearch
 import Numeric.Natural (Natural)
 import Data.Kind (Type)
-import NaturalEncoding (pairNatural, unpairNatural, encodeNaturalList, decodeNaturalList)
+import NaturalEncoding (pairNatural, unpairNatural, unpairPair, encodeNaturalList, decodeNaturalList)
 import PageElements.Structure
   ( PageElement
+  , SomePageElement (..)
   , PageElementArrow
   , arrowSource
   , arrowTarget
@@ -128,16 +145,50 @@ withAtlasCoverageWitness _owner (AtlasCoverageWitness value) useRegion =
 coverageWitnessOriginRank :: CoverageWitness a s d -> Natural
 coverageWitnessOriginRank (AtlasCoverageWitness value) = coverageRegionRank value
 
--- | Encode the actual retained final region and its datum, independently
--- of the cached origin rank used to compare coverage.
+-- | Encode the datum after transporting it to the territory representative
+-- selected by its final-page position. Reconstruction is certified to succeed;
+-- the empty branch is unreachable for a valid coverage witness.
 -- ALIGN: ATLAS-COVERAGE-WITNESS-CODE.
 {-@ coverageWitnessCode :: owner:Atlas a s d o f
       -> witness:{CoverageWitness a s d | coverageWitnessValid owner witness} -> Natural @-}
 coverageWitnessCode :: Atlas a s d o f -> CoverageWitness a s d -> Natural
 coverageWitnessCode owner witness =
   withAtlasCoverageWitness owner witness $ \region datum ->
-    pairNatural (encodeNaturalList (ordinalCoefficients (pageElementPosition region)))
-      (rank (atlasDataAt owner region) datum)
+    coverageCodeFor owner region datum region datum
+
+-- | A covering witness supplies a finite, successful candidate for this datum.
+-- ALIGN: ATLAS-COVERAGE-WITNESS-BOUND.
+{-@ coverageWitnessBound :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> witness:{CoverageWitness a s d | coverageWitnessCovers owner source datum witness}
+      -> {candidate:Natural | coverageRankCandidate owner source datum candidate} @-}
+coverageWitnessBound :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWitness a s d -> Natural
+coverageWitnessBound owner source datum witness =
+  withAtlasCoverageWitness owner witness $ \region regionDatum ->
+    coverageCodeFor owner source datum region regionDatum
+
+{-@ coverageCodeFor :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> region:{PageElement s other | cellTraceValid owner region
+           && coveragePage region == coverageFinalPage owner}
+      -> regionDatum:{d other | atlasAcceptsDatum owner region regionDatum
+           && atlasOriginImageRank owner region regionDatum == atlasOriginImageRank owner source datum}
+      -> {candidate:Natural | coverageRankCandidate owner source datum candidate} @-}
+coverageCodeFor :: Atlas a s d o f -> PageElement s object -> d object -> PageElement s other -> d other -> Natural
+coverageCodeFor owner source datum region regionDatum =
+  case withAtlasTerritoryOf owner region (\index arrow ->
+    let target = arrowTarget arrow
+        transported = applyInsertion (mapAtlasData owner arrow) regionDatum
+        datumRank = rank (atlasDataAt owner target) transported
+        code = pairNatural (encodeNaturalList (ordinalCoefficients (pageElementPosition target))) datumRank
+    in cellTraceHasOrigin owner region `seq`
+       cellTraceHasOrigin owner target `seq`
+       cellOriginRankMap owner arrow regionDatum `seq`
+       coverageSelectedIndexInverse owner source datum index target transported `seq` code) of
+    Nothing -> 0
+    Just code -> code
 
 -- | A page element paired with its datum and evidence that it is covered by a
 -- final region.
@@ -246,6 +297,7 @@ coverageWitnessAlongArrow owner arrow datum _witness =
   cellTraceHasOrigin owner (arrowTarget arrow) `seq`
   cellOriginRankMap owner arrow datum
 
+{-@ opaque-reflect coverageRegionWitness @-}
 {-@ coverageRegionWitness :: owner:Atlas a s d o f
       -> region:{PageElement s object | cellTraceValid owner region
            && coveragePage region == coverageFinalPage owner}
@@ -362,46 +414,8 @@ atlasCoveredPageElementWitness
   :: AtlasCoveredPageElement atlasObject -> AtlasCoverageWitness atlasObject
 atlasCoveredPageElementWitness (AtlasCoveredPageElement _ _ witness) = witness
 
--- | Search the countable final territory for a coverage witness. This is the
--- executable counterpart needed because Haskell's 'Dominion' carries an
--- @unrank@ operation whereas Lean's dominions only require a rank embedding.
--- The search terminates exactly on covered page elements, the only domain on
--- which Charter calls it.
--- ALIGN: ATLAS-COVERAGE-SEARCH-SPEC.
-{-@ findAtlasCoverage :: owner:Atlas a s d o f
-      -> source:{PageElement s object | cellTraceValid owner source}
-      -> datum:{d object | atlasAcceptsDatum owner source datum}
-      -> CoverageWitness a s d @-}
-findAtlasCoverage
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> cellData object
-  -> CoverageWitness atlasScope scope cellData
-findAtlasCoverage valueAtlas source sourceDatum =
-  searchAtlasCoverageFrom valueAtlas source sourceDatum 0
-
--- | The first enumeration index witnessing coverage of a datum. The search
--- is total on the abstract covered carrier used by Charter.
-{-@ lazy findAtlasCoverageRank @-}
--- ALIGN: ATLAS-COVERAGE-RANK-ROUNDTRIP.
--- ALIGN: ATLAS-COVERAGE-RANK-MINIMAL.
-{-@ findAtlasCoverageRank :: owner:Atlas a s d o f
-      -> source:{PageElement s object | cellTraceValid owner source}
-      -> datum:{d object | atlasAcceptsDatum owner source datum}
-      -> Natural @-}
-findAtlasCoverageRank
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> cellData object
-  -> Natural
-findAtlasCoverageRank valueAtlas source sourceDatum = go 0
-  where
-    go candidate
-      | coverageRankCandidate valueAtlas source sourceDatum candidate = candidate
-      | otherwise = go (candidate + 1)
-
 -- | Test whether a finite candidate decodes the requested source datum.
-{-@ opaque-reflect atlasCoveredPageElementAt @-}
+{-@ reflect atlasCoveredPageElementAt @-}
 {-@ reflect coverageRankCandidate @-}
 {-@ coverageRankCandidate :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
@@ -409,9 +423,37 @@ findAtlasCoverageRank valueAtlas source sourceDatum = go 0
 coverageRankCandidate
   :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Bool
 coverageRankCandidate owner source datum candidate =
-  case atlasCoveredPageElementAt owner source candidate of
-    Nothing -> False
-    Just value -> rank (atlasDataAt owner source) value == rank (atlasDataAt owner source) datum
+  coverageValueMatches (atlasDataAt owner source) datum (atlasCoveredPageElementAt owner source candidate)
+
+{-@ reflect coverageValueMatches @-}
+coverageValueMatches :: Dominion value -> value -> Maybe value -> Bool
+coverageValueMatches _ _ Nothing = False
+coverageValueMatches values datum (Just value) = rank values value == rank values datum
+
+{-@ coverageValueMatchesExact :: values:Dominion value -> datum:value -> candidate:Maybe value
+      -> {coverageValueMatches values datum candidate <=> candidate == Just datum} @-}
+coverageValueMatchesExact :: Dominion value -> value -> Maybe value -> ()
+coverageValueMatchesExact _ _ Nothing = ()
+coverageValueMatchesExact values datum (Just value) =
+  dominionCoherence values datum `seq` dominionCoherence values value
+
+-- | Recover evidence at a certified rank without searching for another code.
+-- ALIGN: ATLAS-COVERAGE-RANK-WITNESS.
+{-@ coverageRankWitness :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> candidate:{Natural | coverageRankCandidate owner source datum candidate}
+      -> {result:Maybe ({witness:CoverageWitness a s d |
+           coverageWitnessCovers owner source datum witness}) | result /= Nothing} @-}
+coverageRankWitness
+  :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Maybe (CoverageWitness a s d)
+coverageRankWitness owner source datum candidate =
+  coverageValueMatchesExact (atlasDataAt owner source) datum (atlasCoveredPageElementAt owner source candidate) `seq`
+  case atlasCoverageAt owner source candidate of
+    Nothing -> Nothing
+    Just (decoded, witness) ->
+      dominionCoherence (atlasDataAt owner source) decoded `seq`
+      dominionCoherence (atlasDataAt owner source) datum `seq` Just witness
 
 -- | Search the inclusive interval from zero through the supplied limit.
 -- ALIGN: ATLAS-COVERAGE-BOUNDED-RANK.
@@ -419,7 +461,8 @@ coverageRankCandidate owner source datum candidate =
 {-@ atlasCoverageRankWithin :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
       -> datum:{d object | atlasAcceptsDatum owner source datum} -> limit:Natural
-      -> Maybe ({found:Natural | found <= limit && coverageRankCandidate owner source datum found}) @-}
+      -> {result:Maybe ({found:Natural | found <= limit && coverageRankCandidate owner source datum found}) |
+           coverageRankCandidate owner source datum limit => result /= Nothing} @-}
 atlasCoverageRankWithin
   :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Maybe Natural
 atlasCoverageRankWithin owner source datum limit = searchCoverageRank owner source datum 0 limit
@@ -429,14 +472,118 @@ atlasCoverageRankWithin owner source datum limit = searchCoverageRank owner sour
       -> source:{PageElement s object | cellTraceValid owner source}
       -> datum:{d object | atlasAcceptsDatum owner source datum}
       -> candidate:Natural -> remaining:Natural
-      -> Maybe ({found:Natural | candidate <= found && found <= candidate + remaining
-           && coverageRankCandidate owner source datum found}) / [remaining] @-}
+      -> {result:Maybe ({found:Natural | candidate <= found && found <= candidate + remaining
+           && coverageRankCandidate owner source datum found}) |
+           coverageRankCandidate owner source datum (candidate + remaining) => result /= Nothing} / [remaining] @-}
 searchCoverageRank
   :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Natural -> Maybe Natural
-searchCoverageRank owner source datum candidate remaining
-  | coverageRankCandidate owner source datum candidate = Just candidate
-  | remaining == 0 = Nothing
-  | otherwise = searchCoverageRank owner source datum (candidate + 1) (remaining - 1)
+searchCoverageRank owner source datum candidate remaining =
+  NaturalSearch.search (coverageRankCandidate owner source datum) candidate remaining
+
+-- | Least coverage rank, bounded by explicit evidence for this exact datum.
+-- ALIGN: ATLAS-COVERAGE-WITNESS-RANK.
+{-@ atlasCoverageRank :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> witness:{CoverageWitness a s d | coverageWitnessCovers owner source datum witness}
+      -> {found:Natural | coverageRankCandidate owner source datum found
+           && coverageRankCanonical owner source datum found} @-}
+atlasCoverageRank
+  :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWitness a s d -> Natural
+atlasCoverageRank owner source datum witness =
+  let limit = coverageWitnessBound owner source datum witness
+  in case atlasCoverageRankWithin owner source datum limit of
+       Nothing -> 0
+       Just found -> NaturalSearch.trim (coverageRankCandidate owner source datum) 0 limit found `seq` found
+
+-- | A finite code is canonical exactly when the bounded search selects it.
+{-@ reflect coverageRankCanonical @-}
+{-@ coverageRankCanonical :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum} -> Natural -> Bool @-}
+coverageRankCanonical :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Bool
+coverageRankCanonical owner source datum candidate =
+  atlasCoverageRankWithin owner source datum candidate == Just candidate
+
+-- | Canonical codes do not depend on which coverage witness supplied the bound.
+-- ALIGN: ATLAS-COVERAGE-CANONICAL-UNIQUE.
+{-@ coverageRankCanonicalUnique :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> left:{Natural | coverageRankCanonical owner source datum left}
+      -> right:{Natural | coverageRankCanonical owner source datum right}
+      -> {left == right} @-}
+coverageRankCanonicalUnique
+  :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Natural -> ()
+coverageRankCanonicalUnique owner source datum left right =
+  NaturalSearch.unique (coverageRankCandidate owner source datum) left right
+
+-- | Equal origin images have exactly the same successful enumeration codes.
+-- ALIGN: ATLAS-COVERAGE-CANDIDATE-SAME-ORIGIN.
+{-@ coverageRankCandidateSameOrigin :: owner:Atlas a s d o f
+      -> source:{PageElement s sourceObject | cellTraceValid owner source}
+      -> datum:{d sourceObject | atlasAcceptsDatum owner source datum}
+      -> target:{PageElement s targetObject | cellTraceValid owner target}
+      -> targetDatum:{d targetObject | atlasAcceptsDatum owner target targetDatum
+           && atlasOriginImageRank owner source datum == atlasOriginImageRank owner target targetDatum}
+      -> candidate:Natural
+      -> {coverageRankCandidate owner source datum candidate == coverageRankCandidate owner target targetDatum candidate} @-}
+coverageRankCandidateSameOrigin
+  :: Atlas a s d o f -> PageElement s sourceObject -> d sourceObject
+  -> PageElement s targetObject -> d targetObject -> Natural -> ()
+coverageRankCandidateSameOrigin owner source datum target targetDatum candidate =
+  case unpairNatural candidate of
+    (positionCode, datumRank) ->
+      case chainIndex (atlasTerritoryChain owner) (ordinal (decodeNaturalList positionCode)) of
+        Nothing -> ()
+        Just index -> case atlasTerritoryElement owner index of
+          SomePageElement region ->
+            coverageAtIndexSelected owner source index datumRank region `seq`
+            coverageAtIndexSelected owner target index datumRank region `seq`
+            case unrank (atlasDataAt owner region) datumRank of
+              Nothing -> ()
+              Just regionDatum ->
+                coveragePullbackMatches owner source datum region regionDatum `seq`
+                coveragePullbackMatches owner target targetDatum region regionDatum
+
+-- | The canonical cache is unchanged by any origin-image-preserving transport.
+-- ALIGN: ATLAS-COVERAGE-CANONICAL-SAME-ORIGIN.
+{-@ coverageRankCanonicalSameOrigin :: owner:Atlas a s d o f
+      -> source:{PageElement s sourceObject | cellTraceValid owner source}
+      -> datum:{d sourceObject | atlasAcceptsDatum owner source datum}
+      -> target:{PageElement s targetObject | cellTraceValid owner target}
+      -> targetDatum:{d targetObject | atlasAcceptsDatum owner target targetDatum
+           && atlasOriginImageRank owner source datum == atlasOriginImageRank owner target targetDatum}
+      -> candidate:Natural
+      -> {coverageRankCanonical owner source datum candidate == coverageRankCanonical owner target targetDatum candidate} @-}
+coverageRankCanonicalSameOrigin
+  :: Atlas a s d o f -> PageElement s sourceObject -> d sourceObject
+  -> PageElement s targetObject -> d targetObject -> Natural -> ()
+coverageRankCanonicalSameOrigin owner source datum target targetDatum candidate =
+  NaturalSearch.congruent (coverageRankCandidate owner source datum)
+    (coverageRankCandidate owner target targetDatum)
+    (coverageRankCandidateSameOrigin owner source datum target targetDatum) 0 candidate
+
+-- | A data arrow preserves both successful codes and their canonical minimum.
+-- ALIGN: ATLAS-COVERAGE-RANK-TRANSPORT.
+{-@ coverageRankAlongArrow :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
+      -> datum:{d source | atlasAcceptsDatum owner (arrowSource arrow) datum}
+      -> candidate:Natural
+      -> {coverageRankCandidate owner (arrowSource arrow) datum candidate
+           == coverageRankCandidate owner (arrowTarget arrow) (applyInsertion (mapAtlasData owner arrow) datum) candidate
+           && coverageRankCanonical owner (arrowSource arrow) datum candidate
+           == coverageRankCanonical owner (arrowTarget arrow) (applyInsertion (mapAtlasData owner arrow) datum) candidate} @-}
+coverageRankAlongArrow
+  :: Atlas a s d o f -> PageElementArrow s source target -> d source -> Natural -> ()
+coverageRankAlongArrow owner arrow datum candidate =
+  cellTraceHasOrigin owner (arrowSource arrow) `seq`
+  cellTraceHasOrigin owner (arrowTarget arrow) `seq`
+  cellOriginRankMap owner arrow datum `seq`
+  let transported = applyInsertion (mapAtlasData owner arrow) datum
+  in coverageRankCandidateSameOrigin owner (arrowSource arrow) datum (arrowTarget arrow) transported candidate `seq`
+     coverageRankCanonicalSameOrigin owner (arrowSource arrow) datum (arrowTarget arrow) transported candidate
 
 -- | A successful bounded search selects the least successful candidate.
 -- ALIGN: ATLAS-COVERAGE-BOUNDED-MINIMAL.
@@ -449,23 +596,7 @@ searchCoverageRank owner source datum candidate remaining
 atlasCoverageRankLeast
   :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Natural -> Natural -> ()
 atlasCoverageRankLeast owner source datum limit found earlier =
-  searchCoverageRankLeast owner source datum 0 limit found earlier
-
-{-@ searchCoverageRankLeast :: owner:Atlas a s d o f
-      -> source:{PageElement s object | cellTraceValid owner source}
-      -> datum:{d object | atlasAcceptsDatum owner source datum}
-      -> candidate:Natural -> remaining:Natural
-      -> found:{Natural | searchCoverageRank owner source datum candidate remaining == Just found}
-      -> earlier:{Natural | candidate <= earlier && earlier < found}
-      -> {not (coverageRankCandidate owner source datum earlier)} / [remaining] @-}
-searchCoverageRankLeast
-  :: Atlas a s d o f -> PageElement s object -> d object
-  -> Natural -> Natural -> Natural -> Natural -> ()
-searchCoverageRankLeast owner source datum candidate remaining found earlier
-  | coverageRankCandidate owner source datum candidate = ()
-  | remaining == 0 = ()
-  | earlier == candidate = ()
-  | otherwise = searchCoverageRankLeast owner source datum (candidate + 1) (remaining - 1) found earlier
+  NaturalSearch.least (coverageRankCandidate owner source datum) 0 limit found earlier
 
 -- | Decode one finite coverage candidate. A final-region datum is transported
 -- to the origin and pulled back along the selected source cell. Unlike a
@@ -479,9 +610,7 @@ atlasCoveredPageElementAt
   -> Natural
   -> Maybe (cellData object)
 atlasCoveredPageElementAt valueAtlas source candidate =
-  case atlasCoverageAt valueAtlas source candidate of
-    Nothing -> Nothing
-    Just (datum, _) -> Just datum
+  coverageDecodedDatum (atlasCoverageAt valueAtlas source candidate)
 
 -- | Decode one coverage candidate together with the evidence that made it a
 -- member of the covered carrier.  Returning the witness alongside the datum
@@ -490,6 +619,7 @@ atlasCoveredPageElementAt valueAtlas source candidate =
 -- ALIGN: ATLAS-COVERAGE-DECODE-SOUND.
 -- ALIGN: ATLAS-COVERAGE-RANK-DECODER.
 -- ALIGN: ATLAS-COVERAGE-DECODE-COMPLETE.
+{-@ reflect atlasCoverageAt @-}
 {-@ atlasCoverageAt :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source} -> Natural
       -> Maybe ({result:({datum:d object | atlasAcceptsDatum owner source datum}, CoverageWitness a s d) |
@@ -509,10 +639,53 @@ atlasCoverageAt valueAtlas source candidate =
         (atlasTerritoryChain valueAtlas)
         (ordinal (decodeNaturalList positionCode)) of
           Nothing -> Nothing
-          Just territoryIndex ->
-            withAtlasTerritory valueAtlas territoryIndex
-              (coverageAtRegion valueAtlas source datumRank)
+          Just territoryIndex -> coverageAtIndex valueAtlas source datumRank territoryIndex
 
+{-@ reflect coverageAtIndex @-}
+{-@ coverageAtIndex :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source} -> Natural
+      -> index:{ChainIndex f |
+           chainPosition (atlasTerritoryChain owner) (chainObjectAt index) == chainIndexPosition index}
+      -> Maybe ({result:({datum:d object | atlasAcceptsDatum owner source datum}, CoverageWitness a s d) |
+           coverageResultCovers owner source result}) @-}
+coverageAtIndex
+  :: Atlas a s d o f -> PageElement s object -> Natural -> ChainIndex f
+  -> Maybe (d object, CoverageWitness a s d)
+coverageAtIndex owner source datumRank index =
+  withAtlasTerritory owner index (coverageAtRegion owner source datumRank)
+
+-- | The public selector's exact occurrence determines the regional decoder.
+-- ALIGN: ATLAS-COVERAGE-SELECTED-REGION.
+{-@ coverageAtIndexSelected :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> index:{ChainIndex f |
+           chainPosition (atlasTerritoryChain owner) (chainObjectAt index) == chainIndexPosition index}
+      -> datumRank:Natural
+      -> region:{PageElement s other | cellTraceValid owner region
+           && coveragePage region == coverageFinalPage owner
+           && SomePageElement region == atlasTerritoryElement owner index}
+      -> {coverageAtIndex owner source datumRank index == coverageAtRegion owner source datumRank region} @-}
+coverageAtIndexSelected
+  :: Atlas a s d o f -> PageElement s object -> ChainIndex f -> Natural -> PageElement s other -> ()
+coverageAtIndexSelected _owner _source _index _datumRank _region = ()
+
+-- | The position codec selects the same certified territory index.
+-- ALIGN: ATLAS-COVERAGE-INDEX-DECODE.
+{-@ coverageIndexEncode :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> index:{ChainIndex f |
+           chainPosition (atlasTerritoryChain owner) (chainObjectAt index) == chainIndexPosition index
+           && chainIndex (atlasTerritoryChain owner) (chainIndexPosition index) == Just index}
+      -> datumRank:Natural
+      -> {atlasCoverageAt owner source
+           (pairNatural (encodeNaturalList (ordinalCoefficients (chainIndexPosition index))) datumRank)
+             == coverageAtIndex owner source datumRank index} @-}
+coverageIndexEncode :: Atlas a s d o f -> PageElement s object -> ChainIndex f -> Natural -> ()
+coverageIndexEncode _owner _source index datumRank =
+  unpairPair (encodeNaturalList (ordinalCoefficients (chainIndexPosition index))) datumRank `seq`
+    ordinalDecodeEncode (chainIndexPosition index)
+
+{-@ reflect coverageAtRegion @-}
 {-@ coverageAtRegion :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
       -> Natural
@@ -525,19 +698,122 @@ coverageAtRegion
   -> PageElement s regionObject
   -> Maybe (d object, CoverageWitness a s d)
 coverageAtRegion owner source datumRank region =
-  cellTraceHasOrigin owner source `seq`
   case unrank (atlasDataAt owner region) datumRank of
     Nothing -> Nothing
-    Just regionDatum ->
-      let regionOriginRank = atlasOriginImageRank owner region regionDatum
-      in case preimage (atlasCellOriginRankInsertion owner source) regionOriginRank of
-        Nothing -> Nothing
-        Just sourceDatum
-          | atlasOriginImageRank owner source sourceDatum == regionOriginRank ->
-              Just (coveragePair owner source sourceDatum
-                (coverageRegionWitness owner region regionDatum))
-          | otherwise -> Nothing
+    Just regionDatum -> coveragePullback owner source region regionDatum
 
+-- | Pull a decoded region datum back through the source's checked insertion.
+{-@ reflect coveragePullback @-}
+{-@ coveragePullback :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> region:{PageElement s regionObject | cellTraceValid owner region
+           && coveragePage region == coverageFinalPage owner}
+      -> regionDatum:{d regionObject | atlasAcceptsDatum owner region regionDatum}
+      -> Maybe ({result:({datum:d object | atlasAcceptsDatum owner source datum}, CoverageWitness a s d) |
+           coverageResultCovers owner source result}) @-}
+coveragePullback
+  :: Atlas a s d o f -> PageElement s object -> PageElement s regionObject
+  -> d regionObject -> Maybe (d object, CoverageWitness a s d)
+coveragePullback owner source region regionDatum =
+  cellTraceHasOrigin owner source `seq`
+  let regionOriginRank = atlasOriginImageRank owner region regionDatum
+  in case preimage (atlasCellOriginRankInsertion owner source) regionOriginRank of
+    Nothing -> Nothing
+    Just sourceDatum
+      | atlasOriginImageRank owner source sourceDatum == regionOriginRank ->
+          Just (coveragePair owner source sourceDatum
+            (coverageRegionWitness owner region regionDatum))
+      | otherwise -> Nothing
+
+{-@ reflect coverageDecodedDatum @-}
+coverageDecodedDatum :: Maybe (datum, witness) -> Maybe datum
+coverageDecodedDatum Nothing = Nothing
+coverageDecodedDatum (Just (datum, _)) = Just datum
+
+-- | An exact region image returns the original source datum.
+-- ALIGN: ATLAS-COVERAGE-PULLBACK-INVERSE.
+{-@ coveragePullbackInverse :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> region:{PageElement s regionObject | cellTraceValid owner region
+           && coveragePage region == coverageFinalPage owner}
+      -> regionDatum:{d regionObject | atlasAcceptsDatum owner region regionDatum
+           && atlasOriginImageRank owner region regionDatum == atlasOriginImageRank owner source datum}
+      -> {coverageDecodedDatum (coveragePullback owner source region regionDatum) == Just datum} @-}
+coveragePullbackInverse
+  :: Atlas a s d o f -> PageElement s object -> d object
+  -> PageElement s regionObject -> d regionObject -> ()
+coveragePullbackInverse owner source datum _region _regionDatum =
+  cellTraceHasOrigin owner source `seq`
+    insertionLeftInverse (atlasCellOriginRankInsertion owner source) datum
+
+-- | Local decoding matches a given datum exactly at its origin image.
+{-@ coveragePullbackMatches :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> region:{PageElement s other | cellTraceValid owner region
+           && coveragePage region == coverageFinalPage owner}
+      -> regionDatum:{d other | atlasAcceptsDatum owner region regionDatum}
+      -> {coverageValueMatches (atlasDataAt owner source) datum
+           (coverageDecodedDatum (coveragePullback owner source region regionDatum))
+           == (atlasOriginImageRank owner source datum == atlasOriginImageRank owner region regionDatum)} @-}
+coveragePullbackMatches
+  :: Atlas a s d o f -> PageElement s object -> d object
+  -> PageElement s other -> d other -> ()
+coveragePullbackMatches owner source datum region regionDatum =
+  cellTraceHasOrigin owner source `seq`
+  coverageValueMatchesExact (atlasDataAt owner source) datum
+    (coverageDecodedDatum (coveragePullback owner source region regionDatum)) `seq`
+  if atlasOriginImageRank owner source datum == atlasOriginImageRank owner region regionDatum
+    then coveragePullbackInverse owner source datum region regionDatum
+    else case preimage (atlasCellOriginRankInsertion owner source) (atlasOriginImageRank owner region regionDatum) of
+      Nothing -> ()
+      Just _ -> ()
+
+-- | Unranking the retained region rank and pulling it back recovers the source.
+-- ALIGN: ATLAS-COVERAGE-REGION-INVERSE.
+{-@ coverageAtRegionInverse :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> region:{PageElement s regionObject | cellTraceValid owner region
+           && coveragePage region == coverageFinalPage owner}
+      -> regionDatum:{d regionObject | atlasAcceptsDatum owner region regionDatum
+           && atlasOriginImageRank owner region regionDatum == atlasOriginImageRank owner source datum}
+      -> {coverageDecodedDatum
+           (coverageAtRegion owner source (rank (atlasDataAt owner region) regionDatum) region) == Just datum} @-}
+coverageAtRegionInverse
+  :: Atlas a s d o f -> PageElement s object -> d object
+  -> PageElement s regionObject -> d regionObject -> ()
+coverageAtRegionInverse owner source datum region regionDatum =
+  dominionCoherence (atlasDataAt owner region) regionDatum `seq`
+    coveragePullbackInverse owner source datum region regionDatum
+
+-- | Combine the position codec with the selected region's checked inverse.
+-- ALIGN: ATLAS-COVERAGE-SELECTED-INDEX-INVERSE.
+{-@ coverageSelectedIndexInverse :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> index:{ChainIndex f |
+           chainPosition (atlasTerritoryChain owner) (chainObjectAt index) == chainIndexPosition index
+           && chainIndex (atlasTerritoryChain owner) (chainIndexPosition index) == Just index}
+      -> region:{PageElement s other | cellTraceValid owner region
+           && coveragePage region == coverageFinalPage owner
+           && SomePageElement region == atlasTerritoryElement owner index}
+      -> regionDatum:{d other | atlasAcceptsDatum owner region regionDatum
+           && atlasOriginImageRank owner region regionDatum == atlasOriginImageRank owner source datum}
+      -> {coverageRankCandidate owner source datum
+           (pairNatural (encodeNaturalList (ordinalCoefficients (chainIndexPosition index)))
+             (rank (atlasDataAt owner region) regionDatum))} @-}
+coverageSelectedIndexInverse
+  :: Atlas a s d o f -> PageElement s object -> d object
+  -> ChainIndex f -> PageElement s other -> d other -> ()
+coverageSelectedIndexInverse owner source datum index region regionDatum =
+  let datumRank = rank (atlasDataAt owner region) regionDatum
+  in coverageIndexEncode owner source index datumRank `seq`
+     coverageAtIndexSelected owner source index datumRank region `seq`
+     coverageAtRegionInverse owner source datum region regionDatum
+
+{-@ reflect coveragePair @-}
 {-@ coveragePair :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
       -> datum:{d object | atlasAcceptsDatum owner source datum}
@@ -558,79 +834,3 @@ coverageResultCovers
   -> (d object, CoverageWitness a s d) -> Bool
 coverageResultCovers owner source (datum, witness) =
   coverageWitnessCovers owner source datum witness
-
-{-@ lazy searchAtlasCoverageFrom @-}
-{-@ searchAtlasCoverageFrom :: owner:Atlas a s d o f
-      -> source:{PageElement s object | cellTraceValid owner source}
-      -> datum:{d object | atlasAcceptsDatum owner source datum} -> Natural
-      -> CoverageWitness a s d @-}
-searchAtlasCoverageFrom
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> cellData object
-  -> Natural
-  -> CoverageWitness atlasScope scope cellData
-searchAtlasCoverageFrom valueAtlas source sourceDatum candidate =
-  case coverageCandidate valueAtlas source sourceDatum candidate of
-    Just witness -> witness
-    Nothing ->
-      searchAtlasCoverageFrom valueAtlas source sourceDatum (candidate + 1)
-
--- ALIGN: ATLAS-COVERAGE-CANDIDATE-SOUND.
--- ALIGN: ATLAS-COVERAGE-CANDIDATE-COMPLETE.
-{-@ coverageCandidate :: owner:Atlas a s d o f
-      -> source:{PageElement s object | cellTraceValid owner source}
-      -> datum:{d object | atlasAcceptsDatum owner source datum} -> Natural
-      -> Maybe ({witness:CoverageWitness a s d |
-           coverageWitnessCovers owner source datum witness}) @-}
-coverageCandidate
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> cellData object
-  -> Natural
-  -> Maybe (CoverageWitness atlasScope scope cellData)
-coverageCandidate valueAtlas source sourceDatum candidate =
-  case unpairNatural candidate of
-    (positionCode, datumRank) ->
-      case chainIndex
-        (atlasTerritoryChain valueAtlas)
-        (ordinal (decodeNaturalList positionCode)) of
-          Nothing -> Nothing
-          Just territoryIndex ->
-            withAtlasTerritory valueAtlas territoryIndex
-              (coverageCandidateAtRegion valueAtlas source sourceDatum datumRank)
-
-{-@ coverageCandidateAtRegion :: owner:Atlas a s d o f
-      -> source:{PageElement s object | cellTraceValid owner source}
-      -> datum:{d object | atlasAcceptsDatum owner source datum}
-      -> Natural
-      -> region:{PageElement s regionObject | cellTraceValid owner region
-           && coveragePage region == coverageFinalPage owner}
-      -> Maybe ({witness:CoverageWitness a s d |
-           coverageWitnessCovers owner source datum witness}) @-}
-coverageCandidateAtRegion
-  :: Atlas a s d o f -> PageElement s object -> d object -> Natural
-  -> PageElement s regionObject
-  -> Maybe (CoverageWitness a s d)
-coverageCandidateAtRegion owner source sourceDatum datumRank region =
-  case unrank (atlasDataAt owner region) datumRank of
-    Nothing -> Nothing
-    Just regionDatum
-      | atlasOriginImageRank owner source sourceDatum
-          == atlasOriginImageRank owner region regionDatum ->
-          coverageMaybe owner source sourceDatum
-            (coverageRegionWitness owner region regionDatum)
-      | otherwise -> Nothing
-
-{-@ coverageMaybe :: owner:Atlas a s d o f
-      -> source:{PageElement s object | cellTraceValid owner source}
-      -> datum:{d object | atlasAcceptsDatum owner source datum}
-      -> witness:{CoverageWitness a s d |
-           coverageWitnessCovers owner source datum witness}
-      -> Maybe ({result:CoverageWitness a s d |
-           coverageWitnessCovers owner source datum result}) @-}
-coverageMaybe
-  :: Atlas a s d o f -> PageElement s object -> d object
-  -> CoverageWitness a s d
-  -> Maybe (CoverageWitness a s d)
-coverageMaybe _owner _source _datum witness = Just witness

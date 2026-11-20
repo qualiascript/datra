@@ -17,11 +17,10 @@ module Coalition.Element.Internal
 import Atlas
   ( Atlas, AtlasObject, AtlasObjectCellData, AtlasObjectPaginationScope
   , atlasOriginCell, mapAtlasData )
-import AtlasCoveredPageElement.Internal (findAtlasCoverageRank)
 import AtlasCoveredPageElement
   ( AtlasCoveredPageElement, CoverageWitness, atlasCoveredAt, atlasCoverageWitness
   , atlasCoveredByWitness, atlasCoveredPageElementWitness, withAtlasCoveredPageElement
-  , withAtlasCoverageWitness, coverageWitnessOriginRank )
+  , withAtlasCoverageWitness, coverageWitnessOriginRank, atlasCoverageRank )
 import AtlasTransversal (AtlasTransversal, mapAtlasTransversalCoveredPageElement)
 import DomanialInsertion (applyInsertion)
 import Dominion (Dominion, dominion)
@@ -107,9 +106,9 @@ coalition
        (CoalitionElement (AtlasObject atlasScope scope cellData))
 coalition valueAtlas =
   withPageElement (atlasOriginCell valueAtlas) $ \origin ->
-    let coalitionRank element =
+    let coalitionRank element@(CoalitionElement covered) =
           withCoalitionElement element $ \occurrence datum ->
-            findAtlasCoverageRank valueAtlas occurrence datum
+            atlasCoverageRank valueAtlas occurrence datum (atlasCoveredPageElementWitness covered)
 
         coalitionUnrank candidate =
           CoalitionElement <$> atlasCoveredAt valueAtlas origin candidate

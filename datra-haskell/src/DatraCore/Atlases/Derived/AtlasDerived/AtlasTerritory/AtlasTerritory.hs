@@ -10,9 +10,11 @@
 module AtlasTerritory
   ( AtlasTerritoryIndex
   , atlasTerritoryChain
+  , atlasTerritoryElement
   , atlasTerritory
   , atlasRegion
   , withAtlasTerritory
+  , withAtlasTerritoryOf
   ) where
 
 import Atlas
@@ -24,6 +26,7 @@ import AtlasExtent (AtlasCellDominion, atlasCellDominion, cellTraceValid)
 import Chain
   ( Chain
   , ChainIndex
+  , chainIndex
   , chainPosition
   , chainObjectAt
   , chainIndexPosition
@@ -34,7 +37,12 @@ import PageElements.Structure
   , PageElement
   , pageElementPage
   , pageElementPosition
+  , PageElementArrow
+  , pageElementArrow
+  , arrowSource
+  , arrowTarget
   )
+import qualified PageElements.Structure as Trace
 import qualified PageElements as Elements
 
 -- | A certified index into an Atlas's final genuine page. Lean uses the page
@@ -52,6 +60,18 @@ atlasTerritoryChain
   -> Chain final
 atlasTerritoryChain owner = lastChain (atlasFolio owner)
 
+-- | Retain the exact selected occurrence before hiding its cell carrier.
+-- ALIGN: ATLAS-TERRITORY-SELECTED-ELEMENT.
+{-@ opaque-reflect atlasTerritoryElement @-}
+{-@ atlasTerritoryElement :: owner:Atlas a s d o f
+      -> index:{ChainIndex f | chainPosition (atlasTerritoryChain owner) (chainObjectAt index) == chainIndexPosition index}
+      -> {result:SomePageElement s | Elements.somePageElementTraceValid (atlasPageElements owner) result
+           && Trace.somePageElementPage result == folioLength (atlasFolio owner) - 1
+           && Trace.somePageElementPosition result == chainIndexPosition index} @-}
+atlasTerritoryElement :: Atlas a s d o f -> ChainIndex f -> SomePageElement s
+atlasTerritoryElement owner index =
+  atlasTerritoryChain owner `seq` Elements.lastPageElement (atlasPageElements owner) index
+
 -- | The territory member selected by a certified final-page index.
 -- ALIGN: ATLAS-TERRITORY-INTERPRETATION.
 {-@ atlasTerritory :: owner:Atlas a s d o f
@@ -62,10 +82,7 @@ atlasTerritory
   -> AtlasTerritoryIndex final
   -> AtlasCellDominion scope cellData
 atlasTerritory valueAtlas index =
-  atlasTerritoryChain valueAtlas `seq`
-  case Elements.lastPageElement (atlasPageElements valueAtlas) index of
-    SomePageElement occurrence ->
-      atlasCellDominion valueAtlas occurrence
+  withAtlasTerritory valueAtlas index (atlasCellDominion valueAtlas)
 
 -- | The @n@th region of an Atlas. As in Lean, this is definitionally the
 -- corresponding territory member.
@@ -81,11 +98,13 @@ atlasRegion = atlasTerritory
 -- | Consume a territory's certified cell. Its owning Atlas supplies the
 -- membership-refined dominion through 'Atlas.atlasDataAt'.
 -- ALIGN: ATLAS-TERRITORY-POSITION.
+{-@ reflect withAtlasTerritory @-}
 {-@ withAtlasTerritory :: owner:Atlas a s d o f
       -> index:{ChainIndex f | chainPosition (atlasTerritoryChain owner) (chainObjectAt index) == chainIndexPosition index}
       -> (forall object. source:{PageElement s object | cellTraceValid owner source
              && pageElementPage source == folioLength (atlasFolio owner) - 1
-             && pageElementPosition source == chainIndexPosition index}
+             && pageElementPosition source == chainIndexPosition index
+             && SomePageElement source == atlasTerritoryElement owner index}
             -> result)
       -> result @-}
 withAtlasTerritory
@@ -93,6 +112,34 @@ withAtlasTerritory
   -> (forall object. PageElement s object -> result)
   -> result
 withAtlasTerritory owner index useTerritory =
-  atlasTerritoryChain owner `seq`
-  case Elements.lastPageElement (atlasPageElements owner) index of
+  case atlasTerritoryElement owner index of
     SomePageElement source -> useTerritory source
+
+-- | Reconstruct a final occurrence through its owning territory and expose
+-- the certified transport from the retained occurrence to that representative.
+-- ALIGN: ATLAS-TERRITORY-RECONSTRUCT.
+{-@ withAtlasTerritoryOf :: owner:Atlas a s d o f
+      -> source:{PageElement s sourceObject | cellTraceValid owner source
+           && pageElementPage source == folioLength (atlasFolio owner) - 1}
+      -> (forall targetObject. index:{ChainIndex f |
+             chainIndex (atlasTerritoryChain owner) (pageElementPosition source) == Just index
+             && chainIndexPosition index == pageElementPosition source
+             && chainPosition (atlasTerritoryChain owner) (chainObjectAt index) == chainIndexPosition index}
+            -> arrow:{PageElementArrow s sourceObject targetObject |
+             arrowSource arrow == source && cellTraceValid owner (arrowTarget arrow)
+             && SomePageElement (arrowTarget arrow) == atlasTerritoryElement owner index
+             && pageElementPage (arrowTarget arrow) == pageElementPage source
+             && pageElementPosition (arrowTarget arrow) == pageElementPosition source}
+            -> result)
+      -> {resolved:Maybe result | Elements.traceLookupPresent resolved} @-}
+withAtlasTerritoryOf
+  :: Atlas a s d o f -> PageElement s sourceObject
+  -> (forall targetObject. ChainIndex f -> PageElementArrow s sourceObject targetObject -> result)
+  -> Maybe result
+withAtlasTerritoryOf owner source useTerritory =
+  atlasTerritoryChain owner `seq`
+  case Elements.finalPageElementIndex (atlasPageElements owner) source of
+    Nothing -> Nothing
+    Just index -> withAtlasTerritory owner index $ \target ->
+      Trace.pageElementTransportedReflexive source `seq`
+        Just (useTerritory index (pageElementArrow source target))
