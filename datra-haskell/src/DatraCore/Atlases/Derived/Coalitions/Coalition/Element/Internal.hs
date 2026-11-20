@@ -1,4 +1,3 @@
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -18,11 +17,10 @@ module Coalition.Element.Internal
 import Atlas
   ( Atlas, AtlasObject, AtlasObjectCellData, AtlasObjectPaginationScope
   , atlasOriginCell, mapAtlasData )
-import AtlasCoveredPageElement.Internal
-  ( AtlasCoveredPageElement (..)
-  , findAtlasCoverageRank )
+import AtlasCoveredPageElement.Internal (findAtlasCoverageRank)
 import AtlasCoveredPageElement
-  ( AtlasCoverageWitness, atlasCoverageAt, atlasCoverageWitness
+  ( AtlasCoveredPageElement, CoverageWitness, atlasCoveredAt, atlasCoverageWitness
+  , atlasCoveredByWitness, atlasCoveredPageElementWitness, withAtlasCoveredPageElement
   , withAtlasCoverageWitness, coverageWitnessOriginRank )
 import AtlasTransversal (AtlasTransversal, mapAtlasTransversalCoveredPageElement)
 import DomanialInsertion (applyInsertion)
@@ -30,29 +28,13 @@ import Dominion (Dominion, dominion)
 import Numeric.Natural (Natural)
 import PageElements (PageElement, pageElementArrow, withPageElement)
 
--- | An element of an Atlas coalition.
---
--- Like 'AtlasCoveredPageElement', this is a dependent page element paired with
--- its datum and the witness that it is retained by Charter. Carrying the value
--- makes elimination total: no unchecked rank ever has to be decoded.
+-- | A coalition element retains a covered origin datum through the shared
+-- covered-element carrier. Its public constructor checks the origin condition.
 type role CoalitionElement nominal
-data CoalitionElement atlasObject where
-  CoalitionElement
-    :: PageElement
-         (AtlasObjectPaginationScope atlasObject)
-         object
-    -> AtlasObjectCellData atlasObject object
-    -> AtlasCoverageWitness atlasObject
-    -> CoalitionElement atlasObject
+data CoalitionElement atlasObject = CoalitionElement
+  (AtlasCoveredPageElement atlasObject)
 
--- | Internal introduction rule. Public clients obtain coalition
--- elements through 'coalition'; derived constructions may already possess the
--- exact coverage witness and therefore need not search for it again.
-coalitionElement
-  :: PageElement (AtlasObjectPaginationScope atlasObject) object
-  -> AtlasObjectCellData atlasObject object
-  -> AtlasCoverageWitness atlasObject
-  -> CoalitionElement atlasObject
+coalitionElement :: AtlasCoveredPageElement atlasObject -> CoalitionElement atlasObject
 coalitionElement = CoalitionElement
 
 instance Eq (CoalitionElement atlasObject) where
@@ -63,15 +45,14 @@ coalitionElementsEqual :: CoalitionElement atlasObject -> CoalitionElement atlas
 coalitionElementsEqual left right = coalitionElementRank left == coalitionElementRank right
 
 instance Show (CoalitionElement atlasObject) where
-  showsPrec _ (CoalitionElement _ _ coverage) =
-    showString "CoalitionElement "
-      . shows (coverageWitnessOriginRank coverage)
+  showsPrec _ element =
+    showString "CoalitionElement " . shows (coalitionElementRank element)
 
 -- | The rank of the underlying datum in the uncharted origin dominion.
 -- ALIGN: COALITION-CACHED-RANK.
 coalitionElementRank :: CoalitionElement atlasObject -> Natural
-coalitionElementRank (CoalitionElement _ _ coverage) =
-  coverageWitnessOriginRank coverage
+coalitionElementRank (CoalitionElement covered) =
+  coverageWitnessOriginRank (atlasCoveredPageElementWitness covered)
 
 -- | Eliminate a coalition element at its exact dependent origin cell.
 -- ALIGN: COALITION-CONSTRUCTOR-ELIM.
@@ -82,8 +63,7 @@ withCoalitionElement
        -> AtlasObjectCellData atlasObject object
        -> result)
   -> result
-withCoalitionElement (CoalitionElement origin datum _) useElement =
-  useElement origin datum
+withCoalitionElement (CoalitionElement covered) = withAtlasCoveredPageElement covered
 
 -- | Read a coalition datum at another occurrence of the canonical origin
 -- cell.  The Atlas data action supplies the dependent transport, so no cast
@@ -94,11 +74,9 @@ coalitionElementAt
   -> PageElement scope targetObject
   -> CoalitionElement (AtlasObject atlasScope scope cellData)
   -> cellData targetObject
-coalitionElementAt valueAtlas target
-    (CoalitionElement source datum _) =
-  applyInsertion
-    (mapAtlasData valueAtlas (pageElementArrow source target))
-    datum
+coalitionElementAt valueAtlas target element =
+  withCoalitionElement element $ \source datum ->
+    applyInsertion (mapAtlasData valueAtlas (pageElementArrow source target)) datum
 
 -- | Transport a coalition element to an exact origin occurrence while
 -- retaining a coverage witness for the transported datum.
@@ -107,10 +85,10 @@ coalitionElementCoverageAt
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope targetObject
   -> CoalitionElement (AtlasObject atlasScope scope cellData)
-  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+  -> CoverageWitness atlasScope scope cellData
 coalitionElementCoverageAt valueAtlas target
-    element@(CoalitionElement _ _ coverage) =
-  withAtlasCoverageWitness coverage $ \region regionDatum ->
+    element@(CoalitionElement covered) =
+  withAtlasCoverageWitness valueAtlas (atlasCoveredPageElementWitness covered) $ \region regionDatum ->
       atlasCoverageWitness
         valueAtlas
         target
@@ -129,17 +107,12 @@ coalition
        (CoalitionElement (AtlasObject atlasScope scope cellData))
 coalition valueAtlas =
   withPageElement (atlasOriginCell valueAtlas) $ \origin ->
-    let coalitionRank (CoalitionElement occurrence datum _) =
-          findAtlasCoverageRank valueAtlas occurrence datum
+    let coalitionRank element =
+          withCoalitionElement element $ \occurrence datum ->
+            findAtlasCoverageRank valueAtlas occurrence datum
 
-        coalitionUnrank candidate = do
-          (datum, coverage) <-
-            atlasCoverageAt valueAtlas origin candidate
-          pure
-            (CoalitionElement
-              origin
-              datum
-              coverage)
+        coalitionUnrank candidate =
+          CoalitionElement <$> atlasCoveredAt valueAtlas origin candidate
     in dominion coalitionRank coalitionUnrank (const ())
 
 -- | Apply the transversal and transport its covered image to the target origin.
@@ -149,27 +122,15 @@ mapCoalitionElement
   -> AtlasTransversal source (AtlasObject targetAtlasScope targetScope targetCellData)
   -> CoalitionElement source
   -> CoalitionElement (AtlasObject targetAtlasScope targetScope targetCellData)
-mapCoalitionElement targetAtlas transversal
-  (CoalitionElement sourceOrigin sourceDatum sourceCoverage) =
-    case mapAtlasTransversalCoveredPageElement transversal
-      (AtlasCoveredPageElement
-        sourceOrigin sourceDatum sourceCoverage) of
-      AtlasCoveredPageElement mappedOrigin mappedDatum targetCoverage ->
-        withPageElement
-          (atlasOriginCell targetAtlas) $ \targetOrigin ->
-            let toCanonicalOrigin =
-                  mapAtlasData targetAtlas
-                    (pageElementArrow mappedOrigin targetOrigin)
-                targetDatum =
-                  applyInsertion toCanonicalOrigin mappedDatum
-            in withAtlasCoverageWitness targetCoverage $ \targetRegion targetRegionDatum ->
-                    CoalitionElement
-                      targetOrigin
-                      targetDatum
-                      (atlasCoverageWitness
-                        targetAtlas
-                        targetOrigin
-                        targetDatum
-                        targetRegion
-                        targetRegionDatum
-                        ())
+mapCoalitionElement targetAtlas transversal (CoalitionElement covered) =
+  let mapped = mapAtlasTransversalCoveredPageElement transversal covered
+  in withAtlasCoveredPageElement mapped $ \mappedOrigin mappedDatum ->
+    withPageElement (atlasOriginCell targetAtlas) $ \targetOrigin ->
+      let toCanonicalOrigin =
+            mapAtlasData targetAtlas (pageElementArrow mappedOrigin targetOrigin)
+          targetDatum = applyInsertion toCanonicalOrigin mappedDatum
+      in withAtlasCoverageWitness targetAtlas (atlasCoveredPageElementWitness mapped) $
+          \targetRegion targetRegionDatum ->
+            CoalitionElement (atlasCoveredByWitness targetAtlas targetOrigin targetDatum
+              (atlasCoverageWitness targetAtlas targetOrigin targetDatum
+                targetRegion targetRegionDatum ()))

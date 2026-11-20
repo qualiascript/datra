@@ -13,12 +13,14 @@
 -- | Hidden implementation of coverage by final Atlas regions.
 module AtlasCoveredPageElement.Internal
   ( AtlasCoverageWitness
+  , CoverageWitness
   , AtlasCoveredPageElement (..)
   , atlasCoverageWitness
   , coverageWitnessCovers
   , coverageWitnessValid
   , withAtlasCoverageWitness
   , coverageWitnessOriginRank
+  , coverageWitnessCode
   , coverageWitnessAlongArrow
   , coverageFinalPage
   , coverageNormalize
@@ -27,6 +29,9 @@ module AtlasCoveredPageElement.Internal
   , findAtlasCoverageRank
   , atlasCoverageAt
   , coverageResultCovers
+  , coverageRankCandidate
+  , atlasCoverageRankWithin
+  , atlasCoverageRankLeast
   , atlasCoveredPageElementAt
   , atlasCoveredPageElement
   , withAtlasCoveredPageElement
@@ -37,6 +42,7 @@ import Atlas
   ( Atlas
   , AtlasObject
   , AtlasObjectCellData
+  , AtlasObjectAtlasScope
   , AtlasObjectPaginationScope
   , atlasCardinality
   , atlasDataAt
@@ -53,54 +59,85 @@ import AtlasTerritory
   )
 import DomanialInsertion.Core (applyInsertion, preimage)
 import Chain (chainIndex)
-import DatraOrdinal (ordinal)
+import DatraOrdinal (ordinal, ordinalCoefficients)
 import Dominion (rank, unrank)
 import Numeric.Natural (Natural)
-import NaturalEncoding (unpairNatural, decodeNaturalList)
+import Data.Kind (Type)
+import NaturalEncoding (pairNatural, unpairNatural, encodeNaturalList, decodeNaturalList)
 import PageElements.Structure
   ( PageElement
   , PageElementArrow
   , arrowSource
   , arrowTarget
   , pageElementPage
+  , pageElementPosition
   )
 
 -- | The existential witness in Lean's @Covered X x t@ predicate: a datum in
 -- a final region whose image in the origin is the image of the source datum.
 -- Its constructor is hidden; 'atlasCoverageWitness' is the checked
 -- introduction rule.
-type role AtlasCoverageWitness nominal
-data AtlasCoverageWitness atlasObject where
-  AtlasCoverageWitness
-    :: CoverageRegionData atlasObject regionObject
-    -> AtlasCoverageWitness atlasObject
+type AtlasCoverageWitness atlasObject =
+  CoverageWitness (AtlasObjectAtlasScope atlasObject)
+    (AtlasObjectPaginationScope atlasObject) (AtlasObjectCellData atlasObject)
 
-type role CoverageRegionData nominal nominal
-{-@ data CoverageRegionData atlasObject object = CoverageRegionData
-      { coverageRegion :: PageElement (AtlasObjectPaginationScope atlasObject) object
-      , coverageRegionDatum :: AtlasObjectCellData atlasObject object
+type role CoverageWitness nominal nominal nominal
+{-@ data CoverageWitness a s d where
+      AtlasCoverageWitness :: forall a s d object.
+        payload:CoverageRegionData s d object -> CoverageWitness a s d @-}
+data CoverageWitness (atlasScope :: Type) scope cellData where
+  AtlasCoverageWitness
+    :: forall atlasScope scope cellData regionObject.
+       CoverageRegionData scope cellData regionObject
+    -> CoverageWitness atlasScope scope cellData
+
+type role CoverageRegionData nominal nominal nominal
+{-@ data CoverageRegionData s d object = CoverageRegionData
+      { coverageRegion :: PageElement s object
+      , coverageRegionDatum :: d object
       , coverageRegionPage :: Natural
       , coverageRegionRank :: Natural
       } @-}
-data CoverageRegionData atlasObject regionObject = CoverageRegionData
-  { coverageRegion :: PageElement (AtlasObjectPaginationScope atlasObject) regionObject
-  , coverageRegionDatum :: AtlasObjectCellData atlasObject regionObject
+data CoverageRegionData scope cellData regionObject = CoverageRegionData
+  { coverageRegion :: PageElement scope regionObject
+  , coverageRegionDatum :: cellData regionObject
   , coverageRegionPage :: Natural
   , coverageRegionRank :: Natural
   }
 
--- | Observe a witness without exposing its constructor or cached fields.
+-- | Observe the certified final region and its accepted datum through the
+-- owning Atlas, retaining the equality with the witness's cached origin rank.
+-- ALIGN: ATLAS-COVERAGE-ELIM.
+{-@ withAtlasCoverageWitness :: owner:Atlas a s d o f
+      -> witness:{CoverageWitness a s d | coverageWitnessValid owner witness}
+      -> (forall object. region:{PageElement s object | cellTraceValid owner region
+             && coveragePage region == coverageFinalPage owner}
+            -> datum:{d object | atlasAcceptsDatum owner region datum
+                 && atlasOriginImageRank owner region datum == coverageWitnessOriginRank witness}
+            -> result)
+      -> result @-}
 withAtlasCoverageWitness
-  :: AtlasCoverageWitness atlasObject
-  -> (forall object. PageElement (AtlasObjectPaginationScope atlasObject) object
-       -> AtlasObjectCellData atlasObject object -> result)
+  :: Atlas a s d o f -> CoverageWitness a s d
+  -> (forall object. PageElement s object -> d object -> result)
   -> result
-withAtlasCoverageWitness (AtlasCoverageWitness value) useRegion =
+withAtlasCoverageWitness _owner (AtlasCoverageWitness value) useRegion =
   useRegion (coverageRegion value) (coverageRegionDatum value)
 
+-- ALIGN: ATLAS-COVERAGE-RANK-OBSERVE.
 {-@ reflect coverageWitnessOriginRank @-}
-coverageWitnessOriginRank :: AtlasCoverageWitness atlasObject -> Natural
+coverageWitnessOriginRank :: CoverageWitness a s d -> Natural
 coverageWitnessOriginRank (AtlasCoverageWitness value) = coverageRegionRank value
+
+-- | Encode the actual retained final region and its datum, independently
+-- of the cached origin rank used to compare coverage.
+-- ALIGN: ATLAS-COVERAGE-WITNESS-CODE.
+{-@ coverageWitnessCode :: owner:Atlas a s d o f
+      -> witness:{CoverageWitness a s d | coverageWitnessValid owner witness} -> Natural @-}
+coverageWitnessCode :: Atlas a s d o f -> CoverageWitness a s d -> Natural
+coverageWitnessCode owner witness =
+  withAtlasCoverageWitness owner witness $ \region datum ->
+    pairNatural (encodeNaturalList (ordinalCoefficients (pageElementPosition region)))
+      (rank (atlasDataAt owner region) datum)
 
 -- | A page element paired with its datum and evidence that it is covered by a
 -- final region.
@@ -153,13 +190,13 @@ coverageFinalPage valueAtlas = atlasCardinality valueAtlas - 1
 -- ALIGN: ATLAS-COVERAGE-VALIDATION.
 {-@ reflect coverageWitnessValid @-}
 coverageWitnessValid
-  :: forall a s d o f. Atlas a s d o f -> AtlasCoverageWitness (AtlasObject a s d) -> Bool
+  :: forall a s d o f. Atlas a s d o f -> CoverageWitness a s d -> Bool
 coverageWitnessValid owner
-    (AtlasCoverageWitness (value :: CoverageRegionData (AtlasObject a s d) object)) =
+    (AtlasCoverageWitness (value :: CoverageRegionData s d object)) =
   coverageRegionDataValid owner value
 
 {-@ reflect coverageRegionDataValid @-}
-coverageRegionDataValid :: Atlas a s d o f -> CoverageRegionData (AtlasObject a s d) object -> Bool
+coverageRegionDataValid :: Atlas a s d o f -> CoverageRegionData s d object -> Bool
 coverageRegionDataValid owner value
   | cellTraceValid owner (coverageRegion value)
   , atlasAcceptsDatum owner (coverageRegion value) (coverageRegionDatum value) =
@@ -174,7 +211,7 @@ coverageRegionDataValid owner value
 -- ALIGN: ATLAS-COVERAGE-WITNESS-SOUND.
 coverageWitnessCovers
   :: Atlas a s d o f -> PageElement s object -> d object
-  -> AtlasCoverageWitness (AtlasObject a s d) -> Bool
+  -> CoverageWitness a s d -> Bool
 coverageWitnessCovers owner source sourceDatum witness
   | cellTraceValid owner source
   , atlasAcceptsDatum owner source sourceDatum =
@@ -184,9 +221,9 @@ coverageWitnessCovers owner source sourceDatum witness
 {-@ reflect coverageWitnessAtRank @-}
 coverageWitnessAtRank
   :: forall a s d o f. Atlas a s d o f -> Natural
-  -> AtlasCoverageWitness (AtlasObject a s d) -> Bool
+  -> CoverageWitness a s d -> Bool
 coverageWitnessAtRank owner sourceRank
-    (AtlasCoverageWitness (value :: CoverageRegionData (AtlasObject a s d) regionObject)) =
+    (AtlasCoverageWitness (value :: CoverageRegionData s d regionObject)) =
   coverageRegionDataValid owner value
     && coverageRegionPage value == coverageFinalPage owner
     && sourceRank == coverageRegionRank value
@@ -197,13 +234,13 @@ coverageWitnessAtRank owner sourceRank
       -> arrow:{PageElementArrow s source target |
            cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
       -> datum:{d source | atlasAcceptsDatum owner (arrowSource arrow) datum}
-      -> witness:{AtlasCoverageWitness (AtlasObject a s d) |
+      -> witness:{CoverageWitness a s d |
            coverageWitnessCovers owner (arrowTarget arrow)
              (applyInsertion (mapAtlasData owner arrow) datum) witness}
       -> {coverageWitnessCovers owner (arrowSource arrow) datum witness} @-}
 coverageWitnessAlongArrow
   :: Atlas a s d o f -> PageElementArrow s source target -> d source
-  -> AtlasCoverageWitness (AtlasObject a s d) -> ()
+  -> CoverageWitness a s d -> ()
 coverageWitnessAlongArrow owner arrow datum _witness =
   cellTraceHasOrigin owner (arrowSource arrow) `seq`
   cellTraceHasOrigin owner (arrowTarget arrow) `seq`
@@ -213,15 +250,14 @@ coverageWitnessAlongArrow owner arrow datum _witness =
       -> region:{PageElement s object | cellTraceValid owner region
            && coveragePage region == coverageFinalPage owner}
       -> datum:{d object | atlasAcceptsDatum owner region datum}
-      -> {witness:AtlasCoverageWitness (AtlasObject a s d) |
+      -> {witness:CoverageWitness a s d |
            coverageWitnessValid owner witness && coverageWitnessCovers owner region datum witness} @-}
 coverageRegionWitness
   :: forall a s d o f object. Atlas a s d o f -> PageElement s object -> d object
-  -> AtlasCoverageWitness (AtlasObject a s d)
+  -> CoverageWitness a s d
 coverageRegionWitness owner region datum =
-  let witness = AtlasCoverageWitness (CoverageRegionData region datum
-        (coveragePage region) (atlasOriginImageRank owner region datum))
-  in coverageWitnessCovers owner region datum witness `seq` witness
+  AtlasCoverageWitness (CoverageRegionData region datum
+    (coveragePage region) (atlasOriginImageRank owner region datum))
 
 -- | Introduce a coverage witness. LiquidHaskell checks that the region is on
 -- the final page and that its datum has the same origin image as the source.
@@ -243,8 +279,7 @@ atlasCoverageWitness
                valueAtlas
                (coverageNormalize valueAtlas region)
                regionDatum }
-  -> { witness:AtlasCoverageWitness
-         (AtlasObject atlasScope scope cellData) |
+  -> { witness:CoverageWitness atlasScope scope cellData |
        coverageWitnessCovers
          valueAtlas
          (coverageNormalize valueAtlas source)
@@ -259,8 +294,7 @@ atlasCoverageWitness
   -> PageElement scope regionObject
   -> cellData regionObject
   -> ()
-  -> AtlasCoverageWitness
-       (AtlasObject atlasScope scope cellData)
+  -> CoverageWitness atlasScope scope cellData
 atlasCoverageWitness valueAtlas source sourceDatum region regionDatum _ =
   normalizeAtlasElementTraceValid valueAtlas source `seq`
   atlasAcceptsDatumNormalized valueAtlas source sourceDatum `seq`
@@ -337,12 +371,12 @@ atlasCoveredPageElementWitness (AtlasCoveredPageElement _ _ witness) = witness
 {-@ findAtlasCoverage :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
       -> datum:{d object | atlasAcceptsDatum owner source datum}
-      -> AtlasCoverageWitness (AtlasObject a s d) @-}
+      -> CoverageWitness a s d @-}
 findAtlasCoverage
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> cellData object
-  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+  -> CoverageWitness atlasScope scope cellData
 findAtlasCoverage valueAtlas source sourceDatum =
   searchAtlasCoverageFrom valueAtlas source sourceDatum 0
 
@@ -362,14 +396,76 @@ findAtlasCoverageRank
   -> Natural
 findAtlasCoverageRank valueAtlas source sourceDatum = go 0
   where
-    sourceDominion = atlasDataAt valueAtlas source
-    sourceRank = rank sourceDominion sourceDatum
+    go candidate
+      | coverageRankCandidate valueAtlas source sourceDatum candidate = candidate
+      | otherwise = go (candidate + 1)
 
-    go candidate =
-      case atlasCoveredPageElementAt valueAtlas source candidate of
-        Just candidateDatum
-          | rank sourceDominion candidateDatum == sourceRank -> candidate
-        _ -> go (candidate + 1)
+-- | Test whether a finite candidate decodes the requested source datum.
+{-@ opaque-reflect atlasCoveredPageElementAt @-}
+{-@ reflect coverageRankCandidate @-}
+{-@ coverageRankCandidate :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum} -> Natural -> Bool @-}
+coverageRankCandidate
+  :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Bool
+coverageRankCandidate owner source datum candidate =
+  case atlasCoveredPageElementAt owner source candidate of
+    Nothing -> False
+    Just value -> rank (atlasDataAt owner source) value == rank (atlasDataAt owner source) datum
+
+-- | Search the inclusive interval from zero through the supplied limit.
+-- ALIGN: ATLAS-COVERAGE-BOUNDED-RANK.
+{-@ reflect atlasCoverageRankWithin @-}
+{-@ atlasCoverageRankWithin :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum} -> limit:Natural
+      -> Maybe ({found:Natural | found <= limit && coverageRankCandidate owner source datum found}) @-}
+atlasCoverageRankWithin
+  :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Maybe Natural
+atlasCoverageRankWithin owner source datum limit = searchCoverageRank owner source datum 0 limit
+
+{-@ reflect searchCoverageRank @-}
+{-@ searchCoverageRank :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> candidate:Natural -> remaining:Natural
+      -> Maybe ({found:Natural | candidate <= found && found <= candidate + remaining
+           && coverageRankCandidate owner source datum found}) / [remaining] @-}
+searchCoverageRank
+  :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Natural -> Maybe Natural
+searchCoverageRank owner source datum candidate remaining
+  | coverageRankCandidate owner source datum candidate = Just candidate
+  | remaining == 0 = Nothing
+  | otherwise = searchCoverageRank owner source datum (candidate + 1) (remaining - 1)
+
+-- | A successful bounded search selects the least successful candidate.
+-- ALIGN: ATLAS-COVERAGE-BOUNDED-MINIMAL.
+{-@ atlasCoverageRankLeast :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum} -> limit:Natural
+      -> found:{Natural | atlasCoverageRankWithin owner source datum limit == Just found}
+      -> earlier:{Natural | earlier < found}
+      -> {not (coverageRankCandidate owner source datum earlier)} @-}
+atlasCoverageRankLeast
+  :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Natural -> Natural -> ()
+atlasCoverageRankLeast owner source datum limit found earlier =
+  searchCoverageRankLeast owner source datum 0 limit found earlier
+
+{-@ searchCoverageRankLeast :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> candidate:Natural -> remaining:Natural
+      -> found:{Natural | searchCoverageRank owner source datum candidate remaining == Just found}
+      -> earlier:{Natural | candidate <= earlier && earlier < found}
+      -> {not (coverageRankCandidate owner source datum earlier)} / [remaining] @-}
+searchCoverageRankLeast
+  :: Atlas a s d o f -> PageElement s object -> d object
+  -> Natural -> Natural -> Natural -> Natural -> ()
+searchCoverageRankLeast owner source datum candidate remaining found earlier
+  | coverageRankCandidate owner source datum candidate = ()
+  | remaining == 0 = ()
+  | earlier == candidate = ()
+  | otherwise = searchCoverageRankLeast owner source datum (candidate + 1) (remaining - 1) found earlier
 
 -- | Decode one finite coverage candidate. A final-region datum is transported
 -- to the origin and pulled back along the selected source cell. Unlike a
@@ -396,7 +492,7 @@ atlasCoveredPageElementAt valueAtlas source candidate =
 -- ALIGN: ATLAS-COVERAGE-DECODE-COMPLETE.
 {-@ atlasCoverageAt :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source} -> Natural
-      -> Maybe ({result:({datum:d object | atlasAcceptsDatum owner source datum}, AtlasCoverageWitness (AtlasObject a s d)) |
+      -> Maybe ({result:({datum:d object | atlasAcceptsDatum owner source datum}, CoverageWitness a s d) |
            coverageResultCovers owner source result}) @-}
 atlasCoverageAt
   :: Atlas atlasScope scope cellData origin final
@@ -404,8 +500,7 @@ atlasCoverageAt
   -> Natural
   -> Maybe
        ( cellData object
-       , AtlasCoverageWitness
-           (AtlasObject atlasScope scope cellData)
+       , CoverageWitness atlasScope scope cellData
        )
 atlasCoverageAt valueAtlas source candidate =
   case unpairNatural candidate of
@@ -423,12 +518,12 @@ atlasCoverageAt valueAtlas source candidate =
       -> Natural
       -> region:{PageElement s regionObject | cellTraceValid owner region
            && coveragePage region == coverageFinalPage owner}
-      -> Maybe ({result:({datum:d object | atlasAcceptsDatum owner source datum}, AtlasCoverageWitness (AtlasObject a s d)) |
+      -> Maybe ({result:({datum:d object | atlasAcceptsDatum owner source datum}, CoverageWitness a s d) |
            coverageResultCovers owner source result}) @-}
 coverageAtRegion
   :: Atlas a s d o f -> PageElement s object -> Natural
   -> PageElement s regionObject
-  -> Maybe (d object, AtlasCoverageWitness (AtlasObject a s d))
+  -> Maybe (d object, CoverageWitness a s d)
 coverageAtRegion owner source datumRank region =
   cellTraceHasOrigin owner source `seq`
   case unrank (atlasDataAt owner region) datumRank of
@@ -446,21 +541,21 @@ coverageAtRegion owner source datumRank region =
 {-@ coveragePair :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
       -> datum:{d object | atlasAcceptsDatum owner source datum}
-      -> witness:{AtlasCoverageWitness (AtlasObject a s d) |
+      -> witness:{CoverageWitness a s d |
            coverageWitnessCovers owner source datum witness}
-      -> {result:({value:d object | atlasAcceptsDatum owner source value}, AtlasCoverageWitness (AtlasObject a s d)) |
+      -> {result:({value:d object | atlasAcceptsDatum owner source value}, CoverageWitness a s d) |
            coverageResultCovers owner source result} @-}
 coveragePair
   :: Atlas a s d o f -> PageElement s object -> d object
-  -> AtlasCoverageWitness (AtlasObject a s d)
-  -> (d object, AtlasCoverageWitness (AtlasObject a s d))
+  -> CoverageWitness a s d
+  -> (d object, CoverageWitness a s d)
 coveragePair _owner _source datum witness = (datum, witness)
 
 -- | The decoder retains coverage for the exact datum returned alongside it.
 {-@ reflect coverageResultCovers @-}
 coverageResultCovers
   :: Atlas a s d o f -> PageElement s object
-  -> (d object, AtlasCoverageWitness (AtlasObject a s d)) -> Bool
+  -> (d object, CoverageWitness a s d) -> Bool
 coverageResultCovers owner source (datum, witness) =
   coverageWitnessCovers owner source datum witness
 
@@ -468,13 +563,13 @@ coverageResultCovers owner source (datum, witness) =
 {-@ searchAtlasCoverageFrom :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
       -> datum:{d object | atlasAcceptsDatum owner source datum} -> Natural
-      -> AtlasCoverageWitness (AtlasObject a s d) @-}
+      -> CoverageWitness a s d @-}
 searchAtlasCoverageFrom
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> cellData object
   -> Natural
-  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+  -> CoverageWitness atlasScope scope cellData
 searchAtlasCoverageFrom valueAtlas source sourceDatum candidate =
   case coverageCandidate valueAtlas source sourceDatum candidate of
     Just witness -> witness
@@ -486,14 +581,14 @@ searchAtlasCoverageFrom valueAtlas source sourceDatum candidate =
 {-@ coverageCandidate :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
       -> datum:{d object | atlasAcceptsDatum owner source datum} -> Natural
-      -> Maybe ({witness:AtlasCoverageWitness (AtlasObject a s d) |
+      -> Maybe ({witness:CoverageWitness a s d |
            coverageWitnessCovers owner source datum witness}) @-}
 coverageCandidate
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> cellData object
   -> Natural
-  -> Maybe (AtlasCoverageWitness (AtlasObject atlasScope scope cellData))
+  -> Maybe (CoverageWitness atlasScope scope cellData)
 coverageCandidate valueAtlas source sourceDatum candidate =
   case unpairNatural candidate of
     (positionCode, datumRank) ->
@@ -511,12 +606,12 @@ coverageCandidate valueAtlas source sourceDatum candidate =
       -> Natural
       -> region:{PageElement s regionObject | cellTraceValid owner region
            && coveragePage region == coverageFinalPage owner}
-      -> Maybe ({witness:AtlasCoverageWitness (AtlasObject a s d) |
+      -> Maybe ({witness:CoverageWitness a s d |
            coverageWitnessCovers owner source datum witness}) @-}
 coverageCandidateAtRegion
   :: Atlas a s d o f -> PageElement s object -> d object -> Natural
   -> PageElement s regionObject
-  -> Maybe (AtlasCoverageWitness (AtlasObject a s d))
+  -> Maybe (CoverageWitness a s d)
 coverageCandidateAtRegion owner source sourceDatum datumRank region =
   case unrank (atlasDataAt owner region) datumRank of
     Nothing -> Nothing
@@ -530,12 +625,12 @@ coverageCandidateAtRegion owner source sourceDatum datumRank region =
 {-@ coverageMaybe :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
       -> datum:{d object | atlasAcceptsDatum owner source datum}
-      -> witness:{AtlasCoverageWitness (AtlasObject a s d) |
+      -> witness:{CoverageWitness a s d |
            coverageWitnessCovers owner source datum witness}
-      -> Maybe ({result:AtlasCoverageWitness (AtlasObject a s d) |
+      -> Maybe ({result:CoverageWitness a s d |
            coverageWitnessCovers owner source datum result}) @-}
 coverageMaybe
   :: Atlas a s d o f -> PageElement s object -> d object
-  -> AtlasCoverageWitness (AtlasObject a s d)
-  -> Maybe (AtlasCoverageWitness (AtlasObject a s d))
+  -> CoverageWitness a s d
+  -> Maybe (CoverageWitness a s d)
 coverageMaybe _owner _source _datum witness = Just witness

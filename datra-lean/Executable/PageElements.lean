@@ -599,15 +599,16 @@ theorem ofFinite_interpretation (pages : FolioData origin final) (i : Fin pages.
       simp
     exact (cast_heq _ value).trans (map_heq _ value).symm
 
+private theorem position_cast {A B : Page} (h : A = B) (v : B.Carrier) :
+    A.chain.position (cast (congrArg Page.Carrier h.symm) v) = B.chain.position v := by
+  cases h
+  rfl
+
 @[simp] theorem fromFinite_position (pages : FolioData origin final) (i : Fin pages.depth)
     (value : (pages.page (pages.indexEquivFin.symm i)).Carrier) :
     ((fromFinite pages).obj ⟨Opposite.op i, value⟩).val.position =
       (pages.page (pages.indexEquivFin.symm i)).chain.position value := by
   rw [← ofFinite_interpretation]
-  have position_cast {A B : Page} (h : A = B) (v : B.Carrier) :
-      A.chain.position (cast (congrArg Page.Carrier h.symm) v) = B.chain.position v := by
-    cases h
-    rfl
   exact position_cast (pages.pageAt_fin i) value
 
 def originFiniteValue (pages : FolioData origin final) :
@@ -650,6 +651,12 @@ theorem lastElement_interpretation (pages : FolioData origin final) (index : Cha
     lastElement pages index = (fromFinite pages).obj
       ⟨pages.toSemantics.lastBase, finalFiniteValue pages index.object⟩ :=
   ofFinite_interpretation pages (finalIndex pages) (finalFiniteValue pages index.object)
+
+-- ALIGN: PE-LAST-POSITION.
+theorem lastElement_position (pages : FolioData origin final) (index : ChainIndex final.chain) :
+    (lastElement pages index).val.position = index.position := by
+  rw [lastElement_interpretation, fromFinite_position]
+  exact (position_cast (finalIndex_page pages) index.object).trans index.position_eq
 
 /-- On a singleton folio, its final indexed cell is the unique origin cell. -/
 -- ALIGN: PE-LAST-SINGLETON-ORIGIN.

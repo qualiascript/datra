@@ -235,6 +235,18 @@ theorem ordinalBelowOne (value : Ordinal) (below : ordinalLT value (finiteOrdina
   have bound := (ordinalLT_correct _ _).1 below
   simpa using (_root_.Ordinal.lt_one_iff_zero.1 (by simpa using bound))
 
+-- ALIGN: ORDINAL-ZERO-LEAST.
+theorem ordinalZeroLeast (value : Ordinal) (nonzero : value ≠ finiteOrdinal 0) :
+    ordinalLT (finiteOrdinal 0) value = true := by
+  apply (ordinalLT_correct _ _).2
+  have positive : 0 < value.toSemantics := by
+    apply bot_lt_iff_ne_bot.mpr
+    intro zero
+    apply nonzero
+    apply toSemantics_injective
+    simpa using zero
+  simpa using positive
+
 -- ALIGN: ORDINAL-NOT-BELOW-ZERO.
 theorem ordinalNotBelowZero (value : Ordinal) : ordinalLT value (finiteOrdinal 0) = false := by
   apply Bool.eq_false_iff.mpr

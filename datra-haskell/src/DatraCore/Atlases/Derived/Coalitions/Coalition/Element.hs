@@ -29,7 +29,7 @@ import Coalition.Element.Internal
 import qualified Coalition.Element.Internal as Internal (coalitionElement)
 import Atlas (Atlas, AtlasObject, atlasPageElements, atlasAcceptsDatum)
 import AtlasExtent (cellTraceValid)
-import AtlasCoveredPageElement (AtlasCoverageWitness, coverageWitnessCovers)
+import AtlasCoveredPageElement (CoverageWitness, coverageWitnessCovers, atlasCoveredByWitness)
 import PageElements (PageElement, originPageElement)
 import PageElements.Structure (SomePageElement (..))
 
@@ -39,10 +39,11 @@ import PageElements.Structure (SomePageElement (..))
       -> origin:{PageElement s object | cellTraceValid owner origin
            && SomePageElement origin == originPageElement (atlasPageElements owner)}
       -> datum:{d object | atlasAcceptsDatum owner origin datum}
-      -> witness:{AtlasCoverageWitness (AtlasObject a s d) |
+      -> witness:{CoverageWitness a s d |
            coverageWitnessCovers owner origin datum witness}
       -> CoalitionElement (AtlasObject a s d) @-}
 coalitionElement
   :: Atlas a s d o f -> PageElement s object -> d object
-  -> AtlasCoverageWitness (AtlasObject a s d) -> CoalitionElement (AtlasObject a s d)
-coalitionElement _ = Internal.coalitionElement
+  -> CoverageWitness a s d -> CoalitionElement (AtlasObject a s d)
+coalitionElement owner source datum witness =
+  Internal.coalitionElement (atlasCoveredByWitness owner source datum witness)

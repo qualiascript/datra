@@ -158,6 +158,7 @@ pageElementTraceValidOrigin = Internal.pageElementTraceValidOrigin
       -> index:{ChainIndex final | chainPosition (lastChain (pageElementsFolio category)) (chainObjectAt index)
            == chainIndexPosition index}
       -> {result:SomePageElement scope | somePageElementTraceValid category result
-           && Trace.somePageElementPage result == folioLength (pageElementsFolio category) - 1} @-}
+           && Trace.somePageElementPage result == folioLength (pageElementsFolio category) - 1
+           && Trace.somePageElementPosition result == chainIndexPosition index} @-}
 lastPageElement :: PageElements scope origin final -> ChainIndex final -> SomePageElement scope
 lastPageElement = Internal.lastPageElement

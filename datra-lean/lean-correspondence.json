@@ -4627,6 +4627,69 @@
       "haskell_declaration": "coverageWitnessValid",
       "lean_namespace": "Datra.Executable.Atlas",
       "lean_declaration": "coverageWitnessValid_iff"
+    },
+    {
+      "id": "ATLAS-COVERAGE-ELIM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "withAtlasCoverageWitness",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "withAtlasCoverageWitness"
+    },
+    {
+      "id": "ATLAS-COVERAGE-RANK-OBSERVE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "coverageWitnessOriginRank",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coverageWitnessOriginRank"
+    },
+    {
+      "id": "ATLAS-COVERAGE-BOUNDED-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "atlasCoverageRankWithin",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "atlasCoverageRankWithin_sound"
+    },
+    {
+      "id": "ATLAS-COVERAGE-BOUNDED-MINIMAL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "atlasCoverageRankLeast",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "atlasCoverageRankLeast"
+    },
+    {
+      "id": "ATLAS-COVERAGE-WITNESS-CODE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "coverageWitnessCode",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coverageWitnessCode"
+    },
+    {
+      "id": "PE-LAST-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "lastPageElement",
+      "lean_namespace": "Datra.Executable.FolioData.ValidElement",
+      "lean_declaration": "lastElement_position"
+    },
+    {
+      "id": "ATLAS-TERRITORY-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasTerritory/AtlasTerritory.hs",
+      "haskell_declaration": "withAtlasTerritory",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.territory_position"
+    },
+    {
+      "id": "ORDINAL-ZERO-LEAST",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
+      "haskell_declaration": "ordinalZeroLeast",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "ordinalZeroLeast"
+    },
+    {
+      "id": "CHAIN-UNIQUE-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Singleton.hs",
+      "haskell_declaration": "chainSingletonPosition",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Chain.singletonPosition"
     }
   ],
   "modules": [
@@ -4936,6 +4999,7 @@
       "refinements": [
         "ordinalDecodeEncode",
         "ordinalNotBelowZero",
+        "ordinalZeroLeast",
         "ordinalBelowOne",
         "ordinalAddLeftBelow",
         "addCoefficientsLeftBelow",
@@ -4973,7 +5037,8 @@
       "predicates": [],
       "refinement_aliases": [
         "CanonicalCoefficients"
-      ]
+      ],
+      "opaque_reflected": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Internal.hs",
@@ -5186,6 +5251,7 @@
         "pageElement",
         "originPageElement",
         "folioOriginTraceLookup",
+        "folioOriginElement",
         "lastPageElement",
         "pageElementTraceAt",
         "genuinePageElementTrace",
@@ -5209,6 +5275,7 @@
       "predicates": [],
       "refinement_aliases": [],
       "opaque_reflected": [
+        "finiteOrdinal",
         "stepSource"
       ]
     },
@@ -5430,7 +5497,7 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
       "module": "AtlasCoveredPageElement.Internal",
       "types": [
-        "AtlasCoverageWitness",
+        "CoverageWitness",
         "CoverageRegionData",
         "AtlasCoveredPageElement"
       ],
@@ -5445,9 +5512,14 @@
         "coverageWitnessCovers",
         "coverageWitnessAtRank",
         "withAtlasCoveredPageElement",
+        "coverageRankCandidate",
+        "atlasCoverageRankWithin",
+        "searchCoverageRank",
         "coverageResultCovers"
       ],
       "refinements": [
+        "withAtlasCoverageWitness",
+        "coverageWitnessCode",
         "atlasOriginImageRank",
         "coverageWitnessAlongArrow",
         "coverageRegionWitness",
@@ -5455,6 +5527,11 @@
         "atlasCoveredPageElement",
         "findAtlasCoverage",
         "findAtlasCoverageRank",
+        "coverageRankCandidate",
+        "atlasCoverageRankWithin",
+        "searchCoverageRank",
+        "atlasCoverageRankLeast",
+        "searchCoverageRankLeast",
         "atlasCoveredPageElementAt",
         "atlasCoverageAt",
         "coverageAtRegion",
@@ -5466,13 +5543,17 @@
       ],
       "lean_target": "Datra.Executable.Atlas.CoverageWitness",
       "coverage": "aligned",
-      "aliases": [],
+      "aliases": [
+        "AtlasCoverageWitness"
+      ],
       "embeddings": [
         "Natural as int"
       ],
       "predicates": [],
       "refinement_aliases": [],
-      "opaque_reflected": []
+      "opaque_reflected": [
+        "atlasCoveredPageElementAt"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
@@ -6327,7 +6408,6 @@
         "folioLookupPreviousValid",
         "pageTracePrevious",
         "genuineTraceHead",
-        "finalPrefixLookup",
         "paddedPreviousHead",
         "pageTracePreviousMonotone",
         "originTraceUnique",
@@ -6566,6 +6646,7 @@
       "refinement_aliases": [],
       "embeddings": [],
       "refinements": [
+        "chainSingletonPosition",
         "singletonChain",
         "singletonChainPosition",
         "unitBelow",

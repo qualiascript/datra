@@ -37,7 +37,7 @@ module Charter.LiquidInternal
   ) where
 
 import Atlas (Atlas, AtlasObject, AtlasObjectCellData)
-import AtlasCoveredPageElement (AtlasCoverageWitness, coverageWitnessCovers)
+import AtlasCoveredPageElement (CoverageWitness, coverageWitnessCovers)
 import DomanialInsertion
   ( DomanialInsertion, domanialInsertion, applyInsertion, preimage, insertionLeftInverse )
 import PageElements (PageElement)
@@ -68,7 +68,7 @@ chartCellData
   :: valueAtlas:Atlas atlasScope scope cellData origin final
   -> occurrence:PageElement scope object
   -> datum:cellData object
-  -> witness:AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+  -> witness:CoverageWitness atlasScope scope cellData
   -> {proof:() | coverageWitnessCovers valueAtlas occurrence datum witness}
   -> ChartedCellData (AtlasObject atlasScope scope cellData) object
 @-}
@@ -77,7 +77,7 @@ chartCellData
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> cellData object
-  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+  -> CoverageWitness atlasScope scope cellData
   -> ()
   -> ChartedCellData (AtlasObject atlasScope scope cellData) object
 chartCellData _ _ datum _ proof = proof `seq` chartedCellData datum

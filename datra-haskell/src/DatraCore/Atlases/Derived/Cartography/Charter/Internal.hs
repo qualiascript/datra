@@ -239,7 +239,7 @@ chartCoverageWitness
   -> AtlasCoverageWitness
        (ChartedAtlasObject (AtlasObject atlasScope scope cellData))
 chartCoverageWitness valueAtlas source covered =
-  withAtlasCoverageWitness
+  withAtlasCoverageWitness valueAtlas
     (findAtlasCoverage valueAtlas source (chartedCellDataValue covered)) $ \region regionDatum ->
       atlasCoverageWitness
         (chartAtlas valueAtlas)

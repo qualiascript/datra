@@ -60,9 +60,9 @@ import Atlas
   , materializeAtlasHom
   )
 import AtlasCoveredPageElement
-  ( AtlasCoveredPageElement
+  ( CoverageWitness
+  , AtlasCoveredPageElement
   , atlasCoveredByWitness
-  , AtlasCoverageWitness
   , coverageWitnessCovers
   , coverageWitnessAlongArrow
   )
@@ -98,13 +98,13 @@ type role AtlasMapData nominal nominal nominal nominal nominal nominal
       , mapExtent :: {source:PageElement s extent | cellTraceValid mapOwner source
            && SomePageElement source == originPageElement (atlasPageElements mapOwner)}
       , mapExtentCoverage :: datum:{d extent | atlasAcceptsDatum mapOwner mapExtent datum}
-          -> {witness:AtlasCoverageWitness (AtlasObject a s d) |
+          -> {witness:CoverageWitness a s d |
                coverageWitnessCovers mapOwner mapExtent datum witness}
       } @-}
 data AtlasMapData a s d o f extent = AtlasMapData
   { mapOwner :: Atlas a s d o f
   , mapExtent :: PageElement s extent
-  , mapExtentCoverage :: d extent -> AtlasCoverageWitness (AtlasObject a s d)
+  , mapExtentCoverage :: d extent -> CoverageWitness a s d
   }
 
 {-@ reflect atlasMapCellValid @-}
@@ -122,7 +122,7 @@ atlasMapAcceptsDatum (AtlasMap (value :: AtlasMapData a s d o f extent)) source 
 {-@ reflect atlasMapWitnessCovers @-}
 atlasMapWitnessCovers
   :: forall a s d cell. AtlasMap (AtlasObject a s d) -> PageElement s cell -> d cell
-  -> AtlasCoverageWitness (AtlasObject a s d) -> Bool
+  -> CoverageWitness a s d -> Bool
 atlasMapWitnessCovers (AtlasMap (value :: AtlasMapData a s d o f extent)) source datum witness =
   coverageWitnessCovers (mapOwner value) source datum witness
 
@@ -136,8 +136,7 @@ atlasMap
        extent:{PageElement scope extentObject | cellTraceValid valueAtlas extent
             && SomePageElement extent == originPageElement (atlasPageElements valueAtlas)}
        -> datum:{cellData extentObject | atlasAcceptsDatum valueAtlas extent datum}
-       -> { witness:AtlasCoverageWitness
-              (AtlasObject atlasScope scope cellData) |
+       -> { witness:CoverageWitness atlasScope scope cellData |
             coverageWitnessCovers
               valueAtlas
               extent
@@ -151,8 +150,7 @@ atlasMap
   -> (forall extentObject.
        PageElement scope extentObject
        -> cellData extentObject
-       -> AtlasCoverageWitness
-            (AtlasObject atlasScope scope cellData))
+       -> CoverageWitness atlasScope scope cellData)
   -> AtlasMap (AtlasObject atlasScope scope cellData)
 atlasMap valueAtlas coversExtent =
   case originPageElement (atlasPageElements valueAtlas) of
@@ -205,26 +203,26 @@ mapExtentCovered value datum =
 {-@ atlasMapCoversDatum :: value:AtlasMap (AtlasObject a s d)
       -> source:{PageElement s cell | atlasMapCellValid value source}
       -> datum:{d cell | atlasMapAcceptsDatum value source datum}
-      -> {witness:AtlasCoverageWitness (AtlasObject a s d) |
+      -> {witness:CoverageWitness a s d |
            atlasMapWitnessCovers value source datum witness} @-}
 atlasMapCoversDatum
   :: forall a s d object. AtlasMap (AtlasObject a s d)
   -> PageElement s object
   -> d object
-  -> AtlasCoverageWitness (AtlasObject a s d)
+  -> CoverageWitness a s d
 atlasMapCoversDatum (AtlasMap (value :: AtlasMapData a s d o f extent)) occurrence datum =
   mapCoveredDatum value occurrence datum
 
 {-@ mapCoveredDatum :: value:AtlasMapData a s d o f extent
       -> source:{PageElement s cell | cellTraceValid (mapOwner value) source}
       -> datum:{d cell | atlasAcceptsDatum (mapOwner value) source datum}
-      -> {witness:AtlasCoverageWitness (AtlasObject a s d) |
+      -> {witness:CoverageWitness a s d |
            coverageWitnessCovers (mapOwner value) source datum witness} @-}
 mapCoveredDatum
   :: AtlasMapData a s d o f extent
   -> PageElement s cell
   -> d cell
-  -> AtlasCoverageWitness (AtlasObject a s d)
+  -> CoverageWitness a s d
 mapCoveredDatum value occurrence datum =
   cellTraceHasOrigin (mapOwner value) occurrence `seq`
     let arrow = pageElementArrow occurrence (mapExtent value)

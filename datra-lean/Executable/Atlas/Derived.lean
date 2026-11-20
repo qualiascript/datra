@@ -63,6 +63,11 @@ def Atlas.territory (X : Atlas) (index : X.TerritoryIndex) : X.CellDominion :=
   ⟨FolioData.ValidElement.lastElement X.pages index,
     X.dataAt (FolioData.ValidElement.lastElement X.pages index)⟩
 
+-- ALIGN: ATLAS-TERRITORY-POSITION.
+theorem Atlas.territory_position (X : Atlas) (index : X.TerritoryIndex) :
+    (X.territory index).element.val.position = index.position :=
+  FolioData.ValidElement.lastElement_position X.pages index
+
 -- ALIGN: ATLAS-TERRITORY-INTERPRETATION.
 theorem Atlas.territory_interpretation (X : Atlas) (index : X.TerritoryIndex) :
     (X.territory index).toSemantics =

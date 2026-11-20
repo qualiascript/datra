@@ -6,17 +6,22 @@
 -- | Evidence that Atlas data is covered by data in final regions.
 module AtlasCoveredPageElement
   ( AtlasCoverageWitness
+  , CoverageWitness
   , AtlasCoveredPageElement
   , atlasCoverageWitness
   , coverageWitnessCovers
   , coverageWitnessValid
   , withAtlasCoverageWitness
   , coverageWitnessOriginRank
+  , coverageWitnessCode
   , coverageWitnessAlongArrow
   , atlasCoveredPageElement
   , atlasCoveredByWitness
   , atlasCoverageAt
   , coverageResultCovers
+  , coverageRankCandidate
+  , atlasCoverageRankWithin
+  , atlasCoverageRankLeast
   , atlasCoveredAt
   , withAtlasCoveredPageElement
   , atlasCoveredPageElementWitness
@@ -24,18 +29,23 @@ module AtlasCoveredPageElement
 
 import AtlasCoveredPageElement.Internal
   ( AtlasCoverageWitness
+  , CoverageWitness
   , AtlasCoveredPageElement
   , atlasCoverageWitness
   , coverageWitnessCovers
   , coverageWitnessValid
   , withAtlasCoverageWitness
   , coverageWitnessOriginRank
+  , coverageWitnessCode
   , coverageWitnessAlongArrow
   , atlasCoveredPageElement
   , withAtlasCoveredPageElement
   , atlasCoveredPageElementWitness
   , atlasCoverageAt
   , coverageResultCovers
+  , coverageRankCandidate
+  , atlasCoverageRankWithin
+  , atlasCoverageRankLeast
   )
 
 import qualified AtlasCoveredPageElement.Internal as Internal
@@ -48,12 +58,12 @@ import Numeric.Natural (Natural)
 -- ALIGN: ATLAS-COVERED-BY-WITNESS.
 {-@ atlasCoveredByWitness :: owner:Atlas a s d o f
       -> source:PageElement s object -> datum:d object
-      -> witness:{AtlasCoverageWitness (AtlasObject a s d) |
+      -> witness:{CoverageWitness a s d |
            coverageWitnessCovers owner source datum witness}
       -> AtlasCoveredPageElement (AtlasObject a s d) @-}
 atlasCoveredByWitness
   :: Atlas a s d o f -> PageElement s object -> d object
-  -> AtlasCoverageWitness (AtlasObject a s d) -> AtlasCoveredPageElement (AtlasObject a s d)
+  -> CoverageWitness a s d -> AtlasCoveredPageElement (AtlasObject a s d)
 atlasCoveredByWitness _ source datum witness = Internal.AtlasCoveredPageElement source datum witness
 
 -- | Decode one finite enumeration index, retaining its checked coverage.

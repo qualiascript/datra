@@ -2,10 +2,13 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 #include "../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
+{-@ LIQUID "--max-case-expand=4" @-}
 {-@ LIQUID "--higherorder" @-}
 
 -- | Hidden representation of the category of cell occurrences.
@@ -98,8 +101,11 @@ import Chain
   , chainPositionInjective
   , chainPositionSurjective
   )
+import Chain.Singleton (chainSingletonPosition)
 import Consolidation.Ordered (OrderedConsolidation, orderedSource, orderedApply)
-import DatraOrdinal (Ordinal)
+import DatraOrdinal (Ordinal, finiteOrdinal)
+
+{-@ opaque-reflect finiteOrdinal @-}
 import Data.Kind (Type)
 import Folio
   ( Folio
@@ -267,8 +273,8 @@ pageElementIndex (PageElements pages) page position =
 {-@ folioTraceLookup :: pages:Folio origin final -> page:Natural -> position:Ordinal
       -> Maybe ({positions:[Ordinal] | len positions == page + 1}) @-}
 folioTraceLookup :: Folio origin final -> Natural -> Ordinal -> Maybe [Ordinal]
-folioTraceLookup (OriginFolio count pageChain witness) page position =
-  prefixTraceLookup (OriginFolio count pageChain witness) page position
+folioTraceLookup pages@(OriginFolio _ _ _) page position =
+  prefixTraceLookup pages page position
 folioTraceLookup pages@(SnocPage (FolioStep _ previous _)) page position
   | page >= folioLength previous =
       prefixTraceLookup pages (page - folioLength previous) position
@@ -297,7 +303,7 @@ prefixTraceLookupObject prefix position =
 {-@ prefixTraceLookupPosition :: prefix:Folio origin current -> padding:Natural -> value:current
       -> {prefixTraceLookup prefix padding (chainPosition (lastChain prefix) value)
            == Just (pageElementTraceAt prefix padding value)} @-}
-prefixTraceLookupPosition :: Folio origin current -> Natural -> current -> ()
+prefixTraceLookupPosition :: forall origin current. Folio origin current -> Natural -> current -> ()
 prefixTraceLookupPosition prefix _ value =
   let pageChain = lastChain prefix
       position = chainPosition pageChain value
@@ -329,7 +335,7 @@ prefixTraceLookupBounded prefix _ position
 -- | The ordinal of the actual page selected from the owning finite folio.
 {-@ reflect folioPageOrderType @-}
 folioPageOrderType :: Folio origin final -> Natural -> Ordinal
-folioPageOrderType (OriginFolio _ pageChain _) _ = chainOrderType pageChain
+folioPageOrderType pages@(OriginFolio _ _ _) _ = chainOrderType (lastChain pages)
 folioPageOrderType (SnocPage step@(FolioStep _ previous _)) page
   | page >= folioLength previous = chainOrderType (stepSource step)
   | otherwise = folioPageOrderType previous page
@@ -339,8 +345,8 @@ folioPageOrderType (SnocPage step@(FolioStep _ previous _)) page
       -> {traceLookupPresent (folioTraceLookup pages page position)
            == chainOrdinalLT position (folioPageOrderType pages page)} @-}
 folioTraceLookupBounded :: Folio origin final -> Natural -> Ordinal -> ()
-folioTraceLookupBounded (OriginFolio count pageChain witness) page position =
-  prefixTraceLookupBounded (OriginFolio count pageChain witness) page position
+folioTraceLookupBounded pages@(OriginFolio _ _ _) page position =
+  prefixTraceLookupBounded pages page position
 folioTraceLookupBounded pages@(SnocPage (FolioStep _ previous _)) page position
   | page >= folioLength previous =
       prefixTraceLookupBounded pages (page - folioLength previous) position
@@ -384,8 +390,8 @@ prefixTraceLookupTrim pages padding position limit =
       -> {folioTraceLookup pages (Trace.clampPage page (folioLength pages - 1)) position
            == trimLookupTrace limit (folioTraceLookup pages page position)} @-}
 folioTraceLookupNormalize :: Folio origin final -> Natural -> Ordinal -> Int -> ()
-folioTraceLookupNormalize (OriginFolio count pageChain witness) page position limit =
-  prefixTraceLookupTrim (OriginFolio count pageChain witness) page position limit
+folioTraceLookupNormalize pages@(OriginFolio _ _ _) page position limit =
+  prefixTraceLookupTrim pages page position limit
 folioTraceLookupNormalize pages@(SnocPage (FolioStep _ previous _)) page position limit
   | page < folioLength pages =
       case folioTraceLookup pages page position of
@@ -405,9 +411,8 @@ folioTraceLookupNormalize pages@(SnocPage (FolioStep _ previous _)) page positio
            && folioTraceLookup pages page position == Just (pageElementIndexTrace index)}) |
            pageElementIndexTraceResult result == folioTraceLookup pages page position} @-}
 indexInFolio :: Folio origin final -> Natural -> Ordinal -> Maybe (PageElementIndex scope)
-indexInFolio (OriginFolio count pageChain witness) page position =
-  lookupPrefixIndex page position (OriginFolio count pageChain witness) page
-    (originElementTrace pageChain witness)
+indexInFolio pages@(OriginFolio _ _ _) page position =
+  lookupPrefixIndex page position pages page (genuinePageElementTrace pages)
 indexInFolio pages@(SnocPage step@(FolioStep _ previous transition)) page position
   | page >= folioLength previous =
       lookupPrefixIndex page position pages
@@ -590,7 +595,9 @@ pageElement (PageElementIndex index) =
 -- ALIGN: PE-ORIGIN-INTERPRETATION.
 {-@ reflect originPageElement @-}
 {-@ originPageElement :: category:PageElements scope origin final
-      -> {origin:SomePageElement scope | somePageElementTraceValid category origin} @-}
+      -> {origin:SomePageElement scope | somePageElementTraceValid category origin
+           && Trace.somePageElementPosition origin ==
+                chainPosition (originChain (pageElementsFolio category)) (originValue (pageElementsFolio category))} @-}
 originPageElement
   :: PageElements scope origin final
   -> SomePageElement scope
@@ -601,18 +608,20 @@ originPageElement (PageElements pages) =
 {-@ folioOriginTraceLookup :: pages:Folio origin final
       -> {folioTraceLookup pages 0 (chainPosition (originChain pages) (originValue pages))
            == Just (folioOriginTrace pages)} @-}
-folioOriginTraceLookup :: Folio origin final -> ()
-folioOriginTraceLookup (OriginFolio _ pageChain witness) =
-  let position = chainPosition pageChain (selectedOrigin witness)
-  in chainPositionBelow pageChain (selectedOrigin witness) `seq`
-      chainPositionSurjective pageChain position `seq`
-        case chainLookup pageChain position of
-          Nothing -> ()
-          Just value -> singletonOriginUnique witness value
+folioOriginTraceLookup :: forall origin final. Folio origin final -> ()
+folioOriginTraceLookup pages@(OriginFolio _ pageChain witness) =
+  chainSingletonPosition pageChain (selectedOrigin witness) (singletonOriginUnique witness)
+    (selectedOrigin witness) `seq`
+  chainSingletonPosition (lastChain pages) (selectedOrigin witness) (singletonOriginUnique witness)
+    (selectedOrigin witness) `seq`
+  prefixTraceLookupPosition @origin @final pages 0 (selectedOrigin witness)
 folioOriginTraceLookup (SnocPage (FolioStep _ previous _)) =
   folioTraceLengthPositive previous `seq` folioOriginTraceLookup previous
 
 {-@ reflect folioOriginElement @-}
+{-@ folioOriginElement :: pages:Folio origin final
+      -> {result:SomePageElement scope | Trace.somePageElementPosition result ==
+           chainPosition (originChain pages) (originValue pages)} @-}
 folioOriginElement :: Folio origin final -> SomePageElement scope
 folioOriginElement pages =
   SomePageElement
@@ -624,25 +633,27 @@ folioOriginElement pages =
 -- | A certified cell of the final genuine page as a page element.
 -- ALIGN: PE-LAST-INTERPRETATION.
 -- ALIGN: PE-LAST-SINGLETON-ORIGIN.
+-- ALIGN: PE-LAST-POSITION.
 {-@ lastPageElement :: category:PageElements scope origin final
       -> index:{ChainIndex final |
            chainPosition (lastChain (pageElementsFolio category)) (chainObjectAt index)
                 == chainIndexPosition index}
       -> {result:SomePageElement scope |
            somePageElementTraceValid category result
-           && Trace.somePageElementPage result == folioLength (pageElementsFolio category) - 1} @-}
+           && Trace.somePageElementPage result == folioLength (pageElementsFolio category) - 1
+           && Trace.somePageElementPosition result == chainIndexPosition index} @-}
 lastPageElement
   :: PageElements scope origin final
   -> ChainIndex final
   -> SomePageElement scope
-lastPageElement category@(PageElements pages@(OriginFolio count pageChain witness)) index =
-  singletonOriginUnique witness (chainObjectAt index) `seq`
-    folioLength pages `seq` originPageElement category
-lastPageElement (PageElements pages@(SnocPage step@(FolioStep count previous transition))) index =
+lastPageElement (PageElements pages) index =
   let value = chainObjectAt index
+      position = chainIndexPosition index
+      page = folioLength pages - 1
   in folioLength pages `seq` finalPageTraceLookup pages value `seq`
-    pageElement (PageElementIndex (indexWithTrace (count - 1) pages 0 value
-      (snocElementTrace previous (stepSource step) transition value)))
+      folioTraceLookupHead pages page position `seq`
+        pageElement (PageElementIndex (indexWithTrace page pages 0 value
+          (genuinePageElementTrace pages value)))
 
 -- | The exact trace of the unique origin occurrence.
 {-@ reflect folioOriginTrace @-}
@@ -678,14 +689,19 @@ pageElementTraceAt pages padding value =
 -- ALIGN: FOLIO-TRACE-LENGTH.
 -- ALIGN: FOLIO-TRACE-ORIGIN.
 {-@ reflect genuinePageElementTrace @-}
-{-@ genuinePageElementTrace :: pages:Folio origin page -> page
+{-@ genuinePageElementTrace :: pages:Folio origin page -> value:page
       -> {positions:[Ordinal] | Trace.traceSuffix positions (folioOriginTrace pages)
+           && Trace.traceStartsWith (chainPosition (lastChain pages) value) positions
            && len positions == folioLength pages} / [folioLength pages, 0] @-}
-genuinePageElementTrace :: Folio origin page -> page -> [Ordinal]
-genuinePageElementTrace (OriginFolio _ pageChain witness) value =
-  originElementTrace pageChain witness value
-genuinePageElementTrace (SnocPage (FolioStep _ previous transition)) value =
-  snocElementTrace previous (orderedSource transition) transition value
+genuinePageElementTrace :: forall origin page. Folio origin page -> page -> [Ordinal]
+genuinePageElementTrace pages@(OriginFolio _ pageChain witness) value =
+  chainSingletonPosition pageChain (selectedOrigin witness) (singletonOriginUnique witness)
+    (selectedOrigin witness) `seq`
+  chainSingletonPosition (lastChain pages) (selectedOrigin witness) (singletonOriginUnique witness)
+    value `seq`
+  originElementTrace @page (lastChain pages) witness value
+genuinePageElementTrace (SnocPage step@(FolioStep _ previous transition)) value =
+  stepSource step `seq` snocElementTrace previous (orderedSource transition) transition value
 
 -- | Appending a page retains the actual generating map in its native trace.
 -- ALIGN: FOLIO-APPEND-TRACE.
@@ -727,7 +743,7 @@ appendedFinalLookup previous pageChain transition value =
 -- | Every cell on the final appended page is returned with its exact native trace.
 -- The singleton origin lookup is certified by folioOriginTraceLookup.
 -- ALIGN: FOLIO-FINAL-CELL-LOOKUP.
-{-@ finalPageTraceLookup :: pages:{Folio origin current | folioLength pages > 1} -> value:current
+{-@ finalPageTraceLookup :: pages:Folio origin current -> value:current
       -> {folioTraceLookup pages (folioLength pages - 1) (chainPosition (lastChain pages) value)
            == Just (genuinePageElementTrace pages value)} @-}
 finalPageTraceLookup :: Folio origin current -> current -> ()
@@ -736,7 +752,7 @@ finalPageTraceLookup pages value =
   prefixTraceLookupPosition pages 0 value `seq`
     pageElementTraceAt pages 0 value `seq` ()
 
-{-@ folioFinalPrefixLookup :: pages:{Folio origin current | folioLength pages > 1} -> position:Ordinal
+{-@ folioFinalPrefixLookup :: pages:Folio origin current -> position:Ordinal
       -> {folioTraceLookup pages (folioLength pages - 1) position == prefixTraceLookup pages 0 position} @-}
 folioFinalPrefixLookup :: Folio origin current -> Ordinal -> ()
 folioFinalPrefixLookup pages@(OriginFolio _ _ _) _ = folioLength pages `seq` ()
@@ -747,7 +763,7 @@ folioFinalPrefixLookup (SnocPage (FolioStep _ _ _)) _ = ()
       -> {positions:[Ordinal] | len positions == 1
            && Trace.traceStartsWith (chainPosition pageChain value) positions
            && Trace.traceSuffix positions [chainPosition pageChain (selectedOrigin witness)]} @-}
-originElementTrace :: Chain origin -> SingletonOrigin origin -> origin -> [Ordinal]
+originElementTrace :: forall origin. Chain origin -> SingletonOrigin origin -> origin -> [Ordinal]
 originElementTrace pageChain witness value =
   singletonOriginUnique witness value `seq` [chainPosition pageChain value]
 

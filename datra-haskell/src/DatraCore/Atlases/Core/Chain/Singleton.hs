@@ -4,11 +4,27 @@
 {-@ LIQUID "--ple-local" @-}
 
 -- | The checked singleton chain shared by Atlas origin constructions.
-module Chain.Singleton (singletonChain, singletonChainPosition) where
+module Chain.Singleton (singletonChain, singletonChainPosition, chainSingletonPosition) where
 
-import Chain.Internal (Chain, chain, chainOrderType, chainPosition, chainPositionBelow, chainOrdinalLT, positionMatches)
+import Chain.Internal (Chain, chain, chainOrderType, chainPosition, chainPositionBelow, chainOrdinalLT, positionMatches, chainPositionSurjective, chainLookup)
 import DatraOrdinal (Ordinal, finiteOrdinal)
-import DatraOrdinal.Laws (ordinalBelowOne)
+import DatraOrdinal.Laws (ordinalBelowOne, ordinalNotBelowZero, ordinalZeroLeast)
+
+-- | Every value of a singleton chain occupies its least position.
+-- ALIGN: CHAIN-UNIQUE-POSITION.
+{-@ ple chainSingletonPosition @-}
+{-@ chainSingletonPosition :: page:Chain a -> selected:a
+      -> unique:(value:a -> {value == selected}) -> value:a
+      -> {chainPosition page value == finiteOrdinal 0} @-}
+chainSingletonPosition :: Chain a -> a -> (a -> ()) -> a -> ()
+chainSingletonPosition page selected unique value =
+  chainPositionBelow page selected `seq`
+  ordinalNotBelowZero (chainPosition page selected) `seq`
+  ordinalZeroLeast (chainOrderType page) `seq`
+  chainPositionSurjective page (finiteOrdinal 0) `seq`
+    case chainLookup page (finiteOrdinal 0) of
+      Nothing -> ()
+      Just first -> unique first `seq` unique value
 
 -- ALIGN: CHAIN-SINGLETON.
 {-@ opaque-reflect singletonChain @-}

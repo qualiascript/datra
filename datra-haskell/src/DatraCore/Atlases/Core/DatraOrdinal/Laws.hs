@@ -18,6 +18,7 @@ module DatraOrdinal.Laws
   , ordinalAddRightComparison
   , ordinalBelowOne
   , ordinalNotBelowZero
+  , ordinalZeroLeast
   , finiteOrdinalBelowOmega
   , finiteOrdinalLookup
   , finiteOrdinalInjective
@@ -60,6 +61,14 @@ ordinalDecodeEncode (Ordinal values@(_ : _)) = decodeEncode values
 ordinalNotBelowZero :: Ordinal -> ()
 ordinalNotBelowZero (Ordinal []) = ()
 ordinalNotBelowZero (Ordinal values@(_ : _)) = coefficientsLT values [] `seq` ()
+
+-- | Zero lies below every nonzero ordinal.
+-- ALIGN: ORDINAL-ZERO-LEAST.
+{-@ ordinalZeroLeast :: value:Ordinal
+      -> {value /= finiteOrdinal 0 => ordinalLT (finiteOrdinal 0) value} @-}
+ordinalZeroLeast :: Ordinal -> ()
+ordinalZeroLeast (Ordinal []) = ()
+ordinalZeroLeast (Ordinal values@(_ : _)) = coefficientsLT [] values `seq` ()
 
 -- ALIGN: ORDINAL-BELOW-ONE.
 {-@ ordinalBelowOne :: value:Ordinal

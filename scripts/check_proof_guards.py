@@ -75,6 +75,16 @@ proofGuard = reindexChain (const True) spine (const 0) (const 0) (const ()) (con
 """,
 }
 
+CHAIN_SINGLETON_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Chain/Singleton.hs"
+CHAIN_SINGLETON_GUARDS = {
+    "singleton position requires evidence of a unique carrier": """
+{-@ proofGuard :: page:Chain a -> selected:a -> value:a
+      -> {chainPosition page value == finiteOrdinal 0} @-}
+proofGuard :: Chain a -> a -> a -> ()
+proofGuard page selected value = chainSingletonPosition page selected (const ()) value
+""",
+}
+
 ORDERED_CONSOLIDATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Consolidation/Ordered.hs"
 ORDERED_CONSOLIDATION_GUARDS = {
     "consolidation function replacement requires the forward equation": """
@@ -788,21 +798,21 @@ COALITION_ELEMENT_GUARDS = {
       -> origin:{PageElement s object | cellTraceValid owner origin
            && SomePageElement origin == originPageElement (atlasPageElements owner)}
       -> datum:{d object | atlasAcceptsDatum owner origin datum}
-      -> AtlasCoverageWitness (AtlasObject a s d)
+      -> CoverageWitness a s d
       -> CoalitionElement (AtlasObject a s d) @-}
 proofGuard :: Atlas a s d o f -> PageElement s object -> d object
-  -> AtlasCoverageWitness (AtlasObject a s d) -> CoalitionElement (AtlasObject a s d)
+  -> CoverageWitness a s d -> CoalitionElement (AtlasObject a s d)
 proofGuard = coalitionElement
 """,
     "public coalitions reject a covered cell without origin evidence": """
 {-@ proofGuard :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
       -> datum:{d object | atlasAcceptsDatum owner source datum}
-      -> witness:{AtlasCoverageWitness (AtlasObject a s d) |
+      -> witness:{CoverageWitness a s d |
            coverageWitnessCovers owner source datum witness}
       -> CoalitionElement (AtlasObject a s d) @-}
 proofGuard :: Atlas a s d o f -> PageElement s object -> d object
-  -> AtlasCoverageWitness (AtlasObject a s d) -> CoalitionElement (AtlasObject a s d)
+  -> CoverageWitness a s d -> CoalitionElement (AtlasObject a s d)
 proofGuard = coalitionElement
 """,
 }
@@ -815,12 +825,12 @@ TRANSVERSAL_GUARDS = {
       :: sourceAtlas:Atlas sa ss sd so sf -> targetAtlas:Atlas ta ts td to tf
       -> ordered:OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
       -> badCoverage:(covered:AtlasCoveredPageElement (AtlasObject sa ss sd)
-           -> {w:AtlasCoverageWitness (AtlasObject ta ts td) |
+           -> {w:CoverageWitness ta ts td |
                 not (transversalImageCovered sourceAtlas targetAtlas ordered covered w)})
       -> TransversalAction sa ss sd so sf ta ts td to tf @-}
 proofGuard :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
   -> OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
-  -> (AtlasCoveredPageElement (AtlasObject sa ss sd) -> AtlasCoverageWitness (AtlasObject ta ts td))
+  -> (AtlasCoveredPageElement (AtlasObject sa ss sd) -> CoverageWitness ta ts td)
   -> TransversalAction sa ss sd so sf ta ts td to tf
 proofGuard = TransversalAction
 """,
@@ -831,7 +841,7 @@ proofGuard
   -> targetAtlas:Atlas ta ts td to tf
   -> ordered:OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
   -> badCoverage:(covered:AtlasCoveredPageElement (AtlasObject sa ss sd)
-       -> {w:AtlasCoverageWitness (AtlasObject ta ts td) |
+       -> {w:CoverageWitness ta ts td |
          not (transversalImageCovered sourceAtlas targetAtlas ordered covered w)})
   -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
 @-}
@@ -840,7 +850,7 @@ proofGuard
   -> Atlas ta ts td to tf
   -> OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
   -> (AtlasCoveredPageElement (AtlasObject sa ss sd)
-       -> AtlasCoverageWitness (AtlasObject ta ts td))
+       -> CoverageWitness ta ts td)
   -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
 proofGuard sourceAtlas targetAtlas ordered badCoverage =
   atlasTransversal sourceAtlas targetAtlas ordered badCoverage
@@ -849,6 +859,24 @@ proofGuard sourceAtlas targetAtlas ordered badCoverage =
 
 COVERAGE_REPRESENTATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs"
 COVERAGE_REPRESENTATION_GUARDS = {
+    "bounded coverage ranking rejects a result beyond its limit": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum} -> limit:Natural
+      -> Maybe ({found:Natural | found > limit}) @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> Maybe Natural
+proofGuard = atlasCoverageRankWithin
+""",
+    "bounded coverage minimality requires a successful selected rank": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum} -> limit:Natural
+      -> found:Natural -> earlier:{Natural | earlier < found}
+      -> {not (coverageRankCandidate owner source datum earlier)} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object
+  -> Natural -> Natural -> Natural -> ()
+proofGuard = atlasCoverageRankLeast
+""",
     "coverage witnesses reject matching caches on a nonfinal region": """
 {-@ proofGuard :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
@@ -856,10 +884,10 @@ COVERAGE_REPRESENTATION_GUARDS = {
       -> region:{PageElement s other | cellTraceValid owner region
            && coveragePage region /= coverageFinalPage owner}
       -> regionDatum:{d other | atlasAcceptsDatum owner region regionDatum}
-      -> {w:AtlasCoverageWitness (AtlasObject a s d) |
+      -> {w:CoverageWitness a s d |
            coverageWitnessCovers owner source datum w} @-}
 proofGuard :: Atlas a s d o f -> PageElement s object -> d object
-  -> PageElement s other -> d other -> AtlasCoverageWitness (AtlasObject a s d)
+  -> PageElement s other -> d other -> CoverageWitness a s d
 proofGuard owner source datum region regionDatum =
   AtlasCoverageWitness (CoverageRegionData region regionDatum
     (coverageFinalPage owner) (atlasOriginImageRank owner source datum))
@@ -868,6 +896,13 @@ proofGuard owner source datum region regionDatum =
 
 COVERED_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/AtlasCoveredPageElement.hs"
 COVERED_API_GUARDS = {
+    "coverage elimination rejects an invalid retained region": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> witness:{CoverageWitness a s d | not (coverageWitnessValid owner witness)}
+      -> () @-}
+proofGuard :: Atlas a s d o f -> CoverageWitness a s d -> ()
+proofGuard owner witness = withAtlasCoverageWitness owner witness (\\_ _ -> ())
+""",
     "coverage decoding rejects attaching its witness to another source": """
 {-@ proofGuard :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
@@ -882,11 +917,11 @@ proofGuard owner source other candidate =
 """,
     "covered-element packaging rejects unrelated coverage evidence": """
 {-@ proofGuard :: owner:Atlas a s d o f -> source:PageElement s object -> datum:d object
-      -> witness:{AtlasCoverageWitness (AtlasObject a s d) |
+      -> witness:{CoverageWitness a s d |
            not (coverageWitnessCovers owner source datum witness)}
       -> AtlasCoveredPageElement (AtlasObject a s d) @-}
 proofGuard :: Atlas a s d o f -> PageElement s object -> d object
-  -> AtlasCoverageWitness (AtlasObject a s d) -> AtlasCoveredPageElement (AtlasObject a s d)
+  -> CoverageWitness a s d -> AtlasCoveredPageElement (AtlasObject a s d)
 proofGuard = atlasCoveredByWitness
 """,
 }
@@ -899,11 +934,11 @@ ATLAS_MAP_GUARDS = {
       -> source:{PageElement s extent | cellTraceValid owner source
            && SomePageElement source == originPageElement (atlasPageElements owner)}
       -> wrong:(datum:{d extent | atlasAcceptsDatum owner source datum}
-           -> {w:AtlasCoverageWitness (AtlasObject a s d) |
+           -> {w:CoverageWitness a s d |
                 not (coverageWitnessCovers owner source datum w)})
       -> AtlasMapData a s d o f extent @-}
 proofGuard :: Atlas a s d o f -> PageElement s extent
-  -> (d extent -> AtlasCoverageWitness (AtlasObject a s d)) -> AtlasMapData a s d o f extent
+  -> (d extent -> CoverageWitness a s d) -> AtlasMapData a s d o f extent
 proofGuard = AtlasMapData
 """,
     "stored Atlas maps reject a nonorigin extent": """
@@ -911,20 +946,20 @@ proofGuard = AtlasMapData
       -> source:{PageElement s extent | cellTraceValid owner source
            && SomePageElement source /= originPageElement (atlasPageElements owner)}
       -> covers:(datum:{d extent | atlasAcceptsDatum owner source datum}
-           -> {w:AtlasCoverageWitness (AtlasObject a s d) |
+           -> {w:CoverageWitness a s d |
                 coverageWitnessCovers owner source datum w})
       -> AtlasMapData a s d o f extent @-}
 proofGuard :: Atlas a s d o f -> PageElement s extent
-  -> (d extent -> AtlasCoverageWitness (AtlasObject a s d)) -> AtlasMapData a s d o f extent
+  -> (d extent -> CoverageWitness a s d) -> AtlasMapData a s d o f extent
 proofGuard = AtlasMapData
 """,
     "Atlas map coverage rejects data outside the source carrier": """
 {-@ proofGuard :: value:AtlasMap (AtlasObject a s d)
       -> source:{PageElement s cell | atlasMapCellValid value source}
       -> datum:{d cell | not (atlasMapAcceptsDatum value source datum)}
-      -> AtlasCoverageWitness (AtlasObject a s d) @-}
+      -> CoverageWitness a s d @-}
 proofGuard :: AtlasMap (AtlasObject a s d) -> PageElement s cell -> d cell
-  -> AtlasCoverageWitness (AtlasObject a s d)
+  -> CoverageWitness a s d
 proofGuard = atlasMapCoversDatum
 """,
 }
@@ -949,7 +984,7 @@ proofGuard
   :: valueAtlas:Atlas atlasScope scope cellData origin final
   -> occurrence:PageElement scope object
   -> datum:cellData object
-  -> witness:{w:AtlasCoverageWitness (AtlasObject atlasScope scope cellData) |
+  -> witness:{w:CoverageWitness atlasScope scope cellData |
        not (coverageWitnessCovers valueAtlas occurrence datum w)}
   -> ChartedCellData (AtlasObject atlasScope scope cellData) object
 @-}
@@ -957,7 +992,7 @@ proofGuard
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> cellData object
-  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+  -> CoverageWitness atlasScope scope cellData
   -> ChartedCellData (AtlasObject atlasScope scope cellData) object
 proofGuard valueAtlas occurrence datum witness =
   chartCellData valueAtlas occurrence datum witness ()
@@ -1189,8 +1224,32 @@ proofGuard arrow = pageElementArrowPosition arrow
 """,
 }
 
+PAGE_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/PageElements.hs"
+PAGE_API_GUARDS = {
+    "public final page lookup retains the requested chain position": """
+{-@ proofGuard :: category:PageElements scope origin final
+      -> index:{ChainIndex final |
+           chainPosition (lastChain (pageElementsFolio category)) (chainObjectAt index)
+             == chainIndexPosition index}
+      -> {result:SomePageElement scope |
+           Trace.somePageElementPosition result /= chainIndexPosition index} @-}
+proofGuard :: PageElements scope origin final -> ChainIndex final -> SomePageElement scope
+proofGuard = lastPageElement
+""",
+}
+
 PAGE_INDEX_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Internal.hs"
 PAGE_INDEX_GUARDS = {
+    "final page lookup retains the requested chain position": """
+{-@ proofGuard :: category:PageElements scope origin final
+      -> index:{ChainIndex final |
+           chainPosition (lastChain (pageElementsFolio category)) (chainObjectAt index)
+             == chainIndexPosition index}
+      -> {result:SomePageElement scope |
+           Trace.somePageElementPosition result /= chainIndexPosition index} @-}
+proofGuard :: PageElements scope origin final -> ChainIndex final -> SomePageElement scope
+proofGuard = lastPageElement
+""",
     "final cell lookup cannot substitute another trace": """
 {-@ proofGuard :: pages:{Folio origin current | folioLength pages > 1} -> value:current -> other:current
       -> {folioTraceLookup pages (folioLength pages - 1) (chainPosition (lastChain pages) value)
@@ -1597,6 +1656,7 @@ def run(pattern=None):
         for dependency in library["depends"]:
             command.extend(["-package-id", dependency])
         for source_path, guards in [(SOURCE, GUARDS), (CHAIN_SOURCE, CHAIN_GUARDS),
+                                    (CHAIN_SINGLETON_SOURCE, CHAIN_SINGLETON_GUARDS),
                                     (CONSOLIDATION_SOURCE, CONSOLIDATION_GUARDS),
                                     (ORDERED_CONSOLIDATION_SOURCE, ORDERED_CONSOLIDATION_GUARDS),
                                     (SUM_CONSOLIDATION_SOURCE, SUM_CONSOLIDATION_GUARDS),
@@ -1626,6 +1686,7 @@ def run(pattern=None):
                                     (FOLIO_SOURCE, FOLIO_GUARDS),
                                     (FOLIO_API_SOURCE, FOLIO_API_GUARDS),
                                     (PAGE_ARROW_SOURCE, PAGE_ARROW_GUARDS),
+                                    (PAGE_API_SOURCE, PAGE_API_GUARDS),
                                     (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),
                                     (ATLAS_SOURCE, ATLAS_GUARDS),
                                     (ATLAS_DATA_SOURCE, ATLAS_DATA_GUARDS),

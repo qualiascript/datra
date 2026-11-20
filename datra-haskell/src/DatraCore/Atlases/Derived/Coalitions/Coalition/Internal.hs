@@ -12,7 +12,7 @@ module Coalition.Internal
   ) where
 
 import Atlas (Atlas, AtlasObject, AtlasWitness)
-import Coalition.Element.Internal
+import Coalition.Element
   ( CoalitionElement, coalitionElementRank, withCoalitionElement
   , coalition )
 import DomanialInsertion (DomanialInsertion, applyInsertion, insertionLeftInverse)

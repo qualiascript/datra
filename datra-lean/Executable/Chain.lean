@@ -33,6 +33,20 @@ theorem Chain.lookup_position {A : Type} (C : Chain A) (x : A) :
   have he := C.positionInjective hp
   simpa [he] using hy
 
+/-- A singleton carrier has only the least position in its chain. -/
+-- ALIGN: CHAIN-UNIQUE-POSITION.
+theorem Chain.singletonPosition {A : Type} (C : Chain A) (selected : A)
+    (unique : ∀ value, value = selected) (value : A) :
+    C.position value = Ordinal.finiteOrdinal 0 := by
+  have nonzero : C.orderType ≠ Ordinal.finiteOrdinal 0 := by
+    intro zero
+    have below := C.positionBelow selected
+    rw [zero, Ordinal.ordinalNotBelowZero] at below
+    contradiction
+  obtain ⟨first, _, position⟩ := C.positionSurjective _
+    (Ordinal.ordinalZeroLeast C.orderType nonzero)
+  simpa only [unique first, unique value] using position
+
 /-- Equal positions determine the same decoder when both reject out-of-range inputs. -/
 theorem Chain.ext_of_boundedLookup {A : Type} (source target : Chain A)
     (order : source.orderType = target.orderType) (position : source.position = target.position)

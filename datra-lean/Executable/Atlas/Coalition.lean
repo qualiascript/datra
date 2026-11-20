@@ -18,9 +18,9 @@ def CoalitionValue.coveredElement {X : Atlas} (c : X.CoalitionValue) : X.Certifi
   ⟨⟨FolioData.ValidElement.originElement X.pages, c.val,
     X.findAtlasCoverage _ c.val c.property⟩, X.findAtlasCoverage_spec _ c.val c.property⟩
 
-/-- The Haskell carrier stores the same three fields as a covered page
-element. Coalition values additionally belong to the canonical origin cell;
-padded occurrences are permitted by the representation. -/
+/-- The Haskell carrier wraps the shared covered-page-element carrier.
+Coalition values additionally belong to the canonical origin cell; padded
+occurrences are permitted by the representation. -/
 abbrev CoalitionElement (X : Atlas) := X.CoveredPageElement
 
 def coalitionElement {X : Atlas} (source : X.Element) (datum : X.cellData source.val.cell)
@@ -58,14 +58,15 @@ def CoalitionElement.Valid {X : Atlas} (c : X.CoalitionElement) : Prop :=
 abbrev CertifiedCoalitionElement (X : Atlas) :=
   {c : X.CoalitionElement // CoalitionElement.Valid c}
 
-/-- The public constructor retains the exact owning origin and its coverage
-certificate; the private runtime representation stores the three raw fields. -/
+/-- The public constructor packages coverage through the shared checked
+constructor and retains the exact owning origin. -/
 -- ALIGN: COALITION-CHECKED-CONSTRUCTOR.
 def coalitionElement_checked {X : Atlas} (source : X.Element)
     (atOrigin : source = FolioData.ValidElement.originElement X.pages)
-    (datum : X.cellData source.val.cell) (witness : {w : X.CoverageWitness // w.Valid})
-    (covers : X.coverageWitnessCovers source datum witness.val = true) : X.CertifiedCoalitionElement :=
-  ⟨coalitionElement source datum witness.val, ⟨witness.property, covers⟩, by
+    (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
+    (covers : X.coverageWitnessCovers source datum witness = true) : X.CertifiedCoalitionElement :=
+  let covered := X.atlasCoveredByWitness source datum witness covers
+  ⟨covered.val, covered.property, by
     change source.normalize = FolioData.ValidElement.originElement X.pages
     rw [atOrigin, FolioData.ValidElement.originElement_interpretation]
     exact FolioData.ValidElement.normalize_fromFinite _ _⟩

@@ -41,6 +41,8 @@ import Numeric.Natural (Natural)
 import PageElements.Internal
   ( folioTraceLookup
   , folioTraceLookupHead
+  , folioFinalPrefixLookup
+  , finalPageTraceLookup
   , prefixTraceLookupPosition
   , prefixTraceLookup
   , prependCopies
@@ -53,7 +55,7 @@ import PageElements.Internal
   , folioPageOrderType
   , folioTraceLookupBounded
   )
-import PageElements.Structure (traceStartsWith, traceSuffix)
+import PageElements.Structure (traceStartsWith, traceSuffix, traceSuffixSameLength)
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -182,10 +184,9 @@ previousTraceCons _ (_ : _) = ()
 {-@ genuineTraceNative :: pages:Folio origin final -> value:final
       -> {pageTraceContains pages (folioLength pages - 1) (genuinePageElementTrace pages value)} @-}
 genuineTraceNative :: Folio origin final -> final -> ()
-genuineTraceNative (OriginFolio count pageChain witness) value =
-  prefixTraceLookupPosition (OriginFolio count pageChain witness) 0 value
-genuineTraceNative pages@(SnocPage step@(FolioStep _ _ _)) value =
-  stepSource step `seq` prefixTraceLookupPosition pages 0 value
+genuineTraceNative pages value =
+  finalPageTraceLookup pages value `seq`
+    genuineTraceHead pages value
 
 {-@ reflect previousLookup @-}
 previousLookup :: Maybe [Ordinal] -> Maybe [Ordinal]
@@ -210,8 +211,8 @@ prefixLookupPrevious prefix padding position =
       -> {previousLookup (folioTraceLookup pages page position)
            == folioTraceLookup pages (page - 1) position} @-}
 folioLookupPreviousPadded :: Folio origin final -> Natural -> Ordinal -> ()
-folioLookupPreviousPadded (OriginFolio count pageChain witness) page position =
-  prefixLookupPrevious (OriginFolio count pageChain witness) page position
+folioLookupPreviousPadded pages@(OriginFolio {}) page position =
+  prefixLookupPrevious pages page position
 folioLookupPreviousPadded pages@(SnocPage (FolioStep _ previous _)) page position =
   prefixLookupPrevious pages (page - folioLength previous) position
 
@@ -304,21 +305,12 @@ pageTracePrevious pages page positions = folioLookupPreviousValid pages page (tr
 tracePrecedes :: [Ordinal] -> [Ordinal] -> Bool
 tracePrecedes earlier later = not (chainOrdinalLT (traceHead later) (traceHead earlier))
 
-{-@ genuineTraceHead :: pages:{Folio origin final | folioLength pages > 1} -> value:final
+{-@ genuineTraceHead :: pages:Folio origin final -> value:final
       -> {traceHead (genuinePageElementTrace pages value) == chainPosition (lastChain pages) value} @-}
 genuineTraceHead :: Folio origin final -> final -> ()
 genuineTraceHead pages value =
-  let position = chainPosition (lastChain pages) value
-  in prefixTraceLookupPosition pages 0 value `seq`
-       finalPrefixLookup pages position `seq`
-       folioTraceLookupHead pages (folioLength pages - 1) position `seq`
-       traceHeadMatches position (genuinePageElementTrace pages value)
-
-{-@ finalPrefixLookup :: pages:{Folio origin final | folioLength pages > 1} -> position:Ordinal
-      -> {prefixTraceLookup pages 0 position == folioTraceLookup pages (folioLength pages - 1) position} @-}
-finalPrefixLookup :: Folio origin final -> Ordinal -> ()
-finalPrefixLookup (OriginFolio {}) _ = ()
-finalPrefixLookup (SnocPage (FolioStep _ _ _)) _ = ()
+  genuinePageElementTrace pages value `seq`
+    traceHeadMatches (chainPosition (lastChain pages) value) (genuinePageElementTrace pages value)
 
 -- ALIGN: PE-PADDED-PREVIOUS-HEAD.
 {-@ paddedPreviousHead :: pages:Folio origin final
@@ -374,10 +366,11 @@ pageTracePreviousMonotone pages@(SnocPage step@(FolioStep _ previous transition)
       -> positions:{[Ordinal] | pageTraceContains pages 0 positions}
       -> {positions == folioOriginTrace pages} @-}
 originTraceUnique :: Folio origin final -> [Ordinal] -> ()
-originTraceUnique (OriginFolio _ pageChain witness) positions =
-  case chainIndex pageChain (traceHead positions) of
+originTraceUnique pages@(OriginFolio {}) positions =
+  case chainIndex (lastChain pages) (traceHead positions) of
     Nothing -> ()
-    Just index -> singletonOriginUnique witness (chainObjectAt index)
+    Just index -> pageElementTraceAt pages 0 (chainObjectAt index) `seq`
+      traceSuffixSameLength positions (folioOriginTrace pages)
 originTraceUnique (SnocPage (FolioStep _ previous _)) positions =
   folioTraceLengthPositive previous `seq` originTraceUnique previous positions
 
@@ -415,23 +408,9 @@ prefixNextLookup prefix nextChain transition position =
             previousLookup result == folioTraceLookup prefix (folioLength prefix - 1) position} @-}
 genuineNextLookup
   :: Folio origin current -> Chain next -> OrderedConsolidation next current -> Ordinal -> Maybe [Ordinal]
-genuineNextLookup prefix@(OriginFolio count pageChain witness) nextChain transition position =
-  case chainIndex pageChain position of
-    Nothing -> Nothing
-    Just index ->
-      let value = chainObjectAt index
-          nextValue = orderedPreimage transition value
-          nextPages = SnocPage (FolioStep (folioLength prefix + 1) prefix transition)
-          positions = genuinePageElementTrace nextPages nextValue
-          nativePrefix = OriginFolio count pageChain witness
-      in genuineTraceNative nextPages nextValue `seq`
-          pageTracePrevious nextPages 0 positions `seq`
-          originTraceUnique prefix (previousTrace positions) `seq`
-          genuineTraceNative nativePrefix value `seq`
-          originTraceUnique nativePrefix (genuinePageElementTrace nativePrefix value) `seq`
-          Just positions
-genuineNextLookup prefix@(SnocPage (FolioStep _ _ _)) nextChain transition position =
-  prefixNextLookup prefix nextChain transition position
+genuineNextLookup prefix nextChain transition position =
+  folioFinalPrefixLookup prefix position `seq`
+    prefixNextLookup prefix nextChain transition position
 
 {-@ paddedNextLookup :: pages:Folio origin final
       -> page:{Natural | page + 1 >= folioLength pages} -> position:Ordinal

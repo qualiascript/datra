@@ -80,13 +80,35 @@ and the Atlas-map result contract are checked in both languages. These interface
 keep coverage constructors private; the remaining ownership-sensitive derived
 constructions still require migration to public interfaces.
 
+Coverage validation checks the retained region's owning trace, datum membership,
+final page, and both cache equalities. Matching the source's origin rank is only
+accepted after that validation. Lean proves that the executable validator is
+equivalent to a genuine territory representative, so checked covered-element
+packaging derives that representative from its coverage evidence. The Haskell
+payload keeps its dependent region and datum together; the abstract
+`CoverageWitness` type exposes the three owner parameters directly in checked
+contracts, and `AtlasCoverageWitness` is its object-indexed form. Public
+elimination retains the final-region, membership, and cached-rank certificates;
+rank observation keeps the constructor private. Coalition uses the shared
+covered-element carrier, its finite decoder, and its public constructors and
+eliminators.
+
 Finite coverage decoding retains source-datum membership and coverage of that
 exact returned datum. Its public interface can package the result as a covered
 page element. Ordinal and coverage enumeration share one total Cantor pair and
 finite-list codec, with both inverse laws and the decreasing bounds checked in
-LiquidHaskell and Lean. Coverage ranking still needs to use those encoding laws
-to obtain a finite search bound from its stored witness; the unrestricted search
-functions remain private.
+LiquidHaskell and Lean. Both languages check an inclusive bounded coverage search
+and its least-match law. A valid retained witness supplies an encoded candidate;
+Lean proves that this candidate matches and that bounded ranking agrees with the
+least rank. LiquidHaskell still needs the decoder round-trip and dependent datum
+rank-coherence proof before this bound can replace the private unrestricted
+searches. Final-page selection retains the requested chain position through the
+public page-element and territory interfaces. The singleton case uses the general
+fact that a chain with a unique carrier value has position zero; appended and
+singleton folios share the final-page lookup and trace-chain construction.
+Focused negative checks reject unproved carrier uniqueness, bounded ranks beyond
+the supplied limit, minimality without a successful selected rank, and a changed
+final-page position through either the implementation or its public interface.
 
 The shared Atlas extent module is LiquidHaskell-checked. Its origin-rank
 insertion requires explicit page-order and trace-transport conditions connecting

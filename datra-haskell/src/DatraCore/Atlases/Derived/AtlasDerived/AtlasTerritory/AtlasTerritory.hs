@@ -33,6 +33,7 @@ import PageElements.Structure
   ( SomePageElement (..)
   , PageElement
   , pageElementPage
+  , pageElementPosition
   )
 import qualified PageElements as Elements
 
@@ -79,10 +80,12 @@ atlasRegion = atlasTerritory
 
 -- | Consume a territory's certified cell. Its owning Atlas supplies the
 -- membership-refined dominion through 'Atlas.atlasDataAt'.
+-- ALIGN: ATLAS-TERRITORY-POSITION.
 {-@ withAtlasTerritory :: owner:Atlas a s d o f
       -> index:{ChainIndex f | chainPosition (atlasTerritoryChain owner) (chainObjectAt index) == chainIndexPosition index}
       -> (forall object. source:{PageElement s object | cellTraceValid owner source
-             && pageElementPage source == folioLength (atlasFolio owner) - 1}
+             && pageElementPage source == folioLength (atlasFolio owner) - 1
+             && pageElementPosition source == chainIndexPosition index}
             -> result)
       -> result @-}
 withAtlasTerritory

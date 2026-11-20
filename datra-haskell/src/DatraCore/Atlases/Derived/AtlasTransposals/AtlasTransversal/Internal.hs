@@ -45,10 +45,10 @@ import Atlas
   , withAtlasMorphismImage
   )
 import AtlasCoveredPageElement
-  ( AtlasCoveredPageElement
+  ( CoverageWitness
+  , AtlasCoveredPageElement
   , withAtlasCoveredPageElement
   , atlasCoveredByWitness
-  , AtlasCoverageWitness
   , coverageWitnessCovers
   )
 import AtlasTransposal (AtlasTransposal, AtlasTransposalElement)
@@ -101,7 +101,7 @@ type role TransversalAction nominal nominal nominal nominal nominal nominal nomi
       , transversalTarget :: Atlas ta ts td to tf
       , transversalOrdered :: OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
       , transversalCoverage :: covered:AtlasCoveredPageElement (AtlasObject sa ss sd)
-          -> {witness:AtlasCoverageWitness (AtlasObject ta ts td) |
+          -> {witness:CoverageWitness ta ts td |
                 transversalImageCovered transversalSource transversalTarget transversalOrdered covered witness}
       } @-}
 data TransversalAction sa ss sd so sf ta ts td to tf = TransversalAction
@@ -109,7 +109,7 @@ data TransversalAction sa ss sd so sf ta ts td to tf = TransversalAction
   , transversalTarget :: Atlas ta ts td to tf
   , transversalOrdered :: OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
   , transversalCoverage :: AtlasCoveredPageElement (AtlasObject sa ss sd)
-      -> AtlasCoverageWitness (AtlasObject ta ts td)
+      -> CoverageWitness ta ts td
   }
 
 -- | A materialized dependent image shared by the coverage predicate and
@@ -159,7 +159,7 @@ transversalImageCovered
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
   -> AtlasCoveredPageElement (AtlasObject sourceAtlasScope sourceScope sourceCellData)
-  -> AtlasCoverageWitness (AtlasObject targetAtlasScope targetScope targetCellData)
+  -> CoverageWitness targetAtlasScope targetScope targetCellData
   -> Bool
 transversalImageCovered sourceAtlas targetAtlas ordered covered witness =
   case transversalImage sourceAtlas ordered covered of
@@ -179,8 +179,7 @@ atlasTransversal
        (AtlasObject targetAtlasScope targetScope targetCellData)
   -> preservesCoverage:(covered:AtlasCoveredPageElement
          (AtlasObject sourceAtlasScope sourceScope sourceCellData)
-       -> { witness:AtlasCoverageWitness
-              (AtlasObject targetAtlasScope targetScope targetCellData) |
+       -> { witness:CoverageWitness targetAtlasScope targetScope targetCellData |
             transversalImageCovered sourceAtlas targetAtlas ordered covered witness })
   -> AtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
@@ -197,8 +196,7 @@ atlasTransversal
        (AtlasObject targetAtlasScope targetScope targetCellData)
   -> (AtlasCoveredPageElement
          (AtlasObject sourceAtlasScope sourceScope sourceCellData)
-       -> AtlasCoverageWitness
-            (AtlasObject targetAtlasScope targetScope targetCellData))
+       -> CoverageWitness targetAtlasScope targetScope targetCellData)
   -> AtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
