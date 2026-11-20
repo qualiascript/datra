@@ -68,7 +68,7 @@ import AtlasTransversal
   , mapAtlasTransversalElement
   , mapAtlasTransversalObject
   )
-import Coalition.Element.Internal (CoalitionElement, mapCoalitionElement)
+import Coalition.Element (CoalitionElement, mapCoalitionElement)
 import DomanialInsertion
   ( DomanialInsertion, domanialInsertion, identityInsertion, composeInsertions )
 import Control.Category (Category (..))

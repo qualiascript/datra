@@ -976,7 +976,7 @@ atlasPageHasExactly valueAtlas pageNumber cellCount =
 testDot :: IO ()
 testDot =
   dot `seq`
-    withAtlasMapExtent dotAtlasMap $ \_ extent coversExtent ->
+    withAtlasMapExtent dotAtlasMap $ \_ _ extent coversExtent ->
       let uniqueDatum = unrank extent 0
           coveredAtOnlyCell =
             case uniqueDatum of
@@ -1878,7 +1878,7 @@ rankOneValueUpperBound value =
 
 testEllipsis :: IO ()
 testEllipsis =
-  withAtlasMapExtent rankOneAtlasMap $ \_ extent coversExtent -> do
+  withAtlasMapExtent rankOneAtlasMap $ \_ _ extent coversExtent -> do
     let ranks :: [Natural]
         ranks = [0, 1, 2, 1000000]
         roundTrips valueRank =

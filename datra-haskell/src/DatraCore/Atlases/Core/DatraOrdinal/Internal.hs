@@ -24,6 +24,7 @@ module DatraOrdinal.Internal
   ) where
 
 import Numeric.Natural (Natural)
+import NaturalEncoding (pairNatural, unpairNatural)
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
@@ -222,17 +223,3 @@ encodeTuple :: [Natural] -> Maybe Natural
 encodeTuple [] = Just 0
 encodeTuple [value] = Just value
 encodeTuple (value : values) = pairNatural value <$> encodeTuple values
-
-pairNatural :: Natural -> Natural -> Natural
-pairNatural first second =
-  let diagonal = first + second
-  in diagonal * (diagonal + 1) `div` 2 + first
-
-{-@ lazy unpairNatural @-}
--- ALIGN: ORDINAL-PAIR-UNPAIR.
-unpairNatural :: Natural -> (Natural, Natural)
-unpairNatural = go 0
-  where
-    go diagonal remainder
-      | remainder <= diagonal = (remainder, diagonal - remainder)
-      | otherwise = go (diagonal + 1) (remainder - diagonal - 1)

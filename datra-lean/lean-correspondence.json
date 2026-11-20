@@ -3,14 +3,14 @@
   "theorems": [
     {
       "id": "ATLASHOM-RIGHT-IDENTITY",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Presheaf.hs",
       "haskell_declaration": "presheafRightIdentity",
       "lean_namespace": "Datra.Executable.AtlasHom",
       "lean_declaration": "presheafRightIdentity"
     },
     {
       "id": "ATLASHOM-ASSOC",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Presheaf.hs",
       "haskell_declaration": "presheafAssociativity",
       "lean_namespace": "Datra.Executable.AtlasHom",
       "lean_declaration": "presheafAssociativity"
@@ -262,8 +262,8 @@
     },
     {
       "id": "ORDINAL-PAIR-UNPAIR",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Internal.hs",
-      "haskell_declaration": "unpairNatural",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/NaturalEncoding.hs",
+      "haskell_declaration": "unpairPair",
       "lean_namespace": "Datra.Executable.Ordinal",
       "lean_declaration": "pair_unpairNatural"
     },
@@ -500,22 +500,22 @@
     },
     {
       "id": "COVERAGE-LIST-DECODE-ENCODE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
-      "haskell_declaration": "decodeNaturalList",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/NaturalEncoding.hs",
+      "haskell_declaration": "decodeEncode",
       "lean_namespace": "Datra.Executable.CoverageEnumeration",
       "lean_declaration": "decode_encode"
     },
     {
       "id": "COVERAGE-LIST-ENCODE-DECODE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
-      "haskell_declaration": "decodeNaturalList",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/NaturalEncoding.hs",
+      "haskell_declaration": "encodeDecode",
       "lean_namespace": "Datra.Executable.CoverageEnumeration",
       "lean_declaration": "encode_decode"
     },
     {
       "id": "COVERAGE-ORDINAL-ENUMERATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
-      "haskell_declaration": "decodeNaturalList",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
+      "haskell_declaration": "ordinalDecodeEncode",
       "lean_namespace": "Datra.Executable.CoverageEnumeration",
       "lean_declaration": "ordinal_decode_encode"
     },
@@ -542,7 +542,7 @@
     },
     {
       "id": "ATLAS-TERRITORY-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasTerritory/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasTerritory/AtlasTerritory.hs",
       "haskell_declaration": "atlasTerritory",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "Atlas.territory_interpretation"
@@ -577,21 +577,21 @@
     },
     {
       "id": "ATLAS-EQUALITY-ERASURE-INJECTIVE",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Presheaf.hs",
       "haskell_declaration": "equalityUnique",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "AtlasEquality.erase_injective"
     },
     {
       "id": "ATLAS-EQUALITY-UNIQUE",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Presheaf.hs",
       "haskell_declaration": "equalityUnique",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "AtlasEquality.erase_unique"
     },
     {
       "id": "ATLASHOM-IDENTITY-WITNESS",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Presheaf.hs",
       "haskell_declaration": "presheafCompose",
       "lean_namespace": "Datra.Executable.AtlasHom",
       "lean_declaration": "presheafCompose_identityWithEquality"
@@ -4522,6 +4522,104 @@
       "haskell_declaration": "atlasMerge",
       "lean_namespace": "Datra.Executable.AtlasMerge",
       "lean_declaration": "rawInterpretationIso"
+    },
+    {
+      "id": "PE-TRACE-VALID-ORIGIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/PageElements.hs",
+      "haskell_declaration": "pageElementTraceValidOrigin",
+      "lean_namespace": "Datra.Executable.FolioData",
+      "lean_declaration": "traceValid_hasOrigin"
+    },
+    {
+      "id": "ATLAS-CELL-TRACE-HAS-ORIGIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
+      "haskell_declaration": "cellTraceHasOrigin",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.cellTrace_hasOrigin"
+    },
+    {
+      "id": "PE-LAST-SINGLETON-ORIGIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Internal.hs",
+      "haskell_declaration": "lastPageElement",
+      "lean_namespace": "Datra.Executable.FolioData.ValidElement",
+      "lean_declaration": "lastElement_origin"
+    },
+    {
+      "id": "ATLAS-COVERAGE-RANK-DECODER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "atlasCoverageAt",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coverageAt_eq_pullback"
+    },
+    {
+      "id": "ORDINAL-FINITE-BELOW-OMEGA",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
+      "haskell_declaration": "finiteOrdinalBelowOmega",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "finiteOrdinal_below_omega"
+    },
+    {
+      "id": "ORDINAL-FINITE-LOOKUP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
+      "haskell_declaration": "finiteOrdinalLookup",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "naturalAtOrdinal_finite"
+    },
+    {
+      "id": "ORDINAL-FINITE-INJECTIVE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
+      "haskell_declaration": "finiteOrdinalInjective",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "finiteOrdinal_injective"
+    },
+    {
+      "id": "ORDINAL-NATURAL-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DatraOrdinal/Laws.hs",
+      "haskell_declaration": "naturalAtOrdinalComplete",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "naturalAtOrdinal_matches"
+    },
+    {
+      "id": "COALITION-CHECKED-CONSTRUCTOR",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs",
+      "haskell_declaration": "coalitionElement",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionElement_checked"
+    },
+    {
+      "id": "ATLAS-COVERED-BY-WITNESS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/AtlasCoveredPageElement.hs",
+      "haskell_declaration": "atlasCoveredByWitness",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "atlasCoveredByWitness"
+    },
+    {
+      "id": "ATLAS-COVERAGE-TRANSPORT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "coverageWitnessAlongArrow",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coverageWitnessAlongArrow"
+    },
+    {
+      "id": "NATURAL-UNPAIR-BOUNDS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/NaturalEncoding.hs",
+      "haskell_declaration": "unpairNatural",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "unpairNatural_bounds"
+    },
+    {
+      "id": "NATURAL-PAIR-UNPAIR",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/NaturalEncoding.hs",
+      "haskell_declaration": "pairUnpair",
+      "lean_namespace": "Datra.Executable.Ordinal",
+      "lean_declaration": "pair_unpairNatural"
+    },
+    {
+      "id": "ATLAS-COVERED-DECODE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/AtlasCoveredPageElement.hs",
+      "haskell_declaration": "atlasCoveredAt",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "atlasCoveredAt"
     }
   ],
   "modules": [
@@ -4669,19 +4767,14 @@
       ],
       "reflected": [
         "chainOrdinalLT",
-        "chainListLength",
         "positionMatches",
         "reindexedPosition",
         "reindexedLookup",
         "chainIndex",
-        "chainObjectAt",
-        "spineOmega",
-        "spineOrdinal",
-        "spineNatural"
+        "chainObjectAt"
       ],
       "refinements": [
         "chainOrdinalLT",
-        "chainListLength",
         "chain",
         "reindexChain",
         "reindexedBelow",
@@ -4691,13 +4784,7 @@
         "reindexedSurjective",
         "chainIndex",
         "chainIndexOf",
-        "spinePositionBelow",
-        "spinePositionInjective",
-        "spinePositionSurjective",
-        "spineOrdinal",
-        "spineNatural",
-        "spineLongNotBelow",
-        "spineListAtLeastTwo"
+        "spinePositionSurjective"
       ],
       "lean_target": "Datra.Executable.Chain",
       "coverage": "partial",
@@ -4836,9 +4923,11 @@
       "types": [],
       "reflected": [
         "consNatural",
-        "subtractEqualCoefficients"
+        "subtractEqualCoefficients",
+        "naturalOrdinalMatches"
       ],
       "refinements": [
+        "ordinalDecodeEncode",
         "ordinalNotBelowZero",
         "ordinalBelowOne",
         "ordinalAddLeftBelow",
@@ -4862,7 +4951,11 @@
         "addCoefficientsLift",
         "addCoefficientsRightReflectsBelow",
         "coefficientsLTAsymmetric",
-        "ordinalLongNotBelowOmega"
+        "ordinalLongNotBelowOmega",
+        "finiteOrdinalBelowOmega",
+        "finiteOrdinalLookup",
+        "finiteOrdinalInjective",
+        "naturalAtOrdinalComplete"
       ],
       "lean_target": "Datra.Executable.Ordinal",
       "coverage": "partial",
@@ -5078,6 +5171,7 @@
         "folioTraceLookupNormalize",
         "indexInFolio",
         "pageElementTraceValidShape",
+        "pageElementTraceValidOrigin",
         "pageElementValidArrowPosition",
         "pageElementTraceValidNormalize",
         "lookupPrefixIndex",
@@ -5337,11 +5431,21 @@
         "coveragePage",
         "coverageNormalize",
         "coverageFinalPage",
-        "coverageWitnessCovers"
+        "coverageWitnessCovers",
+        "withAtlasCoveredPageElement",
+        "coverageResultCovers"
       ],
       "refinements": [
+        "atlasOriginImageRank",
+        "coverageWitnessAlongArrow",
         "atlasCoverageWitness",
-        "atlasCoveredPageElement"
+        "atlasCoveredPageElement",
+        "findAtlasCoverage",
+        "findAtlasCoverageRank",
+        "atlasCoveredPageElementAt",
+        "atlasCoverageAt",
+        "searchAtlasCoverageFrom",
+        "coverageCandidate"
       ],
       "lean_target": "Datra.Executable.Atlas.CoverageWitness",
       "coverage": "aligned",
@@ -5350,7 +5454,8 @@
         "Natural as int"
       ],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
@@ -5369,7 +5474,9 @@
         "extentContainsRank"
       ],
       "refinements": [
+        "atlasCellDominion",
         "atlasExtent",
+        "cellTraceHasOrigin",
         "cellNativeTrace",
         "atlasCellAt",
         "cellEvidenceFromSome",
@@ -5438,14 +5545,15 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransversal/Internal.hs",
       "module": "AtlasTransversal.Internal",
       "types": [
-        "AtlasTransversal"
+        "AtlasTransversal",
+        "TransversalAction",
+        "TransversalImage"
       ],
       "reflected": [
         "withTransversalImage",
         "transversalImageCovered"
       ],
       "refinements": [
-        "checkedTransversalWitness",
         "atlasTransversal"
       ],
       "lean_target": "Datra.Executable.Atlas.Transversal",
@@ -5453,7 +5561,10 @@
       "aliases": [],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": [
+        "transversalImage"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/OrderedAtlasTransposal/Internal.hs",
@@ -5504,12 +5615,21 @@
       "module": "AtlasMap.Internal",
       "types": [
         "AtlasMap",
+        "AtlasMapData",
         "AtlasMapHom",
         "AtlasMapInclusionFunctor"
       ],
-      "reflected": [],
+      "reflected": [
+        "atlasMapCellValid",
+        "atlasMapAcceptsDatum",
+        "atlasMapWitnessCovers"
+      ],
       "refinements": [
-        "atlasMap"
+        "atlasMap",
+        "withAtlasMapExtent",
+        "mapExtentCovered",
+        "atlasMapCoversDatum",
+        "mapCoveredDatum"
       ],
       "lean_target": "Datra.Executable.AtlasMap",
       "coverage": "partial",
@@ -5563,6 +5683,8 @@
       "reflected": [
         "chartedCellDataValue",
         "chartedCellData",
+        "chartMapApply",
+        "chartMapPreimage",
         "mapChartedCellData",
         "composeValues",
         "identityValue",
@@ -5573,6 +5695,7 @@
         "chartCellData",
         "chartCounitInsertion",
         "chartMapInsertion",
+        "chartMapRoundTrip",
         "charterIdentityValue",
         "charterCompositionValue",
         "chartHomLeftInverseValue",
@@ -5675,7 +5798,9 @@
         "identityValue",
         "domIncHomToValue",
         "domIncHomFromValue",
-        "coalitionElementAt"
+        "coalitionElementAt",
+        "coalitionComponentMap",
+        "dominionCellProjectionPreimage"
       ],
       "refinements": [
         "dominionFunctorIdentityValue",
@@ -5684,7 +5809,9 @@
         "domIncHomRightInverseValue",
         "domIncHomNaturalityLeftValue",
         "domIncHomNaturalityRightValue",
-        "coalitionComponentInsertion"
+        "coalitionComponentInsertion",
+        "coalitionComponentRoundTrip",
+        "dominionCellProjectionRoundTrip"
       ],
       "lean_target": "Datra.Executable.DomanialInclusion",
       "coverage": "partial",
@@ -5800,8 +5927,6 @@
         "DataTransformationNatural"
       ],
       "reflected": [
-        "presheafIdentity",
-        "presheafCompose",
         "mapDataTransformationAction",
         "mapDataTransformation",
         "mapDataTransformationComponent",
@@ -5810,9 +5935,6 @@
         "mapYonedaNatural"
       ],
       "refinements": [
-        "presheafRightIdentity",
-        "equalityUnique",
-        "presheafAssociativity",
         "dataTransformation",
         "dataTransformationIdentity",
         "dataTransformationComposition",
@@ -5827,9 +5949,7 @@
       "lean_target": "Datra.Executable.DataTransformation",
       "coverage": "partial",
       "aliases": [],
-      "embeddings": [
-        "AtlasEquality * as TypeEquality"
-      ],
+      "embeddings": [],
       "predicates": [],
       "refinement_aliases": []
     },
@@ -5977,11 +6097,16 @@
       "refinement_aliases": []
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasTerritory/Internal.hs",
-      "module": "AtlasTerritory.Internal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasTerritory/AtlasTerritory.hs",
+      "module": "AtlasTerritory",
       "types": [],
       "reflected": [],
-      "refinements": [],
+      "refinements": [
+        "atlasTerritoryChain",
+        "atlasTerritory",
+        "atlasRegion",
+        "withAtlasTerritory"
+      ],
       "lean_target": "Datra.Executable.Atlas.TerritoryIndex",
       "coverage": "aligned",
       "aliases": [
@@ -5989,7 +6114,10 @@
       ],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": [
+        "atlasTerritoryChain"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
@@ -6728,7 +6856,9 @@
       "types": [],
       "reflected": [],
       "refinements": [
-        "prefixTraceLookupObject"
+        "prefixTraceLookupObject",
+        "pageElementTraceValidOrigin",
+        "lastPageElement"
       ],
       "lean_target": "Datra.Executable.FolioData",
       "coverage": "partial",
@@ -6743,7 +6873,9 @@
       "types": [],
       "reflected": [],
       "refinements": [
-        "atlasForPredicate"
+        "atlasForPredicate",
+        "normalizeAtlasElementTraceValid",
+        "atlasAcceptsDatumNormalized"
       ],
       "lean_target": "Datra.Executable.AtlasMembershipAction",
       "coverage": "partial",
@@ -6811,6 +6943,114 @@
       "refinements": [
         "membershipDominion"
       ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/AtlasExtent.hs",
+      "module": "AtlasExtent",
+      "types": [],
+      "reflected": [],
+      "refinements": [
+        "atlasCellDominion",
+        "cellTraceHasOrigin"
+      ],
+      "lean_target": "Datra.Executable.Atlas.CellDominion",
+      "coverage": "partial",
+      "aliases": [],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Presheaf.hs",
+      "module": "Atlas.Presheaf",
+      "lean_target": "Datra.Executable.AtlasHom",
+      "coverage": "aligned",
+      "reflected": [
+        "presheafIdentity",
+        "presheafCompose"
+      ],
+      "refinements": [
+        "presheafRightIdentity",
+        "equalityUnique",
+        "presheafAssociativity"
+      ],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [
+        "AtlasEquality * as TypeEquality"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs",
+      "module": "Coalition.Element",
+      "lean_target": "Datra.Executable.Atlas.CoalitionElement",
+      "coverage": "partial",
+      "types": [],
+      "reflected": [],
+      "refinements": [
+        "coalitionElement"
+      ],
+      "aliases": [],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/AtlasCoveredPageElement.hs",
+      "module": "AtlasCoveredPageElement",
+      "lean_target": "Datra.Executable.Atlas.CoveredPageElement",
+      "coverage": "partial",
+      "types": [],
+      "reflected": [],
+      "refinements": [
+        "atlasCoveredByWitness",
+        "atlasCoveredAt"
+      ],
+      "aliases": [],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/NaturalEncoding.hs",
+      "module": "NaturalEncoding",
+      "types": [],
+      "reflected": [
+        "triangular",
+        "pairNatural",
+        "unpairNatural",
+        "unpairNaturalFrom",
+        "decodeNaturalList",
+        "prependNatural",
+        "encodeNaturalList"
+      ],
+      "refinements": [
+        "unpairNatural",
+        "unpairNaturalFrom",
+        "triangularStep",
+        "triangularMonotone",
+        "triangularStrict",
+        "unpairPairFrom",
+        "unpairPair",
+        "pairUnpairFrom",
+        "pairUnpair",
+        "decodeNaturalList",
+        "encodeCons",
+        "emptyListCode",
+        "decodeEncode",
+        "decodeStep",
+        "encodeDecode"
+      ],
+      "lean_target": "Datra.Executable.Ordinal",
+      "coverage": "partial",
+      "aliases": [],
+      "embeddings": [
+        "Natural as int"
+      ],
+      "predicates": [],
+      "refinement_aliases": []
     }
   ],
   "trust_boundary": [

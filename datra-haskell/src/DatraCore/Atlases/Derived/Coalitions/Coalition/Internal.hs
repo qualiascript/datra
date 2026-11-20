@@ -1,11 +1,8 @@
 -- | Coalitions and the Coalizing functor.
 module Coalition.Internal
   ( CoalitionElement
-  , coalitionElement
   , coalitionElementRank
   , withCoalitionElement
-  , coalitionElementAt
-  , coalitionElementCoverageAt
   , coalition
   , stableCoalitionMap
   , coalizingFunctorObject
@@ -16,13 +13,13 @@ module Coalition.Internal
 
 import Atlas (Atlas, AtlasObject, AtlasWitness)
 import Coalition.Element.Internal
-  ( CoalitionElement, coalitionElement, coalitionElementRank, withCoalitionElement
-  , coalitionElementAt, coalitionElementCoverageAt, coalition )
+  ( CoalitionElement, coalitionElementRank, withCoalitionElement
+  , coalition )
 import DomanialInsertion (DomanialInsertion, applyInsertion, insertionLeftInverse)
 import Dominion (Dominion)
 import StableAtlasTransversal
-  ( StableAtlasTransversal, composeStableAtlasTransversals, identityStableAtlasTransversal )
-import StableAtlasTransversal.Internal (stableAtlasTransversalCoalitionInsertion)
+  ( StableAtlasTransversal, composeStableAtlasTransversals, identityStableAtlasTransversal
+  , stableAtlasTransversalCoalitionInsertion )
 
 -- | The object action of the Coalizing functor.
 coalizingFunctorObject

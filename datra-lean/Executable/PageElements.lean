@@ -651,6 +651,18 @@ theorem lastElement_interpretation (pages : FolioData origin final) (index : Cha
       ⟨pages.toSemantics.lastBase, finalFiniteValue pages index.object⟩ :=
   ofFinite_interpretation pages (finalIndex pages) (finalFiniteValue pages index.object)
 
+/-- On a singleton folio, its final indexed cell is the unique origin cell. -/
+-- ALIGN: PE-LAST-SINGLETON-ORIGIN.
+theorem lastElement_origin (count : Nat) (selected : origin.Carrier)
+    (unique : ∀ value : origin.Carrier, value = selected) (index : ChainIndex origin.chain) :
+    lastElement (.origin origin count selected unique) index =
+      originElement (.origin origin count selected unique) := by
+  apply eq_of_page_position
+  · rfl
+  · simpa [lastElement, originElement, ofFinite, ofOccurrence, Occurrence.toRaw,
+      finalFiniteValue, originFiniteValue, pageAt, paddedIndex, FolioData.page,
+      indexEquivFin, finalIndex, depth, originValue] using congrArg origin.chain.position (unique index.object)
+
 /-- Every valid occurrence on the final genuine page is a territory cell. -/
 theorem lastElement_surjective (pages : FolioData origin final) (x : pages.ValidElement)
     (h : x.val.page = pages.depth - 1) :

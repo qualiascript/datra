@@ -7,6 +7,10 @@ module AtlasMap
   ( AtlasMap
   , atlasMap
   , atlasMapAtlas
+  , atlasMapCoversDatum
+  , atlasMapAcceptsDatum
+  , atlasMapCellValid
+  , atlasMapWitnessCovers
   , withAtlasMapExtent
   , AtlasMapHom
   , atlasMapHom
@@ -29,6 +33,10 @@ import AtlasMap.Internal
   , AtlasMapInclusionFunctor
   , atlasMap
   , atlasMapAtlas
+  , atlasMapCoversDatum
+  , atlasMapAcceptsDatum
+  , atlasMapCellValid
+  , atlasMapWitnessCovers
   , atlasMapHom
   , atlasMapHomPagination
   , atlasMapInclusionFunctor

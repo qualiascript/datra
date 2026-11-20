@@ -21,10 +21,13 @@ def atlasMap (X : Atlas)
   ⟨FolioData.ValidElement.originElement X.pages, rfl, covers⟩
 
 def withExtent {Result : Sort*} (value : AtlasMap X)
-    (useExtent : (extent : X.Element) → Dominion (X.cellData extent.val.cell) →
-      (X.cellData extent.val.cell → X.CertifiedCoveredElement) → Result) : Result :=
-  useExtent value.extent (X.dataAt value.extent) (fun datum =>
-    ⟨⟨value.extent, datum, (value.coversExtent datum).val⟩, (value.coversExtent datum).property⟩)
+    (useExtent : (owner : Atlas) → owner = X → (extent : owner.Element) →
+      Dominion (owner.cellData extent.val.cell) →
+      (owner.cellData extent.val.cell → owner.CertifiedCoveredElement) → Result) : Result :=
+  useExtent X rfl value.extent (X.dataAt value.extent) (fun datum =>
+    X.atlasCoveredByWitness value.extent datum
+      ⟨(value.coversExtent datum).val, (value.coversExtent datum).property.1⟩
+      (value.coversExtent datum).property.2)
 
 def toExtent (value : AtlasMap X) (source : X.Element) : source ⟶ value.extent :=
   source.toOrigin ≫ eqToHom value.isOrigin.symm
@@ -38,7 +41,7 @@ theorem coversDatum_spec (value : AtlasMap X) (source : X.Element) (datum : X.ce
     (value.coversDatum source datum).Valid ∧
       X.coverageWitnessCovers source datum (value.coversDatum source datum) = true := by
   have valid := (value.coversExtent ((X.data.action.normalizedMap (value.toExtent source)).map datum)).property
-  simpa only [Atlas.coverageWitnessCovers, Atlas.originImageRank, Atlas.originImage_map] using valid
+  exact ⟨valid.1, Atlas.coverageWitnessAlongArrow (value.toExtent source) datum _ valid.2⟩
 
 theorem allCovered (value : AtlasMap X) (source : X.Element) (datum : X.cellData source.val.cell) :
     X.Covered source datum :=

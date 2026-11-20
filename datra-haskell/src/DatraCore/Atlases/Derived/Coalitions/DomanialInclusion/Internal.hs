@@ -52,14 +52,14 @@ import Atlas
   , atlasObjectMap
   , atlasOriginCell
   , atlasWitness
+  , withAtlasWitness
   )
 import Atlas.Internal
   ( atlasDataAction
   , atlasWithScope
   )
-import Atlas.Morphism.Internal (AtlasWitness (..))
-import AtlasCoveredPageElement.Internal
-  ( AtlasCoveredPageElement (..)
+import AtlasCoveredPageElement
+  ( withAtlasCoveredPageElement
   , AtlasCoverageWitness
   , atlasCoverageWitness
   )
@@ -75,7 +75,7 @@ import Coalition
   , stableCoalitionMap
   , withCoalitionElement
   )
-import Coalition.Internal
+import Coalition.Element
   ( coalitionElement
   , coalitionElementCoverageAt
   )
@@ -224,6 +224,7 @@ dominionCoalitionElement valueDominion value =
     (atlasOriginCell valueAtlas) $ \origin ->
       let datum = dominionCellData value
       in coalitionElement
+          valueAtlas
           origin
           datum
           (dominionCoverage valueAtlas origin datum)
@@ -300,7 +301,8 @@ coaToDomInc
   -> (forall object. PageElement (AtlasObjectPaginationScope target) object
         -> a -> ())
   -> StableAtlasTransversal (DominionAtlasObject a) target
-coaToDomInc sourceDominion (AtlasWitness targetAtlas) insertion backward leftInverse =
+coaToDomInc sourceDominion targetOwner insertion backward leftInverse =
+  withAtlasWitness targetOwner $ \targetAtlas ->
   withPageElement (atlasOriginCell targetAtlas) $
     \(targetOrigin :: PageElement targetScope targetObject) ->
     let sourceAtlas = dominionAtlas sourceDominion
@@ -355,8 +357,7 @@ coaToDomInc sourceDominion (AtlasWitness targetAtlas) insertion backward leftInv
             targetAtlas
             ordered
             (\covered ->
-              case covered of
-                AtlasCoveredPageElement _ sourceDatum _ ->
+              withAtlasCoveredPageElement covered $ \_ sourceDatum ->
                   coalitionElementCoverageAt
                     targetAtlas
                     targetOrigin

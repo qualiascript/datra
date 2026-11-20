@@ -8,6 +8,9 @@ LAKE ?= lake
 endif
 CABAL_PROJECT ?= cabal.project
 export CABAL_PROJECT
+ifneq ($(wildcard .tools/z3-4.15.4/bin/z3),)
+export PATH := $(CURDIR)/.tools/z3-4.15.4/bin:$(PATH)
+endif
 
 verify-alignment:
 	python3 scripts/check_alignment.py

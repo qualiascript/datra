@@ -53,6 +53,7 @@ module PageElements.Internal
   , folioTraceLookupHead
   , pageElementTraceValid
   , pageElementTraceValidShape
+  , pageElementTraceValidOrigin
   , pageElementValidArrowPosition
   , pageElementTraceValidNormalize
   , somePageElementTraceValid
@@ -435,6 +436,17 @@ pageElementTraceValidShape category occurrence =
     Nothing -> ()
     Just index -> pageElement index `seq` ()
 
+-- | The owning lookup certifies the scalar arrow back to the origin.
+{-@ pageElementTraceValidOrigin :: category:PageElements scope origin final
+      -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence}
+      -> {somePageElementPrecedes (SomePageElement occurrence) (originPageElement category)
+           && somePageElementTransported (SomePageElement occurrence) (originPageElement category)} @-}
+pageElementTraceValidOrigin :: PageElements scope origin final -> PageElement scope object -> ()
+pageElementTraceValidOrigin category occurrence =
+  case pageElementIndex category (pageElementPage occurrence) (pageElementPosition occurrence) of
+    Nothing -> ()
+    Just index -> pageElement index `seq` ()
+
 -- ALIGN: PE-OWNER-ARROW-POSITION.
 {-@ pageElementValidArrowPosition :: category:PageElements scope origin final
       -> arrow:{PageElementArrow scope source target |
@@ -611,25 +623,26 @@ folioOriginElement pages =
 
 -- | A certified cell of the final genuine page as a page element.
 -- ALIGN: PE-LAST-INTERPRETATION.
+-- ALIGN: PE-LAST-SINGLETON-ORIGIN.
 {-@ lastPageElement :: category:PageElements scope origin final
       -> index:{ChainIndex final |
            chainPosition (lastChain (pageElementsFolio category)) (chainObjectAt index)
                 == chainIndexPosition index}
-      -> SomePageElement scope @-}
+      -> {result:SomePageElement scope |
+           somePageElementTraceValid category result
+           && Trace.somePageElementPage result == folioLength (pageElementsFolio category) - 1} @-}
 lastPageElement
   :: PageElements scope origin final
   -> ChainIndex final
   -> SomePageElement scope
-lastPageElement (PageElements (OriginFolio count pageChain witness)) index =
-  let prefix = OriginFolio count pageChain witness
-      value = chainObjectAt index
-  in pageElement (PageElementIndex (indexWithTrace 0 prefix 0 value
-       (originElementTrace pageChain witness value)))
-lastPageElement (PageElements (SnocPage step@(FolioStep count previous transition))) index =
-  let prefix = SnocPage step
-      value = chainObjectAt index
-  in pageElement (PageElementIndex (indexWithTrace (count - 1) prefix 0 value
-       (snocElementTrace previous (stepSource step) transition value)))
+lastPageElement category@(PageElements pages@(OriginFolio count pageChain witness)) index =
+  singletonOriginUnique witness (chainObjectAt index) `seq`
+    folioLength pages `seq` originPageElement category
+lastPageElement (PageElements pages@(SnocPage step@(FolioStep count previous transition))) index =
+  let value = chainObjectAt index
+  in folioLength pages `seq` finalPageTraceLookup pages value `seq`
+    pageElement (PageElementIndex (indexWithTrace (count - 1) pages 0 value
+      (snocElementTrace previous (stepSource step) transition value)))
 
 -- | The exact trace of the unique origin occurrence.
 {-@ reflect folioOriginTrace @-}
@@ -711,8 +724,8 @@ appendedFinalLookup previous pageChain transition value =
   in prefixTraceLookupPosition pages 0 value `seq`
     appendedPageTrace previous pageChain transition value
 
--- | Every accepted cell on the final appended page is returned with its exact native trace.
--- The singleton origin lookup is certified separately by folioOriginTraceLookup.
+-- | Every cell on the final appended page is returned with its exact native trace.
+-- The singleton origin lookup is certified by folioOriginTraceLookup.
 -- ALIGN: FOLIO-FINAL-CELL-LOOKUP.
 {-@ finalPageTraceLookup :: pages:{Folio origin current | folioLength pages > 1} -> value:current
       -> {folioTraceLookup pages (folioLength pages - 1) (chainPosition (lastChain pages) value)

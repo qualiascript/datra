@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 HASKELL = ROOT / "datra-haskell"
-SOURCE = HASKELL / "src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs"
+SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Presheaf.hs"
 GUARDS = {
     "inhabited equality witnesses cannot prove False": """
 {-@ proofGuard :: AtlasEquality a b -> { proof:() | False } @-}
@@ -781,9 +781,49 @@ proofGuard targetAtlas targetOccurrence forward =
 """,
 }
 
+COALITION_ELEMENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs"
+COALITION_ELEMENT_GUARDS = {
+    "public coalitions require coverage of the exact origin datum": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> origin:{PageElement s object | cellTraceValid owner origin
+           && SomePageElement origin == originPageElement (atlasPageElements owner)}
+      -> datum:{d object | atlasAcceptsDatum owner origin datum}
+      -> AtlasCoverageWitness (AtlasObject a s d)
+      -> CoalitionElement (AtlasObject a s d) @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object
+  -> AtlasCoverageWitness (AtlasObject a s d) -> CoalitionElement (AtlasObject a s d)
+proofGuard = coalitionElement
+""",
+    "public coalitions reject a covered cell without origin evidence": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> witness:{AtlasCoverageWitness (AtlasObject a s d) |
+           coverageWitnessCovers owner source datum witness}
+      -> CoalitionElement (AtlasObject a s d) @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object
+  -> AtlasCoverageWitness (AtlasObject a s d) -> CoalitionElement (AtlasObject a s d)
+proofGuard = coalitionElement
+""",
+}
+
 
 TRANSVERSAL_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransversal/Internal.hs"
 TRANSVERSAL_GUARDS = {
+    "stored transversal actions reject coverage evidence for the wrong image": """
+{-@ proofGuard
+      :: sourceAtlas:Atlas sa ss sd so sf -> targetAtlas:Atlas ta ts td to tf
+      -> ordered:OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> badCoverage:(covered:AtlasCoveredPageElement (AtlasObject sa ss sd)
+           -> {w:AtlasCoverageWitness (AtlasObject ta ts td) |
+                not (transversalImageCovered sourceAtlas targetAtlas ordered covered w)})
+      -> TransversalAction sa ss sd so sf ta ts td to tf @-}
+proofGuard :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
+  -> OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> (AtlasCoveredPageElement (AtlasObject sa ss sd) -> AtlasCoverageWitness (AtlasObject ta ts td))
+  -> TransversalAction sa ss sd so sf ta ts td to tf
+proofGuard = TransversalAction
+""",
     "transversals reject coverage evidence for the wrong image": """
 {-@
 proofGuard
@@ -804,6 +844,69 @@ proofGuard
   -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
 proofGuard sourceAtlas targetAtlas ordered badCoverage =
   atlasTransversal sourceAtlas targetAtlas ordered badCoverage
+""",
+}
+
+COVERED_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/AtlasCoveredPageElement.hs"
+COVERED_API_GUARDS = {
+    "coverage decoding rejects attaching its witness to another source": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> other:PageElement s object -> Natural
+      -> Maybe (AtlasCoveredPageElement (AtlasObject a s d)) @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> PageElement s object -> Natural
+  -> Maybe (AtlasCoveredPageElement (AtlasObject a s d))
+proofGuard owner source other candidate =
+  case atlasCoverageAt owner source candidate of
+    Nothing -> Nothing
+    Just (datum, witness) -> Just (atlasCoveredByWitness owner other datum witness)
+""",
+    "covered-element packaging rejects unrelated coverage evidence": """
+{-@ proofGuard :: owner:Atlas a s d o f -> source:PageElement s object -> datum:d object
+      -> witness:{AtlasCoverageWitness (AtlasObject a s d) |
+           not (coverageWitnessCovers owner source datum witness)}
+      -> AtlasCoveredPageElement (AtlasObject a s d) @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object
+  -> AtlasCoverageWitness (AtlasObject a s d) -> AtlasCoveredPageElement (AtlasObject a s d)
+proofGuard = atlasCoveredByWitness
+""",
+}
+
+
+ATLAS_MAP_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs"
+ATLAS_MAP_GUARDS = {
+    "stored Atlas maps reject coverage for a different extent datum": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s extent | cellTraceValid owner source
+           && SomePageElement source == originPageElement (atlasPageElements owner)}
+      -> wrong:(datum:{d extent | atlasAcceptsDatum owner source datum}
+           -> {w:AtlasCoverageWitness (AtlasObject a s d) |
+                not (coverageWitnessCovers owner source datum w)})
+      -> AtlasMapData a s d o f extent @-}
+proofGuard :: Atlas a s d o f -> PageElement s extent
+  -> (d extent -> AtlasCoverageWitness (AtlasObject a s d)) -> AtlasMapData a s d o f extent
+proofGuard = AtlasMapData
+""",
+    "stored Atlas maps reject a nonorigin extent": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s extent | cellTraceValid owner source
+           && SomePageElement source /= originPageElement (atlasPageElements owner)}
+      -> covers:(datum:{d extent | atlasAcceptsDatum owner source datum}
+           -> {w:AtlasCoverageWitness (AtlasObject a s d) |
+                coverageWitnessCovers owner source datum w})
+      -> AtlasMapData a s d o f extent @-}
+proofGuard :: Atlas a s d o f -> PageElement s extent
+  -> (d extent -> AtlasCoverageWitness (AtlasObject a s d)) -> AtlasMapData a s d o f extent
+proofGuard = AtlasMapData
+""",
+    "Atlas map coverage rejects data outside the source carrier": """
+{-@ proofGuard :: value:AtlasMap (AtlasObject a s d)
+      -> source:{PageElement s cell | atlasMapCellValid value source}
+      -> datum:{d cell | not (atlasMapAcceptsDatum value source datum)}
+      -> AtlasCoverageWitness (AtlasObject a s d) @-}
+proofGuard :: AtlasMap (AtlasObject a s d) -> PageElement s cell -> d cell
+  -> AtlasCoverageWitness (AtlasObject a s d)
+proofGuard = atlasMapCoversDatum
 """,
 }
 
@@ -1491,7 +1594,10 @@ def run(pattern=None):
                                     (MERGE_PAGE_SOURCE, MERGE_PAGE_GUARDS),
                                     (STABLE_SOURCE, STABLE_GUARDS),
                                     (DOMINC_SOURCE, DOMINC_GUARDS),
+                                    (COALITION_ELEMENT_SOURCE, COALITION_ELEMENT_GUARDS),
                                     (TRANSVERSAL_SOURCE, TRANSVERSAL_GUARDS),
+                                    (COVERED_API_SOURCE, COVERED_API_GUARDS),
+                                    (ATLAS_MAP_SOURCE, ATLAS_MAP_GUARDS),
                                     (CHARTER_SOURCE, CHARTER_GUARDS),
                                     (RANK_IMAGE_SOURCE, RANK_IMAGE_GUARDS),
                                     (MERGE_SOURCE, MERGE_GUARDS),

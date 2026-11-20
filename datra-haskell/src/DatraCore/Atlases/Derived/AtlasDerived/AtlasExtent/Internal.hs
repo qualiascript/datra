@@ -14,9 +14,12 @@ module AtlasExtent.Internal
   ( AtlasCellDominion (..)
   , AtlasCellDominionHandler
   , atlasExtent
+  , atlasCellDominion
+  , atlasCellDominionElement
   , withAtlasCellDominion
   , atlasCellOriginRankInsertion
   , cellHasOrigin
+  , cellTraceHasOrigin
   , cellTraceValid
   , cellNativeTrace
   , extentContainsRank
@@ -101,6 +104,18 @@ withAtlasCellDominion
   (AtlasCellDominion (occurrence, valueDominion))
   useDominion = useDominion occurrence valueDominion
 
+-- | Package the actual dominion of a certified cell in its owning Atlas.
+{-@ atlasCellDominion :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> {result:AtlasCellDominion s d |
+           atlasCellDominionElement result == SomePageElement source
+           && Elements.somePageElementTraceValid (atlasPageElements owner) (atlasCellDominionElement result)} @-}
+{-@ ple atlasCellDominion @-}
+atlasCellDominion :: Atlas a s d o f -> PageElement s object -> AtlasCellDominion s d
+atlasCellDominion owner source =
+  AtlasCellDominion (source, membershipDominion
+    (atlasAcceptsDatum owner source) (atlasDataAt owner source))
+
 -- | The Atlas extent: the dominion attached to its origin cell.
 -- ALIGN: ATLAS-EXTENT-INTERPRETATION.
 {-@ reflect atlasExtent @-}
@@ -139,6 +154,17 @@ cellHasOrigin valueAtlas source =
 cellTraceValid :: Atlas atlasScope scope cellData origin final -> PageElement scope object -> Bool
 cellTraceValid valueAtlas source =
   Elements.pageElementTraceValid (atlasPageElements valueAtlas) source
+
+-- | Valid owning traces carry the arrow needed by the origin insertion.
+-- ALIGN: ATLAS-CELL-TRACE-HAS-ORIGIN.
+{-@ cellTraceHasOrigin :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> {cellHasOrigin owner source} @-}
+{-@ ple cellTraceHasOrigin @-}
+cellTraceHasOrigin :: Atlas a s d o f -> PageElement s object -> ()
+cellTraceHasOrigin owner source =
+  Elements.pageElementTraceValidOrigin (atlasPageElements owner) source `seq`
+    cellHasOrigin owner source `seq` ()
 
 -- ALIGN: ATLAS-CELL-NATIVE-TRACE.
 {-@ cellNativeTrace :: owner:Atlas a s d o f

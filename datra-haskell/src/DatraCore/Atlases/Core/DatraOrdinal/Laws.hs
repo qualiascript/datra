@@ -18,9 +18,16 @@ module DatraOrdinal.Laws
   , ordinalAddRightComparison
   , ordinalBelowOne
   , ordinalNotBelowZero
+  , finiteOrdinalBelowOmega
+  , finiteOrdinalLookup
+  , finiteOrdinalInjective
+  , naturalOrdinalMatches
+  , naturalAtOrdinalComplete
+  , ordinalDecodeEncode
   ) where
 
 import Numeric.Natural (Natural)
+import NaturalEncoding (encodeNaturalList, decodeNaturalList, decodeEncode)
 import DatraOrdinal.Internal
   ( Ordinal(..)
   , addCoefficients
@@ -32,12 +39,21 @@ import DatraOrdinal.Internal
   , omega
   , ordinalLT
   , finiteOrdinal
+  , naturalAtOrdinal
+  , ordinal
   )
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
 
 {-@ type CanonicalCoefficients = { values:[Natural] | canonicalCoefficients values } @-}
+
+-- ALIGN: COVERAGE-ORDINAL-ENUMERATION.
+{-@ ordinalDecodeEncode :: value:Ordinal
+      -> {ordinal (decodeNaturalList (encodeNaturalList (coefficients value))) == value} @-}
+ordinalDecodeEncode :: Ordinal -> ()
+ordinalDecodeEncode (Ordinal []) = decodeEncode []
+ordinalDecodeEncode (Ordinal values@(_ : _)) = decodeEncode values
 
 -- ALIGN: ORDINAL-NOT-BELOW-ZERO.
 {-@ ordinalNotBelowZero :: value:Ordinal -> {not (ordinalLT value (finiteOrdinal 0))} @-}
@@ -529,3 +545,41 @@ ordinalLongNotBelowOmega values@(_ : _ : _ : _) =
   coefficientsLT values [1, 0] `seq`
     ordinalLT (Ordinal values) omega `seq` ()
 ordinalLongNotBelowOmega _ = ()
+
+-- | The natural spine is the finite initial segment below omega.
+-- ALIGN: ORDINAL-FINITE-BELOW-OMEGA.
+{-@ finiteOrdinalBelowOmega :: value:Natural -> {ordinalLT (finiteOrdinal value) omega} @-}
+finiteOrdinalBelowOmega :: Natural -> ()
+finiteOrdinalBelowOmega value
+  | value > 0 = ()
+  | otherwise = ()
+
+-- ALIGN: ORDINAL-FINITE-LOOKUP.
+{-@ finiteOrdinalLookup :: value:Natural -> {naturalAtOrdinal (finiteOrdinal value) == Just value} @-}
+finiteOrdinalLookup :: Natural -> ()
+finiteOrdinalLookup value
+  | value > 0 = ()
+  | otherwise = ()
+
+-- ALIGN: ORDINAL-FINITE-INJECTIVE.
+{-@ finiteOrdinalInjective :: first:Natural -> second:Natural
+      -> {finiteOrdinal first == finiteOrdinal second => first == second} @-}
+finiteOrdinalInjective :: Natural -> Natural -> ()
+finiteOrdinalInjective first second =
+  finiteOrdinalLookup first `seq` finiteOrdinalLookup second
+
+{-@ reflect naturalOrdinalMatches @-}
+naturalOrdinalMatches :: Ordinal -> Maybe Natural -> Bool
+naturalOrdinalMatches _ Nothing = False
+naturalOrdinalMatches position (Just value) = finiteOrdinal value == position
+
+-- ALIGN: ORDINAL-NATURAL-INVERSE.
+{-@ naturalAtOrdinalComplete :: position:Ordinal
+      -> {ordinalLT position omega => naturalOrdinalMatches position (naturalAtOrdinal position)} @-}
+naturalAtOrdinalComplete :: Ordinal -> ()
+naturalAtOrdinalComplete (Ordinal []) = ()
+naturalAtOrdinalComplete (Ordinal [value])
+  | value > 0 = ()
+  | otherwise = ()
+naturalAtOrdinalComplete (Ordinal values@(_ : _ : _)) =
+  ordinalLongNotBelowOmega values

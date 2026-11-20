@@ -69,6 +69,25 @@ stored arrows, and their inclusion actions agree with the semantic full
 subcategories. Charter coverage witnesses reuse the original Atlas search's
 region and recompute the charted caches, matching the Haskell algorithm.
 
+Primitive transversal actions store their exact-image coverage law in a checked
+record. The image operation retains the dependent target cell and datum before
+the public coverage constructor packages them. Atlas maps likewise store their
+owning Atlas, canonical origin, and accepted-datum coverage law together. Their
+extent eliminator exposes that owner to its callback. Coverage of an arbitrary
+accepted datum follows by transporting it to the stored origin and applying the
+checked origin-rank preservation theorem. The shared coverage-transport lemma
+and the Atlas-map result contract are checked in both languages. These interfaces
+keep coverage constructors private; the remaining ownership-sensitive derived
+constructions still require migration to public interfaces.
+
+Finite coverage decoding retains source-datum membership and coverage of that
+exact returned datum. Its public interface can package the result as a covered
+page element. Ordinal and coverage enumeration share one total Cantor pair and
+finite-list codec, with both inverse laws and the decreasing bounds checked in
+LiquidHaskell and Lean. Coverage ranking still needs to use those encoding laws
+to obtain a finite search bound from its stored witness; the unrestricted search
+functions remain private.
+
 The shared Atlas extent module is LiquidHaskell-checked. Its origin-rank
 insertion requires explicit page-order and trace-transport conditions connecting
 the source to this Atlas's origin. Lean derives these conditions for every valid

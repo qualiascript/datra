@@ -38,7 +38,7 @@ import Chain
   )
 import Consolidation (consolidation, op)
 import Coalition (CoalitionElement, coalitionElementRank)
-import Coalition.Internal (coalitionElement)
+import Coalition.Element (coalitionElement)
 import DomanialInclusion
   ( DominionAtlasObject
   , coaToDomInc
@@ -62,8 +62,8 @@ import PageElements
   , pageElementPage
   , pageElementPosition
   , withPageElement
+  , lastPageElement
   )
-import PageElements.Internal (lastPageElement)
 import Pagination (Pagination)
 import Pagination.Internal (paginationWithScope)
 import StableAtlasTransversal (StableAtlasTransversal)
@@ -261,6 +261,7 @@ chainedDominionCoalitionElement firstValue valueChain valueDominion value =
   withPageElement (atlasOriginCell valueAtlas) $ \origin ->
     let datum = ChainedDominionExtentDatum value
     in coalitionElement
+        valueAtlas
         origin
         datum
         (chainedDominionCoverage

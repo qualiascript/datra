@@ -265,7 +265,7 @@ def coalitionTransversal {A : Type} (D : Dominion A) (X : Atlas)
     (backward : X.cellData (FolioData.ValidElement.originElement X.pages).val.cell → Option A)
     (leftInverse : ∀ value, backward (forward value).value.val = some value) :
     Atlas.Transversal (dominionAtlas D) X :=
-  .primitive (coalitionOrdered D X forward backward leftInverse) (fun covered =>
+  Atlas.atlasTransversal (coalitionOrdered D X forward backward leftInverse) (fun covered =>
     ⟨(forward covered.val.datum.value).val.witness,
       (forward covered.val.datum.value).property.1.1, by
         change X.coverageWitnessCovers

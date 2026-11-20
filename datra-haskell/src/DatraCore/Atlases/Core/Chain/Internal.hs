@@ -31,12 +31,10 @@ module Chain.Internal
 
 import Numeric.Natural (Natural)
 
-import DatraOrdinal.Internal
-  ( Ordinal(..)
-  , canonicalCoefficients
-  , ordinalLT
-  )
-import DatraOrdinal.Laws (ordinalLongNotBelowOmega)
+import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal, omega, ordinalLT)
+import DatraOrdinal.Laws
+  ( finiteOrdinalBelowOmega, finiteOrdinalInjective
+  , naturalAtOrdinalComplete, naturalOrdinalMatches )
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
@@ -50,12 +48,6 @@ chainOrdinalLT
 @-}
 chainOrdinalLT :: Ordinal -> Ordinal -> Bool
 chainOrdinalLT left right = ordinalLT left right
-
-{-@ reflect chainListLength @-}
-{-@ chainListLength :: values:[a] -> { lengthValue:Int | lengthValue == len values } @-}
-chainListLength :: [a] -> Int
-chainListLength [] = 0
-chainListLength (_ : values) = 1 + chainListLength values
 
 {-@ reflect positionMatches @-}
 positionMatches :: (object -> Ordinal) -> Ordinal -> Maybe object -> Bool
@@ -255,114 +247,15 @@ hasArrow valueChain source target =
 -- ALIGN: CHAIN-SPINE.
 spine :: Chain Natural
 spine =
-  Chain
-    spineOmega
-    spineOrdinal
-    spineNatural
-    spinePositionBelow
-    spinePositionInjective
-    spinePositionSurjective
+  Chain omega finiteOrdinal naturalAtOrdinal
+    finiteOrdinalBelowOmega finiteOrdinalInjective spinePositionSurjective
 
-{-@
-spinePositionBelow
-  :: value:Natural
-  -> { proof:() |
-       chainOrdinalLT (spineOrdinal value) spineOmega }
-@-}
-spinePositionBelow :: Natural -> ()
-spinePositionBelow value
-  | value > 0 = ()
-  | otherwise = ()
-
-{-@
-spinePositionInjective
-  :: left:Natural
-  -> right:Natural
-  -> { proof:() |
-       spineOrdinal left == spineOrdinal right => left == right }
-@-}
-spinePositionInjective :: Natural -> Natural -> ()
-spinePositionInjective left right
-  | left == right = ()
-  | left > 0 && right > 0 =
-      spineOrdinal left `seq` spineOrdinal right `seq` ()
-  | left > 0 = spineOrdinal left `seq` spineOrdinal right `seq` ()
-  | right > 0 = spineOrdinal left `seq` spineOrdinal right `seq` ()
-  | otherwise = spineOrdinal left `seq` spineOrdinal right `seq` ()
-
-{-@
-spinePositionSurjective
-  :: position:Ordinal
-  -> { proof:() |
-       chainOrdinalLT position spineOmega
-         => positionMatches spineOrdinal position
-              (spineNatural position) }
-@-}
+{-@ spinePositionSurjective :: position:Ordinal
+      -> {chainOrdinalLT position omega
+           => positionMatches finiteOrdinal position (naturalAtOrdinal position)} @-}
 spinePositionSurjective :: Ordinal -> ()
-spinePositionSurjective position@(Ordinal []) =
-  spineNatural position `seq` spineOrdinal 0 `seq` ()
-spinePositionSurjective position@(Ordinal [value]) =
-  spineNatural position `seq` spineOrdinal value `seq` ()
-spinePositionSurjective (Ordinal coefficients@(_ : _ : _))
-  | canonicalCoefficients coefficients =
-      spineListAtLeastTwo coefficients `seq`
-        spineLongNotBelow coefficients
-  | otherwise = ()
-
-{-@ inline spineOmega @-}
-spineOmega :: Ordinal
-spineOmega = Ordinal [1, 0]
-
-{-@ reflect spineOrdinal @-}
-{-@
-spineOrdinal
-  :: value:Natural
-  -> { position:Ordinal |
-       chainOrdinalLT position spineOmega
-       && spineNatural position == Just value }
-@-}
-spineOrdinal :: Natural -> Ordinal
-spineOrdinal value
-  | value > 0 = Ordinal [value]
-  | otherwise = Ordinal []
-
-{-@ reflect spineNatural @-}
-{-@
-spineNatural
-  :: position:Ordinal
-  -> { result:Maybe Natural |
-       chainOrdinalLT position spineOmega
-         => positionMatches spineOrdinal position result }
-@-}
-spineNatural :: Ordinal -> Maybe Natural
-spineNatural (Ordinal []) = Just 0
-spineNatural (Ordinal [value]) = Just value
-spineNatural (Ordinal coefficients@(_ : _ : _))
-  | canonicalCoefficients coefficients =
-      spineListAtLeastTwo coefficients `seq`
-        spineLongNotBelow coefficients `seq` Nothing
-  | otherwise = Nothing
-
-{-@
-spineLongNotBelow
-  :: coefficients:{ [Natural] |
-       chainListLength coefficients >= 2
-       && canonicalCoefficients coefficients }
-  -> { proof:() |
-       not (chainOrdinalLT (Ordinal coefficients) spineOmega) }
-@-}
-{-@ ple spineLongNotBelow @-}
-spineLongNotBelow :: [Natural] -> ()
-spineLongNotBelow coefficients@(_ : _ : _) =
-  ordinalLongNotBelowOmega coefficients
-spineLongNotBelow _ = ()
-
-{-@
-spineListAtLeastTwo
-  :: coefficients:{ [Natural] | len coefficients >= 2 }
-  -> { proof:() | chainListLength coefficients >= 2 }
-@-}
-spineListAtLeastTwo :: [Natural] -> ()
-spineListAtLeastTwo coefficients@(_ : _ : _) =
-  chainListLength coefficients `seq` ()
-spineListAtLeastTwo _ = ()
+spinePositionSurjective position =
+  naturalAtOrdinalComplete position `seq`
+    case naturalAtOrdinal position of
+      Nothing -> ()
+      Just _ -> ()

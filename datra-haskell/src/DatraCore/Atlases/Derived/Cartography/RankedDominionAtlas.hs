@@ -31,7 +31,7 @@ import AtlasCoveredPageElement
 import AtlasMap (AtlasMap, atlasMap)
 import Chain (chainIndexOf, spine)
 import Coalition (CoalitionElement, coalitionElementRank)
-import Coalition.Internal (coalitionElement)
+import Coalition.Element (coalitionElement)
 import Consolidation (consolidation, op)
 import DatraOrdinal (Ordinal, naturalAtOrdinal)
 import DomanialInclusion
@@ -58,8 +58,8 @@ import PageElements
   , pageElementPage
   , pageElementPosition
   , withPageElement
+  , lastPageElement
   )
-import PageElements.Internal (lastPageElement)
 import Pagination (Pagination)
 import Pagination.Internal (paginationWithScope)
 import StableAtlasTransversal (StableAtlasTransversal)
@@ -231,6 +231,7 @@ rankedDominionCoalitionElement valueDominion value =
   withPageElement (atlasOriginCell valueAtlas) $ \origin ->
     let datum = RankedDominionExtentDatum value
     in coalitionElement
+        valueAtlas
         origin
         datum
         (rankedDominionCoverage valueDominion origin datum)

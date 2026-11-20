@@ -8,9 +8,6 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
--- The endpoints are phantom in this proof-only wrapper. The Lean erasure is
--- injective at each pair of endpoints; no AtlasHom indices are erased.
-{-@ embed AtlasEquality * as TypeEquality @-}
 
 -- | LiquidHaskell-verified presheaf actions on the Atlas category.
 module DataTransformation.LiquidInternal
@@ -32,9 +29,10 @@ module DataTransformation.LiquidInternal
   , yonedaNatural
   ) where
 
-import Atlas.Morphism.Internal (AtlasHom (..), AtlasEquality (..))
+import Atlas.Presheaf
+  ( AtlasHom, presheafIdentity, presheafCompose
+  , presheafRightIdentity, presheafAssociativity )
 import Data.Kind (Type)
-import Data.Type.Equality ((:~:) (Refl))
 
 -- | Interpret a defunctionalized presheaf value-family symbol at an Atlas.
 type family DataTransformationValue
@@ -53,72 +51,6 @@ data Yoneda (represented :: Type) (atlas :: Type) = Yoneda
 type instance
   DataTransformationValue (YonedaPresheaf represented) atlas =
     Yoneda represented atlas
-
--- A polymorphic nullary value must be inlined into refinement expressions.
-{-@ inline presheafIdentity @-}
-presheafIdentity :: AtlasHom object object
-presheafIdentity = IdentityAtlasHom (AtlasEquality Refl)
-
--- ALIGN: ATLASHOM-IDENTITY-WITNESS.
-{-@ reflect presheafCompose @-}
-presheafCompose
-  :: AtlasHom middle target
-  -> AtlasHom source middle
-  -> AtlasHom source target
-presheafCompose second (IdentityAtlasHom (AtlasEquality Refl)) = second
-presheafCompose second (CompositeAtlasHom middle first) =
-  CompositeAtlasHom (presheafCompose second middle) first
-presheafCompose second first@(PrimitiveAtlasHom _ _ _) =
-  CompositeAtlasHom second first
-
-{-@
-presheafRightIdentity
-  :: arrow:AtlasHom source target
-  -> { proof:() |
-       presheafCompose arrow presheafIdentity == arrow }
-@-}
--- ALIGN: ATLASHOM-RIGHT-IDENTITY.
-
-presheafRightIdentity :: AtlasHom source target -> ()
-presheafRightIdentity (IdentityAtlasHom (AtlasEquality Refl)) = ()
-presheafRightIdentity (PrimitiveAtlasHom _ _ _) = ()
-presheafRightIdentity (CompositeAtlasHom _ _) = ()
-
-{-@
-equalityUnique
-  :: first:AtlasEquality a b
-  -> second:AtlasEquality c d
-  -> { first == second }
-@-}
--- ALIGN: ATLAS-EQUALITY-ERASURE-INJECTIVE.
--- ALIGN: ATLAS-EQUALITY-UNIQUE.
-equalityUnique :: AtlasEquality a b -> AtlasEquality c d -> ()
-equalityUnique (AtlasEquality Refl) (AtlasEquality Refl) = ()
-
-{-@
-presheafAssociativity
-  :: third:AtlasHom secondMiddle target
-  -> second:AtlasHom firstMiddle secondMiddle
-  -> first:AtlasHom source firstMiddle
-  -> { proof:() |
-       presheafCompose third (presheafCompose second first)
-       == presheafCompose (presheafCompose third second) first }
-@-}
--- ALIGN: ATLASHOM-ASSOC.
-
-presheafAssociativity
-  :: AtlasHom secondMiddle target
-  -> AtlasHom firstMiddle secondMiddle
-  -> AtlasHom source firstMiddle
-  -> ()
-presheafAssociativity third second (IdentityAtlasHom equality@(AtlasEquality Refl)) =
-  equalityUnique equality (AtlasEquality Refl :: AtlasEquality () ()) `seq`
-  presheafRightIdentity second `seq`
-    presheafRightIdentity (presheafCompose third second)
-presheafAssociativity _ _ (PrimitiveAtlasHom _ _ _) = ()
-presheafAssociativity third second
-  (CompositeAtlasHom middle first) =
-    presheafAssociativity third second middle `seq` first `seq` ()
 
 -- | The contravariant arrow action of a presheaf, packaged so refinements can
 -- refer to its rank-N function through a first-order accessor.

@@ -19,6 +19,16 @@ def coverageWitnessCovers (X : Atlas) (source : X.Element)
   witness.regionPage == X.coverageFinalPage &&
     X.originImageRank source datum == witness.regionOriginRank
 
+-- ALIGN: ATLAS-COVERAGE-TRANSPORT.
+-- Transport preserves the origin image, so the cached witness covers both data.
+theorem coverageWitnessAlongArrow {X : Atlas} {source target : X.Element}
+    (arrow : source ⟶ target) (datum : X.cellData source.val.cell)
+    (witness : X.CoverageWitness)
+    (covers : X.coverageWitnessCovers target
+      ((X.data.action.normalizedMap arrow).map datum) witness = true) :
+    X.coverageWitnessCovers source datum witness = true := by
+  simpa only [coverageWitnessCovers, originImageRank, originImage_map] using covers
+
 abbrev CoverageRegion (X : Atlas) :=
   (index : X.TerritoryIndex) × X.cellData (X.territory index).element.val.cell
 
@@ -100,6 +110,13 @@ def atlasCoveredPageElementWitness {X : Atlas} (covered : X.CoveredPageElement) 
 
 def CoveredPageElement.Valid {X : Atlas} (covered : X.CoveredPageElement) : Prop :=
   covered.witness.Valid ∧ X.coverageWitnessCovers covered.source covered.datum covered.witness = true
+
+-- ALIGN: ATLAS-COVERED-BY-WITNESS.
+def atlasCoveredByWitness (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (witness : {w : X.CoverageWitness // w.Valid})
+    (covers : X.coverageWitnessCovers source datum witness.val = true) :
+    {covered : X.CoveredPageElement // covered.Valid} :=
+  ⟨⟨source, datum, witness.val⟩, witness.property, covers⟩
 
 def atlasCoveredPageElement (X : Atlas) (source region : X.Element)
     (sourceDatum : X.cellData source.val.cell) (regionDatum : X.cellData region.val.cell)
@@ -212,8 +229,8 @@ def coverageAt (X : Atlas) (source : X.Element) (candidate : Nat) :
   match X.decodeCoverageRegion candidate with
   | none => none
   | some region =>
-    match (X.data.action.normalizedMap source.toOrigin).preimage
-        (X.originImage (X.territory region.1).element region.2) with
+    match (X.cellOriginRankInsertion source).preimage
+        (X.originImageRank (X.territory region.1).element region.2) with
     | none => none
     | some datum =>
       if X.originImageRank source datum =
@@ -221,12 +238,46 @@ def coverageAt (X : Atlas) (source : X.Element) (candidate : Nat) :
         some (datum, region.witness)
       else none
 
+/-- The checked rank inverse is exactly the origin pullback followed by
+its image test, including outside the source insertion's image. -/
+-- ALIGN: ATLAS-COVERAGE-RANK-DECODER.
+theorem coverageAt_eq_pullback (X : Atlas) (source : X.Element) (candidate : Nat) :
+    X.coverageAt source candidate =
+      match X.decodeCoverageRegion candidate with
+      | none => none
+      | some region =>
+        match (X.data.action.normalizedMap source.toOrigin).preimage
+            (X.originImage (X.territory region.1).element region.2) with
+        | none => none
+        | some datum =>
+          if X.originImageRank source datum =
+              X.originImageRank (X.territory region.1).element region.2 then
+            some (datum, region.witness)
+          else none := by
+  unfold coverageAt
+  cases X.decodeCoverageRegion candidate with
+  | none => rfl
+  | some region =>
+    simp only [Atlas.cellOriginRankInsertion, DomanialInsertion.rankImageInsertion,
+      DomanialInsertion.rankImagePreimage, Atlas.originImageRank, Dominion.coherence,
+      bind, Option.bind, DomanialInsertion.rankImage]
+    cases (X.data.action.normalizedMap source.toOrigin).preimage
+        (X.originImage (X.territory region.1).element region.2) with
+    | none => rfl
+    | some datum =>
+      change (match (if X.originImageRank source datum =
+          X.originImageRank (X.territory region.1).element region.2 then some datum else none) with
+        | none => none
+        | some value => if X.originImageRank source value =
+            X.originImageRank (X.territory region.1).element region.2 then some (value, region.witness) else none) = _
+      split <;> simp_all [Atlas.originImageRank]
+
 -- ALIGN: ATLAS-COVERAGE-DECODE-SOUND.
 theorem coverageAt_sound {X : Atlas} {source : X.Element} {candidate : Nat}
     {datum : X.cellData source.val.cell} {witness : X.CoverageWitness}
     (h : X.coverageAt source candidate = some (datum, witness)) :
     witness.Valid ∧ X.coverageWitnessCovers source datum witness = true := by
-  unfold coverageAt at h
+  rw [coverageAt_eq_pullback] at h
   cases hd : X.decodeCoverageRegion candidate with
   | none => simp [hd] at h
   | some region =>
@@ -243,6 +294,15 @@ theorem coverageAt_sound {X : Atlas} {source : X.Element} {candidate : Nat}
             exact ⟨⟨region, rfl⟩, by simp [coverageWitnessCovers, CoverageRegion.witness, he]⟩
           · simp at h
 
+-- ALIGN: ATLAS-COVERED-DECODE.
+def atlasCoveredAt (X : Atlas) (source : X.Element) (candidate : Nat) :
+    Option {covered : X.CoveredPageElement // covered.Valid} :=
+  match h : X.coverageAt source candidate with
+  | none => none
+  | some (datum, witness) =>
+    some (X.atlasCoveredByWitness source datum ⟨witness, (coverageAt_sound h).1⟩
+      (coverageAt_sound h).2)
+
 -- ALIGN: ATLAS-COVERAGE-DECODE-COMPLETE.
 theorem coverageAt_complete {X : Atlas} {source : X.Element}
     {datum : X.cellData source.val.cell} (covered : X.Covered source datum) :
@@ -251,7 +311,7 @@ theorem coverageAt_complete {X : Atlas} {source : X.Element}
   let region : X.CoverageRegion := ⟨index, value⟩
   have image_eq := (X.originImageRank_eq_iff source (X.territory index).element datum value).mp he
   refine ⟨region.code, region.witness, ?_⟩
-  simp only [coverageAt, decodeCoverageRegion_code]
+  simp only [coverageAt_eq_pullback, decodeCoverageRegion_code]
   change (match (X.data.action.normalizedMap source.toOrigin).preimage
       (X.originImage (X.territory index).element value) with
     | none => none

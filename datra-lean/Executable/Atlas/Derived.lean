@@ -224,6 +224,11 @@ def Atlas.cellHasOrigin (X : Atlas) (source : PageElement X.pages) : Prop :=
   PageElement.precedes source (FolioData.ValidElement.originElement X.pages).val ∧
     PageElement.transported source (FolioData.ValidElement.originElement X.pages).val
 
+-- ALIGN: ATLAS-CELL-TRACE-HAS-ORIGIN.
+theorem Atlas.cellTrace_hasOrigin (X : Atlas) (source : PageElement X.pages)
+    (accepted : X.cellTraceValid source = true) : X.cellHasOrigin source :=
+  X.pages.traceValid_hasOrigin X.pagination.folio.valid source accepted
+
 theorem Atlas.validCell_hasOrigin (X : Atlas) (source : X.Element) : X.cellHasOrigin source.val :=
   ⟨source.toOrigin.precedes, source.toOrigin.transported⟩
 

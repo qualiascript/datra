@@ -31,41 +31,55 @@ theorem CertifiedCoveredElement.fromSemantics_data {X : Atlas}
 theorem CertifiedCoveredElement.covered {X : Atlas} (c : X.CertifiedCoveredElement) :
     c.data.Covered := CoveredPageElement.covered c.property
 
+abbrev TransversalImage (Y : Atlas) := Y.DataElement
+
+def transversalImage {X Y : Atlas} (ordered : OrderedTransposal X Y)
+    (covered : X.CertifiedCoveredElement) : TransversalImage Y :=
+  ordered.underlying.hom.mapData covered.data
+
 -- ALIGN: ATLAS-TRANSVERSAL-IMAGE.
 def withTransversalImage {X Y : Atlas} {Result : Sort*} (ordered : OrderedTransposal X Y)
     (covered : X.CertifiedCoveredElement)
     (useImage : (target : Y.Element) → Y.cellData target.val.cell → Result) : Result :=
-  let image := ordered.underlying.hom.mapData covered.data
+  let image := transversalImage ordered covered
   useImage image.1 image.2
 
 -- ALIGN: ATLAS-TRANSVERSAL-IMAGE-COVERAGE.
 def transversalImageCovered {X Y : Atlas} (ordered : OrderedTransposal X Y)
     (covered : X.CertifiedCoveredElement) (witness : Y.CoverageWitness) : Bool :=
-  withTransversalImage ordered covered (fun target datum => Y.coverageWitnessCovers target datum witness)
+  let image := transversalImage ordered covered
+  Y.coverageWitnessCovers image.1 image.2 witness
 
-/-- The primitive callback certifies the exact image computed by the ordered
-transposal, for each covered source datum. -/
+/-- A primitive action stores the law of its exact image with the callback. -/
+structure TransversalAction (X Y : Atlas) where
+  ordered : OrderedTransposal X Y
+  preserves : (c : X.CertifiedCoveredElement) →
+    {w : Y.CoverageWitness // w.Valid ∧ transversalImageCovered ordered c w = true}
+
 inductive Transversal : Atlas → Atlas → Type 2
-  | primitive {X Y} (ordered : OrderedTransposal X Y)
-      (preserves : (c : X.CertifiedCoveredElement) →
-        {w : Y.CoverageWitness // w.Valid ∧ transversalImageCovered ordered c w = true}) :
-      Transversal X Y
+  | primitive {X Y} (action : TransversalAction X Y) : Transversal X Y
   | identity {X} : Transversal X X
   | composite {X Y Z} : Transversal Y Z → Transversal X Y → Transversal X Z
+
+def atlasTransversal {X Y : Atlas} (ordered : OrderedTransposal X Y)
+    (preserves : (c : X.CertifiedCoveredElement) →
+      {w : Y.CoverageWitness // w.Valid ∧ transversalImageCovered ordered c w = true}) : Transversal X Y :=
+  .primitive ⟨ordered, preserves⟩
 
 namespace Transversal
 
 def underlying {X Y : Atlas} : Transversal X Y → OrderedTransposal X Y
-  | .primitive ordered _ => ordered
+  | .primitive action => action.ordered
   | .identity => .identity
   | .composite second first => OrderedTransposal.comp second.underlying first.underlying
 
 def mapCovered {X Y : Atlas} : Transversal X Y → X.CertifiedCoveredElement → Y.CertifiedCoveredElement
   | .identity, c => c
   | .composite second first, c => second.mapCovered (first.mapCovered c)
-  | .primitive ordered preserves, c =>
-      let witness := preserves c
-      ⟨withTransversalImage ordered c (fun target datum => ⟨target, datum, witness.val⟩), witness.property⟩
+  | .primitive action, c =>
+      let witness := action.preserves c
+      let image := transversalImage action.ordered c
+      Y.atlasCoveredByWitness image.1 image.2 ⟨witness.val, witness.property.1⟩ witness.property.2
 
 theorem underlying_composite {X Y Z : Atlas} (second : Transversal Y Z) (first : Transversal X Y) :
     (composite second first).underlying.underlying.hom.finiteSemantics =
@@ -81,10 +95,10 @@ theorem mapCovered_interpretation {X Y : Atlas} (f : Transversal X Y)
     (f.mapCovered c).data = fromSemanticData Y
       (mapSemanticData f.underlying.underlying.hom.finiteSemantics source) := by
   induction f with
-  | primitive ordered preserves =>
-      change ordered.underlying.hom.mapData c.data = _
+  | primitive action =>
+      change action.ordered.underlying.hom.mapData c.data = _
       rw [h]
-      exact (ordered.underlying.hom.mapData_interpretation source).symm
+      exact (action.ordered.underlying.hom.mapData_interpretation source).symm
   | identity =>
       change c.data = fromSemanticData _ (mapSemanticData (Hom.finiteSemantics .identity) source)
       rw [Hom.finiteSemantics_identity]
@@ -163,7 +177,7 @@ theorem toSemantics_comp {X Y Z : Atlas} (second : Transversal Y Z) (first : Tra
     (comp second first).toSemantics = first.toSemantics ≫ second.toSemantics := by
   induction first with
   | identity => cases second <;> simp [comp]
-  | primitive _ _ => cases second <;> simp [comp]
+  | primitive _ => cases second <;> simp [comp]
   | composite middle first ih _ => cases second <;> simp_all [comp, Category.assoc]
 
 end Transversal

@@ -8,6 +8,7 @@ module StableAtlasTransversal
   , stableAtlasTransversalTransposal
   , stableAtlasTransversalHom
   , stableAtlasTransversalSourceWitness
+  , stableAtlasTransversalCoalitionInsertion
   , stableAtlasTransversalPreservesExtent
   , identityStableAtlasTransversal
   , composeStableAtlasTransversals
@@ -35,6 +36,7 @@ import StableAtlasTransversal.Internal
   , stableAtlasTransversal
   , stableAtlasTransversalHom
   , stableAtlasTransversalSourceWitness
+  , stableAtlasTransversalCoalitionInsertion
   , stableAtlasTransversalLeftInverse
   , stableAtlasTransversalOrderedTransposal
   , stableAtlasTransversalPagination

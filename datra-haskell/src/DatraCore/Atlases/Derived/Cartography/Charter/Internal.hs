@@ -51,6 +51,16 @@ import Atlas
   , atlasPageElements
   , atlasDataAt
   , atlasWitness
+  , withAtlasWitness
+  , atlasMorphismActionNaturality
+  , atlasMorphismObjectMapWitness
+  , withAtlasMorphismAction
+  , normalizeAtlasMorphismAction
+  , atlasMorphismActionPreservesArrow
+  , atlasMorphismSource
+  , atlasMorphismTarget
+  , mapAtlasMorphismActionComponent
+  , mapAtlasMorphismActionObject
   , mapAtlasData
   , materializeAtlasHom
   )
@@ -62,27 +72,13 @@ import Atlas.Internal
   , atlasIdentityWitness
   , atlasWithScope
   )
-import Atlas.Morphism.Internal
-  ( AtlasWitness (..)
-  , atlasMorphismActionNaturality
-  , atlasMorphismObjectMapWitness
-  , withAtlasMorphismAction
-  , normalizeAtlasMorphismAction
-  , atlasMorphismActionPreservesArrow
-  , atlasMorphismSource
-  , atlasMorphismTarget
-  , mapAtlasMorphismActionComponent
-  , mapAtlasMorphismActionObject
-  )
 import AtlasCoveredPageElement.Internal
   ( AtlasCoverageWitness (..)
-  , atlasCoveredPageElementAt
   , findAtlasCoverage
   , findAtlasCoverageRank
-  , atlasCoverageWitness
   )
-import AtlasMap (AtlasMap, atlasMap, atlasMapAtlas)
-import AtlasMap.Internal (atlasMapCoversDatum)
+import AtlasCoveredPageElement (atlasCoverageAt, atlasCoverageWitness)
+import AtlasMap (AtlasMap, atlasMap, atlasMapAtlas, atlasMapCoversDatum)
 import AtlasTransposal
   ( AtlasTransposalElement
   , atlasTransposal
@@ -168,7 +164,7 @@ chartedDominion valueAtlas occurrence =
       findAtlasCoverageRank valueAtlas occurrence . chartedCellDataValue
 
     chartUnrank =
-      fmap chartedCellData . atlasCoveredPageElementAt valueAtlas occurrence
+      fmap (chartedCellData . fst) . atlasCoverageAt valueAtlas occurrence
 
     chartRoundTrip _ = ()
 
@@ -301,7 +297,9 @@ chartHom
   -> (forall object. PageElement (AtlasObjectPaginationScope source) object
         -> ChartedCellData source object -> ())
   -> AtlasHom (ChartedAtlasObject source) (ChartedAtlasObject target)
-chartHom sourceWitness@(AtlasWitness _) (AtlasWitness _) hom backward leftInverse =
+chartHom sourceWitness targetWitness hom backward leftInverse =
+  withAtlasWitness sourceWitness $ \_ ->
+  withAtlasWitness targetWitness $ \_ ->
   atlasHom (chartMorphism (materializeAtlasHom sourceWitness hom) backward leftInverse)
 
 relabelElement
@@ -325,10 +323,29 @@ chartMap
   -> AtlasTransversalMap
        (ChartedAtlasObject source)
        (ChartedAtlasObject target)
-chartMap sourceWitness@(AtlasWitness sourceAtlas)
-         targetWitness@(AtlasWitness targetAtlas)
-         transversal backward leftInverse =
-  atlasTransversalMap
+chartMap sourceWitness targetWitness transversal backward leftInverse =
+  withAtlasWitness sourceWitness $ \sourceAtlas ->
+  withAtlasWitness targetWitness $ \targetAtlas ->
+  let sourceChartWitness = atlasWitness (chartAtlas sourceAtlas)
+      hom = chartHom sourceWitness targetWitness (atlasTransversalHom transversal) backward leftInverse
+
+      chartedTransposal =
+        atlasTransposal
+          sourceChartWitness
+          hom
+          (\targetElement ->
+            relabelElement sourceChartWitness
+              <$> atlasTransversalPreimage transversal
+                    (relabelElement targetWitness targetElement))
+          (atlasTransversalLeftInverse transversal . relabelElement sourceWitness)
+
+      chartedOrdered =
+        orderedAtlasTransposal chartedTransposal $ \left right ->
+          atlasTransversalPreservesOrder
+            transversal
+            (relabelElement sourceWitness left)
+            (relabelElement sourceWitness right)
+  in atlasTransversalMap
     (atlasTransversal
       (chartAtlas sourceAtlas)
       (chartAtlas targetAtlas)
@@ -336,26 +353,6 @@ chartMap sourceWitness@(AtlasWitness sourceAtlas)
       (\covered -> withTransversalImage (chartAtlas sourceAtlas) chartedOrdered covered $
         \targetOccurrence targetDatum ->
           chartCoverageWitness targetAtlas targetOccurrence targetDatum))
-  where
-    sourceChartWitness = atlasWitness (chartAtlas sourceAtlas)
-    hom = chartHom sourceWitness targetWitness (atlasTransversalHom transversal) backward leftInverse
-
-    chartedTransposal =
-      atlasTransposal
-        sourceChartWitness
-        hom
-        (\targetElement ->
-          relabelElement sourceChartWitness
-            <$> atlasTransversalPreimage transversal
-                  (relabelElement targetWitness targetElement))
-        (atlasTransversalLeftInverse transversal . relabelElement sourceWitness)
-
-    chartedOrdered =
-      orderedAtlasTransposal chartedTransposal $ \left right ->
-        atlasTransversalPreservesOrder
-          transversal
-          (relabelElement sourceWitness left)
-          (relabelElement sourceWitness right)
 
 -- | Object and arrow actions, named separately instead of packaging a
 -- record. This is the requested no-@data@ representation of the functor.
@@ -449,47 +446,40 @@ chartUnit
   :: AtlasMap source
   -> AtlasTransversal source (ChartedAtlasObject source)
 chartUnit sourceMap =
-  case atlasMapAtlasWitness sourceMap of
-    AtlasWitness valueAtlas ->
-      atlasTransversal
-        valueAtlas
-        (chartAtlas valueAtlas)
-        ordered
-        (\covered -> withTransversalImage valueAtlas ordered covered $
-          \targetOccurrence targetDatum ->
-            chartCoverageWitness valueAtlas targetOccurrence targetDatum)
-      where
-        ordered = orderedAtlasTransposal transposal (\_ _ -> ())
-        sourceWitness = AtlasWitness valueAtlas
-        action =
-          atlasMorphismAction
-            identityAtlasObjectMap
-            valueAtlas
-            (chartAtlas valueAtlas)
-            id
-            (\occurrence ->
-              domanialInsertion
-                (\datum ->
-                  atlasMapCoversDatum sourceMap occurrence datum `seq`
-                    chartedCellData datum)
-                (Just . chartedCellDataValue)
-                (const ()))
-            (\source _ ->
-              somePageElementPrecedesReflexive source `seq`
-                somePageElementTransportedReflexive source)
-            (\_ _ -> ())
+  withAtlasWitness (atlasMapAtlas sourceMap) $ \valueAtlas ->
+  let ordered = orderedAtlasTransposal transposal (\_ _ -> ())
+      sourceWitness = atlasWitness valueAtlas
+      action =
+        atlasMorphismAction
+          identityAtlasObjectMap
+          valueAtlas
+          (chartAtlas valueAtlas)
+          id
+          (\occurrence ->
+            domanialInsertion
+              (\datum ->
+                atlasMapCoversDatum sourceMap occurrence datum `seq`
+                  chartedCellData datum)
+              (Just . chartedCellDataValue)
+              (const ()))
+          (\source _ ->
+            somePageElementPrecedesReflexive source `seq`
+              somePageElementTransportedReflexive source)
+          (\_ _ -> ())
 
-        transposal =
-          atlasTransposal
-            sourceWitness
-            (atlasHom (atlasMorphism action))
-            (Just . relabelElement sourceWitness)
-            (const ())
-
--- Internal elimination of the Atlas map's witness, kept here so the public
--- Charter surface need not expose representation constructors.
-atlasMapAtlasWitness :: AtlasMap object -> AtlasWitness object
-atlasMapAtlasWitness = atlasMapAtlas
+      transposal =
+        atlasTransposal
+          sourceWitness
+          (atlasHom (atlasMorphism action))
+          (Just . relabelElement sourceWitness)
+          (const ())
+  in atlasTransversal
+      valueAtlas
+      (chartAtlas valueAtlas)
+      ordered
+      (\covered -> withTransversalImage valueAtlas ordered covered $
+        \targetOccurrence targetDatum ->
+          chartCoverageWitness valueAtlas targetOccurrence targetDatum)
 
 -- | Forward direction of the hom-set equivalence, Lean's @chartLift@.
 -- ALIGN: CHARTER-LIFT-INTERPRETATION.
@@ -500,8 +490,8 @@ chartLift
   -> AtlasTransversal source target
   -> AtlasTransversalMap source (ChartedAtlasObject target)
 chartLift sourceMap targetWitness arrow =
-  case atlasMapAtlasWitness sourceMap of
-    sourceWitness@(AtlasWitness sourceAtlas) ->
+  let sourceWitness = atlasMapAtlas sourceMap
+  in withAtlasWitness sourceWitness $ \sourceAtlas ->
       composeAtlasTransversalMaps
         (chartMap sourceWitness targetWitness arrow
           (\occurrence datum -> Just (chartCellData sourceAtlas occurrence datum

@@ -20,7 +20,8 @@ import Atlas
   , atlasOriginCell, mapAtlasData )
 import AtlasCoveredPageElement.Internal
   ( AtlasCoveredPageElement (..), AtlasCoverageWitness (..)
-  , atlasCoverageAt, atlasCoverageWitness, findAtlasCoverageRank )
+  , findAtlasCoverageRank )
+import AtlasCoveredPageElement (atlasCoverageAt, atlasCoverageWitness)
 import AtlasTransversal (AtlasTransversal, mapAtlasTransversalCoveredPageElement)
 import DomanialInsertion (applyInsertion)
 import Dominion (Dominion, dominion)

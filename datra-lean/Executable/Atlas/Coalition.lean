@@ -60,6 +60,18 @@ def CoalitionElement.Valid {X : Atlas} (c : X.CoalitionElement) : Prop :=
 abbrev CertifiedCoalitionElement (X : Atlas) :=
   {c : X.CoalitionElement // CoalitionElement.Valid c}
 
+/-- The public constructor retains the exact owning origin and its coverage
+certificate; the private runtime representation stores the three raw fields. -/
+-- ALIGN: COALITION-CHECKED-CONSTRUCTOR.
+def coalitionElement_checked {X : Atlas} (source : X.Element)
+    (atOrigin : source = FolioData.ValidElement.originElement X.pages)
+    (datum : X.cellData source.val.cell) (witness : {w : X.CoverageWitness // w.Valid})
+    (covers : X.coverageWitnessCovers source datum witness.val = true) : X.CertifiedCoalitionElement :=
+  ⟨coalitionElement source datum witness.val, ⟨witness.property, covers⟩, by
+    change source.normalize = FolioData.ValidElement.originElement X.pages
+    rw [atOrigin, FolioData.ValidElement.originElement_interpretation]
+    exact FolioData.ValidElement.normalize_fromFinite _ _⟩
+
 def CertifiedCoalitionElement.value {X : Atlas} (c : X.CertifiedCoalitionElement) : X.CoalitionValue :=
   ⟨X.originImage c.val.source c.val.datum,
     covered_originImage (CoveredPageElement.covered c.property.1)⟩

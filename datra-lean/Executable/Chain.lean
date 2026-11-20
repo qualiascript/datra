@@ -209,10 +209,7 @@ def spine : Chain Nat where
   orderType := Ordinal.omega
   position := Ordinal.finiteOrdinal
   lookup := Ordinal.naturalAtOrdinal
-  positionBelow n := by
-    apply (Ordinal.ordinalLT_correct _ _).2
-    simp only [Ordinal.finiteOrdinal_denote, Ordinal.omega_denote]
-    exact _root_.Ordinal.nat_lt_omega0 n
+  positionBelow := Ordinal.finiteOrdinal_below_omega
   positionInjective := Ordinal.finiteOrdinal_injective
   positionSurjective p hp := Ordinal.naturalAtOrdinal_complete p hp
 

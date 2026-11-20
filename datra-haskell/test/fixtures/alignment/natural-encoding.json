@@ -1,0 +1,24 @@
+{
+  "pairs": [
+    {"first": 0, "second": 0, "code": 0},
+    {"first": 0, "second": 1, "code": 1},
+    {"first": 1, "second": 0, "code": 2},
+    {"first": 0, "second": 2, "code": 3},
+    {"first": 1, "second": 1, "code": 4},
+    {"first": 2, "second": 0, "code": 5},
+    {"first": 0, "second": 10, "code": 55},
+    {"first": 10, "second": 0, "code": 65},
+    {"first": 13, "second": 7, "code": 223}
+  ],
+  "lists": [
+    {"values": [], "code": 0},
+    {"values": [0], "code": 1},
+    {"values": [1], "code": 3},
+    {"values": [0, 0], "code": 2},
+    {"values": [0, 1], "code": 7},
+    {"values": [1, 0], "code": 5},
+    {"values": [1, 2], "code": 30},
+    {"values": [0, 0, 0], "code": 4},
+    {"values": [2, 0, 1], "code": 48}
+  ]
+}

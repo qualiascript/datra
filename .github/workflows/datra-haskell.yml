@@ -55,17 +55,18 @@ jobs:
         with:
           ghc-version: "9.14.1"
           cabal-version: "3.18.1.0"
-      - name: Install Z3 4.8.12
+      - name: Install Z3 4.15.4
         shell: bash
         run: |
           archive="$RUNNER_TEMP/datra-z3.zip"
           curl --fail --location --retry 3 \
-            https://github.com/Z3Prover/z3/releases/download/z3-4.8.12/z3-4.8.12-x64-glibc-2.31.zip \
+            https://github.com/Z3Prover/z3/releases/download/z3-4.15.4/z3-4.15.4-x64-glibc-2.39.zip \
             --output "$archive"
+          echo "a41b690e89c343931471506cdc6d957b6044a200fd2d240cc017432afdff7d3e  $archive" | sha256sum --check --strict
           unzip -q "$archive" -d "$RUNNER_TEMP/datra-z3"
           rm "$archive"
-          solver_dir="$RUNNER_TEMP/datra-z3/z3-4.8.12-x64-glibc-2.31/bin"
-          "$solver_dir/z3" --version | grep -F 'Z3 version 4.8.12'
+          solver_dir="$RUNNER_TEMP/datra-z3/z3-4.15.4-x64-glibc-2.39/bin"
+          "$solver_dir/z3" --version | grep -F 'Z3 version 4.15.4'
           echo "$solver_dir" >> "$GITHUB_PATH"
       - name: Update package index
         run: cabal update

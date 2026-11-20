@@ -642,6 +642,22 @@ theorem traceValid_shape {Scope : Type u} {owner : Scope}
   exact ⟨by simpa only [trace, coordinates.1] using length,
     by simpa only [trace, coordinates.2] using head⟩
 
+/-- Scalar owning-trace validity suffices for the raw arrow to the origin;
+no agreement of the cached existential payload is needed. -/
+-- ALIGN: PE-TRACE-VALID-ORIGIN.
+theorem traceValid_hasOrigin (pages : FolioData origin final) (valid : pages.Valid)
+    (source : PageElement pages) (accepted : pages.traceValid source = true) :
+    PageElement.precedes source (ValidElement.originElement pages).val ∧
+      PageElement.transported source (ValidElement.originElement pages).val := by
+  simp only [traceValid, decide_eq_true_eq, traceLookup_canonical pages valid] at accepted
+  obtain ⟨index, _, trace⟩ := Option.map_eq_some_iff.mp accepted
+  let occurrence : pages.Occurrence := ⟨source.page, index.object⟩
+  have arrow := (ValidElement.ofOccurrence occurrence).toOrigin
+  refine ⟨arrow.precedes, ?_⟩
+  change Trace.traceSuffix source.trace (ValidElement.originElement pages).val.trace = true
+  rw [← trace]
+  exact arrow.transported
+
 -- ALIGN: PE-OWNER-ARROW-POSITION.
 theorem traceValid_arrow_position {Scope : Type u} {owner : Scope}
     (pages : FolioData origin final) (valid : pages.Valid) {source target : PageElement owner}

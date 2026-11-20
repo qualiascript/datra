@@ -341,7 +341,7 @@ def chartTransversal {X Y : Atlas} (f : Atlas.Transversal X Y)
     (backward : (source : X.Element) → X.cellData source.val.cell → Option (IndexedCellData X source.val.cell))
     (leftInverse : ∀ source datum, backward source datum.val.value = some datum) :
     Atlas.Transversal (chartAtlas X) (chartAtlas Y) :=
-  .primitive (chartOrdered f backward leftInverse) (fun covered =>
+  Atlas.atlasTransversal (chartOrdered f backward leftInverse) (fun covered =>
     let image := (chartHom f backward leftInverse).mapData covered.data
     chartCoverageWitness Y image.1 image.2)
 
@@ -426,7 +426,7 @@ def chartCounit (X : Atlas)
     (backward : (source : X.Element) → X.cellData source.val.cell → Option (IndexedCellData X source.val.cell))
     (leftInverse : ∀ source datum, backward source datum.val.value = some datum) :
     Atlas.Transversal (chartAtlas X) X :=
-  .primitive (counitOrdered X backward leftInverse) (fun covered =>
+  Atlas.atlasTransversal (counitOrdered X backward leftInverse) (fun covered =>
     let image := (counitHom X backward leftInverse).mapData covered.data
     let valid : X.Covered image.1 image.2 := by
       change X.Covered covered.val.source.normalize.normalize covered.val.datum.val.value
@@ -473,7 +473,7 @@ def unitOrdered {X : Atlas} (value : AtlasMap X) : Atlas.OrderedTransposal X (ch
   .primitive (unitTransposal value) (fun _ _ h => h)
 
 def chartUnit {X : Atlas} (value : AtlasMap X) : Atlas.Transversal X (chartAtlas X) :=
-  .primitive (unitOrdered value) (fun covered =>
+  Atlas.atlasTransversal (unitOrdered value) (fun covered =>
     let image := (unitHom value).mapData covered.data
     chartCoverageWitness X image.1 image.2)
 

@@ -43,6 +43,8 @@ module Atlas
   , atlasPageElements
   , atlasCardinality
   , normalizeAtlasElement
+  , normalizeAtlasElementTraceValid
+  , atlasAcceptsDatumNormalized
   , normalizeAtlasArrow
   , atlasCoherence
   , atlasDataAt
@@ -51,6 +53,15 @@ module Atlas
   , atlasDataCoherence
   , normalizeAtlasDatum
   , atlasMorphismAction
+  , atlasMorphismActionNaturality
+  , atlasMorphismObjectMapWitness
+  , withAtlasMorphismAction
+  , normalizeAtlasMorphismAction
+  , atlasMorphismActionPreservesArrow
+  , atlasMorphismSource
+  , atlasMorphismTarget
+  , mapAtlasMorphismActionComponent
+  , mapAtlasMorphismActionObject
   , identityAtlasObjectMap
   , atlasObjectMap
   , withAtlasMorphismImage
@@ -112,6 +123,7 @@ import Atlas.Internal
   , normalizeAtlasElement
   , withAtlasPageChain
   )
+import qualified Atlas.Internal as Internal (normalizeAtlasElementTraceValid, atlasAcceptsDatumNormalized)
 import Atlas.Morphism.Internal
   ( AtlasMorphism
   , AtlasMorphismAction
@@ -129,6 +141,15 @@ import Atlas.Morphism.Internal
   , composeAtlasHoms
   , atlasMorphism
   , atlasMorphismAction
+  , atlasMorphismActionNaturality
+  , atlasMorphismObjectMapWitness
+  , withAtlasMorphismAction
+  , normalizeAtlasMorphismAction
+  , atlasMorphismActionPreservesArrow
+  , atlasMorphismSource
+  , atlasMorphismTarget
+  , mapAtlasMorphismActionComponent
+  , mapAtlasMorphismActionObject
   , identityAtlasObjectMap
   , atlasObjectMap
   , atlasMorphismPagination
@@ -277,3 +298,17 @@ atlasForPredicate
 atlasForPredicate paginationValue accepts action identityLaw compositionLaw coherenceLaw disjointLaw useAtlas =
   atlasMembership accepts `seq`
     atlas paginationValue action identityLaw compositionLaw coherenceLaw disjointLaw useAtlas
+
+-- | Preserve the owning trace and carrier membership under Atlas normalization.
+{-@ normalizeAtlasElementTraceValid :: owner:Atlas a s d o f
+      -> source:{PageElement s object | Elements.pageElementTraceValid (atlasPageElements owner) source}
+      -> {Elements.pageElementTraceValid (atlasPageElements owner) (normalizeAtlasElement owner source)} @-}
+normalizeAtlasElementTraceValid :: Atlas a s d o f -> PageElement s object -> ()
+normalizeAtlasElementTraceValid = Internal.normalizeAtlasElementTraceValid
+
+{-@ atlasAcceptsDatumNormalized :: owner:Atlas a s d o f
+      -> source:PageElement s object -> datum:d object
+      -> {atlasAcceptsDatum owner (normalizeAtlasElement owner source) datum
+           == atlasAcceptsDatum owner source datum} @-}
+atlasAcceptsDatumNormalized :: Atlas a s d o f -> PageElement s object -> d object -> ()
+atlasAcceptsDatumNormalized = Internal.atlasAcceptsDatumNormalized

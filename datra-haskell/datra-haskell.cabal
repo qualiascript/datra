@@ -51,6 +51,7 @@ flag liquid
 library
     import:           warnings
     exposed-modules:
+        NaturalEncoding
         DatraOrdinal.Laws
         Chain.Sum
         Chain.Order
@@ -151,6 +152,7 @@ library
         PageElements
         Pagination
         Atlas
+        Atlas.Presheaf
         AtlasExtent
         AtlasTerritory
         EmptyAtlas
@@ -169,6 +171,7 @@ library
         AtlasTransversalMap
         Charter
         Coalition
+        Coalition.Element
         DomanialInclusion
         StableAtlasTransversal
         DataTransformation
@@ -190,7 +193,6 @@ library
         Atlas.Internal
         Atlas.LiquidInternal
         AtlasExtent.Internal
-        AtlasTerritory.Internal
         EmptyAtlas.Internal
         AtlasMerge.Internal
         AtlasMerge.Action

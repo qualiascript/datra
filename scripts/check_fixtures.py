@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from check_alignment import private_component_imports, private_liquid_imports
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,6 +51,40 @@ def run_trace_positions():
     print(f"Cross-language trace positions passed: {count} vectors")
 
 
+def natural_encoding_checks(lean_lines, haskell_lines):
+    vectors = json.loads((ROOT / "datra-haskell/test/fixtures/alignment/natural-encoding.json").read_text())
+    for i, vector in enumerate(vectors["pairs"]):
+        first, second, code = (vector[key] for key in ("first", "second", "code"))
+        lean_lines.extend([
+            f"#guard pairNatural {first} {second} == {code}",
+            f"#guard unpairNatural {code} == ({first}, {second})",
+        ])
+        haskell_lines.extend([
+            f'  if NE.pairNatural {first} {second} == {code} then pure () else fail "pair encode {i}"',
+            f'  if NE.unpairNatural {code} == ({first}, {second}) then pure () else fail "pair decode {i}"',
+        ])
+    for i, vector in enumerate(vectors["lists"]):
+        values, code = vector["values"], vector["code"]
+        lean_lines.extend([
+            f"#guard Datra.Executable.CoverageEnumeration.encodeNaturalList {values} == {code}",
+            f"#guard Datra.Executable.CoverageEnumeration.decodeNaturalList {code} == {values}",
+        ])
+        haskell_lines.extend([
+            f'  if NE.encodeNaturalList {values} == {code} then pure () else fail "list encode {i}"',
+            f'  if NE.decodeNaturalList {code} == {values} then pure () else fail "list decode {i}"',
+        ])
+    return len(vectors["pairs"]) + len(vectors["lists"])
+
+
+def run_natural_encoding():
+    lean_lines = ["import Executable.CoverageEnumeration", "open Datra.Executable.Ordinal"]
+    haskell_lines = ["module Main where", "import qualified NaturalEncoding as NE",
+                     "main :: IO ()", "main = do"]
+    count = natural_encoding_checks(lean_lines, haskell_lines)
+    run_drivers(lean_lines, haskell_lines)
+    print(f"Cross-language natural encoding passed: {count} vectors")
+
+
 def run():
     vectors = json.loads((ROOT / "datra-haskell/test/fixtures/alignment/ordinals.json").read_text())
     lean_lines = ["import datra", "open Datra.Executable.Ordinal"]
@@ -57,10 +92,11 @@ def run():
     lean_lines.extend(f"#check {entry['lean_namespace']}.{entry['lean_declaration']}"
                       for entry in manifest["theorems"])
     haskell_lines = ["module Main where", "import DatraOrdinal", "import qualified PageElements.Structure as PE",
-                     "import qualified DatraOrdinal.Internal as OI",
+                     "import qualified NaturalEncoding as NE",
                      "import qualified DatraOrdinal.Laws as OL",
                      "import qualified Chain as Ch", "main :: IO ()", "main = do"]
     trace_positions = trace_position_checks(lean_lines, haskell_lines)
+    natural_encoding = natural_encoding_checks(lean_lines, haskell_lines)
     for i, vector in enumerate(vectors):
         left, right = vector["left"], vector["right"]
         checks = [
@@ -98,7 +134,7 @@ def run():
     for i, vector in enumerate(subtraction):
         initial, suffix, value, difference = (vector[key] for key in ("initial", "suffix", "value", "difference"))
         lean = f"ordinalSubtractBetween (ordinal {initial}) (ordinal {suffix}) (ordinal {value})"
-        haskell = f"OL.ordinalSubtractBetween (OI.ordinal {initial}) (OI.ordinal {suffix}) (OI.ordinal {value})"
+        haskell = f"OL.ordinalSubtractBetween (ordinal {initial}) (ordinal {suffix}) (ordinal {value})"
         lean_lines.extend([
             f"#guard !ordinalLT (ordinal {value}) (ordinal {initial})",
             f"#guard ordinalLT (ordinal {value}) (addOrdinals (ordinal {initial}) (ordinal {suffix}))",
@@ -106,8 +142,8 @@ def run():
             f"#guard addOrdinals (ordinal {initial}) ({lean}) == ordinal {value}",
         ])
         haskell_lines.extend([
-            f'  if OI.coefficients ({haskell}) == {difference} then pure () else fail "subtraction vector {i}"',
-            f'  if OI.addOrdinals (OI.ordinal {initial}) ({haskell}) == OI.ordinal {value} then pure () else fail "subtraction reconstruction {i}"',
+            f'  if ordinalCoefficients ({haskell}) == {difference} then pure () else fail "subtraction vector {i}"',
+            f'  if addOrdinals (ordinal {initial}) ({haskell}) == ordinal {value} then pure () else fail "subtraction reconstruction {i}"',
         ])
     chains = json.loads((ROOT / "datra-haskell/test/fixtures/alignment/chains.json").read_text())
     lean_lines.append("def fixtureSum := Datra.Executable.Chain.sumChains Datra.Executable.Chain.spine Datra.Executable.Chain.spine")
@@ -222,10 +258,14 @@ orderFixture leftPage leftPosition rightPage rightPosition =
     print(f"Cross-language fixtures passed: {len(vectors)} ordinal, {len(traces)} trace, "
           f"{len(subtraction)} subtraction, {len(chains)} chain, {len(normalization)} normalization, "
           f"{len(enumeration['decode']) + len(enumeration['rejections'])} enumeration, "
-          f"{len(order)} Atlas order, {trace_positions} trace position")
+          f"{len(order)} Atlas order, {trace_positions} trace position, {natural_encoding} natural encoding")
 
 
 def run_drivers(lean_lines, haskell_lines):
+    haskell_source = "\n".join(haskell_lines) + "\n"
+    private_imports = private_component_imports(haskell_source) + private_liquid_imports(haskell_source)
+    if private_imports:
+        raise SystemExit("Fixture drivers must use public interfaces: " + ", ".join(private_imports))
     env = os.environ.copy()
     local_lake = ROOT / ".elan/bin/lake"
     if local_lake.exists():
@@ -238,13 +278,12 @@ def run_drivers(lean_lines, haskell_lines):
         lean_file = tmp / "Fixtures.lean"
         haskell_file = tmp / "Fixtures.hs"
         lean_file.write_text("\n".join(lean_lines) + "\n")
-        haskell_file.write_text("\n".join(haskell_lines) + "\n")
+        haskell_file.write_text(haskell_source)
         subprocess.run([lake, "env", "lean", str(lean_file)], cwd=ROOT, env=env, check=True)
         project = os.environ.get("CABAL_PROJECT", "cabal.project")
         executable = tmp / "fixtures"
         subprocess.run(["cabal", f"--project-file={project}", "exec", "--", "ghc",
                         "-v0", "-XGADTs", "-package", "datra-haskell",
-                        "-i" + str(ROOT / "datra-haskell/src/DatraCore/Atlases/Core"),
                         str(haskell_file),
                         "-outputdir", str(tmp), "-o", str(executable)], cwd=ROOT / "datra-haskell", check=True)
         subprocess.run([str(executable)], check=True)
@@ -254,8 +293,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--trace-positions", action="store_true",
                         help="Check only trace offsets and page lookup, including large Natural pages")
+    parser.add_argument("--natural-encoding", action="store_true",
+                        help="Check only Cantor pairs and finite-list encoding through public interfaces")
     args = parser.parse_args()
-    if args.trace_positions:
+    if args.natural_encoding:
+        run_natural_encoding()
+    elif args.trace_positions:
         run_trace_positions()
     else:
         run()

@@ -2,6 +2,8 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 -- GHC does not count imports referenced only by refinement signatures.
 {-# OPTIONS_GHC -Wno-unused-top-binds -Wno-unused-imports #-}
@@ -35,7 +37,7 @@ module Charter.LiquidInternal
   ) where
 
 import Atlas (Atlas, AtlasObject, AtlasObjectCellData)
-import AtlasCoveredPageElement.Internal (AtlasCoverageWitness, coverageWitnessCovers)
+import AtlasCoveredPageElement (AtlasCoverageWitness, coverageWitnessCovers)
 import DomanialInsertion
   ( DomanialInsertion, domanialInsertion, applyInsertion, preimage, insertionLeftInverse )
 import PageElements (PageElement)
@@ -112,17 +114,47 @@ chartMapInsertion
 -- ALIGN: CHARTER-MAP-INSERTION.
 -- ALIGN: CHARTER-MAP-INVERSE.
 chartMapInsertion
-  :: DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
+  :: forall source sourceObject target targetObject.
+     DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
   -> (AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
   -> (ChartedCellData source sourceObject -> ())
   -> DomanialInsertion (ChartedCellData source sourceObject) (ChartedCellData target targetObject)
 chartMapInsertion original backward leftInverse =
   domanialInsertion
-    (mapChartedCellData (applyInsertion original))
-    (\target -> case preimage original (chartedCellDataValue target) of
-      Nothing -> Nothing
-      Just candidate -> backward candidate)
-    (\source -> insertionLeftInverse original (chartedCellDataValue source) `seq` leftInverse source)
+    (chartMapApply original)
+    (chartMapPreimage original backward)
+    (chartMapRoundTrip @source @sourceObject @target @targetObject original backward leftInverse)
+
+{-@ reflect chartMapApply @-}
+chartMapApply
+  :: DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
+  -> ChartedCellData source sourceObject -> ChartedCellData target targetObject
+chartMapApply original value = mapChartedCellData (applyInsertion original) value
+
+{-@ reflect chartMapPreimage @-}
+chartMapPreimage
+  :: DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
+  -> (AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
+  -> ChartedCellData target targetObject -> Maybe (ChartedCellData source sourceObject)
+chartMapPreimage original backward value =
+  case preimage original (chartedCellDataValue value) of
+    Nothing -> Nothing
+    Just candidate -> backward candidate
+
+{-@ chartMapRoundTrip
+      :: original:DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
+      -> backward:(AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
+      -> (charted:ChartedCellData source sourceObject -> {backward (chartedCellDataValue charted) == Just charted})
+      -> value:ChartedCellData source sourceObject
+      -> {chartMapPreimage original backward (chartMapApply original value) == Just value} @-}
+chartMapRoundTrip
+  :: forall source sourceObject target targetObject.
+     DomanialInsertion (AtlasObjectCellData source sourceObject) (AtlasObjectCellData target targetObject)
+  -> (AtlasObjectCellData source sourceObject -> Maybe (ChartedCellData source sourceObject))
+  -> (ChartedCellData source sourceObject -> ())
+  -> ChartedCellData source sourceObject -> ()
+chartMapRoundTrip original _ leftInverse value =
+  insertionLeftInverse original (chartedCellDataValue value) `seq` leftInverse value
 
 {-@ reflect mapChartedCellData @-}
 mapChartedCellData

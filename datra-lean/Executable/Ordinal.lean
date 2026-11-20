@@ -496,12 +496,20 @@ def naturalAtOrdinal (value : Ordinal) : Option Nat :=
   | [n] => some n
   | _ => none
 
+-- ALIGN: ORDINAL-FINITE-LOOKUP.
 @[simp] theorem naturalAtOrdinal_finite (n : Nat) : naturalAtOrdinal (finiteOrdinal n) = some n := by
   cases n <;> simp [naturalAtOrdinal, finiteOrdinal, ordinal, dropLeadingZeros]
 
 @[simp] theorem omega_denote : omega.toSemantics = _root_.Ordinal.omega0 := by
   simp [omega, ordinal, dropLeadingZeros, toSemantics, denoteCoefficients]
 
+-- ALIGN: ORDINAL-FINITE-BELOW-OMEGA.
+theorem finiteOrdinal_below_omega (n : Nat) : ordinalLT (finiteOrdinal n) omega = true := by
+  apply (ordinalLT_correct _ _).2
+  simp only [finiteOrdinal_denote, omega_denote]
+  exact _root_.Ordinal.nat_lt_omega0 n
+
+-- ALIGN: ORDINAL-FINITE-INJECTIVE.
 theorem finiteOrdinal_injective : Function.Injective finiteOrdinal := by
   intro a b h
   have := congrArg naturalAtOrdinal h
@@ -531,6 +539,16 @@ theorem naturalAtOrdinal_complete (value : Ordinal) (h : ordinalLT value omega =
               simp [ordinalLT, omega, ordinal, dropLeadingZeros, coefficientsLT] at h
               omega
 
+def naturalOrdinalMatches (position : Ordinal) : Option Nat → Bool
+  | none => false
+  | some value => decide (finiteOrdinal value = position)
+
+-- ALIGN: ORDINAL-NATURAL-INVERSE.
+theorem naturalAtOrdinal_matches (position : Ordinal) (below : ordinalLT position omega = true) :
+    naturalOrdinalMatches position (naturalAtOrdinal position) = true := by
+  obtain ⟨value, lookup, equal⟩ := naturalAtOrdinal_complete position below
+  simp [lookup, naturalOrdinalMatches, equal]
+
 end Datra.Executable.Ordinal
 
 namespace Datra.Executable.Ordinal
@@ -555,6 +573,24 @@ termination_by remaining
 
 def unpairNatural (code : Nat) : Nat × Nat := unpairNaturalGo 0 code
 
+theorem unpairNaturalGo_bounds (diagonal remaining : Nat) :
+    (unpairNaturalGo diagonal remaining).1 ≤ diagonal + remaining ∧
+      (unpairNaturalGo diagonal remaining).2 ≤ diagonal + remaining := by
+  induction remaining using Nat.strong_induction_on generalizing diagonal with
+  | h remaining ih =>
+      rw [unpairNaturalGo]
+      split
+      · omega
+      · have bounds := ih (remaining - diagonal - 1) (by omega) (diagonal + 1)
+        constructor <;> omega
+
+-- ALIGN: NATURAL-UNPAIR-BOUNDS.
+-- The recursive call decreases the remainder; both returned coordinates are
+-- bounded by the sum of the current diagonal and remainder.
+theorem unpairNatural_bounds (code : Nat) :
+    (unpairNatural code).1 ≤ code ∧ (unpairNatural code).2 ≤ code := by
+  simpa [unpairNatural] using unpairNaturalGo_bounds 0 code
+
 private theorem pair_unpairNaturalGo (diagonal remaining : Nat) :
     pairNatural (unpairNaturalGo diagonal remaining).1 (unpairNaturalGo diagonal remaining).2 =
       triangular diagonal + remaining := by
@@ -570,6 +606,7 @@ private theorem pair_unpairNaturalGo (diagonal remaining : Nat) :
         omega
 
 -- ALIGN: ORDINAL-PAIR-UNPAIR.
+-- ALIGN: NATURAL-PAIR-UNPAIR.
 theorem pair_unpairNatural (code : Nat) :
     pairNatural (unpairNatural code).1 (unpairNatural code).2 = code := by
   simpa [unpairNatural, triangular] using pair_unpairNaturalGo 0 code

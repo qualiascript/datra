@@ -318,7 +318,7 @@ testChainedDominionAtlas = do
     )
   withAtlasMapExtent
     (chainedDominionAtlasMap 3 selectedChain selectedDominion) $
-      \_ extent coversExtent ->
+      \_ _ extent coversExtent ->
         assert "a chained dominion Atlas covers every selected value"
           ( all
               (\valueRank ->
@@ -2271,7 +2271,7 @@ testAtlasMap =
                   extentDatum
                   ()
             identityMapHom = identityAtlasMapHom
-        in withAtlasMapExtent valueMap $ \extent extentDominion covers -> do
+        in withAtlasMapExtent valueMap $ \_ extent extentDominion covers -> do
           withAtlasCoveredPageElement (covers (TestCellData 7)) $ \coveredElement datum ->
             assert "Atlas maps cover every extent datum"
               ( pageElementPage coveredElement == 0
@@ -2382,7 +2382,7 @@ testNavigationAndExpedition =
               Nothing -> fail "expedition left inverse rejected its image"
               Just _ ->
                 withAtlasMapExtent
-                  (expeditionAtlasMap valueExpedition) $ \extent _ _ ->
+                  (expeditionAtlasMap valueExpedition) $ \_ extent _ _ ->
                     withPageElement
                       (mapAtlasHomElement
                         (expeditionAtlas valueExpedition)
@@ -2718,7 +2718,7 @@ testCharter =
             mapped = charterFunctorHom witness witness transversal (onePageChartInverse valueAtlas) (\_ _ -> ())
             lifted = chartLift valueMap witness transversal
             lowered = chartLower valueAtlas (onePageChartInverse valueAtlas) (\_ _ -> ()) lifted
-        in withAtlasMapExtent chartedMap $ \extent chartedDom covers ->
+        in withAtlasMapExtent chartedMap $ \_ extent chartedDom covers ->
           case
             [ candidate
             | index <- [0 .. 100]
