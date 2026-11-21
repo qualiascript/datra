@@ -43,6 +43,22 @@ proofGuard (CompositeAtlasHom _ _) = ()
 """,
 }
 
+DATA_TRANSFORMATION_SOURCE = HASKELL / "src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs"
+DATA_TRANSFORMATION_GUARDS = {
+    "presheaf packaging rejects dummy identity and composition laws": """
+proofGuard :: (forall source target. AtlasHom source target
+  -> DataTransformationValue values target -> DataTransformationValue values source)
+  -> DataTransformation values
+proofGuard action = dataTransformation action (\\_ -> ()) (\\_ _ _ -> ())
+""",
+    "natural transformation packaging rejects dummy naturality": """
+proofGuard :: DataTransformation source -> DataTransformation target
+  -> (forall atlas. DataTransformationValue source atlas -> DataTransformationValue target atlas)
+  -> DataTransformationNatural source target
+proofGuard source target component = dataTransformationNatural source target component (\\_ _ -> ())
+""",
+}
+
 NATURAL_SEARCH_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/NaturalSearch.hs"
 NATURAL_SEARCH_GUARDS = {
     "finite search congruence requires equality of the tested predicates": """
@@ -1592,6 +1608,17 @@ proofGuard = lastPageElement
 """,
 }
 
+PAGE_CONSTRUCTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Construction.hs"
+PAGINATION_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Pagination/Pagination.hs"
+PAGINATION_API_GUARDS = {
+    "pagination assembly retains the supplied occurrence category": """
+{-@ proofGuard :: elements:PageElements scope origin final
+      -> {value:Pagination scope origin final | paginationPageElements value /= elements} @-}
+proofGuard :: PageElements scope origin final -> Pagination scope origin final
+proofGuard = paginationFromPageElements
+""",
+}
+
 PAGE_INDEX_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Internal.hs"
 PAGE_INDEX_GUARDS = {
     "final page lookup retains the requested chain position": """
@@ -2079,6 +2106,7 @@ def run(pattern=None):
         for dependency in library["depends"]:
             command.extend(["-package-id", dependency])
         for source_path, guards in [(SOURCE, GUARDS), (CHAIN_SOURCE, CHAIN_GUARDS),
+                                    (DATA_TRANSFORMATION_SOURCE, DATA_TRANSFORMATION_GUARDS),
                                     (NATURAL_SEARCH_SOURCE, NATURAL_SEARCH_GUARDS),
                                     (CHAIN_SINGLETON_SOURCE, CHAIN_SINGLETON_GUARDS),
                                     (CONSOLIDATION_SOURCE, CONSOLIDATION_GUARDS),
@@ -2114,6 +2142,7 @@ def run(pattern=None):
                                     (PAGE_ARROW_SOURCE, PAGE_ARROW_GUARDS),
                                     (TERRITORY_SOURCE, TERRITORY_GUARDS),
                                     (PAGE_API_SOURCE, PAGE_API_GUARDS),
+                                    (PAGINATION_API_SOURCE, PAGINATION_API_GUARDS),
                                     (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),
                                     (ATLAS_SOURCE, ATLAS_GUARDS),
                                     (ATLAS_PRESENTATION_SOURCE, ATLAS_PRESENTATION_GUARDS),
@@ -2140,6 +2169,22 @@ def run(pattern=None):
                 print(f"Rejected false law: {description}")
 
         typing_guards = [
+            (PAGINATION_API_SOURCE, "generative pagination cannot escape its owner scope",
+             "proofGuard :: Folio o f -> Pagination s o f\n"
+             "proofGuard pages = pagination pages (\\value -> value)\n",
+             ("Couldn't match type", "pagination")),
+            (PAGE_CONSTRUCTION_SOURCE, "fixed page construction cannot choose its output scope",
+             "proofGuard :: PageElementsConstruction recipe o f => Proxy recipe -> PageElements chosen o f\n"
+             "proofGuard = constructPageElements\n",
+             ("Couldn't match type", "ConstructedPageElementsScope")),
+            (PAGE_CONSTRUCTION_SOURCE, "fixed page construction retains its recipe identity",
+             "proofGuard :: PageElements (ConstructedPageElementsScope first o f) o f -> PageElements (ConstructedPageElementsScope second o f) o f\n"
+             "proofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            (PAGINATION_API_SOURCE, "pagination assembly cannot change the occurrence owner",
+             "proofGuard :: PageElements source o f -> Pagination target o f\n"
+             "proofGuard = paginationFromPageElements\n",
+             ("Couldn't match type", "paginationFromPageElements")),
             (ATLAS_CONSTRUCTION_SOURCE, "stable construction cannot choose its output scope",
              "proofGuard :: AtlasDataConstruction construction => Atlas a s d o f -> Atlas chosen s (construction a s d) o f\n"
              "proofGuard = constructAtlasData\n",

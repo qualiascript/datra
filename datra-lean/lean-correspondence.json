@@ -4963,6 +4963,20 @@
       "haskell_declaration": "constructAtlasData",
       "lean_namespace": "Datra.Executable.AtlasDataConstruction",
       "lean_declaration": "constructAtlasData_pagination"
+    },
+    {
+      "id": "PE-FIXED-CONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Construction.hs",
+      "haskell_declaration": "constructPageElements",
+      "lean_namespace": "Datra.Executable.PageElementsConstruction",
+      "lean_declaration": "constructPageElements"
+    },
+    {
+      "id": "PAGINATION-FROM-PAGE-ELEMENTS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Pagination/Pagination.hs",
+      "haskell_declaration": "paginationFromPageElements",
+      "lean_namespace": "Datra.Executable.Pagination",
+      "lean_declaration": "Pagination.fromPageElements"
     }
   ],
   "modules": [
@@ -5513,6 +5527,7 @@
       ],
       "refinements": [
         "pageElementDomainNormalizeValid",
+        "pageElements",
         "pageElementsWithScope",
         "pageElementIndex",
         "folioTraceLookup",
@@ -5663,6 +5678,7 @@
         "PaginationMorphism"
       ],
       "reflected": [
+        "paginationFromPageElements",
         "paginationPageElements",
         "paginationCardinality",
         "normalizePaginationElement",
@@ -5670,6 +5686,7 @@
       ],
       "refinements": [
         "paginationWithScope",
+        "paginationFromPageElements",
         "paginationCardinality",
         "paginationMorphism"
       ],
@@ -6165,18 +6182,20 @@
       "types": [
         "RankedDominionCellData",
         "RankedDominionAtlasScope",
-        "RankedDominionPaginationScope"
+        "RankedDominionPaginationRecipe"
       ],
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.RankedDominionAtlas",
       "coverage": "pending",
       "aliases": [
+        "RankedDominionPaginationScope",
         "RankedDominionAtlasObject"
       ],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap/Internal.hs",
@@ -6220,7 +6239,7 @@
       "module": "DomanialInclusion.Internal",
       "types": [
         "DominionAtlasScope",
-        "DominionPaginationScope",
+        "DominionPaginationRecipe",
         "OriginObjectMap"
       ],
       "reflected": [],
@@ -6228,11 +6247,13 @@
       "lean_target": "Datra.Executable.DomanialInclusion",
       "coverage": "partial",
       "aliases": [
+        "DominionPaginationScope",
         "DominionAtlasObject"
       ],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
@@ -7363,6 +7384,7 @@
       "types": [],
       "reflected": [],
       "refinements": [
+        "paginationFromPageElements",
         "pagination"
       ],
       "lean_target": "Datra.Executable.Pagination",
@@ -7582,6 +7604,23 @@
       ],
       "lean_target": "Datra.Executable.AtlasDataConstruction",
       "coverage": "partial",
+      "aliases": [],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "opaque_reflected": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Construction.hs",
+      "module": "PageElements.Construction",
+      "lean_target": "Datra.Executable.PageElementsConstruction",
+      "coverage": "partial",
+      "types": [
+        "PageElementsConstruction",
+        "ConstructedPageElementsScope"
+      ],
+      "reflected": [],
+      "refinements": [],
       "aliases": [],
       "embeddings": [],
       "predicates": [],

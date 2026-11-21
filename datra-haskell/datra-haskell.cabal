@@ -67,6 +67,7 @@ library
         Folio.Presentation
         Folio.Assembly
         PageElements.Structure
+        PageElements.Construction
         PageElements.TraceChain
         Atlas.Construction
         Charter.Data

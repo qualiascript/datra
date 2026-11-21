@@ -14,6 +14,7 @@ module Pagination
   , PaginationMorphism
   , SomePageElementArrow
   , pagination
+  , paginationFromPageElements
   , paginationFolio
   , paginationPageElements
   , paginationCardinality
@@ -38,7 +39,6 @@ import Pagination.Internal
   , mapPaginationArrow
   , mapPaginationElement
   , paginationMorphism
-  , paginationWithScope
   , paginationFolio
   , paginationPageElements
   , paginationCardinality
@@ -50,7 +50,15 @@ import Pagination.Internal
   )
 
 import Folio (Folio)
-import PageElements (pageElementsFolio)
+import PageElements (PageElements, pageElements, pageElementsFolio)
+import qualified Pagination.Internal as Internal (paginationFromPageElements)
+
+-- | Build a pagination from its already owned category of occurrences.
+-- ALIGN: PAGINATION-FROM-PAGE-ELEMENTS.
+{-@ paginationFromPageElements :: elements:PageElements scope origin final
+      -> {value:Pagination scope origin final | paginationPageElements value == elements} @-}
+paginationFromPageElements :: PageElements scope origin final -> Pagination scope origin final
+paginationFromPageElements = Internal.paginationFromPageElements
 
 -- | Introduce a pagination with a fresh page-element scope.
 {-@ pagination :: pages:Folio origin final
@@ -62,4 +70,4 @@ pagination
   -> (forall scope. Pagination scope origin final -> result)
   -> result
 pagination pages usePagination =
-  usePagination (paginationWithScope pages)
+  pageElements pages (\elements -> usePagination (paginationFromPageElements elements))

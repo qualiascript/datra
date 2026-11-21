@@ -1,4 +1,4 @@
-import Executable.PageElements
+import Executable.PageElements.Construction
 
 namespace Datra.Executable
 
@@ -14,6 +14,19 @@ structure Pagination where
 abbrev Pagination.pages (P : Pagination) := P.folio.data
 
 abbrev Pagination.Element (P : Pagination) := P.pages.ValidElement
+
+/-- Wrapping an already owned category preserves its folio and valid elements. -/
+-- ALIGN: PAGINATION-FROM-PAGE-ELEMENTS.
+def Pagination.fromPageElements {origin final : Page} (elements : Folio origin final) :
+    Pagination := ⟨origin, final, elements⟩
+
+theorem Pagination.fromPageElements_folio {origin final : Page}
+    (elements : Folio origin final) :
+    (Pagination.fromPageElements elements).folio = elements := rfl
+
+theorem Pagination.fromPageElements_elements {origin final : Page}
+    (elements : Folio origin final) :
+    (Pagination.fromPageElements elements).Element = elements.data.ValidElement := rfl
 
 noncomputable def Pagination.toSemantics (P : Pagination) : Datra.Semantics.Pag := ⟨P.pages.toSemantics⟩
 

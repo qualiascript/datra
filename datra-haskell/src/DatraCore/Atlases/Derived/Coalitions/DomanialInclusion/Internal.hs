@@ -1,5 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -110,7 +112,9 @@ import Folio (Folio, singletonFolio)
 import OrderedAtlasTransposal (orderedAtlasTransposal)
 import PageElements (PageElement, withPageElement)
 import Pagination (Pagination)
-import Pagination.Internal (paginationWithScope)
+import Data.Proxy (Proxy (..))
+import PageElements.Construction
+  ( PageElementsConstruction (..), ConstructedPageElementsScope, constructPageElements )
 import StableAtlasTransversal
   ( StableAtlasTransversal
   , stableAtlasTransversal
@@ -118,7 +122,11 @@ import StableAtlasTransversal
 
 -- Deterministic tokens make the functor's object action stable across calls.
 data DominionAtlasScope a
-data DominionPaginationScope a
+data DominionPaginationRecipe a
+type DominionPaginationScope a = ConstructedPageElementsScope (DominionPaginationRecipe a) () ()
+
+instance PageElementsConstruction (DominionPaginationRecipe a) () () where
+  pageElementsRecipe _ = onePageFolio
 
 type DominionAtlasObject a =
   AtlasObject
@@ -145,7 +153,8 @@ onePageFolio = singletonFolio singletonChain
 -- | The deterministically scoped one-page pagination used by @DomInc@.
 onePagePagination
   :: forall a. Pagination (DominionPaginationScope a) () ()
-onePagePagination = paginationWithScope onePageFolio
+onePagePagination = Pagination.paginationFromPageElements
+  (constructPageElements (Proxy :: Proxy (DominionPaginationRecipe a)))
 
 -- ALIGN: DOMINC-CONSTANT-DOMINION.
 constantDominion :: Dominion a -> Dominion (DominionCellData a object)

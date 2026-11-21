@@ -76,7 +76,12 @@ def onePageFolio : Folio singletonPage singletonPage :=
   ⟨FolioData.singleton singletonPage () (fun x => by cases x; rfl),
     FolioData.singleton_valid _ _ _⟩
 
-def onePagePagination : Pagination := ⟨singletonPage, singletonPage, onePageFolio⟩
+def onePageRecipe : PageElementsConstruction singletonPage singletonPage := ⟨onePageFolio⟩
+
+def onePagePagination : Pagination :=
+  Pagination.fromPageElements onePageRecipe.constructPageElements
+
+theorem onePagePagination_folio : onePagePagination.folio = onePageFolio := rfl
 
 theorem onePage_position (element : onePagePagination.Element) :
     element.val.position = Ordinal.finiteOrdinal 0 := by

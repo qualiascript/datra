@@ -11,6 +11,7 @@ module Pagination.Internal
   , PaginationMorphism
   , SomePageElementArrow
   , paginationWithScope
+  , paginationFromPageElements
   , paginationFolio
   , paginationPageElements
   , paginationCardinality
@@ -84,7 +85,14 @@ paginationWithScope
   :: Folio origin final
   -> Pagination scope origin final
 paginationWithScope pages =
-  Pagination (pageElementsWithScope pages)
+  paginationFromPageElements (pageElementsWithScope pages)
+
+-- | Retain an already owned category without allocating another scope.
+{-@ reflect paginationFromPageElements @-}
+{-@ paginationFromPageElements :: elements:PageElements scope origin final
+      -> {value:Pagination scope origin final | paginationPageElements value == elements} @-}
+paginationFromPageElements :: PageElements scope origin final -> Pagination scope origin final
+paginationFromPageElements = Pagination
 
 -- | Recover the folio from a pagination.
 paginationFolio :: Pagination scope origin final -> Folio origin final

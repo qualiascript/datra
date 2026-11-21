@@ -1,4 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | The canonical two-page Atlas map that separates a dominion by rank.
 --
@@ -62,7 +65,9 @@ import PageElements
   , lastPageElement
   )
 import Pagination (Pagination)
-import Pagination.Internal (paginationWithScope)
+import Data.Proxy (Proxy (..))
+import PageElements.Construction
+  ( PageElementsConstruction (..), ConstructedPageElementsScope, constructPageElements )
 import StableAtlasTransversal (StableAtlasTransversal)
 
 -- | Data carried by the extent or by one rank-selected final region.
@@ -76,7 +81,12 @@ cellValue (RankedDominionExtentDatum value) = value
 cellValue (RankedDominionRegionDatum value) = value
 
 data RankedDominionAtlasScope value
-data RankedDominionPaginationScope value
+data RankedDominionPaginationRecipe value
+type RankedDominionPaginationScope value =
+  ConstructedPageElementsScope (RankedDominionPaginationRecipe value) () Natural
+
+instance PageElementsConstruction (RankedDominionPaginationRecipe value) () Natural where
+  pageElementsRecipe _ = rankedDominionFolio
 
 type RankedDominionAtlasObject value =
   AtlasObject
@@ -99,8 +109,9 @@ rankedDominionFolio =
         (const ())
 
 rankedDominionPagination
-  :: Pagination (RankedDominionPaginationScope value) () Natural
-rankedDominionPagination = paginationWithScope rankedDominionFolio
+  :: forall value. Pagination (RankedDominionPaginationScope value) () Natural
+rankedDominionPagination = Pagination.paginationFromPageElements
+  (constructPageElements (Proxy :: Proxy (RankedDominionPaginationRecipe value)))
 
 rankedDominionAt
   :: Dominion value

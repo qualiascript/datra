@@ -225,6 +225,10 @@ data PageElementIndexData origin current = PageElementIndexData
   }
 
 -- | Introduce the occurrence category of a folio with a fresh abstract scope.
+{-@ pageElements :: pages:Folio origin final
+      -> (forall scope. category:{PageElements scope origin final |
+           pageElementsFolio category == pages} -> result)
+      -> result @-}
 pageElements
   :: Folio origin final
   -> (forall scope.

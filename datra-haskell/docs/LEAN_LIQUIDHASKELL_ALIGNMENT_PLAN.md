@@ -444,6 +444,14 @@ migration to exposed interfaces; the strict completion gate rejects them. The
 merge modules use public component interfaces, including checked pagination and
 Atlas constructors and a prefix-lookup wrapper that retains the success and
 position contracts. Private implementation imports belong within their owning component.
+The public `Pagination.paginationFromPageElements` constructor retains the
+existing occurrence category and its scope. Generative pagination delegates to
+the public page-elements allocator. Fixed folios use `PageElements.Construction`:
+a pure class instance chooses the entire folio, and a nominal scope records the
+recipe and both carrier types. Dominion inclusion and ranked Dominion paginations
+use this interface; a runtime chain requires a separately owned construction.
+Lean models the fixed recipe and proves that pagination wrapping preserves its
+folio and valid elements. Rejection checks enforce scope and recipe separation.
 Merge, sequence, the empty Atlas, and Dominion inclusion share the checked
 singleton-chain constructor. Lean uses the same singleton chain and the common
 carrier-reindexing operation in its derived folios.
