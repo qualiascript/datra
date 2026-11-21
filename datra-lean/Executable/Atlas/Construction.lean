@@ -30,4 +30,23 @@ theorem ofPresentations_construct (recipe : Atlas → AtlasPresentation)
     (ofPresentations recipe ownsPagination).constructAtlasData owner = (recipe owner).allocate := rfl
 
 end AtlasDataConstruction
+
+/-- A complete fixed recipe takes no runtime configuration. Its presentation
+determines the pagination and action together, as in the public Haskell class. -/
+structure AtlasConstruction where
+  presentation : AtlasPresentation
+
+namespace AtlasConstruction
+
+-- ALIGN: ATLAS-FIXED-CONSTRUCTION.
+def constructAtlas (recipe : AtlasConstruction) : Atlas := recipe.presentation.allocate
+
+theorem constructAtlas_pagination (recipe : AtlasConstruction) :
+    recipe.constructAtlas.pagination = recipe.presentation.pagination :=
+  AtlasPresentation.allocate_pagination recipe.presentation
+
+theorem constructAtlas_eq (recipe : AtlasConstruction) :
+    recipe.constructAtlas = recipe.presentation.allocate := rfl
+
+end AtlasConstruction
 end Datra.Executable

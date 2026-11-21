@@ -10,6 +10,9 @@ import AsciiMap
 import qualified AsciiString
 import Atlas
   ( Atlas
+  , AtlasObjectAtlasScope
+  , AtlasObjectPaginationScope
+  , AtlasObjectCellData
   , atlasCardinality
   , atlasDataAt
   , atlasOriginCell
@@ -41,7 +44,7 @@ import AtlasTransposal
   , withAtlasTransposalElement
   )
 import AtlasSequence (atlasSequenceDatumMember)
-import ChainedDominionAtlas (ChainedDominionAtlas)
+import ChainedDominionAtlas (chainedDominionAtlas)
 import Control.Monad (join)
 import Dominion
 import Chain
@@ -63,7 +66,7 @@ import DatraOrdinal
 import qualified DatraTypes as Types
 import DatraTypes.DependentTypes qualified as Dependent
 import DatraLanguage.AST qualified as AST
-import DomanialInclusion (dominionAtlas, dominionCellDataValue)
+import DomanialInclusion (withDominionAtlas, dominionAtlas, dominionCellDataValue)
 import Dot
   ( Dot
   , dot
@@ -1021,7 +1024,8 @@ rankOneTerminalRank =
 rankOneDominion :: Dominion RankOneTerminal
 rankOneDominion = superEllipsisDominion rankOneRank
 
-rankOneAtlas :: ChainedDominionAtlas RankOneTerminal
+rankOneAtlas :: Atlas (AtlasObjectAtlasScope RankOneAtlasObject)
+  (AtlasObjectPaginationScope RankOneAtlasObject) (AtlasObjectCellData RankOneAtlasObject) () RankOneTerminal
 rankOneAtlas = superEllipsisAtlas rankOneRank
 
 rankOneAtlasMap :: AtlasMap RankOneAtlasObject
@@ -1540,8 +1544,8 @@ testComplexOperatorStructure = do
 
 testAsciiMap :: IO ()
 testAsciiMap =
-  asciiMap $ \ascii -> do
-    let valueAtlas = asciiAtlas ascii
+  asciiMap $ \ascii ->
+    asciiAtlas ascii $ \valueAtlas -> do
     assert "ASCII map has two pages and 256 final cells"
       (asciiCardinality == 256
         && indexedAtlasCardinality ascii
@@ -1568,8 +1572,9 @@ testAsciiString = do
   case AsciiString.asciiString "aA_0'a\255" $ \value ->
       case orderedAtlasMap value of
         EmptyOrderedAtlasMap -> fail "a nonempty ASCII string produced an empty map"
-        NonEmptyOrderedAtlasMap valueMap -> do
-          let valueAtlas = indexedAtlasAtlas valueMap
+        NonEmptyOrderedAtlasMap valueMap ->
+          withIndexedAtlas valueMap $ \owner -> do
+          let valueAtlas = chainedDominionAtlas owner
           assert "an ASCII string retains arbitrary and repeated characters"
             ( AsciiString.asciiStringLength value == 7
               && AsciiString.asciiStringValue value == "aA_0'a\255"
@@ -1700,7 +1705,8 @@ testAccessOperator =
                   (case selected of
                     EmptyOrderedAtlasMap -> False
                     NonEmptyOrderedAtlasMap valueMap ->
-                      let valueAtlas = indexedAtlasAtlas valueMap
+                      withIndexedAtlas valueMap $ \owner ->
+                      let valueAtlas = chainedDominionAtlas owner
                       in atlasCardinality valueAtlas == 2
                           && atlasPageHasExactly valueAtlas 1 4)
     withRankOneRange 255 (Just 257) $ \outside ->
@@ -1846,7 +1852,7 @@ rankOneRange start =
 rankOneRangeElement
   :: SuperRange.SuperEllipsisRange Ellipsis scope
   -> Natural
-  -> Maybe (SuperRange.SuperEllipsisRangeElement Ellipsis scope)
+  -> Maybe (SuperRange.SuperEllipsisRangeMember Ellipsis scope)
 rankOneRangeElement valueRange =
   SuperRange.superEllipsisRangeElement valueRange . finiteOrdinal
 
@@ -1942,7 +1948,8 @@ testSuperEllipsisInsertion = do
         (const ())
       terminals = map rankOneTerminal [0, 1, 1000000]
       traversalPreservesTerminal terminal =
-        let sourceAtlas = dominionAtlas rankOneDominion
+        withDominionAtlas rankOneDominion $ \sourceOwner ->
+        let sourceAtlas = dominionAtlas sourceOwner
         in withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
           case unrank
             (atlasDataAt sourceAtlas sourceOrigin)
@@ -1959,7 +1966,7 @@ testSuperEllipsisInsertion = do
                         ()
                     targetCovered =
                       stableAtlasTransversalPreservesCoverage
-                        (superEllipsisInsertionTraversal insertion)
+                        (superEllipsisInsertionTraversal insertion sourceOwner)
                         sourceCovered
                 in withAtlasCoveredPageElement targetCovered $
                   \targetOccurrence targetDatum ->

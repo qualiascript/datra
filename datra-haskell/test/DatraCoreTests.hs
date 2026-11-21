@@ -73,6 +73,7 @@ testTree =
         , testCase "ordinal enumeration" testDatraOrdinalEnumeration
         , testCase "chained dominion atlas" testChainedDominionAtlas
         , testCase "ranked dominion atlas" testRankedDominionAtlas
+        , testCase "ranked dominion rejects off-image decoding" testRankedDominionOffImage
         , testCase "spine" testSpine
         , testCase "chain sum" testChainSum
         , testCase "consolidation" testConsolidation
@@ -243,9 +244,10 @@ testIdentityInsertion = do
     )
 
 testRankedDominionAtlas :: IO ()
-testRankedDominionAtlas = do
-  let naturals = dominion id Just (const ())
-      valueAtlas = rankedDominionAtlas naturals
+testRankedDominionAtlas =
+  withRankedDominionAtlas (dominion id Just (const ())) $ \ranked ->
+  withDominionAtlas (dominion id Just (const ())) $ \sourceOwner -> do
+  let valueAtlas = rankedDominionAtlas ranked
       selectedRanks :: [Natural]
       selectedRanks = [0, 1, 7, 1000]
       regionAt valueRank = do
@@ -262,19 +264,19 @@ testRankedDominionAtlas = do
       == map (const (Just True)) selectedRanks)
   assert "ranked dominion coalition elements retain target ranks"
     (coalitionElementRank
-      (rankedDominionCoalitionElement naturals 37) == 37)
-  let included = dominionAtlas naturals
-      traversal = rankedDominionInsertionTraversal naturals identityInsertion
+      (rankedDominionCoalitionElement ranked 37) == 37)
+  let included = dominionAtlas sourceOwner
+      traversal = rankedDominionInsertionTraversal sourceOwner ranked identityInsertion
       coalitionMap = stableCoalitionMap
         (atlasWitness included) (atlasWitness valueAtlas) traversal
-      sourceElement = dominionCoalitionElement naturals 7
+      sourceElement = dominionCoalitionElement sourceOwner 7
   assert "coalition inverses recover images across different folio depths"
     (preimage coalitionMap (applyInsertion coalitionMap sourceElement) == Just sourceElement)
   let double = domanialInsertion (* 2)
         (\value -> if even value then Just (value `div` 2) else Nothing)
         (const ())
       composed = composeStableAtlasTransversals traversal
-        (dominionMap naturals naturals double)
+        (dominionMap sourceOwner sourceOwner double)
       composedMap = stableCoalitionMap
         (atlasWitness included) (atlasWitness valueAtlas) composed
       targetElement = applyInsertion composedMap sourceElement
@@ -282,7 +284,23 @@ testRankedDominionAtlas = do
     (coalitionElementRank targetElement == 14
       && preimage composedMap targetElement == Just sourceElement)
   assert "composed coalition inverses reject values outside the image"
-    (isNothing (preimage composedMap (rankedDominionCoalitionElement naturals 3)))
+    (isNothing (preimage composedMap (rankedDominionCoalitionElement ranked 3)))
+
+testRankedDominionOffImage :: IO ()
+testRankedDominionOffImage =
+  withRankedDominionAtlas sparse $ \ranked -> do
+    let valueAtlas = rankedDominionAtlas ranked
+        occupied position = do
+          index <- pageElementIndex (atlasPageElements valueAtlas) 1 (finiteOrdinal position)
+          pure $ withPageElement (pageElement index) $ \region ->
+            isJust (unrank (atlasDataAt valueAtlas region) 0)
+    assert "a ranked region accepts only a candidate at its forward rank"
+      (map occupied [0, 1, 2, 3, 4] == map Just [True, False, True, False, True])
+    assert "ranked coverage keeps the source ranking after decoder validation"
+      (coalitionElementRank (rankedDominionCoalitionElement ranked 7) == 14)
+  where
+    sparse :: Dominion Natural
+    sparse = dominion (* 2) (Just . (`div` 2)) (const ())
 
 testChainedDominionAtlas :: IO ()
 testChainedDominionAtlas = do
@@ -304,31 +322,31 @@ testChainedDominionAtlas = do
           (const ())
           (\_ _ -> ())
           (const ())
-      valueAtlas =
-        chainedDominionAtlas 3 selectedChain selectedDominion
-      finalContains position =
-        case pageElementIndex
-          (atlasPageElements valueAtlas) 1 (finiteOrdinal position) of
-            Just _ -> True
-            Nothing -> False
-  assert "a chained dominion Atlas uses the supplied finite order type"
-    ( atlasCardinality valueAtlas == 2
-      && finalContains 0
-      && finalContains 1
-      && not (finalContains 2)
-    )
-  withAtlasMapExtent
-    (chainedDominionAtlasMap 3 selectedChain selectedDominion) $
-      \_ _ extent coversExtent ->
-        assert "a chained dominion Atlas covers every selected value"
-          ( all
-              (\valueRank ->
-                case unrank extent valueRank of
-                  Just datum -> coversExtent datum `seq` True
-                  Nothing -> False)
-              [3, 4]
-            && isNothing (unrank extent 2)
-          )
+  withChainedDominionAtlas 3 selectedChain selectedDominion $ \owner -> do
+    let valueAtlas = chainedDominionAtlas owner
+        finalContains position =
+          case pageElementIndex
+            (atlasPageElements valueAtlas) 1 (finiteOrdinal position) of
+              Just _ -> True
+              Nothing -> False
+    assert "a chained dominion Atlas uses the supplied finite order type"
+      ( atlasCardinality valueAtlas == 2
+        && finalContains 0
+        && finalContains 1
+        && not (finalContains 2)
+      )
+    withAtlasMapExtent
+      (chainedDominionAtlasMap owner) $
+        \_ _ extent coversExtent ->
+          assert "a chained dominion Atlas covers every selected value"
+            ( all
+                (\valueRank ->
+                  case unrank extent valueRank of
+                    Just datum -> coversExtent datum `seq` True
+                    Nothing -> False)
+                [3, 4]
+              && isNothing (unrank extent 2)
+            )
 
 testSpine :: IO ()
 testSpine = do
@@ -1612,8 +1630,8 @@ testAtlasSequenceOriginRanks = withPartialCoverageAtlas $ \input ->
 
 testAtlasSequenceTransfinitePages :: IO ()
 testAtlasSequenceTransfinitePages =
-  let naturals = dominion id Just (const ())
-      input = rankedDominionAtlas naturals
+  withRankedDominionAtlas (dominion id Just (const ())) $ \ranked ->
+  let input = rankedDominionAtlas ranked
       member = atlasSequenceMember input
       members = member :| [member, member]
       starts = [finiteOrdinal 0, omega, addOrdinals omega omega]
@@ -1667,7 +1685,8 @@ testAtlasSequenceTransfinitePages =
 -- the source's distinct final cell or another member's cell.
 testAtlasSequenceUnequalDepths :: IO ()
 testAtlasSequenceUnequalDepths = withPartialCoverageAtlas $ \deep ->
-  let shallow = rankedDominionAtlas (dominion id Just (const ()))
+  withRankedDominionAtlas (dominion id Just (const ())) $ \ranked ->
+  let shallow = rankedDominionAtlas ranked
       members = atlasSequenceMember shallow :| [atlasSequenceMember deep, atlasSequenceMember shallow]
   in atlasSequence members $ \sequenceAtlas -> do
     checkMergeOriginRanks deep sequenceAtlas
@@ -1831,8 +1850,8 @@ testAtlasMergeChosenPreimages =
 
 testAtlasMergeTransfinitePages :: IO ()
 testAtlasMergeTransfinitePages =
-  let naturals = dominion id Just (const ())
-      input = rankedDominionAtlas naturals
+  withRankedDominionAtlas (dominion id Just (const ())) $ \ranked ->
+  let input = rankedDominionAtlas ranked
   in atlasMerge input input $ \merged ->
     mapM_ (\page -> do
       mapM_ (\(position, expectedRank) ->
@@ -3007,14 +3026,15 @@ testDomanialInclusionUncoveredInverse =
           ]
         unitDominion = dominion (const 0)
           (\n -> if n == 0 then Just () else Nothing) (const ())
-        sourceAtlas = dominionAtlas unitDominion
-    in case coveredZero of
+    in withDominionAtlas unitDominion $ \sourceOwner ->
+       let sourceAtlas = dominionAtlas sourceOwner
+       in case coveredZero of
       [] -> fail "missing covered origin zero"
       zero : _ -> do
         let insertion = domanialInsertion (const zero)
               (\element -> if coalitionElementRank element == 0 then Just () else Nothing)
               (const ())
-            arrow = coaToDomInc unitDominion (atlasWitness targetAtlas) insertion
+            arrow = coaToDomInc sourceOwner (atlasWitness targetAtlas) insertion
               (\_ (TestCellData value) -> if value == 0 then Just () else Nothing)
               (\_ _ -> ())
         withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
@@ -3270,9 +3290,9 @@ testCoalition =
                         (applyInsertion composed element) == 7)
 
 testDomanialInclusion :: IO ()
-testDomanialInclusion = do
-  let naturals = dominion id Just (const ())
-      successor :: Natural -> Natural
+testDomanialInclusion =
+  withDominionAtlas (dominion id Just (const ())) $ \naturals -> do
+  let successor :: Natural -> Natural
       successor = (+ 1)
       twice :: Natural -> Natural
       twice = (* 2)

@@ -14,17 +14,19 @@ module AsciiMap
   , asciiCharacterAt
   ) where
 
+import Atlas (Atlas)
 import AtlasMap (AtlasMap)
 import ChainedDominionAtlas
-  ( ChainedDominionAtlas
+  ( ChainedDominionCellData
+  , chainedDominionAtlas
+  , chainedDominionAtlasMap
   , ChainedDominionAtlasObject
   )
 import Data.Char (chr)
 import Dominion (Dominion, dominion)
 import MapOperators.AccessOperator
   ( IndexedAtlasMap
-  , indexedAtlasAtlas
-  , indexedAtlasAtlasMap
+  , withIndexedAtlas
   , indexedAtlasMap
   , indexedAtlasValueAt
   )
@@ -66,14 +68,16 @@ asciiMap useAscii =
       (AsciiCharacter 0 '\0')
       asciiCharacterDominion)
 
-asciiAtlas :: AsciiMap scope -> ChainedDominionAtlas (AsciiCharacter scope)
-asciiAtlas = indexedAtlasAtlas
+asciiAtlas :: AsciiMap scope
+  -> (forall owner pages. Atlas owner pages (ChainedDominionCellData (AsciiCharacter scope)) () (AsciiCharacter scope) -> result)
+  -> result
+asciiAtlas valueMap useAtlas = withIndexedAtlas valueMap (useAtlas . chainedDominionAtlas)
 
--- | The underlying chained Atlas map.
-asciiAtlasMap
-  :: AsciiMap scope
-  -> AtlasMap (ChainedDominionAtlasObject (AsciiCharacter scope))
-asciiAtlasMap = indexedAtlasAtlasMap
+-- | Observe the underlying map while retaining its owning scopes.
+asciiAtlasMap :: AsciiMap scope
+  -> (forall owner pages. AtlasMap (ChainedDominionAtlasObject owner pages (AsciiCharacter scope)) -> result)
+  -> result
+asciiAtlasMap valueMap useMap = withIndexedAtlas valueMap (useMap . chainedDominionAtlasMap)
 
 -- | Look up the character at one page-1 position.
 asciiCharacterAt

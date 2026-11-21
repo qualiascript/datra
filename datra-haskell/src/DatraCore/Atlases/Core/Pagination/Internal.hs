@@ -10,7 +10,6 @@ module Pagination.Internal
   ( Pagination
   , PaginationMorphism
   , SomePageElementArrow
-  , paginationWithScope
   , paginationFromPageElements
   , paginationFolio
   , paginationPageElements
@@ -41,7 +40,6 @@ import PageElements
   , normalizePageElementArrow
   )
 import PageElements.Structure (withPageElementArrow)
-import PageElements.Internal (pageElementsWithScope)
 import PageElements.Structure
   ( PageElementCell (..)
   , PageElement (..)
@@ -76,16 +74,6 @@ data Pagination (scope :: Type) origin final = Pagination
 type role PaginationMorphism nominal nominal
 newtype PaginationMorphism sourceScope targetScope = PaginationMorphism
   (Liquid.PaginationMorphism sourceScope targetScope)
-
--- | Internal, deterministically scoped variant used by derived functors.
--- Public construction remains generative through 'pagination'.
-{-@ paginationWithScope :: pages:Folio origin final
-      -> {value:Pagination scope origin final | pageElementsFolio (paginationPageElements value) == pages} @-}
-paginationWithScope
-  :: Folio origin final
-  -> Pagination scope origin final
-paginationWithScope pages =
-  paginationFromPageElements (pageElementsWithScope pages)
 
 -- | Retain an already owned category without allocating another scope.
 {-@ reflect paginationFromPageElements @-}

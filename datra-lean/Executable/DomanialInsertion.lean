@@ -14,6 +14,12 @@ structure DomanialInsertion (A : Type u) (B : Type v) where
 namespace DomanialInsertion
 variable {A : Type u} {B : Type v} {C : Type w} {D : Type z}
 
+-- ALIGN: INSERTION-CONSTRUCTOR-FUNCTIONS.
+theorem mk_functions (forward : A → B) (backward : B → Option A)
+    (leftInverse : ∀ value, backward (forward value) = some value) :
+    (DomanialInsertion.mk forward backward leftInverse).map = forward ∧
+      (DomanialInsertion.mk forward backward leftInverse).preimage = backward := ⟨rfl, rfl⟩
+
 /-- Conjugate both executable directions by carrier equivalences. In
 particular, this preserves failed and off-image inverse lookups. -/
 def reindex (insertion : DomanialInsertion A B) (source : A ≃ C) (target : B ≃ D) :

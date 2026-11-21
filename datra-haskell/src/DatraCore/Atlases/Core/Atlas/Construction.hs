@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RoleAnnotations #-}
 #include "../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
@@ -12,9 +13,13 @@ module Atlas.Construction
   ( AtlasDataConstruction (..)
   , ConstructedAtlasScope
   , constructAtlasData
+  , AtlasConstruction (..)
+  , FixedAtlasScope
+  , constructAtlas
   ) where
 
 import Data.Kind (Type)
+import Data.Proxy (Proxy)
 import Atlas
   ( Atlas, AtlasPresentation, atlasPagination, atlasPresentationPagination )
 import qualified Atlas.Internal as Internal (atlasFromPresentationWithScope)
@@ -47,3 +52,17 @@ constructAtlasData :: AtlasDataConstruction construction
   => Atlas a s d o f
   -> Atlas (ConstructedAtlasScope construction a s d) s (construction a s d) o f
 constructAtlasData owner = Internal.atlasFromPresentationWithScope (atlasDataPresentation owner)
+
+-- | A complete, fixed recipe has no runtime configuration. The nominal token
+-- names that recipe and every index of its checked presentation.
+type role FixedAtlasScope nominal nominal nominal nominal nominal
+data FixedAtlasScope recipe scope (cellData :: Type -> Type) origin final
+
+class AtlasConstruction recipe scope (cellData :: Type -> Type) origin final where
+  atlasConstructionPresentation :: Proxy recipe -> AtlasPresentation scope cellData origin final
+
+-- ALIGN: ATLAS-FIXED-CONSTRUCTION.
+constructAtlas :: AtlasConstruction recipe scope cellData origin final
+  => Proxy recipe
+  -> Atlas (FixedAtlasScope recipe scope cellData origin final) scope cellData origin final
+constructAtlas recipe = Internal.atlasFromPresentationWithScope (atlasConstructionPresentation recipe)

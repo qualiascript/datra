@@ -8,6 +8,34 @@ structure Dominion (Carrier : Type) where
   unrank : Nat → Option Carrier
   coherence : ∀ x, unrank (rank x) = some x
 
+-- ALIGN: DOMINION-CONSTRUCTOR-FUNCTIONS.
+theorem Dominion.mk_functions {A : Type} (rank : A → Nat) (unrank : Nat → Option A)
+    (coherence : ∀ value, unrank (rank value) = some value) :
+    (Dominion.mk rank unrank coherence).rank = rank ∧
+      (Dominion.mk rank unrank coherence).unrank = unrank := ⟨rfl, rfl⟩
+
+/-- Validate the forward rank before accepting a possibly off-image decoder result. -/
+def Dominion.lookupRank {A : Type} (D : Dominion A) (index : Nat) : Option A :=
+  match D.unrank index with
+  | none => none
+  | some value => if D.rank value = index then some value else none
+
+-- ALIGN: DOMINION-LOOKUP-RANK.
+theorem Dominion.lookupRank_sound {A : Type} (D : Dominion A) (index : Nat) (value : A)
+    (found : D.lookupRank index = some value) : D.rank value = index := by
+  cases decoded : D.unrank index with
+  | none => simp [lookupRank, decoded] at found
+  | some candidate =>
+    by_cases valid : D.rank candidate = index
+    · simp [lookupRank, decoded, valid] at found
+      simpa [← found] using valid
+    · simp [lookupRank, decoded, valid] at found
+
+-- ALIGN: DOMINION-LOOKUP-ROUNDTRIP.
+theorem Dominion.lookupRank_roundTrip {A : Type} (D : Dominion A) (value : A) :
+    D.lookupRank (D.rank value) = some value := by
+  simp [lookupRank, D.coherence]
+
 -- ALIGN: DOMINION-RANK-INJECTIVE.
 theorem Dominion.rank_injective {A : Type} (D : Dominion A) :
     Function.Injective D.rank := by

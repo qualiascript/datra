@@ -78,8 +78,9 @@ extent eliminator exposes that owner to its callback. Coverage of an arbitrary
 accepted datum follows by transporting it to the stored origin and applying the
 checked origin-rank preservation theorem. The shared coverage-transport lemma
 and the Atlas-map result contract are checked in both languages. These interfaces
-keep coverage constructors private; the remaining ownership-sensitive derived
-constructions still require migration to public interfaces.
+keep coverage constructors private. Derived constructions allocate and retain
+their owners through exposed interfaces; their outstanding assembly contracts
+are tracked separately from this ownership boundary.
 
 Coverage validation checks the retained region's owning trace, datum membership,
 final page, and both cache equalities. Matching the source's origin rank is only
@@ -440,8 +441,8 @@ Consumers must import exposed interfaces rather than another component's
 Their definitions and refinement contracts are checked in
 the exposed modules, including the logical record selectors used by clients.
 The alignment checker enforces the `LiquidInternal` boundary in the library,
-tests, and application. The remaining cross-component `Internal` imports need
-migration to exposed interfaces; the strict completion gate rejects them. The
+tests, and application. Cross-component `Internal` imports are also prohibited; all library, test, and
+application consumers use exposed interfaces. The
 merge modules use public component interfaces, including checked pagination and
 Atlas constructors and a prefix-lookup wrapper that retains the success and
 position contracts. Private implementation imports belong within their owning component.
@@ -450,9 +451,44 @@ existing occurrence category and its scope. Generative pagination delegates to
 the public page-elements allocator. Fixed folios use `PageElements.Construction`:
 a pure class instance chooses the entire folio, and a nominal scope records the
 recipe and both carrier types. Dominion inclusion and ranked Dominion paginations
-use this interface; a runtime chain requires a separately owned construction.
+use this interface. Runtime chains allocate pagination and Atlas owners once
+through the public generative constructors. Chained Dominion handles retain the
+chain, Dominion, and Atlas together; coverage, maps, and traversals reuse them.
+Generic indexed maps expose the retained handle through an existential callback.
+Range values retain their construction alongside their bounds, and their nominal
+scope records both owners and the element membership tag. Canonical super-ellipsis
+rank witnesses supply a fixed chain-and-Dominion recipe. No derived construction
+uses the deleted scoped pagination allocator.
 Lean models the fixed recipe and proves that pagination wrapping preserves its
 folio and valid elements. Rejection checks enforce scope and recipe separation.
+External-client guards reject escaped chained or indexed owners, mixed Atlas or
+pagination scopes, and coercion of elements between different owning ranges.
+The alignment checker rejects cross-component private imports on every run.
+Dominion inclusion retains a generatively allocated Atlas in an abstract nominal
+owner. Its coalition maps, hom equivalence, and traversals reuse that owner.
+Dot uses a fixed `CanonicalDominion` instance through `Atlas.Construction`: the
+complete presentation has no runtime configuration, and its nominal scope
+records the recipe and every presentation index. Lean models allocation of this
+fixed presentation. The inclusion assembly still requires its normalized action
+and coverage contracts to be checked.
+Ranked Dominion construction allocates an Atlas through the public generative
+constructor. A retained handle ties the supplied Dominion to that exact Atlas;
+coverage, maps, and insertion traversals reuse it. Its region decoder uses the
+checked `Dominion.lookupRank`, which accepts a candidate only at its forward rank
+and preserves decoding at every inhabited rank. Lean proves both properties.
+The ranked construction's complete normalized action contracts and Atlas
+interpretation remain a separate coverage gap.
+The public Dominion constructor and insertion core retain both supplied
+executable functions in their checked result contracts. `DomanialInclusion.Data`
+checks the constant carrier's rank, raw decoder, round trip, and identity
+insertion, including its inverse. The raw decoder preserves off-image results
+exactly as supplied by the original Dominion. The coalition-dependent assembly
+uses this exposed carrier interface. Public page allocation likewise carries
+the input-folio equality through its callback; pagination preserves that owner.
+Rejection checks prohibit changed ranks, discarded successful decoder results,
+changed identity data, discarded identity inverses, and substituted allocation
+folios. The full inclusion Atlas presentation and coverage assembly still require their
+normalized contracts to be checked.
 Merge, sequence, the empty Atlas, and Dominion inclusion share the checked
 singleton-chain constructor. Lean uses the same singleton chain and the common
 carrier-reindexing operation in its derived folios.

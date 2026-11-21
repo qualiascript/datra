@@ -95,11 +95,24 @@ def constantDominion {A : Type} (D : Dominion A) (cell : PageElementCell) : Domi
   unrank n := (D.unrank n).map CellData.mk
   coherence datum := by simp only [D.coherence, Option.map_some]
 
+-- ALIGN: DOMINC-CONSTANT-ROUNDTRIP.
+theorem constantDominion_roundTrip {A : Type} (D : Dominion A) {cell : PageElementCell}
+    (datum : CellData A cell) :
+    (constantDominion D cell).unrank ((constantDominion D cell).rank datum) = some datum :=
+  (constantDominion D cell).coherence datum
+
+-- ALIGN: DOMINC-IDENTITY-INSERTION.
 def identityCellInsertion {A : Type} {source target : PageElementCell} :
     DomanialInsertion (CellData A source) (CellData A target) where
   map := mapCellData id
   preimage datum := some (mapCellData id datum)
   leftInverse _ := rfl
+
+-- ALIGN: DOMINC-IDENTITY-ROUNDTRIP.
+theorem identityCellInsertion_roundTrip {A : Type} {source target : PageElementCell}
+    (datum : CellData A source) :
+    (identityCellInsertion (target := target)).preimage (identityCellInsertion.map datum) = some datum :=
+  (identityCellInsertion (target := target)).leftInverse datum
 
 def dominionAtlas {A : Type} (D : Dominion A) : Atlas where
   pagination := onePagePagination

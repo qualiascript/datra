@@ -107,7 +107,6 @@ import PageElements.Internal
   , pageElementIndexTrace
   , pageElementIndexPosition
   , pageElementArrow
-  , pageElements
   , composePageElementArrows
   , identityPageElementArrow
   , pageElementArrowAssociativity
@@ -128,12 +127,21 @@ import PageElements.Internal
   , somePageElementTransportedReflexive
   )
 
-import qualified PageElements.Internal as Internal (normalizePageElement, prefixTraceLookupObject, pageElementTraceValidOrigin, lastPageElement, finalPageElementIndex)
+import qualified PageElements.Internal as Internal (pageElements, normalizePageElement, prefixTraceLookupObject, pageElementTraceValidOrigin, lastPageElement, finalPageElementIndex)
 import PageElements.Structure (SomePageElement (..))
 import Chain (ChainIndex, chainIndex, chainPosition, chainObjectAt, chainIndexPosition, chainIndexOrderType, chainOrderType)
 import DatraOrdinal (Ordinal)
 import Folio (Folio, lastChain, folioLength)
 import qualified PageElements.Structure as Trace
+
+-- | Retain the owning folio through the public generative boundary.
+-- ALIGN: PE-GENERATIVE-FOLIO.
+{-@ pageElements :: pages:Folio origin final
+      -> (forall scope. category:{PageElements scope origin final |
+           pageElementsFolio category == pages} -> result) -> result @-}
+pageElements :: Folio origin final
+  -> (forall scope. PageElements scope origin final -> result) -> result
+pageElements = Internal.pageElements
 
 -- | Decode a prefix position while retaining the checked object and success
 -- contracts across the exposed interface.

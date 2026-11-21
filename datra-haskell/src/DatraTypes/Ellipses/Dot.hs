@@ -23,7 +23,10 @@ import Atlas
   )
 import AtlasMap (AtlasMap)
 import DomanialInclusion
-  ( DominionAtlasObject
+  ( CanonicalDominion (..)
+  , CanonicalDominionAtlasScope
+  , canonicalDominionAtlas
+  , DominionAtlasObject
   , dominionAtlas
   , dominionAtlasMap
   )
@@ -59,7 +62,10 @@ dotDominion =
 
 -- | The object obtained by applying the domanial inclusion to
 -- 'dotDominion'.
-type DotAtlasObject = DominionAtlasObject DotTerminal
+instance CanonicalDominion DotTerminal where
+  canonicalDominion _ = dotDominion
+
+type DotAtlasObject = DominionAtlasObject (CanonicalDominionAtlasScope DotTerminal) DotTerminal
 
 -- | Dot's one-page, one-cell representing Atlas.
 dotAtlas
@@ -69,12 +75,12 @@ dotAtlas
        (AtlasObjectCellData DotAtlasObject)
        ()
        ()
-dotAtlas = dominionAtlas dotDominion
+dotAtlas = dominionAtlas canonicalDominionAtlas
 
 -- | The one-page inclusion is already an Atlas map: its only datum is covered
 -- by its only cell, which is both the extent and the final region.
 dotAtlasMap :: AtlasMap DotAtlasObject
-dotAtlasMap = dominionAtlasMap dotDominion
+dotAtlasMap = dominionAtlasMap canonicalDominionAtlas
 
 -- | The stable-confederal value represented by the singleton domanial
 -- inclusion.

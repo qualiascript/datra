@@ -45,9 +45,10 @@ domanialInsertion
   :: forward:(a -> b)
   -> backward:(b -> Maybe a)
   -> (x:a -> { proof:() | backward (forward x) == Just x })
-  -> DomanialInsertion a b
+  -> {value:DomanialInsertion a b | applyInsertion value == forward && preimage value == backward}
 @-}
 -- ALIGN: INSERTION-INJECTIVE.
+-- ALIGN: INSERTION-CONSTRUCTOR-FUNCTIONS.
 domanialInsertion
   :: (a -> b)
   -> (b -> Maybe a)

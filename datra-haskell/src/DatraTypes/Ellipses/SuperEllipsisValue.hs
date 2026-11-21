@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | Individual ordinal values represented as singleton super-ellipsis ranges.
 module SuperEllipsisValue
@@ -37,7 +38,7 @@ import SuperEllipsisInsertion
   )
 import SuperEllipsisRange
   ( SuperEllipsisRange
-  , SuperEllipsisRangeElement
+  , SuperEllipsisRangeMember
   , SuperEllipsisRangeTarget (GivenTarget)
   , superEllipsisRange
   , superEllipsisRangeLowerBound
@@ -56,7 +57,7 @@ newtype SuperEllipsisValue (target :: Type) scope = SuperEllipsisValue
   { superEllipsisValueRange :: SuperEllipsisRange target scope
   }
 
-type SuperEllipsisValueElement = SuperEllipsisRangeElement
+type SuperEllipsisValueElement target scope = SuperEllipsisRangeMember target scope
 
 -- | Introduce an ordinal at its uniquely determined minimal rank. The target
 -- is existential so callers cannot request or observe a non-minimal carrier.

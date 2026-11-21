@@ -53,8 +53,7 @@ def check(require_complete=False):
         for imported in private_component_imports(text):
             private_imports.append(f"{source.relative_to(ROOT)}: import an exposed interface "
                                    f"instead of {imported}")
-    if require_complete:
-        errors.extend(private_imports)
+    errors.extend(private_imports)
     unreachable = set((ROOT / "datra-lean").rglob("*.lean")) - set(sources)
     if unreachable:
         errors.append("Lean modules missing from datra.lean imports: " + ", ".join(

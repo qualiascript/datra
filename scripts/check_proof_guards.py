@@ -842,6 +842,34 @@ proofGuard sourceAtlas targetAtlas transversal originProof =
 }
 
 
+DOMINC_DATA_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Data.hs"
+DOMINC_DATA_GUARDS = {
+    "constant Dominion preserves the supplied forward rank": """
+{-@ proofGuard :: owner:Dominion a -> value:a
+      -> {result:Natural | result /= rank owner value} @-}
+proofGuard :: Dominion a -> a -> Natural
+proofGuard owner value = rank (constantDominion owner) (dominionCellData value)
+""",
+    "constant Dominion preserves successful decoding outside its rank image too": """
+{-@ proofGuard :: owner:Dominion a -> index:{Natural | unrank owner index /= Nothing}
+      -> {result:Maybe (DominionCellData a object) | result == Nothing} @-}
+proofGuard :: Dominion a -> Natural -> Maybe (DominionCellData a object)
+proofGuard owner index = unrank (constantDominion owner) index
+""",
+    "constant cell insertion cannot change a datum": """
+{-@ proofGuard :: datum:DominionCellData a object
+      -> {result:DominionCellData a object | result /= datum} @-}
+proofGuard :: DominionCellData a object -> DominionCellData a object
+proofGuard datum = applyInsertion identityDominionCellInsertion datum
+""",
+    "constant cell insertion cannot discard its inverse": """
+{-@ proofGuard :: datum:DominionCellData a object
+      -> {result:Maybe (DominionCellData a object) | result == Nothing} @-}
+proofGuard :: DominionCellData a object -> Maybe (DominionCellData a object)
+proofGuard datum = preimage identityDominionCellInsertion datum
+""",
+}
+
 DOMINC_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs"
 DOMINC_GUARDS = {
     "coalition components reject an inverse that drops every image": """
@@ -1598,6 +1626,12 @@ proofGuard owner source = withAtlasTerritoryOf owner source $ \_index arrow ->
 
 PAGE_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/PageElements.hs"
 PAGE_API_GUARDS = {
+    "public page allocation retains the supplied folio": """
+{-@ proofGuard :: pages:Folio origin final
+      -> {result:Folio origin final | result /= pages} @-}
+proofGuard :: Folio origin final -> Folio origin final
+proofGuard pages = pageElements pages pageElementsFolio
+""",
     "public normalization retains the final-page bound": """
 {-@ proofGuard :: category:PageElements scope origin final
       -> occurrence:PageElement scope object
@@ -1624,6 +1658,21 @@ proofGuard :: PageElements scope origin final -> ChainIndex final -> SomePageEle
 proofGuard = lastPageElement
 """,
 }
+
+DOMINION_LOOKUP_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Dominion/Dominion.hs"
+DOMINION_LOOKUP_GUARDS = {
+    "Dominion rank lookup rejects a candidate with a different forward rank": """
+{-@ proofGuard :: owner:Dominion a -> index:Natural -> Maybe {value:a | rank owner value /= index} @-}
+proofGuard :: Dominion a -> Natural -> Maybe a
+proofGuard = lookupRank
+""",
+    "Dominion rank lookup retains the round trip": """
+{-@ proofGuard :: owner:Dominion a -> value:a -> {lookupRank owner (rank owner value) /= Just value} @-}
+proofGuard :: Dominion a -> a -> ()
+proofGuard = lookupRankRoundTrip
+""",
+}
+RANKED_DOMINION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs"
 
 PAGE_CONSTRUCTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Construction.hs"
 PAGINATION_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Pagination/Pagination.hs"
@@ -2143,6 +2192,7 @@ def run(pattern=None):
                                     (MERGE_PAGE_SOURCE, MERGE_PAGE_GUARDS),
                                     (STABLE_SOURCE, STABLE_GUARDS),
                                     (DOMINC_SOURCE, DOMINC_GUARDS),
+                                    (DOMINC_DATA_SOURCE, DOMINC_DATA_GUARDS),
                                     (COALITION_ELEMENT_SOURCE, COALITION_ELEMENT_GUARDS),
                                     (TRANSVERSAL_SOURCE, TRANSVERSAL_GUARDS),
                                     (COVERED_API_SOURCE, COVERED_API_GUARDS),
@@ -2160,6 +2210,7 @@ def run(pattern=None):
                                     (PAGE_ARROW_SOURCE, PAGE_ARROW_GUARDS),
                                     (TERRITORY_SOURCE, TERRITORY_GUARDS),
                                     (PAGE_API_SOURCE, PAGE_API_GUARDS),
+                                    (DOMINION_LOOKUP_SOURCE, DOMINION_LOOKUP_GUARDS),
                                     (PAGINATION_API_SOURCE, PAGINATION_API_GUARDS),
                                     (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),
                                     (ATLAS_SOURCE, ATLAS_GUARDS),
@@ -2187,6 +2238,58 @@ def run(pattern=None):
                 print(f"Rejected false law: {description}")
 
         typing_guards = [
+            ("module PublicChainedGuard where\nimport ChainedDominionAtlas\nimport Chain (Chain)\nimport Dominion (Dominion)\n",
+             "chained Dominion construction cannot escape its owners",
+             "proofGuard :: value -> Chain value -> Dominion value -> ChainedDominionAtlas chosen pages value\n"
+             "proofGuard first values ranks = withChainedDominionAtlas first values ranks (\\owner -> owner)\n",
+             ("Couldn't match type", "withChainedDominionAtlas")),
+            ("module PublicChainedGuard where\nimport ChainedDominionAtlas\nimport Chain (Chain)\nimport Dominion (Dominion)\n",
+             "chained Dominion Atlas owners cannot be coerced together",
+             "proofGuard :: ChainedDominionAtlas first pages value -> ChainedDominionAtlas second pages value\n"
+             "proofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            ("module PublicChainedGuard where\nimport ChainedDominionAtlas\nimport Chain (Chain)\nimport Dominion (Dominion)\n",
+             "chained Dominion pagination owners cannot be coerced together",
+             "proofGuard :: ChainedDominionAtlas owner first value -> ChainedDominionAtlas owner second value\n"
+             "proofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            ("module PublicIndexedGuard where\nimport MapOperators.IndexedAtlasMap\nimport ChainedDominionAtlas (ChainedDominionAtlas)\n",
+             "indexed Atlas elimination cannot escape its owners",
+             "proofGuard :: IndexedAtlasMap value -> ChainedDominionAtlas chosen pages value\n"
+             "proofGuard valueMap = withIndexedAtlas valueMap (\\owner -> owner)\n",
+             ("Couldn't match type", "withIndexedAtlas")),
+            ("module PublicRangeGuard where\nimport SuperEllipsisRange\n",
+             "range elements cannot be coerced across owning ranges",
+             "proofGuard :: SuperEllipsisRange target first -> SuperEllipsisRange target second -> SuperEllipsisRangeMember target first -> SuperEllipsisRangeMember target second\n"
+             "proofGuard _ _ = coerce\n",
+             ("Couldn't match type", "coerce")),
+
+            (HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+             "Dominion inclusion cannot escape its owner scope",
+             "proofGuard :: Dominion value -> DominionAtlas chosen value\n"
+             "proofGuard source = withDominionAtlas source (\\owner -> owner)\n",
+             ("Couldn't match type", "withDominionAtlas")),
+            (HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+             "Dominion inclusion owners cannot be coerced together",
+             "proofGuard :: DominionAtlas first value -> DominionAtlas second value\n"
+             "proofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            (ATLAS_CONSTRUCTION_SOURCE, "fixed Atlas construction cannot choose its output scope",
+             "proofGuard :: AtlasConstruction recipe s d o f => Proxy recipe -> Atlas chosen s d o f\n"
+             "proofGuard = constructAtlas\n",
+             ("Couldn't match type", "FixedAtlasScope")),
+            (ATLAS_CONSTRUCTION_SOURCE, "fixed Atlas construction retains its recipe identity",
+             "proofGuard :: Atlas (FixedAtlasScope first s d o f) s d o f -> Atlas (FixedAtlasScope second s d o f) s d o f\n"
+             "proofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            (RANKED_DOMINION_SOURCE, "ranked Dominion construction cannot escape its owner scope",
+             "proofGuard :: Dominion value -> RankedDominionAtlas chosen value\n"
+             "proofGuard source = withRankedDominionAtlas source (\\owner -> owner)\n",
+             ("Couldn't match type", "withRankedDominionAtlas")),
+            (RANKED_DOMINION_SOURCE, "ranked Dominion owners cannot be coerced together",
+             "proofGuard :: RankedDominionAtlas first value -> RankedDominionAtlas second value\n"
+             "proofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
             (PAGINATION_API_SOURCE, "generative pagination cannot escape its owner scope",
              "proofGuard :: Folio o f -> Pagination s o f\n"
              "proofGuard pages = pagination pages (\\value -> value)\n",
@@ -2231,7 +2334,7 @@ def run(pattern=None):
                 continue
             source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
                             f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
-                            source_path.read_text())
+                            source_path.read_text() if isinstance(source_path, Path) else source_path)
             if "coerce" in guard:
                 source = re.sub(r"^import ", "import Data.Coerce (coerce)\nimport ", source, count=1, flags=re.M)
             target.write_text(source + "\n" + guard)

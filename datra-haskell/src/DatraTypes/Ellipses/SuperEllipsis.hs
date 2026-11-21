@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -51,6 +52,7 @@ module SuperEllipsis
   , superEllipsisChain
   , SuperEllipsisAtlasObject
   , superEllipsisAtlas
+  , superEllipsisAtlasOwner
   , superEllipsisAtlasMap
   , superEllipsisCoalitionElement
   , superEllipsis
@@ -62,11 +64,17 @@ module SuperEllipsis
   , withSuperEllipsisLayer
   ) where
 
+import Atlas (Atlas)
 import AtlasMap (AtlasMap)
 import Chain (Chain, chain)
 import ChainedDominionAtlas
   ( ChainedDominionAtlas
   , ChainedDominionAtlasObject
+  , CanonicalChainedDominion (..)
+  , CanonicalChainedAtlasScope
+  , CanonicalChainedPaginationScope
+  , ChainedDominionCellData
+  , canonicalChainedDominionAtlas
   , chainedDominionAtlas
   , chainedDominionAtlasMap
   , chainedDominionCoalitionElement
@@ -143,7 +151,8 @@ type family SuperEllipsisAt (level :: SuperEllipsisLevel) where
 -- parameter identifies the corresponding stable-confederal carrier, while
 -- the hidden natural records its finite exponent.
 type role SuperEllipsisRank nominal
-newtype SuperEllipsisRank target = SuperEllipsisRank Natural
+data SuperEllipsisRank target where
+  SuperEllipsisRank :: SuperEllipsisTarget target => Natural -> SuperEllipsisRank target
 
 -- | Runtime rank evidence for every target in the inductive hierarchy.
 class SuperEllipsisTarget target where
@@ -306,41 +315,38 @@ superEllipsisChain valueRank =
     (\_ _ -> ())
     (const ())
 
--- | Concrete chained-Atlas presentation associated with a rank.
+-- | The canonical target fixes every input of its chained construction.
+instance SuperEllipsisTarget target => CanonicalChainedDominion (SuperEllipsisTerminal target) where
+  canonicalChainedDominion _ =
+    let valueRank = superEllipsisTargetRank @target
+    in (superEllipsisZeroTerminal valueRank, superEllipsisChain valueRank, superEllipsisDominion valueRank)
+
 type SuperEllipsisAtlasObject target =
-  ChainedDominionAtlasObject (SuperEllipsisTerminal target)
+  ChainedDominionAtlasObject
+    (CanonicalChainedAtlasScope (SuperEllipsisTerminal target))
+    (CanonicalChainedPaginationScope (SuperEllipsisTerminal target))
+    (SuperEllipsisTerminal target)
 
-superEllipsisAtlas
-  :: SuperEllipsisRank target
-  -> ChainedDominionAtlas (SuperEllipsisTerminal target)
-superEllipsisAtlas valueRank =
-  chainedDominionAtlas
-    zero
-    (superEllipsisChain valueRank)
-    (superEllipsisDominion valueRank)
-  where
-    zero = superEllipsisZeroTerminal valueRank
+superEllipsisAtlasOwner :: SuperEllipsisRank target
+  -> ChainedDominionAtlas
+       (CanonicalChainedAtlasScope (SuperEllipsisTerminal target))
+       (CanonicalChainedPaginationScope (SuperEllipsisTerminal target))
+       (SuperEllipsisTerminal target)
+superEllipsisAtlasOwner (SuperEllipsisRank _) = canonicalChainedDominionAtlas
 
-superEllipsisAtlasMap
-  :: SuperEllipsisRank target
-  -> AtlasMap (SuperEllipsisAtlasObject target)
-superEllipsisAtlasMap valueRank =
-  chainedDominionAtlasMap
-    zero
-    (superEllipsisChain valueRank)
-    (superEllipsisDominion valueRank)
-  where
-    zero = superEllipsisZeroTerminal valueRank
+superEllipsisAtlas :: SuperEllipsisRank target
+  -> Atlas
+       (CanonicalChainedAtlasScope (SuperEllipsisTerminal target))
+       (CanonicalChainedPaginationScope (SuperEllipsisTerminal target))
+       (ChainedDominionCellData (SuperEllipsisTerminal target)) () (SuperEllipsisTerminal target)
+superEllipsisAtlas = chainedDominionAtlas . superEllipsisAtlasOwner
 
-superEllipsisCoalitionElement
-  :: SuperEllipsisRank target
-  -> SuperEllipsisTerminal target
+superEllipsisAtlasMap :: SuperEllipsisRank target -> AtlasMap (SuperEllipsisAtlasObject target)
+superEllipsisAtlasMap = chainedDominionAtlasMap . superEllipsisAtlasOwner
+
+superEllipsisCoalitionElement :: SuperEllipsisRank target -> SuperEllipsisTerminal target
   -> CoalitionElement (SuperEllipsisAtlasObject target)
-superEllipsisCoalitionElement valueRank =
-  chainedDominionCoalitionElement
-    (superEllipsisZeroTerminal valueRank)
-    (superEllipsisChain valueRank)
-    (superEllipsisDominion valueRank)
+superEllipsisCoalitionElement = chainedDominionCoalitionElement . superEllipsisAtlasOwner
 
 -- | Tie the guarded recursive equation for the successor of @predecessor@.
 superEllipsis

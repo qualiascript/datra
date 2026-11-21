@@ -178,6 +178,7 @@ library
         Coalition
         Coalition.Element
         DomanialInclusion
+        DomanialInclusion.Data
         StableAtlasTransversal
         DataTransformation
         DataTransversal

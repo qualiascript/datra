@@ -40,7 +40,7 @@ dominion
   -> (x:a ->
        { proof:() |
            unrankFunction (rankFunction x) == Just x })
-  -> Dominion a
+  -> {value:Dominion a | rank value == rankFunction && unrank value == unrankFunction}
 @-}
 -- ALIGN: DOMINION-RANK-INJECTIVE.
 dominion

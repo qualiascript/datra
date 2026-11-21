@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Stable Atlas transversals into any finite-rank 'SuperEllipsis'.
@@ -49,7 +50,7 @@ import DatraOrdinal
   , finiteOrdinal
   )
 import Data.Kind (Type)
-import DomanialInclusion (DominionAtlasObject)
+import DomanialInclusion (DominionAtlas, DominionAtlasObject)
 import DomanialInsertion
   ( DomanialInsertion
   , applyInsertion
@@ -76,11 +77,11 @@ import SuperEllipsis
   , SuperEllipsisTerminal
   , SuperEllipsisTarget
   , superEllipsisChain
+  , superEllipsisAtlasOwner
   , superEllipsisDominion
   , superEllipsisRankLevel
   , superEllipsisTerminalPosition
   , superEllipsisTargetRank
-  , superEllipsisZeroTerminal
   , withSuperEllipsisRank
   )
 
@@ -90,8 +91,9 @@ data SuperEllipsisInsertion (target :: Type) source = SuperEllipsisInsertion
   , superEllipsisInsertionChain :: Chain source
   , superEllipsisInsertionSources :: InsertionSources source
   , superEllipsisInsertionTraversal
-      :: StableAtlasTransversal
-           (DominionAtlasObject source)
+      :: forall owner. DominionAtlas owner source
+      -> StableAtlasTransversal
+           (DominionAtlasObject owner source)
            (SuperEllipsisAtlasObject target)
   , superEllipsisInsertionDomanial
       :: DomanialInsertion source (SuperEllipsisTerminal target)
@@ -208,16 +210,12 @@ superEllipsisInsertion
     , superEllipsisInsertionSources = insertionSources
     , superEllipsisInsertionTraversal =
         chainedDominionInsertionTraversal
-          zero
-          (superEllipsisChain valueRank)
-          targetDominion
+          (superEllipsisAtlasOwner valueRank)
           insertion
     , superEllipsisInsertionDomanial = insertion
     }
   where
-    targetDominion = superEllipsisDominion valueRank
     insertion = domanialInsertion forward backward leftInverse
-    zero = superEllipsisZeroTerminal valueRank
     insertionSources =
       case chainIndex sourceChain (finiteOrdinal 0) of
         Nothing -> EmptyInsertionSources

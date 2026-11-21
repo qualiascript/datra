@@ -1,4 +1,9 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RoleAnnotations #-}
 
 -- | A two-page Atlas map presenting a dominion along a supplied chain.
 --
@@ -10,6 +15,11 @@ module ChainedDominionAtlas
   , ChainedDominionAtlas
   , ChainedDominionAtlasObject
   , chainedDominionAtlas
+  , withChainedDominionAtlas
+  , CanonicalChainedDominion (..)
+  , CanonicalChainedAtlasScope
+  , CanonicalChainedPaginationScope
+  , canonicalChainedDominionAtlas
   , chainedDominionAtlasMap
   , chainedDominionCoalitionElement
   , chainedDominionInsertionTraversal
@@ -19,12 +29,18 @@ import qualified Pagination
 import Atlas
   ( Atlas
   , AtlasObject
+  , AtlasPresentation
+  , atlasPresentationForPredicate
+  , withAtlasPresentation
   , atlasOriginCell
   , atlasDataAction
   , atlasPageElements
   , atlasWitness
   )
-import Atlas.Internal (atlasWithScope)
+import Atlas.Construction (AtlasConstruction (..), FixedAtlasScope, constructAtlas)
+import Data.Proxy (Proxy (..))
+import PageElements.Construction
+  ( PageElementsConstruction (..), ConstructedPageElementsScope, constructPageElements )
 import AtlasCoveredPageElement
   ( AtlasCoverageWitness
   , atlasCoverageWitness
@@ -41,7 +57,8 @@ import Consolidation (consolidation, op)
 import Coalition (CoalitionElement, coalitionElementRank)
 import Coalition.Element (coalitionElement)
 import DomanialInclusion
-  ( DominionAtlasObject
+  ( DominionAtlas
+  , DominionAtlasObject
   , coaToDomInc
   , singletonChain
   )
@@ -51,7 +68,6 @@ import DomanialInsertion
   , domanialInsertion
   , insertionLeftInverse
   , preimage
-  , pullbackDominion
   )
 import Dominion (Dominion, dominion, rank, unrank)
 import Folio (Folio, appendPage, singletonFolio)
@@ -66,7 +82,6 @@ import PageElements
   , lastPageElement
   )
 import Pagination (Pagination)
-import Pagination.Internal (paginationWithScope)
 import StableAtlasTransversal (StableAtlasTransversal)
 
 -- | Data carried by the extent or by one selected final-chain region.
@@ -79,22 +94,56 @@ cellValue :: ChainedDominionCellData value object -> value
 cellValue (ChainedDominionExtentDatum value) = value
 cellValue (ChainedDominionRegionDatum value) = value
 
-data ChainedDominionAtlasScope value
-data ChainedDominionPaginationScope value
+type ChainedDominionAtlasObject owner scope value =
+  AtlasObject owner scope (ChainedDominionCellData value)
 
-type ChainedDominionAtlasObject value =
-  AtlasObject
-    (ChainedDominionAtlasScope value)
-    (ChainedDominionPaginationScope value)
-    (ChainedDominionCellData value)
+type role ChainedDominionAtlas nominal nominal nominal
+data ChainedDominionAtlas owner scope value = ChainedDominionAtlas
+  (Chain value) (Dominion value)
+  (Atlas owner scope (ChainedDominionCellData value) () value)
 
-type ChainedDominionAtlas value =
-  Atlas
-    (ChainedDominionAtlasScope value)
-    (ChainedDominionPaginationScope value)
-    (ChainedDominionCellData value)
-    ()
-    value
+chainedDominionAtlas :: ChainedDominionAtlas owner scope value
+  -> Atlas owner scope (ChainedDominionCellData value) () value
+chainedDominionAtlas (ChainedDominionAtlas _ _ valueAtlas) = valueAtlas
+
+-- | An instance fixes the first value, complete chain, and Dominion together.
+class CanonicalChainedDominion value where
+  canonicalChainedDominion :: Proxy value -> (value, Chain value, Dominion value)
+
+data CanonicalChainedRecipe value
+type CanonicalChainedPaginationScope value =
+  ConstructedPageElementsScope (CanonicalChainedRecipe value) () value
+type CanonicalChainedAtlasScope value =
+  FixedAtlasScope (CanonicalChainedRecipe value) (CanonicalChainedPaginationScope value)
+    (ChainedDominionCellData value) () value
+
+instance CanonicalChainedDominion value => PageElementsConstruction (CanonicalChainedRecipe value) () value where
+  pageElementsRecipe _ =
+    let (first, valueChain, _) = canonicalChainedDominion (Proxy :: Proxy value)
+    in chainedDominionFolio first valueChain
+
+instance CanonicalChainedDominion value => AtlasConstruction (CanonicalChainedRecipe value)
+    (ConstructedPageElementsScope (CanonicalChainedRecipe value) () value) (ChainedDominionCellData value) () value where
+  atlasConstructionPresentation _ =
+    let (first, valueChain, valueDominion) = canonicalChainedDominion (Proxy :: Proxy value)
+        pages = Pagination.paginationFromPageElements
+          (constructPageElements (Proxy :: Proxy (CanonicalChainedRecipe value)))
+    in chainedDominionPresentation pages first valueChain valueDominion
+
+canonicalChainedDominionAtlas :: forall value. CanonicalChainedDominion value
+  => ChainedDominionAtlas (CanonicalChainedAtlasScope value) (CanonicalChainedPaginationScope value) value
+canonicalChainedDominionAtlas =
+  let (_, valueChain, valueDominion) = canonicalChainedDominion (Proxy :: Proxy value)
+  in ChainedDominionAtlas valueChain valueDominion
+       (constructAtlas (Proxy :: Proxy (CanonicalChainedRecipe value)))
+
+-- | Allocate the runtime folio and its data action once and retain both owners.
+withChainedDominionAtlas :: value -> Chain value -> Dominion value
+  -> (forall owner scope. ChainedDominionAtlas owner scope value -> result) -> result
+withChainedDominionAtlas first valueChain valueDominion useOwner =
+  Pagination.pagination (chainedDominionFolio first valueChain) $ \pages ->
+    withAtlasPresentation (chainedDominionPresentation pages first valueChain valueDominion) $
+      useOwner . ChainedDominionAtlas valueChain valueDominion
 
 chainedDominionFolio
   :: value
@@ -113,13 +162,6 @@ chainedDominionFolio firstValue valueChain =
         (\_ _ _ -> ())
         (const ())
 
-chainedDominionPagination
-  :: value
-  -> Chain value
-  -> Pagination (ChainedDominionPaginationScope value) () value
-chainedDominionPagination firstValue =
-  paginationWithScope . chainedDominionFolio firstValue
-
 chainValueAt
   :: value
   -> Chain value
@@ -135,7 +177,7 @@ chainedDominionAt
   :: value
   -> Chain value
   -> Dominion value
-  -> PageElement (ChainedDominionPaginationScope value) object
+  -> PageElement scope object
   -> Dominion (ChainedDominionCellData value object)
 chainedDominionAt firstValue valueChain valueDominion occurrence
   | pageElementPage occurrence == 0 =
@@ -159,7 +201,7 @@ chainedDominionDataMap
   :: value
   -> Chain value
   -> PageElementArrow
-       (ChainedDominionPaginationScope value) source target
+       scope source target
   -> DomanialInsertion
        (ChainedDominionCellData value source)
        (ChainedDominionCellData value target)
@@ -196,18 +238,13 @@ chainedDominionDataMap firstValue valueChain pageArrow
     sameChainPosition left right =
       chainPosition valueChain left == chainPosition valueChain right
 
--- | Present every member of a dominion as one region in the supplied chain.
--- The first value is the chain's nonempty witness and total fallback after
--- ordinary GHC erases the certified page-index invariant.
-chainedDominionAtlas
-  :: value
-  -> Chain value
-  -> Dominion value
-  -> ChainedDominionAtlas value
-chainedDominionAtlas firstValue valueChain valueDominion =
-  atlasWithScope
-    (chainedDominionPagination firstValue valueChain)
-    (atlasDataAction (Pagination.paginationPageElements (chainedDominionPagination firstValue valueChain))
+-- | Certify the data action on an already owned two-page pagination.
+chainedDominionPresentation
+  :: Pagination scope () value -> value -> Chain value -> Dominion value
+  -> AtlasPresentation scope (ChainedDominionCellData value) () value
+chainedDominionPresentation pages firstValue valueChain valueDominion =
+  atlasPresentationForPredicate pages (\_ _ -> True)
+    (atlasDataAction (Pagination.paginationPageElements pages)
       (chainedDominionAt firstValue valueChain valueDominion)
       (chainedDominionDataMap firstValue valueChain))
     (\_ _ -> ())
@@ -216,13 +253,11 @@ chainedDominionAtlas firstValue valueChain valueDominion =
     (\_ _ _ _ _ _ _ -> ())
 
 chainedDominionCoverage
-  :: value
-  -> Chain value
-  -> Dominion value
-  -> PageElement (ChainedDominionPaginationScope value) object
+  :: ChainedDominionAtlas owner scope value
+  -> PageElement scope object
   -> ChainedDominionCellData value object
-  -> AtlasCoverageWitness (ChainedDominionAtlasObject value)
-chainedDominionCoverage firstValue valueChain valueDominion source datum =
+  -> AtlasCoverageWitness (ChainedDominionAtlasObject owner scope value)
+chainedDominionCoverage (ChainedDominionAtlas valueChain _ valueAtlas) source datum =
   withPageElement
     (lastPageElement
       (atlasPageElements valueAtlas)
@@ -235,65 +270,54 @@ chainedDominionCoverage firstValue valueChain valueDominion source datum =
             region
             (ChainedDominionRegionDatum (cellValue datum))
             ()
-  where
-    valueAtlas =
-      chainedDominionAtlas firstValue valueChain valueDominion
 
 -- | Restrict a chained dominion Atlas to its canonical coverage map.
 chainedDominionAtlasMap
-  :: value
-  -> Chain value
-  -> Dominion value
-  -> AtlasMap (ChainedDominionAtlasObject value)
-chainedDominionAtlasMap firstValue valueChain valueDominion =
+  :: ChainedDominionAtlas owner scope value
+  -> AtlasMap (ChainedDominionAtlasObject owner scope value)
+chainedDominionAtlasMap owner =
   atlasMap
-    (chainedDominionAtlas firstValue valueChain valueDominion)
-    (chainedDominionCoverage firstValue valueChain valueDominion)
+    (chainedDominionAtlas owner)
+    (chainedDominionCoverage owner)
 
 -- | The canonical covered extent element corresponding to one chained
 -- dominion value.
 chainedDominionCoalitionElement
-  :: value
-  -> Chain value
-  -> Dominion value
+  :: ChainedDominionAtlas owner scope value
   -> value
-  -> CoalitionElement (ChainedDominionAtlasObject value)
-chainedDominionCoalitionElement firstValue valueChain valueDominion value =
+  -> CoalitionElement (ChainedDominionAtlasObject owner scope value)
+chainedDominionCoalitionElement owner value =
   withPageElement (atlasOriginCell valueAtlas) $ \origin ->
     let datum = ChainedDominionExtentDatum value
     in coalitionElement
         valueAtlas
         origin
         datum
-        (chainedDominionCoverage
-          firstValue valueChain valueDominion origin datum)
+        (chainedDominionCoverage owner origin datum)
   where
-    valueAtlas = chainedDominionAtlas firstValue valueChain valueDominion
+    valueAtlas = chainedDominionAtlas owner
 
 -- | Lift an insertion between dominions to the stable traversal into a
 -- chained Atlas map.
 chainedDominionInsertionTraversal
-  :: value
-  -> Chain value
-  -> Dominion value
+  :: ChainedDominionAtlas owner scope value
   -> DomanialInsertion source value
+  -> DominionAtlas sourceOwner source
   -> StableAtlasTransversal
-       (DominionAtlasObject source)
-       (ChainedDominionAtlasObject value)
+       (DominionAtlasObject sourceOwner source)
+       (ChainedDominionAtlasObject owner scope value)
 chainedDominionInsertionTraversal
-    firstValue valueChain targetDominion insertion =
+    owner@(ChainedDominionAtlas _ targetDominion targetAtlas) insertion sourceOwner =
   coaToDomInc
-    (pullbackDominion targetDominion insertion)
-    (atlasWitness
-      (chainedDominionAtlas firstValue valueChain targetDominion))
+    sourceOwner
+    (atlasWitness targetAtlas)
     coalitionInsertion
     (\_ datum -> preimage insertion (cellValue datum))
     (\_ -> insertionLeftInverse insertion)
   where
     coalitionInsertion =
       domanialInsertion
-        (chainedDominionCoalitionElement
-          firstValue valueChain targetDominion
+        (chainedDominionCoalitionElement owner
           . applyInsertion insertion)
         (\element ->
           unrank targetDominion (coalitionElementRank element)
