@@ -1,6 +1,13 @@
+{-# LANGUAGE CPP #-}
+#include "../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+
 -- | Public chain API backed by the hidden chain implementation.
 module Chain
   ( Chain
+  , chainLookup
+  , reindexChain
+  , reindexedPosition
   , ChainIndex
   , chainOrdinalLT
   , positionMatches
@@ -23,6 +30,9 @@ module Chain
 
 import Chain.Internal
   ( Chain
+  , chainLookup
+  , reindexChain
+  , reindexedPosition
   , ChainIndex
   , chain
   , chainIndex
@@ -41,4 +51,10 @@ import Chain.Internal
   , positionMatches
   , spine
   )
-import Chain.LiquidInternal (sumChains)
+import Chain.Sum (sumChains)
+
+{-@ opaque-reflect chainPosition @-}
+{-@ opaque-reflect chainOrderType @-}
+{-@ opaque-reflect chainLookup @-}
+{-@ opaque-reflect chainIndexPosition @-}
+{-@ opaque-reflect chainIndexOrderType @-}

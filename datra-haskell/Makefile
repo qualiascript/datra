@@ -2,6 +2,9 @@
 
 CABAL_PROJECT ?= cabal.project
 CABAL := cabal --project-file=$(CABAL_PROJECT)
+ifneq ($(wildcard ../.tools/z3-4.15.4/bin/z3),)
+export PATH := $(abspath ../.tools/z3-4.15.4/bin):$(PATH)
+endif
 
 .DEFAULT_GOAL := docker-prod
 
@@ -14,6 +17,7 @@ coverage:
 	$(CABAL) test all --enable-coverage -f-liquid -j1 --test-show-details=direct
 
 verify-liquid:
+	python3 ../scripts/check_solver.py
 	$(CABAL) build lib:datra-haskell -fliquid -j1
 
 docker-images: docker-development docker-prod

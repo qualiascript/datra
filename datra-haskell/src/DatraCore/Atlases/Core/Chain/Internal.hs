@@ -2,6 +2,8 @@
 #include "../../../LiquidPlugin.h"
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+{-@ qualif ReindexAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 {-@ LIQUID "--prune-unsorted" @-}
 
 -- | Hidden chain representation and proof-bearing operations.
@@ -20,6 +22,8 @@ module Chain.Internal
   , chainPositionInjective
   , chainPositionSurjective
   , chain
+  , reindexChain
+  , reindexedPosition
   , compareInChain
   , hasArrow
   , spine
@@ -27,12 +31,10 @@ module Chain.Internal
 
 import Numeric.Natural (Natural)
 
-import DatraOrdinal.Internal
-  ( Ordinal(..)
-  , canonicalCoefficients
-  , ordinalLT
-  )
-import DatraOrdinal.LiquidInternal (ordinalLongNotBelowOmega)
+import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal, omega, ordinalLT)
+import DatraOrdinal.Laws
+  ( finiteOrdinalBelowOmega, finiteOrdinalInjective
+  , naturalAtOrdinalComplete, naturalOrdinalMatches )
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
@@ -46,12 +48,6 @@ chainOrdinalLT
 @-}
 chainOrdinalLT :: Ordinal -> Ordinal -> Bool
 chainOrdinalLT left right = ordinalLT left right
-
-{-@ reflect chainListLength @-}
-{-@ chainListLength :: values:[a] -> { lengthValue:Int | lengthValue == len values } @-}
-chainListLength :: [a] -> Int
-chainListLength [] = 0
-chainListLength (_ : values) = 1 + chainListLength values
 
 {-@ reflect positionMatches @-}
 positionMatches :: (object -> Ordinal) -> Ordinal -> Maybe object -> Bool
@@ -118,7 +114,8 @@ chain
            chainOrdinalLT ordinalValue orderType
              => positionMatches position ordinalValue
                   (objectAt ordinalValue) })
-  -> Chain object
+  -> {result:Chain object | chainOrderType result == orderType
+       && chainPosition result == position && chainLookup result == objectAt}
 @-}
 chain
   :: Ordinal
@@ -130,7 +127,66 @@ chain
   -> Chain object
 chain = Chain
 
+-- | Transport a chain along an explicitly checked carrier equivalence.
+-- ALIGN: CHAIN-REINDEX.
+{-@ reindexChain :: targetContains:(b -> Bool) -> source:Chain a -> forward:(a -> {value:b | targetContains value}) -> backward:({value:b | targetContains value} -> a)
+      -> (value:a -> {backward (forward value) == value})
+      -> (value:{b | targetContains value} -> {forward (backward value) == value})
+      -> {result:Chain {value:b | targetContains value} |
+           chainOrderType result == chainOrderType source
+           && chainPosition result == reindexedPosition targetContains source backward} @-}
+reindexChain :: (b -> Bool) -> Chain a -> (a -> b) -> (b -> a) -> (a -> ()) -> (b -> ()) -> Chain b
+reindexChain targetContains source forward backward leftInverse rightInverse =
+  Chain
+    (chainOrderType source)
+    (reindexedPosition targetContains source backward)
+    (reindexedLookup targetContains source forward)
+    (reindexedBelow targetContains source backward)
+    (reindexedInjective targetContains source forward backward rightInverse)
+    (reindexedSurjective targetContains source forward backward leftInverse)
+
+{-@ reindexedBelow :: targetContains:(b -> Bool) -> source:Chain a -> backward:({value:b | targetContains value} -> a) -> value:{b | targetContains value}
+      -> {chainOrdinalLT (reindexedPosition targetContains source backward value) (chainOrderType source)} @-}
+reindexedBelow :: (b -> Bool) -> Chain a -> (b -> a) -> b -> ()
+reindexedBelow targetContains source backward value = chainPositionBelow source (backward value)
+
+{-@ reindexedInjective :: targetContains:(b -> Bool) -> source:Chain a -> forward:(a -> {value:b | targetContains value}) -> backward:({value:b | targetContains value} -> a)
+      -> (value:{b | targetContains value} -> {forward (backward value) == value})
+      -> first:{b | targetContains first} -> second:{b | targetContains second}
+      -> {reindexedPosition targetContains source backward first == reindexedPosition targetContains source backward second
+           => first == second} @-}
+reindexedInjective :: (b -> Bool) -> Chain a -> (a -> b) -> (b -> a) -> (b -> ()) -> b -> b -> ()
+reindexedInjective targetContains source _ backward rightInverse first second =
+  chainPositionInjective source (backward first) (backward second) `seq`
+    rightInverse first `seq` rightInverse second
+
+{-@ reindexedPosition :: targetContains:(b -> Bool) -> source:Chain a -> backward:({value:b | targetContains value} -> a) -> {value:b | targetContains value} -> Ordinal @-}
+{-@ reflect reindexedPosition @-}
+reindexedPosition :: (b -> Bool) -> Chain a -> (b -> a) -> b -> Ordinal
+reindexedPosition targetContains source backward value = chainPosition source (backward value)
+
+{-@ reindexedLookup :: targetContains:(b -> Bool) -> source:Chain a -> forward:(a -> {value:b | targetContains value}) -> Ordinal -> Maybe {value:b | targetContains value} @-}
+{-@ reflect reindexedLookup @-}
+reindexedLookup :: (b -> Bool) -> Chain a -> (a -> b) -> Ordinal -> Maybe b
+reindexedLookup targetContains source forward position = case chainLookup source position of
+  Nothing -> Nothing
+  Just value -> Just (forward value)
+
+{-@ reindexedSurjective :: targetContains:(b -> Bool) -> source:Chain a -> forward:(a -> {value:b | targetContains value}) -> backward:({value:b | targetContains value} -> a)
+      -> (value:a -> {backward (forward value) == value})
+      -> position:Ordinal
+      -> {chainOrdinalLT position (chainOrderType source) =>
+           positionMatches (reindexedPosition targetContains source backward) position
+             (reindexedLookup targetContains source forward position)} @-}
+reindexedSurjective :: (b -> Bool) -> Chain a -> (a -> b) -> (b -> a) -> (a -> ()) -> Ordinal -> ()
+reindexedSurjective targetContains source _ _ leftInverse position =
+  chainPositionSurjective source position `seq`
+    case chainLookup source position of
+      Nothing -> ()
+      Just value -> leftInverse value
+
 -- | Refine an arbitrary ordinal to an in-bounds chain index.
+{-@ reflect chainIndex @-}
 {-@
 chainIndex
   :: valueChain:Chain object
@@ -141,6 +197,9 @@ chainIndex
        && chainOrdinalLT position (chainOrderType valueChain)
        && chainPosition valueChain (chainIndexObject index) == position })
 @-}
+-- ALIGN: CHAIN-INDEX-LOOKUP.
+-- ALIGN: CHAIN-INDEX-ROUNDTRIP.
+-- ALIGN: CHAIN-INDEX-BOUNDS.
 chainIndex :: Chain object -> Ordinal -> Maybe (ChainIndex object)
 chainIndex valueChain position
   | not (chainOrdinalLT position (chainOrderType valueChain)) = Nothing
@@ -163,6 +222,7 @@ chainIndexOf
             (chainIndexPosition index)
             (chainOrderType valueChain) }
 @-}
+-- ALIGN: CHAIN-LOOKUP-POSITION.
 chainIndexOf :: Chain object -> object -> ChainIndex object
 chainIndexOf valueChain objectValue =
   chainPositionBelow valueChain objectValue `seq`
@@ -172,8 +232,9 @@ chainIndexOf valueChain objectValue =
       objectValue
 
 -- | Retrieve the object at a certified chain index.
+{-@ reflect chainObjectAt @-}
 chainObjectAt :: ChainIndex object -> object
-chainObjectAt = chainIndexObject
+chainObjectAt index = chainIndexObject index
 
 compareInChain :: Chain object -> object -> object -> Ordering
 compareInChain valueChain left right =
@@ -183,116 +244,18 @@ hasArrow :: Chain object -> object -> object -> Bool
 hasArrow valueChain source target =
   compareInChain valueChain source target /= GT
 
+-- ALIGN: CHAIN-SPINE.
 spine :: Chain Natural
 spine =
-  Chain
-    spineOmega
-    spineOrdinal
-    spineNatural
-    spinePositionBelow
-    spinePositionInjective
-    spinePositionSurjective
+  Chain omega finiteOrdinal naturalAtOrdinal
+    finiteOrdinalBelowOmega finiteOrdinalInjective spinePositionSurjective
 
-{-@
-spinePositionBelow
-  :: value:Natural
-  -> { proof:() |
-       chainOrdinalLT (spineOrdinal value) spineOmega }
-@-}
-spinePositionBelow :: Natural -> ()
-spinePositionBelow value
-  | value > 0 = ()
-  | otherwise = ()
-
-{-@
-spinePositionInjective
-  :: left:Natural
-  -> right:Natural
-  -> { proof:() |
-       spineOrdinal left == spineOrdinal right => left == right }
-@-}
-spinePositionInjective :: Natural -> Natural -> ()
-spinePositionInjective left right
-  | left == right = ()
-  | left > 0 && right > 0 =
-      spineOrdinal left `seq` spineOrdinal right `seq` ()
-  | left > 0 = spineOrdinal left `seq` spineOrdinal right `seq` ()
-  | right > 0 = spineOrdinal left `seq` spineOrdinal right `seq` ()
-  | otherwise = spineOrdinal left `seq` spineOrdinal right `seq` ()
-
-{-@
-spinePositionSurjective
-  :: position:Ordinal
-  -> { proof:() |
-       chainOrdinalLT position spineOmega
-         => positionMatches spineOrdinal position
-              (spineNatural position) }
-@-}
+{-@ spinePositionSurjective :: position:Ordinal
+      -> {chainOrdinalLT position omega
+           => positionMatches finiteOrdinal position (naturalAtOrdinal position)} @-}
 spinePositionSurjective :: Ordinal -> ()
-spinePositionSurjective position@(Ordinal []) =
-  spineNatural position `seq` spineOrdinal 0 `seq` ()
-spinePositionSurjective position@(Ordinal [value]) =
-  spineNatural position `seq` spineOrdinal value `seq` ()
-spinePositionSurjective (Ordinal coefficients@(_ : _ : _))
-  | canonicalCoefficients coefficients =
-      spineListAtLeastTwo coefficients `seq`
-        spineLongNotBelow coefficients
-  | otherwise = ()
-
-{-@ inline spineOmega @-}
-spineOmega :: Ordinal
-spineOmega = Ordinal [1, 0]
-
-{-@ reflect spineOrdinal @-}
-{-@
-spineOrdinal
-  :: value:Natural
-  -> { position:Ordinal |
-       chainOrdinalLT position spineOmega
-       && spineNatural position == Just value }
-@-}
-spineOrdinal :: Natural -> Ordinal
-spineOrdinal value
-  | value > 0 = Ordinal [value]
-  | otherwise = Ordinal []
-
-{-@ reflect spineNatural @-}
-{-@
-spineNatural
-  :: position:Ordinal
-  -> { result:Maybe Natural |
-       chainOrdinalLT position spineOmega
-         => positionMatches spineOrdinal position result }
-@-}
-spineNatural :: Ordinal -> Maybe Natural
-spineNatural (Ordinal []) = Just 0
-spineNatural (Ordinal [value]) = Just value
-spineNatural (Ordinal coefficients@(_ : _ : _))
-  | canonicalCoefficients coefficients =
-      spineListAtLeastTwo coefficients `seq`
-        spineLongNotBelow coefficients `seq` Nothing
-  | otherwise = Nothing
-
-{-@
-spineLongNotBelow
-  :: coefficients:{ [Natural] |
-       chainListLength coefficients >= 2
-       && canonicalCoefficients coefficients }
-  -> { proof:() |
-       not (chainOrdinalLT (Ordinal coefficients) spineOmega) }
-@-}
-{-@ ple spineLongNotBelow @-}
-spineLongNotBelow :: [Natural] -> ()
-spineLongNotBelow coefficients@(_ : _ : _) =
-  ordinalLongNotBelowOmega coefficients
-spineLongNotBelow _ = ()
-
-{-@
-spineListAtLeastTwo
-  :: coefficients:{ [Natural] | len coefficients >= 2 }
-  -> { proof:() | chainListLength coefficients >= 2 }
-@-}
-spineListAtLeastTwo :: [Natural] -> ()
-spineListAtLeastTwo coefficients@(_ : _ : _) =
-  chainListLength coefficients `seq` ()
-spineListAtLeastTwo _ = ()
+spinePositionSurjective position =
+  naturalAtOrdinalComplete position `seq`
+    case naturalAtOrdinal position of
+      Nothing -> ()
+      Just _ -> ()

@@ -1,3 +1,7 @@
+{-# LANGUAGE CPP #-}
+#include "../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+
 -- | Public folio API backed by the hidden implementation.
 module Folio
   ( Folio

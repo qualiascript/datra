@@ -1,12 +1,14 @@
 PYTHON ?= python3
 TECTONIC := $(PYTHON) tools/tectonic.py
 REPO_ROOT := ..
+LEAN_SOURCES := $(shell $(PYTHON) $(REPO_ROOT)/scripts/lean_sources.py $(REPO_ROOT)/datra.lean)
+LEAN_DISCOVERY := $(REPO_ROOT)/scripts/lean_sources.py $(REPO_ROOT)/lakefile.toml
 
 .PHONY: blueprint setup-tex preprint preprint_full primer
 
 blueprint: preprint.tex
 
-preprint.tex: $(REPO_ROOT)/datra.lean extract_blueprint
+preprint.tex: $(LEAN_SOURCES) $(LEAN_DISCOVERY) extract_blueprint
 	./extract_blueprint $(REPO_ROOT)/datra.lean > preprint.tex
 
 setup-tex:
@@ -24,7 +26,7 @@ $(REPO_ROOT)/primer.pdf: primer.tex tools/tectonic.py
 	$(TECTONIC) --keep-logs --synctex primer.tex
 	cp primer.pdf $@
 
-datra_code.lean: $(REPO_ROOT)/datra.lean extract_blueprint
+datra_code.lean: $(LEAN_SOURCES) $(LEAN_DISCOVERY) extract_blueprint
 	./extract_blueprint --lean $(REPO_ROOT)/datra.lean > datra_code.lean
 
 preprint_full.tex: preprint.tex datra_code.lean tools/full_preprint.py

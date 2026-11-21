@@ -8,6 +8,8 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from lean_sources import ROOT, imports, local_module, project_sources
 
 BLUEPRINT_BLOCK = re.compile(r"/-%%\s*\n?(.*?)\n?%%-/", re.DOTALL)
 
@@ -35,21 +37,36 @@ def main() -> int:
     )
     parser.add_argument("files", nargs="+", type=Path, metavar="FILE.lean")
     args = parser.parse_args()
+    try:
+        paths = project_sources(args.files)
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
 
     if args.lean:
         sources: list[str] = []
-        for path in args.files:
+        external_imports: list[str] = []
+        local_paths = set(paths)
+        for path in paths:
             try:
-                sources.append(strip_blueprint(path).rstrip())
+                source = strip_blueprint(path)
+                for module in imports(source):
+                    dependency = local_module(module)
+                    if dependency not in local_paths and module not in external_imports:
+                        external_imports.append(module)
+                source = re.sub(r"(?m)^import\s+[^\n]*\n?", "", source).strip()
+                if source:
+                    label = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path.name
+                    sources.append(f"-- Source: {label}\n\n{source}")
             except OSError as error:
                 parser.error(str(error))
+        sources.insert(0, "\n".join(f"import {module}" for module in external_imports))
         sys.stdout.write("\n\n".join(sources))
         if sources:
             sys.stdout.write("\n")
         return 0
 
     blocks: list[str] = []
-    for path in args.files:
+    for path in paths:
         try:
             blocks.extend(extract(path))
         except OSError as error:

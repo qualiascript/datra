@@ -24,6 +24,7 @@ module DatraOrdinal.Internal
   ) where
 
 import Numeric.Natural (Natural)
+import NaturalEncoding (pairNatural, unpairNatural)
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
@@ -52,6 +53,8 @@ data Ordinal = Ordinal
 
 -- | Construct a canonical ordinal from descending coefficients.
 {-@ reflect ordinal @-}
+-- ALIGN: ORDINAL-BOUND.
+-- ALIGN: ORDINAL-NORMALIZE-DENOTATION.
 ordinal :: [Natural] -> Ordinal
 ordinal values = Ordinal (dropLeadingZeros values)
 
@@ -88,6 +91,7 @@ instance Ord Ordinal where
       <> compare left right
 
 -- | A reflected strict comparison that agrees with the 'Ord' instance.
+-- ALIGN: ORDINAL-COMPARE.
 {-@ reflect ordinalLT @-}
 ordinalLT :: Ordinal -> Ordinal -> Bool
 ordinalLT (Ordinal left) (Ordinal right) = coefficientsLT left right
@@ -113,6 +117,7 @@ listLength [] = 0
 listLength (_ : values) = 1 + listLength values
 
 {-@ reflect lexicographicLT @-}
+-- ALIGN: ORDINAL-LEX-COMPARE.
 lexicographicLT :: [Natural] -> [Natural] -> Bool
 lexicographicLT [] _ = False
 lexicographicLT _ [] = False
@@ -127,6 +132,7 @@ addOrdinals :: Ordinal -> Ordinal -> Ordinal
 addOrdinals (Ordinal left) (Ordinal right) =
   Ordinal (addCoefficients left right)
 
+-- ALIGN: ORDINAL-ADD.
 {-@ reflect addCoefficients @-}
 {-@
 addCoefficients
@@ -149,12 +155,16 @@ addCoefficients left@(leftHead : leftTail) right@(rightHead : rightTail)
 
 -- | Remove a left ordinal prefix when the value lies at or after it.
 {-@ reflect subtractOrdinal @-}
+-- ALIGN: ORDINAL-PREFIX-SUBTRACTION.
+-- ALIGN: ORDINAL-PREFIX-ROUNDTRIP.
+-- ALIGN: ORDINAL-PREFIX-INVERSE-SOUND.
 subtractOrdinal :: Ordinal -> Ordinal -> Maybe Ordinal
 subtractOrdinal (Ordinal left) (Ordinal value)
   | listLength value < listLength left = Nothing
   | listLength value > listLength left = Just (ordinal value)
   | otherwise = ordinal <$> subtractCoefficients left value
 
+-- ALIGN: ORDINAL-PREFIX-COEFFICIENTS.
 subtractCoefficients
   :: [Natural]
   -> [Natural]
@@ -168,6 +178,7 @@ subtractCoefficients _ _ = Nothing
 
 -- | Decode a finite ordinal as a natural number.
 {-@ reflect naturalAtOrdinal @-}
+-- ALIGN: ORDINAL-NATURAL-LOOKUP.
 naturalAtOrdinal :: Ordinal -> Maybe Natural
 naturalAtOrdinal (Ordinal []) = Just 0
 naturalAtOrdinal (Ordinal [value]) = Just value
@@ -176,11 +187,13 @@ naturalAtOrdinal _ = Nothing
 -- | Decode one natural in the canonical enumeration of ordinals below
 -- @omega^width@.  A fixed-width coefficient vector is decoded by iterated
 -- Cantor unpairing, then canonicalized by 'ordinal'.
+-- ALIGN: ORDINAL-ENUMERATION-DECODE.
 ordinalAtNaturalRank :: Natural -> Natural -> Maybe Ordinal
 ordinalAtNaturalRank width code = ordinal <$> coefficientTuple width code
 
 -- | Encode an ordinal below @omega^width@ in the inverse canonical natural
 -- enumeration.  Ordinals outside that bound are rejected.
+-- ALIGN: ORDINAL-ENUMERATION-ENCODE.
 naturalRankOfOrdinal :: Natural -> Ordinal -> Maybe Natural
 naturalRankOfOrdinal width value@(Ordinal values)
   | not (ordinalLT value (omegaPower width)) = Nothing
@@ -210,16 +223,3 @@ encodeTuple :: [Natural] -> Maybe Natural
 encodeTuple [] = Just 0
 encodeTuple [value] = Just value
 encodeTuple (value : values) = pairNatural value <$> encodeTuple values
-
-pairNatural :: Natural -> Natural -> Natural
-pairNatural first second =
-  let diagonal = first + second
-  in diagonal * (diagonal + 1) `div` 2 + first
-
-{-@ lazy unpairNatural @-}
-unpairNatural :: Natural -> (Natural, Natural)
-unpairNatural = go 0
-  where
-    go diagonal remainder
-      | remainder <= diagonal = (remainder, diagonal - remainder)
-      | otherwise = go (diagonal + 1) (remainder - diagonal - 1)

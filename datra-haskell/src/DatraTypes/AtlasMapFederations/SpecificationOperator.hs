@@ -58,7 +58,7 @@ import TotalAtlasMap
   ( TotalAtlasMap
   , totalAtlasMapUnderlying
   )
-import Atlas.Morphism.Internal (AtlasWitness (AtlasWitness))
+import Atlas (AtlasWitness, withAtlasWitness)
 
 -- | A stable Atlas transversal whose pagination action is certified to be
 -- the identity after identifying the structurally equal source and target
@@ -163,8 +163,7 @@ specificationOperator source target targetIndex buildTransversal =
     targetComponent =
       atlasConfederationComponent targetConfederation targetIndex
     sourceConfederation =
-      case sourceWitness of
-        AtlasWitness sourceAtlas -> singletonAtlasConfederation sourceAtlas
+      withAtlasWitness sourceWitness singletonAtlasConfederation
 
 specificationSource
   :: Specification federationScope index source

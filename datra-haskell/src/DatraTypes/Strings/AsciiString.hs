@@ -36,7 +36,8 @@ import Data.Char (ord)
 import DatraOrdinal (naturalAtOrdinal)
 import Dominion (Dominion, dominion)
 import EllipsisNatural
-  ( EllipsisNaturalElement
+  ( EllipsisNatural
+  , EllipsisNaturalElement
   , ellipsisNatural
   )
 import MapOperators.AccessOperator
@@ -68,6 +69,7 @@ type role AsciiStringCharacter nominal
 data AsciiStringCharacter asciiScope where
   AsciiStringCharacter
     :: Natural
+    -> EllipsisNatural indexScope
     -> AccessElement
          (EllipsisNaturalElement indexScope)
          (AsciiCharacter asciiScope)
@@ -138,7 +140,7 @@ selectAsciiCharacter ascii (position, character) =
     (ellipsisNatural (fromIntegral (ord character)) $ \index -> do
       selected <- accessOperator ascii index
       accessed <- orderedAtlasMapValueAt selected 0
-      pure (AsciiStringCharacter position accessed))
+      pure (AsciiStringCharacter position index accessed))
 
 orderedCharacters
   :: [AsciiStringCharacter asciiScope]
@@ -177,11 +179,11 @@ naturalLength = foldl' (\lengthSoFar _ -> lengthSoFar + 1) 0
 
 -- | The zero-based position occupied by a selected character.
 asciiStringCharacterPosition :: AsciiStringCharacter scope -> Natural
-asciiStringCharacterPosition (AsciiStringCharacter position _) = position
+asciiStringCharacterPosition (AsciiStringCharacter position _ _) = position
 
 -- | Recover a selected character's ordinary value.
 asciiStringCharacterValue :: AsciiStringCharacter scope -> Char
-asciiStringCharacterValue (AsciiStringCharacter _ selected) =
+asciiStringCharacterValue (AsciiStringCharacter _ _ selected) =
   asciiCharacterValue (accessElementValue selected)
 
 -- | The finite number of characters in the string.

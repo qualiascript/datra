@@ -1,6 +1,9 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -9,6 +12,11 @@
 module DomanialInclusion.Internal
   ( DominionCellData
   , DominionAtlasObject
+  , DominionAtlas
+  , withDominionAtlas
+  , CanonicalDominion (..)
+  , CanonicalDominionAtlasScope
+  , canonicalDominionAtlas
   , dominionCellDataValue
   , emptyDominion
   , singletonChain
@@ -37,30 +45,32 @@ module DomanialInclusion.Internal
   , dominionLemma
   ) where
 
+import qualified Pagination
 import Atlas
   ( Atlas
   , AtlasMappedObject
   , AtlasObject
   , AtlasObjectCellData
   , AtlasObjectMap
+  , AtlasObjectPaginationScope
   , AtlasWitness
+  , AtlasPresentation
+  , atlasPresentationForPredicate
+  , withAtlasPresentation
   , atlasHom
+  , atlasDataAction
   , atlasMorphism
   , atlasMorphismAction
   , atlasObjectMap
   , atlasOriginCell
   , atlasWitness
+  , withAtlasWitness
   )
-import Atlas.Internal
-  ( atlasDataAction
-  , atlasWithScope
-  )
-import Atlas.Morphism.Internal (AtlasWitness (..))
-import AtlasCoveredPageElement.Internal
-  ( AtlasCoveredPageElement (..)
+import Atlas.Construction (AtlasConstruction (..), FixedAtlasScope, constructAtlas)
+import AtlasCoveredPageElement
+  ( withAtlasCoveredPageElement
   , AtlasCoverageWitness
   , atlasCoverageWitness
-  , findAtlasCoverage
   )
 import AtlasMap (AtlasMap, atlasMap)
 import AtlasTransposal
@@ -68,21 +78,22 @@ import AtlasTransposal
   , atlasTransposalElement
   )
 import AtlasTransversal (atlasTransversal)
-import Chain (Chain, chain)
+import Chain.Singleton (singletonChain)
 import Coalition
   ( CoalitionElement
   , stableCoalitionMap
   , withCoalitionElement
   )
-import Coalition.Internal
+import Coalition.Element
   ( coalitionElement
-  , coalitionElementAt
   , coalitionElementCoverageAt
   )
-import DatraOrdinal (finiteOrdinal)
 import Data.Void (Void, absurd)
-import DomanialInclusion.LiquidInternal
+import DomanialInclusion.LiquidInternal (coalitionComponentInsertion)
+import DomanialInclusion.Data
   ( DominionCellData
+  , constantDominion
+  , identityDominionCellInsertion
   , domIncHomLeftInverseValue
   , domIncHomNaturalityLeftValue
   , domIncHomNaturalityRightValue
@@ -91,7 +102,6 @@ import DomanialInclusion.LiquidInternal
   , dominionCellDataValue
   , dominionFunctorCompositionValue
   , dominionFunctorIdentityValue
-  , mapDominionCellData
   )
 import DomanialInsertion
   ( DomanialInsertion
@@ -104,27 +114,29 @@ import DomanialInsertion
 import Dominion
   ( Dominion
   , dominion
-  , dominionCoherence
-  , rank
-  , unrank
   )
 import Folio (Folio, singletonFolio)
 import OrderedAtlasTransposal (orderedAtlasTransposal)
 import PageElements (PageElement, withPageElement)
 import Pagination (Pagination)
-import Pagination.Internal (paginationWithScope)
+import Data.Proxy (Proxy (..))
+import PageElements.Construction
+  ( PageElementsConstruction (..), ConstructedPageElementsScope, constructPageElements )
 import StableAtlasTransversal
   ( StableAtlasTransversal
   , stableAtlasTransversal
   )
 
--- Deterministic tokens make the functor's object action stable across calls.
-data DominionAtlasScope a
-data DominionPaginationScope a
+-- The folio is fixed; runtime Dominion actions retain a separately allocated owner.
+data DominionPaginationRecipe a
+type DominionPaginationScope a = ConstructedPageElementsScope (DominionPaginationRecipe a) () ()
 
-type DominionAtlasObject a =
+instance PageElementsConstruction (DominionPaginationRecipe a) () () where
+  pageElementsRecipe _ = onePageFolio
+
+type DominionAtlasObject owner a =
   AtlasObject
-    (DominionAtlasScope a)
+    owner
     (DominionPaginationScope a)
     (DominionCellData a)
 
@@ -141,47 +153,53 @@ originObjectMap = atlasObjectMap
 emptyDominion :: Dominion Void
 emptyDominion = dominion absurd (const Nothing) absurd
 
--- | The singleton chain used by the one-page folio.
-singletonChain :: Chain ()
-singletonChain =
-  chain
-    (finiteOrdinal 1)
-    (const (finiteOrdinal 0))
-    (\position ->
-      if position == finiteOrdinal 0 then Just () else Nothing)
-    (const ())
-    (\_ _ -> ())
-    (const ())
-
 onePageFolio :: Folio () ()
 onePageFolio = singletonFolio singletonChain
 
 -- | The deterministically scoped one-page pagination used by @DomInc@.
 onePagePagination
   :: forall a. Pagination (DominionPaginationScope a) () ()
-onePagePagination = paginationWithScope onePageFolio
+onePagePagination = Pagination.paginationFromPageElements
+  (constructPageElements (Proxy :: Proxy (DominionPaginationRecipe a)))
 
-constantDominion :: Dominion a -> Dominion (DominionCellData a object)
-constantDominion valueDominion =
-  dominion
-    (rank valueDominion . dominionCellDataValue)
-    (fmap dominionCellData . unrank valueDominion)
-    (dominionCoherence valueDominion . dominionCellDataValue)
+-- | A runtime inclusion retains the exact Atlas used by all its operations.
+type role DominionAtlas nominal nominal
+data DominionAtlas owner a = DominionAtlas
+  (Atlas owner (DominionPaginationScope a) (DominionCellData a) () ())
+
+-- | A canonical Dominion is a fixed instance recipe, with no runtime input.
+class CanonicalDominion a where
+  canonicalDominion :: Proxy a -> Dominion a
+
+data CanonicalDominionRecipe a
+type CanonicalDominionAtlasScope a =
+  FixedAtlasScope (CanonicalDominionRecipe a) (DominionPaginationScope a) (DominionCellData a) () ()
+
+instance CanonicalDominion a => AtlasConstruction (CanonicalDominionRecipe a)
+    (ConstructedPageElementsScope (DominionPaginationRecipe a) () ()) (DominionCellData a) () () where
+  atlasConstructionPresentation _ = dominionPresentation (canonicalDominion (Proxy :: Proxy a))
+
+canonicalDominionAtlas :: forall a. CanonicalDominion a => DominionAtlas (CanonicalDominionAtlasScope a) a
+canonicalDominionAtlas = DominionAtlas (constructAtlas (Proxy :: Proxy (CanonicalDominionRecipe a)))
+
+-- ALIGN: DOMINC-ATLAS-INTERPRETATION.
+-- ALIGN: DOMINC-STABLE-ISOMORPHISM.
+withDominionAtlas :: Dominion a -> (forall owner. DominionAtlas owner a -> result) -> result
+withDominionAtlas valueDominion useOwner =
+  withAtlasPresentation (dominionPresentation valueDominion) (useOwner . DominionAtlas)
 
 -- | Regard a dominion as the constant data assignment on a one-page atlas.
-dominionAtlas
-  :: forall a.
-     Dominion a
-  -> Atlas
-       (DominionAtlasScope a)
-       (DominionPaginationScope a)
-       (DominionCellData a)
-       ()
-       ()
-dominionAtlas valueDominion =
-  atlasWithScope
+dominionAtlas :: DominionAtlas owner a
+  -> Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
+dominionAtlas (DominionAtlas valueAtlas) = valueAtlas
+
+dominionPresentation :: forall a. Dominion a
+  -> AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () ()
+dominionPresentation valueDominion =
+  atlasPresentationForPredicate
     (onePagePagination @a)
-    (atlasDataAction
+    (\_ _ -> True)
+    (atlasDataAction (Pagination.paginationPageElements (onePagePagination @a))
       (const (constantDominion valueDominion))
       (const identityDominionCellInsertion))
     (\_ _ -> ())
@@ -189,27 +207,18 @@ dominionAtlas valueDominion =
     (\_ _ _ _ -> ())
     (\_ _ _ _ _ _ _ -> ())
 
-identityDominionCellInsertion
-  :: DomanialInsertion
-       (DominionCellData a sourceObject)
-       (DominionCellData a targetObject)
-identityDominionCellInsertion =
-  domanialInsertion
-    (mapDominionCellData id)
-    (Just . mapDominionCellData id)
-    (const ())
-
 -- | Every datum of a one-page dominion atlas is covered by that same cell.
+-- ALIGN: DOMINC-COVERAGE.
 dominionCoverage
   :: Atlas
-       (DominionAtlasScope a)
+       owner
        (DominionPaginationScope a)
        (DominionCellData a)
        ()
        ()
   -> PageElement (DominionPaginationScope a) object
   -> DominionCellData a object
-  -> AtlasCoverageWitness (DominionAtlasObject a)
+  -> AtlasCoverageWitness (DominionAtlasObject owner a)
 dominionCoverage valueAtlas occurrence datum =
   atlasCoverageWitness
     valueAtlas occurrence datum occurrence datum ()
@@ -217,38 +226,40 @@ dominionCoverage valueAtlas occurrence datum =
 -- | The one-page domanial inclusion is automatically an Atlas map: its
 -- unique cell is simultaneously the extent and the final region.
 dominionAtlasMap
-  :: Dominion a
-  -> AtlasMap (DominionAtlasObject a)
+  :: DominionAtlas owner a
+  -> AtlasMap (DominionAtlasObject owner a)
 dominionAtlasMap valueDominion =
   let valueAtlas = dominionAtlas valueDominion
   in atlasMap valueAtlas (dominionCoverage valueAtlas)
 
 dominionCoalitionElement
-  :: Dominion a
+  :: DominionAtlas owner a
   -> a
-  -> CoalitionElement (DominionAtlasObject a)
+  -> CoalitionElement (DominionAtlasObject owner a)
 dominionCoalitionElement valueDominion value =
   withPageElement
     (atlasOriginCell valueAtlas) $ \origin ->
       let datum = dominionCellData value
       in coalitionElement
+          valueAtlas
           origin
           datum
           (dominionCoverage valueAtlas origin datum)
   where
     valueAtlas = dominionAtlas valueDominion
 
-coalitionValue :: CoalitionElement (DominionAtlasObject a) -> a
+coalitionValue :: CoalitionElement (DominionAtlasObject owner a) -> a
 coalitionValue element =
   withCoalitionElement element $ \_ datum ->
     dominionCellDataValue datum
 
 -- | The canonical isomorphism @Coa (DomInc X) ≅ X@, represented by its two
 -- proof-carrying domanial insertions.
+-- ALIGN: DOMINC-COALITION-EQUIVALENCE.
 coaDomIncIso
-  :: Dominion a
-  -> ( DomanialInsertion (CoalitionElement (DominionAtlasObject a)) a
-     , DomanialInsertion a (CoalitionElement (DominionAtlasObject a))
+  :: DominionAtlas owner a
+  -> ( DomanialInsertion (CoalitionElement (DominionAtlasObject owner a)) a
+     , DomanialInsertion a (CoalitionElement (DominionAtlasObject owner a))
      )
 coaDomIncIso valueDominion = (counit, unit)
   where
@@ -264,22 +275,26 @@ coaDomIncIso valueDominion = (counit, unit)
         (Just . coalitionValue)
         (const ())
 
+-- ALIGN: DOMINC-COALITION-LEFT-INVERSE.
 coaDomIncIsoLeftInverse
-  :: Dominion a
-  -> CoalitionElement (DominionAtlasObject a)
+  :: DominionAtlas owner a
+  -> CoalitionElement (DominionAtlasObject owner a)
   -> ()
 coaDomIncIsoLeftInverse valueDominion =
   insertionLeftInverse (fst (coaDomIncIso valueDominion))
 
-coaDomIncIsoRightInverse :: Dominion a -> a -> ()
+-- ALIGN: DOMINC-COALITION-RIGHT-INVERSE.
+coaDomIncIsoRightInverse :: DominionAtlas owner a -> a -> ()
 coaDomIncIsoRightInverse valueDominion =
   insertionLeftInverse (snd (coaDomIncIso valueDominion))
 
 -- | Forward half of the adjunction hom equivalence.
+-- ALIGN: DOMINC-HOM-TO.
+-- ALIGN: DOMINC-HOM-TO-INTERPRETATION.
 domIncToCoa
-  :: Dominion a
+  :: DominionAtlas owner a
   -> AtlasWitness target
-  -> StableAtlasTransversal (DominionAtlasObject a) target
+  -> StableAtlasTransversal (DominionAtlasObject owner a) target
   -> DomanialInsertion a (CoalitionElement target)
 domIncToCoa sourceDominion targetWitness arrow =
   composeInsertions
@@ -289,16 +304,22 @@ domIncToCoa sourceDominion targetWitness arrow =
     sourceWitness = atlasWitness (dominionAtlas sourceDominion)
 
 -- | Inverse half of the adjunction.  The target origin is captured as a
--- type-level object-map witness. Coalition elements provide the coverage
--- evidence needed by the transversal, and all inverse operations return
--- 'Maybe'; there are no exceptional branches.
+-- type-level object-map witness. The explicit component inverse must recover
+-- each source value from its coalition image transported to the target origin.
+-- It can reject uncovered target data without searching for a coverage witness.
+-- ALIGN: DOMINC-HOM-FROM.
 coaToDomInc
-  :: forall a target.
-     Dominion a
+  :: forall owner a target.
+     DominionAtlas owner a
   -> AtlasWitness target
   -> DomanialInsertion a (CoalitionElement target)
-  -> StableAtlasTransversal (DominionAtlasObject a) target
-coaToDomInc sourceDominion (AtlasWitness targetAtlas) insertion =
+  -> (forall object. PageElement (AtlasObjectPaginationScope target) object
+        -> AtlasObjectCellData target object -> Maybe a)
+  -> (forall object. PageElement (AtlasObjectPaginationScope target) object
+        -> a -> ())
+  -> StableAtlasTransversal (DominionAtlasObject owner a) target
+coaToDomInc sourceDominion targetOwner insertion backward leftInverse =
+  withAtlasWitness targetOwner $ \targetAtlas ->
   withPageElement (atlasOriginCell targetAtlas) $
     \(targetOrigin :: PageElement targetScope targetObject) ->
     let sourceAtlas = dominionAtlas sourceDominion
@@ -312,19 +333,8 @@ coaToDomInc sourceDominion (AtlasWitness targetAtlas) insertion =
                (DominionCellData a sourceObject)
                (AtlasObjectCellData target targetObject)
         component _ =
-          domanialInsertion
-            (coalitionElementAt
-                targetAtlas
-                targetOrigin . applyInsertion insertion . dominionCellDataValue)
-            (\targetDatum ->
-              let covered =
-                    coalitionElement
-                      targetOrigin
-                      targetDatum
-                      (findAtlasCoverage
-                        targetAtlas targetOrigin targetDatum)
-              in dominionCellData <$> preimage insertion covered)
-            (insertionLeftInverse insertion . dominionCellDataValue)
+          coalitionComponentInsertion targetAtlas targetOrigin (applyInsertion insertion)
+            (backward targetOrigin) (leftInverse targetOrigin)
 
         action =
           atlasMorphismAction
@@ -363,25 +373,31 @@ coaToDomInc sourceDominion (AtlasWitness targetAtlas) insertion =
             sourceAtlas
             targetAtlas
             ordered
-            (\covered targetOccurrence _ ->
-              case covered of
-                AtlasCoveredPageElement _ sourceDatum _ ->
+            (\covered ->
+              withAtlasCoveredPageElement covered $ \_ sourceDatum ->
                   coalitionElementCoverageAt
                     targetAtlas
-                    targetOccurrence
+                    targetOrigin
                     (applyInsertion insertion
                       (dominionCellDataValue sourceDatum)))
     in stableAtlasTransversal
         sourceAtlas targetAtlas transversal ()
+        (fmap (dominionCoalitionElement sourceDominion) . preimage insertion)
+        (\element ->
+          insertionLeftInverse insertion (coalitionValue element) `seq`
+            coaDomIncIsoLeftInverse sourceDominion element)
 
 -- | Arrow action of the Domanial Inclusion functor.
+-- ALIGN: DOMINC-MAP.
+-- ALIGN: DOMINC-MAP-IDENTITY.
+-- ALIGN: DOMINC-MAP-COMPOSITION.
 dominionMap
-  :: Dominion a
-  -> Dominion b
+  :: DominionAtlas owner a
+  -> DominionAtlas targetOwner b
   -> DomanialInsertion a b
   -> StableAtlasTransversal
-       (DominionAtlasObject a)
-       (DominionAtlasObject b)
+       (DominionAtlasObject owner a)
+       (DominionAtlasObject targetOwner b)
 dominionMap sourceDominion targetDominion insertion =
   coaToDomInc
     sourceDominion
@@ -389,21 +405,23 @@ dominionMap sourceDominion targetDominion insertion =
     (composeInsertions
       (snd (coaDomIncIso targetDominion))
       insertion)
+    (\_ -> preimage insertion . dominionCellDataValue)
+    (\_ -> insertionLeftInverse insertion)
   where
     targetWitness = atlasWitness (dominionAtlas targetDominion)
 
 domanialInclusionFunctorObject
-  :: Dominion a
-  -> AtlasWitness (DominionAtlasObject a)
+  :: DominionAtlas owner a
+  -> AtlasWitness (DominionAtlasObject owner a)
 domanialInclusionFunctorObject = atlasWitness . dominionAtlas
 
 domanialInclusionFunctorHom
-  :: Dominion a
-  -> Dominion b
+  :: DominionAtlas owner a
+  -> DominionAtlas targetOwner b
   -> DomanialInsertion a b
   -> StableAtlasTransversal
-       (DominionAtlasObject a)
-       (DominionAtlasObject b)
+       (DominionAtlasObject owner a)
+       (DominionAtlasObject targetOwner b)
 domanialInclusionFunctorHom = dominionMap
 
 domanialInclusionFunctorIdentity
@@ -418,31 +436,40 @@ domanialInclusionFunctorComposition
   -> ()
 domanialInclusionFunctorComposition = dominionFunctorCompositionValue
 
+-- ALIGN: DOMINC-HOM-EQUIV-TO.
 domIncCoaHomEquivTo
-  :: Dominion a
+  :: DominionAtlas owner a
   -> AtlasWitness target
-  -> StableAtlasTransversal (DominionAtlasObject a) target
+  -> StableAtlasTransversal (DominionAtlasObject owner a) target
   -> DomanialInsertion a (CoalitionElement target)
 domIncCoaHomEquivTo = domIncToCoa
 
+-- ALIGN: DOMINC-HOM-EQUIV-FROM.
 domIncCoaHomEquivFrom
-  :: Dominion a
+  :: DominionAtlas owner a
   -> AtlasWitness target
   -> DomanialInsertion a (CoalitionElement target)
-  -> StableAtlasTransversal (DominionAtlasObject a) target
+  -> (forall object. PageElement (AtlasObjectPaginationScope target) object
+        -> AtlasObjectCellData target object -> Maybe a)
+  -> (forall object. PageElement (AtlasObjectPaginationScope target) object
+        -> a -> ())
+  -> StableAtlasTransversal (DominionAtlasObject owner a) target
 domIncCoaHomEquivFrom = coaToDomInc
 
 -- The following four LiquidHaskell-checked equations are the pointwise
 -- extensionality proofs used by Lean for the inverse and naturality laws.
+-- ALIGN: DOMINC-HOM-LEFT-INVERSE-FULL.
 domIncCoaHomEquivLeftInverse
   :: (DominionCellData a object -> b)
   -> DominionCellData a object
   -> ()
 domIncCoaHomEquivLeftInverse = domIncHomLeftInverseValue
 
+-- ALIGN: DOMINC-HOM-RIGHT-INVERSE-FULL.
 domIncCoaHomEquivRightInverse :: (a -> b) -> a -> ()
 domIncCoaHomEquivRightInverse = domIncHomRightInverseValue
 
+-- ALIGN: DOMINC-HOM-NATURALITY-LEFT-FULL.
 domIncCoaHomEquivNaturalityLeft
   :: (a' -> a)
   -> (DominionCellData a object -> b)
@@ -450,6 +477,7 @@ domIncCoaHomEquivNaturalityLeft
   -> ()
 domIncCoaHomEquivNaturalityLeft = domIncHomNaturalityLeftValue
 
+-- ALIGN: DOMINC-HOM-NATURALITY-RIGHT-FULL.
 domIncCoaHomEquivNaturalityRight
   :: (DominionCellData a object -> b)
   -> (b -> c)

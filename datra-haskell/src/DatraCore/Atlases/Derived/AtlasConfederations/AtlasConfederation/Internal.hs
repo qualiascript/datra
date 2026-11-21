@@ -53,7 +53,7 @@ import Atlas
   , AtlasWitness
   , atlasWitness
   )
-import Atlas.Morphism.Internal (AtlasWitness (..))
+import Atlas (withAtlasWitness)
 import AtlasMerge (atlasMerge)
 import Control.Category (Category (..))
 import Data.Kind (Type)
@@ -100,8 +100,8 @@ withAtlasMergePresentationAtlas
 withAtlasMergePresentationAtlas EmptyAtlasMergePresentation useAtlas =
   emptyAtlas useAtlas
 withAtlasMergePresentationAtlas
-  (AtlasMergeAtom (AtlasWitness valueAtlas)) useAtlas =
-    useAtlas valueAtlas
+  (AtlasMergeAtom witness) useAtlas =
+    withAtlasWitness witness useAtlas
 withAtlasMergePresentationAtlas (AtlasMergeNode left right) useAtlas =
   withAtlasMergePresentationAtlas left $ \leftAtlas ->
     withAtlasMergePresentationAtlas right $ \rightAtlas ->

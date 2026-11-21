@@ -6,6 +6,11 @@
 module DomanialInclusion
   ( DominionCellData
   , DominionAtlasObject
+  , DominionAtlas
+  , withDominionAtlas
+  , CanonicalDominion (..)
+  , CanonicalDominionAtlasScope
+  , canonicalDominionAtlas
   , dominionCellDataValue
   , emptyDominion
   , singletonChain

@@ -50,7 +50,7 @@ import AtlasConfederation
   , singletonAtlasConfederation
   , singletonAtlasConfederationHom
   )
-import Atlas.Morphism.Internal (AtlasWitness (..))
+import Atlas (AtlasWitness, withAtlasWitness)
 import AtlasFederation
   ( AtlasFederation
   , atlasFederationConfederation
@@ -267,8 +267,7 @@ embedAtlasMap
   :: AtlasMap atlasObject
   -> StableConfederalData (EmbeddedAtlasMap atlasObject)
 embedAtlasMap valueMap =
-  case atlasMapAtlas valueMap of
-    AtlasWitness valueAtlas ->
+  withAtlasWitness (atlasMapAtlas valueMap) $ \valueAtlas ->
       singletonAtlasConfederation valueAtlas `seq`
         stableConfederalData
           (flip composeAtlasConfederationHoms)
@@ -339,8 +338,8 @@ restrictStableConfederalDataToStableAtlases stableData =
         (RestrictedStableConfederalDataValue targetWitness value) =
       let sourceWitness =
             stableAtlasTransversalSourceWitness transversal targetWitness
-      in case (sourceWitness, targetWitness) of
-          (AtlasWitness sourceAtlas, AtlasWitness targetAtlas) ->
+      in withAtlasWitness sourceWitness $ \sourceAtlas ->
+          withAtlasWitness targetWitness $ \targetAtlas ->
             RestrictedStableConfederalDataValue
               sourceWitness
               (mapStableConfederalData
@@ -375,8 +374,8 @@ restrictStableConfederalDataHomToStableAtlases
         (RestrictedStableConfederalDataValue targetWitness value) =
       let sourceWitness =
             stableAtlasTransversalSourceWitness transversal targetWitness
-      in case (sourceWitness, targetWitness) of
-          (AtlasWitness sourceAtlas, AtlasWitness targetAtlas) ->
+      in withAtlasWitness sourceWitness $ \sourceAtlas ->
+          withAtlasWitness targetWitness $ \targetAtlas ->
             naturality
               (singletonAtlasConfederationHom
                 sourceAtlas targetAtlas transversal)

@@ -1,4 +1,9 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | The canonical two-page Atlas map that separates a dominion by rank.
 --
@@ -8,21 +13,25 @@
 -- Ellipsis-like ranked maps.
 module RankedDominionAtlas
   ( RankedDominionCellData
+  , RankedDominionAtlas
   , RankedDominionAtlasObject
+  , withRankedDominionAtlas
   , rankedDominionAtlas
   , rankedDominionAtlasMap
   , rankedDominionCoalitionElement
   , rankedDominionInsertionTraversal
   ) where
 
+import qualified Pagination
 import Atlas
   ( Atlas
   , AtlasObject
+  , atlas
   , atlasOriginCell
+  , atlasDataAction
   , atlasPageElements
   , atlasWitness
   )
-import Atlas.Internal (atlasDataAction, atlasWithScope)
 import AtlasCoveredPageElement
   ( AtlasCoverageWitness
   , atlasCoverageWitness
@@ -30,11 +39,12 @@ import AtlasCoveredPageElement
 import AtlasMap (AtlasMap, atlasMap)
 import Chain (chainIndexOf, spine)
 import Coalition (CoalitionElement, coalitionElementRank)
-import Coalition.Internal (coalitionElement)
+import Coalition.Element (coalitionElement)
 import Consolidation (consolidation, op)
 import DatraOrdinal (Ordinal, naturalAtOrdinal)
 import DomanialInclusion
-  ( DominionAtlasObject
+  ( DominionAtlas
+  , DominionAtlasObject
   , coaToDomInc
   , singletonChain
   )
@@ -44,9 +54,8 @@ import DomanialInsertion
   , domanialInsertion
   , insertionLeftInverse
   , preimage
-  , pullbackDominion
   )
-import Dominion (Dominion, dominion, rank, unrank)
+import Dominion (Dominion, dominion, rank, unrank, lookupRank)
 import Folio (Folio, appendPage, singletonFolio)
 import Numeric.Natural (Natural)
 import PageElements
@@ -57,10 +66,12 @@ import PageElements
   , pageElementPage
   , pageElementPosition
   , withPageElement
+  , lastPageElement
   )
-import PageElements.Internal (lastPageElement)
 import Pagination (Pagination)
-import Pagination.Internal (paginationWithScope)
+import Data.Proxy (Proxy (..))
+import PageElements.Construction
+  ( PageElementsConstruction (..), ConstructedPageElementsScope, constructPageElements )
 import StableAtlasTransversal (StableAtlasTransversal)
 
 -- | Data carried by the extent or by one rank-selected final region.
@@ -69,12 +80,20 @@ data RankedDominionCellData value object
   | RankedDominionRegionDatum value
   deriving (Eq, Show)
 
-data RankedDominionAtlasScope value
-data RankedDominionPaginationScope value
+cellValue :: RankedDominionCellData value object -> value
+cellValue (RankedDominionExtentDatum value) = value
+cellValue (RankedDominionRegionDatum value) = value
 
-type RankedDominionAtlasObject value =
+data RankedDominionPaginationRecipe value
+type RankedDominionPaginationScope value =
+  ConstructedPageElementsScope (RankedDominionPaginationRecipe value) () Natural
+
+instance PageElementsConstruction (RankedDominionPaginationRecipe value) () Natural where
+  pageElementsRecipe _ = rankedDominionFolio
+
+type RankedDominionAtlasObject owner value =
   AtlasObject
-    (RankedDominionAtlasScope value)
+    owner
     (RankedDominionPaginationScope value)
     (RankedDominionCellData value)
 
@@ -93,8 +112,9 @@ rankedDominionFolio =
         (const ())
 
 rankedDominionPagination
-  :: Pagination (RankedDominionPaginationScope value) () Natural
-rankedDominionPagination = paginationWithScope rankedDominionFolio
+  :: forall value. Pagination (RankedDominionPaginationScope value) () Natural
+rankedDominionPagination = Pagination.paginationFromPageElements
+  (constructPageElements (Proxy :: Proxy (RankedDominionPaginationRecipe value)))
 
 rankedDominionAt
   :: Dominion value
@@ -112,13 +132,10 @@ rankedDominionAt valueDominion occurrence
         (\valueRank ->
           if valueRank == 0
             then RankedDominionRegionDatum
-              <$> unrank valueDominion occurrenceRank
+              <$> lookupRank valueDominion occurrenceRank
             else Nothing)
         (const ())
   where
-    cellValue (RankedDominionExtentDatum value) = value
-    cellValue (RankedDominionRegionDatum value) = value
-
     occurrenceRank =
       spineRank (pageElementPosition occurrence)
 
@@ -168,32 +185,38 @@ spineRank position =
     Just valueRank -> valueRank
     Nothing -> 0
 
+-- | A ranked construction retains its Dominion and the freshly allocated
+-- Atlas together. All maps and coverage witnesses reuse that exact owner.
+type role RankedDominionAtlas nominal nominal
+data RankedDominionAtlas owner value = RankedDominionAtlas
+  (Dominion value)
+  (Atlas owner (RankedDominionPaginationScope value) (RankedDominionCellData value) () Natural)
+
+rankedDominionAtlas :: RankedDominionAtlas owner value
+  -> Atlas owner (RankedDominionPaginationScope value) (RankedDominionCellData value) () Natural
+rankedDominionAtlas (RankedDominionAtlas _ valueAtlas) = valueAtlas
+
 -- | Split a dominion into an extent and one final region per occupied rank.
-rankedDominionAtlas
-  :: Dominion value
-  -> Atlas
-       (RankedDominionAtlasScope value)
-       (RankedDominionPaginationScope value)
-       (RankedDominionCellData value)
-       ()
-       Natural
-rankedDominionAtlas valueDominion =
-  atlasWithScope
+withRankedDominionAtlas :: Dominion value
+  -> (forall owner. RankedDominionAtlas owner value -> result) -> result
+withRankedDominionAtlas valueDominion useAtlas =
+  atlas
     rankedDominionPagination
-    (atlasDataAction
+    (atlasDataAction (Pagination.paginationPageElements rankedDominionPagination)
       (rankedDominionAt valueDominion)
       (rankedDominionDataMap valueDominion))
     (\_ _ -> ())
     (\_ _ _ _ -> ())
     (\_ _ _ _ -> ())
     (\_ _ _ _ _ _ _ -> ())
+    (\valueAtlas -> useAtlas (RankedDominionAtlas valueDominion valueAtlas))
 
 rankedDominionCoverage
-  :: Dominion value
+  :: RankedDominionAtlas owner value
   -> PageElement (RankedDominionPaginationScope value) object
   -> RankedDominionCellData value object
-  -> AtlasCoverageWitness (RankedDominionAtlasObject value)
-rankedDominionCoverage valueDominion source datum =
+  -> AtlasCoverageWitness (RankedDominionAtlasObject owner value)
+rankedDominionCoverage (RankedDominionAtlas valueDominion valueAtlas) source datum =
   withPageElement
     (lastPageElement
       (atlasPageElements valueAtlas)
@@ -206,56 +229,53 @@ rankedDominionCoverage valueDominion source datum =
             region
             (RankedDominionRegionDatum (cellValue datum))
             ()
-  where
-    valueAtlas = rankedDominionAtlas valueDominion
-
-    cellValue (RankedDominionExtentDatum value) = value
-    cellValue (RankedDominionRegionDatum value) = value
 
 -- | Restrict the ranked Atlas to the map whose every extent datum is covered
 -- by the final region at its dominion rank.
 rankedDominionAtlasMap
-  :: Dominion value
-  -> AtlasMap (RankedDominionAtlasObject value)
-rankedDominionAtlasMap valueDominion =
-  atlasMap
-    (rankedDominionAtlas valueDominion)
-    (rankedDominionCoverage valueDominion)
+  :: RankedDominionAtlas owner value
+  -> AtlasMap (RankedDominionAtlasObject owner value)
+rankedDominionAtlasMap owner =
+  atlasMap (rankedDominionAtlas owner) (rankedDominionCoverage owner)
 
 -- | The canonical covered extent element corresponding to one dominion
 -- value.
 rankedDominionCoalitionElement
-  :: Dominion value
+  :: RankedDominionAtlas owner value
   -> value
-  -> CoalitionElement (RankedDominionAtlasObject value)
-rankedDominionCoalitionElement valueDominion value =
+  -> CoalitionElement (RankedDominionAtlasObject owner value)
+rankedDominionCoalitionElement owner value =
   withPageElement (atlasOriginCell valueAtlas) $ \origin ->
     let datum = RankedDominionExtentDatum value
     in coalitionElement
+        valueAtlas
         origin
         datum
-        (rankedDominionCoverage valueDominion origin datum)
+        (rankedDominionCoverage owner origin datum)
   where
-    valueAtlas = rankedDominionAtlas valueDominion
+    valueAtlas = rankedDominionAtlas owner
 
 -- | Lift an insertion between dominions to the stable Atlas traversal into
 -- the target's ranked Atlas map.  This packages the standard passage through
 -- the target coalition, including recovery of a source from a selected rank.
 rankedDominionInsertionTraversal
-  :: Dominion target
+  :: DominionAtlas sourceOwner source
+  -> RankedDominionAtlas owner target
   -> DomanialInsertion source target
   -> StableAtlasTransversal
-       (DominionAtlasObject source)
-       (RankedDominionAtlasObject target)
-rankedDominionInsertionTraversal targetDominion insertion =
+       (DominionAtlasObject sourceOwner source)
+       (RankedDominionAtlasObject owner target)
+rankedDominionInsertionTraversal sourceOwner owner@(RankedDominionAtlas targetDominion targetAtlas) insertion =
   coaToDomInc
-    (pullbackDominion targetDominion insertion)
-    (atlasWitness (rankedDominionAtlas targetDominion))
+    sourceOwner
+    (atlasWitness targetAtlas)
     coalitionInsertion
+    (\_ datum -> preimage insertion (cellValue datum))
+    (\_ -> insertionLeftInverse insertion)
   where
     coalitionInsertion =
       domanialInsertion
-        (rankedDominionCoalitionElement targetDominion
+        (rankedDominionCoalitionElement owner
           . applyInsertion insertion)
         (\element ->
           unrank targetDominion (coalitionElementRank element)

@@ -31,7 +31,8 @@ import IntegerRange.Interval
   , integerIntervalWidth
   , integerOffset
   )
-import MapOperators.IndexedAtlasMap (indexedAtlasAtlas)
+import MapOperators.IndexedAtlasMap (withIndexedAtlas)
+import ChainedDominionAtlas (chainedDominionAtlas)
 import MapOperators.OrderedAtlasMap
   ( OrderedAtlasMap (..)
   )
@@ -126,7 +127,7 @@ withIntegerInsertionAtlasWitness insertion useWitness =
     EmptyOrderedAtlasMap ->
       emptyAtlas (useWitness . atlasWitness)
     NonEmptyOrderedAtlasMap valueMap ->
-      useWitness (atlasWitness (indexedAtlasAtlas valueMap))
+      withIndexedAtlas valueMap (useWitness . atlasWitness . chainedDominionAtlas)
 
 integerRank :: SuperEllipsisRank Ellipsis
 integerRank = nextSuperEllipsisRank dotSuperEllipsisRank

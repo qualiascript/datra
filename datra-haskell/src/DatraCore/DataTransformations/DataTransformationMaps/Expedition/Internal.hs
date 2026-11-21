@@ -26,13 +26,13 @@ module Expedition.Internal
 import Atlas (AtlasWitness)
 import AtlasMap (AtlasMap, atlasMapAtlas)
 import Data.Kind (Type)
-import DataTransformation.Internal
+import DataTransformation
   ( DataTransformationHom
   , DataTransformationValue
   , Yoneda
   , YonedaPresheaf
   )
-import Navigation.Internal
+import Navigation
   ( Navigation
   , mapNavigationHom
   , mapNavigation
@@ -51,7 +51,7 @@ import Navigation.Internal
 type role Expedition nominal nominal
 data Expedition
   (atlas :: Type)
-  (values :: Type) = Expedition
+  (values :: Type -> Type) = Expedition
   (AtlasMap atlas)
   (Navigation atlas values)
 

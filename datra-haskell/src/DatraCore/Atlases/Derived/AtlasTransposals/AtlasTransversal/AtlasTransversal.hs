@@ -6,6 +6,7 @@
 module AtlasTransversal
   ( AtlasTransversal
   , atlasTransversal
+  , withTransversalImage
   , atlasTransversalOrderedTransposal
   , atlasTransversalTransposal
   , atlasTransversalHom
@@ -26,6 +27,7 @@ module AtlasTransversal
 import AtlasTransversal.Internal
   ( AtlasTransversal
   , atlasTransversal
+  , withTransversalImage
   , atlasTransversalHom
   , atlasTransversalLeftInverse
   , atlasTransversalOrderedTransposal
