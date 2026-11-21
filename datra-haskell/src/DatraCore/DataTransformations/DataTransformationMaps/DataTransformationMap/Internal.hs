@@ -47,7 +47,7 @@ import Prelude hiding ((.), id)
 -- It turns the representing object of every navigation into an 'AtlasMap'.
 -- Combined with that same navigation this produces an 'Expedition'.
 type role DataTransformationMap nominal
-data DataTransformationMap (values :: Type) = DataTransformationMap
+data DataTransformationMap (values :: Type -> Type) = DataTransformationMap
   (DataTransformation values)
   (forall atlas. Navigation atlas values -> AtlasMap atlas)
 

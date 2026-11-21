@@ -59,6 +59,23 @@ proofGuard source target component = dataTransformationNatural source target com
 """,
 }
 
+DATA_TRANSFORMATION_CORE_SOURCE = HASKELL / "src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs"
+DATA_TRANSFORMATION_CORE_GUARDS = {
+    "core " + name: guard for name, guard in DATA_TRANSFORMATION_GUARDS.items()
+}
+DATA_TRANSFORMATION_CORE_GUARDS["Yoneda package retains its precomposition action"] = """
+{-@ proofGuard :: arrow:AtlasHom source target -> value:Yoneda represented target
+      -> {proof:() | mapDataTransformation yoneda arrow value /= mapYoneda arrow value} @-}
+proofGuard :: forall represented source target. AtlasHom source target -> Yoneda represented target -> ()
+proofGuard = yonedaActionAgrees
+"""
+DATA_TRANSFORMATION_GUARDS["Yoneda natural package retains its postcomposition component"] = """
+{-@ proofGuard :: arrow:AtlasHom source target -> value:Yoneda source atlas
+      -> {proof:() | mapDataTransformationNatural (yonedaNatural arrow) value /= mapYonedaNatural arrow value} @-}
+proofGuard :: AtlasHom source target -> Yoneda source atlas -> ()
+proofGuard = yonedaComponentAgrees
+"""
+
 NATURAL_SEARCH_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/NaturalSearch.hs"
 NATURAL_SEARCH_GUARDS = {
     "finite search congruence requires equality of the tested predicates": """
@@ -2107,6 +2124,7 @@ def run(pattern=None):
             command.extend(["-package-id", dependency])
         for source_path, guards in [(SOURCE, GUARDS), (CHAIN_SOURCE, CHAIN_GUARDS),
                                     (DATA_TRANSFORMATION_SOURCE, DATA_TRANSFORMATION_GUARDS),
+                                    (DATA_TRANSFORMATION_CORE_SOURCE, DATA_TRANSFORMATION_CORE_GUARDS),
                                     (NATURAL_SEARCH_SOURCE, NATURAL_SEARCH_GUARDS),
                                     (CHAIN_SINGLETON_SOURCE, CHAIN_SINGLETON_GUARDS),
                                     (CONSOLIDATION_SOURCE, CONSOLIDATION_GUARDS),

@@ -70,6 +70,7 @@ library
         PageElements.Construction
         PageElements.TraceChain
         Atlas.Construction
+        DataTransformation.Core
         Charter.Data
         AtlasMerge.Data
         AtlasMerge.Assembly

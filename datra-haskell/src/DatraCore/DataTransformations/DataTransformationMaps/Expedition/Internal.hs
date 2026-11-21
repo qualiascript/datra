@@ -51,7 +51,7 @@ import Navigation
 type role Expedition nominal nominal
 data Expedition
   (atlas :: Type)
-  (values :: Type) = Expedition
+  (values :: Type -> Type) = Expedition
   (AtlasMap atlas)
   (Navigation atlas values)
 

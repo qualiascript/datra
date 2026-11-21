@@ -17,28 +17,28 @@
     },
     {
       "id": "YONEDA-IDENTITY",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
       "haskell_declaration": "yonedaIdentity",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "yonedaIdentity"
     },
     {
       "id": "YONEDA-COMPOSITION",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
       "haskell_declaration": "yonedaComposition",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "yonedaComposition"
     },
     {
       "id": "YONEDA-NATURALITY",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
       "haskell_declaration": "yonedaNaturality",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "yonedaNaturality"
     },
     {
       "id": "YONEDA-PACKAGE",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
       "haskell_declaration": "yoneda",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "yoneda"
@@ -465,14 +465,14 @@
     },
     {
       "id": "YONEDA-ACTION-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
       "haskell_declaration": "mapYoneda",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "Yoneda.evaluate_mapYoneda"
     },
     {
       "id": "YONEDA-COMPONENT-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
       "haskell_declaration": "mapYonedaNatural",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "Yoneda.evaluate_mapYonedaNatural"
@@ -4977,6 +4977,90 @@
       "haskell_declaration": "paginationFromPageElements",
       "lean_namespace": "Datra.Executable.Pagination",
       "lean_declaration": "Pagination.fromPageElements"
+    },
+    {
+      "id": "YONEDA-PACKAGE-ACTION",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "haskell_declaration": "yonedaActionAgrees",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "yonedaActionAgrees"
+    },
+    {
+      "id": "PRESHEAF-ACTION-ELIM",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "haskell_declaration": "mapDataTransformationAction",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "DataTransformationAction.apply"
+    },
+    {
+      "id": "PRESHEAF-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "haskell_declaration": "mapDataTransformation",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "DataTransformation.action"
+    },
+    {
+      "id": "PRESHEAF-COMPONENT-ELIM",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "haskell_declaration": "mapDataTransformationComponent",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "DataTransformationComponent.apply"
+    },
+    {
+      "id": "PRESHEAF-NATURAL-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "haskell_declaration": "mapDataTransformationNatural",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "DataTransformationNatural.component"
+    },
+    {
+      "id": "PRESHEAF-PACKAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "haskell_declaration": "dataTransformation",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "dataTransformation"
+    },
+    {
+      "id": "PRESHEAF-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "haskell_declaration": "dataTransformationIdentity",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "dataTransformationIdentity"
+    },
+    {
+      "id": "PRESHEAF-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "haskell_declaration": "dataTransformationComposition",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "dataTransformationComposition"
+    },
+    {
+      "id": "PRESHEAF-NATURAL-PACKAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "haskell_declaration": "dataTransformationNatural",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "dataTransformationNatural"
+    },
+    {
+      "id": "PRESHEAF-NATURALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "haskell_declaration": "dataTransformationNaturalNaturality",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "dataTransformationNaturalNaturality"
+    },
+    {
+      "id": "YONEDA-PACKAGE-NATURALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_declaration": "yonedaNaturalityForAction",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "yonedaNaturalityForAction"
+    },
+    {
+      "id": "YONEDA-PACKAGE-COMPONENT",
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
+      "haskell_declaration": "yonedaComponentAgrees",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "yonedaComponentAgrees"
     }
   ],
   "modules": [
@@ -6387,42 +6471,21 @@
     {
       "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
       "module": "DataTransformation.LiquidInternal",
-      "types": [
-        "YonedaPresheaf",
-        "Yoneda",
-        "DataTransformationAction",
-        "DataTransformation",
-        "DataTransformation",
-        "DataTransformationComponent",
-        "DataTransformationNatural",
-        "DataTransformationNatural"
-      ],
+      "types": [],
       "reflected": [
-        "mapDataTransformationAction",
-        "mapDataTransformation",
-        "mapDataTransformationComponent",
-        "mapDataTransformationNatural",
-        "mapYoneda",
-        "mapYonedaNatural"
-      ],
-      "refinements": [
-        "dataTransformation",
-        "dataTransformationIdentity",
-        "dataTransformationComposition",
-        "dataTransformationNatural",
-        "dataTransformationNaturalNaturality",
-        "yonedaIdentity",
-        "yonedaComposition",
-        "yoneda",
-        "yonedaNaturality",
         "yonedaNatural"
       ],
-      "lean_target": "Datra.Executable.DataTransformation",
-      "coverage": "partial",
+      "refinements": [
+        "yonedaNaturalityForAction",
+        "yonedaComponentAgrees"
+      ],
+      "lean_target": "Datra.Executable.yonedaNatural",
+      "coverage": "aligned",
       "aliases": [],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransversal/Internal.hs",
@@ -6446,7 +6509,6 @@
       "types": [
         "StableDataTransversal",
         "StableDataTransversalHom",
-        "ExtendedStableDataTransversal",
         "LeftKanExtensionValue",
         "StableDataTransversalExtensionFunctor"
       ],
@@ -6454,10 +6516,13 @@
       "refinements": [],
       "lean_target": "Datra.Executable.StableDataTransversal",
       "coverage": "pending",
-      "aliases": [],
+      "aliases": [
+        "ExtendedStableDataTransversal"
+      ],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/StableConfederalData/HorizontalSum/Internal.hs",
@@ -7626,28 +7691,52 @@
       "predicates": [],
       "refinement_aliases": [],
       "opaque_reflected": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
+      "module": "DataTransformation.Core",
+      "lean_target": "Datra.Executable.DataTransformation",
+      "coverage": "aligned",
+      "types": [
+        "Yoneda",
+        "DataTransformationAction",
+        "DataTransformation",
+        "DataTransformation",
+        "DataTransformationComponent",
+        "DataTransformationNatural",
+        "DataTransformationNatural"
+      ],
+      "reflected": [
+        "mapDataTransformationAction",
+        "dataTransformation",
+        "mapDataTransformation",
+        "mapDataTransformationComponent",
+        "dataTransformationNatural",
+        "mapDataTransformationNatural",
+        "mapYoneda",
+        "yoneda",
+        "mapYonedaNatural"
+      ],
+      "refinements": [
+        "dataTransformation",
+        "dataTransformationIdentity",
+        "dataTransformationComposition",
+        "dataTransformationNatural",
+        "dataTransformationNaturalNaturality",
+        "yonedaIdentity",
+        "yonedaComposition",
+        "yonedaNaturality",
+        "yonedaActionAgrees"
+      ],
+      "aliases": [
+        "DataTransformationValue",
+        "YonedaPresheaf"
+      ],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "opaque_reflected": []
     }
   ],
-  "trust_boundary": [
-    {
-      "file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
-      "directive": "assume",
-      "declaration": "yoneda"
-    },
-    {
-      "file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
-      "directive": "ignore",
-      "declaration": "yoneda"
-    },
-    {
-      "file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
-      "directive": "assume",
-      "declaration": "yonedaNatural"
-    },
-    {
-      "file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs",
-      "directive": "ignore",
-      "declaration": "yonedaNatural"
-    }
-  ]
+  "trust_boundary": []
 }

@@ -48,8 +48,9 @@ under `Datra.Semantics`. This denotational layer is mostly extensional:
 
 The `datra-lean/Executable` modules model the executable representations and
 prove their interpretations into this denotational layer. Derived construction
-bridges and the Yoneda packaging boundary still need work; the correspondence
-manifest records their coverage separately. The executable coalition-to-inclusion
+bridges still need work; the correspondence manifest records their coverage
+separately. Presheaf and Yoneda packages have checked construction and elimination
+laws in both languages, with no LiquidHaskell trust directives. The executable coalition-to-inclusion
 arrow and inclusion action on insertions have interpretation theorems, including
 identity and composition in the stable-transversal category. The one-page
 interpretation lifts to a stable-transversal isomorphism. It transports the
@@ -663,24 +664,20 @@ The current `DatraCore` representation is executable and intensional:
 - `AtlasMorphism` and `AtlasHom` explicitly represent identity and composition.
   A materialized identity is the Atlas normalization/coherence idempotent, and
   composite evaluation inserts the middle Atlas coherence.
-- Presheaves use a defunctionalized value-family symbol
-  `DataTransformationValue` because the needed higher-kinded/rank-N encoding is
-  difficult for LiquidHaskell on the current GHC.
+- Presheaves take an indexed value family of kind `Type -> Type`.
+  `DataTransformationValue values atlas` is ordinary family application, and
+  `YonedaPresheaf represented` is the family `Yoneda represented`. Named action
+  and component wrappers retain the rank-polymorphic operations and their laws.
 
-### Remaining explicit trust boundary
+### Trust boundary
 
-A repository-wide scan of `DatraCore` currently finds two explicit
-LiquidHaskell `assume` declarations, all in
-`DataTransformations/DataTransformations/DataTransformation/LiquidInternal.hs`:
-
-| Assumption | Intended fact | Nature of the gap |
-| --- | --- | --- |
-| `yoneda` | The representable action packages as a lawful `DataTransformation` | LiquidHaskell loses verified laws at a rank-N/defunctionalized constructor boundary |
-| `yonedaNatural` | An Atlas arrow packages as the corresponding Yoneda natural transformation | The pointwise naturality lemma is checked, but its rank-N component cannot be stored without an assumption |
-
-`yoneda` and `yonedaNatural` also have `ignore` directives. These are packaging
-limitations rather than missing mathematical arguments, but they are still part
-of the trusted code base and must be removed.
+`DatraCore` contains no LiquidHaskell `assume` or `ignore` directives. The
+alignment gate rejects these directives even while other representation bridges
+remain unfinished. `DataTransformation.Core` checks generic presheaf and natural
+transformation packages, the pointwise Yoneda laws, the representable package,
+and its action equation. Its public constructors retain their law obligations.
+The small `DataTransformation.LiquidInternal` assembly uses those exposed
+contracts to check the representable natural transformation.
 
 ## Architectural decision: two Lean layers
 
@@ -943,9 +940,9 @@ Exit criterion: the first two `assume` declarations are gone and
 
 ### Phase 5: align presheaves and Yoneda packaging
 
-Define in Lean the same defunctionalized interface used in Haskell:
+Define in Lean the same indexed-family interface used in Haskell:
 
-- a symbol `values` and interpretation `DataTransformationValue values atlas`;
+- a family `values : Type -> Type` and its application to an Atlas;
 - a rank-polymorphic contravariant action;
 - stored identity and composition eliminators;
 - natural-transformation components and naturality eliminators;
@@ -963,33 +960,29 @@ GHC and LiquidHaskell.
 Exit criterion: Lean models both the mathematical law and the exact packaging
 boundary at which LiquidHaskell currently fails.
 
-### Phase 6: remove `yoneda` and `yonedaNatural` assumptions
+### Phase 6: checked Yoneda packaging
 
-Try the following Haskell refactors in order, keeping the smallest one that
-LiquidHaskell can verify:
+`DataTransformation.Core` stores actions and components in named wrappers and
+checks their identity, composition, and naturality dictionaries. The value
+family is a higher-kinded parameter, so specialization does not cross an open
+type-family coercion. `mapYoneda`, `yonedaIdentity`, and `yonedaComposition`
+quantify the represented Atlas before the varying Atlas arguments. This preserves
+the checked pointwise contracts when those functions are stored in the rank-N
+representable package.
 
-1. Construct both values through the existing checked smart constructors
-   `dataTransformation` and `dataTransformationNatural`, rather than directly
-   through data constructors.
-2. Replace anonymous rank-N function fields with named wrapper types and named
-   reflected eliminators, following the already successful pattern used by
-   `AtlasAction` and `DataTransformationAction`.
-3. Store law dictionaries separately from executable actions so that each law
-   is recovered through a monomorphic reflected accessor.
-4. Specialize representable presheaves with a dedicated checked constructor
-   whose refinements mention `mapYoneda` directly, avoiding a coercion through
-   the open type family at the critical equality.
-5. Only if the above fail, introduce a defunctionalized component symbol and an
-   explicit interpretation family for Yoneda components, with Lean proving that
-   this refactor denotes the same natural transformation.
+`yonedaActionAgrees` exposes the package's exact action, and
+`yonedaComponentAgrees` certifies postcomposition in the stored component. The natural-transformation
+assembly invokes that equation at the source and target, then invokes the checked
+`yonedaNaturality` theorem. The assembly module uses `--fast` to disable inference
+at polymorphic type applications; the explicit constructor and helper contracts
+remain checked. Negative checks reject arbitrary action and component packages
+with dummy law callbacks, and reject substituted action/component equations.
 
-For each attempt, keep the already checked pointwise functions
-`yonedaIdentity`, `yonedaComposition`, and `yonedaNaturality` as the leaf proofs.
-The goal is to make their refinements survive packaging, not to re-prove them
-axiomatically.
+Lean models the named wrappers, law-bearing packages, their constructors and
+eliminators, and both Yoneda packages over the same indexed value families.
 
-Exit criterion: `assume yoneda`, `assume yonedaNatural`, and their two `ignore`
-directives are removed; all public callers continue to typecheck.
+Exit criterion: no `assume` or `ignore` remains, the packages verify, and the
+public callers and focused presheaf/navigation tests pass.
 
 ### Phase 7: migrate derived constructions in dependency order
 
@@ -1066,7 +1059,7 @@ Maintain three kinds of tests:
   for ordinal, chain, trace, normalization, and composition functions. These
   catch definition drift but do not replace proofs.
 
-Pin Lean/Mathlib, GHC, LiquidHaskell, and Z3 versions in CI. The Yoneda gaps are
+Pin Lean/Mathlib, GHC, LiquidHaskell, and Z3 versions in CI. Yoneda packaging is
 compiler/elaborator-sensitive, so version changes must rerun the assumption-free
 verification rather than relying on cached results.
 

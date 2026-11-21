@@ -124,7 +124,9 @@ def check(require_complete=False):
             errors.append(f"{path}: expected-failure checks belong outside the library")
     if expected_modules:
         errors.append(f"Missing inventoried modules: {list(expected_modules)}")
-    expected_escapes = [] if require_complete else manifest["trust_boundary"]
+    expected_escapes = []
+    if manifest["trust_boundary"]:
+        errors.append("The trust boundary must remain empty")
     key = lambda entry: (entry["file"], entry["directive"], entry["declaration"])
     if sorted(escapes, key=key) != sorted(expected_escapes, key=key):
         errors.append("Trust boundary differs from the required inventory: " + json.dumps(escapes))

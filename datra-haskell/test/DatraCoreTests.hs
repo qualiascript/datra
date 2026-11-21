@@ -783,14 +783,8 @@ newtype TestDataTransformationValue atlas =
   TestDataTransformationValue Natural
   deriving (Eq, Show)
 
-data TestDataTransformationValues
-
-type instance
-  DataTransformationValue TestDataTransformationValues atlas =
-    TestDataTransformationValue atlas
-
 testDataTransformation
-  :: DataTransformation TestDataTransformationValues
+  :: DataTransformation TestDataTransformationValue
 testDataTransformation =
   dataTransformation
     (\_ (TestDataTransformationValue value) ->
@@ -800,8 +794,8 @@ testDataTransformation =
 
 incrementDataTransformation
   :: DataTransformationHom
-       TestDataTransformationValues
-       TestDataTransformationValues
+       TestDataTransformationValue
+       TestDataTransformationValue
 incrementDataTransformation =
   dataTransformationHom
     testDataTransformation
@@ -813,17 +807,11 @@ incrementDataTransformation =
 -- The initial presheaf has no navigations: evaluating a purported navigation
 -- on the represented Atlas's identity would produce a 'Void'. Consequently
 -- it satisfies Lean's IsDaTraMap property vacuously.
-data EmptyDataTransformationValues
-
 newtype EmptyDataTransformationValue atlas =
   EmptyDataTransformationValue Void
 
-type instance
-  DataTransformationValue EmptyDataTransformationValues atlas =
-    EmptyDataTransformationValue atlas
-
 emptyDataTransformation
-  :: DataTransformation EmptyDataTransformationValues
+  :: DataTransformation EmptyDataTransformationValue
 emptyDataTransformation =
   dataTransformation
     (\_ (EmptyDataTransformationValue impossible) -> absurd impossible)
@@ -831,7 +819,7 @@ emptyDataTransformation =
     (\_ _ (EmptyDataTransformationValue impossible) -> absurd impossible)
 
 emptyDataTransformationMap
-  :: DataTransformationMap EmptyDataTransformationValues
+  :: DataTransformationMap EmptyDataTransformationValue
 emptyDataTransformationMap =
   dataTransformationMap emptyDataTransformation $ \valueNavigation ->
     case mapNavigation valueNavigation (Yoneda Category.id) of
@@ -2399,8 +2387,8 @@ testDataTransformationMap = do
       identityHom =
         identityDataTransformationMapHom
           :: DataTransformationMapHom
-               TestDataTransformationValues
-               TestDataTransformationValues
+               TestDataTransformationValue
+               TestDataTransformationValue
       composedHom = composeDataTransformationMapHoms valueHom valueHom
       categoryComposed = valueHom Category.. valueHom
       includedHom =
