@@ -44,13 +44,9 @@ import Atlas
   , AtlasObjectPaginationScope
   , AtlasWitness
   , atlasHom
-  , atlasPredicateDataAction
   , identityAtlasObjectMap
   , atlasMorphism
   , atlasMorphismAction
-  , atlasPagination
-  , atlasPageElements
-  , atlasDataAt
   , atlasWitness
   , withAtlasWitness
   , atlasMorphismActionNaturality
@@ -62,18 +58,11 @@ import Atlas
   , atlasMorphismTarget
   , mapAtlasMorphismActionComponent
   , mapAtlasMorphismActionObject
-  , mapAtlasData
   , materializeAtlasHom
   )
-import Atlas.Internal
-  ( atlasCoherenceWitness
-  , atlasCompositionWitness
-  , atlasDisjointWitness
-  , atlasIdentityWitness
-  , atlasWithScope
-  )
+import Atlas.Construction (ConstructedAtlasScope, constructAtlasData)
 import AtlasCoveredPageElement
-  ( AtlasCoverageWitness, atlasCoverageAt, atlasCoverageWitness, withAtlasCoverageWitness
+  ( AtlasCoverageWitness, atlasCoverageWitness, withAtlasCoverageWitness
   , atlasCoveredByWitness, atlasCoveredPageElementWitness, withAtlasCoveredPageElement )
 import AtlasMap (AtlasMap, atlasMap, atlasMapAtlas, atlasMapCoversDatum)
 import AtlasTransposal
@@ -99,7 +88,8 @@ import AtlasTransversalMap
   , atlasTransversalMapTransversal
   , composeAtlasTransversalMaps
   )
-import Charter.LiquidInternal
+import Charter.LiquidInternal ()
+import Charter.Data
   ( ChartedCellData
   , ChartedDatum
   , chartCellData
@@ -111,127 +101,44 @@ import Charter.LiquidInternal
   , chartHomRightInverseValue
   , charterCompositionValue
   , charterIdentityValue
-  , chartedCellData
   , chartedCellDataValue
   , chartedDatumValid
-  , chartedCellDataRank
   , chartedCellCoverage
-  , chartedDataMap
   )
 import DomanialInsertion
-  ( DomanialInsertion
-  , applyInsertion
+  ( applyInsertion
   , domanialInsertion
-  , insertionLeftInverse
-  , preimage
-  )
-import Dominion
-  ( Dominion
-  , dominion
-  , rank
   )
 import Numeric.Natural (Natural)
 import OrderedAtlasTransposal (orderedAtlasTransposal)
 import PageElements.Structure
   ( PageElement
-  , PageElementArrow
-  , arrowTarget
   )
 import PageElements.Structure
   ( somePageElementPrecedesReflexive
   , somePageElementTransportedReflexive
   )
 
--- | The type-level Atlas object produced by Charter. The original Atlas
--- object itself names the new Atlas scope, making the object action stable
--- across separate calls without an empty tag declaration.
+-- | The cached-data construction and original owner jointly name the derived
+-- Atlas, making the object action stable across separate calls.
 type ChartedAtlasObject source =
   AtlasObject
-    source
+    (ConstructedAtlasScope ChartedDatum (AtlasObjectAtlasScope source)
+      (AtlasObjectPaginationScope source) (AtlasObjectCellData source))
     (AtlasObjectPaginationScope source)
     (ChartedCellData source)
-
--- | The covered sub-dominion stores its canonical enumeration rank. Finite
--- unranking retains the decoded witness and canonicalizes its code.
--- ALIGN: CHARTER-DOMINION-ROUNDTRIP.
-chartedDominion
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> Dominion (ChartedCellData (AtlasObject atlasScope scope cellData) object)
-chartedDominion valueAtlas occurrence =
-  dominion chartRank chartUnrank chartRoundTrip
-  where
-    chartRank = chartedCellDataRank
-
-    chartUnrank candidate = do
-      (datum, witness) <- atlasCoverageAt valueAtlas occurrence candidate
-      pure (chartCellData valueAtlas occurrence datum witness ())
-
-    chartRoundTrip _ = ()
-
--- ALIGN: CHARTER-DATA-INSERTION.
--- ALIGN: CHARTER-DATA-INVERSE-SOUND.
-chartedInsertion
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElementArrow scope source target
-  -> DomanialInsertion
-       (ChartedCellData (AtlasObject atlasScope scope cellData) source)
-       (ChartedCellData (AtlasObject atlasScope scope cellData) target)
-chartedInsertion valueAtlas pageArrow =
-  domanialInsertion forward backward leftInverse
-  where
-    original = mapAtlasData valueAtlas pageArrow
-
-    forward = chartedDataMap valueAtlas pageArrow
-
-    backward target = do
-      -- A left inverse may return an arbitrary candidate outside its image.
-      -- Only an actual preimage inherits coverage from the target datum.
-      let targetValue = chartedCellDataValue target
-          targetRank = rank (atlasDataAt valueAtlas (arrowTarget pageArrow))
-      candidate <- preimage original targetValue
-      if targetRank (applyInsertion original candidate) == targetRank targetValue
-        then Just (chartedCellData candidate (chartedCellDataRank target))
-        else Nothing
-
-    leftInverse source =
-      insertionLeftInverse original (chartedCellDataValue source)
 
 -- | Retain exactly the covered page elements in every Atlas cell.
 -- ALIGN: CHARTER-ATLAS-INTERPRETATION.
 chartAtlas
   :: Atlas atlasScope scope cellData origin final
   -> Atlas
-       (AtlasObject atlasScope scope cellData)
+       (ConstructedAtlasScope ChartedDatum atlasScope scope cellData)
        scope
        (ChartedCellData (AtlasObject atlasScope scope cellData))
        origin
        final
-chartAtlas valueAtlas =
-  atlasWithScope
-    (atlasPagination valueAtlas)
-    (atlasPredicateDataAction (atlasPageElements valueAtlas)
-      (chartedDatumValid valueAtlas)
-      (chartedDominion valueAtlas)
-      (chartedInsertion valueAtlas))
-    (\occurrence covered ->
-      atlasIdentityWitness
-        valueAtlas occurrence (chartedCellDataValue covered))
-    (\second first _ covered ->
-      atlasCompositionWitness
-        valueAtlas second first (chartedCellDataValue covered))
-    (\occurrence coherenceArrow _ covered ->
-      atlasCoherenceWitness
-        valueAtlas occurrence coherenceArrow (chartedCellDataValue covered))
-    (\left right leftToOrigin rightToOrigin _ leftDatum rightDatum ->
-      atlasDisjointWitness
-        valueAtlas
-        left
-        right
-        leftToOrigin
-        rightToOrigin
-        (chartedCellDataValue leftDatum)
-        (chartedCellDataValue rightDatum))
+chartAtlas = constructAtlasData
 
 -- ALIGN: CHARTER-COVERAGE-WITNESS.
 chartCoverageWitness
@@ -271,8 +178,8 @@ chartMorphism
   -> (forall object. PageElement sourceScope object
         -> ChartedCellData (AtlasObject sourceAtlasScope sourceScope sourceCellData) object -> ())
   -> AtlasMorphism
-       (AtlasObject sourceAtlasScope sourceScope sourceCellData)
-       (AtlasObject targetAtlasScope targetScope targetCellData)
+       (ConstructedAtlasScope ChartedDatum sourceAtlasScope sourceScope sourceCellData)
+       (ConstructedAtlasScope ChartedDatum targetAtlasScope targetScope targetCellData)
        sourceScope targetScope
        (ChartedCellData (AtlasObject sourceAtlasScope sourceScope sourceCellData))
        (ChartedCellData (AtlasObject targetAtlasScope targetScope targetCellData))
@@ -607,7 +514,7 @@ chartHomEquivNaturalityRight =
 
 -- | Proof aliases rather than record-shaped proof tokens. Their polymorphic
 -- function values are the hom-equivalence and naturality witnesses checked in
--- "Charter.LiquidInternal".
+-- "Charter.Data".
 cartographyAdjunction =
   ( chartHomEquivLeftInverse
   , chartHomEquivRightInverse

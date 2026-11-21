@@ -120,6 +120,20 @@ noncomputable def Atlas.toSemantics (X : Atlas) : Datra.Semantics.Atl := X.data.
 def Atlas.dataAt (X : Atlas) (x : X.Element) : Dominion (X.cellData x.val.cell) :=
   X.data.action.dataAt x.normalize
 
+-- ALIGN: ATLAS-NORMALIZATION-AGREES.
+theorem Atlas.normalizationAgrees (X : Atlas) (source : X.Element) :
+    source.normalize.val = PageElement.normalize (X.pages.depth - 1) X.pages.depth source.val := rfl
+
+-- ALIGN: ATLAS-ARROW-NORMALIZATION-AGREES.
+theorem Atlas.arrowNormalizationAgrees (X : Atlas) {source target : X.Element}
+    (arrow : source ⟶ target) :
+    FolioData.ValidElement.normalizeArrow arrow =
+      PageElement.normalizeArrow (X.pages.depth - 1) X.pages.depth arrow := rfl
+
+-- ALIGN: ATLAS-NORMALIZATION-ARROW.
+def Atlas.normalizationArrow (X : Atlas) (source : X.Element) : source ⟶ source.normalize :=
+  source.toNormalized
+
 -- ALIGN: ATLAS-IDENTITY-WITNESS.
 theorem Atlas.identityWitness (X : Atlas) (source : X.Element) (datum : X.cellData source.val.cell) :
     (X.data.action.normalizedMap (𝟙 source)).map datum = datum :=
@@ -153,6 +167,7 @@ open CategoryTheory
 variable {origin final : Page} {pages : FolioData origin final}
   {cellData : PageElementCell → Type}
 
+-- ALIGN: ATLAS-DATA-MAP-NORMALIZATION.
 theorem normalizedMap_normalizeArrow (action : AtlasAction pages cellData)
     {x y : pages.ValidElement} (f : x ⟶ y) :
     action.normalizedMap (FolioData.ValidElement.normalizeArrow f) = action.normalizedMap f := by

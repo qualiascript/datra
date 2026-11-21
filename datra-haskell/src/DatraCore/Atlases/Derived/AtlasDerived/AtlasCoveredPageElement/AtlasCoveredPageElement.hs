@@ -21,6 +21,8 @@ module AtlasCoveredPageElement
   , atlasCoverageAt
   , coverageResultCovers
   , coverageRankCandidate
+  , atlasCoveredPageElementAt
+  , coverageRankCandidateExact
   , coverageRankWitness
   , atlasCoverageRankWithin
   , atlasCoverageRank
@@ -28,6 +30,7 @@ module AtlasCoveredPageElement
   , coverageRankCanonical
   , coverageRankCanonicalUnique
   , coverageRankAlongArrow
+  , coverageRankNormalized
   , atlasCoveredAt
   , withAtlasCoveredPageElement
   , atlasCoveredPageElementWitness
@@ -50,6 +53,8 @@ import AtlasCoveredPageElement.Internal
   , atlasCoverageAt
   , coverageResultCovers
   , coverageRankCandidate
+  , atlasCoveredPageElementAt
+  , coverageRankCandidateExact
   , atlasCoverageRankWithin
   , atlasCoverageRankLeast
   , coverageRankCanonical
@@ -57,7 +62,7 @@ import AtlasCoveredPageElement.Internal
   )
 
 import qualified AtlasCoveredPageElement.Internal as Internal
-import Atlas (Atlas, AtlasObject, atlasAcceptsDatum, mapAtlasData)
+import Atlas (Atlas, AtlasObject, atlasAcceptsDatum, mapAtlasData, normalizeAtlasElement)
 import AtlasExtent (cellTraceValid)
 import PageElements.Structure (PageElement, PageElementArrow, arrowSource, arrowTarget)
 import DomanialInsertion.Core (applyInsertion)
@@ -134,3 +139,14 @@ coverageRankWitness = Internal.coverageRankWitness
 coverageRankAlongArrow
   :: Atlas a s d o f -> PageElementArrow s source target -> d source -> Natural -> ()
 coverageRankAlongArrow = Internal.coverageRankAlongArrow
+
+-- | Keep both coverage-code certificates across the owning normalization.
+{-@ coverageRankNormalized :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum} -> candidate:Natural
+      -> {coverageRankCandidate owner source datum candidate
+           == coverageRankCandidate owner (normalizeAtlasElement owner source) datum candidate
+           && coverageRankCanonical owner source datum candidate
+           == coverageRankCanonical owner (normalizeAtlasElement owner source) datum candidate} @-}
+coverageRankNormalized :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> ()
+coverageRankNormalized = Internal.coverageRankNormalized

@@ -1084,16 +1084,146 @@ proofGuard = atlasMapCoversDatum
 }
 
 
-CHARTER_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs"
+CHARTER_PRESENTATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs"
+CHARTER_PRESENTATION_GUARDS = {
+    "Charter presentation construction rejects dummy normalized laws": """
+{-@ proofGuard :: owner:Atlas a s d o f -> AtlasPresentation s (ChartedDatum a s d) o f @-}
+proofGuard :: Atlas a s d o f -> AtlasPresentation s (ChartedDatum a s d) o f
+proofGuard owner =
+  atlasPresentationForPredicate (atlasPagination owner) (chartedDatumValid owner) (chartedAction owner)
+    (\\_ _ -> ()) (\\_ _ _ _ -> ()) (\\_ _ _ _ -> ()) (\\_ _ _ _ _ _ _ -> ())
+""",
+    "Charter presentation retains the owning pagination": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> other:{AtlasPresentation s (ChartedDatum a s d) o f |
+           atlasPresentationPagination other /= atlasPagination owner}
+      -> {result:AtlasPresentation s (ChartedDatum a s d) o f |
+           atlasPresentationPagination result == atlasPresentationPagination other} @-}
+proofGuard :: Atlas a s d o f -> AtlasPresentation s (ChartedDatum a s d) o f
+  -> AtlasPresentation s (ChartedDatum a s d) o f
+proofGuard owner _ = chartedPresentation owner
+""",
+    "Charter presentation retains the certified cached action": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> other:{AtlasPresentation s (ChartedDatum a s d) o f |
+           atlasPresentationAction other /= chartedAction owner}
+      -> {result:AtlasPresentation s (ChartedDatum a s d) o f |
+           atlasPresentationAction result == atlasPresentationAction other} @-}
+proofGuard :: Atlas a s d o f -> AtlasPresentation s (ChartedDatum a s d) o f
+  -> AtlasPresentation s (ChartedDatum a s d) o f
+proofGuard owner _ = chartedPresentation owner
+""",
+}
+
+CHARTER_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs"
 CHARTER_GUARDS = {
+    "charted action lookup rejects a noncanonical carrier": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> value:{ChartedDatum a s d object | not (chartedDatumValid owner source value)} -> Natural @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d object -> Natural
+proofGuard owner source value = rank (atlasActionDataAt (chartedAction owner) source) value
+""",
+    "normalized charter composition requires matching intermediate cells": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> second:{PageElementArrow s middle target |
+           cellTraceValid owner (arrowSource second) && cellTraceValid owner (arrowTarget second)}
+      -> first:{PageElementArrow s source middle |
+           cellTraceValid owner (arrowSource first) && cellTraceValid owner (arrowTarget first)
+           && arrowTarget first /= arrowSource second}
+      -> value:{ChartedDatum a s d source |
+           chartedDatumValid owner (Elements.normalizePageElement (atlasPageElements owner) (arrowSource first)) value}
+      -> () @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s middle target -> PageElementArrow s source middle
+  -> ChartedDatum a s d source -> ()
+proofGuard owner second first value = chartedNormalizedCompositionLaw owner second first () value
+""",
+
+    "charted normalization cannot admit an invalid cached datum": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> value:{ChartedDatum a s d object | not (chartedDatumValid owner source value)}
+      -> {chartedDatumValid owner (normalizeAtlasElement owner source) value} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d object -> ()
+proofGuard = chartedDatumValidNormalized
+""",
+
+    "charted identity rejects a noncanonical carrier": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> occurrence:{PageElement s object | cellTraceValid owner occurrence}
+      -> value:{ChartedDatum a s d object |
+           atlasAcceptsDatum owner occurrence (chartedCellDataValue value)
+           && not (coverageRankCanonical owner occurrence (chartedCellDataValue value) (chartedCellDataRank value))}
+      -> {chartedDataMap owner (identityPageElementArrow occurrence) value == value} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d object -> ()
+proofGuard = chartedIdentityLaw
+""",
+    "charted composition requires matching intermediate cells": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> second:{PageElementArrow s middle target |
+           cellTraceValid owner (arrowSource second) && cellTraceValid owner (arrowTarget second)}
+      -> first:{PageElementArrow s source middle |
+           cellTraceValid owner (arrowSource first) && cellTraceValid owner (arrowTarget first)
+           && arrowTarget first /= arrowSource second}
+      -> value:{ChartedDatum a s d source | chartedDatumValid owner (arrowSource first) value}
+      -> () @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s middle target -> PageElementArrow s source middle
+  -> ChartedDatum a s d source -> ()
+proofGuard = chartedCompositionLaw
+""",
+
+    "charted inverse soundness requires a returned candidate": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
+      -> value:{ChartedDatum a s d target | chartedDatumValid owner (arrowTarget arrow) value}
+      -> candidate:{ChartedDatum a s d source | chartedDatumValid owner (arrowSource arrow) candidate}
+      -> {chartedDataMap owner arrow candidate == value} @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s source target
+  -> ChartedDatum a s d target -> ChartedDatum a s d source -> ()
+proofGuard = chartedDataPreimageSound
+""",
+    "charted data inverse rejects a noncanonical target": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
+      -> value:{ChartedDatum a s d target |
+           atlasAcceptsDatum owner (arrowTarget arrow) (chartedCellDataValue value)
+           && not (coverageRankCanonical owner (arrowTarget arrow) (chartedCellDataValue value) (chartedCellDataRank value))}
+      -> Maybe (ChartedDatum a s d source) @-}
+proofGuard :: Atlas a s d o f -> PageElementArrow s source target
+  -> ChartedDatum a s d target -> Maybe (ChartedDatum a s d source)
+proofGuard = chartedDataPreimage
+""",
+    "opaque reflection still checks function bodies": """
+{-@ opaque-reflect proofGuard @-}
+{-@ proofGuard :: value:Natural -> {result:Natural | result == value} @-}
+proofGuard :: Natural -> Natural
+proofGuard value = value + 1
+""",
+    "charted rank round trip rejects a noncanonical cache": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> occurrence:{PageElement s object | cellTraceValid owner occurrence}
+      -> value:{ChartedDatum a s d object |
+           atlasAcceptsDatum owner occurrence (chartedCellDataValue value)
+           && not (coverageRankCanonical owner occurrence (chartedCellDataValue value) (chartedCellDataRank value))}
+      -> {chartedUnrank owner occurrence (chartedCellDataRank value) == Just value} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> ChartedDatum a s d object -> ()
+proofGuard = chartedRankRoundTrip
+""",
+    "charted unranking cannot fabricate a result for a failed code": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> occurrence:{PageElement s object | cellTraceValid owner occurrence}
+      -> code:{Natural | atlasCoverageAt owner occurrence code == Nothing}
+      -> {result:Maybe (ChartedDatum a s d object) | result /= Nothing} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> Natural -> Maybe (ChartedDatum a s d object)
+proofGuard = chartedUnrank
+""",
     "charted data transport cannot shift its certified code": """
 {-@ proofGuard :: owner:Atlas a s d o f
       -> arrow:{PageElementArrow s source target |
            cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
-      -> value:{ChartedDatum a s d source |
-           atlasAcceptsDatum owner (arrowSource arrow) (chartedCellDataValue value)
-           && coverageRankCandidate owner (arrowSource arrow) (chartedCellDataValue value) (chartedCellDataRank value)
-           && coverageRankCanonical owner (arrowSource arrow) (chartedCellDataValue value) (chartedCellDataRank value)}
+      -> value:{ChartedDatum a s d source | chartedDatumValid owner (arrowSource arrow) value}
       -> {result:ChartedDatum a s d target |
            chartedCellDataRank result == chartedCellDataRank value + 1} @-}
 proofGuard :: Atlas a s d o f -> PageElementArrow s source target
@@ -1435,6 +1565,14 @@ proofGuard owner source = withAtlasTerritoryOf owner source $ \_index arrow ->
 
 PAGE_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/PageElements.hs"
 PAGE_API_GUARDS = {
+    "public normalization retains the final-page bound": """
+{-@ proofGuard :: category:PageElements scope origin final
+      -> occurrence:PageElement scope object
+      -> {result:PageElement scope object |
+           pageElementPage result > folioLength (pageElementsFolio category) - 1} @-}
+proofGuard :: PageElements scope origin final -> PageElement scope object -> PageElement scope object
+proofGuard = normalizePageElement
+""",
     "final region indexing requires a final-page occurrence": """
 {-@ proofGuard :: category:PageElements scope origin final
       -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence}
@@ -1588,8 +1726,77 @@ proofGuard _ _ = []
 }
 
 
+ATLAS_CONSTRUCTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Construction.hs"
+ATLAS_CONSTRUCTION_GUARDS = {
+    "construction instances must satisfy their declared method contracts": """
+data ProofGuardConstruction a s (d :: Type -> Type) object
+
+{-@ class ProofGuardClass construction where
+      proofGuardMethod :: forall a s d object.
+        Maybe (construction a s d object) -> {proof:() | False}
+  @-}
+class ProofGuardClass (construction :: Type -> Type -> (Type -> Type) -> Type -> Type) where
+  proofGuardMethod :: forall a s d object. Maybe (construction a s d object) -> ()
+
+instance ProofGuardClass ProofGuardConstruction where
+  proofGuardMethod _ = ()
+""",
+    "stable construction retains the original pagination": """
+{-@ proofGuard :: AtlasDataConstruction construction => owner:Atlas a s d o f
+      -> other:{Atlas a s d o f | atlasPagination other /= atlasPagination owner}
+      -> {value:Atlas (ConstructedAtlasScope construction a s d) s (construction a s d) o f |
+           atlasPagination value == atlasPagination other} @-}
+proofGuard :: AtlasDataConstruction construction => Atlas a s d o f -> Atlas a s d o f
+  -> Atlas (ConstructedAtlasScope construction a s d) s (construction a s d) o f
+proofGuard owner _ = constructAtlasData owner
+""",
+}
+
+ATLAS_PRESENTATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Atlas.hs"
+ATLAS_PRESENTATION_GUARDS = {
+    "Atlas presentation construction requires normalized action laws": """
+{-@ proofGuard :: pages:Pagination scope origin final
+      -> accepts:(forall object. PageElement scope object -> cellData object -> Bool)
+      -> action:{AtlasDataAction scope cellData |
+           atlasActionDomain action == Elements.pageElementDomain (paginationPageElements pages)
+           && atlasActionMembership action == atlasMembership accepts}
+      -> AtlasPresentation scope cellData origin final @-}
+proofGuard :: Pagination scope origin final
+  -> (forall object. PageElement scope object -> cellData object -> Bool)
+  -> AtlasDataAction scope cellData -> AtlasPresentation scope cellData origin final
+proofGuard pages accepts action = atlasPresentationForPredicate pages accepts action
+  (\\_ _ -> ()) (\\_ _ _ _ -> ()) (\\_ _ _ _ -> ()) (\\_ _ _ _ _ _ _ -> ())
+""",
+    "Atlas presentation allocation cannot change its pagination": """
+{-@ proofGuard :: presentation:AtlasPresentation s d o f
+      -> other:{Pagination s o f | other /= atlasPresentationPagination presentation}
+      -> {result:Pagination s o f | result == other} @-}
+proofGuard :: AtlasPresentation s d o f -> Pagination s o f -> Pagination s o f
+proofGuard presentation _ = withAtlasPresentation presentation atlasPagination
+""",
+}
+
 ATLAS_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Internal.hs"
 ATLAS_GUARDS = {
+    "Atlas normalization arrow requires the owning trace": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | not (Elements.pageElementTraceValid (atlasPageElements owner) source)}
+      -> PageElementArrow s object object @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> PageElementArrow s object object
+proofGuard = atlasNormalizationArrow
+""",
+    "Atlas normalized insertion cannot change owners": """
+{-@ proofGuard :: owner:Atlas a s d o f -> other:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           Elements.pageElementTraceValid (atlasPageElements owner) (arrowSource arrow)
+           && Elements.pageElementTraceValid (atlasPageElements owner) (arrowTarget arrow)
+           && Elements.pageElementTraceValid (atlasPageElements other) (arrowSource arrow)
+           && Elements.pageElementTraceValid (atlasPageElements other) (arrowTarget arrow)}
+      -> {mapAtlasData owner (normalizeAtlasArrow owner arrow) == mapAtlasData other arrow} @-}
+proofGuard :: Atlas a s d o f -> Atlas a s d o f -> PageElementArrow s source target -> ()
+proofGuard owner _ arrow = mapAtlasDataNormalized owner arrow
+""",
+
     "Atlas predicate packaging requires membership-preserving callbacks": """
 {-@ proofGuard :: category:PageElements scope origin final
       -> accepts:(forall object. PageElement scope object -> cellData object -> Bool)
@@ -1897,6 +2104,7 @@ def run(pattern=None):
                                     (COVERAGE_PUBLIC_SOURCE, COVERAGE_PUBLIC_GUARDS),
                                     (ATLAS_MAP_SOURCE, ATLAS_MAP_GUARDS),
                                     (CHARTER_SOURCE, CHARTER_GUARDS),
+                                    (CHARTER_PRESENTATION_SOURCE, CHARTER_PRESENTATION_GUARDS),
                                     (RANK_IMAGE_SOURCE, RANK_IMAGE_GUARDS),
                                     (MERGE_SOURCE, MERGE_GUARDS),
                                     (SEQUENCE_SOURCE, SEQUENCE_GUARDS),
@@ -1908,6 +2116,8 @@ def run(pattern=None):
                                     (PAGE_API_SOURCE, PAGE_API_GUARDS),
                                     (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),
                                     (ATLAS_SOURCE, ATLAS_GUARDS),
+                                    (ATLAS_PRESENTATION_SOURCE, ATLAS_PRESENTATION_GUARDS),
+                                    (ATLAS_CONSTRUCTION_SOURCE, ATLAS_CONSTRUCTION_GUARDS),
                                     (ATLAS_DATA_SOURCE, ATLAS_DATA_GUARDS),
                                     (MEMBERSHIP_DOMINION_SOURCE, MEMBERSHIP_DOMINION_GUARDS),
                                     (MERGE_RESOLUTION_SOURCE, MERGE_RESOLUTION_GUARDS),
@@ -1929,25 +2139,46 @@ def run(pattern=None):
                     raise SystemExit(f"Proof guard did not produce the required rejection: {description}\n{output}")
                 print(f"Rejected false law: {description}")
 
-        for source_path, datum_type, description in [
-            (MERGE_SOURCE, "AtlasMergeDatum", "merge datums retain their cell identity"),
-            (SEQUENCE_SOURCE, "AtlasSequenceDatum", "sequence datums retain their cell identity"),
-        ]:
+        typing_guards = [
+            (ATLAS_CONSTRUCTION_SOURCE, "stable construction cannot choose its output scope",
+             "proofGuard :: AtlasDataConstruction construction => Atlas a s d o f -> Atlas chosen s (construction a s d) o f\n"
+             "proofGuard = constructAtlasData\n",
+             ("Couldn't match type", "ConstructedAtlasScope")),
+            (ATLAS_CONSTRUCTION_SOURCE, "construction scope retains its recipe identity",
+             "proofGuard :: Atlas (ConstructedAtlasScope first a s d) s payload o f -> Atlas (ConstructedAtlasScope second a s d) s payload o f\n"
+             "proofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            (ATLAS_CONSTRUCTION_SOURCE, "construction scope retains its original owner",
+             "proofGuard :: Atlas (ConstructedAtlasScope recipe first s d) s payload o f -> Atlas (ConstructedAtlasScope recipe second s d) s payload o f\n"
+             "proofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            (MERGE_SOURCE, "merge datums retain their cell identity",
+             "proofGuard :: AtlasMergeDatum source -> AtlasMergeDatum target\nproofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            (SEQUENCE_SOURCE, "sequence datums retain their cell identity",
+             "proofGuard :: AtlasSequenceDatum source -> AtlasSequenceDatum target\nproofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            (ATLAS_PRESENTATION_SOURCE, "Atlas presentation allocation keeps its scope generative",
+             "proofGuard :: AtlasPresentation s d o f -> Atlas a s d o f\n"
+             "proofGuard presentation = withAtlasPresentation presentation (\\value -> value)\n",
+             ("Couldn't match type", "withAtlasPresentation")),
+        ]
+        for source_path, description, guard, diagnostics in typing_guards:
             if pattern and not re.search(pattern, description):
                 continue
             source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
                             f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
                             source_path.read_text())
-            source = source.replace("import Numeric.Natural", "import Data.Coerce (coerce)\nimport Numeric.Natural")
-            target.write_text(source + f"\nproofGuard :: {datum_type} source -> {datum_type} target\n"
-                              "proofGuard = coerce\n")
+            if "coerce" in guard:
+                source = re.sub(r"^import ", "import Data.Coerce (coerce)\nimport ", source, count=1, flags=re.M)
+            target.write_text(source + "\n" + guard)
             result = subprocess.run(command + [str(target)], cwd=HASKELL, text=True, capture_output=True)
             output = result.stdout + result.stderr
             error_lines = re.findall(re.escape(str(target)) + r":(\d+):\d+: error:", output)
-            if (result.returncode == 0 or "Couldn't match type" not in output or "coerce" not in output
+            if (result.returncode == 0 or not all(message in output for message in diagnostics)
                     or not any(int(line) > source.count("\n") for line in error_lines)):
-                raise SystemExit(f"Cell-role guard did not produce the required rejection: {description}\n{output}")
-            print(f"Rejected invalid coercion: {description}")
+                raise SystemExit(f"Type guard did not produce the required rejection: {description}\n{output}")
+            print(f"Rejected invalid type use: {description}")
 
 
 if __name__ == "__main__":

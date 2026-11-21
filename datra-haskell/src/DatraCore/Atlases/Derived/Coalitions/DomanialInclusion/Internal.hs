@@ -47,6 +47,7 @@ import Atlas
   , AtlasObjectPaginationScope
   , AtlasWitness
   , atlasHom
+  , atlasDataAction
   , atlasMorphism
   , atlasMorphismAction
   , atlasObjectMap
@@ -54,10 +55,7 @@ import Atlas
   , atlasWitness
   , withAtlasWitness
   )
-import Atlas.Internal
-  ( atlasDataAction
-  , atlasWithScope
-  )
+import Atlas.Internal (atlasWithScope)
 import AtlasCoveredPageElement
   ( withAtlasCoveredPageElement
   , AtlasCoverageWitness

@@ -28,9 +28,11 @@ module AtlasCoveredPageElement.Internal
   , coverageFinalPage
   , coverageNormalize
   , atlasOriginImageRank
+  , atlasOriginImageRankNormalized
   , atlasCoverageAt
   , coverageResultCovers
   , coverageRankCandidate
+  , coverageRankCandidateExact
   , coverageRankWitness
   , atlasCoverageRankWithin
   , atlasCoverageRank
@@ -40,6 +42,7 @@ module AtlasCoveredPageElement.Internal
   , coverageRankCandidateSameOrigin
   , coverageRankCanonicalSameOrigin
   , coverageRankAlongArrow
+  , coverageRankNormalized
   , atlasCoveredPageElementAt
   , atlasCoveredPageElement
   , withAtlasCoveredPageElement
@@ -59,6 +62,8 @@ import Atlas
   , normalizeAtlasElementTraceValid
   , atlasAcceptsDatumNormalized
   , normalizeAtlasElement
+  , atlasNormalizationArrow
+  , atlasCoherenceWitness
   )
 import AtlasExtent (atlasCellOriginRankInsertion, cellTraceHasOrigin, cellTraceValid, cellOriginRankMap)
 import AtlasTerritory
@@ -206,7 +211,6 @@ data AtlasCoveredPageElement atlasObject where
 -- ALIGN: ATLAS-ORIGIN-IMAGE-INTERPRETATION.
 -- ALIGN: ATLAS-ORIGIN-RANK-INTERPRETATION.
 {-@ reflect atlasOriginImageRank @-}
--- ALIGN: ATLAS-ORIGIN-RANK-NORMALIZATION.
 {-@ atlasOriginImageRank :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
       -> datum:{d object | atlasAcceptsDatum owner source datum} -> Natural @-}
@@ -218,6 +222,24 @@ atlasOriginImageRank
 atlasOriginImageRank valueAtlas occurrence datum =
   cellTraceHasOrigin valueAtlas occurrence `seq`
     applyInsertion (atlasCellOriginRankInsertion valueAtlas occurrence) datum
+
+-- | Normalization keeps the exact image in the owning Atlas extent.
+-- ALIGN: ATLAS-ORIGIN-RANK-NORMALIZATION.
+{-@ atlasOriginImageRankNormalized :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> {atlasOriginImageRank owner (normalizeAtlasElement owner source) datum
+           == atlasOriginImageRank owner source datum} @-}
+atlasOriginImageRankNormalized :: Atlas a s d o f -> PageElement s object -> d object -> ()
+atlasOriginImageRankNormalized owner source datum =
+  let arrow = atlasNormalizationArrow owner source
+  in arrow `seq`
+     normalizeAtlasElementTraceValid owner source `seq`
+     atlasCoherenceWitness owner source arrow datum `seq`
+     cellTraceHasOrigin owner source `seq`
+     cellTraceHasOrigin owner (normalizeAtlasElement owner source) `seq`
+     atlasAcceptsDatumNormalized owner source datum `seq`
+     cellOriginRankMap owner arrow datum
 
 {-@ reflect coveragePage @-}
 coveragePage :: PageElement scope object -> Natural
@@ -437,6 +459,17 @@ coverageValueMatchesExact _ _ Nothing = ()
 coverageValueMatchesExact values datum (Just value) =
   dominionCoherence values datum `seq` dominionCoherence values value
 
+-- | Successful rank comparison identifies the exact decoded datum.
+-- ALIGN: ATLAS-COVERAGE-CANDIDATE-EXACT.
+{-@ coverageRankCandidateExact :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum} -> candidate:Natural
+      -> {coverageRankCandidate owner source datum candidate
+           <=> atlasCoveredPageElementAt owner source candidate == Just datum} @-}
+coverageRankCandidateExact :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> ()
+coverageRankCandidateExact owner source datum candidate =
+  coverageValueMatchesExact (atlasDataAt owner source) datum (atlasCoveredPageElementAt owner source candidate)
+
 -- | Recover evidence at a certified rank without searching for another code.
 -- ALIGN: ATLAS-COVERAGE-RANK-WITNESS.
 {-@ coverageRankWitness :: owner:Atlas a s d o f
@@ -584,6 +617,23 @@ coverageRankAlongArrow owner arrow datum candidate =
   let transported = applyInsertion (mapAtlasData owner arrow) datum
   in coverageRankCandidateSameOrigin owner (arrowSource arrow) datum (arrowTarget arrow) transported candidate `seq`
      coverageRankCanonicalSameOrigin owner (arrowSource arrow) datum (arrowTarget arrow) transported candidate
+
+-- | Padding normalization preserves successful and canonical coverage codes.
+-- ALIGN: ATLAS-COVERAGE-RANK-NORMALIZATION.
+{-@ coverageRankNormalized :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum} -> candidate:Natural
+      -> {coverageRankCandidate owner source datum candidate
+           == coverageRankCandidate owner (normalizeAtlasElement owner source) datum candidate
+           && coverageRankCanonical owner source datum candidate
+           == coverageRankCanonical owner (normalizeAtlasElement owner source) datum candidate} @-}
+coverageRankNormalized :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> ()
+coverageRankNormalized owner source datum candidate =
+  normalizeAtlasElementTraceValid owner source `seq`
+  atlasAcceptsDatumNormalized owner source datum `seq`
+  atlasOriginImageRankNormalized owner source datum `seq`
+  coverageRankCandidateSameOrigin owner source datum (normalizeAtlasElement owner source) datum candidate `seq`
+  coverageRankCanonicalSameOrigin owner source datum (normalizeAtlasElement owner source) datum candidate
 
 -- | A successful bounded search selects the least successful candidate.
 -- ALIGN: ATLAS-COVERAGE-BOUNDED-MINIMAL.

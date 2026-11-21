@@ -103,6 +103,7 @@ testTree =
         , testCase "forget stable confederal data" testForgetStableConfederalData
         , testCase "stable confederal Kleisli syntax" testStableConfederalKleisliSyntax
         , testCase "charter" testCharter
+        , testCase "charter canonicalizes duplicate decoder codes" testCharterCanonicalCodes
         , testCase "charter rejects false inverse candidates" testCharterPartialInverse
         , testCase "charter counit rejects uncovered inverse" testCharterCounitUncoveredInverse
         , testCase "charter map rejects uncovered source inverse" testCharterMapUncoveredInverse
@@ -2689,6 +2690,32 @@ onePageChartInverse
 onePageChartInverse valueAtlas occurrence datum =
   Just (chartCellData valueAtlas occurrence datum
     (atlasCoverageWitness valueAtlas occurrence datum occurrence datum ()) ())
+
+-- A Dominion may decode unused ranks to values already in its image. Charter
+-- must identify such successful aliases by the least coverage code.
+testCharterCanonicalCodes :: IO ()
+testCharterCanonicalCodes =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    let dataAt _ = dominion
+          (\(TestCellData value) -> 2 * value)
+          (\code -> Just (TestCellData (code `div` 2)))
+          (const ())
+    in atlas valuePagination
+      (atlasDataAction (paginationPageElements valuePagination) dataAt testAtlasMapData)
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \valueAtlas ->
+        withAtlasMapExtent (chartAtlasMap valueAtlas) $ \_ _ chartedDom _ ->
+          case [(code, value) | code <- [0 .. 30], Just value <- [unrank chartedDom code],
+                chartedCellDataValue value == TestCellData 0] of
+            (firstCode, first) : (aliasCode, alias) : _ -> do
+              assert "distinct successful codes retain one canonical rank"
+                (firstCode /= aliasCode && rank chartedDom first == firstCode
+                  && rank chartedDom alias == firstCode)
+              case unrank chartedDom (rank chartedDom alias) of
+                Nothing -> fail "canonical Charter rank failed to decode"
+                Just recovered -> assert "canonical decoding preserves datum and stored rank"
+                  (chartedCellDataValue recovered == TestCellData 0
+                    && rank chartedDom recovered == firstCode)
+            _ -> fail "test setup failed: expected two decoder codes for one datum"
 
 testCharter :: IO ()
 testCharter =

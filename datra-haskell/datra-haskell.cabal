@@ -68,6 +68,8 @@ library
         Folio.Assembly
         PageElements.Structure
         PageElements.TraceChain
+        Atlas.Construction
+        Charter.Data
         AtlasMerge.Data
         AtlasMerge.Assembly
         AtlasSequence.Data

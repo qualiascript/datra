@@ -96,7 +96,7 @@ def check(require_complete=False):
                           + ", ".join(sorted(unregistered)))
         reflected = re.findall(r"\{-@\s*(?:reflect|inline)\s+(\w+)", text)
         opaque_reflected = re.findall(r"\{-@\s*opaque-reflect\s+(\w+)", text)
-        types = re.findall(r"^(?:data|newtype)\s+(\w+)", text, re.M)
+        types = re.findall(r"^(?:data|newtype|class)\s+(\w+)", text, re.M)
         aliases = re.findall(r"^type\s+(?!role\b|family\b|instance\b)(\w+)", text, re.M)
         predicates = re.findall(r"\{-@\s*predicate\s+(\w+)", text)
         refinement_aliases = re.findall(r"\{-@\s*type\s+(\w+)", text)

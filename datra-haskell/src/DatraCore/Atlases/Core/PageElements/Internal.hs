@@ -855,6 +855,11 @@ withPageElementValue
 -- | Collapse an occurrence on the infinite padded spine to its coherent
 -- representative at the final genuine page.
 {-@ reflect normalizePageElement @-}
+{-@ normalizePageElement :: category:PageElements scope origin final
+      -> occurrence:PageElement scope object
+      -> {result:PageElement scope object |
+           pageElementPage result <= folioLength (pageElementsFolio category) - 1
+           && pageElementPosition result == pageElementPosition occurrence} @-}
 normalizePageElement
   :: PageElements scope origin final
   -> PageElement scope object

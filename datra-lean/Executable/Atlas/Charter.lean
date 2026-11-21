@@ -1,4 +1,5 @@
 import Executable.Atlas.Map
+import Executable.Atlas.Construction
 
 namespace Datra.Executable.Charter
 open CategoryTheory
@@ -254,6 +255,22 @@ theorem chartedDatumValid_iff (X : Atlas) (source : X.Element)
   · exact fun valid => valid.2
   · exact fun valid => ⟨CachedCellData.accepted valid, valid⟩
 
+-- ALIGN: CHARTER-MEMBERSHIP-NORMALIZATION.
+theorem chartedDatumValid_normalize (X : Atlas) (source : X.Element)
+    (datum : CachedCellData X source.val.cell) :
+    chartedDatumValid X source.normalize datum = chartedDatumValid X source datum := by
+  unfold chartedDatumValid
+  rw [← (X.coverageRankNormalized source datum.value datum.code).1,
+    ← (X.coverageRankNormalized source datum.value datum.code).2]
+
+/-- Normalization changes the membership index and leaves the runtime record intact. -/
+def normalizeCachedDatum {X : Atlas} {source : X.Element}
+    (datum : CertifiedCachedCellData X source) : CertifiedCachedCellData X source.normalize :=
+  ⟨datum.val, by
+    unfold CachedCellData.Valid
+    rw [← (X.coverageRankNormalized source datum.val.value datum.val.code).2]
+    exact datum.property⟩
+
 def chartedCellCoverage {X : Atlas} (source : X.Element) (datum : CachedCellData X source.val.cell)
     (accepted : X.coverageRankCandidate source datum.value datum.code = true) : X.CoverageWitness :=
   (X.coverageRankWitness source datum.value datum.code).get
@@ -358,6 +375,55 @@ def cachedDataMap {X : Atlas} {source target : X.Element} (arrow : source ⟶ ta
     rw [← (X.coverageRankAlongArrow arrow datum.val.value datum.val.code).2]
     exact datum.property⟩
 
+-- ALIGN: CHARTER-DATA-MAP-NORMALIZATION.
+theorem cachedDataMap_normalizeArrow {X : Atlas} {source target : X.Element}
+    (arrow : source ⟶ target) (datum : CertifiedCachedCellData X source) :
+    (cachedDataMap (FolioData.ValidElement.normalizeArrow arrow) (normalizeCachedDatum datum)).val =
+      (cachedDataMap arrow datum).val := by
+  change CachedCellData.mk _ _ = CachedCellData.mk _ _
+  rw [AtlasAction.normalizedMap_normalizeArrow]
+  rfl
+
+-- ALIGN: CHARTER-DATA-IDENTITY.
+theorem cachedDataMap_identity {X : Atlas} (source : X.Element)
+    (datum : CertifiedCachedCellData X source) : cachedDataMap (𝟙 source) datum = datum := by
+  apply Subtype.ext
+  change CachedCellData.mk _ _ = datum.val
+  cases datum with
+  | mk datum valid =>
+    cases datum with
+    | mk value code =>
+      simp only [X.data.identity]
+
+-- ALIGN: CHARTER-DATA-COMPOSITION.
+theorem cachedDataMap_composition {X : Atlas} {source middle target : X.Element}
+    (second : middle ⟶ target) (first : source ⟶ middle)
+    (datum : CertifiedCachedCellData X source) :
+    cachedDataMap (first ≫ second) datum = cachedDataMap second (cachedDataMap first datum) := by
+  apply Subtype.ext
+  change CachedCellData.mk _ _ = CachedCellData.mk _ _
+  rw [X.data.composition]
+  rfl
+
+-- ALIGN: CHARTER-DATA-COHERENCE.
+theorem cachedDataMap_coherence {X : Atlas} (source : X.Element)
+    (arrow : source ⟶ source.normalize) (datum : CertifiedCachedCellData X source) :
+    (cachedDataMap arrow datum).val = datum.val := by
+  change CachedCellData.mk _ _ = datum.val
+  rw [X.coherenceWitness source arrow]
+
+-- ALIGN: CHARTER-DATA-DISJOINT.
+theorem cachedDataMap_disjoint {X : Atlas} {left right origin : X.Element}
+    (samePage : left.val.page = right.val.page)
+    (distinct : left.val.position ≠ right.val.position)
+    (atOrigin : origin.val.page = 0)
+    (leftArrow : left ⟶ origin) (rightArrow : right ⟶ origin)
+    (leftDatum : CertifiedCachedCellData X left) (rightDatum : CertifiedCachedCellData X right) :
+    cachedDataMap leftArrow leftDatum ≠ cachedDataMap rightArrow rightDatum := by
+  intro same
+  exact X.disjointWitness samePage distinct atOrigin leftArrow rightArrow
+    leftDatum.val.value rightDatum.val.value (congrArg (fun datum => datum.val.value) same)
+
 def cachedDataPreimage {X : Atlas} {source target : X.Element} (arrow : source ⟶ target)
     (datum : CertifiedCachedCellData X target) : Option (CertifiedCachedCellData X source) :=
   let original := X.data.action.normalizedMap arrow
@@ -380,6 +446,215 @@ def cachedDataInsertion {X : Atlas} {source target : X.Element} (arrow : source 
   preimage := cachedDataPreimage arrow
   leftInverse datum := by
     simp only [cachedDataPreimage, cachedDataMap, DomanialInsertion.leftInverse, dite_true]
+
+-- ALIGN: CHARTER-NORMALIZED-INSERTION-MAP.
+theorem cachedNormalizedInsertion_map {X : Atlas} {source target : X.Element}
+    (arrow : source ⟶ target) (datum : CertifiedCachedCellData X source) :
+    ((cachedDataInsertion (FolioData.ValidElement.normalizeArrow arrow)).map
+      (normalizeCachedDatum datum)).val = (cachedDataMap arrow datum).val :=
+  cachedDataMap_normalizeArrow arrow datum
+
+-- ALIGN: CHARTER-NORMALIZED-IDENTITY.
+theorem cachedNormalizedIdentity {X : Atlas} (source : X.Element)
+    (datum : CertifiedCachedCellData X source.normalize) :
+    ((cachedDataInsertion (FolioData.ValidElement.normalizeArrow (𝟙 source))).map datum).val = datum.val := by
+  rw [Subsingleton.elim (FolioData.ValidElement.normalizeArrow (𝟙 source)) (𝟙 source.normalize)]
+  exact congrArg Subtype.val (cachedDataMap_identity source.normalize datum)
+
+-- ALIGN: CHARTER-NORMALIZED-COMPOSITION.
+theorem cachedNormalizedComposition {X : Atlas} {source middle target : X.Element}
+    (second : middle ⟶ target) (first : source ⟶ middle)
+    (datum : CertifiedCachedCellData X source.normalize) :
+    ((cachedDataInsertion (FolioData.ValidElement.normalizeArrow (first ≫ second))).map datum).val =
+      ((cachedDataInsertion (FolioData.ValidElement.normalizeArrow second)).map
+        ((cachedDataInsertion (FolioData.ValidElement.normalizeArrow first)).map datum)).val := by
+  rw [Subsingleton.elim (FolioData.ValidElement.normalizeArrow (first ≫ second))
+    (FolioData.ValidElement.normalizeArrow first ≫ FolioData.ValidElement.normalizeArrow second)]
+  exact congrArg Subtype.val (cachedDataMap_composition _ _ datum)
+
+-- ALIGN: CHARTER-NORMALIZED-COHERENCE.
+theorem cachedNormalizedCoherence {X : Atlas} (source : X.Element)
+    (arrow : source ⟶ source.normalize) (datum : CertifiedCachedCellData X source.normalize) :
+    ((cachedDataInsertion (FolioData.ValidElement.normalizeArrow arrow)).map datum).val = datum.val :=
+  cachedDataMap_coherence source.normalize (FolioData.ValidElement.normalizeArrow arrow) datum
+
+-- ALIGN: CHARTER-NORMALIZED-DISJOINT.
+theorem cachedNormalizedDisjoint {X : Atlas} {left right origin : X.Element}
+    (samePage : left.val.page = right.val.page)
+    (distinct : left.val.position ≠ right.val.position) (atOrigin : origin.val.page = 0)
+    (leftArrow : left ⟶ origin) (rightArrow : right ⟶ origin)
+    (leftDatum : CertifiedCachedCellData X left.normalize)
+    (rightDatum : CertifiedCachedCellData X right.normalize) :
+    ((cachedDataInsertion (FolioData.ValidElement.normalizeArrow leftArrow)).map leftDatum).val ≠
+      ((cachedDataInsertion (FolioData.ValidElement.normalizeArrow rightArrow)).map rightDatum).val := by
+  intro equal
+  exact cachedDataMap_disjoint (left := left.normalize) (right := right.normalize) (origin := origin.normalize)
+    (congrArg (fun n => min n (X.pages.depth - 1)) samePage) distinct
+    (by change min origin.val.page (X.pages.depth - 1) = 0; simp [atOrigin])
+    (FolioData.ValidElement.normalizeArrow leftArrow) (FolioData.ValidElement.normalizeArrow rightArrow)
+    leftDatum rightDatum (Subtype.ext equal)
+
+/-- A canonical cache depends only on the genuine cell, including its padded presentations. -/
+theorem CachedCellData.valid_normalize {X : Atlas} (source : X.Element)
+    (datum : CachedCellData X source.val.cell) : datum.Valid source.normalize ↔ datum.Valid source := by
+  unfold CachedCellData.Valid
+  rw [← (X.coverageRankNormalized source datum.value datum.code).2]
+
+theorem CachedCellData.valid_cast_iff {X : Atlas} {source target : X.Element}
+    (sameCell : source.val.cell = target.val.cell) (datum : CachedCellData X source.val.cell) :
+    (cast (congrArg (CachedCellData X) sameCell) datum).Valid target ↔ datum.Valid source := by
+  have transfer (a b : X.Element) (h : a = b) (value : CachedCellData X a.val.cell) :
+      (cast (congrArg (fun x : X.Element => CachedCellData X x.val.cell) h) value).Valid b ↔
+        value.Valid a := by
+    cases h
+    rfl
+  rw [← CachedCellData.valid_normalize target, ← CachedCellData.valid_normalize source]
+  exact transfer source.normalize target.normalize
+    ((FolioData.ValidElement.cell_eq_iff_normalize_eq source target).mp sameCell) datum
+
+def CachedCellData.Canonical {X : Atlas} {cell : PageElementCell} (datum : CachedCellData X cell) : Prop :=
+  ∃ (source : X.Element) (sameCell : cell = source.val.cell),
+    (cast (congrArg (CachedCellData X) sameCell) datum).Valid source
+
+theorem CachedCellData.canonical_iff_valid {X : Atlas} (source : X.Element)
+    (datum : CachedCellData X source.val.cell) : datum.Canonical ↔ datum.Valid source := by
+  constructor
+  · rintro ⟨target, sameCell, valid⟩
+    exact (CachedCellData.valid_cast_iff sameCell datum).mp valid
+  · intro valid
+    exact ⟨source, rfl, valid⟩
+
+abbrev IndexedCachedCellData (X : Atlas) (cell : PageElementCell) :=
+  {datum : CachedCellData X cell // datum.Canonical}
+
+def indexedCachedCellEquiv (X : Atlas) (source : X.Element) :
+    IndexedCachedCellData X source.val.cell ≃ CertifiedCachedCellData X source where
+  toFun datum := ⟨datum.val, (CachedCellData.canonical_iff_valid source datum.val).mp datum.property⟩
+  invFun datum := ⟨datum.val, (CachedCellData.canonical_iff_valid source datum.val).mpr datum.property⟩
+  left_inv _ := rfl
+  right_inv _ := rfl
+
+-- ALIGN: CHARTER-DATA-ACTION.
+def cachedAction (X : Atlas) : AtlasAction X.pages (IndexedCachedCellData X) where
+  dataAt source := (cachedDominion X source).reindex (indexedCachedCellEquiv X source).symm
+  mapData {source target} arrow := (cachedDataInsertion arrow).reindex
+    (indexedCachedCellEquiv X source).symm (indexedCachedCellEquiv X target).symm
+
+theorem cachedAction_rank (X : Atlas) (source : X.Element)
+    (datum : IndexedCachedCellData X source.val.cell) :
+    ((cachedAction X).dataAt source).rank datum = datum.val.code := rfl
+
+theorem cachedAction_unrank (X : Atlas) (source : X.Element) (code : Nat) :
+    (((cachedAction X).dataAt source).unrank code).map Subtype.val =
+      (cachedUnrank X source code).map Subtype.val := by
+  simp only [cachedAction, Dominion.reindex, Option.map_map]
+  rfl
+
+theorem cachedAction_map {X : Atlas} {source target : X.Element}
+    (arrow : source ⟶ target) (datum : IndexedCachedCellData X source.val.cell) :
+    (((cachedAction X).mapData arrow).map datum).val =
+      ((cachedDataInsertion arrow).map (indexedCachedCellEquiv X source datum)).val := rfl
+
+theorem cachedAction_preimage {X : Atlas} {source target : X.Element}
+    (arrow : source ⟶ target) (datum : IndexedCachedCellData X target.val.cell) :
+    (((cachedAction X).mapData arrow).preimage datum).map Subtype.val =
+      ((cachedDataInsertion arrow).preimage (indexedCachedCellEquiv X target datum)).map Subtype.val := by
+  simp only [cachedAction, DomanialInsertion.reindex, Option.map_map]
+  rfl
+
+/-- The actual cached carrier and normalized callbacks form a complete Atlas. -/
+-- ALIGN: CHARTER-PRESENTATION-INTERPRETATION.
+def cachedAtlas (X : Atlas) : Atlas where
+  pagination := X.pagination
+  cellData := IndexedCachedCellData X
+  data :=
+    { action := cachedAction X
+      identity := fun source datum => by
+        apply Subtype.ext
+        exact cachedNormalizedIdentity source (indexedCachedCellEquiv X source.normalize datum)
+      composition := fun first second datum => by
+        apply Subtype.ext
+        exact cachedNormalizedComposition second first (indexedCachedCellEquiv X _ datum)
+      coherence := fun source datum => by
+        apply Subtype.ext
+        exact cachedNormalizedCoherence source source.toNormalized (indexedCachedCellEquiv X source.normalize datum)
+      disjoint := fun hp hv _ ho leftArrow rightArrow left right same => by
+        have values := congrArg (fun datum => datum.val) same
+        exact cachedNormalizedDisjoint hp hv ho leftArrow rightArrow
+          (indexedCachedCellEquiv X _ left) (indexedCachedCellEquiv X _ right) values }
+
+/-- The canonical cached-data family fixes Charter's object construction. -/
+def dataConstruction : AtlasDataConstruction where
+  object := cachedAtlas
+  pagination _ := rfl
+
+theorem constructAtlasData_eq (X : Atlas) :
+    dataConstruction.constructAtlasData X = cachedAtlas X := rfl
+
+/-- Canonical caches give the same indexed carrier as covered values. -/
+def cachedIndexedCellEquiv (X : Atlas) (source : X.Element) :
+    IndexedCachedCellData X source.val.cell ≃ IndexedCellData X source.val.cell :=
+  (indexedCachedCellEquiv X source).trans
+    ((cachedCellEquiv X source).trans (indexedCellEquiv X source).symm)
+
+/-- Forgetting the canonical cache identifies the complete cached data functor
+with the covered-carrier data functor, including all normalized arrows. -/
+def cachedAtlasFunctorIso (X : Atlas) :
+    (cachedAtlas X).data.toFunctor ≅ (chartAtlas X).data.toFunctor :=
+  NatIso.ofComponents (fun source =>
+    { hom := (cachedIndexedCellEquiv X source).toEmbedding
+      inv := (cachedIndexedCellEquiv X source).symm.toEmbedding
+      hom_inv_id := by
+        apply Function.Embedding.ext
+        intro datum
+        exact (cachedIndexedCellEquiv X source).symm_apply_apply datum
+      inv_hom_id := by
+        apply Function.Embedding.ext
+        intro datum
+        exact (cachedIndexedCellEquiv X source).apply_symm_apply datum })
+    (by
+      intro source target arrow
+      apply Function.Embedding.ext
+      intro datum
+      rfl)
+
+noncomputable def cachedAtlasHom (X : Atlas) :
+    (cachedAtlas X).toSemantics ⟶ (chartAtlas X).toSemantics where
+  Pa := 𝟭 _
+  Da :=
+    { app := fun source => (cachedIndexedCellEquiv X
+        ((FolioData.ValidElement.fromFinite X.pages).obj source)).toEmbedding
+      naturality := fun _ _ arrow => (cachedAtlasFunctorIso X).hom.naturality
+        ((FolioData.ValidElement.fromFinite X.pages).map arrow) }
+
+noncomputable def cachedAtlasInv (X : Atlas) :
+    (chartAtlas X).toSemantics ⟶ (cachedAtlas X).toSemantics where
+  Pa := 𝟭 _
+  Da :=
+    { app := fun source => (cachedIndexedCellEquiv X
+        ((FolioData.ValidElement.fromFinite X.pages).obj source)).symm.toEmbedding
+      naturality := fun _ _ arrow => (cachedAtlasFunctorIso X).inv.naturality
+        ((FolioData.ValidElement.fromFinite X.pages).map arrow) }
+
+/-- Forgetting and reconstructing canonical caches preserve the whole Atlas. -/
+noncomputable def cachedAtlasIso (X : Atlas) :
+    (cachedAtlas X).toSemantics ≅ (chartAtlas X).toSemantics where
+  hom := cachedAtlasHom X
+  inv := cachedAtlasInv X
+  hom_inv_id := by
+    refine Datra.Semantics.AtlHom.ext _ (𝟙 (cachedAtlas X).toSemantics) ?_ ?_
+    · rfl
+    apply heq_of_eq
+    ext source datum
+    exact (cachedIndexedCellEquiv X
+      ((FolioData.ValidElement.fromFinite X.pages).obj source)).symm_apply_apply datum
+  inv_hom_id := by
+    refine Datra.Semantics.AtlHom.ext _ (𝟙 (chartAtlas X).toSemantics) ?_ ?_
+    · rfl
+    apply heq_of_eq
+    ext source datum
+    exact (cachedIndexedCellEquiv X
+      ((FolioData.ValidElement.fromFinite X.pages).obj source)).apply_symm_apply datum
 
 /-- Forgetting the cache commutes with both directions of the data insertion. -/
 theorem cachedDataMap_interpretation {X : Atlas} {source target : X.Element} (arrow : source ⟶ target)
@@ -884,7 +1159,6 @@ noncomputable def interpretationInv (X : Atlas) :
             ((FolioData.ValidElement.fromFinite X.pages).map arrow))).map datum.val
         rw [AtlasAction.normalizedMap_normalizeArrow] }
 
--- ALIGN: CHARTER-ATLAS-INTERPRETATION.
 noncomputable def interpretationIso (X : Atlas) :
     (chartAtlas X).toSemantics ≅ Datra.Semantics.chartAtlas X.toSemantics where
   hom := interpretationHom X
@@ -895,6 +1169,12 @@ noncomputable def interpretationIso (X : Atlas) :
   inv_hom_id := by
     apply Datra.Semantics.AtlHom.ext _ _ rfl
     rfl
+
+/-- The executable cached Atlas realizes the written covered-subtype Atlas. -/
+-- ALIGN: CHARTER-ATLAS-INTERPRETATION.
+noncomputable def cachedInterpretationIso (X : Atlas) :
+    (dataConstruction.constructAtlasData X).toSemantics ≅ Datra.Semantics.chartAtlas X.toSemantics :=
+  (cachedAtlasIso X).trans (interpretationIso X)
 
 noncomputable def interpretationTransversalIso (X : Atlas) :
     (WideSubcategory.mk (chartAtlas X).toSemantics : Datra.Semantics.AtlTrav) ≅

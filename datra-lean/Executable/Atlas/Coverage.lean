@@ -483,6 +483,7 @@ def coverageRankCandidate (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) (candidate : Nat) : Bool :=
   coverageValueMatches (X.dataAt source) datum (X.coveredPageElementAt source candidate)
 
+-- ALIGN: ATLAS-COVERAGE-CANDIDATE-EXACT.
 theorem coverageRankCandidate_iff (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) (candidate : Nat) :
     X.coverageRankCandidate source datum candidate = true ↔
@@ -720,6 +721,19 @@ theorem coverageRankAlongArrow (X : Atlas) {source target : X.Element}
     simp only [Atlas.originImageRank, X.originImage_map]
   exact ⟨X.coverageRankCandidateSameOrigin source target datum _ same candidate,
     X.coverageRankCanonicalSameOrigin source target datum _ same candidate⟩
+
+-- ALIGN: ATLAS-COVERAGE-RANK-NORMALIZATION.
+theorem coverageRankNormalized (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (candidate : Nat) :
+    X.coverageRankCandidate source datum candidate =
+      X.coverageRankCandidate source.normalize datum candidate ∧
+    X.coverageRankCanonical source datum candidate =
+      X.coverageRankCanonical source.normalize datum candidate :=
+  ⟨X.coverageRankCandidateSameOrigin source source.normalize datum datum
+      (X.originImageRank_normalize source datum).symm candidate,
+   X.coverageRankCanonicalSameOrigin source source.normalize datum datum
+      (X.originImageRank_normalize source datum).symm candidate⟩
+
 
 -- ALIGN: ATLAS-COVERAGE-CANONICAL-UNIQUE.
 theorem coverageRankCanonicalUnique (X : Atlas) (source : X.Element)

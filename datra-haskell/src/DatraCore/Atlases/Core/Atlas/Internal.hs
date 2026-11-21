@@ -28,12 +28,22 @@ module Atlas.Internal
   , atlasActionAccepts
   , atlas
   , atlasWithScope
+  , AtlasPresentation
+  , atlasPresentation
+  , atlasPresentationPagination
+  , atlasPresentationAction
+  , withAtlasPresentation
+  , atlasFromPresentationWithScope
   , atlasPagination
   , atlasFolio
   , atlasPageElements
   , atlasCardinality
   , normalizeAtlasElement
   , normalizeAtlasArrow
+  , atlasNormalizationArrow
+  , atlasNormalizationAgrees
+  , atlasArrowNormalizationAgrees
+  , mapAtlasDataNormalized
   , normalizeAtlasElementTraceValid
   , normalizeAtlasArrowTraceValid
   , atlasCoherence
@@ -108,6 +118,8 @@ import PageElements.Structure
   , normalizePageElementAt
   , normalizePageElementArrowAt
   , normalizePageElementIdempotentAt
+  , normalizePageElementReachableAt
+  , pageElementArrow
   , normalizePageElementArrowIdempotentAt
   , traceStartsWith
   , positionAtPage
@@ -156,6 +168,36 @@ data Atlas
   { storedPagination :: Pagination scope origin final
   , storedAtlasData :: AtlasData scope cellData
   }
+
+-- | An unallocated, law-bearing description. The private unit scope cannot
+-- escape; public allocation introduces a fresh abstract Atlas scope.
+type role AtlasPresentation nominal nominal nominal nominal
+newtype AtlasPresentation scope cellData origin final =
+  AtlasPresentation (Atlas () scope cellData origin final)
+
+{-@ reflect atlasPresentationPagination @-}
+atlasPresentationPagination :: AtlasPresentation s d o f -> Pagination s o f
+atlasPresentationPagination (AtlasPresentation value) = storedPagination value
+
+{-@ reflect atlasPresentationAction @-}
+atlasPresentationAction :: AtlasPresentation s d o f -> AtlasDataAction s d
+atlasPresentationAction (AtlasPresentation value) = atlasActionData (storedAtlasData value)
+
+-- | Scope selection is confined to the owning implementation.
+-- ALIGN: ATLAS-PRESENTATION-ALLOCATION.
+-- ALIGN: ATLAS-PRESENTATION-PAGINATION.
+{-@ atlasFromPresentationWithScope :: presentation:AtlasPresentation s d o f
+      -> {value:Atlas a s d o f | atlasPagination value == atlasPresentationPagination presentation
+           && atlasActionData (storedAtlasData value) == atlasPresentationAction presentation} @-}
+atlasFromPresentationWithScope :: AtlasPresentation s d o f -> Atlas a s d o f
+atlasFromPresentationWithScope (AtlasPresentation value) = Atlas (storedPagination value) (storedAtlasData value)
+
+-- | Allocate a checked description without permitting a caller-chosen scope.
+{-@ withAtlasPresentation :: presentation:AtlasPresentation s d o f
+      -> (forall a. value:{Atlas a s d o f | atlasPagination value == atlasPresentationPagination presentation}
+           -> result) -> result @-}
+withAtlasPresentation :: AtlasPresentation s d o f -> (forall a. Atlas a s d o f -> result) -> result
+withAtlasPresentation presentation useAtlas = useAtlas (atlasFromPresentationWithScope presentation)
 
 -- | The object and arrow actions of an Atlas data assignment.
 type AtlasDataAction = AtlasAction
@@ -500,7 +542,8 @@ atlasWithScope
                      (atlasFinalPage paginationValue)
                      (atlasTraceLimit paginationValue) rightToOrigin))
                  rightDatum })
-  -> Atlas atlasScope scope cellData origin final
+  -> {value:Atlas atlasScope scope cellData origin final | atlasPagination value == paginationValue
+       && atlasActionData (storedAtlasData value) == action}
 @-}
 atlasWithScope
   :: Pagination scope origin final
@@ -546,6 +589,136 @@ atlasWithScope
         compositionLaw
         coherenceLaw
         disjointLaw)
+
+-- | Check the entire data assignment before allocating its object scope.
+{-@
+atlasPresentation
+  :: paginationValue:Pagination scope origin final
+  -> action:{AtlasDataAction scope cellData |
+       Action.atlasActionDomain action == Elements.pageElementDomain (paginationPageElements paginationValue)}
+  -> identityLaw:(forall object.
+       occurrence:{PageElement scope object | Action.atlasActionElementValid action occurrence}
+       -> datum:{cellData object | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) occurrence) datum}
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue)
+                  (identityPageElementArrow occurrence)))
+              datum
+            == datum })
+  -> compositionLaw:(forall source middle target.
+       second:{PageElementArrow scope middle target | Action.atlasActionArrowValid action second}
+       -> first:{PageElementArrow scope source middle | Action.atlasActionArrowValid action first}
+       -> alignment:{() | arrowTarget first == arrowSource second}
+       -> datum:{cellData source | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) (arrowSource first)) datum}
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue)
+                  (composePageElementArrows second first)))
+              datum
+            == applyInsertion
+                 (atlasActionMap action
+                   (normalizePageElementArrowAt
+                     (atlasFinalPage paginationValue)
+                     (atlasTraceLimit paginationValue) second))
+                 (applyInsertion
+                   (atlasActionMap action
+                     (normalizePageElementArrowAt
+                       (atlasFinalPage paginationValue)
+                       (atlasTraceLimit paginationValue) first))
+                   datum) })
+  -> coherenceLaw:(forall object.
+       occurrence:{PageElement scope object | Action.atlasActionElementValid action occurrence}
+       -> coherenceArrow:{PageElementArrow scope object object | Action.atlasActionArrowValid action coherenceArrow}
+       -> conditions:{() |
+            arrowSource coherenceArrow == occurrence
+            && arrowTarget coherenceArrow == normalizePageElementAt
+                 (atlasFinalPage paginationValue)
+                 (atlasTraceLimit paginationValue) occurrence}
+       -> datum:{cellData object | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) occurrence) datum}
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue) coherenceArrow))
+              datum
+            == datum })
+  -> disjointLaw:(forall leftObject rightObject originObject.
+       left:{PageElement scope leftObject | Action.atlasActionElementValid action left}
+       -> right:{PageElement scope rightObject | Action.atlasActionElementValid action right}
+       -> leftToOrigin:{PageElementArrow scope leftObject originObject | Action.atlasActionArrowValid action leftToOrigin}
+       -> rightToOrigin:{PageElementArrow scope rightObject originObject | Action.atlasActionArrowValid action rightToOrigin}
+       -> conditions:{() |
+            pageElementPage right == pageElementPage left
+            && pageElementPosition right /= pageElementPosition left
+            && pageElementPage left <= atlasFinalPage paginationValue
+            && arrowSource leftToOrigin == left
+            && pageElementPage (arrowTarget leftToOrigin) == 0
+            && arrowSource rightToOrigin == right
+            && arrowTarget rightToOrigin == arrowTarget leftToOrigin}
+       -> leftDatum:{cellData leftObject | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) left) leftDatum}
+       -> rightDatum:{cellData rightObject | atlasActionAccepts action
+            (normalizePageElementAt (atlasFinalPage paginationValue)
+              (atlasTraceLimit paginationValue) right) rightDatum}
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue) leftToOrigin))
+              leftDatum
+            /= applyInsertion
+                 (atlasActionMap action
+                   (normalizePageElementArrowAt
+                     (atlasFinalPage paginationValue)
+                     (atlasTraceLimit paginationValue) rightToOrigin))
+                 rightDatum })
+  -> {presentation:AtlasPresentation scope cellData origin final | atlasPresentationPagination presentation == paginationValue
+       && atlasPresentationAction presentation == action}
+@-}
+atlasPresentation
+  :: Pagination scope origin final
+  -> AtlasDataAction scope cellData
+  -> (forall object.
+        PageElement scope object -> cellData object -> ())
+  -> (forall source middle target.
+        PageElementArrow scope middle target
+        -> PageElementArrow scope source middle
+        -> ()
+        -> cellData source
+        -> ())
+  -> (forall object.
+        PageElement scope object
+        -> PageElementArrow scope object object
+        -> ()
+        -> cellData object
+        -> ())
+  -> (forall leftObject rightObject originObject.
+        PageElement scope leftObject
+        -> PageElement scope rightObject
+        -> PageElementArrow scope leftObject originObject
+        -> PageElementArrow scope rightObject originObject
+        -> ()
+        -> cellData leftObject
+        -> cellData rightObject
+        -> ())
+  -> AtlasPresentation scope cellData origin final
+atlasPresentation paginationValue action identityLaw compositionLaw coherenceLaw disjointLaw =
+  AtlasPresentation (atlasWithScope paginationValue action identityLaw compositionLaw coherenceLaw disjointLaw)
 
 -- | Final genuine page used by Atlas normalization.
 {-@ reflect atlasFinalPage @-}
@@ -617,6 +790,33 @@ normalizeAtlasArrow value =
   normalizePageElementArrowAt
     (atlasDataFinalPage (storedAtlasData value))
     (atlasDataTraceLimit (storedAtlasData value))
+
+-- | The stored normalization bounds belong to the retained pagination.
+{-@ atlasNormalizationAgrees :: owner:Atlas a s d o f -> source:PageElement s object
+      -> {normalizeAtlasElement owner source
+           == Elements.normalizePageElement (atlasPageElements owner) source} @-}
+atlasNormalizationAgrees :: Atlas a s d o f -> PageElement s object -> ()
+atlasNormalizationAgrees (Atlas _ _) _ = ()
+
+{-@ atlasArrowNormalizationAgrees :: owner:Atlas a s d o f -> arrow:PageElementArrow s source target
+      -> {normalizeAtlasArrow owner arrow
+           == Elements.normalizePageElementArrow (atlasPageElements owner) arrow} @-}
+atlasArrowNormalizationAgrees :: Atlas a s d o f -> PageElementArrow s source target -> ()
+atlasArrowNormalizationAgrees (Atlas _ _) _ = ()
+
+-- | The owning occurrence has a certified arrow to its normalized representative.
+-- ALIGN: ATLAS-NORMALIZATION-ARROW.
+{-@ atlasNormalizationArrow :: owner:Atlas a s d o f
+      -> source:{PageElement s object | AtlasValidCell owner source}
+      -> {arrow:PageElementArrow s object object |
+           AtlasValidArrow owner arrow && arrowSource arrow == source
+           && arrowTarget arrow == normalizeAtlasElement owner source} @-}
+atlasNormalizationArrow :: Atlas a s d o f -> PageElement s object -> PageElementArrow s object object
+atlasNormalizationArrow owner source =
+  normalizeAtlasElementTraceValid owner source `seq`
+    normalizePageElementReachableAt (atlasDataFinalPage (storedAtlasData owner))
+      (atlasDataTraceLimit (storedAtlasData owner)) source `seq`
+      pageElementArrow source (normalizeAtlasElement owner source)
 
 -- | Retain the owning folio's certificate when entering the stored data
 -- action, whose inputs are normalized using this Atlas's pagination bounds.
@@ -726,6 +926,17 @@ mapAtlasData value pageArrow =
   normalizeAtlasArrowTraceValid value pageArrow `seq` atlasActionMap
     (atlasActionData (storedAtlasData value))
     (normalizeAtlasArrow value pageArrow)
+
+-- | Normalizing an arrow again preserves both directions of its data insertion.
+-- ALIGN: ATLAS-DATA-MAP-NORMALIZATION.
+{-@ mapAtlasDataNormalized :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target | AtlasValidArrow owner arrow}
+      -> {mapAtlasData owner (normalizeAtlasArrow owner arrow) == mapAtlasData owner arrow} @-}
+mapAtlasDataNormalized :: Atlas a s d o f -> PageElementArrow s source target -> ()
+mapAtlasDataNormalized owner arrow =
+  normalizeAtlasArrowTraceValid owner arrow `seq`
+    normalizePageElementArrowIdempotentAt (atlasDataFinalPage (storedAtlasData owner))
+      (atlasDataTraceLimit (storedAtlasData owner)) arrow
 
 -- | The data-layer action from an occurrence to its normalized
 -- representative.

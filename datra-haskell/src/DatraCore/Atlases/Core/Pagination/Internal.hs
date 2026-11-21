@@ -35,11 +35,12 @@ import Folio.Presentation
 import Numeric.Natural (Natural)
 import PageElements
   ( PageElements
+  , pageElementsFolio
   , normalizePageElement
   , normalizePageElementArrow
   )
 import PageElements.Structure (withPageElementArrow)
-import PageElements.Internal (pageElementsWithScope, pageElementsFolio)
+import PageElements.Internal (pageElementsWithScope)
 import PageElements.Structure
   ( PageElementCell (..)
   , PageElement (..)

@@ -557,19 +557,52 @@ The runtime Atlas assembly
 must also establish the membership conditions and arrow-preservation evidence
 required by its checked helpers.
 
-The Haskell Charter assembly module is not LiquidHaskell-checked. Its coverage
-ranking round trip and propagation of coverage and inverse certificates across
-public entry points still need checked contracts. Cached construction, witness
-recovery, canonical equality, and forward data transport have checked helpers.
+Charter's higher-level map and adjunction assembly still needs LiquidHaskell
+contracts. Propagation of coverage and inverse certificates across those public
+entry points remains to be checked. Cached construction, witness recovery, canonical equality,
+and both directions of data insertion have checked helpers. Data preimages check
+the actual forward image before retaining a target's cache; successful preimages
+are certified to map back to the requested charted datum. Assembly uses those
+checked constructors and insertions through `Charter.Data`; the raw datum/code
+constructor remains hidden by that exposed interface. Identity, composition, coherence, and disjointness
+have pointwise laws for whole cached values. Their proofs use the public Atlas
+law observers and canonical-cache extensionality. The public normalization arrow
+retains its owning trace and exact endpoints. Checked normalization equalities connect
+Atlas operations to their owning PageElements operations; the exposed interface
+retains the final-page bound and unchanged cell position. Normalization preserves the whole
+Atlas data insertion, both coverage-code predicates, Charter membership, and
+the complete transported cache. The origin-rank normalization correspondence
+links the checked rank-preservation proof. The action package retains the
+canonical membership predicate and the exact Dominion and insertion callbacks.
+Assembly delegates all four constructor laws to normalized-insertion helpers
+whose inputs require membership at the normalized source. Lean packages the
+cached action on genuine-cell indices and proves that this change of index
+preserves ranking, decoding, forward mapping, and partial inverses. Its complete
+cached Atlas has a natural data-functor isomorphism to the covered-value model
+and a whole-Atlas isomorphism to the written covered-subtype definition. The
+Haskell presentation assembly is checked through the public `AtlasPresentation`
+constructor, retaining the owning pagination and the exact certified action. Its
+normalized laws use the explicit normalization equalities. Stable object
+allocation uses the exposed `Atlas.Construction` interface. A pure construction
+instance fixes the data-family recipe, and the recipe together with the original
+owner determines the nominal output scope. Charter uses that interface for its
+object and morphism scopes. Lean models the fixed object recipe and its retained
+pagination, and relates presentation allocation to that object action. Focused
+rejection checks protect the normalized laws, retained pagination and action,
+instance method contracts, and scope identity.
 Lean proves that cached ranking, finite unranking, and both directions of data
 insertion agree with the covered-carrier model.
 The checked insertion helpers alone do not discharge those assembly obligations;
 these modules remain partially aligned. The runtime Atlas membership checks
 accepted data and canonical codes. Counit and mapping insertion contracts restrict
 both their carriers and inverse callbacks to that membership; projecting arbitrary
-datum/code pairs would not be injective. The Dominion assembly still needs the
-same explicit membership contract and a checked finite decoding round trip.
-The charted carrier retains its datum and canonical coverage code. Construction obtains that code from checked coverage;
+datum/code pairs would not be injective. The Dominion constructor uses that same
+membership contract. Its finite decoder
+canonicalizes successful codes, and its round-trip proof identifies the decoded
+datum through the public exact-decoder law and then applies canonical-code
+uniqueness.
+The charted carrier retains its datum and canonical coverage code. Construction
+obtains that code from checked coverage;
 finite decoding canonicalizes any successful input code. Intra-Atlas data
 arrows preserve the code by the checked transport law. Transversal mapping between
 Atlases must obtain target coverage from the transversal and compute the target's

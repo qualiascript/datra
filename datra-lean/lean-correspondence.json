@@ -641,7 +641,7 @@
     {
       "id": "ATLAS-ORIGIN-RANK-NORMALIZATION",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
-      "haskell_declaration": "atlasOriginImageRank",
+      "haskell_declaration": "atlasOriginImageRankNormalized",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "Atlas.originImageRank_normalize"
     },
@@ -1067,85 +1067,85 @@
     },
     {
       "id": "CHARTER-CELL-CONSTRUCTOR",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartCellData",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "chartCellData"
     },
     {
       "id": "CHARTER-COUNIT-INSERTION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartCounitInsertion",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "cachedCounitInsertion"
     },
     {
       "id": "CHARTER-FUNCTOR-IDENTITY",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "charterIdentityValue",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "mapCellData_identity"
     },
     {
       "id": "CHARTER-FUNCTOR-COMPOSITION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "charterCompositionValue",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "mapCellData_composition"
     },
     {
       "id": "CHARTER-HOM-LEFT-INVERSE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartHomLeftInverseValue",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "homLeftInverse"
     },
     {
       "id": "CHARTER-HOM-RIGHT-INVERSE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartHomRightInverseValue",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "homRightInverse"
     },
     {
       "id": "CHARTER-HOM-NATURALITY-LEFT",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartHomNaturalityLeftValue",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "homNaturalityLeft"
     },
     {
       "id": "CHARTER-HOM-NATURALITY-RIGHT",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartHomNaturalityRightValue",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "homNaturalityRight"
     },
     {
       "id": "CHARTER-COUNIT-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartCounitInsertion",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "cachedCounitInsertion_interpretation"
     },
     {
       "id": "CHARTER-DOMINION-ROUNDTRIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartedDominion",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "cachedDominion_roundtrip"
     },
     {
       "id": "CHARTER-DATA-INSERTION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartedInsertion",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "cachedDataInsertion"
     },
     {
       "id": "CHARTER-DATA-INVERSE-SOUND",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
-      "haskell_declaration": "chartedInsertion",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedDataPreimageSound",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "cachedDataPreimage_sound"
     },
@@ -1154,7 +1154,7 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Internal.hs",
       "haskell_declaration": "chartAtlas",
       "lean_namespace": "Datra.Executable.Charter",
-      "lean_declaration": "interpretationIso"
+      "lean_declaration": "cachedInterpretationIso"
     },
     {
       "id": "CHARTER-ATLAS-COVERED",
@@ -1179,14 +1179,14 @@
     },
     {
       "id": "CHARTER-MAP-INSERTION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartMapInsertion",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "cachedMapInsertion"
     },
     {
       "id": "CHARTER-MAP-INVERSE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartMapInsertion",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "cachedMapInsertion_preimage"
@@ -4763,31 +4763,206 @@
     },
     {
       "id": "CHARTER-CELL-COVERAGE-CACHE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartedCellCoverage",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "chartedCellCoverage_spec"
     },
     {
       "id": "CHARTER-CELL-CACHE-EXTENSIONALITY",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartedCellDataEqual",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "CachedCellData.ext"
     },
     {
       "id": "CHARTER-CELL-CACHE-TRANSPORT",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartedDataMap",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "cachedDataMap"
     },
     {
       "id": "CHARTER-CELL-MEMBERSHIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
       "haskell_declaration": "chartedDatumValid",
       "lean_namespace": "Datra.Executable.Charter",
       "lean_declaration": "chartedDatumValid"
+    },
+    {
+      "id": "ATLAS-COVERAGE-CANDIDATE-EXACT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "coverageRankCandidateExact",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coverageRankCandidate_iff"
+    },
+    {
+      "id": "CHARTER-DATA-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedIdentityLaw",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedDataMap_identity"
+    },
+    {
+      "id": "CHARTER-DATA-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedCompositionLaw",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedDataMap_composition"
+    },
+    {
+      "id": "CHARTER-DATA-COHERENCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedCoherenceLaw",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedDataMap_coherence"
+    },
+    {
+      "id": "CHARTER-DATA-DISJOINT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedDisjointLaw",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedDataMap_disjoint"
+    },
+    {
+      "id": "ATLAS-NORMALIZATION-ARROW",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasNormalizationArrow",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.normalizationArrow"
+    },
+    {
+      "id": "ATLAS-DATA-MAP-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "mapAtlasDataNormalized",
+      "lean_namespace": "Datra.Executable.AtlasAction",
+      "lean_declaration": "normalizedMap_normalizeArrow"
+    },
+    {
+      "id": "ATLAS-COVERAGE-RANK-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "coverageRankNormalized",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coverageRankNormalized"
+    },
+    {
+      "id": "CHARTER-MEMBERSHIP-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedDatumValidNormalized",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "chartedDatumValid_normalize"
+    },
+    {
+      "id": "CHARTER-DATA-MAP-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedDataMapNormalized",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedDataMap_normalizeArrow"
+    },
+    {
+      "id": "CHARTER-DATA-ACTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedAction",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedAction"
+    },
+    {
+      "id": "CHARTER-NORMALIZED-INSERTION-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedNormalizedInsertionMap",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedNormalizedInsertion_map"
+    },
+    {
+      "id": "CHARTER-NORMALIZED-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedNormalizedIdentityLaw",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedNormalizedIdentity"
+    },
+    {
+      "id": "CHARTER-NORMALIZED-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedNormalizedCompositionLaw",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedNormalizedComposition"
+    },
+    {
+      "id": "CHARTER-NORMALIZED-COHERENCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedNormalizedCoherenceLaw",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedNormalizedCoherence"
+    },
+    {
+      "id": "CHARTER-NORMALIZED-DISJOINT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "haskell_declaration": "chartedNormalizedDisjointLaw",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedNormalizedDisjoint"
+    },
+    {
+      "id": "ATLAS-PREDICATE-PRESENTATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Atlas.hs",
+      "haskell_declaration": "atlasPresentationForPredicate",
+      "lean_namespace": "Datra.Executable.AtlasPresentation",
+      "lean_declaration": "ofAction"
+    },
+    {
+      "id": "ATLAS-PRESENTATION-ALLOCATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasFromPresentationWithScope",
+      "lean_namespace": "Datra.Executable.AtlasPresentation",
+      "lean_declaration": "allocate"
+    },
+    {
+      "id": "ATLAS-PRESENTATION-PAGINATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasFromPresentationWithScope",
+      "lean_namespace": "Datra.Executable.AtlasPresentation",
+      "lean_declaration": "allocate_pagination"
+    },
+    {
+      "id": "ATLAS-PRESENTATION-CONTINUATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Atlas.hs",
+      "haskell_declaration": "withAtlasPresentation",
+      "lean_namespace": "Datra.Executable.AtlasPresentation",
+      "lean_declaration": "withAllocated"
+    },
+    {
+      "id": "CHARTER-PRESENTATION-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "haskell_declaration": "chartedPresentation",
+      "lean_namespace": "Datra.Executable.Charter",
+      "lean_declaration": "cachedAtlas"
+    },
+    {
+      "id": "ATLAS-NORMALIZATION-AGREES",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Atlas.hs",
+      "haskell_declaration": "atlasNormalizationAgrees",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "Atlas.normalizationAgrees"
+    },
+    {
+      "id": "ATLAS-ARROW-NORMALIZATION-AGREES",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Atlas.hs",
+      "haskell_declaration": "atlasArrowNormalizationAgrees",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "Atlas.arrowNormalizationAgrees"
+    },
+    {
+      "id": "ATLAS-DATA-CONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Construction.hs",
+      "haskell_declaration": "constructAtlasData",
+      "lean_namespace": "Datra.Executable.AtlasDataConstruction",
+      "lean_declaration": "constructAtlasData"
+    },
+    {
+      "id": "ATLAS-DATA-CONSTRUCTION-PAGINATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Construction.hs",
+      "haskell_declaration": "constructAtlasData",
+      "lean_namespace": "Datra.Executable.AtlasDataConstruction",
+      "lean_declaration": "constructAtlasData_pagination"
     }
   ],
   "modules": [
@@ -4795,9 +4970,12 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
       "module": "Atlas.Internal",
       "types": [
-        "Atlas"
+        "Atlas",
+        "AtlasPresentation"
       ],
       "reflected": [
+        "atlasPresentationPagination",
+        "atlasPresentationAction",
         "atlasFinalPage",
         "atlasTraceLimit",
         "atlasPagination",
@@ -4811,18 +4989,25 @@
         "atlasDataCoherence"
       ],
       "refinements": [
+        "atlasFromPresentationWithScope",
+        "withAtlasPresentation",
         "atlasDataAction",
         "atlasRestrictedDataAction",
         "atlasPredicateDataAction",
         "atlas",
         "atlasWithScope",
+        "atlasPresentation",
         "normalizeAtlasElement",
         "normalizeAtlasArrow",
+        "atlasNormalizationAgrees",
+        "atlasArrowNormalizationAgrees",
+        "atlasNormalizationArrow",
         "normalizeAtlasElementTraceValid",
         "normalizeAtlasArrowTraceValid",
         "atlasAcceptsDatumNormalized",
         "atlasDataAt",
         "mapAtlasData",
+        "mapAtlasDataNormalized",
         "atlasDataCoherence",
         "atlasDataCoherenceAgrees",
         "normalizeAtlasDatum",
@@ -5364,7 +5549,8 @@
         "snocElementTrace",
         "folioTraceLengthPositive",
         "prependCopies",
-        "withPageElement"
+        "withPageElement",
+        "normalizePageElement"
       ],
       "lean_target": "Datra.Executable.PageElement",
       "coverage": "partial",
@@ -5633,12 +5819,14 @@
         "coverageWitnessBound",
         "coverageCodeFor",
         "atlasOriginImageRank",
+        "atlasOriginImageRankNormalized",
         "coverageWitnessAlongArrow",
         "coverageRegionWitness",
         "atlasCoverageWitness",
         "atlasCoveredPageElement",
         "coverageRankCandidate",
         "coverageValueMatchesExact",
+        "coverageRankCandidateExact",
         "coverageRankWitness",
         "atlasCoverageRankWithin",
         "searchCoverageRank",
@@ -5648,6 +5836,7 @@
         "coverageRankCandidateSameOrigin",
         "coverageRankCanonicalSameOrigin",
         "coverageRankAlongArrow",
+        "coverageRankNormalized",
         "atlasCoverageRankLeast",
         "atlasCoveredPageElementAt",
         "atlasCoverageAt",
@@ -5895,8 +6084,8 @@
       "refinement_aliases": []
     },
     {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
-      "module": "Charter.LiquidInternal",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
+      "module": "Charter.Data",
       "types": [
         "ChartedDatum"
       ],
@@ -5905,8 +6094,10 @@
         "chartedCellDataRank",
         "chartedCellData",
         "chartedDatumValid",
+        "chartedUnrank",
         "chartedAcceptedValue",
         "chartMapPreimage",
+        "chartedDataPreimage",
         "composeValues",
         "identityValue",
         "recodeChartedCellData",
@@ -5914,9 +6105,14 @@
         "chartHomFromValue"
       ],
       "refinements": [
+        "chartedDatumValidNormalized",
         "chartCellData",
         "chartedCellCoverage",
         "chartedCellDataEqual",
+        "chartedUnrank",
+        "chartedRankRoundTrip",
+        "dominionOn",
+        "chartedDominion",
         "insertionOn",
         "chartedAcceptedValue",
         "chartCounitInsertion",
@@ -5924,12 +6120,27 @@
         "chartMapPreimage",
         "chartMapRoundTrip",
         "chartedDataMap",
+        "chartedDataMapNormalized",
+        "chartedDataPreimage",
+        "chartedDataRoundTrip",
+        "chartedDataPreimageSound",
+        "chartedInsertion",
         "charterIdentityValue",
         "charterCompositionValue",
         "chartHomLeftInverseValue",
         "chartHomRightInverseValue",
         "chartHomNaturalityLeftValue",
-        "chartHomNaturalityRightValue"
+        "chartHomNaturalityRightValue",
+        "chartedIdentityLaw",
+        "chartedCompositionLaw",
+        "chartedCoherenceLaw",
+        "chartedDisjointLaw",
+        "chartedAction",
+        "chartedNormalizedInsertionMap",
+        "chartedNormalizedIdentityLaw",
+        "chartedNormalizedCompositionLaw",
+        "chartedNormalizedCoherenceLaw",
+        "chartedNormalizedDisjointLaw"
       ],
       "lean_target": "Datra.Executable.Charter",
       "coverage": "partial",
@@ -5938,7 +6149,15 @@
       ],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": [
+        "chartCellData",
+        "chartedDominion",
+        "chartedDataMap",
+        "chartedInsertion",
+        "atlasActionDataAt",
+        "chartedAction"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
@@ -7090,12 +7309,15 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/PageElements.hs",
       "module": "PageElements",
       "types": [],
-      "reflected": [],
+      "reflected": [
+        "normalizePageElement"
+      ],
       "refinements": [
         "prefixTraceLookupObject",
         "pageElementTraceValidOrigin",
         "lastPageElement",
-        "finalPageElementIndex"
+        "finalPageElementIndex",
+        "normalizePageElement"
       ],
       "lean_target": "Datra.Executable.FolioData",
       "coverage": "partial",
@@ -7112,8 +7334,15 @@
       "reflected": [],
       "refinements": [
         "atlasForPredicate",
+        "atlasPresentationForPredicate",
+        "withAtlasPresentation",
         "normalizeAtlasElementTraceValid",
-        "atlasAcceptsDatumNormalized"
+        "atlasAcceptsDatumNormalized",
+        "atlasNormalizationArrow",
+        "normalizeAtlasArrowTraceValid",
+        "mapAtlasDataNormalized",
+        "atlasNormalizationAgrees",
+        "atlasArrowNormalizationAgrees"
       ],
       "lean_target": "Datra.Executable.AtlasMembershipAction",
       "coverage": "partial",
@@ -7248,7 +7477,8 @@
         "coverageWitnessBound",
         "atlasCoverageRank",
         "coverageRankWitness",
-        "coverageRankAlongArrow"
+        "coverageRankAlongArrow",
+        "coverageRankNormalized"
       ],
       "aliases": [],
       "embeddings": [],
@@ -7318,6 +7548,45 @@
       "embeddings": [
         "Natural as int"
       ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/LiquidInternal.hs",
+      "module": "Charter.LiquidInternal",
+      "types": [],
+      "reflected": [],
+      "refinements": [
+        "chartedPresentation"
+      ],
+      "lean_target": "Datra.Executable.Charter",
+      "coverage": "partial",
+      "aliases": [],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "opaque_reflected": [
+        "chartedAction",
+        "atlasPresentationPagination",
+        "atlasPresentationAction"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Construction.hs",
+      "module": "Atlas.Construction",
+      "types": [
+        "ConstructedAtlasScope",
+        "AtlasDataConstruction"
+      ],
+      "reflected": [],
+      "refinements": [
+        "constructAtlasData"
+      ],
+      "lean_target": "Datra.Executable.AtlasDataConstruction",
+      "coverage": "partial",
+      "aliases": [],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "opaque_reflected": []
     }
   ],
   "trust_boundary": [

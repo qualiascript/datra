@@ -20,10 +20,11 @@ import Atlas
   ( Atlas
   , AtlasObject
   , atlasOriginCell
+  , atlasDataAction
   , atlasPageElements
   , atlasWitness
   )
-import Atlas.Internal (atlasDataAction, atlasWithScope)
+import Atlas.Internal (atlasWithScope)
 import AtlasCoveredPageElement
   ( AtlasCoverageWitness
   , atlasCoverageWitness

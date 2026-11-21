@@ -116,7 +116,6 @@ import PageElements.Internal
   , pageElementArrowRightIdentity
   , pageElementArrowThin
   , pageElementTransported
-  , normalizePageElement
   , normalizeSomePageElement
   , normalizePageElementArrow
   , normalizePageElementIdempotent
@@ -129,7 +128,7 @@ import PageElements.Internal
   , somePageElementTransportedReflexive
   )
 
-import qualified PageElements.Internal as Internal (prefixTraceLookupObject, pageElementTraceValidOrigin, lastPageElement, finalPageElementIndex)
+import qualified PageElements.Internal as Internal (normalizePageElement, prefixTraceLookupObject, pageElementTraceValidOrigin, lastPageElement, finalPageElementIndex)
 import PageElements.Structure (SomePageElement (..))
 import Chain (ChainIndex, chainIndex, chainPosition, chainObjectAt, chainIndexPosition, chainIndexOrderType, chainOrderType)
 import DatraOrdinal (Ordinal)
@@ -177,3 +176,13 @@ lastPageElement = Internal.lastPageElement
 finalPageElementIndex
   :: PageElements scope origin final -> PageElement scope object -> Maybe (ChainIndex final)
 finalPageElementIndex = Internal.finalPageElementIndex
+
+-- | Retain the normalization bound and unchanged cell position at the public interface.
+{-@ reflect normalizePageElement @-}
+{-@ normalizePageElement :: category:PageElements scope origin final
+      -> occurrence:PageElement scope object
+      -> {result:PageElement scope object |
+           pageElementPage result <= folioLength (pageElementsFolio category) - 1
+           && pageElementPosition result == pageElementPosition occurrence} @-}
+normalizePageElement :: PageElements scope origin final -> PageElement scope object -> PageElement scope object
+normalizePageElement = Internal.normalizePageElement
