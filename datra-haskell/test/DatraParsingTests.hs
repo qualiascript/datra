@@ -421,6 +421,17 @@ testUnresolvedPostfixSyntax = do
     "(Nat ++)" spaced
   assertRaw "exact syntax is not restricted to a pure identifier"
     "(hello!!!!)" punctuated
+  assertRaw "postfix optional stops before a compact sequence separator"
+    "(_Block?; _Expr -> _FunctionBody)"
+    (FunctionType
+      (AtlasMap [OptionalType (ref "_Block"), ref "_Expr"])
+      (ref "_FunctionBody"))
+  assertRaw "identifier postfix optional stops before a compact separator"
+    "({$def?; $val?})"
+    (ArgumentativeMap
+      [ OptionalType (IdentifierExpression (ref "def"))
+      , OptionalType (IdentifierExpression (ref "val"))
+      ])
   assertBool "horizontal layout does not change exact application syntax"
     ( matches (exact "Nat++") compact
       && matches (exact "Nat++") spaced

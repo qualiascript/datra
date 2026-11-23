@@ -728,7 +728,17 @@ scopeAccessBody =
     <|> (IdentifierReference <$> namedAccessName)
 
 optionalTypeSuffix :: Parser Text
-optionalTypeSuffix = operatorToken AST.OptionalOperator
+optionalTypeSuffix =
+  operatorToken AST.OptionalOperator
+    <|> compactOptionalBeforeSequence
+  where
+    compactOptionalBeforeSequence = try $ do
+      horizontalSpaceConsumer
+      token <- char
+        (AST.sourceOperatorCharacter AST.OptionalCharacterOperator)
+      _ <- lookAhead (char
+        (AST.sourceOperatorCharacter AST.SequentialCharacterOperator))
+      pure (Text.singleton token)
 
 -- Lookup is a genuine tight prefix expression. Its operand is evaluated; in
 -- particular, an identifier contributes its string value rather than its
