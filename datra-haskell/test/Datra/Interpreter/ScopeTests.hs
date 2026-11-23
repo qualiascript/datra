@@ -83,7 +83,7 @@ scopeTests =
         ]
     , testGroup "ordinary block declarations"
         [ programCase "quoted identifier can name a block entry"
-            "value := begin\n $\"~~~\" := 2\nyield this.\"~~~\"\nyield value"
+            "value := begin\n $\"~~~\" := 2\nyield this.$\"~~~\"\nyield value"
             "2"
         , programCase "computed this projection demands only its selected declaration"
             ( "yield begin x := 2; y := 3; "

@@ -6,8 +6,11 @@ import Data.List (isInfixOf)
 import System.Directory
   ( doesFileExist
   , findExecutable
+  , getPermissions
   , getTemporaryDirectory
   , removeFile
+  , setOwnerReadable
+  , setPermissions
   )
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
@@ -39,7 +42,23 @@ main = defaultMain $ testGroup "Datra CLI"
   , testCase "qualified-std round trips qualified syntax through AST" testQualifiedStandardLibraryAst
   , testCase "qualified-std interpret rejects bare names" testQualifiedStandardLibraryInterpretNames
   , testCase "qualified-std does not open syntax" testQualifiedStandardLibrarySyntax
-  , testCase "qualified-std discovers qualified imports" testQualifiedStandardLibraryImports
+  , testCase "no-std disables automatic Std" testNoStandardLibrary
+  , testCase "module provides a qualified value" testQualifiedModuleValue
+  , testCase "module private members stay hidden" testPrivateModuleMember
+  , testCase "module namespace is independent of filename" testDeclaredModuleNamespace
+  , testCase "multiple and repeated modules are deterministic" testMultipleModules
+  , testCase "module-owned syntax remains qualified" testQualifiedModuleSyntax
+  , testCase "with opens explicit modules" testWithModules
+  , testCase "module private closure state is retained" testModuleClosure
+  , testCase "module AST requires the same interpret input" testModuleAstRoundTrip
+  , testCase "bundled modules are explicit inputs" testBundledModules
+  , testCase "module inputs establish ordered dependencies" testOrderedModuleDependencies
+  , testCase "integration fixtures receive modules from the CLI" testComposedModuleFixture
+  , testCase "module namespace collisions fail during setup" testModuleNamespaceCollision
+  , testCase "missing modules identify the requested path" testMissingModule
+  , testCase "unreadable modules fail during setup" testUnreadableModule
+  , testCase "malformed modules fail during setup" testMalformedModule
+  , testCase "lexical import syntax is absent" testLexicalImportRemoved
   ]
 
 fixtureBase :: FilePath
@@ -91,7 +110,7 @@ testBuildFailure = do
     ExitSuccess -> assertFailure "forward reference unexpectedly succeeded"
     ExitFailure _ ->
       assertBool ("unexpected diagnostic: " <> errors)
-        ("identifier is not imported in this scope" `isInfixOf` errors
+        ("identifier is not available in this scope" `isInfixOf` errors
           && "identifier: b" `isInfixOf` errors)
 
 testInvalidLocale :: Assertion
@@ -136,7 +155,7 @@ testQualifiedStandardLibraryNames = do
     ExitSuccess -> assertFailure "Int unexpectedly remained available without qualification"
     ExitFailure _ ->
       assertBool ("unexpected diagnostic: " <> errors)
-        ("identifier is not imported in this scope" `isInfixOf` errors
+        ("identifier is not available in this scope" `isInfixOf` errors
           && "identifier: Int" `isInfixOf` errors)
 
 testQualifiedStandardLibraryModule :: Assertion
@@ -192,20 +211,227 @@ testQualifiedStandardLibrarySyntax =
         assertBool ("unexpected diagnostic: " <> errors)
           ("identifier: if" `isInfixOf` errors)
 
-testQualifiedStandardLibraryImports :: Assertion
-testQualifiedStandardLibraryImports =
-  withTemporaryPath "datra-cli-module.datra" $ \modulePath ->
-  withTemporaryPath "datra-cli-import.ast" $ \astPath -> do
-    writeFile modulePath "Std.(yield Answer : 42)\n"
-    (status, output, errors) <- runDatra
-      [ "build", "--qualified-std"
-      , "--source", "(Std.(import " <> show modulePath
-          <> " do yield Answer + 0))"
-      , "--ast-output", astPath, "--output", "-"
+testNoStandardLibrary :: Assertion
+testNoStandardLibrary = do
+  (status, _, errors) <- runDatra
+    [ "build", "--no-std", "--source", "Std"
+    , "--ast-output", "-", "--output", "-"
+    ]
+  case status of
+    ExitSuccess -> assertFailure "Std unexpectedly remained available"
+    ExitFailure _ -> assertBool ("unexpected diagnostic: " <> errors)
+      ("identifier: Std" `isInfixOf` errors)
+
+moduleFixture :: String -> FilePath
+moduleFixture name = "test/fixtures/modules/" <> name <> ".datra"
+
+testQualifiedModuleValue :: Assertion
+testQualifiedModuleValue = do
+  (status, output, errors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", moduleFixture "library_one"
+    , "--source", "(Std.(yield LibraryOne.x + 0))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  assertEqual ("exit status; stderr: " <> errors) ExitSuccess status
+  assertEqual "qualified value" "7\n" output
+  assertEqual "stderr" "" errors
+
+testPrivateModuleMember :: Assertion
+testPrivateModuleMember = do
+  (status, _, errors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", moduleFixture "library_one"
+    , "--source", "(Std.(yield LibraryOne._offset))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  case status of
+    ExitSuccess -> assertFailure "private module member unexpectedly escaped"
+    ExitFailure _ -> assertBool ("unexpected diagnostic: " <> errors)
+      ("identifier: _offset" `isInfixOf` errors)
+
+testDeclaredModuleNamespace :: Assertion
+testDeclaredModuleNamespace = do
+  (status, output, errors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", moduleFixture "different_filename"
+    , "--source", "(Std.(yield DeclaredName.x + 0))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  assertEqual ("exit status; stderr: " <> errors) ExitSuccess status
+  assertEqual "declared namespace" "12\n" output
+
+testMultipleModules :: Assertion
+testMultipleModules = do
+  (status, output, errors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", moduleFixture "library_one"
+    , "--module", moduleFixture "library_one"
+    , "--module", moduleFixture "library_two"
+    , "--source", "(Std.(yield LibraryOne.x + LibraryTwo.x))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  assertEqual ("exit status; stderr: " <> errors) ExitSuccess status
+  assertEqual "combined qualified values" "16\n" output
+
+testQualifiedModuleSyntax :: Assertion
+testQualifiedModuleSyntax = do
+  (status, output, errors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", moduleFixture "library_one"
+    , "--source", "(LibraryOne.(shift 7))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  assertEqual ("exit status; stderr: " <> errors) ExitSuccess status
+  assertEqual "qualified syntax result" "11\n" output
+
+testWithModules :: Assertion
+testWithModules = do
+  (status, output, errors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", moduleFixture "multiple_exports"
+    , "--source", "(Std.(with First; Second do yield x + shift second 3))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  assertEqual ("exit status; stderr: " <> errors) ExitSuccess status
+  assertEqual "opened module result" "10\n" output
+
+testModuleClosure :: Assertion
+testModuleClosure = do
+  (status, output, errors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", moduleFixture "library_one"
+    , "--source", "(Std.(yield LibraryOne.increment 7))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  assertEqual ("exit status; stderr: " <> errors) ExitSuccess status
+  assertEqual "private helper result" "11\n" output
+
+testModuleAstRoundTrip :: Assertion
+testModuleAstRoundTrip = do
+  (astStatus, ast, astErrors) <- runDatra
+    [ "ast", "--qualified-std"
+    , "--module", moduleFixture "library_one"
+    , "--source", "(LibraryOne.(shift 7))"
+    , "--output", "-"
+    ]
+  assertEqual ("AST exit status; stderr: " <> astErrors) ExitSuccess astStatus
+  (status, output, errors) <- runDatra
+    [ "interpret", "--qualified-std"
+    , "--module", moduleFixture "library_one"
+    , "--ast", ast, "--output", "-"
+    ]
+  assertEqual ("interpret exit status; stderr: " <> errors) ExitSuccess status
+  assertEqual "interpreted module AST" "11\n" output
+
+testBundledModules :: Assertion
+testBundledModules = do
+  (ordinalStatus, ordinalOutput, ordinalErrors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", "ordinals"
+    , "--source", "(Std.(yield Ordinals.sum(...; 2)))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  assertEqual ("ordinal exit status; stderr: " <> ordinalErrors)
+    ExitSuccess ordinalStatus
+  assertEqual "bundled ordinal result" "... + 2\n" ordinalOutput
+  (numberStatus, numberOutput, numberErrors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", "numbers"
+    , "--source", "(Std.(yield Numbers.max (1; 4; 2)))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  assertEqual ("number exit status; stderr: " <> numberErrors)
+    ExitSuccess numberStatus
+  assertEqual "bundled number result" "4\n" numberOutput
+
+testOrderedModuleDependencies :: Assertion
+testOrderedModuleDependencies = do
+  (status, output, errors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", moduleFixture "library_one"
+    , "--module", moduleFixture "nested"
+    , "--source", "(Std.(yield Nested.x + 0))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  assertEqual ("exit status; stderr: " <> errors) ExitSuccess status
+  assertEqual "ordered dependency result" "8\n" output
+
+testComposedModuleFixture :: Assertion
+testComposedModuleFixture = do
+  (status, output, errors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--module", "ordinals"
+    , "--input", "test/fixtures/integration/composed_features.datra"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  assertEqual ("exit status; stderr: " <> errors) ExitSuccess status
+  assertEqual "composed integration result"
+    "(true; true; true; true; true; true; true; true)\n" output
+
+testModuleNamespaceCollision :: Assertion
+testModuleNamespaceCollision = do
+  (status, _, errors) <- runDatra
+    [ "ast", "--qualified-std"
+    , "--module", moduleFixture "overlap_one"
+    , "--module", moduleFixture "overlap_two"
+    , "--source", "Shared", "--output", "-"
+    ]
+  case status of
+    ExitSuccess -> assertFailure "overlapping namespaces unexpectedly succeeded"
+    ExitFailure _ -> assertBool ("unexpected diagnostic: " <> errors)
+      ("namespace: Shared" `isInfixOf` errors)
+
+testMissingModule :: Assertion
+testMissingModule = do
+  (status, _, errors) <- runDatra
+    [ "ast", "--module", "definitely-missing-module"
+    , "--source", "1", "--output", "-"
+    ]
+  case status of
+    ExitSuccess -> assertFailure "missing module unexpectedly succeeded"
+    ExitFailure _ -> assertBool ("unexpected diagnostic: " <> errors)
+      ("module: definitely-missing-module" `isInfixOf` errors)
+
+testUnreadableModule :: Assertion
+testUnreadableModule =
+  withTemporaryPath "datra-cli-unreadable.datra" $ \modulePath -> do
+    writeFile modulePath "yield Hidden : 1"
+    permissions <- getPermissions modulePath
+    setPermissions modulePath (setOwnerReadable False permissions)
+    (status, _, errors) <- runDatra
+      [ "ast", "--module", modulePath
+      , "--source", "1", "--output", "-"
       ]
-    assertEqual ("exit status; stderr: " <> errors) ExitSuccess status
-    assertEqual "imported value" "42\n" output
-    assertEqual "stderr" "" errors
+    case status of
+      ExitSuccess -> assertFailure "unreadable module unexpectedly succeeded"
+      ExitFailure _ -> assertBool ("unexpected diagnostic: " <> errors)
+        ("module could not be read" `isInfixOf` errors)
+
+testMalformedModule :: Assertion
+testMalformedModule =
+  withTemporaryPath "datra-cli-malformed.datra" $ \modulePath -> do
+    writeFile modulePath "this is not a complete module ("
+    (status, _, errors) <- runDatra
+      [ "ast", "--module", modulePath
+      , "--source", "1", "--output", "-"
+      ]
+    case status of
+      ExitSuccess -> assertFailure "malformed module unexpectedly succeeded"
+      ExitFailure _ -> assertBool ("unexpected diagnostic: " <> errors)
+        ("module could not be parsed" `isInfixOf` errors)
+
+testLexicalImportRemoved :: Assertion
+testLexicalImportRemoved = do
+  (status, _, errors) <- runDatra
+    [ "build", "--qualified-std"
+    , "--source", "(Std.(import \"ordinals\" do yield 1))"
+    , "--ast-output", "/dev/null", "--output", "-"
+    ]
+  case status of
+    ExitSuccess -> assertFailure "lexical import unexpectedly remained available"
+    ExitFailure _ -> assertBool ("unexpected diagnostic: " <> errors)
+      ("identifier: import" `isInfixOf` errors)
 
 runDatra :: [String] -> IO (ExitCode, String, String)
 runDatra arguments = do

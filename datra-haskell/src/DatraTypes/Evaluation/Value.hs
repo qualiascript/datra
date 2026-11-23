@@ -95,7 +95,7 @@ module Evaluation.Value
   , ProvenInjectiveToString (..)
   , InterpretedAtlasMapFederationPrimitive (..)
   , InterpretedAtlasMapFederation
-  , PresentationDependency (..)
+  , PresentationOwner (..)
   , IntegerLimit (..)
   , ValueSemantics (..)
   , DynamicScopeLabel (..)
@@ -149,7 +149,7 @@ module Evaluation.Value
   , withCanonicalNamedAccess
   , withCanonicalApplication
   , withoutCanonicalPresentation
-  , withoutCanonicalDependencies
+  , withoutCanonicalOwners
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedValueKind
@@ -1538,11 +1538,11 @@ withInterpretedSemantics semantics value = value
 
 interpretedCanonicalPresentation
   :: InterpretedValue
-  -> Maybe ([PresentationDependency], CanonicalResult)
+  -> Maybe ([PresentationOwner], CanonicalResult)
 interpretedCanonicalPresentation = canonicalPresentation . interpretedSemantics
 
 withCanonicalReference
-  :: [PresentationDependency]
+  :: [PresentationOwner]
   -> String
   -> InterpretedValue
   -> InterpretedValue
@@ -1554,7 +1554,7 @@ withCanonicalReference dependencies name value = value
   }
 
 withCanonicalNamedAccess
-  :: [PresentationDependency]
+  :: [PresentationOwner]
   -> CanonicalResult
   -> String
   -> InterpretedValue
@@ -1589,13 +1589,13 @@ withoutCanonicalPresentation :: InterpretedValue -> InterpretedValue
 withoutCanonicalPresentation value = value
   { interpretedSemantics = semanticValueSemantics (interpretedSemantics value) }
 
-withoutCanonicalDependencies
-  :: [PresentationDependency]
+withoutCanonicalOwners
+  :: [PresentationOwner]
   -> InterpretedValue
   -> InterpretedValue
-withoutCanonicalDependencies dependencies value = value
+withoutCanonicalOwners owners value = value
   { interpretedSemantics =
-      stripPresentedDependencies dependencies (interpretedSemantics value) }
+      stripPresentedOwners owners (interpretedSemantics value) }
 
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =

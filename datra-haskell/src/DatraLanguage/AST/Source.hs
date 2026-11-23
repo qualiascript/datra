@@ -7,22 +7,19 @@ import Data.List (intercalate)
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.AST
 import DatraLanguage.AST.CanonicalForm
-  ( CanonicalForm (FunctionForm, ImportForm), canonicalFormName )
+  ( CanonicalForm (FunctionForm, WithScopesForm)
+  , canonicalFormName
+  )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.ConcreteSyntax
   ( StructuralDelimiter (..)
   , delimiterText
-  , literalTemplateDelimiterCharacter
   , sourceLineFeed
   , sourceSpace
   )
-import DatraLanguage.ContextualRole
-  ( ContextualRole (ContextualThis), contextualSurfaceName )
 import DatraLanguage.Pretty
-  ( renderAsciiStringLiteral
-  , renderIdentifierString
-  , renderLiteralTemplate
+  ( renderIdentifierString
   , renderOperatorExpression
   , renderStringTemplate
   )
@@ -42,10 +39,6 @@ source context expression =
       (genericPolarity introduction
         <> renderGenericArgument introduction)
     InModuleValue _ value -> source context value
-    ImportValue paths body -> canonicalFormName ImportForm <> sourceSpace
-      <> intercalate (spaced AST.SequentialOperator)
-        (map renderAsciiStringLiteral paths)
-      <> sourceSpace <> source 0 body
     FunctionTypeValue _ input output -> wrapped 11
       (source 12 input <> spaced AST.FunctionTypeOperator <> functionTypeOutput output)
     FunctionApplicationValue function LineBreakValue ->
@@ -63,17 +56,14 @@ source context expression =
       (block Reserved.DoWord bindings result)
     BeginValue bindings result -> wrapped 0
       (block Reserved.BeginWord bindings result)
-    IdentifierReferenceValue (SimpleIdentifierString name)
-      | renderIdentifierString name == name -> name
-      | otherwise -> contextualSurfaceName ContextualThis
-          <> op AST.ScopeAccessOperator <> renderIdentifierString name
+    IdentifierReferenceValue (SimpleIdentifierString name) -> name
     LineBreakValue -> sourceLineFeed
     UnresolvedSyntaxValue literal -> literal
     LookupValue operand -> unary (op AST.LookupOperator) operand
     DependentArgumentValue name (Just annotation) ->
       let (writtenName, optionalName) = dependentArgumentNameSource name
       in dependentArgument writtenName optionalName (Just annotation) Nothing
-    DependentArgumentValue name Nothing -> source 13 name
+    DependentArgumentValue name Nothing -> source 13 (identifierHeadValue name)
     Sequential members -> delimit OpenParenthesis CloseParenthesis
       (intercalate (spaced AST.SequentialOperator)
         (map (source 0) (NonEmpty.toList members)))
@@ -116,11 +106,17 @@ source context expression =
       unary (op AST.CoalizationOperator <> sourceSpace) operand
     OptionalValue operand -> wrapped 10
       (source 10 operand <> op AST.OptionalOperator)
-    ScopeAccessValue operand
-        (IdentifierReferenceValue (SimpleIdentifierString name)) ->
-      wrapped 12 (source 12 operand <> op AST.ScopeAccessOperator <> renderIdentifierString name)
+    ScopeAccessValue operand (IdentifierExpressionValue selector) ->
+      wrapped 12
+        (source 12 operand <> op AST.ScopeAccessOperator
+          <> scopeSelectorSource selector)
     ScopeAccessValue operand body ->
       wrapped 12 (source 12 operand <> op AST.ScopeAccessOperator <> scopeBody body)
+    WithScopesValue sources body -> wrapped 0
+      (canonicalFormName WithScopesForm <> sourceSpace
+        <> delimit OpenParenthesis CloseParenthesis
+          (intercalate (spaced AST.SequentialOperator) (map (source 0) sources))
+        <> sourceSpace <> source 0 body)
     -- Access associates to the left, so a second page selection can continue
     -- directly as @value[first][second]@.  Operands with genuinely looser
     -- precedence are still parenthesized by their own renderer.
@@ -150,17 +146,8 @@ source context expression =
     InclusiveValuedIntegerRangeDownwards start ->
       open Reserved.FromSymbol start Reserved.DownwardsWord
     StringTemplateValue parts -> renderStringTemplate
-      (source 0) stringLiteral (const Nothing) parts
-    IdentifierExpressionValue operand -> case operand of
-      IdentifierReferenceValue (SimpleIdentifierString name) ->
-        op AST.IdentifierExpressionOperator <> renderIdentifierString name
-      AsciiStringValue value -> op AST.IdentifierExpressionOperator <> renderAsciiStringLiteral value
-      _ -> op AST.IdentifierExpressionOperator <>
-        delimit OpenParenthesis CloseParenthesis (source 0 operand)
-    LiteralTemplateExpressionValue body ->
-      [literalTemplateDelimiterCharacter]
-        <> renderLiteralTemplate body
-        <> [literalTemplateDelimiterCharacter]
+      (source 0) stringLiteral compactStringInterpolation parts
+    IdentifierExpressionValue operand -> identifierExpressionSource operand
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom
@@ -194,6 +181,20 @@ source context expression =
     applicationInput operand = source 12 operand
     applicationSeparator (FunctionApplicationValue _ LineBreakValue) = ""
     applicationSeparator _ = sourceSpace
+    identifierExpressionSource operand =
+      op AST.IdentifierExpressionOperator <> case operand of
+        AsciiStringValue value -> renderIdentifierString value
+        StringTemplateValue parts -> renderStringTemplate
+          (source 0) stringLiteral compactStringInterpolation parts
+        _ -> delimit OpenParenthesis CloseParenthesis (source 0 operand)
+    scopeSelectorSource selector = case selector of
+      AsciiStringValue name
+        | renderIdentifierString name == name -> name
+      _ -> identifierExpressionSource selector
+    compactStringInterpolation value = case value of
+      IdentifierReferenceValue (SimpleIdentifierString name)
+        | renderIdentifierString name == name -> Just name
+      _ -> Nothing
     functionTypeOutput output@FunctionTypeValue {} = source 11 output
     functionTypeOutput output = source 12 output
     bounded keyword start end =
@@ -223,8 +224,9 @@ source context expression =
         <> maybe "" (\value -> spaced AST.DependentArgumentTypeOperator <> source 13 value) annotation
         <> maybe "" (\value -> spaced AST.AssignmentOperator <> assignedValue value) given)
     dependentArgumentNameSource name = case name of
-      OptionalValue present -> (source 13 present, True)
-      _ -> (source 13 name, False)
+      IdentifierExpressionBody (OptionalValue present) ->
+        (source 13 (IdentifierExpressionValue present), True)
+      _ -> (source 13 (identifierHeadValue name), False)
     -- Federation binds inside assignment. Other assignment operands retain
     -- their existing conservative grouping.
     assignedValue value@EitherValue {} = source 3 value
@@ -260,7 +262,6 @@ source context expression =
 identifierHeadValue :: IdentifierExpression OperatorExpression -> OperatorExpression
 identifierHeadValue headValue = case headValue of
   IdentifierExpressionBody body -> IdentifierExpressionValue body
-  LiteralTemplateIdentifier body -> LiteralTemplateExpressionValue body
 
 scopeBody :: OperatorExpression -> String
 scopeBody body = case body of

@@ -173,7 +173,9 @@ functionTypeIdentifiers expressionValue =
   case expressionValue of
     FunctionTypeExpression {} -> []
     DependentArgument nameExpression _
-      | Just name <- literalIdentifierName (requiredName nameExpression) ->
+      | Just name <- literalIdentifierName
+          (maybe nameExpression id
+            (requiredIdentifierExpression nameExpression)) ->
           [SimpleFunctionTypeIdentifier name]
     dependent@DependentArgument {} ->
       [DependentFunctionTypeIdentifier dependent]
@@ -195,8 +197,6 @@ functionTypeIdentifiers expressionValue =
     entriesOf = concatMap functionTypeIdentifiers
     both left right =
       functionTypeIdentifiers left <> functionTypeIdentifiers right
-    requiredName (OptionalType present) = present
-    requiredName name = name
 
 -- | Materialize the domain order consumed by generic-aware matching. The
 -- generic introduction remains at its written location while the telescope

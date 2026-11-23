@@ -21,10 +21,12 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import DatraLanguage.AST
   ( SimpleIdentifierString (..)
+  , IdentifierExpression (..)
   , GenericPolarity (GenericProduct, GenericSum)
   , GenericArgument (..)
   , Expression
       ( Addition
+      , AsciiStringLiteral
       , IdentifierExpression
       , AtlasMap
       , ArgumentativeMap
@@ -33,6 +35,7 @@ import DatraLanguage.AST
       , EllipsisLiteral
       , Exponentiation
       , ScopeAccess
+      , ScopedExpression
       , MapAccess
       , MapConcatenation
       , MapExpansion
@@ -72,6 +75,7 @@ import DatraLanguage.AST
       )
   , pattern FunctionType
   , literalIdentifierName
+  , literalIdentifierExpression
   , constructDependentArgument
   )
 import DatraLanguage.AST.Operator qualified as AST
@@ -460,16 +464,19 @@ dependentArgumentExpressionParser = do
   pure (constructDependentArgument
     dependentName isOptional annotation given)
 
-dependentArgumentName :: Parser Expression
+dependentArgumentName :: Parser (IdentifierExpression Expression)
 dependentArgumentName = choice
-  [ literalTemplateExpression
-  , dollarIdentifierExpression
-  , parenthesizedExpression
-  , IdentifierExpression . IdentifierReference . SimpleIdentifierString
-      <$> bareIdentifier
+  [ do
+      IdentifierExpression body <- literalTemplateExpression
+      pure (IdentifierExpressionBody body)
+  , do
+      IdentifierExpression body <- dollarIdentifierExpression
+      pure (IdentifierExpressionBody body)
+  , IdentifierExpressionBody <$> parenthesizedExpression
+  , literalIdentifierExpression . SimpleIdentifierString <$> bareIdentifier
   ]
 
-privateDependentName :: Expression -> Bool
+privateDependentName :: IdentifierExpression Expression -> Bool
 privateDependentName name = case literalIdentifierName name of
   Just identifier -> isPrivateIdentifier (simpleIdentifierStringText identifier)
   Nothing -> False
@@ -716,19 +723,36 @@ accessedTerm atom = do
     [ (\insertion value -> MapAccess value insertion) <$> bracketedInsertion
     , do
         _ <- operatorToken AST.ScopeAccessOperator
-        body <- scopeAccessBody
-        pure (\value -> ScopeAccess value body)
+        scopeAccessSuffix
     , OptionalType <$ optionalTypeSuffix
     ])
   pure (foldl (\value select -> select value) source selections)
 
-scopeAccessBody :: Parser Expression
-scopeAccessBody =
-  parenthesizedExpression
-    <|> (IdentifierReference <$> namedAccessName)
+scopeAccessSuffix :: Parser (Expression -> Expression)
+scopeAccessSuffix = choice
+  [ do
+      IdentifierExpression body <- dollarIdentifierExpression
+      pure (\source -> ScopeAccess source (IdentifierExpressionBody body))
+  , do
+      name <- SimpleIdentifierString <$> bareIdentifierToken
+      pure (\source -> ScopeAccess source (literalIdentifierExpression name))
+  , do
+      body <- parenthesizedExpression
+      pure (\source -> ScopedExpression source body)
+  ]
 
 optionalTypeSuffix :: Parser Text
-optionalTypeSuffix = operatorToken AST.OptionalOperator
+optionalTypeSuffix =
+  operatorToken AST.OptionalOperator
+    <|> compactOptionalBeforeSequence
+  where
+    compactOptionalBeforeSequence = try $ do
+      horizontalSpaceConsumer
+      token <- char
+        (AST.sourceOperatorCharacter AST.OptionalCharacterOperator)
+      _ <- lookAhead (char
+        (AST.sourceOperatorCharacter AST.SequentialCharacterOperator))
+      pure (Text.singleton token)
 
 -- Lookup is a genuine tight prefix expression. Its operand is evaluated; in
 -- particular, an identifier contributes its string value rather than its
@@ -747,10 +771,6 @@ lookupExpression = do
       , sourceAtomicExpressionToken
       , identifierReference
       ]
-
-namedAccessName :: Parser SimpleIdentifierString
-namedAccessName =
-  SimpleIdentifierString <$> (bareIdentifierToken <|> standardStringToken)
 
 bracketedInsertion :: Parser Expression
 bracketedInsertion =
@@ -788,7 +808,7 @@ dollarIdentifierExpression :: Parser Expression
 dollarIdentifierExpression = try $ do
   _ <- sourceOperatorToken AST.IdentifierExpressionOperator
   IdentifierExpression <$> choice
-    [ IdentifierReference . SimpleIdentifierString <$> bareIdentifierToken
+    [ AsciiStringLiteral <$> bareIdentifierToken
     , sourceStringTemplateToken
     , try $ do
         body <- parenthesizedExpression

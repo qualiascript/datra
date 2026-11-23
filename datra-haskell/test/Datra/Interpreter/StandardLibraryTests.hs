@@ -78,7 +78,7 @@ standardLibraryTests =
               (InvalidDependentDeclarationModifiers ["def", "def"] ["def"])))
         ]
     , testGroup "private syntax categories"
-        [ programFailureCase "AST is no longer implicitly imported"
+        [ programFailureCase "AST is no longer implicitly available"
             "yield AST" (SourceEvaluationFailure (UnknownIdentifier "AST"))
         , programFailureCase "_AST is private to the library"
             "yield _AST" (SourceEvaluationFailure (UnknownIdentifier "_AST"))

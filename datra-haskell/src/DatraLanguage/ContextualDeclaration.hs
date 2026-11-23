@@ -13,10 +13,10 @@ module DatraLanguage.ContextualDeclaration
 
 import DatraLanguage.AST
   ( DependentDeclaration (..)
-  , IdentifierExpression (..)
   , DeclarationModifier (DeclarationDef)
   , Expression (..)
   , SimpleIdentifierString (..)
+  , literalIdentifierExpression
   )
 import DatraLanguage.ContextualRole
 import Numeric.Natural (Natural)
@@ -55,7 +55,7 @@ contextualSurfaceDeclaration
   :: ContextualRole
   -> DependentDeclaration Expression
 contextualSurfaceDeclaration role = DependentDeclaration
-  (IdentifierExpressionBody
-    (IdentifierReference (SimpleIdentifierString (contextualSurfaceName role))))
-  False True False [DeclarationDef]
+  (literalIdentifierExpression
+    (SimpleIdentifierString (contextualSurfaceName role)))
+  [DeclarationDef]
   (contextualAccessAt role 0)

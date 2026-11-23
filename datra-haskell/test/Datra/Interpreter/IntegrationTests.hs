@@ -17,14 +17,6 @@ integrationTests =
     , programCase "let scope composes through a checking function"
         scopedCheckProgram
         "(true; true)"
-    , moduleCase moduleOrigin
-        "module exports, private closure state, and declared syntax"
-        moduleProgram
-        "(true; true; true)"
-    , programFileCase 21
-        "composed language regression"
-        "test/fixtures/integration/composed_features.datra"
-        "(true; true; true; true; true; true; true; true)"
     ]
 
 recursiveDefaultProgram :: String
@@ -65,16 +57,4 @@ scopedCheckProgram = unlines
   , "  local := before + seed"
   , "  yield local = 21)"
   , "yield (before = 11; check ())"
-  ]
-
-moduleOrigin :: FilePath
-moduleOrigin = "test/fixtures/modules/main.datra"
-
-moduleProgram :: String
-moduleProgram = unlines
-  [ "import \"library_one\" do"
-  , "  valueCheck := LibraryOne.x = 7"
-  , "  incrementCheck := LibraryOne.increment 7 = 11"
-  , "  shiftCheck := LibraryOne.(shift 7) = 11"
-  , "yield (valueCheck; incrementCheck; shiftCheck)"
   ]

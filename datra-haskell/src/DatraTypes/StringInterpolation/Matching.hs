@@ -21,16 +21,11 @@ import DatraLanguage.Application
   , unresolvedApplicationFrom
   )
 import DatraLanguage.AST
-  ( Expression (..)
-  , LiteralTemplateLiteral (..)
-  , SymbolLiteral (..)
-  )
+  ( Expression (..) )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import StringInterpolation
   ( DeclarativeMatcherPlan (..)
   , DeclarativeCapture (..)
-  , LiteralTemplatePattern (..)
-  , LiteralTemplatePatternPart (..)
   , IdentifierApplicationPattern (..)
   , LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
@@ -92,8 +87,6 @@ enumerateSyntaxRulesSelections parser rules expressionValue =
     matchesRule rule = case declarativeMatcherPlan rule of
       IdentifierApplicationMatcher patternValue ->
         matchIdentifierApplication rule patternValue expressionValue
-      LiteralTemplateMatcher patternValue ->
-        matchLiteralTemplate rule patternValue expressionValue
       LiteralExpressionMatcher patternValue ->
         matchLiteralExpression parser rule patternValue expressionValue
 
@@ -119,18 +112,6 @@ matchIdentifierApplication rule patternValue expressionValue =
   , let captured = unresolvedApplicationFrom operands
   ]
 
-matchLiteralTemplate
-  :: SyntaxRule
-  -> LiteralTemplatePattern
-  -> Expression
-  -> [DeclarativeMatch]
-matchLiteralTemplate rule patternValue expressionValue =
-  [ declarativeMatch rule selected captures remaining
-  | (selected, remaining) <- applicationSelections expressionValue
-  , captures <- literalTemplateCaptures patternValue
-      (rawApplicationPhrase selected)
-  ]
-
 matchLiteralExpression
   :: ExpressionParser
   -> SyntaxRule
@@ -151,43 +132,6 @@ declarativeMatch
   -> DeclarativeMatch
 declarativeMatch rule selected captures remaining = DeclarativeMatch rule
   (TemplateSelection selected (map snd captures)) captures remaining
-
-literalTemplateCaptures
-  :: LiteralTemplatePattern
-  -> [Expression]
-  -> [[(DeclarativeCapture, Expression)]]
-literalTemplateCaptures (LiteralTemplatePattern parts) = match parts
-  where
-    match [] [] = [[]]
-    match [] _ = []
-    match (LiteralTemplatePatternLiteral expected : remaining) candidates =
-      [ later
-      | let (_, afterLineBreaks) = span (== LineBreak) candidates
-      , actual : rest <- [afterLineBreaks]
-      , literalMatches expected actual
-      , later <- match remaining rest
-      ]
-    match (LiteralTemplatePatternCapture target : remaining) candidates =
-      [ (LiteralTemplateCapture target,
-          unresolvedApplicationFrom selected) : later
-      | let (_, afterLineBreaks) = span (== LineBreak) candidates
-      , (selected, rest) <- captureSelections afterLineBreaks
-      , later <- match remaining rest
-      ]
-
-    literalMatches literal actual = case (literal, actual) of
-      (IdentifierTemplateLiteral expected, IdentifierReference actualName) ->
-        expected == actualName
-      (SymbolTemplateLiteral (SymbolLiteral expected),
-          UnresolvedSyntaxLiteral actualSymbol) ->
-        expected == actualSymbol
-      _ -> False
-
-    captureSelections candidates =
-      [ splitAt count candidates
-      | count <- reverse [1 .. length candidates]
-      , candidates !! (count - 1) /= LineBreak
-      ]
 
 literalExpressionCaptures
   :: ExpressionParser

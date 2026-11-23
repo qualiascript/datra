@@ -9,7 +9,7 @@ module Evaluation.Value.Semantics
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
-  , PresentationDependency (..)
+  , PresentationOwner (..)
   , ValuePresentation (..)
   , FunctionSource (..)
   , ValueSemantics (..)
@@ -20,10 +20,14 @@ module Evaluation.Value.Semantics
   , presentationForSemantics
   , semanticValueSemantics
   , mapValueSemanticsChildren
-  , stripPresentedDependencies
+  , stripPresentedOwners
   ) where
 
-import DatraLanguage.AST (FunctionSource (..))
+import DatraLanguage.AST
+  ( DependentDeclaration
+  , Expression
+  , FunctionSource (..)
+  )
 import DatraOrdinal (Ordinal)
 import Evaluation.DatraType (PrimitiveType)
 import IntegerRange qualified
@@ -90,16 +94,21 @@ identifierDependenciesCompatible left right =
         leftKey == rightKey
     _ -> False
 
--- | Opaque identity of a lexical scope required by a retained presentation.
-newtype PresentationDependency = PresentationDependency String
-  deriving (Eq, Ord, Show)
+-- | Typed owner of a retained canonical presentation. Lexical ownership is
+-- structural; module ownership uses the module's stable source identity.
+data PresentationOwner
+  = LexicalPresentationOwner
+      (Maybe PresentationOwner)
+      [DependentDeclaration Expression]
+  | ModulePresentationOwner FilePath
+  deriving (Eq, Show)
 
 -- | Semantic provenance retained after existential Atlas witnesses have been
 -- erased. Evaluation modules inspect this structure; presentation is derived
 -- separately as 'CanonicalResult'.
 data ValueSemantics
   = PresentedSemantics
-      [PresentationDependency] ValuePresentation ValueSemantics
+      [PresentationOwner] ValuePresentation ValueSemantics
   | NeverSemantics
   | PrimitiveTypeSemantics PrimitiveType
   | FunctionSemantics
@@ -214,10 +223,10 @@ semanticCanonicalResult = canonicalResultWith False
 -- binding or named application deliberately return 'Nothing'.
 canonicalPresentation
   :: ValueSemantics
-  -> Maybe ([PresentationDependency], CanonicalResult)
+  -> Maybe ([PresentationOwner], CanonicalResult)
 canonicalPresentation (PresentedSemantics dependencies presentation _) =
   Just
-    ( dependencies <> presentationDependencies presentation
+    ( dependencies <> presentationOwners presentation
     , presentationResult presentation
     )
 canonicalPresentation _ = Nothing
@@ -267,32 +276,32 @@ mapValueSemanticsChildren recur semantics =
 -- | Remove presentations owned by lexical scopes that have just expired.
 -- The denoted semantic value and presentations owned by enclosing scopes are
 -- retained unchanged.
-stripPresentedDependencies
-  :: [PresentationDependency]
+stripPresentedOwners
+  :: [PresentationOwner]
   -> ValueSemantics
   -> ValueSemantics
-stripPresentedDependencies expired semantics =
+stripPresentedOwners expired semantics =
   case semantics of
     PresentedSemantics
         dependencies presentation@(ApplicationPresentation _ _) underlying
       | any (`elem` expired) dependencies -> recur underlying
       | otherwise ->
-          let stripped = stripPresentationDependencies expired presentation
+          let stripped = stripPresentationOwners expired presentation
           in if presentationRetainsName stripped
             then PresentedSemantics dependencies stripped (recur underlying)
             else recur underlying
     PresentedSemantics dependencies presentation underlying
       | any (`elem` expired)
-          (dependencies <> presentationDependencies presentation) ->
+          (dependencies <> presentationOwners presentation) ->
             recur underlying
     PresentedSemantics dependencies presentation underlying ->
       PresentedSemantics
         dependencies
-        (stripPresentationDependencies expired presentation)
+        (stripPresentationOwners expired presentation)
         (recur underlying)
     _ -> mapValueSemanticsChildren recur semantics
   where
-    recur = stripPresentedDependencies expired
+    recur = stripPresentedOwners expired
 
 presentationRetainsName :: ValuePresentation -> Bool
 presentationRetainsName presentation =
@@ -397,28 +406,28 @@ presentationResult presentation =
         (presentationResult function)
         (presentationResult argument)
 
-presentationDependencies :: ValuePresentation -> [PresentationDependency]
-presentationDependencies presentation =
+presentationOwners :: ValuePresentation -> [PresentationOwner]
+presentationOwners presentation =
   case presentation of
     AtomicPresentation _ -> []
     SemanticPresentation semantics ->
       maybe [] fst (canonicalPresentation semantics)
     ApplicationPresentation function argument ->
-      presentationDependencies function <> presentationDependencies argument
+      presentationOwners function <> presentationOwners argument
 
-stripPresentationDependencies
-  :: [PresentationDependency]
+stripPresentationOwners
+  :: [PresentationOwner]
   -> ValuePresentation
   -> ValuePresentation
-stripPresentationDependencies expired presentation =
+stripPresentationOwners expired presentation =
   case presentation of
     AtomicPresentation _ -> presentation
     SemanticPresentation semantics ->
-      SemanticPresentation (stripPresentedDependencies expired semantics)
+      SemanticPresentation (stripPresentedOwners expired semantics)
     ApplicationPresentation function argument ->
       ApplicationPresentation
-        (stripPresentationDependencies expired function)
-        (stripPresentationDependencies expired argument)
+        (stripPresentationOwners expired function)
+        (stripPresentationOwners expired argument)
 
 -- Specifications into optional identifier slots have an assignment
 -- presentation that carries the selected source values directly. This is the

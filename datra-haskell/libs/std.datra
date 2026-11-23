@@ -36,8 +36,6 @@
     `fun %_Expr` := (_Expr -> _Expr) datra.fun_body
     `if %Bool then %_Expr (else %_Expr)?` :=
       (Bool; _Expr; _Expr? -> _Expr) datra.if_body
-    `import %(List Str) %_FunctionBody` :=
-      (List Str; _FunctionBody -> _Expr) datra.import_body
     `len %_Expr` := (Any -> NatLimit) datra.len_body
     `with %(List _Expr) %_FunctionBody` :=
       (List _Expr; _FunctionBody -> _Expr) datra.with_body

@@ -1,5 +1,4 @@
-(import "ordinals" do
-  let factorial := ({n? : Int := 5} -> Int do
+let factorial := ({n? : Int := 5} -> Int do
     yield if n = 0 then 1 else n * factorial (n - 1))
   my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)
   sum := ((Int; Int) -> Int do yield it[0] + it[1])
@@ -18,4 +17,4 @@
   transfiniteCheck := transfinite = Ordinals.sum(Ordinals.exp(...; 2); Ordinals.sum(Ordinals.prod(...; 3); 4))
   sliceCheck := slice = (20; 30)
 yield (defaultCheck; factorialCheck; powerCheck; sumCheck;
-  overloadCheck; safeCheck; transfiniteCheck; sliceCheck))
+  overloadCheck; safeCheck; transfiniteCheck; sliceCheck)

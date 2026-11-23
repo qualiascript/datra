@@ -3,6 +3,9 @@
 module DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
   , DeclarationModifier (..)
+  , dependentDeclarationIsLet
+  , dependentDeclarationIsDefinition
+  , dependentDeclarationIsCanonicalValue
   , dependentDeclaration
   , dependentDeclarationCandidate
   , applyDeclarationModifier
@@ -12,14 +15,11 @@ module DatraLanguage.DependentDeclaration
   , dependentDeclarationNameFamilyExpression
   , prependDependentDeclarationName
   , dependentDeclarationWithImplementation
-  , dependentDeclarationTemplateBranches
   , bindingNames
   ) where
 
 import DatraLanguage.AST
-import DatraLanguage.ConcreteSyntax (sourceSpace)
 import DatraLanguage.AST.Operator (operatorCanonicalSymbol)
-import Data.List.NonEmpty (NonEmpty ((:|)))
 
 -- A declaration is an inferred assignment in block position. Identifier
 -- annotations and dependent arguments remain expressions until an explicit
@@ -31,26 +31,12 @@ dependentDeclaration = declaration
     declaration (SyntaxBoundary value) = declaration value
     declaration
         (MapSpecification given (DependentArgument name Nothing)) =
-      makeDeclaration <$> normalizeHead name <*> pure given
+      Just (makeDeclaration name given)
     declaration _ = Nothing
 
     makeDeclaration headValue implementation =
       DependentDeclaration
-        headValue False False False [] implementation
-
-    normalizeHead name = case name of
-      IdentifierReference identifier ->
-        Just (IdentifierExpressionBody (IdentifierReference identifier))
-      IdentifierExpression body -> Just (IdentifierExpressionBody body)
-      LiteralTemplateExpression body ->
-        Just (LiteralTemplateIdentifier body)
-      SyntaxBoundary (IdentifierExpression body) ->
-        Just (IdentifierExpressionBody body)
-      SyntaxBoundary (LiteralTemplateExpression body) ->
-        Just (LiteralTemplateIdentifier body)
-      boundary@SyntaxBoundary {} ->
-        Just (IdentifierExpressionBody boundary)
-      _ -> Nothing
+        headValue [] implementation
 
 -- | Record one modifier in the right-to-left order in which syntax expansion
 -- applies it. Invalid order and repetition remain representable until the
@@ -99,11 +85,7 @@ withModifierApplications
   -> DependentDeclaration expression
   -> DependentDeclaration expression
 withModifierApplications applications declaration = declaration
-  { dependentDeclarationIsLet = DeclarationLet `elem` applications
-  , dependentDeclarationIsDefinition = DeclarationDef `elem` applications
-  , dependentDeclarationIsCanonicalValue = DeclarationVal `elem` applications
-  , dependentDeclarationModifierApplications = applications
-  }
+  { dependentDeclarationModifierApplications = applications }
 
 canonicalApplications
   :: [DeclarationModifier]
@@ -122,9 +104,7 @@ dependentDeclarationNameExpression
   :: DependentDeclaration Expression
   -> Expression
 dependentDeclarationNameExpression declaration =
-  case dependentDeclarationHead declaration of
-    IdentifierExpressionBody body -> body
-    LiteralTemplateIdentifier template -> LiteralTemplateExpression template
+  identifierExpressionExpression (dependentDeclarationHead declaration)
 
 dependentDeclarationNameFamilyExpression
   :: DependentDeclaration Expression
@@ -133,10 +113,7 @@ dependentDeclarationNameFamilyExpression =
   identifierHeadExpression . dependentDeclarationHead
 
 identifierHeadExpression :: IdentifierExpression Expression -> Expression
-identifierHeadExpression headValue = case headValue of
-  IdentifierExpressionBody body@SyntaxBoundary {} -> body
-  IdentifierExpressionBody body -> IdentifierExpression body
-  LiteralTemplateIdentifier body -> LiteralTemplateExpression body
+identifierHeadExpression = identifierExpressionExpression
 
 -- | Translate a declaration's complete name family by one literal prefix.
 -- This is one operation for every dependent declaration: the cases below
@@ -153,55 +130,10 @@ prependDependentDeclarationName prefix declaration = declaration
   where
     prependHead
         (IdentifierExpressionBody
-          (IdentifierReference (SimpleIdentifierString name))) =
+          (AsciiStringLiteral name)) =
       IdentifierExpressionBody (AsciiStringLiteral (prefix <> name))
     prependHead (IdentifierExpressionBody operand) = IdentifierExpressionBody
       (MapConcatenation (AsciiStringLiteral prefix) operand)
-    prependHead (LiteralTemplateIdentifier body) =
-      LiteralTemplateIdentifier (prependLiteralTemplate prefix body)
-
-prependLiteralTemplate
-  :: String
-  -> LiteralTemplate Expression
-  -> LiteralTemplate Expression
-prependLiteralTemplate prefix (LiteralTemplate body) =
-  LiteralTemplate (prependComposition body)
-  where
-    prependComposition composition = case composition of
-      IdentifierComposition sequenceValue ->
-        IdentifierComposition (prependSequence sequenceValue)
-      EitherExpression left right -> EitherExpression
-        (prependComposition left)
-        (prependComposition right)
-      OptionalExpression value ->
-        OptionalExpression (prependComposition value)
-
-    prependSequence (LiteralTemplateSequence (first :| remaining)) =
-      case prependPart first of
-        Just prefixed -> LiteralTemplateSequence (prefixed :| remaining)
-        Nothing -> LiteralTemplateSequence
-          (prefixPart :| (first : remaining))
-
-    prependPart composition = case composition of
-      IdentifierComposition atom -> IdentifierComposition <$> prependAtom atom
-      EitherExpression left right -> EitherExpression
-        <$> prependPart left
-        <*> prependPart right
-      OptionalExpression _ -> Nothing
-
-    prependAtom atom = case atom of
-      LiteralTemplateLiteralAtom
-          (IdentifierTemplateLiteral (SimpleIdentifierString literal)) ->
-        Just (LiteralTemplateLiteralAtom
-          (IdentifierTemplateLiteral
-            (SimpleIdentifierString (prefix <> literal))))
-      LiteralTemplateGroupAtom group ->
-        Just (LiteralTemplateGroupAtom (prependLiteralTemplate prefix group))
-      _ -> Nothing
-
-    prefixPart = IdentifierComposition
-      (LiteralTemplateLiteralAtom
-        (IdentifierTemplateLiteral (SimpleIdentifierString prefix)))
 
 dependentDeclarationWithImplementation
   :: Expression
@@ -210,72 +142,17 @@ dependentDeclarationWithImplementation
 dependentDeclarationWithImplementation implementation declaration = declaration
   { dependentDeclarationImplementation = implementation }
 
--- Explicit alternatives in an evaluated declaration head are still one
--- declaration family.  Each leaf is a complete string template; consumers
--- that operate on syntax structure use these branches while consumers that
--- need the written family expression use 'dependentDeclarationNameExpression'.
-dependentDeclarationTemplateBranches
-  :: DependentDeclaration Expression
-  -> Maybe [[StringTemplateInterpolation Expression]]
-dependentDeclarationTemplateBranches declaration = case
-    dependentDeclarationHead declaration of
-  LiteralTemplateIdentifier _ -> Nothing
-  IdentifierExpressionBody body -> branches body
-  where
-    branches SyntaxBoundary {} = Nothing
-    branches (IdentifierReference (SimpleIdentifierString name)) =
-      Just [[stringLiteral name]]
-    branches (AsciiStringLiteral name) =
-      Just [[stringLiteral name]]
-    branches body = Just (identifierBranches body)
-    -- Within an identifier expression, ordinary sequence, either, and optional
-    -- AST nodes describe template structure. Whitespace is structural: every
-    -- pair of realized sequence components is separated by one canonical
-    -- space, while an absent optional component contributes no stray space.
-    identifierBranches (SyntaxBoundary inner) = identifierBranches inner
-    identifierBranches (AtlasMap members) = identifierSequence members
-    identifierBranches (MapSequence members) = identifierSequence members
-    identifierBranches (EitherType left right) =
-      identifierBranches left <> identifierBranches right
-    identifierBranches (OptionalType present) =
-      identifierBranches present <> [[]]
-    identifierBranches identifier@(IdentifierExpression expressionValue) =
-      case expressionValue of
-        IdentifierReference (SimpleIdentifierString literal) ->
-          [[stringLiteral literal]]
-        AsciiStringLiteral literal ->
-          [[stringLiteral literal]]
-        _ -> [[StringTemplateInterpolation identifier]]
-    identifierBranches expressionValue =
-      [[StringTemplateInterpolation expressionValue]]
-
-    identifierSequence = foldl combine [[]] . map identifierBranches
-    combine prefixes suffixes =
-      [ join prefix suffix
-      | prefix <- prefixes
-      , suffix <- suffixes
-      ]
-    join [] suffix = suffix
-    join prefix [] = prefix
-    join prefix suffix =
-      prefix <> [stringLiteral sourceSpace] <> suffix
-    stringLiteral = StringTemplateInterpolation . AsciiStringLiteral
-
 -- Lexical binders include dependent arguments and parameters, not only
 -- executable declarations. Keep name extraction independent of declaration
 -- recognition so those concepts cannot silently widen one another.
 bindingNames :: Expression -> [String]
 bindingNames expressionValue = case expressionValue of
-  DeclarationExpression declaration -> case dependentDeclarationHead declaration of
-    IdentifierExpressionBody (IdentifierReference (SimpleIdentifierString name)) -> [name]
-    IdentifierExpressionBody (AsciiStringLiteral name) -> [name]
-    _ -> []
+  DeclarationExpression declaration -> maybe []
+    (pure . simpleIdentifierStringText)
+    (literalIdentifierName (dependentDeclarationHead declaration))
   DependentArgument nameExpression _
     | Just (SimpleIdentifierString name) <-
         literalIdentifierName nameExpression -> [name]
-  DependentArgument
-      (StringTemplate
-        [StringTemplateInterpolation (AsciiStringLiteral name)]) _ -> [name]
   MapSpecification _ target -> bindingNames target
   OptionalType inner -> bindingNames inner
   _ -> []
