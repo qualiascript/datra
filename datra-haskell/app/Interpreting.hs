@@ -6087,6 +6087,7 @@ prepareModuleResource
   -> Expression
   -> Either InterpretingError (Scope, Expression)
 prepareModuleResource base expressionValue = case expressionValue of
+  SyntaxBoundary body -> prepareModuleResource base body
   ScopeAccess source body -> do
     value <- case source of
       IdentifierReference (SimpleIdentifierString namespace)
