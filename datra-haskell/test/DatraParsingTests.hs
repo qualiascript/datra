@@ -413,8 +413,8 @@ testUnresolvedPostfixSyntax = do
   assertRaw "identifier postfix optional stops before a compact separator"
     "({$def?; $val?})"
     (ArgumentativeMap
-      [ OptionalType (IdentifierExpression (ref "def"))
-      , OptionalType (IdentifierExpression (ref "val"))
+      [ OptionalType (IdentifierExpression (AsciiStringLiteral "def"))
+      , OptionalType (IdentifierExpression (AsciiStringLiteral "val"))
       ])
   assertBool "horizontal layout does not change exact application syntax"
     ( matches (exact "Nat++") compact
@@ -814,8 +814,8 @@ testDependentDeclarationPrecedence = do
     "$($left, $right)"
     (IdentifierExpression
       (MapConcatenation
-        (IdentifierExpression (ref "left"))
-        (IdentifierExpression (ref "right"))))
+        (IdentifierExpression (AsciiStringLiteral "left"))
+        (IdentifierExpression (AsciiStringLiteral "right"))))
   assertSourceExpressionRejected
     "the obsolete literal-template operator is rejected"
     "$!($hello)"
@@ -840,8 +840,7 @@ testDependentDeclarationPrecedence = do
             (sequenceValue "hard")))
         Nothing)
     sequenceValue literal = StringTemplate
-      [ templateLiteral literal
-      , templateLiteral sourceSpace
+      [ templateLiteral (literal <> sourceSpace)
       , StringTemplateInterpolation (ref "_Expr")
       ]
     assertSourceExpression label input wanted =
@@ -1103,7 +1102,7 @@ regressionTests = do
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
     [ Import ["library_one", "std"] (FunctionBody [] (natural 1))
     , InModule "std" (ref "_this")
-    , ScopeAccess (ref "_this") (ref "abc")
+    , scopeAccess (ref "_this") "abc"
     , FunctionBody [] (IdentifierReference (SimpleIdentifierString "x"))
     , Overload (natural 1) (natural 2)
     , Coalization (AtlasMap [natural 1, natural 2])
@@ -2188,19 +2187,24 @@ regressionTests = do
   assertAstOutput
     "module scope retains an ordinary concatenation RHS"
     "a.(b, c)"
-    (ScopeAccess (ref "a")
+    (ScopedExpression (ref "a")
       (MapConcatenation (ref "b") (ref "c")))
   assertAstOutput
     "module scope retains strings as ordinary RHS expressions"
     "a.(\"b\", c)"
-    (ScopeAccess (ref "a")
+    (ScopedExpression (ref "a")
       (MapConcatenation (AsciiStringLiteral "b") (ref "c")))
   assertAstOutput "module scope accepts an empty RHS map"
-    "a.()" (ScopeAccess (ref "a") (AtlasMap []))
+    "a.()" (ScopedExpression (ref "a") (AtlasMap []))
   assertAstOutput "module scope accepts an arithmetic RHS"
-    "a.(b + c)" (ScopeAccess (ref "a") (Addition (ref "b") (ref "c")))
-  assertAstOutput "short module scope uses an identifier-reference RHS"
-    "a.b" (ScopeAccess (ref "a") (ref "b"))
+    "a.(b + c)" (ScopedExpression (ref "a") (Addition (ref "b") (ref "c")))
+  assertAstOutput "short module scope lowers to an identifier selector"
+    "a.b" (scopeAccess (ref "a") "b")
+  assertAstOutput "quoted module selection requires an identifier expression"
+    "a.$\"name.with.dots\""
+    (scopeAccess (ref "a") "name.with.dots")
+  assertRejected "a quoted string is not implicitly a scope selector"
+    "a.\"name.with.dots\""
   assertAstOutput "lookup evaluates an identifier operand"
     "~a" (Lookup (ref "a"))
   assertAstOutput "lookup accepts a concrete string operand"
@@ -2234,8 +2238,8 @@ regressionTests = do
     , (Lookup tupleOperand, "~(a , b)")
     , (MapAccess (Lookup (ref "a")) (natural 0), "~a[0]")
     , (Lookup (Addition (ref "a") (ref "b")), "~(a + b)")
-    , (MapAccess (ScopeAccess (ref "_this") (ref "a")) (natural 0), "_this.a[0]")
-    , (MapAccess (ScopeAccess (ref "other") (ref "a")) (natural 1), "other.a[1]")
+    , (MapAccess (scopeAccess (ref "_this") "a") (natural 0), "_this.a[0]")
+    , (MapAccess (scopeAccess (ref "other") "a") (natural 1), "other.a[1]")
     ]
   let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
   assertAstOutput "assignment retains its complete alternative value"
@@ -2249,8 +2253,10 @@ regressionTests = do
         (DependentArgument
           (IdentifierExpressionBody (AsciiStringLiteral "x")) Nothing))
       == "x := $up | $down")
-  assert "quoted identifier references render as strict current-scope access"
-    (renderSourceExpression (ref "___Std.Int") == "this.\"___Std.Int\"")
+  assert "quoted scope selectors are represented explicitly"
+    (renderSourceExpression
+      (scopeAccess (ref "this") "___Std.Int")
+      == "this.$\"___Std.Int\"")
   assertAstOutput
     "ordinary access sees a tightly bound insertion"
     "$a @ $b[$c]"
@@ -2613,7 +2619,10 @@ genExpression =
     , MapSequence <$> Gen.list (Range.linear 0 6) genExpression
     , Gen.subterm2 genExpression genExpression FunctionType
     , Gen.subterm2 genExpression genExpression FunctionApplication
-    , Gen.subterm2 genExpression genExpression ScopeAccess
+    , Gen.subterm2 genExpression genExpression
+        (\source selector -> ScopeAccess source
+          (IdentifierExpressionBody selector))
+    , Gen.subterm2 genExpression genExpression ScopedExpression
     , Gen.subterm genExpression
         (Import ["std", "path/library_two"])
     , Gen.subterm genExpression (InModule "std")
@@ -2808,7 +2817,7 @@ assertBundledModuleBlockShape = do
           actual -> fail
             (path <> ": expected an outer block yielding a named inner block, got "
               <> show actual)
-    openedBody (ScopeAccess _ body) = openedBody body
+    openedBody (ScopedExpression _ body) = openedBody body
     openedBody (SyntaxBoundary body) = openedBody body
     openedBody value = value
 
@@ -2891,7 +2900,7 @@ assertIdentifierOperatorAstSyntax = do
     (renderExpression (IdentifierExpression (ref "name"))
       == "($ (ref $name))")
   assert "identifier templates render through the shared string AST"
-    ( renderExpression template == "($ \"hello %Int\")"
+    ( renderExpression template == "($ \"hello %((ref $Int))\")"
       && renderSourceExpression template == "$\"hello %Int\""
     )
   where
@@ -2984,6 +2993,10 @@ containsFunctionBody value = any containsFunctionBody (expressionChildren value)
 ref :: String -> Expression
 ref = IdentifierReference . SimpleIdentifierString
 
+scopeAccess :: Expression -> String -> Expression
+scopeAccess source name = ScopeAccess source
+  (literalIdentifierExpression (SimpleIdentifierString name))
+
 templateLiteral :: String -> StringTemplateInterpolation Expression
 templateLiteral = StringTemplateInterpolation . AsciiStringLiteral
 
@@ -3010,7 +3023,7 @@ generatedDeclaration = DependentDeclaration
   []
 
 datraRef :: [String] -> Expression
-datraRef = foldl ScopeAccess (ref "datra") . map ref
+datraRef = foldl scopeAccess (ref "datra")
 
 integer :: Integer -> Expression
 integer value

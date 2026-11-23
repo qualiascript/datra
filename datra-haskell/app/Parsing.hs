@@ -35,6 +35,7 @@ import DatraLanguage.AST
       , EllipsisLiteral
       , Exponentiation
       , ScopeAccess
+      , ScopedExpression
       , MapAccess
       , MapConcatenation
       , MapExpansion
@@ -722,16 +723,23 @@ accessedTerm atom = do
     [ (\insertion value -> MapAccess value insertion) <$> bracketedInsertion
     , do
         _ <- operatorToken AST.ScopeAccessOperator
-        body <- scopeAccessBody
-        pure (\value -> ScopeAccess value body)
+        scopeAccessSuffix
     , OptionalType <$ optionalTypeSuffix
     ])
   pure (foldl (\value select -> select value) source selections)
 
-scopeAccessBody :: Parser Expression
-scopeAccessBody =
-  parenthesizedExpression
-    <|> (IdentifierReference <$> namedAccessName)
+scopeAccessSuffix :: Parser (Expression -> Expression)
+scopeAccessSuffix = choice
+  [ do
+      IdentifierExpression body <- dollarIdentifierExpression
+      pure (\source -> ScopeAccess source (IdentifierExpressionBody body))
+  , do
+      name <- SimpleIdentifierString <$> bareIdentifierToken
+      pure (\source -> ScopeAccess source (literalIdentifierExpression name))
+  , do
+      body <- parenthesizedExpression
+      pure (\source -> ScopedExpression source body)
+  ]
 
 optionalTypeSuffix :: Parser Text
 optionalTypeSuffix =
@@ -763,10 +771,6 @@ lookupExpression = do
       , sourceAtomicExpressionToken
       , identifierReference
       ]
-
-namedAccessName :: Parser SimpleIdentifierString
-namedAccessName =
-  SimpleIdentifierString <$> (bareIdentifierToken <|> standardStringToken)
 
 bracketedInsertion :: Parser Expression
 bracketedInsertion =

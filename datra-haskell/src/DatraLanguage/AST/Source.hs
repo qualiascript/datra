@@ -17,8 +17,6 @@ import DatraLanguage.ConcreteSyntax
   , sourceLineFeed
   , sourceSpace
   )
-import DatraLanguage.ContextualRole
-  ( ContextualRole (ContextualThis), contextualSurfaceName )
 import DatraLanguage.Pretty
   ( renderAsciiStringLiteral
   , renderIdentifierString
@@ -62,10 +60,7 @@ source context expression =
       (block Reserved.DoWord bindings result)
     BeginValue bindings result -> wrapped 0
       (block Reserved.BeginWord bindings result)
-    IdentifierReferenceValue (SimpleIdentifierString name)
-      | renderIdentifierString name == name -> name
-      | otherwise -> contextualSurfaceName ContextualThis
-          <> op AST.ScopeAccessOperator <> renderIdentifierString name
+    IdentifierReferenceValue (SimpleIdentifierString name) -> name
     LineBreakValue -> sourceLineFeed
     UnresolvedSyntaxValue literal -> literal
     LookupValue operand -> unary (op AST.LookupOperator) operand
@@ -115,9 +110,10 @@ source context expression =
       unary (op AST.CoalizationOperator <> sourceSpace) operand
     OptionalValue operand -> wrapped 10
       (source 10 operand <> op AST.OptionalOperator)
-    ScopeAccessValue operand
-        (IdentifierReferenceValue (SimpleIdentifierString name)) ->
-      wrapped 12 (source 12 operand <> op AST.ScopeAccessOperator <> renderIdentifierString name)
+    ScopeAccessValue operand (IdentifierExpressionValue selector) ->
+      wrapped 12
+        (source 12 operand <> op AST.ScopeAccessOperator
+          <> scopeSelectorSource selector)
     ScopeAccessValue operand body ->
       wrapped 12 (source 12 operand <> op AST.ScopeAccessOperator <> scopeBody body)
     -- Access associates to the left, so a second page selection can continue
@@ -149,13 +145,8 @@ source context expression =
     InclusiveValuedIntegerRangeDownwards start ->
       open Reserved.FromSymbol start Reserved.DownwardsWord
     StringTemplateValue parts -> renderStringTemplate
-      (source 0) stringLiteral (const Nothing) parts
-    IdentifierExpressionValue operand -> case operand of
-      IdentifierReferenceValue (SimpleIdentifierString name) ->
-        op AST.IdentifierExpressionOperator <> renderIdentifierString name
-      AsciiStringValue value -> op AST.IdentifierExpressionOperator <> renderAsciiStringLiteral value
-      _ -> op AST.IdentifierExpressionOperator <>
-        delimit OpenParenthesis CloseParenthesis (source 0 operand)
+      (source 0) stringLiteral compactStringInterpolation parts
+    IdentifierExpressionValue operand -> identifierExpressionSource operand
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom
@@ -189,6 +180,20 @@ source context expression =
     applicationInput operand = source 12 operand
     applicationSeparator (FunctionApplicationValue _ LineBreakValue) = ""
     applicationSeparator _ = sourceSpace
+    identifierExpressionSource operand =
+      op AST.IdentifierExpressionOperator <> case operand of
+        AsciiStringValue value -> renderIdentifierString value
+        StringTemplateValue parts -> renderStringTemplate
+          (source 0) stringLiteral compactStringInterpolation parts
+        _ -> delimit OpenParenthesis CloseParenthesis (source 0 operand)
+    scopeSelectorSource selector = case selector of
+      AsciiStringValue name
+        | renderIdentifierString name == name -> name
+      _ -> identifierExpressionSource selector
+    compactStringInterpolation value = case value of
+      IdentifierReferenceValue (SimpleIdentifierString name)
+        | renderIdentifierString name == name -> Just name
+      _ -> Nothing
     functionTypeOutput output@FunctionTypeValue {} = source 11 output
     functionTypeOutput output = source 12 output
     bounded keyword start end =

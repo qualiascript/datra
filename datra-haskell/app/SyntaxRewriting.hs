@@ -493,9 +493,18 @@ declaredCandidatesFor environment value =
     enumerate selectedValue = concatMap (\rule ->
       enumerateRuleStructuralCandidates rule selectedValue)
     scopedCandidates = case applicationSpine value of
-      (ScopeAccess source body, arguments@(_ : _)) ->
+      (ScopeAccess source selector, arguments@(_ : _)) ->
+        let scopedEnvironment = contextScope environment source
+            compiled = contextRewriteRules scopedEnvironment
+            scopedValue = applicationFrom
+              (selectorApplicationHead selector : arguments)
+        in enumerate scopedValue compiled
+      (ScopedExpression source body, arguments@(_ : _)) ->
         let scopedEnvironment = contextScope environment source
             compiled = contextRewriteRules scopedEnvironment
             scopedValue = applicationFrom (body : arguments)
         in enumerate scopedValue compiled
       _ -> []
+    selectorApplicationHead selector = case literalIdentifierName selector of
+      Just name -> IdentifierReference name
+      Nothing -> identifierExpressionExpression selector

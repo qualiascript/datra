@@ -643,6 +643,11 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
             , (contextEnter (contextScope environment source) Nothing)
                 { contextSourceSpan = contextSourceSpan environment }
             ]
+          ScopedExpression source _ ->
+            [ environment
+            , (contextEnter (contextScope environment source) Nothing)
+                { contextSourceSpan = contextSourceSpan environment }
+            ]
           _ -> map (const environment)
             (expressionChildren expressionValue)
         scopeAt selected = maybe environment id
@@ -2258,11 +2263,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     -- also permits projections next to recursive function declarations.
     ScopeAccess
         thisValue
-        (IdentifierReference (SimpleIdentifierString name))
-      | isContextualAccessOf ContextualThis thisValue
+        selector
+      | Just (SimpleIdentifierString name) <- literalIdentifierName selector
+      , isContextualAccessOf ContextualThis thisValue
       , contextualThisAvailable scope
           -> resolveIdentifierWith reduction scope resolving name
-    ScopeAccess operand body
+    ScopedExpression operand body
       | Just moduleOperands <- withModuleScopeOperands operand -> do
           let distinctOperands = nub moduleOperands
           sources <- traverse interpret distinctOperands
@@ -2274,52 +2280,57 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                   (map snd members)
             enterOpenedScope expressionValue combined
               (zip distinctOperands actuals) body
-    ScopeAccess operand body -> do
+    ScopeAccess operand selector -> do
+      name <- scopeSelectorName selector
       source <- interpret operand
       runProtectedOperation protection [source] $ \actuals ->
         case actuals of
-          [actual] -> case body of
-            IdentifierReference (SimpleIdentifierString name) -> do
-                  selected <- namedAccessValue actual name
-                  validateOpenedBinding actual (name, selected)
-                  payload <- accessValues selected (naturalValue 1)
-                  let imported = case operand of
-                        IdentifierReference (SimpleIdentifierString namespace) ->
-                          do
-                            runtime <- runtimeDeclarationByName namespace scope
-                            importedModule <- runtimeDeclarationImport runtime
-                            dependency <- case
-                                runtimeDeclarationPresentation runtime of
-                              ReferencedRuntimePresentation
-                                  (dependency : _) -> Just dependency
-                              _ -> Nothing
-                            pure
-                              ( dependency
-                              , runtimeImportedModuleIdentity importedModule
-                              , runtimeImportedModuleScope importedModule
-                              )
+          [actual] -> do
+            selected <- namedAccessValue actual name
+            validateOpenedBinding actual (name, selected)
+            payload <- accessValues selected (naturalValue 1)
+            let imported = case operand of
+                  IdentifierReference (SimpleIdentifierString namespace) ->
+                    do
+                      runtime <- runtimeDeclarationByName namespace scope
+                      importedModule <- runtimeDeclarationImport runtime
+                      dependency <- case
+                          runtimeDeclarationPresentation runtime of
+                        ReferencedRuntimePresentation
+                            (dependency : _) -> Just dependency
                         _ -> Nothing
-                      exportedPayload = case imported of
-                        Just (_, _, internal) -> withoutCanonicalDependencies
-                          (scopePresentationDependencies internal)
-                          payload
-                        Nothing -> payload
-                  if hasTrailingIdentifierMarker canonicalValueMarker selected
-                    then do
-                      let dependencies = case imported of
-                            Just (dependency, _, _) -> [dependency]
-                            Nothing -> maybe [] fst
-                              (interpretedCanonicalPresentation actual)
-                      pure (withCanonicalNamedAccess
-                        dependencies
-                        (interpretedCanonicalResult actual)
-                        name
-                        exportedPayload)
-                    else case imported of
-                      Just _ -> transparentEitherAlias exportedPayload
-                      Nothing -> pure exportedPayload
-            _ -> enterOpenedScope expressionValue actual
-              [(operand, actual)] body
+                      pure
+                        ( dependency
+                        , runtimeImportedModuleIdentity importedModule
+                        , runtimeImportedModuleScope importedModule
+                        )
+                  _ -> Nothing
+                exportedPayload = case imported of
+                  Just (_, _, internal) -> withoutCanonicalDependencies
+                    (scopePresentationDependencies internal)
+                    payload
+                  Nothing -> payload
+            if hasTrailingIdentifierMarker canonicalValueMarker selected
+              then do
+                let dependencies = case imported of
+                      Just (dependency, _, _) -> [dependency]
+                      Nothing -> maybe [] fst
+                        (interpretedCanonicalPresentation actual)
+                pure (withCanonicalNamedAccess
+                  dependencies
+                  (interpretedCanonicalResult actual)
+                  name
+                  exportedPayload)
+              else case imported of
+                Just _ -> transparentEitherAlias exportedPayload
+                Nothing -> pure exportedPayload
+          _ -> Right neverValue
+    ScopedExpression operand body -> do
+      source <- interpret operand
+      runProtectedOperation protection [source] $ \actuals ->
+        case actuals of
+          [actual] -> enterOpenedScope expressionValue actual
+            [(operand, actual)] body
           _ -> Right neverValue
     MapAccess
         thisValue
@@ -2366,6 +2377,16 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
   where
     protection = scopeActivation scope
     interpret = evalInScopeWith reduction scope resolving
+    scopeSelectorName selector = case literalIdentifierName selector of
+      Just (SimpleIdentifierString name) -> Right name
+      Nothing -> case selector of
+        IdentifierExpressionBody body -> do
+          identifier <- interpretIdentifierExpression body
+          case asciiStringFromInterpretedMap (interpretedMap identifier) of
+            Just name | not (null name) -> Right name
+            Just _ -> Left (UnknownIdentifier "")
+            Nothing -> Left
+              (LookupRequiresString (interpretedValueKind identifier))
     interpretIdentifierExpression body = case body of
       AsciiStringLiteral name ->
         Right (makeIdentifierExpression (SimpleIdentifierString name))
@@ -6094,7 +6115,7 @@ prepareModuleResource
   -> Either InterpretingError (Scope, Expression)
 prepareModuleResource base expressionValue = case expressionValue of
   SyntaxBoundary body -> prepareModuleResource base body
-  ScopeAccess source body -> do
+  ScopedExpression source body -> do
     value <- case source of
       IdentifierReference (SimpleIdentifierString namespace)
         | Just runtime <- runtimeDeclarationByName namespace base
@@ -6170,16 +6191,16 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
                 , syntaxSemantics = SyntaxAdapter callable
                 }
           | template <- sourceTemplates
-          , let member = IdentifierReference (SimpleIdentifierString name)
-                callable = ScopeAccess
+          , let callable = ScopeAccess
                   (IdentifierReference (SimpleIdentifierString scopeName))
-                  member
+                  (literalIdentifierExpression (SimpleIdentifierString name))
           ]
     parseScopedRuleExpression sourceText = do
       expressionValue <- parseRuleExpression sourceText
       pure (case expressionValue of
         AsciiStringLiteral {} -> expressionValue
         ScopeAccess {} -> expressionValue
+        ScopedExpression {} -> expressionValue
         _ -> InModule requested expressionValue)
     parseRuleExpression sourceText =
       case parseSourceExpression sourceText of

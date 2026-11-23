@@ -248,13 +248,7 @@ prettyOperator (DependentArgumentValue name Nothing) =
 prettyDependentArgumentName
   :: IdentifierExpression OperatorExpression
   -> Doc annotation
-prettyDependentArgumentName name = case name of
-  IdentifierExpressionBody (AsciiStringValue identifierString) ->
-    pretty (renderIdentifierString identifierString)
-  IdentifierExpressionBody (StringTemplateValue parts) ->
-    pretty (renderStringTemplate
-      renderOperatorExpression operatorStringLiteral (const Nothing) parts)
-  _ -> prettyOperator (identifierHeadValue name)
+prettyDependentArgumentName = prettyOperator . identifierHeadValue
 
 prettyDeclaration
   :: DependentDeclaration OperatorExpression

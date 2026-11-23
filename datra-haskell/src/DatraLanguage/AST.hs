@@ -289,7 +289,13 @@ data Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
-  | ScopeAccess Expression Expression
+  -- | Select a named member from a scope. The selector is an identifier
+  -- expression, just like a dependent declaration or argument head.
+  | ScopeAccess Expression (IdentifierExpression Expression)
+  -- | Evaluate an ordinary expression with the left operand opened as its
+  -- lexical scope. This is the general form used by parenthesized scope
+  -- bodies and is deliberately distinct from named member selection.
+  | ScopedExpression Expression Expression
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
   | Overload Expression Expression
@@ -349,7 +355,7 @@ yieldedIdentifier
   :: Expression
   -> Maybe (SimpleIdentifierString, Expression, Maybe Expression)
 yieldedIdentifier (Begin _ result) = yieldedIdentifier result
-yieldedIdentifier (ScopeAccess _ body) = yieldedIdentifier body
+yieldedIdentifier (ScopedExpression _ body) = yieldedIdentifier body
 yieldedIdentifier (Import _ (FunctionBody _ result)) = yieldedIdentifier result
 yieldedIdentifier
     (DependentArgument nameExpression (Just annotation))
@@ -489,7 +495,9 @@ applyBinaryExpressionOperator operator left right = case operator of
   MaybeThenOperator -> Just (MaybeThen left right)
   MultiplicationOperator -> Just (Multiplication left right)
   ExponentiationOperator -> Just (Exponentiation left right)
-  ScopeAccessOperator -> Just (ScopeAccess left right)
+  ScopeAccessOperator -> Just (case identifierExpressionFromExpression right of
+    Just selector -> ScopeAccess left selector
+    Nothing -> ScopedExpression left right)
   AccessOperator -> Just (MapAccess left right)
   SpecificationOperator -> Just (MapSpecification left right)
   SafeOverloadOperator -> Just (SafeOverload left right)
@@ -763,8 +771,12 @@ normalizeExpression (Exponentiation left right) =
   Exponentiation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapConcatenation left right) =
   MapConcatenation (normalizeExpression left) (normalizeExpression right)
-normalizeExpression (ScopeAccess source body) =
-  ScopeAccess (normalizeExpression source) (normalizeExpression body)
+normalizeExpression (ScopeAccess source selector) =
+  ScopeAccess
+    (normalizeExpression source)
+    (mapIdentifierExpression normalizeExpression selector)
+normalizeExpression (ScopedExpression source body) =
+  ScopedExpression (normalizeExpression source) (normalizeExpression body)
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
@@ -924,7 +936,13 @@ lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
   Concatenate (lower left) (lower right)
-lower (ScopeAccess source body) = ScopeAccessValue (lower source) (lower body)
+lower (ScopeAccess source selector) =
+  ScopeAccessValue
+    (lower source)
+    (case mapIdentifierExpression lower selector of
+      IdentifierExpressionBody body -> IdentifierExpressionValue body)
+lower (ScopedExpression source body) =
+  ScopeAccessValue (lower source) (lower body)
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
 lower (Overload left right) = OverloadValue (lower left) (lower right)
@@ -1039,7 +1057,11 @@ traverseExpressionChildren visit expression = case expression of
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
   Import paths body -> Import paths <$> visit body
-  ScopeAccess source body -> ScopeAccess <$> visit source <*> visit body
+  ScopeAccess source selector -> ScopeAccess
+    <$> visit source
+    <*> traverseIdentifierExpressionInterpolations visit selector
+  ScopedExpression source body ->
+    ScopedExpression <$> visit source <*> visit body
   DependentArgument name annotation ->
     DependentArgument
       <$> traverseIdentifierExpressionInterpolations visit name

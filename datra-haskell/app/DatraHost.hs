@@ -125,12 +125,12 @@ datraHostValue = do
     , syntaxBody "with_body" (expressionSyntaxInsertion
         (\case
           [modules, FunctionBody bindings result] -> Just
-            (ScopeAccess
+            (ScopedExpression
               (ArgumentativeMap (withModuleOperands modules))
               (Begin bindings result))
           _ -> Nothing)
         (\case
-          ScopeAccess (ArgumentativeMap modules) (Begin bindings result) -> Just
+          ScopedExpression (ArgumentativeMap modules) (Begin bindings result) -> Just
             [ArgumentativeMap modules, FunctionBody bindings result]
           _ -> Nothing))
     ]
@@ -266,7 +266,7 @@ datraHostValue = do
         members)
       where
         access source name = ScopeAccess source
-          (IdentifierReference (SimpleIdentifierString name))
+          (literalIdentifierExpression (SimpleIdentifierString name))
     anyFunctionSource = FunctionSource
       (FunctionType AnyType AnyType)
 

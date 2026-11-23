@@ -22,6 +22,7 @@ import DatraLanguage.AST
   , IdentifierExpression (..)
   , SimpleIdentifierString (SimpleIdentifierString)
   , StringTemplateInterpolation (..)
+  , literalIdentifierExpression
   , pattern FunctionType
   )
 import DatraLanguage.ContextualDeclaration
@@ -194,7 +195,7 @@ testModuleSyntaxAlias = do
           (IdentifierReference (SimpleIdentifierString name)))
         [] value
       member name value = DependentArgument
-        (IdentifierExpression (identifierReference name)) (Just value)
+        (literalIdentifierExpression (SimpleIdentifierString name)) (Just value)
   let isolatedBody = Begin
         [binding "x" (identifierReference "Int")]
         (identifierReference "this")
@@ -210,7 +211,7 @@ testModuleSyntaxAlias = do
           (identifierReference "this"))))
         []
       importingSource = ModuleSource "importing-module.datra"
-        (ScopeAccess (identifierReference "Std")
+        (ScopedExpression (identifierReference "Std")
           (Begin [] (member "ImportingModule" isolatedBody)))
         [("std", explicitStd)]
   case moduleExportNames importingSource of
@@ -231,7 +232,7 @@ hostOperator body arguments =
       (FunctionType domain (identifierReference "Any"))
       (ScopeAccess
         (identifierReference "datra")
-        (identifierReference body)))
+        (literalIdentifierExpression (SimpleIdentifierString body))))
     supplied
   where
     domain = case arguments of
@@ -279,7 +280,7 @@ ordinalCall name arguments =
   FunctionApplication
     (ScopeAccess
       (identifierReference "Ordinals")
-      (identifierReference name))
+      (literalIdentifierExpression (SimpleIdentifierString name)))
     (AtlasMap arguments)
 
 ordinalSum, ordinalProduct, ordinalExponent :: Expression -> Expression -> Expression
@@ -996,10 +997,10 @@ parseTestExpression source =
 testBegin :: IO ()
 testBegin = do
   expectSourceValue "retained block canonicalizes strict quoted access"
-    "begin $\"value with spaces\" := 5; yield this.\"value with spaces\" + 1" $ \value -> do
+    "begin $\"value with spaces\" := 5; yield this.$\"value with spaces\" + 1" $ \value -> do
       let rendered = renderInterpretedValue value
       assert "block keeps explicit current-scope access"
-        (rendered == "6 <~ begin $\"value with spaces\" := 5; yield this.\"value with spaces\" + 1")
+        (rendered == "6 <~ begin $\"value with spaces\" := 5; yield this.$\"value with spaces\" + 1")
       expectSourceValue "canonical strict-access block round trip" rendered $ \decoded ->
         assert "canonical block remains stable"
           (renderInterpretedValue decoded == rendered)
@@ -3876,14 +3877,14 @@ testIdentifiers = do
       (interpretedValueKind value == SpecificationValueKind)
   let contextualIt = contextualAccess ContextualIt
       directName = DependentArgument
-        (IdentifierExpression
+        (IdentifierExpressionBody
           (StringTemplate
             [ templateLiteral "x"
             , StringTemplateInterpolation contextualIt
             ]))
         (Just NaturalType)
       nestedEquivalentName = DependentArgument
-        (IdentifierExpression
+        (IdentifierExpressionBody
           (StringTemplate
             [ StringTemplateInterpolation
               (StringTemplate
@@ -3914,12 +3915,12 @@ testIdentifiers = do
     ["abc", "Value", "Nothing"]
   let identifier identifierString typeAnnotation =
         DependentArgument
-          (IdentifierExpression (identifierReference identifierString))
+          (literalIdentifierExpression (SimpleIdentifierString identifierString))
           (Just typeAnnotation)
       assignment identifierString typeAnnotation givenValue =
         MapSpecification givenValue
           (DependentArgument
-            (IdentifierExpression (identifierReference identifierString))
+            (literalIdentifierExpression (SimpleIdentifierString identifierString))
             (Just typeAnnotation))
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
@@ -4309,7 +4310,7 @@ testLocatedRejection = do
         MapSpecification
           (SuperEllipsisRange (natural 1) (natural 3))
           (DependentArgument
-            (IdentifierExpression (identifierReference "a"))
+            (literalIdentifierExpression (SimpleIdentifierString "a"))
             (Just NaturalType))
   assert "assignment mismatches have a concise English diagnostic"
     (case interpretLocatedExpression (Located sourceSpan invalidAssignment) of
@@ -4330,10 +4331,10 @@ testLocatedRejection = do
   let mismatchedIdentifier =
         (~>)
           (DependentArgument
-            (IdentifierExpression (identifierReference "b"))
+            (literalIdentifierExpression (SimpleIdentifierString "b"))
             (Just (natural 10)))
           (DependentArgument
-            (IdentifierExpression (identifierReference "a"))
+            (literalIdentifierExpression (SimpleIdentifierString "a"))
             (Just NaturalType))
   assert "identifier mismatches show expected and given identifier strings"
     (case interpretLocatedExpression
@@ -4347,10 +4348,10 @@ testLocatedRejection = do
   let valueOutsideIdentifierAnnotation =
         (~>)
           (DependentArgument
-            (IdentifierExpression (identifierReference "x"))
+            (literalIdentifierExpression (SimpleIdentifierString "x"))
             (Just (natural 12)))
           (DependentArgument
-            (IdentifierExpression (identifierReference "x"))
+            (literalIdentifierExpression (SimpleIdentifierString "x"))
             (Just (ValuedNaturalRange 1 10)))
   assert "identifier membership errors show canonical expected and given values"
     (case interpretLocatedExpression
@@ -4365,13 +4366,13 @@ testLocatedRejection = do
         (~>)
           ((~>)
             (DependentArgument
-              (IdentifierExpression (identifierReference "x"))
+              (literalIdentifierExpression (SimpleIdentifierString "x"))
               (Just (natural 8)))
             (DependentArgument
-              (IdentifierExpression (identifierReference "x"))
+              (literalIdentifierExpression (SimpleIdentifierString "x"))
               (Just (ValuedNaturalRange 5 20))))
           (DependentArgument
-            (IdentifierExpression (identifierReference "x"))
+            (literalIdentifierExpression (SimpleIdentifierString "x"))
             (Just (ValuedNaturalRange 1 10)))
   assert "failed annotation widening identifies the intermediate federation"
     (case interpretLocatedExpression
