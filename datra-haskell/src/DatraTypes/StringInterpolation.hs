@@ -162,10 +162,10 @@ dependentDeclarationRuleBranches
   :: DependentDeclaration Expression
   -> [(DependentDeclaration Expression, Int, SyntaxRule)]
 dependentDeclarationRuleBranches declaration =
-  case dependentDeclarationHead declaration of
-    IdentifierExpressionBody (IdentifierReference name) ->
+  case literalIdentifierName (dependentDeclarationHead declaration) of
+    Just name ->
       [(declaration, 0, identifierDeclarationRule declaration name)]
-    _ -> zipWith
+    Nothing -> zipWith
       (\branch parts ->
         (declaration, branch, directTemplateRule declaration parts))
       [0 ..]
@@ -223,8 +223,6 @@ identifierExpressionBranches
 identifierExpressionBranches identifier = case identifier of
   IdentifierExpressionBody body -> identifierBranches body
   where
-    identifierBranches (IdentifierReference (SimpleIdentifierString name)) =
-      [[stringLiteral name]]
     identifierBranches (AsciiStringLiteral name) =
       [[stringLiteral name]]
     identifierBranches (AtlasMap members) = identifierSequence members
@@ -236,8 +234,6 @@ identifierExpressionBranches identifier = case identifier of
     identifierBranches (StringTemplate parts) = [parts]
     identifierBranches identifier@(IdentifierExpression expressionValue) =
       case expressionValue of
-        IdentifierReference (SimpleIdentifierString literal) ->
-          [[stringLiteral literal]]
         AsciiStringLiteral literal -> [[stringLiteral literal]]
         _ -> [[StringTemplateInterpolation identifier]]
     identifierBranches expressionValue =
@@ -375,9 +371,8 @@ declarationLiterals declarations typeName = concatMap declaration declarations
   where
     declaration dependent
       | Just semantic <- dependentDeclaration dependent
-      , IdentifierExpressionBody
-          (IdentifierReference (SimpleIdentifierString name)) <-
-          dependentDeclarationHead semantic
+      , Just (SimpleIdentifierString name) <-
+          literalIdentifierName (dependentDeclarationHead semantic)
       , name == typeName = literals
           (dependentDeclarationImplementation semantic)
     declaration _ = []

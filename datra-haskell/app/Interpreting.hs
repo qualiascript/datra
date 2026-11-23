@@ -2363,7 +2363,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     protection = scopeActivation scope
     interpret = evalInScopeWith reduction scope resolving
     interpretIdentifierExpression body = case body of
-      IdentifierReference name -> Right (makeIdentifierExpression name)
       AsciiStringLiteral name ->
         Right (makeIdentifierExpression (SimpleIdentifierString name))
       _ -> do
@@ -2373,12 +2372,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             (makeIdentifierExpression (SimpleIdentifierString name))
           Nothing -> Left (LookupRequiresString (interpretedValueKind rendered))
     interpretDependentArgumentName nameExpression typeAnnotation =
-      case nameExpression of
-        IdentifierExpressionBody
-            (IdentifierReference (SimpleIdentifierString identifierString)) ->
+      case literalIdentifierName nameExpression of
+        Just (SimpleIdentifierString identifierString) ->
           interpretSimpleDependentArgument identifierString typeAnnotation
-        IdentifierExpressionBody body ->
-          interpretDependentArgumentNameFamily body
+        Nothing -> case nameExpression of
+          IdentifierExpressionBody body ->
+            interpretDependentArgumentNameFamily body
       where
         interpretDependentArgumentNameFamily body = do
           let familyKey = renderSourceExpression
@@ -6357,8 +6356,7 @@ singletonDependencyDeclaration
   -> Expression
   -> DependentDeclaration Expression
 singletonDependencyDeclaration name implementation = DependentDeclaration
-  (IdentifierExpressionBody
-    (IdentifierReference (SimpleIdentifierString name)))
+  (literalIdentifierExpression (SimpleIdentifierString name))
   True False False [DeclarationLet] implementation
 
 emptyResolver :: Resolver

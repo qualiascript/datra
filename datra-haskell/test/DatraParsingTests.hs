@@ -19,6 +19,8 @@ import DatraLanguage.AST
   , pattern FunctionType
   , dependentArgumentExpression
   , expressionChildren
+  , literalIdentifierExpression
+  , literalIdentifierName
   , normalizeExpression
   , toOperatorExpression
   )
@@ -221,8 +223,15 @@ testLiteralTemplateParsing = do
       [[capture "Nat", space, literal "+", space, capture "Nat"]])
   where
     identifierTemplate (first : remaining) = IdentifierExpression
-      (foldl EitherType (StringTemplate first) (map StringTemplate remaining))
+      (foldl EitherType (stringBranch first) (map stringBranch remaining))
     identifierTemplate [] = error "test identifier template must be nonempty"
+    stringBranch = StringTemplate . foldr prepend []
+    prepend
+        (StringTemplateInterpolation (AsciiStringLiteral prefix))
+        (StringTemplateInterpolation (AsciiStringLiteral suffix) : remaining) =
+      StringTemplateInterpolation
+        (AsciiStringLiteral (prefix <> suffix)) : remaining
+    prepend part remaining = part : remaining
     literal = StringTemplateInterpolation . AsciiStringLiteral
     space = literal sourceSpace
     capture = StringTemplateInterpolation . ref
@@ -487,7 +496,7 @@ testGenericSourceParsing = do
           [DependentArgument
             (IdentifierExpressionBody
               (OptionalType
-                (IdentifierReference (SimpleIdentifierString "value"))))
+                (AsciiStringLiteral "value")))
             (Just declaration)])
         reference -> do
       assert "optional generic name is stored on the simple identifier"
@@ -543,11 +552,11 @@ testGenericSourceParsing = do
           (AtlasMap
             [ DependentArgument
                 (IdentifierExpressionBody
-                  (IdentifierReference (SimpleIdentifierString "x")))
+                  (AsciiStringLiteral "x"))
                 (Just firstUse)
             , DependentArgument
                 (IdentifierExpressionBody
-                  (IdentifierReference (SimpleIdentifierString "y")))
+                  (AsciiStringLiteral "y"))
                 (Just declaration)
             ])) _ -> do
       assert "ordinary entries may use a generic before its written marker"
@@ -566,15 +575,15 @@ testGenericSourceParsing = do
         AtlasMap
             [ DependentArgument
                 (IdentifierExpressionBody
-                  (IdentifierReference (SimpleIdentifierString "T")))
+                  (AsciiStringLiteral "T"))
                 (Just _)
             , DependentArgument
                 (IdentifierExpressionBody
-                  (IdentifierReference (SimpleIdentifierString "x")))
+                  (AsciiStringLiteral "x"))
                 (Just (IdentifierReference (SimpleIdentifierString "T")))
             , DependentArgument
                 (IdentifierExpressionBody
-                  (IdentifierReference (SimpleIdentifierString "y")))
+                  (AsciiStringLiteral "y"))
                 (Just (IdentifierReference (SimpleIdentifierString "T")))
             ] -> pure ()
         prepared -> fail
@@ -609,15 +618,15 @@ testGenericSourceParsing = do
         ArgumentativeMap
             ( DependentArgument
                 (IdentifierExpressionBody
-                  (IdentifierReference (SimpleIdentifierString "S")))
+                  (AsciiStringLiteral "S"))
                 (Just _)
             : DependentArgument
                 (IdentifierExpressionBody
-                  (IdentifierReference (SimpleIdentifierString "T")))
+                  (AsciiStringLiteral "T"))
                 (Just _)
             : DependentArgument
                 (IdentifierExpressionBody
-                  (IdentifierReference (SimpleIdentifierString "U")))
+                  (AsciiStringLiteral "U"))
                 (Just _)
             : _
             ) -> pure ()
@@ -660,18 +669,18 @@ testGenericSourceParsing = do
         domain@(ArgumentativeMap
           [ DependentArgument
               (IdentifierExpressionBody
-                (OptionalType (IdentifierReference domainName)))
+                (OptionalType (AsciiStringLiteral domainName)))
               (Just _)
           , DependentArgument
               (IdentifierExpressionBody (OptionalType _)) (Just _)
           ])
         codomain@(SyntaxBoundary
           (DependentArgument
-            (IdentifierExpressionBody (IdentifierReference codomainName))
+            (IdentifierExpressionBody (AsciiStringLiteral codomainName))
             (Just _))) -> do
       assert "ordinary collision candidates remain declarations for semantic validation"
-        ( domainName == SimpleIdentifierString "T"
-          && codomainName == SimpleIdentifierString "T"
+        ( domainName == "T"
+          && codomainName == "T"
         )
       assertEqual "parsing classifies complete function-type scope identifiers"
         [ SimpleFunctionTypeIdentifier (SimpleIdentifierString "T")
@@ -1828,7 +1837,7 @@ regressionTests = do
     "$x : Nat := 4"
     (MapSpecification (natural 4)
       (DependentArgument
-        (IdentifierExpressionBody (ref "x"))
+        (IdentifierExpressionBody (AsciiStringLiteral "x"))
         (Just (ref "Nat"))))
   assertParsed "bare identifiers are references" "x" (IdentifierReference (SimpleIdentifierString "x"))
   assertParsed "apostrophe-prefixed identifiers are references"
@@ -2195,11 +2204,13 @@ regressionTests = do
   assertAstOutput "assignment retains its complete alternative value"
     "x := $up | $down"
     (MapSpecification alternatives
-      (DependentArgument (IdentifierExpressionBody (ref "x")) Nothing))
+      (DependentArgument
+        (IdentifierExpressionBody (AsciiStringLiteral "x")) Nothing))
   assert "assignment rendering does not regroup a federation"
     (renderSourceExpression
       (MapSpecification alternatives
-        (DependentArgument (IdentifierExpressionBody (ref "x")) Nothing))
+        (DependentArgument
+          (IdentifierExpressionBody (AsciiStringLiteral "x")) Nothing))
       == "x := $up | $down")
   assert "quoted identifier references render as strict current-scope access"
     (renderSourceExpression (ref "___Std.Int") == "this.\"___Std.Int\"")
@@ -2594,8 +2605,7 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Overload
     , Gen.subterm2 genExpression genExpression SafeOverload
     , DependentArgument
-        <$> (IdentifierExpressionBody . IdentifierReference
-          <$> genIdentifierString)
+        <$> (literalIdentifierExpression <$> genIdentifierString)
         <*> (Just <$> genExpression)
     ]
 
@@ -2752,7 +2762,7 @@ assertBundledModuleBlockShape = do
           Begin [] dependent
             | Just
                 ( IdentifierExpressionBody
-                    (IdentifierReference (SimpleIdentifierString actualName))
+                    (AsciiStringLiteral actualName)
                 , annotation
                 , given
                 ) <- dependentArgumentExpression dependent
@@ -2784,9 +2794,10 @@ assertStandardSyntaxDeclarationsAdmissible = do
         (expressionChildren expressionValue)
       where
         current = case dependentDeclaration expressionValue of
-          Just declaration -> case dependentDeclarationHead declaration of
-            IdentifierExpressionBody (IdentifierReference {}) -> []
-            _ -> [expressionValue]
+          Just declaration
+            | Just _ <- literalIdentifierName
+                (dependentDeclarationHead declaration) -> []
+            | otherwise -> [expressionValue]
           Nothing -> []
 
 assertAstSyntax :: IO ()
@@ -2958,8 +2969,7 @@ modified modifier expressionValue =
 
 generatedDeclaration :: Expression -> DependentDeclaration Expression
 generatedDeclaration = DependentDeclaration
-  (IdentifierExpressionBody
-    (IdentifierReference (SimpleIdentifierString "generated")))
+  (literalIdentifierExpression (SimpleIdentifierString "generated"))
   False False False []
 
 datraRef :: [String] -> Expression

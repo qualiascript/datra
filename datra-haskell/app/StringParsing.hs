@@ -120,12 +120,26 @@ compositionNullable nullable composition = case composition of
     compositionNullable nullable left || compositionNullable nullable right
   TemplateOptional _ -> True
 
-literalTemplateFederation :: ParsedLiteralTemplate -> Expression
-literalTemplateFederation template = case templateBranches template of
-  first : remaining -> foldl EitherType
-    (StringTemplate first)
-    (map StringTemplate remaining)
-  [] -> StringTemplate []
+literalTemplateFederation :: ParsedLiteralTemplate -> Maybe Expression
+literalTemplateFederation template = do
+  branches <- traverse stringBranch (templateBranches template)
+  case branches of
+    first : remaining -> Just (foldl EitherType first remaining)
+    [] -> Nothing
+  where
+    stringBranch parts = case coalesceLiterals parts of
+      [] -> Nothing
+      [StringTemplateInterpolation literal@(AsciiStringLiteral _)] ->
+        Just literal
+      compact -> Just (StringTemplate compact)
+
+    coalesceLiterals = foldr prepend []
+    prepend
+        (StringTemplateInterpolation (AsciiStringLiteral prefix))
+        (StringTemplateInterpolation (AsciiStringLiteral suffix) : remaining) =
+      StringTemplateInterpolation
+        (AsciiStringLiteral (prefix <> suffix)) : remaining
+    prepend part remaining = part : remaining
 
 templateBranches
   :: ParsedLiteralTemplate
@@ -221,7 +235,8 @@ literalTemplateToken parsers = between
     template <- literalTemplateBody parsers
     when (literalTemplateNullable template)
       (rejectLiteralTemplate parsers NullableLiteralTemplate)
-    pure (IdentifierExpression (literalTemplateFederation template)))
+    maybe empty (pure . IdentifierExpression)
+      (literalTemplateFederation template))
 
 literalTemplateBody
   :: Ord error

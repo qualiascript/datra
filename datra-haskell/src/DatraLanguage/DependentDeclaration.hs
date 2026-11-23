@@ -131,7 +131,7 @@ prependDependentDeclarationName prefix declaration = declaration
   where
     prependHead
         (IdentifierExpressionBody
-          (IdentifierReference (SimpleIdentifierString name))) =
+          (AsciiStringLiteral name)) =
       IdentifierExpressionBody (AsciiStringLiteral (prefix <> name))
     prependHead (IdentifierExpressionBody operand) = IdentifierExpressionBody
       (MapConcatenation (AsciiStringLiteral prefix) operand)
@@ -148,16 +148,12 @@ dependentDeclarationWithImplementation implementation declaration = declaration
 -- recognition so those concepts cannot silently widen one another.
 bindingNames :: Expression -> [String]
 bindingNames expressionValue = case expressionValue of
-  DeclarationExpression declaration -> case dependentDeclarationHead declaration of
-    IdentifierExpressionBody (IdentifierReference (SimpleIdentifierString name)) -> [name]
-    IdentifierExpressionBody (AsciiStringLiteral name) -> [name]
-    _ -> []
+  DeclarationExpression declaration -> maybe []
+    (pure . simpleIdentifierStringText)
+    (literalIdentifierName (dependentDeclarationHead declaration))
   DependentArgument nameExpression _
     | Just (SimpleIdentifierString name) <-
         literalIdentifierName nameExpression -> [name]
-  DependentArgument
-      (IdentifierExpressionBody (StringTemplate
-        [StringTemplateInterpolation (AsciiStringLiteral name)])) _ -> [name]
   MapSpecification _ target -> bindingNames target
   OptionalType inner -> bindingNames inner
   _ -> []

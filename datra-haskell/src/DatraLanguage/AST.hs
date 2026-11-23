@@ -150,6 +150,59 @@ mapDependentDeclaration
 mapDependentDeclaration transform =
   runIdentity . traverseDependentDeclaration (pure . transform)
 
+-- | Rewrite only the executable interpolations of an identifier expression.
+-- String-federation structure and literal chunks are representation, not
+-- independent expression loci.
+traverseIdentifierExpressionInterpolations
+  :: Applicative f
+  => (Expression -> f Expression)
+  -> IdentifierExpression Expression
+  -> f (IdentifierExpression Expression)
+traverseIdentifierExpressionInterpolations visit
+    (IdentifierExpressionBody body) =
+  IdentifierExpressionBody <$> traverseStringFederation body
+  where
+    traverseStringFederation expressionValue = case expressionValue of
+      AsciiStringLiteral {} -> pure expressionValue
+      StringTemplate parts ->
+        StringTemplate <$> traverse traversePart parts
+      EitherType left right -> EitherType
+        <$> traverseStringFederation left
+        <*> traverseStringFederation right
+      OptionalType present ->
+        OptionalType <$> traverseStringFederation present
+      MapConcatenation left right -> MapConcatenation
+        <$> traverseStringFederation left
+        <*> traverseStringFederation right
+      AtlasMap members ->
+        AtlasMap <$> traverse traverseStringFederation members
+      MapSequence members ->
+        MapSequence <$> traverse traverseStringFederation members
+      IdentifierExpression nested ->
+        IdentifierExpression <$> traverseStringFederation nested
+      SyntaxBoundary dynamic -> SyntaxBoundary <$> visit dynamic
+      capture -> visit capture
+
+    traversePart interpolation@(StringTemplateInterpolation part) =
+      case part of
+        AsciiStringLiteral {} -> pure interpolation
+        capture -> StringTemplateInterpolation <$> visit capture
+
+traverseExpressionDependentDeclaration
+  :: Applicative f
+  => (Expression -> f Expression)
+  -> DependentDeclaration Expression
+  -> f (DependentDeclaration Expression)
+traverseExpressionDependentDeclaration visit declaration =
+  DependentDeclaration
+    <$> traverseIdentifierExpressionInterpolations visit
+      (dependentDeclarationHead declaration)
+    <*> pure (dependentDeclarationIsLet declaration)
+    <*> pure (dependentDeclarationIsDefinition declaration)
+    <*> pure (dependentDeclarationIsCanonicalValue declaration)
+    <*> pure (dependentDeclarationModifierApplications declaration)
+    <*> visit (dependentDeclarationImplementation declaration)
+
 dependentDeclarationIsValid :: DependentDeclaration expression -> Bool
 dependentDeclarationIsValid declaration = applications == canonical
   where
@@ -435,13 +488,18 @@ applyBinaryExpressionOperator operator left right = case operator of
 literalIdentifierExpression
   :: SimpleIdentifierString
   -> IdentifierExpression Expression
-literalIdentifierExpression = IdentifierExpressionBody . IdentifierReference
+literalIdentifierExpression (SimpleIdentifierString name) =
+  IdentifierExpressionBody (AsciiStringLiteral name)
 
 literalIdentifierName
   :: IdentifierExpression Expression
   -> Maybe SimpleIdentifierString
 literalIdentifierName expressionValue = case expressionValue of
-  IdentifierExpressionBody (IdentifierReference name) -> Just name
+  IdentifierExpressionBody (AsciiStringLiteral name) ->
+    Just (SimpleIdentifierString name)
+  IdentifierExpressionBody (StringTemplate
+      [StringTemplateInterpolation (AsciiStringLiteral name)]) ->
+    Just (SimpleIdentifierString name)
   _ -> Nothing
 
 identifierExpressionExpression
@@ -946,7 +1004,8 @@ traverseExpressionChildren visit expression = case expression of
       <*> visit codomain
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
   DeclarationExpression declaration ->
-    DeclarationExpression <$> traverseDependentDeclaration visit declaration
+    DeclarationExpression <$>
+      traverseExpressionDependentDeclaration visit declaration
   Lookup operand -> Lookup <$> visit operand
   Multiplication a b -> Multiplication <$> visit a <*> visit b
   Exponentiation a b -> Exponentiation <$> visit a <*> visit b
@@ -961,9 +1020,10 @@ traverseExpressionChildren visit expression = case expression of
   ReverseOverload a b -> ReverseOverload <$> visit a <*> visit b
   ReverseSafeOverload a b -> ReverseSafeOverload <$> visit a <*> visit b
   Begin xs y ->
-    Begin <$> traverse (traverseDependentDeclaration visit) xs <*> visit y
+    Begin <$> traverse (traverseExpressionDependentDeclaration visit) xs
+      <*> visit y
   FunctionBody xs y -> FunctionBody
-    <$> traverse (traverseDependentDeclaration visit) xs
+    <$> traverse (traverseExpressionDependentDeclaration visit) xs
     <*> visit y
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
@@ -971,10 +1031,13 @@ traverseExpressionChildren visit expression = case expression of
   ScopeAccess source body -> ScopeAccess <$> visit source <*> visit body
   DependentArgument name annotation ->
     DependentArgument
-      <$> traverseIdentifierExpression visit name
+      <$> traverseIdentifierExpressionInterpolations visit name
       <*> traverse visit annotation
   StringTemplate parts -> StringTemplate <$> traverse part parts
-  IdentifierExpression operand -> IdentifierExpression <$> visit operand
+  IdentifierExpression operand ->
+    identifierExpressionExpression <$>
+      traverseIdentifierExpressionInterpolations visit
+        (IdentifierExpressionBody operand)
   _ -> pure expression
   where
     visitBinder binder =
@@ -984,7 +1047,9 @@ traverseExpressionChildren visit expression = case expression of
         })
         <$> visit (genericArgumentBound (genericBinderArgument binder))
     part (StringTemplateInterpolation value) =
-      StringTemplateInterpolation <$> visit value
+      case value of
+        AsciiStringLiteral {} -> pure (StringTemplateInterpolation value)
+        _ -> StringTemplateInterpolation <$> visit value
 
 mapExpressionChildren :: (Expression -> Expression) -> Expression -> Expression
 mapExpressionChildren visit = runIdentity . traverseExpressionChildren (Identity . visit)

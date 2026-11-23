@@ -354,7 +354,7 @@ scopeDefinitions prefixHere collected =
       | (_, DependencyAddress (name : _ : _), _) <- collected
       ]
     childDefinition name = DependentDeclaration
-      (IdentifierExpressionBody (IdentifierReference renderedName))
+      (literalIdentifierExpression renderedName)
       True False False [DeclarationLet] childScope
       where
         renderedName = if prefixHere then prependIdentifier name else name
@@ -440,8 +440,5 @@ parameterNames value = concatMap parameterNames (expressionChildren value)
 
 declarationBindingNames :: DependentDeclaration Expression -> [String]
 declarationBindingNames declaration =
-  case dependentDeclarationHead declaration of
-    IdentifierExpressionBody
-        (IdentifierReference (SimpleIdentifierString name)) -> [name]
-    IdentifierExpressionBody (AsciiStringLiteral name) -> [name]
-    _ -> []
+  maybe [] (pure . simpleIdentifierStringText)
+    (literalIdentifierName (dependentDeclarationHead declaration))

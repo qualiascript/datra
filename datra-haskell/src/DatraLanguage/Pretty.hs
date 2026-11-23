@@ -249,8 +249,7 @@ prettyDependentArgumentName
   :: IdentifierExpression OperatorExpression
   -> Doc annotation
 prettyDependentArgumentName name = case name of
-  IdentifierExpressionBody
-      (IdentifierReferenceValue (SimpleIdentifierString identifierString)) ->
+  IdentifierExpressionBody (AsciiStringValue identifierString) ->
     pretty (renderIdentifierString identifierString)
   IdentifierExpressionBody (StringTemplateValue parts) ->
     pretty (renderStringTemplate

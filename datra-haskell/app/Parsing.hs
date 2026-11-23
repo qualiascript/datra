@@ -26,6 +26,7 @@ import DatraLanguage.AST
   , GenericArgument (..)
   , Expression
       ( Addition
+      , AsciiStringLiteral
       , IdentifierExpression
       , AtlasMap
       , ArgumentativeMap
@@ -803,7 +804,7 @@ dollarIdentifierExpression :: Parser Expression
 dollarIdentifierExpression = try $ do
   _ <- sourceOperatorToken AST.IdentifierExpressionOperator
   IdentifierExpression <$> choice
-    [ IdentifierReference . SimpleIdentifierString <$> bareIdentifierToken
+    [ AsciiStringLiteral <$> bareIdentifierToken
     , sourceStringTemplateToken
     , try $ do
         body <- parenthesizedExpression
