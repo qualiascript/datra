@@ -9,14 +9,6 @@ module DatraLanguage.AST
   , GenericBinder (..)
   , StringTemplateInterpolation (..)
   , SymbolLiteral (..)
-  , LiteralTemplateLiteral (..)
-  , IdentifierExpressionComposition (..)
-  , LiteralTemplate (..)
-  , LiteralTemplateSequence (..)
-  , LiteralTemplateAtom (..)
-  , traverseLiteralTemplate
-  , mapLiteralTemplate
-  , literalTemplateNullable
   , IdentifierExpression (..)
   , DeclarationModifier (..)
   , declarationModifierOperator
@@ -44,7 +36,10 @@ module DatraLanguage.AST
   , applyBinaryExpressionOperator
   , literalIdentifierExpression
   , literalIdentifierName
+  , identifierExpressionExpression
+  , identifierExpressionFromExpression
   , optionalIdentifierExpression
+  , requiredIdentifierExpression
   , normalizeExpression
   ) where
 
@@ -141,17 +136,12 @@ traverseDependentDeclaration
   -> DependentDeclaration left
   -> f (DependentDeclaration right)
 traverseDependentDeclaration visit declaration = DependentDeclaration
-  <$> traverseHead (dependentDeclarationHead declaration)
+  <$> traverseIdentifierExpression visit (dependentDeclarationHead declaration)
   <*> pure (dependentDeclarationIsLet declaration)
   <*> pure (dependentDeclarationIsDefinition declaration)
   <*> pure (dependentDeclarationIsCanonicalValue declaration)
   <*> pure (dependentDeclarationModifierApplications declaration)
   <*> visit (dependentDeclarationImplementation declaration)
-  where
-    traverseHead headValue = case headValue of
-      IdentifierExpressionBody body -> IdentifierExpressionBody <$> visit body
-      LiteralTemplateIdentifier body ->
-        LiteralTemplateIdentifier <$> traverseLiteralTemplate visit body
 
 mapDependentDeclaration
   :: (left -> right)
@@ -177,7 +167,6 @@ data Expression
   | NothingLiteral
   | StringTemplate [StringTemplateInterpolation Expression]
   | IdentifierExpression Expression
-  | LiteralTemplateExpression (LiteralTemplate Expression)
   | AtlasMap [Expression]
   | ArgumentativeMap [Expression]
   | MapSequence [Expression]
@@ -252,7 +241,7 @@ data Expression
   | ReverseOverload Expression Expression
   | ReverseSafeOverload Expression Expression
   | DependentArgument
-      { dependentArgumentName :: Expression
+      { dependentArgumentName :: IdentifierExpression Expression
       , dependentArgumentTypeAnnotation :: Maybe Expression
       }
   deriving (Eq, Ord, Show)
@@ -328,7 +317,11 @@ namedBeginBlock expressionValue = do
 -- is @MapSpecification value (DependentArgument name Nothing)@.
 dependentArgumentExpression
   :: Expression
-  -> Maybe (Expression, Maybe Expression, Maybe Expression)
+  -> Maybe
+      ( IdentifierExpression Expression
+      , Maybe Expression
+      , Maybe Expression
+      )
 dependentArgumentExpression (DependentArgument name annotation) =
   Just (name, annotation, Nothing)
 dependentArgumentExpression
@@ -339,7 +332,7 @@ dependentArgumentExpression _ = Nothing
 -- | Construct the sole semantic dependent-argument representation. Optionality
 -- belongs to the name, while assignment remains specification sugar.
 constructDependentArgument
-  :: Expression
+  :: IdentifierExpression Expression
   -> Bool
   -> Maybe Expression
   -> Maybe Expression
@@ -347,8 +340,12 @@ constructDependentArgument
 constructDependentArgument name optionalName annotation given =
   maybe id MapSpecification given
     (DependentArgument
-      (if optionalName then OptionalType name else name)
+      (if optionalName then optionalIdentifier name else name)
       annotation)
+  where
+    optionalIdentifier identifier = case identifier of
+      IdentifierExpressionBody body ->
+        IdentifierExpressionBody (OptionalType body)
 
 -- | Operators whose canonical AST form has one expression operand.  Keeping
 -- this registry with the AST prevents the canonical decoder from duplicating
@@ -435,12 +432,29 @@ applyBinaryExpressionOperator operator left right = case operator of
   OverloadOperator -> Just (Overload left right)
   _ -> Nothing
 
-literalIdentifierExpression :: SimpleIdentifierString -> Expression
-literalIdentifierExpression = IdentifierExpression . IdentifierReference
+literalIdentifierExpression
+  :: SimpleIdentifierString
+  -> IdentifierExpression Expression
+literalIdentifierExpression = IdentifierExpressionBody . IdentifierReference
 
-literalIdentifierName :: Expression -> Maybe SimpleIdentifierString
+literalIdentifierName
+  :: IdentifierExpression Expression
+  -> Maybe SimpleIdentifierString
 literalIdentifierName expressionValue = case expressionValue of
-  IdentifierExpression (IdentifierReference name) -> Just name
+  IdentifierExpressionBody (IdentifierReference name) -> Just name
+  _ -> Nothing
+
+identifierExpressionExpression
+  :: IdentifierExpression Expression
+  -> Expression
+identifierExpressionExpression identifier = case identifier of
+  IdentifierExpressionBody body -> IdentifierExpression body
+
+identifierExpressionFromExpression
+  :: Expression
+  -> Maybe (IdentifierExpression Expression)
+identifierExpressionFromExpression expressionValue = case expressionValue of
+  IdentifierExpression body -> Just (IdentifierExpressionBody body)
   _ -> Nothing
 
 -- | Recover the present and unnamed alternatives represented by identifier
@@ -449,16 +463,26 @@ optionalIdentifierExpression
   :: Expression
   -> Maybe (Expression, Expression)
 optionalIdentifierExpression
-    (DependentArgument (OptionalType present) (Just annotation)) =
-  Just (DependentArgument present (Just annotation), annotation)
+    (DependentArgument name (Just annotation))
+      | Just present <- requiredIdentifierExpression name =
+          Just (DependentArgument present (Just annotation), annotation)
 optionalIdentifierExpression
     (MapSpecification given
-      (DependentArgument (OptionalType present) annotation)) =
-  Just
-    ( MapSpecification given (DependentArgument present annotation)
-    , maybe given id annotation
-    )
+      (DependentArgument name annotation))
+      | Just present <- requiredIdentifierExpression name =
+          Just
+            ( MapSpecification given (DependentArgument present annotation)
+            , maybe given id annotation
+            )
 optionalIdentifierExpression _ = Nothing
+
+requiredIdentifierExpression
+  :: IdentifierExpression Expression
+  -> Maybe (IdentifierExpression Expression)
+requiredIdentifierExpression identifier = case identifier of
+  IdentifierExpressionBody (OptionalType present) ->
+    Just (IdentifierExpressionBody present)
+  _ -> Nothing
 
 data OperatorExpression
   = NaturalValue Natural
@@ -468,7 +492,6 @@ data OperatorExpression
   | NothingValue
   | StringTemplateValue [StringTemplateInterpolation OperatorExpression]
   | IdentifierExpressionValue OperatorExpression
-  | LiteralTemplateExpressionValue (LiteralTemplate OperatorExpression)
   | EmptyMap
   | Sequential (NonEmpty OperatorExpression)
   | ArgumentativeMapValue [OperatorExpression]
@@ -539,7 +562,7 @@ data OperatorExpression
   | OverloadValue OperatorExpression OperatorExpression
   | SafeOverloadValue OperatorExpression OperatorExpression
   | DependentArgumentValue
-      OperatorExpression
+      (IdentifierExpression OperatorExpression)
       (Maybe OperatorExpression)
   deriving (Eq, Show)
 
@@ -556,8 +579,6 @@ normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplateInterpolation parts)
 normalizeExpression (IdentifierExpression operand) =
   IdentifierExpression (normalizeExpression operand)
-normalizeExpression (LiteralTemplateExpression template) =
-  LiteralTemplateExpression (mapLiteralTemplate normalizeExpression template)
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (ArgumentativeMap expressions) =
@@ -691,14 +712,8 @@ normalizeExpression (ReverseSafeOverload supplied defaults) =
   SafeOverload (normalizeExpression defaults) (normalizeExpression supplied)
 normalizeExpression (DependentArgument name typeAnnotation) =
   DependentArgument
-    (normalizeDependentArgumentName name)
+    (mapIdentifierExpression normalizeExpression name)
     (normalizeExpression <$> typeAnnotation)
-
-normalizeDependentArgumentName :: Expression -> Expression
-normalizeDependentArgumentName (OptionalType present) =
-  OptionalType (normalizeDependentArgumentName present)
-normalizeDependentArgumentName name@IdentifierReference {} = name
-normalizeDependentArgumentName name = normalizeExpression name
 
 normalizeStringTemplateInterpolation
   :: StringTemplateInterpolation Expression
@@ -755,8 +770,6 @@ lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplateInterpolation parts)
 lower (IdentifierExpression operand) = IdentifierExpressionValue (lower operand)
-lower (LiteralTemplateExpression template) =
-  LiteralTemplateExpressionValue (mapLiteralTemplate lower template)
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
@@ -854,7 +867,9 @@ lower (ReverseOverload supplied defaults) =
 lower (ReverseSafeOverload supplied defaults) =
   SafeOverloadValue (lower defaults) (lower supplied)
 lower (DependentArgument name typeAnnotation) =
-  DependentArgumentValue (lower name) (lower <$> typeAnnotation)
+  DependentArgumentValue
+    (mapIdentifierExpression lower name)
+    (lower <$> typeAnnotation)
 
 lowerStringTemplateInterpolation
   :: StringTemplateInterpolation Expression
@@ -956,12 +971,10 @@ traverseExpressionChildren visit expression = case expression of
   ScopeAccess source body -> ScopeAccess <$> visit source <*> visit body
   DependentArgument name annotation ->
     DependentArgument
-      <$> visitDependentArgumentName name
+      <$> traverseIdentifierExpression visit name
       <*> traverse visit annotation
   StringTemplate parts -> StringTemplate <$> traverse part parts
   IdentifierExpression operand -> IdentifierExpression <$> visit operand
-  LiteralTemplateExpression template ->
-    LiteralTemplateExpression <$> traverseLiteralTemplate visit template
   _ -> pure expression
   where
     visitBinder binder =
@@ -972,12 +985,6 @@ traverseExpressionChildren visit expression = case expression of
         <$> visit (genericArgumentBound (genericBinderArgument binder))
     part (StringTemplateInterpolation value) =
       StringTemplateInterpolation <$> visit value
-    visitDependentArgumentName (OptionalType present) =
-      OptionalType <$> visitDependentArgumentName present
-    visitDependentArgumentName name@IdentifierReference {} = pure name
-    visitDependentArgumentName name@(IdentifierExpression
-        (IdentifierReference {})) = pure name
-    visitDependentArgumentName name = visit name
 
 mapExpressionChildren :: (Expression -> Expression) -> Expression -> Expression
 mapExpressionChildren visit = runIdentity . traverseExpressionChildren (Identity . visit)

@@ -41,7 +41,7 @@ module Interpreting
 
 import Data.Bifunctor qualified as Bifunctor
 import Data.Char (isSpace)
-import Data.List (nub, nubBy, partition, stripPrefix)
+import Data.List (nub, nubBy, partition)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Set qualified as Set
@@ -70,12 +70,11 @@ import DatraLanguage.AST
   , GenericArgument (..)
   , GenericPolarity (..)
   , IdentifierExpression (..)
-  , LiteralTemplateLiteral (..)
   , SimpleIdentifierString (..)
-  , SymbolLiteral (..)
   , StringTemplateInterpolation (..)
   , attachedFunctionImplementation
   , dependentArgumentExpression
+  , identifierExpressionExpression
   , literalIdentifierExpression
   , literalIdentifierName
   , namedBeginBlock
@@ -122,14 +121,14 @@ import StringInterpolation
   ( DeclarativeCapture (..)
   , DeclarativeMatcherPlan (..)
   , IdentifierApplicationPattern (..)
-  , LiteralTemplatePattern (..)
-  , LiteralTemplatePatternPart (..)
   , LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
   , SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , declarationRules
   , declarationRuleBranches
+  , identifierExpressionBranches
+  , identifierExpressionMatchingBranches
   , literalExpressionPattern
   , mapSyntaxRuleCaptures
   , identifierApplicationRule
@@ -333,10 +332,6 @@ syntaxRuleLiteralHeads :: SyntaxRule -> [String]
 syntaxRuleLiteralHeads rule = case declarativeMatcherPlan rule of
   IdentifierApplicationMatcher patternValue ->
     expressionHead (identifierApplicationHead patternValue)
-  LiteralTemplateMatcher (LiteralTemplatePattern parts) -> take 1
-    [ literalText literal
-    | LiteralTemplatePatternLiteral literal <- parts
-    ]
   LiteralExpressionMatcher (LiteralExpressionPattern parts) -> take 1
     [ literal
     | LiteralExpressionPatternLiteral literal <- parts
@@ -346,9 +341,6 @@ syntaxRuleLiteralHeads rule = case declarativeMatcherPlan rule of
     expressionHead expressionValue = case expressionValue of
       IdentifierReference (SimpleIdentifierString name) -> [name]
       _ -> []
-    literalText literal = case literal of
-      IdentifierTemplateLiteral (SimpleIdentifierString text) -> text
-      SymbolTemplateLiteral (SymbolLiteral text) -> text
 
 -- A lexical map can introduce syntax in exactly the same way as an imported
 -- module.  Its rules are visible only on the right side of an access to that
@@ -425,8 +417,6 @@ captureSyntaxHole
   -> Maybe Expression
 captureSyntaxHole base modules declarations previous kind captured =
   case kind of
-    LiteralTemplateCapture descriptor ->
-      directCapture (literalTemplateCaptureTarget descriptor)
     StringExpressionCapture stringKind -> captureStringExpression stringKind
   where
     directCapture target =
@@ -490,12 +480,6 @@ captureSyntaxHole base modules declarations previous kind captured =
           select scope target
     scopedDeclarations = declarations <> binderDeclarations previous
 
-literalTemplateCaptureTarget :: Expression -> Expression
-literalTemplateCaptureTarget descriptor = case descriptor of
-  SyntaxBoundary inner -> literalTemplateCaptureTarget inner
-  DependentArgument _ (Just annotation) -> annotation
-  value -> value
-
 classifySyntaxHole
   :: Scope
   -> [(String, ModuleSource)]
@@ -519,8 +503,6 @@ classifySyntaxHoles base modules declarations kinds = map classify kinds
     declared = declareSyntaxScope enclosing
       (map syntaxValidationDeclaration declarations)
     classify kind = case kind of
-      LiteralTemplateCapture descriptor ->
-        classifyTarget kind (literalTemplateCaptureTarget descriptor)
       StringExpressionCapture valueKind@(ValueString target) ->
         case declared >>= \scope -> evalInScope scope [] target of
           Left _ -> (kind, Nothing)
@@ -530,10 +512,6 @@ classifySyntaxHoles base modules declarations kinds = map classify kinds
             , Just value
             )
       _ -> (kind, Nothing)
-    classifyTarget kind target =
-      case declared >>= \scope -> evalInScope scope [] target of
-        Left _ -> (kind, Nothing)
-        Right value -> (kind, Just value)
 
 evaluateSyntaxValue
   :: Scope
@@ -827,12 +805,13 @@ binderDeclarations
   maybe id (:) (binderDeclaration binder bound)
     (binderDeclarations remaining)
 binderDeclarations
-    ((LiteralTemplateCapture descriptor, captured) : remaining) =
+    ((StringExpressionCapture (ValueString descriptor), captured) : remaining) =
   case descriptor of
     SyntaxBoundary inner -> binderDeclarations
-      ((LiteralTemplateCapture inner, captured) : remaining)
+      ((StringExpressionCapture (ValueString inner), captured) : remaining)
     DependentArgument name _ ->
-      maybe id (:) (binderDeclaration name captured)
+      maybe id (:) (literalIdentifierName name >>= \identifier ->
+        binderDeclaration (IdentifierReference identifier) captured)
         (binderDeclarations remaining)
     _ -> binderDeclarations remaining
 binderDeclarations (_ : remaining) = binderDeclarations remaining
@@ -1142,20 +1121,19 @@ data ScopedDependentDeclaration
       Scope
       Scope
       (DependentDeclaration Expression)
-      (Maybe [[StringTemplateInterpolation Expression]])
       (Maybe RuntimeSingletonPayload)
   | ScopedRuntimeSingletonDeclaration Scope RuntimeSingletonPayload
   | ScopedProjectedDependentDeclaration Scope NamedMapView
 
 scopedDependentDeclarationScope :: ScopedDependentDeclaration -> Scope
 scopedDependentDeclarationScope scoped = case scoped of
-  ScopedDatraDependentDeclaration captured _ _ _ _ -> captured
+  ScopedDatraDependentDeclaration captured _ _ _ -> captured
   ScopedRuntimeSingletonDeclaration captured _ -> captured
   ScopedProjectedDependentDeclaration captured _ -> captured
 
 scopedDependentDeclarationFamilyScope :: ScopedDependentDeclaration -> Scope
 scopedDependentDeclarationFamilyScope scoped = case scoped of
-  ScopedDatraDependentDeclaration _ familyCaptured _ _ _ -> familyCaptured
+  ScopedDatraDependentDeclaration _ familyCaptured _ _ -> familyCaptured
   ScopedRuntimeSingletonDeclaration captured _ -> captured
   ScopedProjectedDependentDeclaration captured _ -> captured
 
@@ -1163,25 +1141,49 @@ scopedDependentDeclarationValue
   :: ScopedDependentDeclaration
   -> Maybe (DependentDeclaration Expression)
 scopedDependentDeclarationValue scoped = case scoped of
-  ScopedDatraDependentDeclaration _ _ declaration _ _ -> Just declaration
+  ScopedDatraDependentDeclaration _ _ declaration _ -> Just declaration
   ScopedRuntimeSingletonDeclaration {} -> Nothing
   ScopedProjectedDependentDeclaration {} -> Nothing
 
-scopedDependentDeclarationBranches
+scopedIdentifierBranches
   :: ScopedDependentDeclaration
-  -> Maybe [[StringTemplateInterpolation Expression]]
-scopedDependentDeclarationBranches scoped = case scoped of
-  ScopedDatraDependentDeclaration _ _ _ branches _ -> branches
+  -> [[StringTemplateInterpolation Expression]]
+scopedIdentifierBranches scoped = case scoped of
+  ScopedDatraDependentDeclaration _ _ declaration _ ->
+    identifierExpressionBranches (dependentDeclarationHead declaration)
   ScopedRuntimeSingletonDeclaration _ runtime ->
-    Just [[StringTemplateInterpolation
-      (AsciiStringLiteral (runtimeDeclarationName runtime))]]
-  ScopedProjectedDependentDeclaration {} -> Nothing
+    [[StringTemplateInterpolation (AsciiStringLiteral name)]]
+    where
+      name = runtimeDeclarationName runtime
+  ScopedProjectedDependentDeclaration {} -> []
+
+scopedSyntaxBranches
+  :: ScopedDependentDeclaration
+  -> [[StringTemplateInterpolation Expression]]
+scopedSyntaxBranches = scopedIdentifierBranches
+
+scopedIdentifierMatchingBranches
+  :: String
+  -> ScopedDependentDeclaration
+  -> [[StringTemplateInterpolation Expression]]
+scopedIdentifierMatchingBranches requested scoped = case scoped of
+  ScopedDatraDependentDeclaration _ _ declaration _ ->
+    identifierExpressionMatchingBranches
+      (dependentDeclarationHead declaration) requested
+  ScopedRuntimeSingletonDeclaration _ runtime
+    | runtimeDeclarationName runtime == requested ->
+        scopedIdentifierBranches scoped
+    | otherwise -> []
+  ScopedProjectedDependentDeclaration {} ->
+    -- A projected runtime map owns its membership operation and cannot expose
+    -- an unevaluated source template here.
+    [[]]
 
 scopedDependentDeclarationRuntime
   :: ScopedDependentDeclaration
   -> Maybe RuntimeSingletonPayload
 scopedDependentDeclarationRuntime scoped = case scoped of
-  ScopedDatraDependentDeclaration _ _ _ _ runtime -> runtime
+  ScopedDatraDependentDeclaration _ _ _ runtime -> runtime
   ScopedRuntimeSingletonDeclaration _ runtime -> Just runtime
   ScopedProjectedDependentDeclaration {} -> Nothing
 
@@ -1251,43 +1253,7 @@ data DeclarationLayerOrigin
 data DependentDeclarationLayer = DependentDeclarationLayer
   { dependentDeclarationLayerOrigin :: DeclarationLayerOrigin
   , dependentDeclarationLayerMembers :: [ScopedDependentDeclaration]
-  , dependentDeclarationLayerSingletons
-      :: Map.Map String [ScopedDependentDeclaration]
-  , dependentDeclarationLayerPrefixes :: DependentDeclarationTrie
-  , dependentDeclarationLayerFallback :: [ScopedDependentDeclaration]
   }
-
-data DependentDeclarationTrie = DependentDeclarationTrie
-  [ScopedDependentDeclaration]
-  (Map.Map Char DependentDeclarationTrie)
-
-emptyDependentDeclarationTrie :: DependentDeclarationTrie
-emptyDependentDeclarationTrie = DependentDeclarationTrie [] Map.empty
-
-insertDependentDeclarationPrefix
-  :: String
-  -> ScopedDependentDeclaration
-  -> DependentDeclarationTrie
-  -> DependentDeclarationTrie
-insertDependentDeclarationPrefix [] scoped (DependentDeclarationTrie here next) =
-  DependentDeclarationTrie (scoped : here) next
-insertDependentDeclarationPrefix (character : remaining) scoped
-    (DependentDeclarationTrie here next) =
-  DependentDeclarationTrie here (Map.alter insert character next)
-  where
-    insert = Just . insertDependentDeclarationPrefix remaining scoped
-      . maybe emptyDependentDeclarationTrie id
-
-dependentDeclarationsWithMatchingPrefix
-  :: String
-  -> DependentDeclarationTrie
-  -> [ScopedDependentDeclaration]
-dependentDeclarationsWithMatchingPrefix name = go name
-  where
-    go remaining (DependentDeclarationTrie here next) = here <>
-      case remaining of
-        [] -> []
-        character : rest -> maybe [] (go rest) (Map.lookup character next)
 
 dependentDeclarationLayer
   :: [ScopedDependentDeclaration]
@@ -1305,50 +1271,16 @@ makeDependentDeclarationLayer
   :: DeclarationLayerOrigin
   -> [ScopedDependentDeclaration]
   -> DependentDeclarationLayer
-makeDependentDeclarationLayer origin declarations = DependentDeclarationLayer
-  origin declarations singletons prefixTrie fallback
-  where
-    (singletons, prefixTrie, fallback) = foldr classify
-      (Map.empty, emptyDependentDeclarationTrie, []) declarations
-    classify scoped accumulated
-      | Just singleton <- dependentDeclarationSingletonName scoped =
-          ( Map.insertWith (<>) singleton [scoped] singletonIndex
-          , prefixIndex
-          , fallbackDeclarations
-          )
-      | Just prefix <- commonPrefix scoped =
-          ( singletonIndex
-          , insertDependentDeclarationPrefix prefix scoped prefixIndex
-          , fallbackDeclarations
-          )
-      | otherwise =
-          (singletonIndex, prefixIndex, scoped : fallbackDeclarations)
-      where
-        (singletonIndex, prefixIndex, fallbackDeclarations) = accumulated
-    commonPrefix scoped = do
-      branches <- scopedDependentDeclarationBranches scoped
-      prefixes <- traverse leadingLiteral branches
-      let prefix = longestCommonPrefix prefixes
-      if null prefix then Nothing else Just prefix
-    leadingLiteral
-        (StringTemplateInterpolation (AsciiStringLiteral literal) : _) =
-      Just literal
-    leadingLiteral _ = Nothing
-    longestCommonPrefix [] = []
-    longestCommonPrefix (first : remaining) = foldl sharedPrefix first remaining
-    sharedPrefix (left : leftRest) (right : rightRest)
-      | left == right = left : sharedPrefix leftRest rightRest
-    sharedPrefix _ _ = []
+makeDependentDeclarationLayer = DependentDeclarationLayer
 
 dependentDeclarationCandidates
   :: String
   -> DependentDeclarationLayer
   -> [ScopedDependentDeclaration]
 dependentDeclarationCandidates name layer =
-  Map.findWithDefault [] name (dependentDeclarationLayerSingletons layer)
-    <> dependentDeclarationsWithMatchingPrefix name
-      (dependentDeclarationLayerPrefixes layer)
-    <> dependentDeclarationLayerFallback layer
+  filter
+    (not . null . scopedIdentifierMatchingBranches name)
+    (dependentDeclarationLayerMembers layer)
 
 scopedRuntimeDeclaration
   :: Scope
@@ -1372,7 +1304,6 @@ scopedContextualSurfaceDeclarations captured declarations =
       captured
       captured
       declaration
-      (dependentDeclarationTemplateBranches declaration)
       Nothing
   | runtime <- declarations
   , ContextualRuntimeValue role _ _ _ <- [runtimeDeclarationValue runtime]
@@ -2070,7 +2001,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     StringTemplate parts ->
       interpretStringTemplateWith protection interpret parts
     IdentifierExpression body -> interpretIdentifierExpression body
-    LiteralTemplateExpression _ -> Left OperationHasNoEffect
     AtlasMap expressions -> interpretContainer
       (interpretProtectedAtlasMap makeAtlasMap expressions)
       (AtlasMap expressions)
@@ -2444,25 +2374,21 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           Nothing -> Left (LookupRequiresString (interpretedValueKind rendered))
     interpretDependentArgumentName nameExpression typeAnnotation =
       case nameExpression of
-        IdentifierExpression
+        IdentifierExpressionBody
             (IdentifierReference (SimpleIdentifierString identifierString)) ->
           interpretSimpleDependentArgument identifierString typeAnnotation
-        IdentifierExpression body ->
-          interpretDependentArgumentNameFamily False body
-        SyntaxBoundary body ->
-          interpretDependentArgumentNameFamily True body
-        _ -> Left OperationHasNoEffect
+        IdentifierExpressionBody body ->
+          interpretDependentArgumentNameFamily body
       where
-        interpretDependentArgumentNameFamily evaluated body = do
-          let familyKey = renderSourceExpression nameExpression
+        interpretDependentArgumentNameFamily body = do
+          let familyKey = renderSourceExpression
+                (identifierExpressionExpression nameExpression)
               nameFamily supplied =
                 evalInContextualContinuationScopeWith body reduction
                   (constantContextualDeclarations ContextualIt supplied)
                   scope resolving body
           identifier <- nameFamily typeAnnotation
-          if evaluated
-            then requireDependentNameSubfederation True interpret identifier
-            else Right ()
+          requireDependentNameSubfederation True interpret identifier
           case asciiStringFromInterpretedMap (interpretedMap identifier) of
             Just identifierString
               | interpretedValueHasTotalMap identifier
@@ -2783,8 +2709,7 @@ selectedDependentDeclaration scope template selected =
     matches layer =
       [ (scoped, captures)
       | scoped <- dependentDeclarationLayerMembers layer
-      , branch <- maybe [] id
-          (scopedDependentDeclarationBranches scoped)
+      , branch <- scopedSyntaxBranches scoped
       , branch == template
       , Just captures <- [selectedTemplateCaptures branch selected]
       ]
@@ -3127,7 +3052,8 @@ scopeLookupKeys :: Scope -> [String]
 scopeLookupKeys scope = stableUnique
   [ name
   | layer <- scopeDependentDeclarationLayers scope
-  , name <- Map.keys (dependentDeclarationLayerSingletons layer)
+  , scoped <- dependentDeclarationLayerMembers layer
+  , Just name <- [dependentDeclarationSingletonName scoped]
   ]
   where
     stableUnique = go Set.empty
@@ -3357,8 +3283,8 @@ dependentDeclarationSingletonName
   :: ScopedDependentDeclaration
   -> Maybe String
 dependentDeclarationSingletonName scoped =
-  case scopedDependentDeclarationBranches scoped of
-    Just [[StringTemplateInterpolation (AsciiStringLiteral name)]] -> Just name
+  case scopedIdentifierBranches scoped of
+    [[StringTemplateInterpolation (AsciiStringLiteral name)]] -> Just name
     _ -> Nothing
 
 dependentDeclarationHasRecursiveSeed
@@ -3512,17 +3438,14 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
 
           makeScoped position declaration =
             ScopedDatraDependentDeclaration
-              captured familyCaptured declaration branches retainedRuntime
+              captured familyCaptured declaration retainedRuntime
             where
               captured = scopeAt position
               familyCaptured = familyScopeAt position
-              branches = dependentDeclarationTemplateBranches declaration
               retainedRuntime = do
-                name <- case branches of
-                  Just
-                      [[StringTemplateInterpolation
-                        (AsciiStringLiteral singleton)]] -> Just singleton
-                  _ -> Nothing
+                name <- literalIdentifierName
+                  (dependentDeclarationHead declaration)
+                  >>= pure . simpleIdentifierStringText
                 value <- lookup name retained
                 pure RuntimeSingletonPayload
                   { runtimeDeclarationName = name
@@ -3642,21 +3565,22 @@ validateDeclarationFamilies = go []
     go earlier (scoped : remaining) = do
       case scopedDependentDeclarationValue scoped of
         Nothing -> go earlier remaining
-        Just declaration -> case dependentDeclarationHead declaration of
-          LiteralTemplateIdentifier _ -> go earlier remaining
-          _ -> do
-            family <- evalInScope
-              (scopedDependentDeclarationFamilyScope scoped) []
-              (dependentDeclarationNameFamilyExpression declaration)
-            case dependentDeclarationNameExpression declaration of
-              SyntaxBoundary {} ->
-                requireDependentNameSubfederation False
-                  (evalInScope
-                    (scopedDependentDeclarationFamilyScope scoped) [])
-                  family
-              _ -> Right ()
-            mapM_ (requireDistinct declaration family) earlier
-            go ((declaration, family) : earlier) remaining
+        Just declaration ->
+          validate scoped earlier remaining declaration
+
+    validate scoped earlier remaining declaration = do
+      family <- evalInScope
+        (scopedDependentDeclarationFamilyScope scoped) []
+        (dependentDeclarationNameFamilyExpression declaration)
+      case dependentDeclarationNameExpression declaration of
+        SyntaxBoundary {} ->
+          requireDependentNameSubfederation False
+            (evalInScope
+              (scopedDependentDeclarationFamilyScope scoped) [])
+            family
+        _ -> Right ()
+      mapM_ (requireDistinct declaration family) earlier
+      go ((declaration, family) : earlier) remaining
 
     requireDistinct declaration family (_, previous)
       | Right _ <- eitherValue previous family = Right ()
@@ -3801,13 +3725,18 @@ dependentDeclarationNamedView reduction resolving scoped =
                   Nothing -> runtimeSingletonDescriptorMember runtime value
             pure (singletonRuntimeDeclarationView member)
       _ -> case scopedDependentDeclarationValue scoped of
-        Just declaration -> dynamicDependentDeclarationNamedView
-          reduction familyCaptured captured resolving declaration
+        Just declaration -> dynamicView declaration
         Nothing -> Left AmbiguousStringTemplate
   where
     captured = scopedDependentDeclarationScope scoped
     familyCaptured = scopedDependentDeclarationFamilyScope scoped
+    dynamicView = dynamicDependentDeclarationNamedView
+      reduction familyCaptured captured resolving
 
+-- Literal syntax families have no finite runtime manifest: their concrete
+-- names are selected on demand through the layer's indexed member and
+-- containment operations. Enumerating them while constructing @this@ would
+-- recursively evaluate their capture schemas through that same view.
 singletonRuntimeDeclarationView :: NamedMember -> NamedMapView
 singletonRuntimeDeclarationView member = NamedMapView (NamedMapProjection
   (Right ordinalProjection)
@@ -3855,8 +3784,8 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
     delayedProjection = NamedMapProjection
       collectionProjection
       (preparedView >>= namedProjectionOrdinal . namedMapProjection)
-      (\name -> preparedView >>= (`namedMapMemberByName` name))
-      (\name -> preparedView >>= (`namedMapContainsName` name))
+      (\name -> preparedViewFor name >>= (`namedMapMemberByName` name))
+      (\name -> preparedViewFor name >>= (`namedMapContainsName` name))
       (\() -> preparedView >>= namedMapDeclaredMembers)
 
     collectionProjection =
@@ -3865,9 +3794,21 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
     preparedView = do
       prepared <- prepareDependentDeclaration
         reduction familyCaptured resolving declaration
+      preparedBranchesView prepared
+
+    preparedViewFor name = do
+      prepared <- prepareDependentDeclarationForName
+        reduction familyCaptured resolving name declaration
+      preparedBranchesView prepared
+
+    preparedBranchesView prepared = do
       views <- traverse branchView prepared
       case views of
-        [] -> Left AmbiguousStringTemplate
+        [] -> Right (namedMapView
+          (finiteOrdinal 0)
+          (const (Right Nothing))
+          (const (Right Nothing))
+          (const (Right False)))
         [single] -> Right single
         first : remaining -> do
           let combined = foldl appendNamedMapViews first remaining
@@ -3898,22 +3839,18 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
     branchView branch = do
       let evaluatedCaptures = preparedDeclarationCaptures branch
           template = preparedDeclarationTemplate branch
-          captureBounds = traverse
-            (dependentDeclarationCaptureBound reduction familyCaptured resolving)
-            (map evaluatedDeclarationCaptureBound evaluatedCaptures)
-          ordinalProjection = do
-            bounds <- captureBounds
-            case ordinalIndexedProductFamily bounds of
-              Just family ->
-                let sourceOrder = ordinalIndexedFamilyOrderType family
-                    traversal = foliageMap sourceOrder
-                    localOrder =
-                      maybe omega finiteOrdinal (naturalAtOrdinal sourceOrder)
-                in Right (NamedMapOrdinalProjection
-                  localOrder
-                  (memberAt evaluatedCaptures template family traversal))
-              Nothing -> Left (captureOrdinalCapabilityFailure
-                evaluatedCaptures bounds)
+          captureBounds = map evaluatedDeclarationCaptureBound evaluatedCaptures
+          ordinalProjection = case ordinalIndexedProductFamily captureBounds of
+            Just family ->
+              let sourceOrder = ordinalIndexedFamilyOrderType family
+                  traversal = foliageMap sourceOrder
+                  localOrder =
+                    maybe omega finiteOrdinal (naturalAtOrdinal sourceOrder)
+              in Right (NamedMapOrdinalProjection
+                localOrder
+                (memberAt evaluatedCaptures template family traversal))
+            Nothing -> Left (captureOrdinalCapabilityFailure
+              evaluatedCaptures captureBounds)
           collection
             | dependentDeclarationIsCanonicalValue declaration =
                 ordinalProjection
@@ -4080,45 +4017,17 @@ dependentDeclarationContainsName reduction resolving scoped name = do
     retainedName = runtimeDeclarationName
       <$> scopedDependentDeclarationRuntime scoped
     sourceContains declaration
-      | staticallyExcluded = Right False
-      | otherwise = evaluateDeferredDeclarationWith
+      = evaluateSource declaration $ \active ->
+          prepareDependentDeclarationForName
+            reduction familyCaptured active name declaration
+    evaluateSource declaration prepare = evaluateDeferredDeclarationWith
           reduction captured resolving name
           (dependentDeclarationImplementation declaration)
           (const (Right True)) $ \active -> do
-            prepared <- prepareCandidates declaration active
+            prepared <- prepare active
             maybe False (const True) <$>
               selectPreparedDeclaration decode name prepared
-    staticallyExcluded = case scopedDependentDeclarationBranches scoped of
-      Just declared -> null (matching declared)
-      Nothing -> False
-    prepareCandidates declaration active = case
-        scopedDependentDeclarationBranches scoped of
-      Just declared -> prepareDependentDeclarationBranches
-        reduction familyCaptured active (matching declared)
-      Nothing -> prepareDependentDeclaration
-        reduction familyCaptured active declaration
-    matching = filter (`templateLiteralSkeletonMatches` name)
     decode = decodeCanonicalTemplate
-
-dependentDeclarationCaptureBound
-  :: ReductionContext
-  -> Scope
-  -> ResolutionStack
-  -> InterpretedValue
-  -> Either InterpretingError InterpretedValue
-dependentDeclarationCaptureBound reduction captured resolving bound
-  | Just _ <- ordinalIndexedValueFamily bound = Right bound
-  | otherwise = case
-      ( snd <$> interpretedCanonicalPresentation bound
-      , interpretedSemanticResult bound
-      ) of
-      (Just (CanonicalReference "Nat"), _) -> naturalTypeValue
-      (Just (CanonicalReference "Int"), _) -> integerTypeValue
-      (_, CanonicalNaturalType) -> naturalTypeValue
-      (_, CanonicalIntegerType) -> integerTypeValue
-      _ -> do
-        expressionValue <- valueExpressionIn captured bound
-        evalInScopeWith reduction captured resolving expressionValue
 
 runtimeDeclarationResolvedValue
   :: ResolutionStack
@@ -4166,25 +4075,16 @@ dependentDeclarationMemberByName reduction resolving scoped name = do
     captured = scopedDependentDeclarationScope scoped
     familyCaptured = scopedDependentDeclarationFamilyScope scoped
     sourceMember declaration
-      | staticallyExcluded = Right Nothing
-      | otherwise = evaluateSource declaration
-    evaluateSource declaration = evaluateDeferredDeclarationWith
+      = evaluateSource declaration $ \active ->
+          prepareDependentDeclarationForName
+            reduction familyCaptured active name declaration
+    evaluateSource declaration prepare = evaluateDeferredDeclarationWith
           reduction captured resolving name
           (dependentDeclarationImplementation declaration)
           (seedMember declaration) $ \active -> do
-            prepared <- prepareCandidates declaration active
+            prepared <- prepare active
             selected <- selectPreparedDeclaration decode name prepared
             traverse (materialize declaration active) selected
-    staticallyExcluded = case scopedDependentDeclarationBranches scoped of
-      Just declared -> null (matching declared)
-      Nothing -> False
-    prepareCandidates declaration active = case
-        scopedDependentDeclarationBranches scoped of
-      Just declared -> prepareDependentDeclarationBranches
-        reduction familyCaptured active (matching declared)
-      Nothing -> prepareDependentDeclaration
-        reduction familyCaptured active declaration
-    matching = filter (`templateLiteralSkeletonMatches` name)
     decode = decodeCanonicalTemplate
     seedMember declaration payload =
       Right (Just (namedDeclarationMember declaration name payload))
@@ -4234,45 +4134,21 @@ prepareDependentDeclaration
   -> Either InterpretingError
       [PreparedDependentDeclaration]
 prepareDependentDeclaration reduction captured resolving declaration =
-  case dependentDeclarationTemplateBranches declaration of
-    Just branches -> prepareDependentDeclarationBranches
-      reduction captured resolving branches
-    Nothing -> do
-      evaluated <- evalInScopeWith reduction captured resolving
-        (dependentDeclarationNameExpression declaration)
-      requireDependentNameSubfederation False
-        (evalInScopeWith reduction captured resolving)
-        evaluated
-      case interpretedStringTemplate evaluated of
-        Just template -> pure <$> prepareEvaluatedDeclarationTemplate template
-        Nothing -> Left AmbiguousStringTemplate
+  prepareDependentDeclarationBranches reduction captured resolving
+    (identifierExpressionBranches (dependentDeclarationHead declaration))
 
-prepareEvaluatedDeclarationTemplate
-  :: EvaluatedStringTemplate
-  -> Either InterpretingError PreparedDependentDeclaration
-prepareEvaluatedDeclarationTemplate template = do
-  (captures, segments) <- foldM prepare ([], [])
-    (evaluatedStringTemplateSegments template)
-  pure (PreparedDependentDeclaration captures
-    (EvaluatedStringTemplate segments) Nothing)
-  where
-    prepare (captures, segments) segment = case segment of
-      EvaluatedStringTemplateLiteral literal ->
-        Right (captures, segments <> [EvaluatedStringTemplateLiteral literal])
-      EvaluatedStringTemplateCapture index schema _ -> do
-        let name = simpleIdentifierName schema
-            annotation = maybe schema id (identifierUnderlyingValue schema)
-            capture = EvaluatedDeclarationCapture
-              name
-              annotation
-              (argumentSchemaPositionalDomain
-                (argumentSchemaFromValue annotation))
-              annotation
-            normalized = EvaluatedStringTemplateCapture
-              index
-              annotation
-              (evaluatedDeclarationCaptureBound capture)
-        Right (captures <> [capture], segments <> [normalized])
+prepareDependentDeclarationForName
+  :: ReductionContext
+  -> Scope
+  -> ResolutionStack
+  -> String
+  -> DependentDeclaration Expression
+  -> Either InterpretingError [PreparedDependentDeclaration]
+prepareDependentDeclarationForName reduction captured resolving requested
+    declaration =
+  prepareDependentDeclarationBranches reduction captured resolving
+    (identifierExpressionMatchingBranches
+      (dependentDeclarationHead declaration) requested)
 
 -- Parenthesized dependent names are evaluated expressions rather than
 -- literal-expression syntax. Their result therefore has the same ordinary
@@ -4318,25 +4194,6 @@ prepareDependentDeclarationBranches reduction captured resolving =
     evaluateCapture (name, expressionValue) = do
       schema <- evalInScopeWith reduction captured resolving expressionValue
       pure (evaluatedDeclarationCapture name expressionValue schema)
-
--- Reject a branch by its literal skeleton before interpreting any capture
--- annotations. Capture types may themselves require dependent-name lookup, so
--- evaluating them for a structurally impossible name recursively re-enters
--- the same declaration layer.
-templateLiteralSkeletonMatches
-  :: [StringTemplateInterpolation Expression]
-  -> String
-  -> Bool
-templateLiteralSkeletonMatches = go
-  where
-    go [] text = null text
-    go
-        (StringTemplateInterpolation (AsciiStringLiteral literal) : remaining)
-        text =
-      maybe False (go remaining) (stripPrefix literal text)
-    go (StringTemplateInterpolation {} : remaining) text =
-      any (\boundary -> go remaining (drop boundary text))
-        [0 .. length text]
 
 selectPreparedDeclaration
   :: (EvaluatedStringTemplate
@@ -4949,9 +4806,8 @@ validateGenericArgumentsExcept
     namedDependentArgument value = do
       (nameExpression, annotation, _) <- dependentArgumentExpression value
       effective <- annotation <|> givenValue value
-      case nameExpression of
-        IdentifierReference (SimpleIdentifierString name) -> Just (name, effective)
-        _ -> Nothing
+      SimpleIdentifierString name <- literalIdentifierName nameExpression
+      pure (name, effective)
       where
         givenValue selected = do
           (_, _, given) <- dependentArgumentExpression selected
@@ -5567,9 +5423,8 @@ prepareProtectedDomain
     namedDependentArgument value = do
       (nameExpression, annotation, _) <- dependentArgumentExpression value
       effective <- annotation <|> givenValue value
-      case nameExpression of
-        IdentifierReference (SimpleIdentifierString name) -> Just (name, effective)
-        _ -> Nothing
+      SimpleIdentifierString name <- literalIdentifierName nameExpression
+      pure (name, effective)
       where
         givenValue selected = do
           (_, _, given) <- dependentArgumentExpression selected
@@ -6040,8 +5895,10 @@ moduleDeclarationScope outer resultExpression name =
 namedDeclarationValueExpression :: String -> Expression -> Maybe Expression
 namedDeclarationValueExpression selected expressionValue = case expressionValue of
   dependent
-    | Just (IdentifierReference (SimpleIdentifierString name), annotation, given) <-
+    | Just (nameExpression, annotation, given) <-
         dependentArgumentExpression dependent
+    , Just (SimpleIdentifierString name) <-
+        literalIdentifierName nameExpression
     , name == selected -> Just (case given of
         Nothing -> maybe expressionValue id annotation
         Just value

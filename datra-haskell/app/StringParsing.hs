@@ -19,20 +19,13 @@ import Control.Monad.Combinators.Expr
   , makeExprParser
   )
 import Data.Char (chr, digitToInt, isHexDigit, isSpace)
+import Data.Foldable (toList)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import DatraLanguage.AST
-  ( IdentifierExpressionComposition (..)
-  , Expression (..)
-  , LiteralTemplate (..)
-  , LiteralTemplateAtom (..)
-  , LiteralTemplateLiteral (..)
-  , LiteralTemplateSequence (..)
-  , literalTemplateNullable
-  , SimpleIdentifierString (..)
+  ( Expression (..)
   , StringTemplateInterpolation (..)
-  , SymbolLiteral (..)
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.ConcreteSyntax
@@ -45,6 +38,7 @@ import DatraLanguage.ConcreteSyntax
   , lineFeedEscapeCharacter
   , literalTemplateDelimiterCharacter
   , sourceLineFeedCharacter
+  , sourceSpace
   , sourceSpaceCharacter
   , stringQuoteCharacter
   )
@@ -82,6 +76,96 @@ data LiteralTemplateParsers error = LiteralTemplateParsers
   , rejectLiteralTemplate
       :: forall value. LiteralTemplateParseFailure -> Parser error value
   }
+
+data TemplateComposition value
+  = TemplateValue value
+  | TemplateEither
+      (TemplateComposition value)
+      (TemplateComposition value)
+  | TemplateOptional (TemplateComposition value)
+
+newtype ParsedLiteralTemplate = ParsedLiteralTemplate
+  { parsedLiteralTemplateBody
+      :: TemplateComposition ParsedTemplateSequence
+  }
+
+newtype ParsedTemplateSequence = ParsedTemplateSequence
+  { parsedTemplateParts
+      :: NonEmpty (TemplateComposition ParsedTemplateAtom)
+  }
+
+data ParsedTemplateAtom
+  = ParsedTemplateLiteral String
+  | ParsedTemplateCapture Expression
+  | ParsedTemplateGroup ParsedLiteralTemplate
+
+literalTemplateNullable :: ParsedLiteralTemplate -> Bool
+literalTemplateNullable (ParsedLiteralTemplate body) =
+  compositionNullable sequenceNullable body
+  where
+    sequenceNullable (ParsedTemplateSequence parts) =
+      all (compositionNullable atomNullable) parts
+    atomNullable atom = case atom of
+      ParsedTemplateLiteral _ -> False
+      ParsedTemplateCapture _ -> False
+      ParsedTemplateGroup group -> literalTemplateNullable group
+
+compositionNullable
+  :: (value -> Bool)
+  -> TemplateComposition value
+  -> Bool
+compositionNullable nullable composition = case composition of
+  TemplateValue value -> nullable value
+  TemplateEither left right ->
+    compositionNullable nullable left || compositionNullable nullable right
+  TemplateOptional _ -> True
+
+literalTemplateFederation :: ParsedLiteralTemplate -> Expression
+literalTemplateFederation template = case templateBranches template of
+  first : remaining -> foldl EitherType
+    (StringTemplate first)
+    (map StringTemplate remaining)
+  [] -> StringTemplate []
+
+templateBranches
+  :: ParsedLiteralTemplate
+  -> [[StringTemplateInterpolation Expression]]
+templateBranches (ParsedLiteralTemplate body) =
+  compileComposition compileSequence body
+  where
+    compileSequence (ParsedTemplateSequence parts) =
+      foldl combine [[]]
+        (map (compileComposition compileAtom) (toList parts))
+
+    compileAtom atom = case atom of
+      ParsedTemplateLiteral literal ->
+        [[StringTemplateInterpolation (AsciiStringLiteral literal)]]
+      ParsedTemplateCapture expressionValue ->
+        [[StringTemplateInterpolation expressionValue]]
+      ParsedTemplateGroup group -> templateBranches group
+
+    combine prefixes suffixes =
+      [ join prefix suffix
+      | prefix <- prefixes
+      , suffix <- suffixes
+      ]
+    join [] suffix = suffix
+    join prefix [] = prefix
+    join prefix suffix = prefix
+      <> [StringTemplateInterpolation (AsciiStringLiteral sourceSpace)]
+      <> suffix
+
+compileComposition
+  :: (value -> [[StringTemplateInterpolation Expression]])
+  -> TemplateComposition value
+  -> [[StringTemplateInterpolation Expression]]
+compileComposition compileValue composition = case composition of
+  TemplateValue value -> compileValue value
+  TemplateEither left right ->
+    compileComposition compileValue left
+      <> compileComposition compileValue right
+  TemplateOptional present ->
+    compileComposition compileValue present <> [[]]
 
 data ParsedStringTemplatePart
   = ParsedStringTemplateCharacter Char
@@ -137,15 +221,15 @@ literalTemplateToken parsers = between
     template <- literalTemplateBody parsers
     when (literalTemplateNullable template)
       (rejectLiteralTemplate parsers NullableLiteralTemplate)
-    pure (LiteralTemplateExpression template))
+    pure (IdentifierExpression (literalTemplateFederation template)))
 
 literalTemplateBody
   :: Ord error
   => LiteralTemplateParsers error
-  -> Parser error (LiteralTemplate Expression)
-literalTemplateBody parsers = LiteralTemplate <$> makeExprParser
+  -> Parser error ParsedLiteralTemplate
+literalTemplateBody parsers = ParsedLiteralTemplate <$> makeExprParser
   (literalTemplateSequence parsers)
-  [[InfixR (EitherExpression <$ literalTemplateEitherOperator)]]
+  [[InfixR (TemplateEither <$ literalTemplateEitherOperator)]]
 
 literalTemplateEitherOperator :: Ord error => Parser error ()
 literalTemplateEitherOperator = void $ do
@@ -158,12 +242,12 @@ literalTemplateSequence
   :: Ord error
   => LiteralTemplateParsers error
   -> Parser error
-      (IdentifierExpressionComposition (LiteralTemplateSequence Expression))
+      (TemplateComposition ParsedTemplateSequence)
 literalTemplateSequence parsers = do
   first <- literalTemplateComponent parsers
   remaining <- continue
-  pure (IdentifierComposition
-    (LiteralTemplateSequence (first :| remaining)))
+  pure (TemplateValue
+    (ParsedTemplateSequence (first :| remaining)))
   where
     continue = choice
       [ [] <$ try (lookAhead literalTemplateEitherOperator)
@@ -191,7 +275,7 @@ literalTemplateComponent
   :: Ord error
   => LiteralTemplateParsers error
   -> Parser error
-      (IdentifierExpressionComposition (LiteralTemplateAtom Expression))
+      (TemplateComposition ParsedTemplateAtom)
 literalTemplateComponent parsers = do
   next <- lookAhead anySingle
   when (isSpace next)
@@ -212,54 +296,53 @@ literalTemplatePart
   :: Ord error
   => LiteralTemplateParsers error
   -> Parser error
-      (IdentifierExpressionComposition (LiteralTemplateAtom Expression))
+      (TemplateComposition ParsedTemplateAtom)
 literalTemplatePart parsers = makeExprParser
   (literalTemplateAtom parsers)
   [[Postfix
-      (OptionalExpression
+      (TemplateOptional
         <$ char (AST.sourceOperatorCharacter AST.OptionalCharacterOperator))]]
 
 literalTemplateAtom
   :: Ord error
   => LiteralTemplateParsers error
   -> Parser error
-      (IdentifierExpressionComposition (LiteralTemplateAtom Expression))
+      (TemplateComposition ParsedTemplateAtom)
 literalTemplateAtom parsers = choice
-  [ IdentifierComposition <$> literalTemplateCapture parsers
-  , IdentifierComposition . LiteralTemplateGroupAtom <$> between
+  [ TemplateValue <$> literalTemplateCapture parsers
+  , TemplateValue . ParsedTemplateGroup <$> between
       (char (delimiterCharacter OpenParenthesis))
       (char (delimiterCharacter CloseParenthesis))
       (literalTemplateBody parsers)
-  , IdentifierComposition <$> literalTemplateLiteral parsers
+  , TemplateValue <$> literalTemplateLiteral parsers
   ]
 
 literalTemplateCapture
   :: Ord error
   => LiteralTemplateParsers error
-  -> Parser error (LiteralTemplateAtom Expression)
+  -> Parser error ParsedTemplateAtom
 literalTemplateCapture parsers = do
   (sourceText, captured) <- match
     (interpolationToken (literalTemplateInterpolation parsers))
   when (Text.any isSourceLineBreakCharacter sourceText)
     (rejectLiteralTemplate parsers InvalidLiteralTemplateSpacing)
-  pure (LiteralTemplateCaptureAtom captured)
+  pure (ParsedTemplateCapture captured)
 
 literalTemplateLiteral
   :: Ord error
   => LiteralTemplateParsers error
-  -> Parser error (LiteralTemplateAtom Expression)
+  -> Parser error ParsedTemplateAtom
 literalTemplateLiteral parsers = do
   characters <- some literalTemplateCharacter
   when (any isSpace characters)
     (rejectLiteralTemplate parsers InvalidLiteralTemplateSpacing)
   literal <-
     if all isIdentifierCharacter characters
-      then pure
-        (IdentifierTemplateLiteral (SimpleIdentifierString characters))
+      then pure characters
       else if all isTemplateSymbolCharacter characters
-        then pure (SymbolTemplateLiteral (SymbolLiteral characters))
+        then pure characters
         else rejectLiteralTemplate parsers MixedTemplateLiteral
-  pure (LiteralTemplateLiteralAtom literal)
+  pure (ParsedTemplateLiteral literal)
 
 literalTemplateCharacter :: Ord error => Parser error Char
 literalTemplateCharacter =

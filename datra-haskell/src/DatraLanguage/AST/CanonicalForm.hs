@@ -16,6 +16,7 @@ data CanonicalForm
   | GenericPrefixForm
   | BindingsForm
   | IdentifierReferenceForm
+  | LineBreakForm
   | UnresolvedSyntaxForm
   | GenericBinderForm
   deriving (Bounded, Enum, Eq, Show)
@@ -30,5 +31,6 @@ canonicalFormName ImportPathsForm = "paths"
 canonicalFormName GenericPrefixForm = "generic-prefix"
 canonicalFormName BindingsForm = "bindings"
 canonicalFormName IdentifierReferenceForm = "ref"
+canonicalFormName LineBreakForm = "line-break"
 canonicalFormName UnresolvedSyntaxForm = "unresolved-syntax"
 canonicalFormName GenericBinderForm = "generic-binder"

@@ -22,7 +22,6 @@ import DatraLanguage.ContextualRole
 import DatraLanguage.Pretty
   ( renderAsciiStringLiteral
   , renderIdentifierString
-  , renderLiteralTemplate
   , renderOperatorExpression
   , renderStringTemplate
   )
@@ -73,7 +72,7 @@ source context expression =
     DependentArgumentValue name (Just annotation) ->
       let (writtenName, optionalName) = dependentArgumentNameSource name
       in dependentArgument writtenName optionalName (Just annotation) Nothing
-    DependentArgumentValue name Nothing -> source 13 name
+    DependentArgumentValue name Nothing -> source 13 (identifierHeadValue name)
     Sequential members -> delimit OpenParenthesis CloseParenthesis
       (intercalate (spaced AST.SequentialOperator)
         (map (source 0) (NonEmpty.toList members)))
@@ -157,10 +156,6 @@ source context expression =
       AsciiStringValue value -> op AST.IdentifierExpressionOperator <> renderAsciiStringLiteral value
       _ -> op AST.IdentifierExpressionOperator <>
         delimit OpenParenthesis CloseParenthesis (source 0 operand)
-    LiteralTemplateExpressionValue body ->
-      [literalTemplateDelimiterCharacter]
-        <> renderLiteralTemplate body
-        <> [literalTemplateDelimiterCharacter]
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom
@@ -223,8 +218,9 @@ source context expression =
         <> maybe "" (\value -> spaced AST.DependentArgumentTypeOperator <> source 13 value) annotation
         <> maybe "" (\value -> spaced AST.AssignmentOperator <> assignedValue value) given)
     dependentArgumentNameSource name = case name of
-      OptionalValue present -> (source 13 present, True)
-      _ -> (source 13 name, False)
+      IdentifierExpressionBody (OptionalValue present) ->
+        (source 13 (IdentifierExpressionValue present), True)
+      _ -> (source 13 (identifierHeadValue name), False)
     -- Federation binds inside assignment. Other assignment operands retain
     -- their existing conservative grouping.
     assignedValue value@EitherValue {} = source 3 value
@@ -260,7 +256,6 @@ source context expression =
 identifierHeadValue :: IdentifierExpression OperatorExpression -> OperatorExpression
 identifierHeadValue headValue = case headValue of
   IdentifierExpressionBody body -> IdentifierExpressionValue body
-  LiteralTemplateIdentifier body -> LiteralTemplateExpressionValue body
 
 scopeBody :: OperatorExpression -> String
 scopeBody body = case body of

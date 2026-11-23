@@ -128,6 +128,7 @@ astForm =
       , astDeclarationModifier AST.ValOperator DeclarationVal
       , IdentifierReference . SimpleIdentifierString <$>
           (astCanonicalForm IdentifierReferenceForm *> astString)
+      , LineBreak <$ astCanonicalForm LineBreakForm
       , UnresolvedSyntaxLiteral <$>
           (astCanonicalForm UnresolvedSyntaxForm *> astString)
       , astConditional
@@ -209,7 +210,9 @@ astDependentArgument
   -> Parser Expression
 astDependentArgument operator assignmentMarker = do
   _ <- astOperatorToken operator
-  name <- astExpression
+  nameExpression <- astExpression
+  name <- maybe empty pure
+    (identifierExpressionFromExpression nameExpression)
   typeAnnotation <- astExpression
   case assignmentMarker of
     Nothing -> pure

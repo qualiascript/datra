@@ -8,13 +8,13 @@ module StringInterpolation
   , IdentifierApplicationPattern (..), LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
   , DeclarativeCapture (..)
-  , LiteralTemplatePattern (..), LiteralTemplatePatternPart (..)
   , DependentSyntaxRule (..)
   , SyntaxRuleSemantics (..), DependentSyntaxInvocation (..)
   , StringInterpolationTemplate, StringTemplateInterpolation (..)
   , StringExpression (..)
   , TemplateSelection (..)
   , declarationRules, declarationRuleBranches
+  , identifierExpressionBranches, identifierExpressionMatchingBranches
   , syntaxRuleCaptures, mapSyntaxRuleCaptures
   , literalExpressionPattern
   , identifierApplicationRule
@@ -24,20 +24,19 @@ module StringInterpolation
   , declarationLiterals
   ) where
 import DatraLanguage.DependentDeclaration
-  ( dependentDeclaration
-  , dependentDeclarationTemplateBranches
-  )
+  ( dependentDeclaration )
 import DatraLanguage.AST
+import DatraLanguage.ConcreteSyntax (sourceSpace)
 import StringExpression
   ( StringExpression (..)
   , StringInterpolationTemplate
   , TemplateSelection (..)
   )
 import Data.Foldable (toList)
+import StringInterpolation.Exact (matchesExactSkeleton)
 
 data DeclarativeMatcherPlan
   = IdentifierApplicationMatcher IdentifierApplicationPattern
-  | LiteralTemplateMatcher LiteralTemplatePattern
   | LiteralExpressionMatcher
       (LiteralExpressionPattern (StringExpression Expression))
   deriving (Eq, Show)
@@ -58,22 +57,8 @@ data LiteralExpressionPatternPart capture
   | LiteralExpressionPatternCapture capture
   deriving (Eq, Show)
 
--- | Captures from literal expressions retain the existing string-expression
--- descriptor. A literal-template capture instead retains the Datra target
--- expression written after @%@; it is never converted to a string expression.
-data DeclarativeCapture
+newtype DeclarativeCapture
   = StringExpressionCapture (StringExpression Expression)
-  | LiteralTemplateCapture Expression
-  deriving (Eq, Show)
-
-newtype LiteralTemplatePattern = LiteralTemplatePattern
-  { literalTemplatePatternParts :: [LiteralTemplatePatternPart]
-  }
-  deriving (Eq, Show)
-
-data LiteralTemplatePatternPart
-  = LiteralTemplatePatternLiteral LiteralTemplateLiteral
-  | LiteralTemplatePatternCapture Expression
   deriving (Eq, Show)
 
 data SyntaxRule = SyntaxRule
@@ -85,10 +70,6 @@ syntaxRuleCaptures :: SyntaxRule -> [DeclarativeCapture]
 syntaxRuleCaptures rule = case declarativeMatcherPlan rule of
   IdentifierApplicationMatcher patternValue ->
     [StringExpressionCapture (identifierApplicationOperand patternValue)]
-  LiteralTemplateMatcher (LiteralTemplatePattern parts) ->
-    [ LiteralTemplateCapture capture
-    | LiteralTemplatePatternCapture capture <- parts
-    ]
   LiteralExpressionMatcher (LiteralExpressionPattern parts) ->
     [ StringExpressionCapture capture
     | LiteralExpressionPatternCapture capture <- parts
@@ -115,9 +96,6 @@ mapSyntaxRuleCaptures transform rule = rule
           { identifierApplicationOperand =
               mapStringCapture (identifierApplicationOperand patternValue)
           }
-      LiteralTemplateMatcher (LiteralTemplatePattern parts) ->
-        LiteralTemplateMatcher
-          (LiteralTemplatePattern (map mapLiteralTemplatePart parts))
       LiteralExpressionMatcher (LiteralExpressionPattern parts) ->
         LiteralExpressionMatcher
           (LiteralExpressionPattern (map mapLiteralExpressionPart parts))
@@ -131,16 +109,6 @@ mapSyntaxRuleCaptures transform rule = rule
     mapStringCapture capture = case transform
         (StringExpressionCapture capture) of
       StringExpressionCapture transformed -> transformed
-      LiteralTemplateCapture _ -> capture
-    mapLiteralTemplatePart partValue = case partValue of
-      LiteralTemplatePatternLiteral literal ->
-        LiteralTemplatePatternLiteral literal
-      LiteralTemplatePatternCapture capture ->
-        case transform (LiteralTemplateCapture capture) of
-          LiteralTemplateCapture transformed ->
-            LiteralTemplatePatternCapture transformed
-          StringExpressionCapture _ ->
-            LiteralTemplatePatternCapture capture
 
 data SyntaxRuleSemantics
   = SyntaxAdapter Expression
@@ -197,14 +165,6 @@ dependentDeclarationRuleBranches declaration =
   case dependentDeclarationHead declaration of
     IdentifierExpressionBody (IdentifierReference name) ->
       [(declaration, 0, identifierDeclarationRule declaration name)]
-    LiteralTemplateIdentifier body -> zipWith
-      (\branch (patternValue, captures) ->
-        ( declaration
-        , branch
-        , literalTemplateRule declaration patternValue captures
-        ))
-      [0 ..]
-      (literalTemplatePatternBranches body)
     _ -> zipWith
       (\branch parts ->
         (declaration, branch, directTemplateRule declaration parts))
@@ -250,77 +210,66 @@ directTemplateRule declaration parts =
   where
     (template, captures) = compileDependentDeclarationTemplate parts
 
-literalTemplateRule
-  :: DependentDeclaration Expression
-  -> LiteralTemplatePattern
-  -> [Maybe (SimpleIdentifierString, Expression)]
-  -> SyntaxRule
-literalTemplateRule declaration patternValue captures = SyntaxRule
-  { declarativeMatcherPlan = LiteralTemplateMatcher patternValue
-  , syntaxSemantics = DependentSyntax (DependentSyntaxRule
-      captures
-      (dependentDeclarationImplementation declaration)
-      (DependentSyntaxLookup (literalTemplateInvocation patternValue)))
-  }
-literalTemplateLiteralText :: LiteralTemplateLiteral -> String
-literalTemplateLiteralText literal = case literal of
-  IdentifierTemplateLiteral (SimpleIdentifierString text) -> text
-  SymbolTemplateLiteral (SymbolLiteral text) -> text
-
-literalTemplateInvocation
-  :: LiteralTemplatePattern
-  -> [StringTemplateInterpolation Expression]
-literalTemplateInvocation (LiteralTemplatePattern parts) = map invocation parts
-  where
-    invocation partValue = case partValue of
-      LiteralTemplatePatternLiteral literal -> StringTemplateInterpolation
-        (AsciiStringLiteral (literalTemplateLiteralText literal))
-      LiteralTemplatePatternCapture capture ->
-        StringTemplateInterpolation capture
-
-literalTemplatePatternBranches
-  :: LiteralTemplate Expression
-  -> [(LiteralTemplatePattern, [Maybe (SimpleIdentifierString, Expression)])]
-literalTemplatePatternBranches template =
-  [ (LiteralTemplatePattern patterns, captures)
-  | (patterns, captures) <- compileTemplate template
-  , not (null patterns)
-  ]
-  where
-    compileTemplate (LiteralTemplate body) =
-      compileComposition compileSequence body
-
-    compileSequence (LiteralTemplateSequence parts) =
-      foldl combine [([], [])]
-        (map (compileComposition compileAtom) (toList parts))
-
-    compileAtom atom = case atom of
-      LiteralTemplateLiteralAtom literal ->
-        [([LiteralTemplatePatternLiteral literal], [])]
-      LiteralTemplateCaptureAtom expression ->
-        let (_, name) = captureDescriptor expression
-        in [([LiteralTemplatePatternCapture expression], [name])]
-      LiteralTemplateGroupAtom group -> compileTemplate group
-
-    compileComposition compileLeaf composition = case composition of
-      IdentifierComposition value -> compileLeaf value
-      EitherExpression left right ->
-        compileComposition compileLeaf left
-          <> compileComposition compileLeaf right
-      OptionalExpression present ->
-        compileComposition compileLeaf present <> [([], [])]
-
-    combine prefixes suffixes =
-      [ (prefixPatterns <> suffixPatterns, prefixCaptures <> suffixCaptures)
-      | (prefixPatterns, prefixCaptures) <- prefixes
-      , (suffixPatterns, suffixCaptures) <- suffixes
-      ]
-
 dependentDeclarationSyntaxAlternatives
   :: DependentDeclaration Expression
   -> [[StringTemplateInterpolation Expression]]
-dependentDeclarationSyntaxAlternatives declaration =
-  maybe [] id (dependentDeclarationTemplateBranches declaration)
+dependentDeclarationSyntaxAlternatives declaration = case
+    dependentDeclarationHead declaration of
+  identifier -> identifierExpressionBranches identifier
+
+identifierExpressionBranches
+  :: IdentifierExpression Expression
+  -> [[StringTemplateInterpolation Expression]]
+identifierExpressionBranches identifier = case identifier of
+  IdentifierExpressionBody body -> identifierBranches body
+  where
+    identifierBranches (IdentifierReference (SimpleIdentifierString name)) =
+      [[stringLiteral name]]
+    identifierBranches (AsciiStringLiteral name) =
+      [[stringLiteral name]]
+    identifierBranches (AtlasMap members) = identifierSequence members
+    identifierBranches (MapSequence members) = identifierSequence members
+    identifierBranches (EitherType left right) =
+      identifierBranches left <> identifierBranches right
+    identifierBranches (OptionalType present) =
+      identifierBranches present <> [[]]
+    identifierBranches (StringTemplate parts) = [parts]
+    identifierBranches identifier@(IdentifierExpression expressionValue) =
+      case expressionValue of
+        IdentifierReference (SimpleIdentifierString literal) ->
+          [[stringLiteral literal]]
+        AsciiStringLiteral literal -> [[stringLiteral literal]]
+        _ -> [[StringTemplateInterpolation identifier]]
+    identifierBranches expressionValue =
+      [[StringTemplateInterpolation expressionValue]]
+
+    identifierSequence = foldl combine [[]] . map identifierBranches
+    combine prefixes suffixes =
+      [ join prefix suffix
+      | prefix <- prefixes
+      , suffix <- suffixes
+      ]
+    join [] suffix = suffix
+    join prefix [] = prefix
+    join prefix suffix =
+      prefix <> [stringLiteral sourceSpace] <> suffix
+    stringLiteral = StringTemplateInterpolation . AsciiStringLiteral
+
+-- | Retain exactly the alternatives whose literal components can consume the
+-- requested identifier. Interpolations remain unevaluated wildcards here;
+-- typed capture evaluation belongs to the later exact-selection phase.
+identifierExpressionMatchingBranches
+  :: IdentifierExpression Expression
+  -> String
+  -> [[StringTemplateInterpolation Expression]]
+identifierExpressionMatchingBranches identifier requested =
+  filter (\branch -> matchesExactSkeleton view branch requested)
+    (identifierExpressionBranches identifier)
+  where
+    view (StringTemplateInterpolation expressionValue) =
+      case expressionValue of
+        AsciiStringLiteral literal -> Right literal
+        capture -> Left capture
 
 compileDependentDeclarationTemplate
   :: [StringTemplateInterpolation Expression]

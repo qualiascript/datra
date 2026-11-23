@@ -21,6 +21,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import DatraLanguage.AST
   ( SimpleIdentifierString (..)
+  , IdentifierExpression (..)
   , GenericPolarity (GenericProduct, GenericSum)
   , GenericArgument (..)
   , Expression
@@ -72,6 +73,7 @@ import DatraLanguage.AST
       )
   , pattern FunctionType
   , literalIdentifierName
+  , literalIdentifierExpression
   , constructDependentArgument
   )
 import DatraLanguage.AST.Operator qualified as AST
@@ -460,16 +462,19 @@ dependentArgumentExpressionParser = do
   pure (constructDependentArgument
     dependentName isOptional annotation given)
 
-dependentArgumentName :: Parser Expression
+dependentArgumentName :: Parser (IdentifierExpression Expression)
 dependentArgumentName = choice
-  [ literalTemplateExpression
-  , dollarIdentifierExpression
-  , parenthesizedExpression
-  , IdentifierExpression . IdentifierReference . SimpleIdentifierString
-      <$> bareIdentifier
+  [ do
+      IdentifierExpression body <- literalTemplateExpression
+      pure (IdentifierExpressionBody body)
+  , do
+      IdentifierExpression body <- dollarIdentifierExpression
+      pure (IdentifierExpressionBody body)
+  , IdentifierExpressionBody <$> parenthesizedExpression
+  , literalIdentifierExpression . SimpleIdentifierString <$> bareIdentifier
   ]
 
-privateDependentName :: Expression -> Bool
+privateDependentName :: IdentifierExpression Expression -> Bool
 privateDependentName name = case literalIdentifierName name of
   Just identifier -> isPrivateIdentifier (simpleIdentifierStringText identifier)
   Nothing -> False
