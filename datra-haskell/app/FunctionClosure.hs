@@ -19,7 +19,8 @@ import DatraLanguage.DependentDeclaration
 import Data.List (nub)
 import DatraLanguage.AST
 import DatraLanguage.ContextualDeclaration
-import DatraLanguage.Identifier (privateIdentifierPrefixCharacter)
+import DatraLanguage.Identifier
+  ( isIdentifierValue, privateIdentifierPrefixCharacter )
 import Control.Monad.Trans.State.Strict (State, get, modify', put, runState)
 import Numeric.Natural (Natural)
 
@@ -197,16 +198,9 @@ rewrite _ _ _ resolver _ expression
 
 rewrite mode inDefinition active resolver bound expression =
   case expression of
-    -- A short scope access evaluates its RHS name inside the child scope
-    -- opened by the rewritten source. It is not an ambient dependency to
-    -- capture or rename independently.
-    ScopeAccess source body@IdentifierReference {} ->
-      ScopeAccess
-        <$> rewrite mode inDefinition active resolver bound source
-        <*> pure body
     InModule path body
-      | Just imported <- resolveDependencyModule resolver path ->
-          rewrite mode inDefinition active imported bound body
+      | Just moduleResolver <- resolveDependencyModule resolver path ->
+          rewrite mode inDefinition active moduleResolver bound body
     FunctionApplication
         (FunctionTypeExpression generics domain codomain)
         (FunctionBody entries result) -> do
@@ -251,7 +245,7 @@ rewrite mode inDefinition active resolver bound expression =
           -- by the evaluator. Every block also binds its declaration map as
           -- @_this@ unless an explicit fixed point already occupies that name;
           -- either way it is local to the reconstructed expression and must
-          -- never become a captured import.
+          -- never become a captured dependency.
           contextualBound
             | FixedThisBound `elem` bound = map LexicalBound names <> bound
             | otherwise =
@@ -327,9 +321,18 @@ dependencyReference (DependencyAddress []) =
   IdentifierReference
     (SimpleIdentifierString [privateIdentifierPrefixCharacter])
 dependencyReference (DependencyAddress (root : fields)) =
-  foldl ScopeAccess
-    (IdentifierReference (prependIdentifier root))
-    (map IdentifierReference fields)
+  foldl namedScopeAccess rootReference fields
+  where
+    privateRoot@(SimpleIdentifierString name) = prependIdentifier root
+    rootReference
+      | isIdentifierValue name = IdentifierReference privateRoot
+      | otherwise = namedScopeAccess
+          (contextualAccess ContextualThis)
+          privateRoot
+
+namedScopeAccess :: Expression -> SimpleIdentifierString -> Expression
+namedScopeAccess source name =
+  ScopeAccess source (literalIdentifierExpression name)
 
 prependIdentifier :: SimpleIdentifierString -> SimpleIdentifierString
 prependIdentifier (SimpleIdentifierString name) = SimpleIdentifierString
@@ -354,8 +357,8 @@ scopeDefinitions prefixHere collected =
       | (_, DependencyAddress (name : _ : _), _) <- collected
       ]
     childDefinition name = DependentDeclaration
-      (IdentifierExpressionBody (IdentifierReference renderedName))
-      True False False [DeclarationLet] childScope
+      (literalIdentifierExpression renderedName)
+      [DeclarationLet] childScope
       where
         renderedName = if prefixHere then prependIdentifier name else name
         childScope = Begin
@@ -375,10 +378,17 @@ capturedDeclaration
 capturedDeclaration prefixHere _ declaration =
   translated
   where
-    eager = declaration { dependentDeclarationIsLet = True }
+    eager = declaration
+      { dependentDeclarationModifierApplications =
+          ensureModifier DeclarationLet
+            (dependentDeclarationModifierApplications declaration)
+      }
     translated
       | prefixHere = prependDependentDeclarationName "_" eager
       | otherwise = eager
+    ensureModifier modifier applications
+      | modifier `elem` applications = applications
+      | otherwise = applications <> [modifier]
 
 contextualBoundDepth :: ContextualRole -> [BoundName] -> Natural
 contextualBoundDepth role =
@@ -402,8 +412,9 @@ referencePath :: Expression -> Maybe DependencyPath
 referencePath
     (ScopeAccess
       thisValue
-      (IdentifierReference (SimpleIdentifierString name)))
-  | isContextualAccessOf ContextualThis thisValue =
+      selector)
+  | Just (SimpleIdentifierString name) <- literalIdentifierName selector
+  , isContextualAccessOf ContextualThis thisValue =
       Just (DependencyPath (ContextualRoot ContextualThis) [name])
 referencePath expression
   | FunctionApplication
@@ -412,8 +423,8 @@ referencePath expression
       <- expression = Just (DependencyPath AmbientRoot [name])
 referencePath (IdentifierReference (SimpleIdentifierString name)) =
   Just (DependencyPath AmbientRoot [name])
-referencePath
-    (ScopeAccess source (IdentifierReference (SimpleIdentifierString name))) =
+referencePath (ScopeAccess source selector)
+  | Just (SimpleIdentifierString name) <- literalIdentifierName selector =
   appendPath name <$> referencePath source
   where
     appendPath field path = path
@@ -440,8 +451,5 @@ parameterNames value = concatMap parameterNames (expressionChildren value)
 
 declarationBindingNames :: DependentDeclaration Expression -> [String]
 declarationBindingNames declaration =
-  case dependentDeclarationHead declaration of
-    IdentifierExpressionBody
-        (IdentifierReference (SimpleIdentifierString name)) -> [name]
-    IdentifierExpressionBody (AsciiStringLiteral name) -> [name]
-    _ -> []
+  maybe [] (pure . simpleIdentifierStringText)
+    (literalIdentifierName (dependentDeclarationHead declaration))

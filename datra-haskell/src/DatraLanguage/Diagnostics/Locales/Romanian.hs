@@ -2,7 +2,7 @@
 module DatraLanguage.Diagnostics.Locales.Romanian
   ( localizeAccessError
   , localizeParseFailure
-  , localizeModuleLoadFailure
+  , localizeModuleInputFailure
   , localizeCommandLineOptionFailure
   , localizeSyntaxRewriteFailure
   , localizeCandidateRejectionReport
@@ -20,7 +20,7 @@ import DatraLanguage.Diagnostics.Application
   ( CandidateRejectionReason (..)
   , CandidateRejectionReport (..)
   , CommandLineOptionFailure (..)
-  , ModuleLoadFailure (..)
+  , ModuleInputFailure (..)
   , LiteralTemplateParseFailure (..)
   , ParseFailure (..)
   , SyntaxRewriteFailure (..)
@@ -79,29 +79,35 @@ localizeParseFailure failure = case failure of
   SyntaxRewriteParseFailure reason ->
     localizeSyntaxRewriteFailure reason
 
-localizeModuleLoadFailure :: ModuleLoadFailure -> LocalizedMessage
-localizeModuleLoadFailure failure =
+localizeModuleInputFailure :: ModuleInputFailure -> LocalizedMessage
+localizeModuleInputFailure failure =
   case failure of
-    ImportScanFailed path parseFailure ->
-      LocalizedMessage "importurile modulului nu au putut fi analizate"
-        (["modul: " <> path] <> embeddedParseFailure parseFailure)
-    ImportPathResolutionFailed requested location reason ->
+    ModulePathResolutionFailed requested location reason ->
       LocalizedMessage "calea modulului nu a putut fi rezolvată"
         [ "modul: " <> requested
         , "locație: " <> location
         , "motiv: " <> reason
         ]
-    CyclicModuleImport path ->
-      LocalizedMessage "import ciclic de modul" ["modul: " <> path]
     ModuleReadFailed requested path reason ->
       LocalizedMessage "modulul nu a putut fi citit"
         [ "modul: " <> requested
         , "cale: " <> path
         , "motiv: " <> reason
         ]
-    ImportedModuleParseFailed path parseFailure ->
-      LocalizedMessage "modulul importat nu a putut fi analizat"
+    ModuleParseFailed path parseFailure ->
+      LocalizedMessage "modulul nu a putut fi analizat"
         (["modul: " <> path] <> embeddedParseFailure parseFailure)
+    ModulePreparationFailed path preparationFailure ->
+      let LocalizedMessage summary details =
+            localizeInterpretingError preparationFailure
+      in LocalizedMessage "modulul nu a putut fi pregătit"
+          (["modul: " <> path, "cauză: " <> summary] <> details)
+    ModuleNamespaceCollision namespace first second ->
+      LocalizedMessage "spațiul de nume al modulului este declarat de mai multe ori"
+        [ "spațiu de nume: " <> namespace
+        , "primul modul: " <> first
+        , "al doilea modul: " <> second
+        ]
 
 embeddedParseFailure :: ParseFailure -> [String]
 embeddedParseFailure failure = summary : details
@@ -213,7 +219,7 @@ localizeInterpretingError reason =
         "o legare let nu poate ascunde un identificator cu ascundere consecventă"
         ["identificator: " <> name]
     UnknownIdentifier name ->
-      LocalizedMessage "identificatorul nu este importat în acest domeniu" ["identificator: " <> name]
+      LocalizedMessage "identificatorul nu este disponibil în acest domeniu" ["identificator: " <> name]
     PrivateParameterCannotBeOptional name ->
       LocalizedMessage
         "parametrul privat al funcției nu poate fi opțional"
@@ -418,17 +424,17 @@ localizeModuleFailure failure =
     StandardLibraryRequiresDeclarationBlock path ->
       LocalizedMessage "biblioteca standard trebuie să conțină un bloc de declarații"
         ["cale: " <> path]
-    ImportedModuleRequiresBlock ->
-      LocalizedMessage "fișierul importat trebuie să se reducă la un bloc" []
-    ImportedModuleRequiresIdentifierBinderFederation ->
+    ModuleRequiresBlock ->
+      LocalizedMessage "modulul trebuie să se reducă la un bloc" []
+    ModuleRequiresIdentifierBinderFederation ->
       LocalizedMessage
-        "fișierul importat trebuie să producă o federație de identificatori"
+        "modulul trebuie să producă o federație de identificatori"
         ["folosiți yield Nume : valoare sau o federație de identificatori"]
     ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "domeniul modulului necesită o hartă totală de tipuri de identificator simplu" []
-    ImportedModuleRequiresNamedExports ->
-      LocalizedMessage "modulul importat trebuie să producă un domeniu sau o hartă denumită"
+    ModuleRequiresNamedExports ->
+      LocalizedMessage "modulul trebuie să producă un domeniu sau o hartă denumită"
         ["folosiți yield this pentru a exporta domeniul"]
     ModuleExportRequiresIdentifier ->
       LocalizedMessage "exportul modulului trebuie să aibă un identificator" []

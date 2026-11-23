@@ -111,7 +111,6 @@ astForm =
   between (astDelimiter OpenParenthesis) (astDelimiter CloseParenthesis)
     (choice
       [ InModule <$> (astCanonicalForm InModuleForm *> astString) <*> astExpression
-      , astImport
       , astUnaryForm FunctionForm Fun
       , astGenericIntroduction
       , astFunctionType
@@ -119,6 +118,7 @@ astForm =
       , astSequence
       , ArgumentativeMap <$>
           (astCanonicalForm ArgumentativeMapForm *> many astExpression)
+      , astWithScopes
       , astNaturalRangeExpression
       , astDependentArgument AST.AssignmentOperator (Just ())
       , astDependentArgument AST.DependentArgumentTypeOperator Nothing
@@ -128,6 +128,7 @@ astForm =
       , astDeclarationModifier AST.ValOperator DeclarationVal
       , IdentifierReference . SimpleIdentifierString <$>
           (astCanonicalForm IdentifierReferenceForm *> astString)
+      , LineBreak <$ astCanonicalForm LineBreakForm
       , UnresolvedSyntaxLiteral <$>
           (astCanonicalForm UnresolvedSyntaxForm *> astString)
       , astConditional
@@ -135,13 +136,14 @@ astForm =
       , astRegisteredUnary
       ])
 
-astImport :: Parser Expression
-astImport = do
-  _ <- astCanonicalForm ImportForm
-  paths <- between (astDelimiter OpenParenthesis) (astDelimiter CloseParenthesis) $ do
-    _ <- astCanonicalForm ImportPathsForm
-    many astString
-  Import paths <$> astExpression
+astWithScopes :: Parser Expression
+astWithScopes = do
+  _ <- astCanonicalForm WithScopesForm
+  sources <- between
+    (astDelimiter OpenParenthesis)
+    (astDelimiter CloseParenthesis)
+    (astCanonicalForm ArgumentativeMapForm *> many astExpression)
+  WithScopes sources <$> astExpression
 
 astGenericIntroduction :: Parser Expression
 astGenericIntroduction = do
@@ -209,7 +211,9 @@ astDependentArgument
   -> Parser Expression
 astDependentArgument operator assignmentMarker = do
   _ <- astOperatorToken operator
-  name <- astExpression
+  nameExpression <- astExpression
+  name <- maybe empty pure
+    (identifierExpressionFromExpression nameExpression)
   typeAnnotation <- astExpression
   case assignmentMarker of
     Nothing -> pure

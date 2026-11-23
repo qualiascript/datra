@@ -1,6 +1,5 @@
 Std.(
-import "library_one" do
-  yield Nested : begin
+yield Nested : begin
     x := LibraryOne.x + 1
-  yield public this
+yield public this
 )

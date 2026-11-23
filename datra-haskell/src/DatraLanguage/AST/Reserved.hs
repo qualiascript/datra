@@ -6,6 +6,8 @@ module DatraLanguage.AST.Reserved
   , reservedSymbols
   , reservedSymbolIdentifierString
   , reservedSymbolIdentifiersAreUnique
+  , LookupField (..)
+  , lookupFieldIdentifierString
   ) where
 
 data ReservedWord
@@ -74,3 +76,13 @@ reservedSymbolIdentifiersAreUnique =
     allDifferent [] = True
     allDifferent (value : remaining) =
       value `notElem` remaining && allDifferent remaining
+
+-- | A named field in the row produced by the lookup operator.
+data LookupField
+  = LookupKeyField
+  | LookupValueField
+  deriving (Bounded, Enum, Eq, Show)
+
+lookupFieldIdentifierString :: LookupField -> String
+lookupFieldIdentifierString LookupKeyField = "key"
+lookupFieldIdentifierString LookupValueField = "value"

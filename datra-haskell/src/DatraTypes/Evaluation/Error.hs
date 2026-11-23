@@ -95,10 +95,10 @@ data FunctionFailure
 data ModuleEvaluationFailure
   = StandardLibraryParseFailure FilePath String
   | StandardLibraryRequiresDeclarationBlock FilePath
-  | ImportedModuleRequiresBlock
-  | ImportedModuleRequiresIdentifierBinderFederation
+  | ModuleRequiresBlock
+  | ModuleRequiresIdentifierBinderFederation
   | ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes
-  | ImportedModuleRequiresNamedExports
+  | ModuleRequiresNamedExports
   | ModuleExportRequiresIdentifier
   | ModuleNotLoaded String
   deriving (Eq, Show)

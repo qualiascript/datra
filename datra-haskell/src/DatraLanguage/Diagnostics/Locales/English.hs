@@ -5,7 +5,7 @@
 module DatraLanguage.Diagnostics.Locales.English
   ( localizeAccessError
   , localizeParseFailure
-  , localizeModuleLoadFailure
+  , localizeModuleInputFailure
   , localizeCommandLineOptionFailure
   , localizeSyntaxRewriteFailure
   , localizeCandidateRejectionReport
@@ -23,7 +23,7 @@ import DatraLanguage.Diagnostics.Application
   ( CandidateRejectionReason (..)
   , CandidateRejectionReport (..)
   , CommandLineOptionFailure (..)
-  , ModuleLoadFailure (..)
+  , ModuleInputFailure (..)
   , LiteralTemplateParseFailure (..)
   , ParseFailure (..)
   , SyntaxRewriteFailure (..)
@@ -83,29 +83,35 @@ localizeParseFailure failure = case failure of
   SyntaxRewriteParseFailure reason ->
     localizeSyntaxRewriteFailure reason
 
-localizeModuleLoadFailure :: ModuleLoadFailure -> LocalizedMessage
-localizeModuleLoadFailure failure =
+localizeModuleInputFailure :: ModuleInputFailure -> LocalizedMessage
+localizeModuleInputFailure failure =
   case failure of
-    ImportScanFailed path parseFailure ->
-      LocalizedMessage "module imports could not be scanned"
-        (["module: " <> path] <> embeddedParseFailure parseFailure)
-    ImportPathResolutionFailed requested location reason ->
+    ModulePathResolutionFailed requested location reason ->
       LocalizedMessage "module path could not be resolved"
         [ "module: " <> requested
         , "location: " <> location
         , "reason: " <> reason
         ]
-    CyclicModuleImport path ->
-      LocalizedMessage "cyclic module import" ["module: " <> path]
     ModuleReadFailed requested path reason ->
       LocalizedMessage "module could not be read"
         [ "module: " <> requested
         , "path: " <> path
         , "reason: " <> reason
         ]
-    ImportedModuleParseFailed path parseFailure ->
-      LocalizedMessage "imported module could not be parsed"
+    ModuleParseFailed path parseFailure ->
+      LocalizedMessage "module could not be parsed"
         (["module: " <> path] <> embeddedParseFailure parseFailure)
+    ModulePreparationFailed path preparationFailure ->
+      let LocalizedMessage summary details =
+            localizeInterpretingError preparationFailure
+      in LocalizedMessage "module could not be prepared"
+          (["module: " <> path, "cause: " <> summary] <> details)
+    ModuleNamespaceCollision namespace first second ->
+      LocalizedMessage "module namespace is declared more than once"
+        [ "namespace: " <> namespace
+        , "first module: " <> first
+        , "second module: " <> second
+        ]
 
 embeddedParseFailure :: ParseFailure -> [String]
 embeddedParseFailure failure = summary : details
@@ -214,7 +220,7 @@ localizeInterpretingError reason =
         "let binding cannot shadow a shadowing-consistent identifier"
         ["identifier: " <> name]
     UnknownIdentifier name ->
-      LocalizedMessage "identifier is not imported in this scope" ["identifier: " <> name]
+      LocalizedMessage "identifier is not available in this scope" ["identifier: " <> name]
     PrivateParameterCannotBeOptional name ->
       LocalizedMessage
         "private function parameter cannot be optional"
@@ -415,16 +421,16 @@ localizeModuleFailure failure =
     StandardLibraryRequiresDeclarationBlock path ->
       LocalizedMessage "standard library must contain a declaration block"
         ["path: " <> path]
-    ImportedModuleRequiresBlock ->
-      LocalizedMessage "imported file must reduce to a block" []
-    ImportedModuleRequiresIdentifierBinderFederation ->
-      LocalizedMessage "imported file must yield an identifier-binder federation"
+    ModuleRequiresBlock ->
+      LocalizedMessage "module must reduce to a block" []
+    ModuleRequiresIdentifierBinderFederation ->
+      LocalizedMessage "module must yield an identifier-binder federation"
         ["use yield Name : value or a federation of identifier binders"]
     ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "module scope requires a total map of simple identifier types" []
-    ImportedModuleRequiresNamedExports ->
-      LocalizedMessage "imported module must yield a scope or named map"
+    ModuleRequiresNamedExports ->
+      LocalizedMessage "module must yield a scope or named map"
         ["use yield this to export its scope"]
     ModuleExportRequiresIdentifier ->
       LocalizedMessage "module export must have an identifier" []

@@ -3,9 +3,43 @@
 -- module only supplies the shared, terminating boundary search.
 module StringInterpolation.Exact
   ( matchExactSegments
+  , matchesExactSkeleton
   ) where
 
 import Data.List (isPrefixOf)
+
+-- | Decide whether the literal segments of a template can consume the whole
+-- input, treating every capture as an unevaluated wildcard. This is the
+-- structural phase of exact matching: callers can reject impossible
+-- candidates without decoding or evaluating a capture.
+matchesExactSkeleton
+  :: (segment -> Either capture String)
+  -> [segment]
+  -> String
+  -> Bool
+matchesExactSkeleton view = match
+  where
+    match [] remaining = null remaining
+    match (segment : remaining) text = case view segment of
+      Right literal -> case stripLiteral literal text of
+        Nothing -> False
+        Just suffix -> match remaining suffix
+      Left _ -> any
+        (\boundary -> match remaining (drop boundary text))
+        (captureBoundaries remaining text)
+
+    captureBoundaries (next : _) text = case view next of
+      Right literal ->
+        [ boundary
+        | boundary <- [0 .. length text]
+        , literal `isPrefixOf` drop boundary text
+        ]
+      Left _ -> [0 .. length text]
+    captureBoundaries [] text = [length text]
+
+    stripLiteral literal text
+      | literal `isPrefixOf` text = Just (drop (length literal) text)
+      | otherwise = Nothing
 
 -- | Match a sequence of literal and capture segments against the complete
 -- input.  A segment is viewed as either @Right literal@ or @Left capture@.

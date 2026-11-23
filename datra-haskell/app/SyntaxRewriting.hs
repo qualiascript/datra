@@ -46,8 +46,6 @@ import StringInterpolation
   ( DeclarativeMatcherPlan (..)
   , LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
-  , LiteralTemplatePattern (..)
-  , LiteralTemplatePatternPart (..)
   , SyntaxRule (..)
   , expandSyntax
   , syntaxRuleCaptures
@@ -478,14 +476,9 @@ rewriteRuleClaimsSyntax :: RewriteRule -> Bool
 rewriteRuleClaimsSyntax compiled = case declarativeMatcherPlan
     (rewriteRule compiled) of
   IdentifierApplicationMatcher {} -> True
-  LiteralTemplateMatcher (LiteralTemplatePattern parts) ->
-    any templateLiteral parts
   LiteralExpressionMatcher (LiteralExpressionPattern parts) ->
     any expressionLiteral parts
   where
-    templateLiteral LiteralTemplatePatternLiteral {} = True
-    templateLiteral LiteralTemplatePatternCapture {} = False
-
     expressionLiteral (LiteralExpressionPatternLiteral literal) =
       not (null literal)
     expressionLiteral LiteralExpressionPatternCapture {} = False
@@ -500,9 +493,23 @@ declaredCandidatesFor environment value =
     enumerate selectedValue = concatMap (\rule ->
       enumerateRuleStructuralCandidates rule selectedValue)
     scopedCandidates = case applicationSpine value of
-      (ScopeAccess source body, arguments@(_ : _)) ->
+      (ScopeAccess source selector, arguments@(_ : _)) ->
+        let scopedEnvironment = contextScope environment source
+            compiled = contextRewriteRules scopedEnvironment
+            scopedValue = applicationFrom
+              (selectorApplicationHead selector : arguments)
+        in enumerate scopedValue compiled
+      (ScopedExpression source body, arguments@(_ : _)) ->
         let scopedEnvironment = contextScope environment source
             compiled = contextRewriteRules scopedEnvironment
             scopedValue = applicationFrom (body : arguments)
         in enumerate scopedValue compiled
+      (WithScopes sources body, arguments@(_ : _)) ->
+        let scopedEnvironment = foldl contextScope environment sources
+            compiled = contextRewriteRules scopedEnvironment
+            scopedValue = applicationFrom (body : arguments)
+        in enumerate scopedValue compiled
       _ -> []
+    selectorApplicationHead selector = case literalIdentifierName selector of
+      Just name -> IdentifierReference name
+      Nothing -> identifierExpressionExpression selector

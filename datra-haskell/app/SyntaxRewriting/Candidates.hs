@@ -180,7 +180,6 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
           (candidateFramePreparedCaptures frame)]
       ]
 
-    requiresTypedResult (LiteralTemplateCapture _) _ = True
     requiresTypedResult (StringExpressionCapture ValueString {}) _ = True
     requiresTypedResult (StringExpressionCapture StringLiteralString {}) _ = True
     requiresTypedResult _ selected = case rewriteResultSelection selected of

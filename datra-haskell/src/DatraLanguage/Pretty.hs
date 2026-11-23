@@ -7,7 +7,6 @@ module DatraLanguage.Pretty
   , renderAsciiStringLiteral
   , renderIdentifierString
   , renderStringTemplate
-  , renderLiteralTemplate
   ) where
 
 import Data.Char (ord, toUpper)
@@ -20,24 +19,17 @@ import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
-  , operatorPreferredSymbol
   , SourceCharacterOperator
-      ( EitherCharacterOperator
-      , IdentifierExpressionCharacterOperator
-      , OptionalCharacterOperator
-      )
+      ( IdentifierExpressionCharacterOperator )
   , sourceOperatorCharacter
   , skipSourceSymbol
   )
 import DatraLanguage.ConcreteSyntax
   ( StructuralDelimiter (..)
   , commentCharacter
-  , delimiterCharacter
   , delimiterText
   , escapeCharacter
   , interpolationCharacter
-  , literalTemplateDelimiterCharacter
-  , sourceSpace
   , stringQuoteCharacter
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -75,9 +67,6 @@ prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
 prettyOperator (IdentifierExpressionValue operand) =
   prettyFormFor IdentifierExpressionOperator [prettyOperator operand]
-prettyOperator (LiteralTemplateExpressionValue body) =
-  pretty (literalTemplateDelimiterCharacter
-    : renderLiteralTemplate body <> [literalTemplateDelimiterCharacter])
 prettyOperator EmptyMap = pretty
   (delimiterText OpenParenthesis <> delimiterText CloseParenthesis)
 prettyOperator (Sequential (expressionValue :| [])) =
@@ -183,11 +172,6 @@ prettyOperator (GenericIntroductionValue introduction) =
       : prettyGenericArgument introduction)
 prettyOperator (InModuleValue path value) = prettyCanonicalForm InModuleForm
   [pretty (renderAsciiStringLiteral path), prettyOperator value]
-prettyOperator (ImportValue paths body) = prettyCanonicalForm ImportForm
-  [ prettyCanonicalForm ImportPathsForm
-      (map (pretty . renderAsciiStringLiteral) paths)
-  , prettyOperator body
-  ]
 prettyOperator (FunctionTypeValue generics input output) =
   prettyFormFor FunctionTypeOperator
     (genericPrefix <> [prettyOperator input, prettyOperator output])
@@ -212,7 +196,7 @@ prettyOperator (BeginValue bindings result) =
 prettyOperator (IdentifierReferenceValue (SimpleIdentifierString name)) =
   prettyCanonicalForm IdentifierReferenceForm
     [pretty (renderAsciiStringLiteral name)]
-prettyOperator LineBreakValue = pretty ("<line-break>" :: String)
+prettyOperator LineBreakValue = prettyCanonicalForm LineBreakForm []
 prettyOperator (UnresolvedSyntaxValue literal) =
   prettyCanonicalForm UnresolvedSyntaxForm
     [pretty (renderAsciiStringLiteral literal)]
@@ -227,6 +211,11 @@ prettyOperator (Concatenate left right) =
 prettyOperator (ScopeAccessValue source body) =
   prettyForm (operatorCanonicalSymbol ScopeAccessOperator)
     [prettyOperator source, prettyOperator body]
+prettyOperator (WithScopesValue sources body) =
+  prettyCanonicalForm WithScopesForm
+    [ prettyCanonicalForm ArgumentativeMapForm (map prettyOperator sources)
+    , prettyOperator body
+    ]
 prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
 prettyOperator
@@ -249,14 +238,10 @@ prettyOperator (DependentArgumentValue name (Just typeAnnotation)) =
 prettyOperator (DependentArgumentValue name Nothing) =
   prettyDependentArgumentName name
 
-prettyDependentArgumentName :: OperatorExpression -> Doc annotation
-prettyDependentArgumentName name = case name of
-  IdentifierReferenceValue (SimpleIdentifierString identifierString) ->
-    pretty (renderIdentifierString identifierString)
-  StringTemplateValue parts ->
-    pretty (renderStringTemplate
-      renderOperatorExpression operatorStringLiteral (const Nothing) parts)
-  _ -> prettyOperator name
+prettyDependentArgumentName
+  :: IdentifierExpression OperatorExpression
+  -> Doc annotation
+prettyDependentArgumentName = prettyOperator . identifierHeadValue
 
 prettyDeclaration
   :: DependentDeclaration OperatorExpression
@@ -287,91 +272,6 @@ prettyDeclaration declaration =
 identifierHeadValue :: IdentifierExpression OperatorExpression -> OperatorExpression
 identifierHeadValue headValue = case headValue of
   IdentifierExpressionBody body -> IdentifierExpressionValue body
-  LiteralTemplateIdentifier body -> LiteralTemplateExpressionValue body
-
-renderLiteralTemplate :: LiteralTemplate OperatorExpression -> String
-renderLiteralTemplate (LiteralTemplate expressionValue) =
-  renderTemplateExpression expressionValue
-  where
-    renderTemplateExpression composition = case composition of
-      IdentifierComposition sequenceValue -> renderTemplateSequence sequenceValue
-      EitherExpression left right ->
-        renderTemplateExpression left
-          <> sourceSpace
-          <> operatorPreferredSymbol EitherOperator
-          <> sourceSpace
-          <> renderTemplateExpression right
-      OptionalExpression value ->
-        groupedExpression value <> operatorPreferredSymbol OptionalOperator
-
-    renderTemplateSequence (LiteralTemplateSequence parts) =
-      unwords (map renderTemplatePart (toList parts))
-
-    renderTemplatePart composition = case composition of
-      IdentifierComposition atom -> renderTemplateAtom atom
-      OptionalExpression value ->
-        renderPartOperand value <> operatorPreferredSymbol OptionalOperator
-      EitherExpression {} -> groupedPart composition
-
-    renderPartOperand composition = case composition of
-      IdentifierComposition atom -> renderTemplateAtom atom
-      _ -> groupedPart composition
-
-    renderTemplateAtom (LiteralTemplateLiteralAtom literal) =
-      renderTemplateLiteral literal
-    renderTemplateAtom (LiteralTemplateCaptureAtom target) =
-      interpolationCharacter : renderCapture target
-    renderTemplateAtom (LiteralTemplateGroupAtom grouped) =
-      delimiterText OpenParenthesis
-        <> renderLiteralTemplate grouped
-        <> delimiterText CloseParenthesis
-
-    groupedExpression value =
-      delimiterText OpenParenthesis
-        <> renderTemplateExpression value
-        <> delimiterText CloseParenthesis
-
-    groupedPart value = delimiterText OpenParenthesis
-      <> renderPartExpression value
-      <> delimiterText CloseParenthesis
-
-    renderPartExpression composition = case composition of
-      IdentifierComposition atom -> renderTemplateAtom atom
-      EitherExpression left right ->
-        renderPartExpression left
-          <> sourceSpace
-          <> operatorPreferredSymbol EitherOperator
-          <> sourceSpace
-          <> renderPartExpression right
-      OptionalExpression value ->
-        renderPartOperand value <> operatorPreferredSymbol OptionalOperator
-
-    renderCapture target@(IdentifierReferenceValue _) =
-      renderOperatorExpression target
-    renderCapture target =
-      delimiterText OpenParenthesis
-        <> renderOperatorExpression target
-        <> delimiterText CloseParenthesis
-
-renderTemplateLiteral :: LiteralTemplateLiteral -> String
-renderTemplateLiteral literal = case literal of
-  IdentifierTemplateLiteral (SimpleIdentifierString value) -> value
-  SymbolTemplateLiteral (SymbolLiteral value) ->
-    concatMap renderTemplateSymbol value
-  where
-    renderTemplateSymbol character
-      | character `elem` templateStructuralCharacters =
-          [escapeCharacter, character]
-      | otherwise = [character]
-    templateStructuralCharacters =
-      [ interpolationCharacter
-      , delimiterCharacter OpenParenthesis
-      , delimiterCharacter CloseParenthesis
-      , sourceOperatorCharacter OptionalCharacterOperator
-      , sourceOperatorCharacter EitherCharacterOperator
-      , literalTemplateDelimiterCharacter
-      , escapeCharacter
-      ]
 
 prettyUnary
   :: Operator

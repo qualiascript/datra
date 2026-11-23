@@ -16,7 +16,7 @@ import DatraLanguage.Diagnostics
 import DatraLanguage.Diagnostics.Application
   ( CandidateRejectionReport
   , CommandLineOptionFailure
-  , ModuleLoadFailure
+  , ModuleInputFailure
   , ParseFailure
   , SyntaxRewriteFailure
   )
@@ -43,9 +43,9 @@ instance LocalizedDiagnostic ParseFailure where
   localizeDiagnostic English = English.localizeParseFailure
   localizeDiagnostic Romanian = Romanian.localizeParseFailure
 
-instance LocalizedDiagnostic ModuleLoadFailure where
-  localizeDiagnostic English = English.localizeModuleLoadFailure
-  localizeDiagnostic Romanian = Romanian.localizeModuleLoadFailure
+instance LocalizedDiagnostic ModuleInputFailure where
+  localizeDiagnostic English = English.localizeModuleInputFailure
+  localizeDiagnostic Romanian = Romanian.localizeModuleInputFailure
 
 instance LocalizedDiagnostic CommandLineOptionFailure where
   localizeDiagnostic English = English.localizeCommandLineOptionFailure

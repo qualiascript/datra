@@ -1,5 +1,0 @@
-Std.(
-import "cycle_a" do
-  yield CycleB : begin
-  yield public this
-)
