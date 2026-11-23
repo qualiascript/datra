@@ -272,7 +272,6 @@ data Expression
   | Fun Expression
   | GenericIntroductionExpression (GenericArgument Expression)
   | InModule String Expression
-  | Import [String] Expression
   | FunctionTypeExpression [GenericBinder Expression] Expression Expression
   | FunctionBody [DependentDeclaration Expression] Expression
   | FunctionApplication Expression Expression
@@ -353,7 +352,7 @@ attachedFunctionImplementation expression = case expression of
     functionTypeSignature _ = False
 
 -- | A module resource yields exactly one simple identifier type. Its
--- annotation or assigned implementation is the value imported under that
+-- annotation or assigned implementation is the value installed under that
 -- identifier.
 yieldedIdentifier
   :: Expression
@@ -361,7 +360,6 @@ yieldedIdentifier
 yieldedIdentifier (Begin _ result) = yieldedIdentifier result
 yieldedIdentifier (ScopedExpression _ body) = yieldedIdentifier body
 yieldedIdentifier (WithScopes _ body) = yieldedIdentifier body
-yieldedIdentifier (Import _ (FunctionBody _ result)) = yieldedIdentifier result
 yieldedIdentifier
     (DependentArgument nameExpression (Just annotation))
       | Just name <- literalIdentifierName nameExpression =
@@ -375,7 +373,7 @@ yieldedIdentifier _ = Nothing
 
 -- | Some named module values are begin blocks. Their declarations remain
 -- available for syntax discovery and lexical evaluation, but begin is not a
--- requirement of the general import contract.
+-- requirement of the general module contract.
 namedBeginBlock
   :: Expression
   -> Maybe
@@ -618,7 +616,6 @@ data OperatorExpression
   | GenericIntroductionValue
       (GenericArgument OperatorExpression)
   | InModuleValue String OperatorExpression
-  | ImportValue [String] OperatorExpression
   | FunctionTypeValue
       [GenericBinder OperatorExpression]
       OperatorExpression
@@ -744,8 +741,6 @@ normalizeExpression (GenericIntroductionExpression introduction) =
   GenericIntroductionExpression
     (mapGenericArgument normalizeExpression introduction)
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
-normalizeExpression (Import paths body) =
-  Import paths (normalizeExpression body)
 normalizeExpression (FunctionTypeExpression generics input output) =
   FunctionTypeExpression
       [ binder
@@ -918,7 +913,6 @@ lower (Fun operand) = FunValue (lower operand)
 lower (GenericIntroductionExpression introduction) =
   GenericIntroductionValue (mapGenericArgument lower introduction)
 lower (InModule path value) = InModuleValue path (lower value)
-lower (Import paths body) = ImportValue paths (lower body)
 lower (FunctionTypeExpression generics input output) =
   FunctionTypeValue
     [ binder
@@ -1066,7 +1060,6 @@ traverseExpressionChildren visit expression = case expression of
     <*> visit y
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
-  Import paths body -> Import paths <$> visit body
   ScopeAccess source selector -> ScopeAccess
     <$> visit source
     <*> traverseIdentifierExpressionInterpolations visit selector

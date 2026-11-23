@@ -111,7 +111,6 @@ astForm =
   between (astDelimiter OpenParenthesis) (astDelimiter CloseParenthesis)
     (choice
       [ InModule <$> (astCanonicalForm InModuleForm *> astString) <*> astExpression
-      , astImport
       , astUnaryForm FunctionForm Fun
       , astGenericIntroduction
       , astFunctionType
@@ -145,14 +144,6 @@ astWithScopes = do
     (astDelimiter CloseParenthesis)
     (astCanonicalForm ArgumentativeMapForm *> many astExpression)
   WithScopes sources <$> astExpression
-
-astImport :: Parser Expression
-astImport = do
-  _ <- astCanonicalForm ImportForm
-  paths <- between (astDelimiter OpenParenthesis) (astDelimiter CloseParenthesis) $ do
-    _ <- astCanonicalForm ImportPathsForm
-    many astString
-  Import paths <$> astExpression
 
 astGenericIntroduction :: Parser Expression
 astGenericIntroduction = do

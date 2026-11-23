@@ -259,7 +259,7 @@ module DatraTypes
   , interpretedDatraType
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
-  , PresentationDependency (..)
+  , PresentationOwner (..)
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedCanonicalPresentation
@@ -267,7 +267,7 @@ module DatraTypes
   , withCanonicalNamedAccess
   , withCanonicalApplication
   , withoutCanonicalPresentation
-  , withoutCanonicalDependencies
+  , withoutCanonicalOwners
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedExplicitOrdinal
@@ -540,7 +540,7 @@ import Evaluation.Value
   , functionSignature
   , callableFunction
   , interpretedFunction
-  , PresentationDependency (..)
+  , PresentationOwner (..)
   , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
@@ -581,7 +581,7 @@ import Evaluation.Value
   , withCanonicalNamedAccess
   , withCanonicalApplication
   , withoutCanonicalPresentation
-  , withoutCanonicalDependencies
+  , withoutCanonicalOwners
   , interpretedDatraType
   , interpretedEvaluationSource
   , withEvaluationSource

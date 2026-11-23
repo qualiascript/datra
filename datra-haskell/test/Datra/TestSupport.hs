@@ -1,32 +1,23 @@
 module Datra.TestSupport
-  ( ModuleFailure (..)
-  , SourceFailure (..)
+  ( SourceFailure (..)
   , expressionCase
   , expressionFailureCase
-  , moduleCase
-  , moduleFailureCase
   , programCase
-  , programFileCase
   , programFailureCase
   , runExpression
-  , runModuleProgram
   , runProgram
   ) where
 
 import DatraLanguage.Diagnostics (Located (locatedValue))
-import DatraLanguage.Diagnostics.Application
-  ( ModuleLoadFailure
-  , ParseFailure
-  )
+import DatraLanguage.Diagnostics.Application (ParseFailure)
 import DatraTypes (InterpretedValue, InterpretingError)
 import Interpreting
   ( StandardLibraryVisibility (AllStandardLibrary)
+  , emptyPreparedModules
   , interpretExpressionReason
-  , interpretWithImports
-  , rewriteParsedDatraSourceWithImports
-  , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+  , interpretWithModules
+  , parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
   )
-import ModuleLoading (loadSourceImports)
 import Rendering (renderInterpretedValue)
 import Test.Tasty (TestName, TestTree)
 import Test.Tasty.HUnit
@@ -41,38 +32,22 @@ data SourceFailure
   | SourceEvaluationFailure InterpretingError
   deriving (Eq, Show)
 
-data ModuleFailure
-  = ModuleLoadingFailure ModuleLoadFailure
-  | ModuleParseFailure ParseFailure
-  | ModuleEvaluationFailure InterpretingError
-  deriving (Eq, Show)
-
 runExpression :: String -> Either SourceFailure InterpretedValue
 runExpression source = do
   expression <- first SourceParseFailure
-    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-      AllStandardLibrary [] "test/Datra/TestSupport.hs" ("(" <> source <> "\n)"))
+    (locatedValue <$> parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
+      AllStandardLibrary emptyPreparedModules
+      "test/Datra/TestSupport.hs" ("(" <> source <> "\n)"))
   first SourceEvaluationFailure (interpretExpressionReason expression)
 
 runProgram :: String -> Either SourceFailure InterpretedValue
 runProgram source = do
   expression <- first SourceParseFailure
-    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-      AllStandardLibrary [] "test/Datra/TestSupport.hs" source)
-  first SourceEvaluationFailure (interpretWithImports [] expression)
-
-runModuleProgram :: FilePath -> String -> IO (Either ModuleFailure InterpretedValue)
-runModuleProgram origin source = do
-  loaded <- loadSourceImports origin source
-  case loaded of
-    Left failure -> pure (Left (ModuleLoadingFailure failure))
-    Right (imports, parsed) ->
-      case rewriteParsedDatraSourceWithImports imports parsed of
-        Left failure -> pure (Left (ModuleParseFailure failure))
-        Right located ->
-          pure
-            (first ModuleEvaluationFailure
-              (interpretWithImports imports (locatedValue located)))
+    (locatedValue <$> parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
+      AllStandardLibrary emptyPreparedModules
+      "test/Datra/TestSupport.hs" source)
+  first SourceEvaluationFailure
+    (interpretWithModules emptyPreparedModules expression)
 
 expressionCase :: TestName -> String -> String -> TestTree
 expressionCase name source expected =
@@ -81,25 +56,6 @@ expressionCase name source expected =
 programCase :: TestName -> String -> String -> TestTree
 programCase name source expected =
   testCase name (assertRendered expected (runProgram source))
-
-programFileCase
-  :: Int
-  -> TestName
-  -> FilePath
-  -> String
-  -> TestTree
-programFileCase expectedLineCount name path expected = testCase name $ do
-  source <- readFile path
-  assertEqual
-    (name <> " line count")
-    expectedLineCount
-    (length (lines source))
-  runModuleProgram path source >>= assertRendered expected
-
-moduleCase :: FilePath -> TestName -> String -> String -> TestTree
-moduleCase origin name source expected = testCase name $ do
-  result <- runModuleProgram origin source
-  assertRendered expected result
 
 expressionFailureCase
   :: TestName
@@ -116,22 +72,6 @@ programFailureCase
   -> TestTree
 programFailureCase name source expected =
   testCase name (assertFailureResult name expected (runProgram source))
-
-moduleFailureCase
-  :: FilePath
-  -> TestName
-  -> String
-  -> (ModuleFailure -> Bool)
-  -> TestTree
-moduleFailureCase origin name source matches = testCase name $ do
-  result <- runModuleProgram origin source
-  case result of
-    Left failure
-      | matches failure -> pure ()
-      | otherwise -> assertFailure
-          (name <> ": unexpected failure: " <> show failure)
-    Right value -> assertFailure
-      (name <> ": unexpectedly produced " <> renderInterpretedValue value)
 
 assertRendered
   :: Show failure

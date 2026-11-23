@@ -8,7 +8,6 @@ import Datra.Interpreter.FunctionClosureTests (functionClosureTests)
 import Datra.Interpreter.FunctionTests (functionTests)
 import Datra.Interpreter.DatraTypeLawTests (datraTypeLawTests)
 import Datra.Interpreter.IntegrationTests (integrationTests)
-import Datra.Interpreter.ModuleTests (moduleTests)
 import Datra.Interpreter.OverloadTests (overloadTests)
 import Datra.Interpreter.ScopeTests (scopeTests)
 import Datra.Interpreter.StandardLibraryTests (standardLibraryTests)
@@ -43,11 +42,13 @@ import DatraTypes qualified as Types
 import Interpreting
   ( StandardLibraryVisibility (AllStandardLibrary)
   , ModuleSource (..)
+  , PreparedModules
+  , emptyPreparedModules
   , InterpretedValue
   , InterpretedValueKind (..)
   , InterpretingError (..)
   , interpretExpressionReason
-  , interpretWithImports
+  , interpretWithModules
   , interpretLocatedExpression
   , canonicalStringCodec
   , interpretedExplicitOrdinal
@@ -60,7 +61,7 @@ import Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   , moduleExportNames
-  , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+  , parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
   )
 import DatraLanguage.Diagnostics.Interpreter
   ( AtlasMapFederationOperation (..)
@@ -97,7 +98,7 @@ import MapOperators.AccessOperator
   ( AccessError
       ( AccessPositionOutOfBounds )
   )
-import ModuleLoading (loadSourceImports)
+import ModuleInputs (loadRequestedModules)
 import Numeric.Natural (Natural)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -162,7 +163,6 @@ testTree =
     , datraTypeLawTests
     , integrationTests
     , scopeTests
-    , moduleTests
         , overloadTests
     , standardLibraryTests
     , testGroup "properties"
@@ -200,24 +200,18 @@ testModuleSyntaxAlias = do
         [binding "x" (identifierReference "Int")]
         (identifierReference "this")
       isolatedSource = ModuleSource "isolated-module.datra"
-        (Begin [] (member "IsolatedModule" isolatedBody)) []
+        (Begin [] (member "IsolatedModule" isolatedBody))
   case moduleExportNames isolatedSource of
     Left (UnknownIdentifier "Int") -> pure ()
     result -> assertFailure
       ("a loaded module implicitly received Std: " <> show result)
-  let explicitStd = ModuleSource "std.datra"
-        (Begin [] (member "Std" (Begin
-          [binding "Int" (natural 7)]
-          (identifierReference "this"))))
-        []
-      importingSource = ModuleSource "importing-module.datra"
+  let qualifiedStdSource = ModuleSource "qualified-std-module.datra"
         (ScopedExpression (identifierReference "Std")
-          (Begin [] (member "ImportingModule" isolatedBody)))
-        [("std", explicitStd)]
-  case moduleExportNames importingSource of
+          (Begin [] (member "QualifiedModule" isolatedBody)))
+  case moduleExportNames qualifiedStdSource of
     Right ["x"] -> pure ()
     result -> assertFailure
-      ("an explicit Std scope did not supply module bindings: " <> show result)
+      ("qualified Std did not supply module bindings: " <> show result)
 
 identifierReference :: String -> Expression
 identifierReference = IdentifierReference . SimpleIdentifierString
@@ -434,30 +428,26 @@ expectValue label expressionValue check =
       fail (label <> ": unexpected rejection: " <> show rejection)
     Right value -> check value
 
-expectValueWithImports
-  :: [(String, ModuleSource)]
+expectValueWithModules
+  :: PreparedModules
   -> String
   -> Expression
   -> (InterpretedValue -> IO ())
   -> IO ()
-expectValueWithImports imports label expressionValue check =
-  case interpretWithImports imports (withOrdinalLibrary expressionValue) of
+expectValueWithModules modules label expressionValue check =
+  case interpretWithModules modules expressionValue of
     Left rejection ->
       fail (label <> ": unexpected rejection: " <> show rejection)
     Right value -> check value
 
-requireOrdinalLibraryImports :: IO [(String, ModuleSource)]
-requireOrdinalLibraryImports = do
-  loaded <- loadSourceImports
-    "test/fixtures/modules/main.datra"
-    "import \"ordinals\" do yield ()"
+requireOrdinalLibraryModules :: IO PreparedModules
+requireOrdinalLibraryModules = do
+  loaded <- loadRequestedModules
+    "test/fixtures/modules/main.datra" ["ordinals"]
   case loaded of
     Left failure -> fail
       ("could not load the ordinal library: " <> show failure)
-    Right (imports, _) -> pure imports
-
-withOrdinalLibrary :: Expression -> Expression
-withOrdinalLibrary = Import ["ordinals"] . FunctionBody []
+    Right modules -> pure modules
 
 expectSourceValue :: String -> String -> (InterpretedValue -> IO ()) -> IO ()
 expectSourceValue label source check =
@@ -1115,7 +1105,7 @@ testPrograms = do
   mapM_ (\(source, expected) ->
     case parseProductionSource source of
       Left message -> fail (renderParseFailure message)
-      Right expression -> case interpretWithImports [] expression of
+      Right expression -> case interpretWithModules emptyPreparedModules expression of
         Left rejection -> fail
           (source <> ": unexpected rejection: " <> show rejection)
         Right value -> assert (source <> ": " <> renderInterpretedValue value)
@@ -1231,13 +1221,13 @@ testEvalBackedKeywords = do
 testSlotOrdinalDistinctness :: IO ()
 testSlotOrdinalDistinctness = do
   let coalizedString = Coalization AST.stringType
-      importAllDomain = AtlasMap
+      allKeywordDomain = AtlasMap
         [AsciiStringLiteral "all", coalizedString]
       unitFunction domain = FunctionType domain (AtlasMap [])
   assert "different exact slot ordinals distinguish function alternatives"
     (case interpretExpressionReason
         (EitherType
-          (unitFunction importAllDomain)
+          (unitFunction allKeywordDomain)
           (unitFunction coalizedString)) of
       Right _ -> True
       Left _ -> False)
@@ -1875,18 +1865,18 @@ testDependentDeclarations = do
 
 testRemainingLiterals :: IO ()
 testRemainingLiterals = do
-  ordinalImports <- requireOrdinalLibraryImports
-  expectValueWithImports ordinalImports
+  ordinalModules <- requireOrdinalLibraryModules
+  expectValueWithModules ordinalModules
       "zero ordinal exponent"
       (ordinalExponent (...) (natural 0)) $ \value ->
     assert "an ordinal to zero evaluates to one"
       (renderInterpretedValue value == "1")
-  expectValueWithImports ordinalImports
+  expectValueWithModules ordinalModules
       "second ordinal exponent"
       (ordinalExponent (...) (natural 2)) $ \value ->
     assert "ordinal exponentiation returns an explicit ordinal"
       (renderInterpretedValue value == "... ^ 2 + 0")
-  expectValueWithImports ordinalImports
+  expectValueWithModules ordinalModules
       "ordinal multiplication order"
       (ordinalProduct
         (ordinalSum (...) (natural 1))
@@ -2445,7 +2435,7 @@ testRanges = do
 
 testCanonicalResults :: IO ()
 testCanonicalResults = do
-  ordinalImports <- requireOrdinalLibraryImports
+  ordinalModules <- requireOrdinalLibraryModules
   expectValue
       "adjacent ascending ranges"
       ((<.>)
@@ -2462,7 +2452,7 @@ testCanonicalResults = do
       (renderInterpretedValue value == "9..2")
   let levelTwoFormulation =
         ordinalExponent (...) (natural 2)
-  expectValueWithImports ordinalImports
+  expectValueWithModules ordinalModules
       "adjacent cross-rank ranges"
       ((<.>)
         ((<..>) (natural 2) (natural 5))
@@ -2493,7 +2483,7 @@ testCanonicalResults = do
 
 testRendering :: IO ()
 testRendering = do
-  ordinalImports <- requireOrdinalLibraryImports
+  ordinalModules <- requireOrdinalLibraryModules
   expectValue
       "root map rendering modes"
       (AtlasMap [natural 1, natural 2]) $ \value ->
@@ -2514,17 +2504,17 @@ testRendering = do
   expectValue "formulation Ellipsis" (...) $ \value ->
     assert "literal Ellipsis retains formulation syntax"
       (renderInterpretedValue value == "...")
-  expectValueWithImports ordinalImports
+  expectValueWithModules ordinalModules
       "explicit omega"
       (ordinalSum (...) (natural 0)) $ \value ->
     assert "explicit omega is distinguished from the formulation"
       (renderInterpretedValue value == "... + 0")
-  expectValueWithImports ordinalImports
+  expectValueWithModules ordinalModules
       "second explicit ordinal power"
       (ordinalExponent (...) (natural 2)) $ \value ->
     assert "higher ordinal powers render canonically"
       (renderInterpretedValue value == "... ^ 2 + 0")
-  expectValueWithImports ordinalImports
+  expectValueWithModules ordinalModules
       "zero multiplication"
       (ordinalSum
         (ordinalProduct (...) (natural 0))
@@ -2580,8 +2570,9 @@ testRendering = do
 
 parseProductionSource :: String -> Either ParseFailure Expression
 parseProductionSource source =
-  locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-    AllStandardLibrary [] "test/DatraInterpretingTests.hs" source
+  locatedValue <$> parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
+    AllStandardLibrary emptyPreparedModules
+    "test/DatraInterpretingTests.hs" source
 
 testMaps :: IO ()
 testMaps = do
@@ -2856,7 +2847,7 @@ testAtlasMapFederations = do
 
 testAccess :: IO ()
 testAccess = do
-  ordinalImports <- requireOrdinalLibraryImports
+  ordinalModules <- requireOrdinalLibraryModules
   let threeValues =
         MapSequence [natural 1, natural 2, natural 3]
       fiveValues = AtlasMap (map natural [0 .. 4])
@@ -2872,7 +2863,7 @@ testAccess = do
             )
       expectOrdinalRangeAccess
           label expectedKind sourceValue selectionValue expected =
-        expectValueWithImports ordinalImports label
+        expectValueWithModules ordinalModules label
           ((<@>) sourceValue selectionValue) $ \value ->
             assert label
               ( interpretedValueKind value == expectedKind
@@ -3771,7 +3762,7 @@ testSpecification = do
 
 testIdentifiers :: IO ()
 testIdentifiers = do
-  ordinalImports <- requireOrdinalLibraryImports
+  ordinalModules <- requireOrdinalLibraryModules
   expectSourceRejection
     "an inferred assignment cannot duplicate a total dependent argument"
     "x := 5"
@@ -4009,7 +4000,7 @@ testIdentifiers = do
     assert "unary minus shares identifier coercion"
       (renderInterpretedValue value == "true")
   let omegaSquared = ordinalExponent (...) (natural 2)
-  expectValueWithImports ordinalImports
+  expectValueWithModules ordinalModules
       "transfinite identifier addition"
       (AST.equal
         (ordinalSum
@@ -4189,7 +4180,7 @@ testIdentifiers = do
 
 testTypedRejections :: IO ()
 testTypedRejections = do
-  ordinalImports <- requireOrdinalLibraryImports
+  ordinalModules <- requireOrdinalLibraryModules
   assert "non-ASCII programmatic string literals are rejected"
     (case interpretExpressionReason (AsciiStringLiteral "λ") of
       Left (InvalidAsciiStringCharacter 'λ') -> True
@@ -4205,10 +4196,10 @@ testTypedRejections = do
       Left (FunctionEvaluationFailed NoApplicableFunctionAlternative) -> True
       _ -> False)
   assert "computed non-natural values are rejected as exponents"
-    (case interpretWithImports ordinalImports
-        (withOrdinalLibrary ((AST.^)
+    (case interpretWithModules ordinalModules
+        ((AST.^)
           (natural 2)
-          (ordinalSum (...) (natural 0)))) of
+          (ordinalSum (...) (natural 0))) of
       Left (ExpectedNaturalExponent ExplicitOrdinalValueKind) -> True
       _ -> False)
   expectValue

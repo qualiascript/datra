@@ -7,8 +7,9 @@ import DatraTypes
 import Interpreting
   ( StandardLibraryVisibility (AllStandardLibrary)
   , canonicalStringCodec
+  , emptyPreparedModules
   , interpretClosedExpression
-  , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+  , parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
   )
 import DatraLanguage.Diagnostics (locatedValue)
 import DatraLanguage.Diagnostics.Application (ParseFailure)
@@ -167,56 +168,6 @@ functionClosureTests = testGroup "canonical function reconstruction"
       b <- requireProgram "offset := 5\nyield ({x? : Int} -> Int do yield x + offset)"
       assertBool "capture identity was erased"
         (interpretedCanonicalResult a /= interpretedCanonicalResult b)
-  , testCase "only the selected module member is reconstructed" $ do
-      original <- runModuleProgram "test/fixtures/modules/main.datra"
-        ( "import \"library_one\" do\n"
-            <> "yield ({n? : Int} -> Int do yield LibraryOne.increment n)"
-        )
-      value <- either (assertFailure . show) pure original
-      let text = renderInterpretedValue value
-      assertBool "module filename is not a runtime dependency" (not ("import " `isInfixOf` text))
-      assertBool "closure has no generated let root"
-        (not ("let $\"___fun\" :" `isInfixOf` text))
-      reconstructed <- requireExpression text
-      assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
-      result <- requireProgram ("f := " <> text <> "\nyield f 7")
-      assertEqual "private closure dependency survived" "11" (renderInterpretedValue result)
-  , testCase "qualified dependency names retain their module origin" $ do
-      original <- runModuleProgram "test/fixtures/modules/main.datra"
-        ( "import \"library_one\" do\n"
-            <> "yield ({n? : Int} -> Int do yield LibraryOne.x + n)"
-        )
-      value <- either (assertFailure . show) pure original
-      let text = renderInterpretedValue value
-      assertBool "actual module provenance is retained"
-        ("\"___LibraryOne.x\"" `isInfixOf` text)
-      reconstructed <- requireExpression text
-      assertEqual "stable imported origin" text (renderInterpretedValue reconstructed)
-      result <- requireProgram ("f := " <> text <> "\nyield f 3")
-      assertEqual "captured imported value" "10" (renderInterpretedValue result)
-  , testCase "user name cannot collide with a nested module function" $ do
-      original <- runModuleProgram "test/fixtures/modules/main.datra"
-        ( "import \"library_one\" do\n"
-            <> "  userFun := 4\n"
-            <> "yield ({n? : Int} -> Int do "
-            <> "yield userFun + LibraryOne.increment n)"
-        )
-      value <- either (assertFailure . show) pure original
-      let text = renderInterpretedValue value
-      reconstructed <- requireExpression text
-      assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
-      result <- requireProgram ("f := " <> text <> "\nyield f 7")
-      assertEqual "user capture and nested root remain distinct" "15" (renderInterpretedValue result)
-  , testCase "selected transparent number function is self-contained" $ do
-      original <- runModuleProgram "libs/numbers.datra"
-        "import \"numbers\" do yield Numbers.max"
-      value <- either (assertFailure . show) pure original
-      let text = renderInterpretedValue value
-      assertBool "transparent export claimed a canonical-value identity"
-        (text /= "Numbers.max")
-      reconstructed <- requireExpression text
-      assertEqual "canonical text is idempotent"
-        text (renderInterpretedValue reconstructed)
   , programCase "function types belong to Any"
       "yield (Nat -> Nat) of Any" "true"
   , programCase "functions can annotate named parameters"
@@ -313,8 +264,9 @@ assertClosedCall text argument expected = do
 
 parseProductionSource :: String -> Either ParseFailure Expression
 parseProductionSource source =
-  locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-    AllStandardLibrary [] "test/Datra/Interpreter/FunctionClosureTests.hs" source
+  locatedValue <$> parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
+    AllStandardLibrary emptyPreparedModules
+    "test/Datra/Interpreter/FunctionClosureTests.hs" source
 
 requireProgram :: String -> IO InterpretedValue
 requireProgram = either (assertFailure . show) pure . runProgram

@@ -351,7 +351,7 @@ executable datra-haskell
         CanonicalParsing
         Interpreting
         DatraHost
-        ModuleLoading
+        ModuleInputs
         FunctionClosure
         GenericScopeProtection
         LibraryFiles
@@ -459,14 +459,13 @@ test-suite datra-interpreting-test
         Datra.Interpreter.FunctionClosureTests
         Datra.Interpreter.FunctionTests
         Datra.Interpreter.IntegrationTests
-        Datra.Interpreter.ModuleTests
         Datra.Interpreter.OverloadTests
         Datra.Interpreter.ScopeTests
         Datra.Interpreter.StandardLibraryTests
         Datra.TestSupport
         Interpreting
         DatraHost
-        ModuleLoading
+        ModuleInputs
         FunctionClosure
         GenericScopeProtection
         LibraryFiles

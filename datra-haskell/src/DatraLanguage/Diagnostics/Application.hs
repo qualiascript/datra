@@ -3,7 +3,7 @@
 module DatraLanguage.Diagnostics.Application
   ( ParseFailure (..)
   , LiteralTemplateParseFailure (..)
-  , ModuleLoadFailure (..)
+  , ModuleInputFailure (..)
   , CandidateRejectionReason (..)
   , CandidateRejectionReport (..)
   , SyntaxRewriteFailure (..)
@@ -12,6 +12,7 @@ module DatraLanguage.Diagnostics.Application
 
 import DatraLanguage.AST (Expression)
 import DatraLanguage.Diagnostics (DatraError)
+import Evaluation.Error (InterpretingError)
 
 data ParseFailure
   = DatraSourceParseFailure String
@@ -26,12 +27,12 @@ data LiteralTemplateParseFailure
   | NullableLiteralTemplate
   deriving (Eq, Ord, Show)
 
-data ModuleLoadFailure
-  = ImportScanFailed FilePath ParseFailure
-  | ImportPathResolutionFailed String FilePath String
-  | CyclicModuleImport FilePath
+data ModuleInputFailure
+  = ModulePathResolutionFailed FilePath FilePath String
   | ModuleReadFailed String FilePath String
-  | ImportedModuleParseFailed FilePath ParseFailure
+  | ModuleParseFailed FilePath ParseFailure
+  | ModulePreparationFailed FilePath InterpretingError
+  | ModuleNamespaceCollision String FilePath FilePath
   deriving (Eq, Show)
 
 data CandidateRejectionReason

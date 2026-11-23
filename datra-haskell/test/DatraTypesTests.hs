@@ -80,7 +80,7 @@ import DatraLanguage.Diagnostics
   , atSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
-  ( ModuleLoadFailure (CyclicModuleImport)
+  ( ModuleInputFailure (ModuleNamespaceCollision)
   , ParseFailure (DatraSourceParseFailure)
   )
 import DatraLanguage.Diagnostics.Localization
@@ -451,25 +451,25 @@ testDiagnostics = do
         (Types.ModuleEvaluationFailed (Types.ModuleNotLoaded "missing"))
         == LocalizedMessage "modulul nu a fost încărcat" ["modul: missing"]
     )
-  assert "unnamed imported files have a localized module failure"
+  assert "unnamed modules have a localized module failure"
     ( localizeDiagnostic English
-        (Types.ModuleEvaluationFailed Types.ImportedModuleRequiresBlock)
-        == LocalizedMessage "imported file must reduce to a block" []
+        (Types.ModuleEvaluationFailed Types.ModuleRequiresBlock)
+        == LocalizedMessage "module must reduce to a block" []
       && localizeDiagnostic Romanian
-        (Types.ModuleEvaluationFailed Types.ImportedModuleRequiresBlock)
+        (Types.ModuleEvaluationFailed Types.ModuleRequiresBlock)
         == LocalizedMessage
-          "fișierul importat trebuie să se reducă la un bloc" []
+          "modulul trebuie să se reducă la un bloc" []
       && localizeDiagnostic English
         (Types.ModuleEvaluationFailed
-          Types.ImportedModuleRequiresIdentifierBinderFederation)
+          Types.ModuleRequiresIdentifierBinderFederation)
         == LocalizedMessage
-          "imported file must yield an identifier-binder federation"
+          "module must yield an identifier-binder federation"
           ["use yield Name : value or a federation of identifier binders"]
       && localizeDiagnostic Romanian
         (Types.ModuleEvaluationFailed
-          Types.ImportedModuleRequiresIdentifierBinderFederation)
+          Types.ModuleRequiresIdentifierBinderFederation)
         == LocalizedMessage
-          "fișierul importat trebuie să producă o federație de identificatori"
+          "modulul trebuie să producă o federație de identificatori"
           ["folosiți yield Nume : valoare sau o federație de identificatori"]
       && localizeDiagnostic English
         (Types.ModuleEvaluationFailed
@@ -555,11 +555,22 @@ testDiagnostics = do
       && localizeDiagnostic Romanian (DatraSourceParseFailure "bad token")
         == LocalizedMessage "sursa nu a putut fi analizată" ["bad token"]
     )
-  assert "module-loading failures have exact bilingual localization"
-    ( localizeDiagnostic English (CyclicModuleImport "cycle.datra")
-        == LocalizedMessage "cyclic module import" ["module: cycle.datra"]
-      && localizeDiagnostic Romanian (CyclicModuleImport "cycle.datra")
-        == LocalizedMessage "import ciclic de modul" ["modul: cycle.datra"]
+  assert "module-input failures have exact bilingual localization"
+    ( localizeDiagnostic English
+        (ModuleNamespaceCollision "Shared" "first.datra" "second.datra")
+        == LocalizedMessage "module namespace is declared more than once"
+          [ "namespace: Shared"
+          , "first module: first.datra"
+          , "second module: second.datra"
+          ]
+      && localizeDiagnostic Romanian
+        (ModuleNamespaceCollision "Shared" "first.datra" "second.datra")
+        == LocalizedMessage
+          "spațiul de nume al modulului este declarat de mai multe ori"
+          [ "spațiu de nume: Shared"
+          , "primul modul: first.datra"
+          , "al doilea modul: second.datra"
+          ]
     )
 
 testGenericIdentifierDisjointness :: IO ()

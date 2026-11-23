@@ -112,16 +112,6 @@ datraHostValue = do
         (\case
           Conditional condition yes no -> Just [condition, yes, no]
           _ -> Nothing))
-    , syntaxBody "import_body" (expressionSyntaxInsertion
-        (\case
-          [paths, body@FunctionBody {}]
-            | Just requested <- importPaths paths
-            , not (null requested) -> Just (Import requested body)
-          _ -> Nothing)
-        (\case
-          Import paths body -> Just
-            [AtlasMap (map AsciiStringLiteral paths), body]
-          _ -> Nothing))
     , syntaxBody "with_body" (expressionSyntaxInsertion
         (\case
           [modules, FunctionBody bindings result] -> Just
@@ -209,14 +199,6 @@ datraHostValue = do
     blockExpressions (MapSequence entries) = entries
     blockExpressions (SyntaxBoundary inner) = blockExpressions inner
     blockExpressions value = [value]
-    importPaths value = case value of
-      AsciiStringLiteral path -> Just [path]
-      AtlasMap paths -> concat <$> traverse importPaths paths
-      MapSequence paths -> concat <$> traverse importPaths paths
-      MapConcatenation left right ->
-        (<>) <$> importPaths left <*> importPaths right
-      SyntaxBoundary inner -> importPaths inner
-      _ -> Nothing
     withModuleOperands value = case value of
       AtlasMap modules -> modules
       MapSequence modules -> modules

@@ -199,8 +199,8 @@ rewrite _ _ _ resolver _ expression
 rewrite mode inDefinition active resolver bound expression =
   case expression of
     InModule path body
-      | Just imported <- resolveDependencyModule resolver path ->
-          rewrite mode inDefinition active imported bound body
+      | Just moduleResolver <- resolveDependencyModule resolver path ->
+          rewrite mode inDefinition active moduleResolver bound body
     FunctionApplication
         (FunctionTypeExpression generics domain codomain)
         (FunctionBody entries result) -> do
@@ -245,7 +245,7 @@ rewrite mode inDefinition active resolver bound expression =
           -- by the evaluator. Every block also binds its declaration map as
           -- @_this@ unless an explicit fixed point already occupies that name;
           -- either way it is local to the reconstructed expression and must
-          -- never become a captured import.
+          -- never become a captured dependency.
           contextualBound
             | FixedThisBound `elem` bound = map LexicalBound names <> bound
             | otherwise =

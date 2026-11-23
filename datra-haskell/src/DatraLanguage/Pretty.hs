@@ -19,24 +19,17 @@ import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
-  , operatorPreferredSymbol
   , SourceCharacterOperator
-      ( EitherCharacterOperator
-      , IdentifierExpressionCharacterOperator
-      , OptionalCharacterOperator
-      )
+      ( IdentifierExpressionCharacterOperator )
   , sourceOperatorCharacter
   , skipSourceSymbol
   )
 import DatraLanguage.ConcreteSyntax
   ( StructuralDelimiter (..)
   , commentCharacter
-  , delimiterCharacter
   , delimiterText
   , escapeCharacter
   , interpolationCharacter
-  , literalTemplateDelimiterCharacter
-  , sourceSpace
   , stringQuoteCharacter
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -179,11 +172,6 @@ prettyOperator (GenericIntroductionValue introduction) =
       : prettyGenericArgument introduction)
 prettyOperator (InModuleValue path value) = prettyCanonicalForm InModuleForm
   [pretty (renderAsciiStringLiteral path), prettyOperator value]
-prettyOperator (ImportValue paths body) = prettyCanonicalForm ImportForm
-  [ prettyCanonicalForm ImportPathsForm
-      (map (pretty . renderAsciiStringLiteral) paths)
-  , prettyOperator body
-  ]
 prettyOperator (FunctionTypeValue generics input output) =
   prettyFormFor FunctionTypeOperator
     (genericPrefix <> [prettyOperator input, prettyOperator output])

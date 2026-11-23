@@ -11,8 +11,6 @@ data CanonicalForm
   | FunctionForm
   | GenericIntroductionForm
   | InModuleForm
-  | ImportForm
-  | ImportPathsForm
   | GenericPrefixForm
   | BindingsForm
   | IdentifierReferenceForm
@@ -27,8 +25,6 @@ canonicalFormName ArgumentativeMapForm = "argumentative-map"
 canonicalFormName FunctionForm = "fun"
 canonicalFormName GenericIntroductionForm = "generic-introduction"
 canonicalFormName InModuleForm = "in-module"
-canonicalFormName ImportForm = "import"
-canonicalFormName ImportPathsForm = "paths"
 canonicalFormName GenericPrefixForm = "generic-prefix"
 canonicalFormName BindingsForm = "bindings"
 canonicalFormName IdentifierReferenceForm = "ref"

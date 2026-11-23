@@ -7,7 +7,7 @@ import Data.List (intercalate)
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.AST
 import DatraLanguage.AST.CanonicalForm
-  ( CanonicalForm (FunctionForm, ImportForm, WithScopesForm)
+  ( CanonicalForm (FunctionForm, WithScopesForm)
   , canonicalFormName
   )
 import DatraLanguage.AST.Operator qualified as AST
@@ -15,13 +15,11 @@ import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.ConcreteSyntax
   ( StructuralDelimiter (..)
   , delimiterText
-  , literalTemplateDelimiterCharacter
   , sourceLineFeed
   , sourceSpace
   )
 import DatraLanguage.Pretty
-  ( renderAsciiStringLiteral
-  , renderIdentifierString
+  ( renderIdentifierString
   , renderOperatorExpression
   , renderStringTemplate
   )
@@ -41,10 +39,6 @@ source context expression =
       (genericPolarity introduction
         <> renderGenericArgument introduction)
     InModuleValue _ value -> source context value
-    ImportValue paths body -> canonicalFormName ImportForm <> sourceSpace
-      <> intercalate (spaced AST.SequentialOperator)
-        (map renderAsciiStringLiteral paths)
-      <> sourceSpace <> source 0 body
     FunctionTypeValue _ input output -> wrapped 11
       (source 12 input <> spaced AST.FunctionTypeOperator <> functionTypeOutput output)
     FunctionApplicationValue function LineBreakValue ->

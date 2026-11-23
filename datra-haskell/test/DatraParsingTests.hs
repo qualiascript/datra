@@ -70,7 +70,8 @@ import DatraLanguage.Identifier qualified as Identifier
 import Interpreting
   ( StandardLibraryVisibility
       (AllStandardLibrary, NoStandardLibrary, QualifiedStandardLibrary)
-  , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+  , emptyPreparedModules
+  , parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
   )
 import Parsing
   ( ResourceEnvelope (..)
@@ -297,23 +298,23 @@ testDependentCommentSyntax = do
       (SyntaxBoundary (ref "123"))
       actual
     Left failure -> assertFailure (renderParseFailure failure)
-  case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-      NoStandardLibrary [] testSourceName source of
+  case parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
+      NoStandardLibrary emptyPreparedModules testSourceName source of
     Right (Located _ actual) -> assertEqual
       "the first dependent rule reduces the comment member before later syntax"
       (SyntaxBoundary (ref "123"))
       actual
     Left failure -> assertFailure (renderParseFailure failure)
-  case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-      NoStandardLibrary [] testSourceName
+  case parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
+      NoStandardLibrary emptyPreparedModules testSourceName
       "(left # ignored to the line boundary\nright)" of
     Right (Located _ actual) -> assertEqual
       "a newline ends only the comment member"
       (SyntaxBoundary (ref "left" <:> ref "right"))
       actual
     Left failure -> assertFailure (renderParseFailure failure)
-  case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-      NoStandardLibrary [] testSourceName
+  case parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
+      NoStandardLibrary emptyPreparedModules testSourceName
       "(value # if and or not + ~> !!!)" of
     Right (Located _ actual) -> assertEqual
       "comment syntax has precedence over every spelling in its remainder"
@@ -361,8 +362,8 @@ testSyntaxSeparatorElision = do
           actual
         Left failure -> assertFailure (renderParseFailure failure)
     assertRewritten label source expected =
-      case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-          NoStandardLibrary [] testSourceName source of
+      case parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
+          NoStandardLibrary emptyPreparedModules testSourceName source of
         Right (Located _ actual) -> assertEqual label expected actual
         Left failure -> assertFailure (renderParseFailure failure)
 
@@ -1100,8 +1101,7 @@ regressionTests = do
       (Exponentiation EllipsisLiteral (natural 0))
       (natural 3))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
-    [ Import ["library_one", "std"] (FunctionBody [] (natural 1))
-    , InModule "std" (ref "_this")
+    [ InModule "std" (ref "_this")
     , scopeAccess (ref "_this") "abc"
     , WithScopes [ref "First", ref "Second"]
         (Begin [] (natural 1))
@@ -1212,13 +1212,6 @@ regressionTests = do
   assertAstOutput "module remains an ordinary identifier"
     "module : Nat"
     (AST.dependentArgumentType "module" (ref "Nat"))
-  assertParsed "declared import lowers paths and its function body structurally"
-    "import \"library_one\" do yield 7"
-    (Import ["library_one"] (FunctionBody [] (natural 7)))
-  assertParsed "declared import accepts multiple paths"
-    "import (\"library_one\"; \"library_two\") do yield 7"
-    (Import ["library_one", "library_two"]
-      (FunctionBody [] (natural 7)))
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
     "begin let x := 10 yield x"
@@ -2627,8 +2620,6 @@ genExpression =
     , Gen.subterm2 genExpression genExpression ScopedExpression
     , Gen.subterm2 genExpression genExpression
         (\source body -> WithScopes [source] body)
-    , Gen.subterm genExpression
-        (Import ["std", "path/library_two"])
     , Gen.subterm genExpression (InModule "std")
     , Gen.subterm2 genExpression genExpression
         (\binding result -> FunctionBody [generatedDeclaration binding] result)
@@ -2804,8 +2795,8 @@ assertBundledModuleBlockShape = do
   where
     assertModule path visibility expectedName = do
       source <- readFile path
-      case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-          visibility [] path source of
+      case parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
+          visibility emptyPreparedModules path source of
         Left failure -> fail
           (path <> ": unexpected parse failure: " <> renderParseFailure failure)
         Right located -> case openedBody (locatedValue located) of
@@ -2985,8 +2976,8 @@ parseSourceLocated
   -> String
   -> Either ParseFailure (Located Expression)
 parseSourceLocated visibility =
-  parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
-    visibility []
+  parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
+    visibility emptyPreparedModules
 
 containsFunctionBody :: Expression -> Bool
 containsFunctionBody FunctionBody {} = True
