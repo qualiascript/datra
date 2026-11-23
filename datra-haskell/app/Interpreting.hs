@@ -6357,7 +6357,7 @@ singletonDependencyDeclaration
   -> DependentDeclaration Expression
 singletonDependencyDeclaration name implementation = DependentDeclaration
   (literalIdentifierExpression (SimpleIdentifierString name))
-  True False False [DeclarationLet] implementation
+  [DeclarationLet] implementation
 
 emptyResolver :: Resolver
 emptyResolver = Resolver

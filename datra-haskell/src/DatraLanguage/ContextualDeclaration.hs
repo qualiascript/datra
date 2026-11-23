@@ -57,5 +57,5 @@ contextualSurfaceDeclaration
 contextualSurfaceDeclaration role = DependentDeclaration
   (literalIdentifierExpression
     (SimpleIdentifierString (contextualSurfaceName role)))
-  False True False [DeclarationDef]
+  [DeclarationDef]
   (contextualAccessAt role 0)

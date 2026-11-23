@@ -355,7 +355,7 @@ scopeDefinitions prefixHere collected =
       ]
     childDefinition name = DependentDeclaration
       (literalIdentifierExpression renderedName)
-      True False False [DeclarationLet] childScope
+      [DeclarationLet] childScope
       where
         renderedName = if prefixHere then prependIdentifier name else name
         childScope = Begin
@@ -375,10 +375,17 @@ capturedDeclaration
 capturedDeclaration prefixHere _ declaration =
   translated
   where
-    eager = declaration { dependentDeclarationIsLet = True }
+    eager = declaration
+      { dependentDeclarationModifierApplications =
+          ensureModifier DeclarationLet
+            (dependentDeclarationModifierApplications declaration)
+      }
     translated
       | prefixHere = prependDependentDeclarationName "_" eager
       | otherwise = eager
+    ensureModifier modifier applications
+      | modifier `elem` applications = applications
+      | otherwise = applications <> [modifier]
 
 contextualBoundDepth :: ContextualRole -> [BoundName] -> Natural
 contextualBoundDepth role =

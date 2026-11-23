@@ -3,6 +3,9 @@
 module DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
   , DeclarationModifier (..)
+  , dependentDeclarationIsLet
+  , dependentDeclarationIsDefinition
+  , dependentDeclarationIsCanonicalValue
   , dependentDeclaration
   , dependentDeclarationCandidate
   , applyDeclarationModifier
@@ -33,7 +36,7 @@ dependentDeclaration = declaration
 
     makeDeclaration headValue implementation =
       DependentDeclaration
-        headValue False False False [] implementation
+        headValue [] implementation
 
 -- | Record one modifier in the right-to-left order in which syntax expansion
 -- applies it. Invalid order and repetition remain representable until the
@@ -82,11 +85,7 @@ withModifierApplications
   -> DependentDeclaration expression
   -> DependentDeclaration expression
 withModifierApplications applications declaration = declaration
-  { dependentDeclarationIsLet = DeclarationLet `elem` applications
-  , dependentDeclarationIsDefinition = DeclarationDef `elem` applications
-  , dependentDeclarationIsCanonicalValue = DeclarationVal `elem` applications
-  , dependentDeclarationModifierApplications = applications
-  }
+  { dependentDeclarationModifierApplications = applications }
 
 canonicalApplications
   :: [DeclarationModifier]

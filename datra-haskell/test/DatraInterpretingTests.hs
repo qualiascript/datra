@@ -192,7 +192,7 @@ testModuleSyntaxAlias = do
   let binding name value = DependentDeclaration
         (IdentifierExpressionBody
           (IdentifierReference (SimpleIdentifierString name)))
-        False False False [] value
+        [] value
       member name value = DependentArgument
         (IdentifierExpression (identifierReference name)) (Just value)
   let isolatedBody = Begin

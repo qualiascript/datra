@@ -18,6 +18,9 @@ import DatraLanguage.AST
   , StringTemplateInterpolation (..)
   , pattern FunctionType
   , dependentArgumentExpression
+  , dependentDeclarationIsCanonicalValue
+  , dependentDeclarationIsDefinition
+  , dependentDeclarationIsLet
   , expressionChildren
   , literalIdentifierExpression
   , literalIdentifierName
@@ -137,6 +140,8 @@ testTree =
     , testCase "standard syntax declarations are admissible"
         assertStandardSyntaxDeclarationsAdmissible
     , testCase "generic AST representation" testGenericAstRepresentation
+    , testCase "dependent declaration modifier projection"
+        testDependentDeclarationModifierProjection
     , testCase "generic source parsing" testGenericSourceParsing
     , testCase "dependent declaration precedence"
         testDependentDeclarationPrecedence
@@ -478,6 +483,19 @@ testGenericAstRepresentation = do
     "(-> (generic-prefix (generic-binder 0 & (ref $_T) (ref $IntLimit))) (apply-func (ref $Args) (generic-introduction & (ref $_T) (ref $IntLimit))) (ref $_T))"
     (renderExpression signature)
   assertAstRoundTrip "generic function AST" (renderExpression signature)
+
+testDependentDeclarationModifierProjection :: IO ()
+testDependentDeclarationModifierProjection = do
+  let declaration = (generatedDeclaration (natural 1))
+        { dependentDeclarationModifierApplications =
+            [DeclarationVal, DeclarationLet]
+        }
+  assertBool "let is derived from modifier applications"
+    (dependentDeclarationIsLet declaration)
+  assertBool "val is derived from modifier applications"
+    (dependentDeclarationIsCanonicalValue declaration)
+  assertBool "an absent def modifier remains absent"
+    (not (dependentDeclarationIsDefinition declaration))
 
 testGenericSourceParsing :: IO ()
 testGenericSourceParsing = do
@@ -2970,7 +2988,7 @@ modified modifier expressionValue =
 generatedDeclaration :: Expression -> DependentDeclaration Expression
 generatedDeclaration = DependentDeclaration
   (literalIdentifierExpression (SimpleIdentifierString "generated"))
-  False False False []
+  []
 
 datraRef :: [String] -> Expression
 datraRef = foldl ScopeAccess (ref "datra") . map ref

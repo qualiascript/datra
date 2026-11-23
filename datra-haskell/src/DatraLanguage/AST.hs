@@ -13,6 +13,9 @@ module DatraLanguage.AST
   , DeclarationModifier (..)
   , declarationModifierOperator
   , DependentDeclaration (..)
+  , dependentDeclarationIsLet
+  , dependentDeclarationIsDefinition
+  , dependentDeclarationIsCanonicalValue
   , dependentDeclarationIsValid
   , traverseDependentDeclaration
   , mapDependentDeclaration
@@ -122,13 +125,24 @@ declarationModifierOperator modifier = case modifier of
 
 data DependentDeclaration expression = DependentDeclaration
   { dependentDeclarationHead :: IdentifierExpression expression
-  , dependentDeclarationIsLet :: Bool
-  , dependentDeclarationIsDefinition :: Bool
-  , dependentDeclarationIsCanonicalValue :: Bool
   , dependentDeclarationModifierApplications :: [DeclarationModifier]
   , dependentDeclarationImplementation :: expression
   }
   deriving (Eq, Ord, Show)
+
+dependentDeclarationIsLet :: DependentDeclaration expression -> Bool
+dependentDeclarationIsLet =
+  elem DeclarationLet . dependentDeclarationModifierApplications
+
+dependentDeclarationIsDefinition :: DependentDeclaration expression -> Bool
+dependentDeclarationIsDefinition =
+  elem DeclarationDef . dependentDeclarationModifierApplications
+
+dependentDeclarationIsCanonicalValue
+  :: DependentDeclaration expression
+  -> Bool
+dependentDeclarationIsCanonicalValue =
+  elem DeclarationVal . dependentDeclarationModifierApplications
 
 traverseDependentDeclaration
   :: Applicative f
@@ -137,9 +151,6 @@ traverseDependentDeclaration
   -> f (DependentDeclaration right)
 traverseDependentDeclaration visit declaration = DependentDeclaration
   <$> traverseIdentifierExpression visit (dependentDeclarationHead declaration)
-  <*> pure (dependentDeclarationIsLet declaration)
-  <*> pure (dependentDeclarationIsDefinition declaration)
-  <*> pure (dependentDeclarationIsCanonicalValue declaration)
   <*> pure (dependentDeclarationModifierApplications declaration)
   <*> visit (dependentDeclarationImplementation declaration)
 
@@ -197,9 +208,6 @@ traverseExpressionDependentDeclaration visit declaration =
   DependentDeclaration
     <$> traverseIdentifierExpressionInterpolations visit
       (dependentDeclarationHead declaration)
-    <*> pure (dependentDeclarationIsLet declaration)
-    <*> pure (dependentDeclarationIsDefinition declaration)
-    <*> pure (dependentDeclarationIsCanonicalValue declaration)
     <*> pure (dependentDeclarationModifierApplications declaration)
     <*> visit (dependentDeclarationImplementation declaration)
 
