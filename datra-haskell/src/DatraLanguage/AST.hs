@@ -91,13 +91,11 @@ mapGenericArgument visit argument = GenericArgument
 
 genericArgumentExpression :: GenericArgument Expression -> Expression
 genericArgumentExpression argument =
-  if genericArgumentOptional argument
-    then OptionalType dependent
-    else dependent
-  where
-    dependent = DependentArgument
-      (literalIdentifierExpression (genericArgumentName argument))
-      (Just (genericArgumentBound argument))
+  constructDependentArgument
+    (literalIdentifierExpression (genericArgumentName argument))
+    (genericArgumentOptional argument)
+    (Just (genericArgumentBound argument))
+    Nothing
 
 -- | One entry in a resolved function type's ordered generic telescope.
 data GenericBinder expression = GenericBinder

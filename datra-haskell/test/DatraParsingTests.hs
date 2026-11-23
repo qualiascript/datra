@@ -22,9 +22,11 @@ import DatraLanguage.AST
   , dependentDeclarationIsDefinition
   , dependentDeclarationIsLet
   , expressionChildren
+  , genericArgumentExpression
   , literalIdentifierExpression
   , literalIdentifierName
   , normalizeExpression
+  , optionalIdentifierExpression
   , toOperatorExpression
   )
 import DatraLanguage.Pretty (renderExpression)
@@ -466,6 +468,8 @@ testGenericAstRepresentation = do
         reference
       rawIntroduction = GenericIntroductionExpression
         (genericArgument GenericSum "T" True AnyType)
+      optionalArgument = genericArgument GenericProduct "T" True AnyType
+      loweredOptionalArgument = genericArgumentExpression optionalArgument
   assert "raw generic introductions retain polarity and optional public names"
     (renderSourceExpression rawIntroduction == "^T?")
   assert "resolved function types reconstruct the declaration anchor"
@@ -478,6 +482,21 @@ testGenericAstRepresentation = do
          ])
   assert "normalization preserves the ordered generic prefix"
     (normalizeExpression signature == signature)
+  assertEqual
+    "optional generic arguments lower through the identifier-expression form"
+    (DependentArgument
+      (IdentifierExpressionBody (OptionalType (AsciiStringLiteral "T")))
+      (Just AnyType))
+    loweredOptionalArgument
+  assertEqual
+    "lowered optional generic arguments retain their present and missing cases"
+    (Just
+      ( DependentArgument
+          (IdentifierExpressionBody (AsciiStringLiteral "T"))
+          (Just AnyType)
+      , AnyType
+      ))
+    (optionalIdentifierExpression loweredOptionalArgument)
   assertEqual
     "canonical function AST accepts an optional generic prefix"
     "(-> (generic-prefix (generic-binder 0 & (ref $_T) (ref $IntLimit))) (apply-func (ref $Args) (generic-introduction & (ref $_T) (ref $IntLimit))) (ref $_T))"
