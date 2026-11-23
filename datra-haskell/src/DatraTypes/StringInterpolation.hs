@@ -23,8 +23,8 @@ module StringInterpolation
   , expandSyntax
   , declarationLiterals
   ) where
-import DatraLanguage.DependentDeclaration
-  ( dependentDeclaration )
+import DatraLanguage.DependentDeclaration (dependentDeclaration)
+import DatraTypes.Lookup (lookupValueFieldPosition)
 import DatraLanguage.AST
 import DatraLanguage.ConcreteSyntax (sourceSpace)
 import StringExpression
@@ -336,11 +336,11 @@ selectedDependentLookup parts values =
 
 lookupExpression :: Expression -> Expression
 lookupExpression operand =
-  ScopeAccess
+  MapAccess
     (MapAccess
       (Lookup operand)
       (EllipsisNatural 0))
-    (IdentifierReference (SimpleIdentifierString "value"))
+    (EllipsisNatural lookupValueFieldPosition)
 
 substituteCaptures
   :: [StringTemplateInterpolation Expression]

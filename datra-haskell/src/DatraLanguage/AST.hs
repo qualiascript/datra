@@ -333,11 +333,16 @@ pattern FunctionType domain codomain = FunctionTypeExpression [] domain codomain
 -- function's domain or codomain.
 attachedFunctionImplementation :: Expression -> Maybe Expression
 attachedFunctionImplementation expression = case expression of
-  FunctionApplication FunctionTypeExpression {} implementation ->
-    Just implementation
-  MapSpecification implementation FunctionTypeExpression {} ->
-    Just implementation
+  FunctionApplication signature implementation
+    | functionTypeSignature signature -> Just implementation
+  MapSpecification implementation signature
+    | functionTypeSignature signature -> Just implementation
   _ -> Nothing
+  where
+    functionTypeSignature FunctionTypeExpression {} = True
+    functionTypeSignature (SyntaxBoundary inner) =
+      functionTypeSignature inner
+    functionTypeSignature _ = False
 
 -- | A module resource yields exactly one simple identifier type. Its
 -- annotation or assigned implementation is the value imported under that

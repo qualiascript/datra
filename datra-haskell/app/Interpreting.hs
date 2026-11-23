@@ -54,6 +54,10 @@ import DatraHost
 import DatraLanguage.Identifier
   ( isIdentifierValue
   )
+import DatraTypes.Lookup
+  ( lookupKeyFieldName
+  , lookupValueFieldName
+  )
 import LibraryFiles
   ( standardLibraryFileName
   , requiredBundledLibrarySource
@@ -2669,25 +2673,15 @@ evaluateSelectedLookup
   -> [StringTemplateInterpolation Expression]
   -> Either InterpretingError InterpretedValue
 evaluateSelectedLookup reduction scope resolving template selected = do
-  query <- evalInScopeWith reduction scope resolving (StringTemplate selected)
-  key <- case interpretedSemanticResult query of
-    CanonicalAsciiString value -> Right value
-    _ -> Left (LookupRequiresString (interpretedValueKind query))
-  let evaluateSelected =
-        case selectedDependentDeclaration scope template selected of
-          Nothing -> evaluateLookup reduction scope resolving query
-          Just (scoped, captures) -> do
-            member <- selectedDependentDeclarationMember
-              reduction scope resolving scoped key template captures
-            view <- maybe
-              (Left (NamedAccessFailed (NamedFieldNotFound key)))
-              Right
-              (namedMapViewForValue (namedMemberValue member))
-            lookupResult reduction
-              (extendRuntimeProjection view scope)
-              resolving
-              [key]
-  evaluateSelected
+  case selectedDependentDeclaration scope template selected of
+    Nothing -> do
+      query <- evalInScopeWith reduction scope resolving
+        (StringTemplate selected)
+      evaluateLookup reduction scope resolving query
+    Just (scoped, captures) -> do
+      (key, member) <- selectedDependentDeclarationMember
+        reduction scope resolving scoped template captures
+      selectedLookupResult key member
 
 selectedDependentDeclaration
   :: Scope
@@ -2728,57 +2722,117 @@ selectedTemplateCaptures
   ((schema, actual) :) <$> selectedTemplateCaptures template selected
 selectedTemplateCaptures _ _ = Nothing
 
+data PreparedSelectedCapture = PreparedSelectedCapture
+  { preparedSelectedCaptureDescriptor :: EvaluatedDeclarationCapture
+  , preparedSelectedCaptureBody :: PreparedSelectedCaptureBody
+  }
+
+data PreparedSelectedCaptureBody
+  = PreparedSelectedSyntax Expression
+  | PreparedSelectedValue Expression InterpretedValue
+
 selectedDependentDeclarationMember
   :: ReductionContext
   -> Scope
   -> ResolutionStack
   -> ScopedDependentDeclaration
-  -> String
   -> [StringTemplateInterpolation Expression]
   -> [(Expression, Expression)]
-  -> Either InterpretingError NamedMember
+  -> Either InterpretingError (String, NamedMember)
 selectedDependentDeclarationMember
-    reduction usageScope resolving scoped name template captures =
+    reduction usageScope resolving scoped template captures =
   do
     declaration <- maybe
-      (Left (NamedAccessFailed (NamedFieldNotFound name)))
+      (Left (NamedAccessFailed
+        (NamedFieldNotFound (selectedSourceKey template captures))))
       Right
       (scopedDependentDeclarationValue scoped)
     evaluateDeferredDeclarationWith
-      reduction captured resolving name
+      reduction captured resolving resolutionKey
       (dependentDeclarationImplementation declaration)
-      (seedMember declaration)
+      (materializeSeed declaration)
       (materialize declaration)
   where
     captured = scopedDependentDeclarationScope scoped
     familyCaptured = scopedDependentDeclarationFamilyScope scoped
+    resolutionKey = selectedSourceKey template captures
+
     materialize declaration active = do
-      evaluated <- traverse (evaluateCapture active) captures
-      let evaluatedCaptures = map fst evaluated
-          values = map snd evaluated
-          selectedTemplate = EvaluatedStringTemplate
-            (dependentTemplateSegments template evaluatedCaptures)
-      materializeDependentDeclarationActive
-        reduction captured active declaration
-        evaluatedCaptures selectedTemplate name values
-    evaluateCapture active (schemaExpression, actualExpression) = do
+      prepared <- traverse (prepareCapture active) captures
+      if any selectedCaptureIsSyntax prepared
+        then do
+          payload <- evaluateSyntaxImplementation declaration active
+          materializeSyntax declaration active payload prepared
+        else materializeValues declaration active prepared
+
+    materializeSeed declaration payload = do
+      prepared <- traverse (prepareCapture resolving) captures
+      if any selectedCaptureIsSyntax prepared
+        then materializeSyntax declaration resolving payload prepared
+        else materializeSeedValues declaration payload prepared
+
+    prepareCapture active (schemaExpression, actualExpression) = do
       let (captureName, annotation) = captureExpression schemaExpression
       evaluatedSchema <-
         evalInScopeWith reduction familyCaptured active annotation
       let capture = evaluatedDeclarationCapture
             captureName annotation evaluatedSchema
-      actual <- evalInScopeWith reduction usageScope active actualExpression
-      value <- argumentSchemaValuesComplete
-        (argumentSchemaFromValue evaluatedSchema) actual
-      pure (capture, value)
-    seedMember declaration seed = do
-      values <- traverse
-        (evalInScopeWith reduction usageScope resolving . snd)
-        captures
+      case captureSyntaxExpression evaluatedSchema actualExpression of
+        Just sourceExpression -> pure PreparedSelectedCapture
+          { preparedSelectedCaptureDescriptor = capture
+          , preparedSelectedCaptureBody =
+              PreparedSelectedSyntax sourceExpression
+          }
+        Nothing -> do
+          actual <- evalInScopeWith
+            reduction usageScope active actualExpression
+          value <- argumentSchemaValuesComplete
+            (argumentSchemaFromValue evaluatedSchema) actual
+          pure PreparedSelectedCapture
+            { preparedSelectedCaptureDescriptor = capture
+            , preparedSelectedCaptureBody =
+                PreparedSelectedValue actualExpression value
+            }
+
+    materializeSyntax declaration active payload prepared = do
+      insertion <- maybe
+        (Left (FunctionEvaluationFailed HostSyntaxHookRequiresAstCaptures))
+        Right
+        (syntaxInsertion payload)
+      expansion <- maybe
+        (Left (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        Right
+        (applySyntaxFunction insertion
+          (map preparedSelectedCaptureSource prepared))
+      expanded <- case expandSyntaxExpression expansion of
+        Left _ -> Left OperationHasNoEffect
+        Right expressionValue -> Right expressionValue
+      value <- evalInScopeWith reduction usageScope active expanded
+      key <- preparedSelectedKey template prepared
+      pure (key, namedDeclarationMember declaration key value)
+
+    materializeValues declaration active prepared = do
+      values <- traverse requireSelectedCaptureValue prepared
+      let evaluatedCaptures =
+            map preparedSelectedCaptureDescriptor prepared
+          selectedTemplate = EvaluatedStringTemplate
+            (dependentTemplateSegments template evaluatedCaptures)
+      key <- preparedSelectedKey template prepared
+      member <- materializeDependentDeclarationActive
+        reduction captured active declaration
+        evaluatedCaptures selectedTemplate key values
+      pure (key, member)
+
+    materializeSeedValues declaration seed prepared = do
+      values <- traverse requireSelectedCaptureValue prepared
       input <- dependentDeclarationInput
-        [ (captureName, Nothing, value)
-        | ((schemaExpression, _), value) <- zip captures values
-        , let captureName = fst (captureExpression schemaExpression)
+        [ ( evaluatedDeclarationCaptureName
+              (preparedSelectedCaptureDescriptor selected)
+          , Just (evaluatedDeclarationCaptureSchema
+              (preparedSelectedCaptureDescriptor selected))
+          , value
+          )
+        | (selected, value) <- zip prepared values
         ]
       supplied <- makeArgumentativeMap values
       payload <- applyDependentDeclarationImplementation
@@ -2787,7 +2841,82 @@ selectedDependentDeclarationMember
         input
         supplied
         seed
-      pure (namedDeclarationMember declaration name payload)
+      key <- preparedSelectedKey template prepared
+      pure (key, namedDeclarationMember declaration key payload)
+
+    evaluateSyntaxImplementation declaration active =
+      evalInScopeWith reduction captured active syntaxImplementation
+      where
+        implementation = dependentDeclarationImplementation declaration
+        syntaxImplementation = maybe implementation id
+          (attachedFunctionImplementation (normalizeExpression implementation))
+
+    syntaxInsertion value = do
+      body <- (interpretedFunction value >>= functionBody)
+        <|> interpretedFunctionBody value
+      case body of
+        EvaluatedSyntaxFunctionBody _ insertion -> Just insertion
+        EvaluatedRuntimeFunctionBody {} -> Nothing
+
+selectedCaptureIsSyntax :: PreparedSelectedCapture -> Bool
+selectedCaptureIsSyntax selected = case preparedSelectedCaptureBody selected of
+  PreparedSelectedSyntax {} -> True
+  PreparedSelectedValue {} -> False
+
+preparedSelectedCaptureSource :: PreparedSelectedCapture -> Expression
+preparedSelectedCaptureSource selected =
+  case preparedSelectedCaptureBody selected of
+    PreparedSelectedSyntax source -> source
+    PreparedSelectedValue source _ -> source
+
+requireSelectedCaptureValue
+  :: PreparedSelectedCapture
+  -> Either InterpretingError InterpretedValue
+requireSelectedCaptureValue selected = maybe
+  (Left (FunctionEvaluationFailed HostSyntaxHookRequiresAstCaptures)) Right
+  (case preparedSelectedCaptureBody selected of
+    PreparedSelectedSyntax {} -> Nothing
+    PreparedSelectedValue _ value -> Just value)
+
+selectedSourceKey
+  :: [StringTemplateInterpolation Expression]
+  -> [(Expression, Expression)]
+  -> String
+selectedSourceKey template captures =
+  renderSelectedKey template (map (renderSourceExpression . snd) captures)
+
+preparedSelectedKey
+  :: [StringTemplateInterpolation Expression]
+  -> [PreparedSelectedCapture]
+  -> Either InterpretingError String
+preparedSelectedKey template prepared = do
+  rendered <- traverse renderPreparedSelectedCapture prepared
+  pure (renderSelectedKey template rendered)
+
+renderPreparedSelectedCapture
+  :: PreparedSelectedCapture
+  -> Either InterpretingError String
+renderPreparedSelectedCapture selected =
+  case preparedSelectedCaptureBody selected of
+    PreparedSelectedSyntax source -> Right (renderSourceExpression source)
+    PreparedSelectedValue _ value -> maybe
+      (Left AmbiguousStringTemplate)
+      Right
+      (canonicalCaptureText value)
+
+renderSelectedKey
+  :: [StringTemplateInterpolation Expression]
+  -> [String]
+  -> String
+renderSelectedKey template = go template
+  where
+    go [] _ = ""
+    go (StringTemplateInterpolation expressionValue : remaining) captures =
+      case expressionValue of
+        AsciiStringLiteral literal -> literal <> go remaining captures
+        _ -> case captures of
+          capture : rest -> capture <> go remaining rest
+          [] -> go remaining []
 
 evaluateLookup
   :: ReductionContext
@@ -2870,11 +2999,30 @@ lookupRow
   -> String
   -> Either InterpretingError InterpretedValue
 lookupRow reduction scope resolving key = do
-  keyValue <- asciiStringValue key
   resolved <- resolveIdentifierAccess reduction scope resolving key
+  lookupRowValue key resolved
+
+selectedLookupResult
+  :: String
+  -> NamedMember
+  -> Either InterpretingError InterpretedValue
+selectedLookupResult key member = Right (makeCheckedLazyMapValue
+  (finiteOrdinal 1)
+  (\position -> case naturalAtOrdinal position of
+    Just 0 -> Just <$> lookupRowValue key (resolvedNamedMemberValue member)
+    _ -> Right Nothing))
+
+lookupRowValue
+  :: String
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+lookupRowValue key resolved = do
+  keyValue <- asciiStringValue key
   pure (makeAtlasMapPreservingSingleton 2
-    [ simpleIdentifierTypeValue "key" keyValue
-    , simpleIdentifierTypeValue "value" resolved
+    [ simpleIdentifierTypeValue
+        (simpleIdentifierStringText lookupKeyFieldName) keyValue
+    , simpleIdentifierTypeValue
+        (simpleIdentifierStringText lookupValueFieldName) resolved
     ])
 
 compileLookupCaptureFamily
@@ -3101,18 +3249,9 @@ resolveIdentifierAccess reduction scope resolving name =
     member <- firstDeclarationLayer
       (scopeDependentDeclarationLayers scope)
     case member of
-      Just selected -> Right (namespaceMemberValue selected)
+      Just selected -> Right (resolvedNamedMemberValue selected)
       Nothing -> Left (UnknownIdentifier name)
   where
-    namespaceMemberValue member =
-      case identifierUnderlyingValue selected of
-        Just underlying
-          | hasTrailingIdentifierMarker canonicalValueMarker selected ->
-              withCanonicalReference [] (namedMemberName member) underlying
-          | otherwise -> underlying
-        Nothing -> selected
-      where
-        selected = namedMemberValue member
     firstDeclarationLayer [] = Right Nothing
     firstDeclarationLayer (layer : outer) = do
       members <- catMaybes <$> traverse
@@ -3123,6 +3262,17 @@ resolveIdentifierAccess reduction scope resolving name =
         [] -> firstDeclarationLayer outer
         [member] -> Right (Just member)
         _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
+
+resolvedNamedMemberValue :: NamedMember -> InterpretedValue
+resolvedNamedMemberValue member =
+  case identifierUnderlyingValue selected of
+    Just underlying
+      | hasTrailingIdentifierMarker canonicalValueMarker selected ->
+          withCanonicalReference [] (namedMemberName member) underlying
+      | otherwise -> underlying
+    Nothing -> selected
+  where
+    selected = namedMemberValue member
 
 evaluateDeclarationDefinitionWith
   :: ReductionContext

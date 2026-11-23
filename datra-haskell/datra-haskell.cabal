@@ -69,6 +69,7 @@ library
         DatraLanguage.StringTemplate
         DatraTypes
         DatraTypes.DependentTypes
+        DatraTypes.Lookup
         StringExpression
         StringInterpolation
         StringInterpolation.Exact
