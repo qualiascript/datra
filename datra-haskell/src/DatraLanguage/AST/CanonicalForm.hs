@@ -19,6 +19,7 @@ data CanonicalForm
   | LineBreakForm
   | UnresolvedSyntaxForm
   | GenericBinderForm
+  | WithScopesForm
   deriving (Bounded, Enum, Eq, Show)
 
 canonicalFormName :: CanonicalForm -> String
@@ -34,3 +35,4 @@ canonicalFormName IdentifierReferenceForm = "ref"
 canonicalFormName LineBreakForm = "line-break"
 canonicalFormName UnresolvedSyntaxForm = "unresolved-syntax"
 canonicalFormName GenericBinderForm = "generic-binder"
+canonicalFormName WithScopesForm = "with-scopes"

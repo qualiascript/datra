@@ -125,12 +125,12 @@ datraHostValue = do
     , syntaxBody "with_body" (expressionSyntaxInsertion
         (\case
           [modules, FunctionBody bindings result] -> Just
-            (ScopedExpression
-              (ArgumentativeMap (withModuleOperands modules))
+            (WithScopes
+              (withModuleOperands modules)
               (Begin bindings result))
           _ -> Nothing)
         (\case
-          ScopedExpression (ArgumentativeMap modules) (Begin bindings result) -> Just
+          WithScopes modules (Begin bindings result) -> Just
             [ArgumentativeMap modules, FunctionBody bindings result]
           _ -> Nothing))
     ]

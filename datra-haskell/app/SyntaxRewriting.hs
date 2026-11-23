@@ -504,6 +504,11 @@ declaredCandidatesFor environment value =
             compiled = contextRewriteRules scopedEnvironment
             scopedValue = applicationFrom (body : arguments)
         in enumerate scopedValue compiled
+      (WithScopes sources body, arguments@(_ : _)) ->
+        let scopedEnvironment = foldl contextScope environment sources
+            compiled = contextRewriteRules scopedEnvironment
+            scopedValue = applicationFrom (body : arguments)
+        in enumerate scopedValue compiled
       _ -> []
     selectorApplicationHead selector = case literalIdentifierName selector of
       Just name -> IdentifierReference name

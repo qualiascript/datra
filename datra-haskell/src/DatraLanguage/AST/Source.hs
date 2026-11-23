@@ -7,7 +7,9 @@ import Data.List (intercalate)
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.AST
 import DatraLanguage.AST.CanonicalForm
-  ( CanonicalForm (FunctionForm, ImportForm), canonicalFormName )
+  ( CanonicalForm (FunctionForm, ImportForm, WithScopesForm)
+  , canonicalFormName
+  )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.ConcreteSyntax
@@ -116,6 +118,11 @@ source context expression =
           <> scopeSelectorSource selector)
     ScopeAccessValue operand body ->
       wrapped 12 (source 12 operand <> op AST.ScopeAccessOperator <> scopeBody body)
+    WithScopesValue sources body -> wrapped 0
+      (canonicalFormName WithScopesForm <> sourceSpace
+        <> delimit OpenParenthesis CloseParenthesis
+          (intercalate (spaced AST.SequentialOperator) (map (source 0) sources))
+        <> sourceSpace <> source 0 body)
     -- Access associates to the left, so a second page selection can continue
     -- directly as @value[first][second]@.  Operands with genuinely looser
     -- precedence are still parenthesized by their own renderer.

@@ -1103,6 +1103,8 @@ regressionTests = do
     [ Import ["library_one", "std"] (FunctionBody [] (natural 1))
     , InModule "std" (ref "_this")
     , scopeAccess (ref "_this") "abc"
+    , WithScopes [ref "First", ref "Second"]
+        (Begin [] (natural 1))
     , FunctionBody [] (IdentifierReference (SimpleIdentifierString "x"))
     , Overload (natural 1) (natural 2)
     , Coalization (AtlasMap [natural 1, natural 2])
@@ -2623,6 +2625,8 @@ genExpression =
         (\source selector -> ScopeAccess source
           (IdentifierExpressionBody selector))
     , Gen.subterm2 genExpression genExpression ScopedExpression
+    , Gen.subterm2 genExpression genExpression
+        (\source body -> WithScopes [source] body)
     , Gen.subterm genExpression
         (Import ["std", "path/library_two"])
     , Gen.subterm genExpression (InModule "std")

@@ -3,17 +3,31 @@
 module Datra.Interpreter.ModuleTests (moduleTests) where
 
 import Datra.TestSupport
+import DatraLanguage.AST
+  ( Expression (..)
+  , SimpleIdentifierString (..)
+  , literalIdentifierExpression
+  )
 import DatraLanguage.Diagnostics.Application
   ( ModuleLoadFailure (..))
 import DatraTypes
   ( AtlasMapFederationOperation (..)
   , AtlasMapFederationUncertainty (..)
+  , InterpretedValue
   , InterpretingError (..)
   , ModuleEvaluationFailure (..)
+  , NamedAccessFailure (..)
   , OverloadFailure (OverloadMissingRequiredSlot)
   )
+import Interpreting
+  ( StandardLibraryVisibility (NoStandardLibrary)
+  , interpretWithImportsAndStandardLibraryVisibility
+  , interpretedInteger
+  )
+import Numeric.Natural (Natural)
 import System.FilePath (takeFileName)
 import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertEqual, assertFailure, testCase)
 
 moduleTests :: TestTree
 moduleTests =
@@ -58,6 +72,31 @@ moduleTests =
             <> "with First; First do yield x + 0"
         )
         "3"
+    , testCase "with defers overlapping-name rejection until selection" $ do
+        let overlapping = WithScopes
+              [namedMap "x" 1, namedMap "x" 2]
+              (EllipsisNatural 42)
+        case evaluateWithoutStd overlapping of
+          Right value -> assertEqual "unselected overlap result"
+            (Just 42) (interpretedInteger value)
+          Left failure -> assertFailure
+            ("unselected overlap failed: " <> show failure)
+    , testCase "with reports a selected overlapping name" $ do
+        let overlapping = WithScopes
+              [namedMap "x" 1, namedMap "x" 2]
+              (IdentifierReference (SimpleIdentifierString "x"))
+        assertEqual "selected overlap"
+          (Left (NamedAccessFailed (NamedFieldAmbiguous "x")))
+          (() <$ evaluateWithoutStd overlapping)
+    , testCase "ordinary positional maps do not flatten nested scopes" $ do
+        let ordinary = ScopedExpression
+              (ArgumentativeMap [namedMap "x" 1, namedMap "y" 2])
+              (IdentifierReference (SimpleIdentifierString "x"))
+        case evaluateWithoutStd ordinary of
+          Left _ -> pure ()
+          Right value -> assertFailure
+            ("ordinary map unexpectedly opened nested scopes: "
+              <> show (interpretedInteger value))
     , moduleCase origin "with function value uses the same scope operation"
         ( "import \"multiple_exports\" do\n"
             <> "yield 'with ((First; Second); do yield x + y)"
@@ -70,14 +109,22 @@ moduleTests =
             <> "yield f 8"
         )
         "11"
-    , moduleFailureCase origin "with rejects ambiguous public federations"
+    , moduleCase origin "with permits unreferenced overlapping names"
+        ( "import (\"library_one\"; \"library_two\") do\n"
+            <> "with LibraryOne; LibraryTwo do yield 42"
+        )
+        "42"
+    , moduleFailureCase origin "with rejects an ambiguous selected name"
         ( "import (\"library_one\"; \"library_two\") do\n"
             <> "with LibraryOne; LibraryTwo do yield x"
         )
         (== ModuleEvaluationFailure
-          (AtlasMapFederationOperationUndecidable
-            (NoAtlasMapFederationDecisionProcedure
-              AtlasMapFederationConcatenation)))
+          (NamedAccessFailed (NamedFieldAmbiguous "x")))
+    , moduleFailureCase origin "ordinary maps do not open several scopes"
+        ( "import (\"library_one\"; \"library_two\") do\n"
+            <> "yield (LibraryOne; LibraryTwo).(x)"
+        )
+        isEvaluationFailure
     , moduleFailureCase origin "with scope does not leak"
         ( "import \"multiple_exports\" do\n"
             <> "  opened := (with First do yield x)\n"
@@ -329,3 +376,14 @@ moduleTests =
 
 origin :: FilePath
 origin = "test/fixtures/modules/main.datra"
+
+evaluateWithoutStd :: Expression -> Either InterpretingError InterpretedValue
+evaluateWithoutStd =
+  interpretWithImportsAndStandardLibraryVisibility NoStandardLibrary []
+
+namedMap :: String -> Natural -> Expression
+namedMap name value = ArgumentativeMap
+  [ DependentArgument
+      (literalIdentifierExpression (SimpleIdentifierString name))
+      (Just (EllipsisNatural value))
+  ]

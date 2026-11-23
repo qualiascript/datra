@@ -223,6 +223,11 @@ prettyOperator (Concatenate left right) =
 prettyOperator (ScopeAccessValue source body) =
   prettyForm (operatorCanonicalSymbol ScopeAccessOperator)
     [prettyOperator source, prettyOperator body]
+prettyOperator (WithScopesValue sources body) =
+  prettyCanonicalForm WithScopesForm
+    [ prettyCanonicalForm ArgumentativeMapForm (map prettyOperator sources)
+    , prettyOperator body
+    ]
 prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
 prettyOperator

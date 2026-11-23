@@ -296,6 +296,10 @@ data Expression
   -- lexical scope. This is the general form used by parenthesized scope
   -- bodies and is deliberately distinct from named member selection.
   | ScopedExpression Expression Expression
+  -- | Open several explicitly selected namespaces for a @with@ body. This is
+  -- distinct from opening an ordinary argumentative-map value: overlaps are
+  -- retained and diagnosed only if the body selects an ambiguous name.
+  | WithScopes [Expression] Expression
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
   | Overload Expression Expression
@@ -356,6 +360,7 @@ yieldedIdentifier
   -> Maybe (SimpleIdentifierString, Expression, Maybe Expression)
 yieldedIdentifier (Begin _ result) = yieldedIdentifier result
 yieldedIdentifier (ScopedExpression _ body) = yieldedIdentifier body
+yieldedIdentifier (WithScopes _ body) = yieldedIdentifier body
 yieldedIdentifier (Import _ (FunctionBody _ result)) = yieldedIdentifier result
 yieldedIdentifier
     (DependentArgument nameExpression (Just annotation))
@@ -634,6 +639,7 @@ data OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
   | ScopeAccessValue OperatorExpression OperatorExpression
+  | WithScopesValue [OperatorExpression] OperatorExpression
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
   | OverloadValue OperatorExpression OperatorExpression
@@ -777,6 +783,8 @@ normalizeExpression (ScopeAccess source selector) =
     (mapIdentifierExpression normalizeExpression selector)
 normalizeExpression (ScopedExpression source body) =
   ScopedExpression (normalizeExpression source) (normalizeExpression body)
+normalizeExpression (WithScopes sources body) =
+  WithScopes (map normalizeExpression sources) (normalizeExpression body)
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
@@ -943,6 +951,8 @@ lower (ScopeAccess source selector) =
       IdentifierExpressionBody body -> IdentifierExpressionValue body)
 lower (ScopedExpression source body) =
   ScopeAccessValue (lower source) (lower body)
+lower (WithScopes sources body) =
+  WithScopesValue (map lower sources) (lower body)
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
 lower (Overload left right) = OverloadValue (lower left) (lower right)
@@ -1062,6 +1072,8 @@ traverseExpressionChildren visit expression = case expression of
     <*> traverseIdentifierExpressionInterpolations visit selector
   ScopedExpression source body ->
     ScopedExpression <$> visit source <*> visit body
+  WithScopes sources body ->
+    WithScopes <$> traverse visit sources <*> visit body
   DependentArgument name annotation ->
     DependentArgument
       <$> traverseIdentifierExpressionInterpolations visit name

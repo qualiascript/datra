@@ -311,7 +311,6 @@ discoverImportInvocations base activeRules envelope raw = do
 scopeSyntaxNamespaces :: Expression -> [String]
 scopeSyntaxNamespaces source = case source of
   IdentifierReference (SimpleIdentifierString selected) -> [selected]
-  ArgumentativeMap modules -> concatMap scopeSyntaxNamespaces modules
   _ -> []
 
 scopeSyntaxRules
@@ -648,6 +647,13 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
             , (contextEnter (contextScope environment source) Nothing)
                 { contextSourceSpan = contextSourceSpan environment }
             ]
+          WithScopes sources _ ->
+            replicate (length sources) environment <>
+              [ (contextEnter
+                    (foldl contextScope environment sources)
+                    Nothing)
+                  { contextSourceSpan = contextSourceSpan environment }
+              ]
           _ -> map (const environment)
             (expressionChildren expressionValue)
         scopeAt selected = maybe environment id
@@ -2268,18 +2274,18 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       , isContextualAccessOf ContextualThis thisValue
       , contextualThisAvailable scope
           -> resolveIdentifierWith reduction scope resolving name
-    ScopedExpression operand body
-      | Just moduleOperands <- withModuleScopeOperands operand -> do
-          let distinctOperands = nub moduleOperands
-          sources <- traverse interpret distinctOperands
-          runProtectedOperation protection sources $ \actuals -> do
-            publicDomains <- traverse publicDomainValue actuals
-            _ <- importDomainValue publicDomains
-            members <- concat <$> traverse scopeNamedMembers actuals
-            let combined = makeAtlasMapPreservingSingleton 2
-                  (map snd members)
-            enterOpenedScope expressionValue combined
-              (zip distinctOperands actuals) body
+    -- @with@ alone flattens several namespace values. Keep every source's
+    -- declarations in the same layer: duplicate names are then harmless until
+    -- resolution selects one, at which point the layer reports ambiguity.
+    WithScopes operands body -> do
+      let distinctOperands = nub operands
+      sources <- traverse interpret distinctOperands
+      runProtectedOperation protection sources $ \actuals -> do
+        members <- concat <$> traverse scopeNamedMembers actuals
+        let combined = makeAtlasMapPreservingSingleton 2
+              (map snd members)
+        enterOpenedScope expressionValue combined
+          (zip distinctOperands actuals) body
     ScopeAccess operand selector -> do
       name <- scopeSelectorName selector
       source <- interpret operand
@@ -5756,13 +5762,6 @@ contextualSpecificationValue value =
     Nothing -> maybe (Right value) contextualSpecificationValue
       (interpretedSpecificationSourceValue value)
 
-withModuleScopeOperands :: Expression -> Maybe [Expression]
-withModuleScopeOperands expressionValue = case expressionValue of
-  ArgumentativeMap modules
-    | not (null modules)
-    , all (null . bindingNames) modules -> Just modules
-  _ -> Nothing
-
 evaluateImport
   :: ReductionContext
   -> Scope
@@ -6124,6 +6123,13 @@ prepareModuleResource base expressionValue = case expressionValue of
       _ -> evalInScope base [] source
     declarations <- openedScopeContributionDeclarations base (source, value)
     prepareModuleResource (extendRuntimeDeclarations declarations base) body
+  WithScopes sources body -> do
+    let distinctSources = nub sources
+    values <- traverse (evalInScope base []) distinctSources
+    declarations <- concat <$> traverse
+      (openedScopeContributionDeclarations base)
+      (zip distinctSources values)
+    prepareModuleResource (extendRuntimeDeclarations declarations base) body
   Import paths (FunctionBody bindings result) -> do
     imported <- foldM importQualified base (nub paths)
     prepareModuleResource imported (Begin bindings result)
@@ -6201,6 +6207,7 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
         AsciiStringLiteral {} -> expressionValue
         ScopeAccess {} -> expressionValue
         ScopedExpression {} -> expressionValue
+        WithScopes {} -> expressionValue
         _ -> InModule requested expressionValue)
     parseRuleExpression sourceText =
       case parseSourceExpression sourceText of
@@ -6278,16 +6285,6 @@ namedMembers value =
     field member = case simpleIdentifierName member of
       Just name -> Right (name, member)
       Nothing -> Left (ModuleEvaluationFailed ModuleExportRequiresIdentifier)
-
-publicDomainValue
-  :: InterpretedValue
-  -> Either InterpretingError InterpretedValue
-publicDomainValue value = do
-  members <- namedMembers value
-  importDomainValue
-    [ simpleIdentifierTypeValue name anyTypeValue
-    | (name, _) <- members
-    ]
 
 scopeNamedMembers
   :: InterpretedValue

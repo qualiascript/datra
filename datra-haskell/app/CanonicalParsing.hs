@@ -119,6 +119,7 @@ astForm =
       , astSequence
       , ArgumentativeMap <$>
           (astCanonicalForm ArgumentativeMapForm *> many astExpression)
+      , astWithScopes
       , astNaturalRangeExpression
       , astDependentArgument AST.AssignmentOperator (Just ())
       , astDependentArgument AST.DependentArgumentTypeOperator Nothing
@@ -135,6 +136,15 @@ astForm =
       , try astRegisteredBinary
       , astRegisteredUnary
       ])
+
+astWithScopes :: Parser Expression
+astWithScopes = do
+  _ <- astCanonicalForm WithScopesForm
+  sources <- between
+    (astDelimiter OpenParenthesis)
+    (astDelimiter CloseParenthesis)
+    (astCanonicalForm ArgumentativeMapForm *> many astExpression)
+  WithScopes sources <$> astExpression
 
 astImport :: Parser Expression
 astImport = do
