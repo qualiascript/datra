@@ -413,7 +413,7 @@ scopeProtectionTests =
         let function = makeFunctionValue
               (EvaluatedFunction
                 (naturalValue 0) (naturalValue 1)
-                Nothing Nothing Nothing Nothing
+                Nothing Nothing Nothing
                 (FunctionSource
                   (FunctionTypeExpression [] AnyType AnyType))
                 Nothing Nothing False Nothing)

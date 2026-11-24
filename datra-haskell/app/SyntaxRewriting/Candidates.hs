@@ -6,24 +6,27 @@ module SyntaxRewriting.Candidates
   , structuralCandidateMatch
   ) where
 
-import DatraLanguage.AST (Expression (..), expressionChildren)
+import DatraLanguage.AST (Expression)
 import StringExpression
-  ( StringExpression (..)
-  , TemplateSelection (..)
-  )
+  ( TemplateSelection (..) )
 import StringInterpolation
-  ( DeclarativeCapture (..)
+  ( DeclarativeCapture
+  , DeclarativeMatcherPlan (..)
+  , LiteralExpressionPattern (..)
+  , LiteralExpressionPatternPart (..)
   , SyntaxRule (..)
   , syntaxRuleCaptures
   )
 import Data.Map.Strict qualified as Map
-import DatraTypes (InterpretedValue)
 import SyntaxRewriting.Types
-  ( CandidateFrame (..)
+  ( CaptureExtent (..)
+  , CandidateFrame (..)
   , CandidateFrameProgress (..)
   , CandidateRejectionDetails (..)
   , CandidateRejectionReason (..)
   , CandidateTypingContext (..)
+  , Compatibility (..)
+  , CompatibilityConstraint (..)
   , RewriteResult (..)
   , RewriteRule (..)
   , StructuralCandidate (..)
@@ -35,13 +38,15 @@ import StringInterpolation.Matching
   )
 import Parsing (expressionParser)
 
-initialCandidateFrame :: StructuralCandidate -> CandidateFrame
+initialCandidateFrame
+  :: StructuralCandidate syntaxType
+  -> CandidateFrame syntaxType
 initialCandidateFrame _ = CandidateFrame
   { candidateFrameNextCapture = 0
   , candidateFrameTypingContext = CandidateTypingContext
       { candidateTypingInputs = Map.empty
       , candidateTypingExpectedHoles = Map.empty
-      , candidateTypingReturnType = Nothing
+      , candidateTypingBlocked = []
       }
   , candidateFrameResults = Map.empty
   , candidateFramePreparedCaptures = Map.empty
@@ -52,114 +57,94 @@ initialCandidateFrame _ = CandidateFrame
 -- type instantiation, finalized-node lookup, and subfederation checking.
 -- Completed captures are retained in the returned frame and never revisited.
 advanceCandidateFrameWith
-  :: ( [(DeclarativeCapture, Expression)]
-       -> DeclarativeCapture
+  :: ( DeclarativeCapture
        -> Expression
        -> Maybe Expression
      )
-  -> (CandidateTypingContext -> Int -> Maybe InterpretedValue)
-  -> (CandidateTypingContext -> Maybe InterpretedValue)
-  -> (InterpretedValue -> InterpretedValue -> Bool)
-  -> StructuralCandidate
-  -> CandidateFrame
-  -> CandidateFrameProgress
+  -> (CandidateTypingContext syntaxType -> Int -> Maybe syntaxType)
+  -> (CandidateTypingContext syntaxType -> syntaxType)
+  -> (syntaxType -> syntaxType -> Compatibility)
+  -> StructuralCandidate syntaxType
+  -> CandidateFrame syntaxType
+  -> CandidateFrameProgress syntaxType
 advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
     compatible candidate =
   advance
   where
     advance frame
       | captureIndex >= length captures =
-          case candidateReturn context of
-            Just resultType -> CandidateFrameAccepted
-              context { candidateTypingReturnType = Just resultType }
-              [ preparedResult
-              | index <- [0 .. length captures - 1]
-              , Just childResult <- [Map.lookup index results]
-              , let preparedResult = childResult
-                      { rewriteResultExpression = Map.findWithDefault
-                          (rewriteResultExpression childResult) index
-                          (candidateFramePreparedCaptures frame)
-                      }
-              ]
-              resultType
-            Nothing -> CandidateFrameRejected
-              (rejectionDetails CandidateReturnMismatch Nothing Nothing frame)
+          CandidateFrameComplete
+            context
+            [ preparedResult
+            | index <- [0 .. length captures - 1]
+            , Just childResult <- [Map.lookup index results]
+            , let preparedResult = childResult
+                    { rewriteResultExpression = Map.findWithDefault
+                        (rewriteResultExpression childResult) index
+                        (candidateFramePreparedCaptures frame)
+                    }
+            ]
+            (candidateReturn context)
       | otherwise =
           case Map.lookup captureIndex results of
-            Nothing
-              | null (expressionChildren source) ->
-                  checkTerminalCapture frame
-              | otherwise ->
-                  CandidateFrameNeedsChild frame captureIndex kind source
+            Nothing -> case extent of
+              WholeCaptureExtent ->
+                CandidateFrameNeedsTerminal frame captureIndex kind source
+              ProperCaptureExtent ->
+                CandidateFrameNeedsChild frame captureIndex kind source
             Just result -> checkResult frame result
       where
         captures = structuralCandidateCaptures candidate
         captureIndex = candidateFrameNextCapture frame
         context = candidateFrameTypingContext frame
         results = candidateFrameResults frame
-        (kind, source) = captures !! captureIndex
-    -- A structural capture is not necessarily an AST child.  When the
-    -- matcher selected an atomic expression there is nothing below it that a
-    -- rewrite could change, so validate the capture itself instead of asking
-    -- the scheduler to rewrite the same node again.
-    checkTerminalCapture frame =
-      case prepareCapture completed kind source of
-        Nothing -> CandidateFrameRejected
-          (rejectionDetails RequiredChildExhausted expected Nothing frame)
-        Just preparedExpression ->
-          acceptPreparedCapture frame
-            RewriteResult
-              { rewriteResultExpression = source
-              , rewriteResultType = expected
-              , rewriteResultSelection = Nothing
-              }
-            preparedExpression
+        (kind, source, extent) = captures !! captureIndex
+    checkResult frame result = check
       where
-        index = candidateFrameNextCapture frame
-        context = candidateFrameTypingContext frame
-        expected = expectedHole context index
-        captures = structuralCandidateCaptures candidate
-        (kind, source) = captures !! index
-        completed = completedCaptures frame index captures
-    checkResult frame result = case prepared of
-      Nothing -> CandidateFrameRejected
-        (rejectionDetails RequiredChildExhausted expected Nothing frame)
-      Just preparedExpression ->
-        case (requiresTypedResult kind result, expected, rewriteResultType result) of
-          (False, _, _) ->
-            acceptPreparedCapture frame result preparedExpression
-          (True, Just wanted, Just actual)
-            | not (compatible actual wanted) -> CandidateFrameRejected
-                (rejectionDetails TypedHoleMismatch
-                  (Just wanted) (Just actual) frame)
-          (True, Just wanted, Nothing) -> CandidateFrameRejected
-            (rejectionDetails RequiredChildExhausted
-              (Just wanted) Nothing frame)
-          _ -> acceptPreparedCapture frame result preparedExpression
-      where
-        prepared = prepareCapture completed kind
-          (rewriteResultExpression result)
+        check = case expected of
+          Just wanted -> case compatible (rewriteResultType result) wanted of
+            CompatibilityProved -> acceptSelectedCapture frame [] result
+            CompatibilityUndecidable -> acceptSelectedCapture frame
+              [CompatibilityConstraint index
+                (rewriteResultType result) wanted]
+              result
+            CompatibilityRefuted -> CandidateFrameRejected
+              (rejectionDetails TypedHoleMismatch
+                (Just wanted) (Just (rewriteResultType result)) frame)
+          Nothing -> prepareStructuralResult frame result
+
         index = candidateFrameNextCapture frame
         context = candidateFrameTypingContext frame
         expected = expectedHole context index
         captures = structuralCandidateCaptures
           candidate
-        (kind, _) = captures !! index
-        completed = completedCaptures frame index captures
+        (kind, _, _) = captures !! index
+        acceptSelectedCapture selectedFrame deferred selectedResult =
+          acceptPreparedCapture selectedFrame deferred selectedResult
+            (rewriteResultExpression selectedResult)
 
-    acceptPreparedCapture frame result preparedExpression = advance frame
+        prepareStructuralResult selectedFrame selectedResult =
+          case prepareCapture kind
+              (rewriteResultExpression selectedResult) of
+            Just preparedExpression -> acceptPreparedCapture
+              selectedFrame [] selectedResult preparedExpression
+            Nothing -> CandidateFrameRejected
+              (rejectionDetails RequiredChildExhausted expected Nothing
+                selectedFrame)
+
+    acceptPreparedCapture frame deferred result preparedExpression = advance frame
           { candidateFrameNextCapture = index + 1
           , candidateFrameTypingContext = context
-              { candidateTypingInputs = maybe
-                  (candidateTypingInputs context)
-                  (\selected -> Map.insert index selected
-                    (candidateTypingInputs context))
+              { candidateTypingInputs = Map.insert index
                   (rewriteResultType result)
+                  (candidateTypingInputs context)
               , candidateTypingExpectedHoles = maybe
                   (candidateTypingExpectedHoles context)
                   (\wanted -> Map.insert index wanted
                     (candidateTypingExpectedHoles context))
                   expected
+              , candidateTypingBlocked =
+                  candidateTypingBlocked context <> deferred
               }
           , candidateFramePreparedCaptures = Map.insert
               index preparedExpression
@@ -172,24 +157,11 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         context = candidateFrameTypingContext frame
         expected = expectedHole context index
 
-    completedCaptures frame index captures =
-      [ (previousKind, preparedExpression)
-      | previousIndex <- [0 .. index - 1]
-      , let (previousKind, _) = captures !! previousIndex
-      , Just preparedExpression <- [Map.lookup previousIndex
-          (candidateFramePreparedCaptures frame)]
-      ]
-
-    requiresTypedResult (StringExpressionCapture ValueString {}) _ = True
-    requiresTypedResult (StringExpressionCapture StringLiteralString {}) _ = True
-    requiresTypedResult _ selected = case rewriteResultSelection selected of
-      Just _ -> True
-      Nothing -> False
-
     rejectionDetails reason expected actual frame =
       CandidateRejectionDetails
         { candidateRejectionRule = structuralCandidateRule candidate
-        , candidateRejectionBranch = structuralCandidateBranch candidate
+        , candidateRejectionBranch = rewriteRuleBranch
+            (structuralCandidateRule candidate)
         , candidateRejectionCaptureIndex = index
         , candidateRejectionSource = source
         , candidateRejectionExpected = expected
@@ -201,33 +173,32 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         captures = structuralCandidateCaptures candidate
         index = candidateFrameNextCapture frame
         source = case drop index captures of
-          (_, captured) : _ -> captured
+          (_, captured, _) : _ -> captured
           [] -> templateSelectionWhole
             (structuralCandidateSelection candidate)
 
-compileRewriteRule :: SyntaxRule -> RewriteRule
-compileRewriteRule rule = RewriteRule
+compileRewriteRule :: syntaxType -> SyntaxRule -> RewriteRule syntaxType
+compileRewriteRule returnType rule = RewriteRule
   { rewriteRule = rule
   , rewriteRuleBranch = 0
-  , rewriteRuleEvaluation = Nothing
-  , rewriteRuleHoleFamilies =
-      map (const Nothing) (syntaxRuleCaptures rule)
   , rewriteRuleSyntaxInsertion = Nothing
-  , rewriteRuleReturnType = Nothing
+  , rewriteRuleReturnType = returnType
   }
 
 enumerateRuleStructuralCandidates
-  :: RewriteRule
+  :: RewriteRule syntaxType
   -> Expression
-  -> [StructuralCandidate]
+  -> [StructuralCandidate syntaxType]
 enumerateRuleStructuralCandidates compiled expressionValue =
   [ StructuralCandidate
       { structuralCandidateRule = compiled
-      , structuralCandidateBranch = rewriteRuleBranch compiled
       , structuralCandidateSelection =
           declarativeMatchSelection matched
       , structuralCandidateCaptures =
-          declarativeMatchCaptures matched
+          zipWith
+            (\(kind, captured) extent -> (kind, captured, extent))
+            (declarativeMatchCaptures matched)
+            (ruleCaptureExtents rule)
       , structuralCandidateRemaining =
           declarativeMatchRemaining matched
       }
@@ -237,7 +208,20 @@ enumerateRuleStructuralCandidates compiled expressionValue =
   where
     rule = rewriteRule compiled
 
-structuralCandidateMatch :: StructuralCandidate -> SyntaxMatch
+ruleCaptureExtents :: SyntaxRule -> [CaptureExtent]
+ruleCaptureExtents rule = case declarativeMatcherPlan rule of
+  IdentifierApplicationMatcher {} ->
+    replicate (length (syntaxRuleCaptures rule)) ProperCaptureExtent
+  LiteralExpressionMatcher (LiteralExpressionPattern parts) -> case parts of
+    [LiteralExpressionPatternCapture _] -> [WholeCaptureExtent]
+    _ ->
+      [ ProperCaptureExtent
+      | LiteralExpressionPatternCapture _ <- parts
+      ]
+
+structuralCandidateMatch
+  :: StructuralCandidate syntaxType
+  -> SyntaxMatch
 structuralCandidateMatch candidate = SyntaxMatch
   { syntaxMatchRule = rewriteRule (structuralCandidateRule candidate)
   , syntaxMatchSelection = structuralCandidateSelection candidate

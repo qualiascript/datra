@@ -22,7 +22,6 @@ data StringExpression value
   | DeclarationString value
   | DependentArgumentString value
   | IdentifierExpressionString value
-  | StringLiteralString value
   | ValueString value
   deriving (Eq, Show)
 
@@ -35,7 +34,6 @@ stringExpressionValue expression = case expression of
   DeclarationString value -> Just value
   DependentArgumentString value -> Just value
   IdentifierExpressionString value -> Just value
-  StringLiteralString value -> Just value
   ValueString value -> Just value
 
 mapStringExpression
@@ -51,7 +49,6 @@ mapStringExpression transform expression = case expression of
   DependentArgumentString value -> DependentArgumentString (transform value)
   IdentifierExpressionString value ->
     IdentifierExpressionString (transform value)
-  StringLiteralString value -> StringLiteralString (transform value)
   ValueString value -> ValueString (transform value)
 
 type StringInterpolationTemplate value =
@@ -94,5 +91,4 @@ traverseStringInterpolationTemplate transform = traverse traversePart
         DependentArgumentString <$> transform value
       IdentifierExpressionString value ->
         IdentifierExpressionString <$> transform value
-      StringLiteralString value -> StringLiteralString <$> transform value
       ValueString value -> ValueString <$> transform value

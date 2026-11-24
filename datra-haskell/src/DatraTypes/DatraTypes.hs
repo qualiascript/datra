@@ -67,6 +67,7 @@ module DatraTypes
   , ScopeProtectionPolicy (..)
   , ScopeProtection (..)
   , Decision (..)
+  , decideValueSubfederation
   , neverValue
   , interpretedScopeProtection
   , protectInterpretedValue
@@ -483,7 +484,8 @@ import Evaluation.Specification
   , specifyValues
   )
 import Evaluation.Specification.Subfederation
-  ( IdentifierNameDisjointness (..)
+  ( decideValueSubfederation
+  , IdentifierNameDisjointness (..)
   , identifierNameDisjointness
   , requireValueSubfederation
   )
