@@ -20,7 +20,8 @@ import SyntaxRewriting.Types
   , CandidateRejection
   , CandidateRejectionDetails (..)
   , CandidateSearch (..)
-  , CandidateTypingContext
+  , CandidateTypingContext (..)
+  , Compatibility
   , OrdinaryTraversal (..)
   , PreparedExpansion (..)
   , RewriteNode (..)
@@ -57,7 +58,7 @@ data RewriteStackOperations environment failure syntaxType = RewriteStackOperati
       -> CandidateTypingContext syntaxType
       -> Maybe syntaxType
   , stackTypesCompatible
-      :: syntaxType -> syntaxType -> Bool
+      :: syntaxType -> syntaxType -> Compatibility
   , stackRewriteScope
       :: environment -> RewriteLocus -> environment
   , stackFinalizeOrdinary
@@ -190,6 +191,8 @@ runRewriteStack operations initialEnvironment source =
       , ordinaryTraversalFinalizedCaptures = maybe []
           (concatMap expressionClosure
             . map rewriteResultExpression . selectedCaptures) selection
+      , ordinaryTraversalDeferred = maybe []
+          (candidateTypingDeferred . selectedTypingContext) selection
       }
 
     expressionClosure value = value : concatMap expressionClosure
@@ -239,7 +242,7 @@ runRewriteStack operations initialEnvironment source =
                     { rewriteNodeState = NodeReady
                         (SearchCandidates advancedSearch) }) machine
               in run (nodeId :| stack) advanced
-            CandidateFrameAccepted _ captureResults returnType -> do
+            CandidateFrameAccepted typingContext captureResults returnType -> do
               let rewrittenCaptures = map rewriteResultExpression captureResults
                   selection = (structuralCandidateSelection candidate)
                     { templateSelectionCaptures = rewrittenCaptures }
@@ -248,6 +251,7 @@ runRewriteStack operations initialEnvironment source =
                         { structuralCandidateSelection = selection }
                     , selectedCaptures = captureResults
                     , selectedReturnType = returnType
+                    , selectedTypingContext = typingContext
                     }
                   prepared = stackPrepareCandidate operations environment selected
               expanded <- stackExpandCandidate operations environment prepared
@@ -335,7 +339,11 @@ runRewriteStack operations initialEnvironment source =
                   Just nextEnvironment -> updateNode nodeId (\current -> current
                     { rewriteNodeEnvironment = nextEnvironment }) machine
                 advancedTraversal = traversal
-                  { ordinaryTraversalCursor = cursor + 1 }
+                  { ordinaryTraversalCursor = cursor + 1
+                  , ordinaryTraversalDeferred =
+                      ordinaryTraversalDeferred traversal <>
+                        rewriteResultDeferred childResult
+                  }
                 ready = updateNode nodeId (\current -> current
                   { rewriteNodeExpression = installed
                   , rewriteNodeState = NodeReady
@@ -352,9 +360,13 @@ runRewriteStack operations initialEnvironment source =
         Nothing -> do
           ordinaryResult <- stackFinalizeOrdinary operations environment
             (rewriteNodeExpression node)
-          let result = case ordinaryTraversalSelection traversal of
-                Nothing -> ordinaryResult
-                Just selected -> ordinaryResult
+          let traversedResult = ordinaryResult
+                { rewriteResultDeferred =
+                    rewriteResultDeferred ordinaryResult <>
+                      ordinaryTraversalDeferred traversal }
+              result = case ordinaryTraversalSelection traversal of
+                Nothing -> traversedResult
+                Just selected -> traversedResult
                   { rewriteResultType = Just (selectedReturnType selected)
                   , rewriteResultSelection = Just selected
                   }

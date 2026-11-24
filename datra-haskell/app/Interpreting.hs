@@ -533,8 +533,6 @@ classifySyntaxTypes base modules declarations = map classify
           in ( specialized
              , Just SyntaxType
                 { syntaxTypeExpression = target
-                , syntaxTypeMembers = staticSyntaxTypeMembers
-                    declarations target
                 , syntaxTypeRuntimeValue = runtimeValue <|>
                     evaluateSyntaxValue base modules declarations target
                 }
@@ -549,49 +547,9 @@ evaluateSyntaxType
 evaluateSyntaxType base modules declarations expressionValue =
   Just SyntaxType
     { syntaxTypeExpression = expressionValue
-    , syntaxTypeMembers = staticSyntaxTypeMembers
-        declarations expressionValue
     , syntaxTypeRuntimeValue = evaluateSyntaxValue
         base modules declarations expressionValue
     }
-
--- A parser contract retains nominal federation membership even when its
--- runtime value cannot yet be materialized. Only declarations whose source
--- is structurally a federation are unfolded; ordinary implementations remain
--- opaque nominal members.
-staticSyntaxTypeMembers :: [Expression] -> Expression -> Set.Set Expression
-staticSyntaxTypeMembers declarations = nominalMembers Set.empty
-  where
-    nominalMembers visited expressionValue
-      | expressionValue `Set.member` visited = Set.singleton expressionValue
-      | otherwise = Set.insert expressionValue $ case expressionValue of
-          IdentifierReference (SimpleIdentifierString name) ->
-            maybe Set.empty
-              (federationMembers nextVisited)
-              (declarationImplementation name)
-          SyntaxBoundary inner -> nominalMembers nextVisited inner
-          _ -> Set.empty
-      where
-        nextVisited = Set.insert expressionValue visited
-
-    federationMembers visited expressionValue = case expressionValue of
-      SyntaxBoundary inner -> federationMembers visited inner
-      Coalization inner -> federationMembers visited inner
-      AtlasMap members -> foldMap (nominalMembers visited) members
-      MapSequence members -> foldMap (nominalMembers visited) members
-      EitherType left right ->
-        nominalMembers visited left <> nominalMembers visited right
-      OptionalType inner -> nominalMembers visited inner
-      _ -> Set.empty
-
-    declarationImplementation name = case
-        [ dependentDeclarationImplementation declaration
-        | source <- reverse declarations
-        , name `elem` bindingNames source
-        , Just declaration <- [dependentDeclaration source]
-        ] of
-      implementation : _ -> Just implementation
-      [] -> Nothing
 
 evaluateSyntaxValue
   :: Scope
@@ -658,8 +616,6 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
               `withDeclarations` declarations
           , contextResultType = \expressionValue -> Just SyntaxType
               { syntaxTypeExpression = expressionValue
-              , syntaxTypeMembers = staticSyntaxTypeMembers
-                  declarations expressionValue
               , syntaxTypeRuntimeValue = syntaxResultType
                   currentBase modules declarations expressionValue
               }
@@ -792,8 +748,6 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
           | (_, branch, rule) <-
               declarationRuleBranches resolved
           ]
-      , syntaxRuleFamilyClassify = classifySyntaxTypes
-          currentBase modules visible
       , syntaxRuleFamilyEvaluate = evaluateSyntaxType
           currentBase modules visible
       }
@@ -804,8 +758,6 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
     externalFamily currentBase declarations rules = SyntaxRuleFamily
       { syntaxRuleFamilyNames = concatMap syntaxRuleLiteralHeads rules
       , syntaxRuleFamilyRules = map (0,) rules
-      , syntaxRuleFamilyClassify = classifySyntaxTypes
-          currentBase modules declarations
       , syntaxRuleFamilyEvaluate = evaluateSyntaxType
           currentBase modules declarations
       }

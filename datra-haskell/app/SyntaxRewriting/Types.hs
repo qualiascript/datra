@@ -12,6 +12,8 @@ module SyntaxRewriting.Types
   , SelectedCandidate (..)
   , PreparedExpansion (..)
   , CandidateTypingContext (..)
+  , Compatibility (..)
+  , CompatibilityConstraint (..)
   , CandidateFrame (..)
   , CandidateFrameProgress (..)
   , CandidateRejectionReason (..)
@@ -26,7 +28,6 @@ module SyntaxRewriting.Types
   ) where
 
 import Data.Map.Strict (Map)
-import Data.Set (Set)
 import DatraLanguage.AST (Expression)
 import DatraLanguage.Diagnostics (DatraError, SourceSpan)
 import DatraLanguage.Diagnostics.Application
@@ -45,7 +46,6 @@ import StringInterpolation
 
 data SyntaxType = SyntaxType
   { syntaxTypeExpression :: Expression
-  , syntaxTypeMembers :: Set Expression
   , syntaxTypeRuntimeValue :: Maybe InterpretedValue
   }
 
@@ -62,7 +62,6 @@ type CaptureHole =
 data SyntaxRuleFamily syntaxType = SyntaxRuleFamily
   { syntaxRuleFamilyNames :: [String]
   , syntaxRuleFamilyRules :: [(Int, SyntaxRule)]
-  , syntaxRuleFamilyClassify :: ClassifyHoles syntaxType
   , syntaxRuleFamilyEvaluate :: Expression -> Maybe syntaxType
   }
 
@@ -91,8 +90,6 @@ data SyntaxContext syntaxType = SyntaxContext
 data RewriteRule syntaxType = RewriteRule
   { rewriteRule :: SyntaxRule
   , rewriteRuleBranch :: Int
-  , rewriteRuleEvaluation :: Maybe (Expression -> Maybe syntaxType)
-  , rewriteRuleHoleFamilies :: [Maybe syntaxType]
   , rewriteRuleSyntaxInsertion :: Maybe SyntaxFunctionInsertion
   , rewriteRuleReturnType :: Maybe syntaxType
   }
@@ -114,7 +111,6 @@ data RewriteLocus
 
 data StructuralCandidate syntaxType = StructuralCandidate
   { structuralCandidateRule :: RewriteRule syntaxType
-  , structuralCandidateBranch :: Int
   , structuralCandidateSelection
       :: TemplateSelection Expression Expression
   , structuralCandidateCaptures
@@ -126,6 +122,7 @@ data SelectedCandidate syntaxType = SelectedCandidate
   { selectedStructuralCandidate :: StructuralCandidate syntaxType
   , selectedCaptures :: [RewriteResult syntaxType]
   , selectedReturnType :: syntaxType
+  , selectedTypingContext :: CandidateTypingContext syntaxType
   }
 
 data PreparedExpansion = PreparedExpansion
@@ -136,7 +133,19 @@ data PreparedExpansion = PreparedExpansion
 data CandidateTypingContext syntaxType = CandidateTypingContext
   { candidateTypingInputs :: Map Int syntaxType
   , candidateTypingExpectedHoles :: Map Int syntaxType
-  , candidateTypingReturnType :: Maybe syntaxType
+  , candidateTypingDeferred
+      :: [CompatibilityConstraint syntaxType]
+  }
+
+data Compatibility
+  = CompatibilityProved
+  | CompatibilityRefuted
+  | CompatibilityDeferred
+  deriving (Eq, Show)
+
+data CompatibilityConstraint syntaxType = CompatibilityConstraint
+  { compatibilitySource :: syntaxType
+  , compatibilityTarget :: syntaxType
   }
 
 data CandidateFrame syntaxType = CandidateFrame
@@ -179,6 +188,8 @@ data RewriteResult syntaxType = RewriteResult
   { rewriteResultExpression :: Expression
   , rewriteResultType :: Maybe syntaxType
   , rewriteResultSelection :: Maybe (SelectedCandidate syntaxType)
+  , rewriteResultDeferred
+      :: [CompatibilityConstraint syntaxType]
   }
 
 data CandidateSearch syntaxType = CandidateSearch
@@ -192,6 +203,8 @@ data OrdinaryTraversal syntaxType = OrdinaryTraversal
   { ordinaryTraversalCursor :: Int
   , ordinaryTraversalSelection :: Maybe (SelectedCandidate syntaxType)
   , ordinaryTraversalFinalizedCaptures :: [Expression]
+  , ordinaryTraversalDeferred
+      :: [CompatibilityConstraint syntaxType]
   }
 
 data RewriteWork syntaxType

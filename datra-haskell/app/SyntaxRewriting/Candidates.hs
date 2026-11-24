@@ -25,6 +25,8 @@ import SyntaxRewriting.Types
   , CandidateRejectionDetails (..)
   , CandidateRejectionReason (..)
   , CandidateTypingContext (..)
+  , Compatibility (..)
+  , CompatibilityConstraint (..)
   , RewriteResult (..)
   , RewriteRule (..)
   , StructuralCandidate (..)
@@ -44,7 +46,7 @@ initialCandidateFrame _ = CandidateFrame
   , candidateFrameTypingContext = CandidateTypingContext
       { candidateTypingInputs = Map.empty
       , candidateTypingExpectedHoles = Map.empty
-      , candidateTypingReturnType = Nothing
+      , candidateTypingDeferred = []
       }
   , candidateFrameResults = Map.empty
   , candidateFramePreparedCaptures = Map.empty
@@ -62,7 +64,7 @@ advanceCandidateFrameWith
      )
   -> (CandidateTypingContext syntaxType -> Int -> Maybe syntaxType)
   -> (CandidateTypingContext syntaxType -> Maybe syntaxType)
-  -> (syntaxType -> syntaxType -> Bool)
+  -> (syntaxType -> syntaxType -> Compatibility)
   -> StructuralCandidate syntaxType
   -> CandidateFrame syntaxType
   -> CandidateFrameProgress syntaxType
@@ -74,7 +76,7 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
       | captureIndex >= length captures =
           case candidateReturn context of
             Just resultType -> CandidateFrameAccepted
-              context { candidateTypingReturnType = Just resultType }
+              context
               [ preparedResult
               | index <- [0 .. length captures - 1]
               , Just childResult <- [Map.lookup index results]
@@ -108,11 +110,12 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         Nothing -> CandidateFrameRejected
           (rejectionDetails RequiredChildExhausted expected Nothing frame)
         Just preparedExpression ->
-          acceptPreparedCapture frame
+          acceptPreparedCapture frame []
             RewriteResult
               { rewriteResultExpression = source
               , rewriteResultType = expected
               , rewriteResultSelection = Nothing
+              , rewriteResultDeferred = []
               }
             preparedExpression
       where
@@ -122,19 +125,24 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         captures = structuralCandidateCaptures candidate
         (kind, source, _) = captures !! index
         completed = completedCaptures frame index captures
-    checkResult frame result = case typedResult of
-      Left rejection -> rejection
-      Right structurallyTyped -> case prepared of
-        Just preparedExpression ->
-          acceptPreparedCapture frame result preparedExpression
-        Nothing
-          | structurallyTyped -> acceptPreparedCapture frame result
-              (rewriteResultExpression result)
-          | otherwise -> CandidateFrameRejected
-              (rejectionDetails RequiredChildExhausted expected Nothing frame)
+    checkResult frame result = check
       where
-        prepared = prepareCapture completed kind
-          (rewriteResultExpression result)
+        check
+          | requiresTypedResult kind result = case
+              (expected, rewriteResultType result) of
+          (Just wanted, Just actual) -> case compatible actual wanted of
+            CompatibilityProved -> acceptSelectedCapture frame [] result
+            CompatibilityDeferred -> acceptSelectedCapture frame
+              [CompatibilityConstraint actual wanted] result
+            CompatibilityRefuted -> CandidateFrameRejected
+              (rejectionDetails TypedHoleMismatch
+                (Just wanted) (Just actual) frame)
+          (Just wanted, Nothing) -> CandidateFrameRejected
+            (rejectionDetails RequiredChildExhausted
+              (Just wanted) Nothing frame)
+          _ -> prepareOrdinaryCapture frame result
+          | otherwise = prepareOrdinaryCapture frame result
+
         index = candidateFrameNextCapture frame
         context = candidateFrameTypingContext frame
         expected = expectedHole context index
@@ -142,20 +150,21 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
           candidate
         (kind, _, _) = captures !! index
         completed = completedCaptures frame index captures
-        typedResult = case
-            (requiresTypedResult kind result, expected, rewriteResultType result) of
-          (False, _, _) -> Right False
-          (True, Just wanted, Just actual)
-            | compatible actual wanted -> Right True
-            | otherwise -> Left (CandidateFrameRejected
-                (rejectionDetails TypedHoleMismatch
-                  (Just wanted) (Just actual) frame))
-          (True, Just wanted, Nothing) -> Left (CandidateFrameRejected
-            (rejectionDetails RequiredChildExhausted
-              (Just wanted) Nothing frame))
-          _ -> Right False
 
-    acceptPreparedCapture frame result preparedExpression = advance frame
+        acceptSelectedCapture selectedFrame deferred selectedResult =
+          acceptPreparedCapture selectedFrame deferred selectedResult
+            (rewriteResultExpression selectedResult)
+
+        prepareOrdinaryCapture selectedFrame selectedResult =
+          case prepareCapture completed kind
+              (rewriteResultExpression selectedResult) of
+            Just preparedExpression -> acceptPreparedCapture
+              selectedFrame [] selectedResult preparedExpression
+            Nothing -> CandidateFrameRejected
+              (rejectionDetails RequiredChildExhausted expected Nothing
+                selectedFrame)
+
+    acceptPreparedCapture frame deferred result preparedExpression = advance frame
           { candidateFrameNextCapture = index + 1
           , candidateFrameTypingContext = context
               { candidateTypingInputs = maybe
@@ -168,6 +177,9 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
                   (\wanted -> Map.insert index wanted
                     (candidateTypingExpectedHoles context))
                   expected
+              , candidateTypingDeferred =
+                  candidateTypingDeferred context <>
+                    rewriteResultDeferred result <> deferred
               }
           , candidateFramePreparedCaptures = Map.insert
               index preparedExpression
@@ -195,7 +207,8 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
     rejectionDetails reason expected actual frame =
       CandidateRejectionDetails
         { candidateRejectionRule = structuralCandidateRule candidate
-        , candidateRejectionBranch = structuralCandidateBranch candidate
+        , candidateRejectionBranch = rewriteRuleBranch
+            (structuralCandidateRule candidate)
         , candidateRejectionCaptureIndex = index
         , candidateRejectionSource = source
         , candidateRejectionExpected = expected
@@ -215,9 +228,6 @@ compileRewriteRule :: SyntaxRule -> RewriteRule syntaxType
 compileRewriteRule rule = RewriteRule
   { rewriteRule = rule
   , rewriteRuleBranch = 0
-  , rewriteRuleEvaluation = Nothing
-  , rewriteRuleHoleFamilies =
-      map (const Nothing) (syntaxRuleCaptures rule)
   , rewriteRuleSyntaxInsertion = Nothing
   , rewriteRuleReturnType = Nothing
   }
@@ -229,7 +239,6 @@ enumerateRuleStructuralCandidates
 enumerateRuleStructuralCandidates compiled expressionValue =
   [ StructuralCandidate
       { structuralCandidateRule = compiled
-      , structuralCandidateBranch = rewriteRuleBranch compiled
       , structuralCandidateSelection =
           declarativeMatchSelection matched
       , structuralCandidateCaptures =

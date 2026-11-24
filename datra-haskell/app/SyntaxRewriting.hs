@@ -13,7 +13,6 @@ module SyntaxRewriting
   ) where
 import Control.Applicative ((<|>))
 import Data.Map.Strict qualified as Map
-import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.Application
   ( applicationFrom
@@ -27,10 +26,10 @@ import DatraLanguage.Diagnostics
   )
 import Parsing (ResourceEnvelope (..))
 import DatraTypes
-  ( SyntaxFunctionExpansion (..)
+  ( Decision (..)
+  , SyntaxFunctionExpansion (..)
   , SyntaxFunctionInsertion (..)
-  , booleanCondition
-  , subfederationValues
+  , decideValueSubfederation
   )
 import StringExpression
   ( TemplateSelection (..)
@@ -40,7 +39,6 @@ import StringInterpolation
   , LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
   , SyntaxRule (..)
-  , syntaxRuleCaptures
   , syntaxRuleAdapter
   )
 import StringInterpolation.Matching
@@ -48,6 +46,7 @@ import StringInterpolation.Matching
 import SyntaxRewriting.Types
   ( CandidateRejection
   , CandidateTypingContext (..)
+  , Compatibility (..)
   , PreparedExpansion (..)
   , RewriteResult (..)
   , RewriteRule (..)
@@ -125,14 +124,18 @@ prepareSelectedSyntaxMatch rule matched = PreparedExpansion
     directExpansion = rewriteRuleSyntaxInsertion rule >>= \insertion ->
       applySyntaxFunction insertion captures
 
-syntaxTypesCompatible :: SyntaxType -> SyntaxType -> Bool
-syntaxTypesCompatible source target = case
-    (syntaxTypeRuntimeValue source, syntaxTypeRuntimeValue target) of
-  (Just sourceValue, Just targetValue) ->
-    case subfederationValues sourceValue targetValue >>= booleanCondition of
-      Right accepted -> accepted
-      Left _ -> False
-  _ -> syntaxTypeExpression source `Set.member` syntaxTypeMembers target
+syntaxTypesCompatibility :: SyntaxType -> SyntaxType -> Compatibility
+syntaxTypesCompatibility source target
+  | syntaxTypeExpression source == syntaxTypeExpression target =
+      CompatibilityProved
+  | otherwise = case
+      (syntaxTypeRuntimeValue source, syntaxTypeRuntimeValue target) of
+      (Just sourceValue, Just targetValue) ->
+        case decideValueSubfederation sourceValue targetValue of
+          DecisionProved () -> CompatibilityProved
+          DecisionRefuted -> CompatibilityRefuted
+          DecisionUndecidable -> CompatibilityDeferred
+      _ -> CompatibilityDeferred
 
 compileRuleWith
   :: (Expression -> Maybe SyntaxFunctionInsertion)
@@ -155,14 +158,6 @@ compileRuleFamily resolveInsertion family =
   [ (compileRuleWith resolveInsertion
         (syntaxRuleFamilyEvaluate family) rule)
       { rewriteRuleBranch = branch
-      , rewriteRuleEvaluation = Just (syntaxRuleFamilyEvaluate family)
-      , rewriteRuleHoleFamilies =
-          [ selected
-          | kind <- syntaxRuleCaptures rule
-          , let selected = case syntaxRuleFamilyClassify family [kind] of
-                  [(_, value)] -> value
-                  _ -> Nothing
-          ]
       }
   | (branch, rule) <- syntaxRuleFamilyRules family
   ]
@@ -276,7 +271,7 @@ runStructuralCandidates environment source =
       , stackCaptureHole = captureHole
       , stackExpectedHole = expectedHole
       , stackCandidateReturn = candidateReturn
-      , stackTypesCompatible = syntaxTypesCompatible
+      , stackTypesCompatible = syntaxTypesCompatibility
       , stackRewriteScope = contextRewriteScope
       , stackFinalizeOrdinary = finalizeOrdinary
       , stackPublishChild = publishChild
@@ -292,6 +287,7 @@ runStructuralCandidates environment source =
         { rewriteResultExpression = expressionValue
         , rewriteResultType = contextResultType selectedContext expressionValue
         , rewriteResultSelection = Nothing
+        , rewriteResultDeferred = []
         }
       where
         expressionValue = normalizeRewrittenSequence rawExpression
@@ -324,7 +320,8 @@ runStructuralCandidates environment source =
             | null (expressionChildren captured) ->
                 captureStrict specialized
             | Just actual <- contextResultType selectedEnvironment captured
-            , syntaxTypesCompatible actual expected -> Just captured
+            , CompatibilityProved <-
+                syntaxTypesCompatibility actual expected -> Just captured
             | otherwise -> captureStrict specialized
           [(specialized, _)] -> captureStrict specialized
           _ -> captureStrict kind
@@ -333,17 +330,13 @@ runStructuralCandidates environment source =
     expectedHole selectedEnvironment candidate context index =
       Map.lookup index (candidateTypingExpectedHoles context)
         <|> classified
-        <|> listHead (drop index (rewriteRuleHoleFamilies compiled))
       where
-        compiled = structuralCandidateRule candidate
         classified = case drop index
             (structuralCandidateCaptures candidate) of
           (kind, _, _) : _ -> case contextClassify selectedEnvironment [kind] of
             [(_, family)] -> family
             _ -> Nothing
           [] -> Nothing
-        listHead [] = Nothing
-        listHead (selected : _) = selected
     candidateReturn _ candidate _ = rewriteRuleReturnType compiled
       where
         compiled = structuralCandidateRule candidate
