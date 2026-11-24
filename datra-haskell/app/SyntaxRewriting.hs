@@ -62,6 +62,8 @@ import SyntaxRewriting.Candidates
   , enumerateRuleStructuralCandidates
   , structuralCandidateMatch
   )
+import SyntaxRewriting.Capture
+  ( prepareStructuralCapture )
 import SyntaxRewriting.Diagnostics
   ( candidateRejectionAt
   , reportCandidateRejections
@@ -90,11 +92,11 @@ rewriteRuleImplementation compiled = do
     Nothing -> implementation)
 
 resolvedRuleReturnType
-  :: (Expression -> Maybe SyntaxType)
+  :: (Expression -> SyntaxType)
   -> SyntaxRule
   -> Maybe SyntaxType
 resolvedRuleReturnType evaluate rule =
-  syntaxRuleAdapter rule >>= functionCodomainExpression >>= evaluate
+  evaluate <$> (syntaxRuleAdapter rule >>= functionCodomainExpression)
 
 functionCodomainExpression :: Expression -> Maybe Expression
 functionCodomainExpression expressionValue = case expressionValue of
@@ -139,7 +141,7 @@ syntaxTypesCompatibility source target
 
 compileRuleWith
   :: (Expression -> Maybe SyntaxFunctionInsertion)
-  -> (Expression -> Maybe SyntaxType)
+  -> (Expression -> SyntaxType)
   -> SyntaxRule
   -> RuntimeRewriteRule
 compileRuleWith resolveInsertion evaluate rule = compiled
@@ -268,7 +270,7 @@ runStructuralCandidates environment source =
       { stackEnumerateCandidates = structuralCandidatesFor
       , stackPostRewrite = \selectedEnvironment ->
           terminalFallback (declaredExtent selectedEnvironment)
-      , stackCaptureHole = captureHole
+      , stackPrepareStructuralCapture = prepareStructuralCapture
       , stackExpectedHole = expectedHole
       , stackCandidateReturn = candidateReturn
       , stackTypesCompatible = syntaxTypesCompatibility
@@ -312,21 +314,6 @@ runStructuralCandidates environment source =
         nonempty (MapSequence []) = False
         nonempty _ = True
 
-    captureHole selectedEnvironment _ previous kind captured = result
-      where
-        classified = contextClassify selectedEnvironment [kind]
-        result = case classified of
-          [(specialized, Just expected)]
-            | null (expressionChildren captured) ->
-                captureStrict specialized
-            | Just actual <- contextResultType selectedEnvironment captured
-            , CompatibilityProved <-
-                syntaxTypesCompatibility actual expected -> Just captured
-            | otherwise -> captureStrict specialized
-          [(specialized, _)] -> captureStrict specialized
-          _ -> captureStrict kind
-        captureStrict selected =
-          contextCapture selectedEnvironment previous selected captured
     expectedHole selectedEnvironment candidate context index =
       Map.lookup index (candidateTypingExpectedHoles context)
         <|> classified

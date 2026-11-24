@@ -142,7 +142,7 @@ import StringInterpolation
   , mapSyntaxRuleCaptures
   , identifierApplicationRule
   )
-import DatraLanguage.Application (applicationFrom, applicationPhrase)
+import DatraLanguage.Application (applicationFrom)
 import StringInterpolation.Exact (matchExactSegments)
 import DatraLanguage.Diagnostics
   ( DatraError
@@ -404,83 +404,6 @@ mapScopeEntries value = case value of
   SyntaxBoundary inner -> mapScopeEntries inner
   _ -> []
 
--- Every syntax hole follows evaluation followed by selection. For AST
--- categories the evaluator is the identity function and selection validates
--- the unchanged syntax node; ordinary value holes use lexical evaluation
--- before specification.
-captureSyntaxHole
-  :: Scope
-  -> [(String, ModuleSource)]
-  -> [Expression]
-  -> [(DeclarativeCapture, Expression)]
-  -> DeclarativeCapture
-  -> Expression
-  -> Maybe Expression
-captureSyntaxHole base modules declarations previous kind captured =
-  case kind of
-    StringExpressionCapture stringKind -> captureStringExpression stringKind
-  where
-    directCapture target =
-      literalCapture target captured <|> valueEvaluationCapture target
-
-    captureStringExpression stringKind = case stringKind of
-      LiteralString literal -> case captured of
-        AsciiStringLiteral actual
-          | actual == literal -> Just captured
-        _ -> Nothing
-      ExpressionString {} -> Just captured
-      BlockString {} -> case captured of
-        AtlasMap {} -> Just captured
-        MapSequence {} -> Just captured
-        _ -> Just (AtlasMap (applicationPhrase captured))
-      FunctionBodyString {} -> case captured of
-        FunctionBody {} -> Just captured
-        _ -> Nothing
-      DeclarationString {}
-        | dependentDeclarationCandidate captured -> Just captured
-        | otherwise -> Nothing
-      DependentArgumentString {} -> dependentArgumentCapture captured
-      IdentifierExpressionString {} -> case captured of
-        IdentifierReference {} -> Just captured
-        _ -> Nothing
-      StringLiteralString target -> valueEvaluationCapture target
-      ValueString target -> directCapture target
-
-    literalCapture target value
-      | target == value = Just value
-    literalCapture _ _ = Nothing
-    dependentArgumentCapture value = case value of
-      IdentifierReference {} -> Just value
-      AsciiStringLiteral {} -> Just value
-      StringTemplate {} -> Just value
-      DependentArgument {} -> Just value
-      OptionalType inner -> OptionalType <$> dependentArgumentCapture inner
-      _ -> Nothing
-    valueEvaluationCapture targetExpression =
-      captureInScopes selectValue targetExpression
-      where
-        selectValue scope _ =
-          let interpret = evalInScope scope []
-          in case canonicalValueCapture interpret targetExpression captured of
-            Right canonical -> Just canonical
-            Left _ -> Nothing
-    captureInScopes select targetExpression =
-      enclosingSyntaxCapture <|> scopedCapture
-      where
-        enclosing = extendModuleCatalog modules base
-        enclosingSyntaxCapture = do
-          target <- either (const Nothing) Just
-            (evalInScope enclosing [] targetExpression)
-          captureSyntaxExpression target captured
-        scopedCapture = do
-          scope <- either (const Nothing) Just
-            (declareSyntaxScope enclosing
-              (map syntaxValidationDeclaration scopedDeclarations))
-          target <- either (const Nothing) Just
-            (evalInScope scope [] targetExpression)
-          select scope target
-    scopedDeclarations = declarations <> binderDeclarations previous
-
 classifySyntaxHole
   :: Scope
   -> [(String, ModuleSource)]
@@ -543,9 +466,9 @@ evaluateSyntaxType
   -> [(String, ModuleSource)]
   -> [Expression]
   -> Expression
-  -> Maybe SyntaxType
+  -> SyntaxType
 evaluateSyntaxType base modules declarations expressionValue =
-  Just SyntaxType
+  SyntaxType
     { syntaxTypeExpression = expressionValue
     , syntaxTypeRuntimeValue = evaluateSyntaxValue
         base modules declarations expressionValue
@@ -612,9 +535,7 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
               families
           , contextClassify = classifySyntaxTypes
               currentBase modules declarations
-          , contextCapture = captureSyntaxHole currentBase modules
-              `withDeclarations` declarations
-          , contextResultType = \expressionValue -> Just SyntaxType
+          , contextResultType = \expressionValue -> SyntaxType
               { syntaxTypeExpression = expressionValue
               , syntaxTypeRuntimeValue = syntaxResultType
                   currentBase modules declarations expressionValue
@@ -672,9 +593,6 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
         (contextEnter environment Nothing)
         (map DeclarationExpression declarations <> [result])
       _ -> environment
-
-    withDeclarations capture declarations previous kind captured =
-      capture declarations previous kind captured
 
     publish currentBase declarations families entry = do
       let resolved = entry
@@ -805,74 +723,6 @@ expandSyntaxExpression expansion = case expansion of
     Begin <$> lowerSyntaxDeclarations entries <*> pure result
   SyntaxFunctionBody entries result ->
     FunctionBody <$> lowerSyntaxDeclarations entries <*> pure result
-
-binderDeclarations
-  :: [(DeclarativeCapture, Expression)]
-  -> [Expression]
-binderDeclarations
-    ((StringExpressionCapture DependentArgumentString {}, binder)
-      : (_, bound) : remaining) =
-  maybe id (:) (binderDeclaration binder bound)
-    (binderDeclarations remaining)
-binderDeclarations
-    ((StringExpressionCapture (ValueString descriptor), captured) : remaining) =
-  case descriptor of
-    SyntaxBoundary inner -> binderDeclarations
-      ((StringExpressionCapture (ValueString inner), captured) : remaining)
-    DependentArgument name _ ->
-      maybe id (:) (literalIdentifierName name >>= \identifier ->
-        binderDeclaration (IdentifierReference identifier) captured)
-        (binderDeclarations remaining)
-    _ -> binderDeclarations remaining
-binderDeclarations (_ : remaining) = binderDeclarations remaining
-binderDeclarations [] = []
-
-binderDeclaration :: Expression -> Expression -> Maybe Expression
-binderDeclaration binder bound = case binder of
-  IdentifierReference name -> Just (assigned name)
-  OptionalType (IdentifierReference name) ->
-    Just (assigned name)
-  AsciiStringLiteral name
-    | isIdentifierValue name ->
-        Just (assigned (SimpleIdentifierString name))
-  OptionalType (AsciiStringLiteral name)
-    | isIdentifierValue name ->
-        Just (assigned (SimpleIdentifierString name))
-  _ -> Nothing
-  where
-    -- Syntax binders are validation-only lexical declarations. Representing
-    -- them as explicit self-valued assignments keeps block declarations
-    -- assignment-only without changing the value visible to later holes.
-    assigned name = MapSpecification bound
-      (DependentArgument (literalIdentifierExpression name) Nothing)
-
-canonicalValueCapture
-  :: (Expression -> Either InterpretingError InterpretedValue)
-  -> Expression
-  -> Expression
-  -> Either InterpretingError Expression
-canonicalValueCapture interpret targetExpression captured = do
-  target <- interpret targetExpression
-  case captureSyntaxExpression target captured of
-    Just syntaxCapture -> Right syntaxCapture
-    Nothing -> case captured of
-      -- A bare identifier may itself be the lexical member selected by a
-      -- string-valued dependent-name family.  Try that spelling before name
-      -- lookup so a declaration does not recursively resolve the identifier
-      -- whose membership it is currently establishing.
-      IdentifierReference (SimpleIdentifierString name) ->
-        case lexicalIdentifierCapture target name of
-          Right lexical -> Right lexical
-          Left _ -> interpretedCapture target
-      _ -> interpretedCapture target
-  where
-    lexicalIdentifierCapture target name = do
-      source <- asciiStringValue name
-      _ <- evalValues canonicalStringCodec source target
-      Right (AsciiStringLiteral name)
-    interpretedCapture target = do
-      value <- interpret captured
-      captured <$ specifyValues value target
 
 -- A recursive function body is the fixed-point seed already used by ordinary
 -- evaluation while its public signature is being assembled. Syntax-hole

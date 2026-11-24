@@ -39,11 +39,8 @@ data RewriteStackOperations environment failure syntaxType = RewriteStackOperati
       :: environment -> Expression -> [StructuralCandidate syntaxType]
   , stackPostRewrite
       :: environment -> Expression -> Maybe Expression
-  , stackCaptureHole
-      :: environment
-      -> StructuralCandidate syntaxType
-      -> [(DeclarativeCapture, Expression)]
-      -> DeclarativeCapture
+  , stackPrepareStructuralCapture
+      :: DeclarativeCapture
       -> Expression
       -> Maybe Expression
   , stackExpectedHole
@@ -214,7 +211,7 @@ runRewriteStack operations initialEnvironment source =
               frame = maybe (initialCandidateFrame candidate) id
                 (candidateSearchFrame search)
               progress = advanceCandidateFrameWith
-                (stackCaptureHole operations environment candidate)
+                (stackPrepareStructuralCapture operations)
                 (stackExpectedHole operations environment candidate)
                 (stackCandidateReturn operations environment candidate)
                 (stackTypesCompatible operations)
@@ -224,6 +221,18 @@ runRewriteStack operations initialEnvironment source =
               allocateChild nodeId (SearchCandidates search
                 { candidateSearchFrame = Just progressed }) childSource
                 (RewriteExpression childSource) stack machine
+            CandidateFrameNeedsTerminal progressed index _ terminalSource -> do
+              terminalResult <- stackFinalizeOrdinary operations environment
+                terminalSource
+              let consumed = progressed
+                    { candidateFrameResults = Map.insert index terminalResult
+                        (candidateFrameResults progressed) }
+                  readySearch = search
+                    { candidateSearchFrame = Just consumed }
+                  ready = updateNode nodeId (\current -> current
+                    { rewriteNodeState = NodeReady
+                        (SearchCandidates readySearch) }) machine
+              run (nodeId :| stack) ready
             CandidateFrameRejected details ->
               let childRejections = concatMap rewriteNodeRejections
                     [ child
@@ -367,7 +376,7 @@ runRewriteStack operations initialEnvironment source =
               result = case ordinaryTraversalSelection traversal of
                 Nothing -> traversedResult
                 Just selected -> traversedResult
-                  { rewriteResultType = Just (selectedReturnType selected)
+                  { rewriteResultType = selectedReturnType selected
                   , rewriteResultSelection = Just selected
                   }
               finalized = updateNode nodeId (\current -> current

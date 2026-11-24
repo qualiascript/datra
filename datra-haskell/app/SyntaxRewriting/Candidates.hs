@@ -57,8 +57,7 @@ initialCandidateFrame _ = CandidateFrame
 -- type instantiation, finalized-node lookup, and subfederation checking.
 -- Completed captures are retained in the returned frame and never revisited.
 advanceCandidateFrameWith
-  :: ( [(DeclarativeCapture, Expression)]
-       -> DeclarativeCapture
+  :: ( DeclarativeCapture
        -> Expression
        -> Maybe Expression
      )
@@ -92,7 +91,8 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
       | otherwise =
           case Map.lookup captureIndex results of
             Nothing -> case extent of
-              WholeCaptureExtent -> checkTerminalCapture frame
+              WholeCaptureExtent ->
+                CandidateFrameNeedsTerminal frame captureIndex kind source
               ProperCaptureExtent ->
                 CandidateFrameNeedsChild frame captureIndex kind source
             Just result -> checkResult frame result
@@ -102,46 +102,18 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         context = candidateFrameTypingContext frame
         results = candidateFrameResults frame
         (kind, source, extent) = captures !! captureIndex
-    -- A whole-extent capture cannot become a child without revisiting the
-    -- same rewrite locus. Its contract must prepare it directly. Proper
-    -- subextents always use the ordinary child scheduler, including atoms.
-    checkTerminalCapture frame =
-      case prepareCapture completed kind source of
-        Nothing -> CandidateFrameRejected
-          (rejectionDetails RequiredChildExhausted expected Nothing frame)
-        Just preparedExpression ->
-          acceptPreparedCapture frame []
-            RewriteResult
-              { rewriteResultExpression = source
-              , rewriteResultType = expected
-              , rewriteResultSelection = Nothing
-              , rewriteResultDeferred = []
-              }
-            preparedExpression
-      where
-        index = candidateFrameNextCapture frame
-        context = candidateFrameTypingContext frame
-        expected = expectedHole context index
-        captures = structuralCandidateCaptures candidate
-        (kind, source, _) = captures !! index
-        completed = completedCaptures frame index captures
     checkResult frame result = check
       where
-        check
-          | requiresTypedResult kind result = case
-              (expected, rewriteResultType result) of
-          (Just wanted, Just actual) -> case compatible actual wanted of
+        check = case expected of
+          Just wanted -> case compatible (rewriteResultType result) wanted of
             CompatibilityProved -> acceptSelectedCapture frame [] result
             CompatibilityDeferred -> acceptSelectedCapture frame
-              [CompatibilityConstraint actual wanted] result
+              [CompatibilityConstraint (rewriteResultType result) wanted]
+              result
             CompatibilityRefuted -> CandidateFrameRejected
               (rejectionDetails TypedHoleMismatch
-                (Just wanted) (Just actual) frame)
-          (Just wanted, Nothing) -> CandidateFrameRejected
-            (rejectionDetails RequiredChildExhausted
-              (Just wanted) Nothing frame)
-          _ -> prepareOrdinaryCapture frame result
-          | otherwise = prepareOrdinaryCapture frame result
+                (Just wanted) (Just (rewriteResultType result)) frame)
+          Nothing -> prepareStructuralResult frame result
 
         index = candidateFrameNextCapture frame
         context = candidateFrameTypingContext frame
@@ -149,14 +121,12 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         captures = structuralCandidateCaptures
           candidate
         (kind, _, _) = captures !! index
-        completed = completedCaptures frame index captures
-
         acceptSelectedCapture selectedFrame deferred selectedResult =
           acceptPreparedCapture selectedFrame deferred selectedResult
             (rewriteResultExpression selectedResult)
 
-        prepareOrdinaryCapture selectedFrame selectedResult =
-          case prepareCapture completed kind
+        prepareStructuralResult selectedFrame selectedResult =
+          case prepareCapture kind
               (rewriteResultExpression selectedResult) of
             Just preparedExpression -> acceptPreparedCapture
               selectedFrame [] selectedResult preparedExpression
@@ -167,11 +137,9 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
     acceptPreparedCapture frame deferred result preparedExpression = advance frame
           { candidateFrameNextCapture = index + 1
           , candidateFrameTypingContext = context
-              { candidateTypingInputs = maybe
-                  (candidateTypingInputs context)
-                  (\selected -> Map.insert index selected
-                    (candidateTypingInputs context))
+              { candidateTypingInputs = Map.insert index
                   (rewriteResultType result)
+                  (candidateTypingInputs context)
               , candidateTypingExpectedHoles = maybe
                   (candidateTypingExpectedHoles context)
                   (\wanted -> Map.insert index wanted
@@ -191,18 +159,6 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         index = candidateFrameNextCapture frame
         context = candidateFrameTypingContext frame
         expected = expectedHole context index
-
-    completedCaptures frame index captures =
-      [ (previousKind, preparedExpression)
-      | previousIndex <- [0 .. index - 1]
-      , let (previousKind, _, _) = captures !! previousIndex
-      , Just preparedExpression <- [Map.lookup previousIndex
-          (candidateFramePreparedCaptures frame)]
-      ]
-
-    requiresTypedResult _ selected = case rewriteResultSelection selected of
-      Just _ -> True
-      Nothing -> False
 
     rejectionDetails reason expected actual frame =
       CandidateRejectionDetails

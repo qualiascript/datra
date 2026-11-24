@@ -3,7 +3,6 @@ module SyntaxRewriting.Types
   , SyntaxContext (..)
   , SyntaxRuleFamily (..)
   , ClassifyHoles
-  , CaptureHole
   , RewriteRule (..)
   , CaptureExtent (..)
   , RewriteNodeId (..)
@@ -53,24 +52,17 @@ type ClassifyHoles syntaxType =
   [DeclarativeCapture]
   -> [(DeclarativeCapture, Maybe syntaxType)]
 
-type CaptureHole =
-  [(DeclarativeCapture, Expression)]
-  -> DeclarativeCapture
-  -> Expression
-  -> Maybe Expression
-
 data SyntaxRuleFamily syntaxType = SyntaxRuleFamily
   { syntaxRuleFamilyNames :: [String]
   , syntaxRuleFamilyRules :: [(Int, SyntaxRule)]
-  , syntaxRuleFamilyEvaluate :: Expression -> Maybe syntaxType
+  , syntaxRuleFamilyEvaluate :: Expression -> syntaxType
   }
 
 data SyntaxContext syntaxType = SyntaxContext
   { contextSourceSpan :: Maybe SourceSpan
   , contextRuleFamilies :: [SyntaxRuleFamily syntaxType]
   , contextClassify :: ClassifyHoles syntaxType
-  , contextCapture :: CaptureHole
-  , contextResultType :: Expression -> Maybe syntaxType
+  , contextResultType :: Expression -> syntaxType
   , contextSyntaxInsertion
       :: Expression
       -> Maybe SyntaxFunctionInsertion
@@ -161,6 +153,11 @@ data CandidateFrameProgress syntaxType
       Int
       DeclarativeCapture
       Expression
+  | CandidateFrameNeedsTerminal
+      (CandidateFrame syntaxType)
+      Int
+      DeclarativeCapture
+      Expression
   | CandidateFrameRejected (CandidateRejectionDetails syntaxType)
   | CandidateFrameAccepted
       (CandidateTypingContext syntaxType)
@@ -186,7 +183,7 @@ data CandidateRejection syntaxType = CandidateRejection
 
 data RewriteResult syntaxType = RewriteResult
   { rewriteResultExpression :: Expression
-  , rewriteResultType :: Maybe syntaxType
+  , rewriteResultType :: syntaxType
   , rewriteResultSelection :: Maybe (SelectedCandidate syntaxType)
   , rewriteResultDeferred
       :: [CompatibilityConstraint syntaxType]

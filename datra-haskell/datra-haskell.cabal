@@ -358,6 +358,7 @@ executable datra-haskell
         LibraryFiles
         Parsing
         SyntaxRewriting
+        SyntaxRewriting.Capture
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
         SyntaxRewriting.PostRewrite
@@ -426,6 +427,7 @@ test-suite datra-parsing-test
         LibraryFiles
         Parsing
         SyntaxRewriting
+        SyntaxRewriting.Capture
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
         SyntaxRewriting.PostRewrite
@@ -474,6 +476,7 @@ test-suite datra-interpreting-test
         LibraryFiles
         Parsing
         SyntaxRewriting
+        SyntaxRewriting.Capture
         SyntaxRewriting.Types
         SyntaxRewriting.Candidates
         SyntaxRewriting.PostRewrite
