@@ -406,7 +406,6 @@ classifySyntaxTypes = map classify
   where
     classify kind = case kind of
       StringExpressionCapture (ValueString target) -> typed target
-      StringExpressionCapture (StringLiteralString target) -> typed target
       _ -> (kind, Nothing)
       where
         typed target =

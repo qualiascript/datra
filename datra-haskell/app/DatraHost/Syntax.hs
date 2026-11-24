@@ -34,14 +34,16 @@ valSyntaxInsertion :: SyntaxFunctionInsertion
 valSyntaxInsertion = modifierInsertion DeclarationVal
 
 parseNaturalSyntaxInsertion :: SyntaxFunctionInsertion
-parseNaturalSyntaxInsertion = expressionInsertion
+parseNaturalSyntaxInsertion = (expressionInsertion
     (\case
-      [AsciiStringLiteral name] ->
+      [IdentifierReference (SimpleIdentifierString name)] ->
         EllipsisNatural <$> identifierNaturalValue name
       _ -> Nothing)
     (\case
-      EllipsisNatural value -> Just [AsciiStringLiteral (show value)]
-      _ -> Nothing)
+      EllipsisNatural value -> Just
+        [IdentifierReference (SimpleIdentifierString (show value))]
+      _ -> Nothing))
+    { syntaxFunctionValidatedCaptures = [0] }
 
 beginSyntaxInsertion :: SyntaxFunctionInsertion
 beginSyntaxInsertion = SyntaxFunctionInsertion
@@ -54,6 +56,7 @@ beginSyntaxInsertion = SyntaxFunctionInsertion
       Begin entries result -> Just
         [AtlasMap (map DeclarationExpression entries), result]
       _ -> Nothing)
+    []
 
 doSyntaxInsertion :: SyntaxFunctionInsertion
 doSyntaxInsertion = SyntaxFunctionInsertion
@@ -66,6 +69,7 @@ doSyntaxInsertion = SyntaxFunctionInsertion
       FunctionBody entries result -> Just
         [AtlasMap (map DeclarationExpression entries), result]
       _ -> Nothing)
+    []
 
 funSyntaxInsertion :: SyntaxFunctionInsertion
 funSyntaxInsertion = expressionInsertion
@@ -115,6 +119,7 @@ expressionInsertion
 expressionInsertion apply preimage = SyntaxFunctionInsertion
   (fmap SyntaxExpression . apply)
   preimage
+  []
 
 blockExpressions :: Expression -> [Expression]
 blockExpressions value = case value of

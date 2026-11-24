@@ -414,6 +414,7 @@ data SyntaxFunctionExpansion
 data SyntaxFunctionInsertion = SyntaxFunctionInsertion
   { applySyntaxFunction :: [Expression] -> Maybe SyntaxFunctionExpansion
   , preimageSyntaxFunction :: Expression -> Maybe [Expression]
+  , syntaxFunctionValidatedCaptures :: [Int]
   }
 
 -- | An executable runtime function together with a partial left inverse.
@@ -500,10 +501,6 @@ functionSyntaxEquivalent left right =
     holeEquivalent
         (IdentifierExpressionString leftValue)
         (IdentifierExpressionString rightValue) =
-          equivalent leftValue rightValue
-    holeEquivalent
-        (StringLiteralString leftValue)
-        (StringLiteralString rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
         (ValueString leftValue) (ValueString rightValue) =

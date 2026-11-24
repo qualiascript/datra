@@ -46,7 +46,7 @@ initialCandidateFrame _ = CandidateFrame
   , candidateFrameTypingContext = CandidateTypingContext
       { candidateTypingInputs = Map.empty
       , candidateTypingExpectedHoles = Map.empty
-      , candidateTypingDeferred = []
+      , candidateTypingBlocked = []
       }
   , candidateFrameResults = Map.empty
   , candidateFramePreparedCaptures = Map.empty
@@ -73,7 +73,7 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
   where
     advance frame
       | captureIndex >= length captures =
-          CandidateFrameAccepted
+          CandidateFrameComplete
             context
             [ preparedResult
             | index <- [0 .. length captures - 1]
@@ -104,8 +104,9 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         check = case expected of
           Just wanted -> case compatible (rewriteResultType result) wanted of
             CompatibilityProved -> acceptSelectedCapture frame [] result
-            CompatibilityDeferred -> acceptSelectedCapture frame
-              [CompatibilityConstraint (rewriteResultType result) wanted]
+            CompatibilityUndecidable -> acceptSelectedCapture frame
+              [CompatibilityConstraint index
+                (rewriteResultType result) wanted]
               result
             CompatibilityRefuted -> CandidateFrameRejected
               (rejectionDetails TypedHoleMismatch
@@ -142,9 +143,8 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
                   (\wanted -> Map.insert index wanted
                     (candidateTypingExpectedHoles context))
                   expected
-              , candidateTypingDeferred =
-                  candidateTypingDeferred context <>
-                    rewriteResultDeferred result <> deferred
+              , candidateTypingBlocked =
+                  candidateTypingBlocked context <> deferred
               }
           , candidateFramePreparedCaptures = Map.insert
               index preparedExpression

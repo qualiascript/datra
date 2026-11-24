@@ -17,11 +17,14 @@ import SyntaxRewriting.Candidates
 import SyntaxRewriting.Types
   ( CandidateFrame (..)
   , CandidateFrameProgress (..)
+  , CandidatePreparation (..)
   , CandidateRejection
+  , CandidateRejectionReason (..)
   , CandidateRejectionDetails (..)
   , CandidateSearch (..)
   , CandidateTypingContext (..)
-  , Compatibility
+  , Compatibility (..)
+  , CompatibilityConstraint (..)
   , OrdinaryTraversal (..)
   , PreparedExpansion (..)
   , RewriteNode (..)
@@ -29,6 +32,7 @@ import SyntaxRewriting.Types
   , RewriteNodeState (..)
   , RewriteLocus (..)
   , RewriteResult (..)
+  , RewriteRule (..)
   , RewriteWork (..)
   , SelectedCandidate (..)
   , StructuralCandidate (..)
@@ -55,7 +59,7 @@ data RewriteStackOperations environment failure syntaxType = RewriteStackOperati
       -> CandidateTypingContext syntaxType
       -> syntaxType
   , stackTypesCompatible
-      :: syntaxType -> syntaxType -> Compatibility
+      :: environment -> syntaxType -> syntaxType -> Compatibility
   , stackRewriteScope
       :: environment -> RewriteLocus -> environment
   , stackFinalizeOrdinary
@@ -71,7 +75,7 @@ data RewriteStackOperations environment failure syntaxType = RewriteStackOperati
   , stackPrepareCandidate
       :: environment
       -> SelectedCandidate syntaxType
-      -> PreparedExpansion
+      -> CandidatePreparation
   , stackExpandCandidate
       :: environment -> PreparedExpansion -> Either failure Expression
   , stackCandidateRejection
@@ -188,8 +192,6 @@ runRewriteStack operations initialEnvironment source =
       , ordinaryTraversalFinalizedCaptures = maybe []
           (concatMap expressionClosure
             . map rewriteResultExpression . selectedCaptures) selection
-      , ordinaryTraversalDeferred = maybe []
-          (candidateTypingDeferred . selectedTypingContext) selection
       }
 
     expressionClosure value = value : concatMap expressionClosure
@@ -214,7 +216,7 @@ runRewriteStack operations initialEnvironment source =
                 (stackPrepareStructuralCapture operations)
                 (stackExpectedHole operations environment candidate)
                 (stackCandidateReturn operations environment candidate)
-                (stackTypesCompatible operations)
+                (stackTypesCompatible operations environment)
                 candidate frame
           in case progress of
             CandidateFrameNeedsChild progressed _ _ childSource ->
@@ -251,7 +253,7 @@ runRewriteStack operations initialEnvironment source =
                     { rewriteNodeState = NodeReady
                         (SearchCandidates advancedSearch) }) machine
               in run (nodeId :| stack) advanced
-            CandidateFrameAccepted typingContext captureResults returnType -> do
+            CandidateFrameComplete typingContext captureResults returnType -> do
               let rewrittenCaptures = map rewriteResultExpression captureResults
                   selection = (structuralCandidateSelection candidate)
                     { templateSelectionCaptures = rewrittenCaptures }
@@ -262,19 +264,98 @@ runRewriteStack operations initialEnvironment source =
                     , selectedReturnType = returnType
                     , selectedTypingContext = typingContext
                     }
-                  prepared = stackPrepareCandidate operations environment selected
-              expanded <- stackExpandCandidate operations environment prepared
-              let traversal = ordinary (Just selected)
-                  transitioned = replaceNodeEnvironment nodeId
-                    (stackRewriteScope operations environment
-                      (RewriteExpression expanded)) machine
-                  advanced = updateNode nodeId (\current -> current
-                    { rewriteNodeExpression = expanded
-                    , rewriteNodeRejections = candidateSearchRejections search
-                    , rewriteNodeState = NodeReady
-                        (TraverseChildren traversal)
-                    }) transitioned
-              run (nodeId :| stack) advanced
+                  preparation = stackPrepareCandidate operations
+                    environment selected
+              case preparation of
+                CandidateInapplicable ->
+                  advanceCandidateSearch nodeId search stack machine
+                CandidatePrepared prepared validated ->
+                  decidePreparedCandidate nodeId search selected prepared
+                    validated stack machine
+
+    decidePreparedCandidate nodeId search selected prepared validated stack
+        machine =
+      case (refuted, undecidable) of
+        (constraint : _, _) -> rejectConstraint
+          TypedHoleMismatch constraint
+        (_, constraint : _) -> rejectConstraint
+          CandidateCompatibilityUndecidable constraint
+        _ -> do
+          expanded <- stackExpandCandidate operations environment prepared
+          let resolvedContext = (selectedTypingContext selected)
+                { candidateTypingBlocked = [] }
+              resolved = selected
+                { selectedTypingContext = resolvedContext }
+              traversal = ordinary (Just resolved)
+              transitioned = replaceNodeEnvironment nodeId
+                (stackRewriteScope operations environment
+                  (RewriteExpression expanded)) machine
+              advanced = updateNode nodeId (\current -> current
+                { rewriteNodeExpression = expanded
+                , rewriteNodeRejections = candidateSearchRejections search
+                , rewriteNodeState = NodeReady
+                    (TraverseChildren traversal)
+                }) transitioned
+          run (nodeId :| stack) advanced
+      where
+        node = nodeAt nodeId machine
+        environment = rewriteNodeEnvironment node
+        remaining = filter
+          ((`notElem` validated) . compatibilityCaptureIndex)
+          (candidateTypingBlocked (selectedTypingContext selected))
+        decisions =
+          [ (constraint, stackTypesCompatible operations environment
+              (compatibilitySource constraint)
+              (compatibilityTarget constraint))
+          | constraint <- remaining
+          ]
+        refuted = [constraint | (constraint, CompatibilityRefuted) <- decisions]
+        undecidable =
+          [constraint | (constraint, CompatibilityUndecidable) <- decisions]
+        rejectConstraint reason constraint =
+          let candidate = selectedStructuralCandidate selected
+              details = CandidateRejectionDetails
+                { candidateRejectionRule = structuralCandidateRule candidate
+                , candidateRejectionBranch = rewriteRuleBranch
+                    (structuralCandidateRule candidate)
+                , candidateRejectionCaptureIndex =
+                    compatibilityCaptureIndex constraint
+                , candidateRejectionSource = templateSelectionWhole
+                    (structuralCandidateSelection candidate)
+                , candidateRejectionExpected = Just
+                    (compatibilityTarget constraint)
+                , candidateRejectionActual = Just
+                    (compatibilitySource constraint)
+                , candidateRejectionContext = selectedTypingContext selected
+                , candidateRejectionReason = reason
+                }
+              childRejections = concatMap rewriteNodeRejections
+                [ child
+                | child <- Map.elems (machineNodes machine)
+                , rewriteNodeParent child == Just nodeId
+                ]
+              rejection = stackCandidateRejection operations
+                environment details childRejections
+              advancedSearch = search
+                { candidateSearchCursor = candidateSearchCursor search + 1
+                , candidateSearchRejections =
+                    candidateSearchRejections search <> [rejection]
+                , candidateSearchFrame = Nothing
+                }
+              advanced = updateNode nodeId (\current -> current
+                { rewriteNodeState = NodeReady
+                    (SearchCandidates advancedSearch) }) machine
+          in run (nodeId :| stack) advanced
+
+    advanceCandidateSearch nodeId search stack machine =
+      let advancedSearch = search
+            { candidateSearchCursor = candidateSearchCursor search + 1
+            , candidateSearchFrame = Nothing
+            }
+          advanced = updateNode nodeId (\current -> current
+            { rewriteNodeState = NodeReady
+                (SearchCandidates advancedSearch) }) machine
+      in run (nodeId :| stack) advanced
 
     continueAfterCandidates nodeId rejections stack machine =
       let node = nodeAt nodeId machine
@@ -348,11 +429,7 @@ runRewriteStack operations initialEnvironment source =
                   Just nextEnvironment -> updateNode nodeId (\current -> current
                     { rewriteNodeEnvironment = nextEnvironment }) machine
                 advancedTraversal = traversal
-                  { ordinaryTraversalCursor = cursor + 1
-                  , ordinaryTraversalDeferred =
-                      ordinaryTraversalDeferred traversal <>
-                        rewriteResultDeferred childResult
-                  }
+                  { ordinaryTraversalCursor = cursor + 1 }
                 ready = updateNode nodeId (\current -> current
                   { rewriteNodeExpression = installed
                   , rewriteNodeState = NodeReady
@@ -369,13 +446,9 @@ runRewriteStack operations initialEnvironment source =
         Nothing -> do
           ordinaryResult <- stackFinalizeOrdinary operations environment
             (rewriteNodeExpression node)
-          let traversedResult = ordinaryResult
-                { rewriteResultDeferred =
-                    rewriteResultDeferred ordinaryResult <>
-                      ordinaryTraversalDeferred traversal }
-              result = case ordinaryTraversalSelection traversal of
-                Nothing -> traversedResult
-                Just selected -> traversedResult
+          let result = case ordinaryTraversalSelection traversal of
+                Nothing -> ordinaryResult
+                Just selected -> ordinaryResult
                   { rewriteResultType = selectedReturnType selected
                   , rewriteResultSelection = Just selected
                   }

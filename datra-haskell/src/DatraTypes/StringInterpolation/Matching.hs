@@ -146,17 +146,13 @@ decodeCapture parser kind captured = pure (captureExpressions kind captured)
   where
     captureExpressions selectedKind sourceText = case selectedKind of
       LiteralString {} -> []
-      StringLiteralString {} -> [AsciiStringLiteral sourceText]
       ExpressionString {} -> parsed
       BlockString {} -> parsed
       FunctionBodyString {} -> parsed
       DeclarationString {} -> parsed
       DependentArgumentString {} -> parsed
       IdentifierExpressionString {} -> parsed
-      -- An unevaluated value descriptor has not acquired its canonical-string
-      -- codec yet. Retain both candidates until ordinary typed selection
-      -- specializes or rejects them.
-      ValueString {} -> parsed <> [AsciiStringLiteral sourceText]
+      ValueString {} -> parsed
       where
         parsed = case parseExpressionText parser sourceText of
           Just expressionValue -> [expressionValue]

@@ -43,7 +43,6 @@ prepareStructuralCapture kind captured = case kind of
     IdentifierExpressionString {} -> case captured of
       IdentifierReference {} -> Just captured
       _ -> Nothing
-    StringLiteralString {} -> Nothing
     ValueString {} -> Nothing
   where
     dependentArgument value = case value of

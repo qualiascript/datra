@@ -45,6 +45,7 @@ import StringInterpolation.Matching
   ( SyntaxMatch (..) )
 import SyntaxRewriting.Types
   ( CandidateRejection
+  , CandidatePreparation (..)
   , CandidateTypingContext (..)
   , Compatibility (..)
   , PreparedExpansion (..)
@@ -95,22 +96,27 @@ rewriteRuleImplementation compiled =
 prepareSelectedSyntaxMatch
   :: RuntimeRewriteRule
   -> SyntaxMatch
-  -> PreparedExpansion
-prepareSelectedSyntaxMatch rule matched = PreparedExpansion
-  { preparedExpansionSyntax = selectedExpansion
-  , preparedExpansionRemaining = syntaxMatchRemaining matched
-  }
+  -> CandidatePreparation
+prepareSelectedSyntaxMatch rule matched =
+  case syntaxRuleMode (rewriteRule rule) of
+    ExpressionMode -> prepared
+      (SyntaxExpression (syntaxRuleAdapter (rewriteRule rule))) []
+    FunctionMode -> case rewriteRuleSyntaxInsertion rule of
+      Nothing -> prepared
+        (directSyntaxFunctionExpansion rule captures) []
+      Just insertion -> case applySyntaxFunction insertion captures of
+        Nothing -> CandidateInapplicable
+        Just expansion -> prepared expansion
+          (syntaxFunctionValidatedCaptures insertion)
   where
-    selectedExpansion = case syntaxRuleMode (rewriteRule rule) of
-      ExpressionMode -> SyntaxExpression
-        (syntaxRuleAdapter (rewriteRule rule))
-      FunctionMode -> case directExpansion of
-        Just value -> value
-        Nothing -> directSyntaxFunctionExpansion rule captures
     selection = syntaxMatchSelection matched
     captures = templateSelectionCaptures selection
-    directExpansion = rewriteRuleSyntaxInsertion rule >>= \insertion ->
-      applySyntaxFunction insertion captures
+    prepared expansion evidence = CandidatePrepared
+      PreparedExpansion
+        { preparedExpansionSyntax = expansion
+        , preparedExpansionRemaining = syntaxMatchRemaining matched
+        }
+      evidence
 
 syntaxTypesCompatibility :: SyntaxType -> SyntaxType -> Compatibility
 syntaxTypesCompatibility source target
@@ -122,8 +128,8 @@ syntaxTypesCompatibility source target
         case decideValueSubfederation sourceValue targetValue of
           DecisionProved () -> CompatibilityProved
           DecisionRefuted -> CompatibilityRefuted
-          DecisionUndecidable -> CompatibilityDeferred
-      _ -> CompatibilityDeferred
+          DecisionUndecidable -> CompatibilityUndecidable
+      _ -> CompatibilityUndecidable
 
 compileRuleWith
   :: (Expression -> Maybe SyntaxFunctionInsertion)
@@ -256,7 +262,7 @@ runStructuralCandidates environment source =
       , stackPrepareStructuralCapture = prepareStructuralCapture
       , stackExpectedHole = expectedHole
       , stackCandidateReturn = candidateReturn
-      , stackTypesCompatible = syntaxTypesCompatibility
+      , stackTypesCompatible = \_ -> syntaxTypesCompatibility
       , stackRewriteScope = contextRewriteScope
       , stackFinalizeOrdinary = finalizeOrdinary
       , stackPublishChild = publishChild
@@ -272,7 +278,6 @@ runStructuralCandidates environment source =
         { rewriteResultExpression = expressionValue
         , rewriteResultType = contextResultType selectedContext expressionValue
         , rewriteResultSelection = Nothing
-        , rewriteResultDeferred = []
         }
       where
         expressionValue = normalizeRewrittenSequence rawExpression

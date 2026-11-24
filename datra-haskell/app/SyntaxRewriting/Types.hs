@@ -10,6 +10,7 @@ module SyntaxRewriting.Types
   , StructuralCandidate (..)
   , SelectedCandidate (..)
   , PreparedExpansion (..)
+  , CandidatePreparation (..)
   , CandidateTypingContext (..)
   , Compatibility (..)
   , CompatibilityConstraint (..)
@@ -122,21 +123,26 @@ data PreparedExpansion = PreparedExpansion
   , preparedExpansionRemaining :: [Expression]
   }
 
+data CandidatePreparation
+  = CandidateInapplicable
+  | CandidatePrepared PreparedExpansion [Int]
+
 data CandidateTypingContext syntaxType = CandidateTypingContext
   { candidateTypingInputs :: Map Int syntaxType
   , candidateTypingExpectedHoles :: Map Int syntaxType
-  , candidateTypingDeferred
+  , candidateTypingBlocked
       :: [CompatibilityConstraint syntaxType]
   }
 
 data Compatibility
   = CompatibilityProved
   | CompatibilityRefuted
-  | CompatibilityDeferred
+  | CompatibilityUndecidable
   deriving (Eq, Show)
 
 data CompatibilityConstraint syntaxType = CompatibilityConstraint
-  { compatibilitySource :: syntaxType
+  { compatibilityCaptureIndex :: Int
+  , compatibilitySource :: syntaxType
   , compatibilityTarget :: syntaxType
   }
 
@@ -159,7 +165,7 @@ data CandidateFrameProgress syntaxType
       DeclarativeCapture
       Expression
   | CandidateFrameRejected (CandidateRejectionDetails syntaxType)
-  | CandidateFrameAccepted
+  | CandidateFrameComplete
       (CandidateTypingContext syntaxType)
       [RewriteResult syntaxType]
       syntaxType
@@ -185,8 +191,6 @@ data RewriteResult syntaxType = RewriteResult
   { rewriteResultExpression :: Expression
   , rewriteResultType :: syntaxType
   , rewriteResultSelection :: Maybe (SelectedCandidate syntaxType)
-  , rewriteResultDeferred
-      :: [CompatibilityConstraint syntaxType]
   }
 
 data CandidateSearch syntaxType = CandidateSearch
@@ -200,8 +204,6 @@ data OrdinaryTraversal syntaxType = OrdinaryTraversal
   { ordinaryTraversalCursor :: Int
   , ordinaryTraversalSelection :: Maybe (SelectedCandidate syntaxType)
   , ordinaryTraversalFinalizedCaptures :: [Expression]
-  , ordinaryTraversalDeferred
-      :: [CompatibilityConstraint syntaxType]
   }
 
 data RewriteWork syntaxType
