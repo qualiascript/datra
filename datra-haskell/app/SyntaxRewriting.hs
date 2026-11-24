@@ -207,7 +207,7 @@ rewriteResourceSyntaxWithSpan
   -> Expression
   -> Either SyntaxRewriteFailure Expression
 rewriteResourceSyntaxWithSpan sourceSpan envelope context raw =
-  case (envelope, raw) of
+  normalizeExpression <$> case (envelope, raw) of
     (ExplicitMapEnvelope, expressionValue) ->
       runRewriteExpression initial expressionValue
     (ImplicitBlockEnvelope, AtlasMap entries) -> rewriteImplicitResource entries

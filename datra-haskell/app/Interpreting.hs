@@ -3106,13 +3106,10 @@ validateDeclarationFamilies = go []
       family <- evalInScope
         (scopedDependentDeclarationFamilyScope scoped) []
         (dependentDeclarationNameFamilyExpression declaration)
-      case dependentDeclarationNameExpression declaration of
-        SyntaxBoundary {} ->
-          requireDependentNameSubfederation False
-            (evalInScope
-              (scopedDependentDeclarationFamilyScope scoped) [])
-            family
-        _ -> Right ()
+      requireDependentNameSubfederation False
+        (evalInScope
+          (scopedDependentDeclarationFamilyScope scoped) [])
+        family
       mapM_ (requireDistinct declaration family) earlier
       go ((declaration, family) : earlier) remaining
 
