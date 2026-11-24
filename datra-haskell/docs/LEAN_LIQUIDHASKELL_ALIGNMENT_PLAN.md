@@ -743,8 +743,16 @@ datra-lean/Executable/DataTransformation.lean
 
 `datra.lean` is the import entry point. The literate preprint material remains
 beside the corresponding semantic definitions in `datra-lean/Semantics.lean`.
-The preprint extractor follows the local imports and includes every module in
-the full source appendix.
+The full preprint must include only Lean code relevant to the preprint's
+definitions, constructions, and results. Each section's code must correspond
+to its written definitions; those written definitions remain unchanged. The
+source appendix must not automatically include the entire `Executable`
+alignment layer merely because it is reachable through local imports.
+Preprint source selection must be explicit and separate from the complete Lean
+build: all executable models and interpretation proofs remain in the project
+and continue to compile, while only code needed for the preprint's exposition
+is included in `make preprint-full`. Check this target once at final completion,
+including its source selection and the rendered document.
 
 ### 2. Semantic layer
 
@@ -1111,6 +1119,9 @@ verification rather than relying on cached results.
 7. A refactored Yoneda packaging boundary with no `assume` or `ignore`.
 8. An assumption gate and a combined formal-verification target.
 9. A theorem correspondence manifest and cross-language fixtures.
+10. A working `make preprint-full` with an explicitly selected Lean source
+    appendix relevant to the preprint, excluding the wholesale `Executable`
+    alignment layer.
 
 ## Definition of done
 
@@ -1129,6 +1140,10 @@ The alignment is complete when all of the following hold:
 - `lake build`, `make verify-liquid`, and `make check` pass in the pinned toolchain.
 - Derived constructions use the aligned core or have explicit, documented
   bridge theorems showing why the old semantic definition is equivalent.
+- `make preprint-full` succeeds with the split Lean modules, includes only
+  preprint-relevant Lean code, and places code corresponding to the unchanged
+  written definitions in each section. Its appendix does not include the entire
+  `Executable` alignment layer. The complete Lean project still builds.
 
 ## Main risks and mitigations
 
