@@ -203,7 +203,6 @@ data CandidateSearch syntaxType = CandidateSearch
 data OrdinaryTraversal syntaxType = OrdinaryTraversal
   { ordinaryTraversalCursor :: Int
   , ordinaryTraversalSelection :: Maybe (SelectedCandidate syntaxType)
-  , ordinaryTraversalFinalizedCaptures :: [Expression]
   }
 
 data RewriteWork syntaxType

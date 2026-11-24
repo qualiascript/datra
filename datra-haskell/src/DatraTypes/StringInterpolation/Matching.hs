@@ -121,6 +121,9 @@ literalExpressionCaptures
   -> LiteralExpressionPattern (StringExpression Expression)
   -> Expression
   -> [[(DeclarativeCapture, Expression)]]
+literalExpressionCaptures _
+    (LiteralExpressionPattern [LiteralExpressionPatternCapture kind]) source =
+  [[(StringExpressionCapture kind, source)]]
 literalExpressionCaptures parser (LiteralExpressionPattern parts) source =
   [ zip (map StringExpressionCapture captureKinds) selected
   | selected <- runIdentity

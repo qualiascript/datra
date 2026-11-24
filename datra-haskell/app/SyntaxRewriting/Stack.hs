@@ -189,13 +189,7 @@ runRewriteStack operations initialEnvironment source =
     ordinary selection = OrdinaryTraversal
       { ordinaryTraversalCursor = 0
       , ordinaryTraversalSelection = selection
-      , ordinaryTraversalFinalizedCaptures = maybe []
-          (concatMap expressionClosure
-            . map rewriteResultExpression . selectedCaptures) selection
       }
-
-    expressionClosure value = value : concatMap expressionClosure
-      (expressionChildren value)
 
     runReady nodeId work stack machine = case work of
       SearchCandidates search -> searchCandidate nodeId search stack machine
@@ -457,32 +451,15 @@ runRewriteStack operations initialEnvironment source =
           case rewriteNodeParent node of
             Nothing -> run (nodeId :| stack) finalized
             Just parent -> run (parent :| stack) finalized
-        Just childSource
-          | childSource `elem` ordinaryTraversalFinalizedCaptures traversal ->
-              let remaining = removeFirst childSource
-                    (ordinaryTraversalFinalizedCaptures traversal)
-                  advanced = traversal
-                    { ordinaryTraversalCursor = cursor + 1
-                    , ordinaryTraversalFinalizedCaptures = remaining
-                    }
-                  ready = updateNode nodeId (\current -> current
-                    { rewriteNodeState = NodeReady
-                        (TraverseChildren advanced) }) machine
-              in run (nodeId :| stack) ready
-          | otherwise ->
-              allocateChild nodeId (TraverseChildren traversal)
-                childSource
-                (RewriteChild (rewriteNodeExpression node) cursor childSource)
-                stack machine
+        Just childSource ->
+          allocateChild nodeId (TraverseChildren traversal)
+            childSource
+            (RewriteChild (rewriteNodeExpression node) cursor childSource)
+            stack machine
 
     listAt selected = listHead . drop selected
     listHead [] = Nothing
     listHead (selected : _) = Just selected
-
-    removeFirst _ [] = []
-    removeFirst selected (value : values)
-      | selected == value = values
-      | otherwise = value : removeFirst selected values
 
     replaceNodeEnvironment nodeId selected = updateNode nodeId (\node -> node
       { rewriteNodeEnvironment = selected })

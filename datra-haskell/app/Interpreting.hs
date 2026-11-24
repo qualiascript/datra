@@ -3477,7 +3477,6 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
           insertion = RuntimeFunctionInsertion
             { applyRuntimeFunction = \argument ->
                 prepare argument >>= evaluatePrepared UnrestrictedReduction
-            , preimageRuntimeFunction = const Nothing
             }
       domain <- argumentSchemaDomain schema
       pure (makeFunctionValue

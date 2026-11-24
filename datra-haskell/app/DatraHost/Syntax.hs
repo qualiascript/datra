@@ -15,7 +15,6 @@ module DatraHost.Syntax
 import DatraLanguage.AST
 import DatraLanguage.DependentDeclaration
   ( applyDeclarationModifier
-  , removeDeclarationModifier
   )
 import DatraLanguage.Identifier
   ( identifierNaturalValue )
@@ -38,10 +37,6 @@ parseNaturalSyntaxInsertion = (expressionInsertion
     (\case
       [IdentifierReference (SimpleIdentifierString name)] ->
         EllipsisNatural <$> identifierNaturalValue name
-      _ -> Nothing)
-    (\case
-      EllipsisNatural value -> Just
-        [IdentifierReference (SimpleIdentifierString (show value))]
       _ -> Nothing))
     { syntaxFunctionValidatedCaptures = [0] }
 
@@ -52,10 +47,6 @@ beginSyntaxInsertion = SyntaxFunctionInsertion
         (SyntaxBegin (blockExpressions entries) result)
       [result] -> Just (SyntaxBegin [] result)
       _ -> Nothing)
-    (\case
-      Begin entries result -> Just
-        [AtlasMap (map DeclarationExpression entries), result]
-      _ -> Nothing)
     []
 
 doSyntaxInsertion :: SyntaxFunctionInsertion
@@ -65,19 +56,12 @@ doSyntaxInsertion = SyntaxFunctionInsertion
         (SyntaxFunctionBody (blockExpressions entries) result)
       [result] -> Just (SyntaxFunctionBody [] result)
       _ -> Nothing)
-    (\case
-      FunctionBody entries result -> Just
-        [AtlasMap (map DeclarationExpression entries), result]
-      _ -> Nothing)
     []
 
 funSyntaxInsertion :: SyntaxFunctionInsertion
 funSyntaxInsertion = expressionInsertion
     (\case
       [entry] -> Just (Fun entry)
-      _ -> Nothing)
-    (\case
-      Fun entry -> Just [entry]
       _ -> Nothing)
 
 ifSyntaxInsertion :: SyntaxFunctionInsertion
@@ -86,9 +70,6 @@ ifSyntaxInsertion = expressionInsertion
       [condition, yes, no] -> Just (Conditional condition yes no)
       [condition, yes] -> Just
         (Conditional condition yes (AtlasMap []))
-      _ -> Nothing)
-    (\case
-      Conditional condition yes no -> Just [condition, yes, no]
       _ -> Nothing)
 
 withSyntaxInsertion :: SyntaxFunctionInsertion
@@ -99,10 +80,6 @@ withSyntaxInsertion = expressionInsertion
           (withModuleOperands modules)
           (Begin bindings result))
       _ -> Nothing)
-    (\case
-      WithScopes modules (Begin bindings result) -> Just
-        [ArgumentativeMap modules, FunctionBody bindings result]
-      _ -> Nothing)
 
 modifierInsertion :: DeclarationModifier -> SyntaxFunctionInsertion
 modifierInsertion modifier = expressionInsertion
@@ -110,15 +87,12 @@ modifierInsertion modifier = expressionInsertion
     [entry] -> applyDeclarationModifier modifier
       (absorbAssignedConcatenation entry)
     _ -> Nothing)
-  (removeDeclarationModifier modifier)
 
 expressionInsertion
   :: ([Expression] -> Maybe Expression)
-  -> (Expression -> Maybe [Expression])
   -> SyntaxFunctionInsertion
-expressionInsertion apply preimage = SyntaxFunctionInsertion
+expressionInsertion apply = SyntaxFunctionInsertion
   (fmap SyntaxExpression . apply)
-  preimage
   []
 
 blockExpressions :: Expression -> [Expression]
