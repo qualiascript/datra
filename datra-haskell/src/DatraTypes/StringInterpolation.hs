@@ -4,12 +4,11 @@
 -- without evaluating their captures or interpolating source strings.
 module StringInterpolation
   ( SyntaxRule (..)
+  , SyntaxRuleMode (..)
   , DeclarativeMatcherPlan (..)
   , IdentifierApplicationPattern (..), LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
   , DeclarativeCapture (..)
-  , DependentSyntaxRule (..)
-  , SyntaxRuleSemantics (..), DependentSyntaxInvocation (..)
   , StringInterpolationTemplate, StringTemplateInterpolation (..)
   , StringExpression (..)
   , TemplateSelection (..)
@@ -18,13 +17,9 @@ module StringInterpolation
   , syntaxRuleCaptures, mapSyntaxRuleCaptures
   , literalExpressionPattern
   , identifierApplicationRule
-  , syntaxApplicationImplementation
-  , syntaxDependentRule, syntaxRuleAdapter
-  , expandSyntax
   , declarationLiterals
   ) where
 import DatraLanguage.DependentDeclaration (dependentDeclaration)
-import DatraTypes.Lookup (lookupValueFieldPosition)
 import DatraLanguage.AST
 import DatraLanguage.ConcreteSyntax (sourceSpace)
 import StringExpression
@@ -32,7 +27,6 @@ import StringExpression
   , StringInterpolationTemplate
   , TemplateSelection (..)
   )
-import Data.Foldable (toList)
 import StringInterpolation.Exact (matchesExactSkeleton)
 
 data DeclarativeMatcherPlan
@@ -63,8 +57,16 @@ newtype DeclarativeCapture
 
 data SyntaxRule = SyntaxRule
   { declarativeMatcherPlan :: DeclarativeMatcherPlan
-  , syntaxSemantics :: SyntaxRuleSemantics
+  , syntaxRuleAdapter :: Expression
+  , syntaxRuleDomain :: Expression
+  , syntaxRuleCodomain :: Expression
+  , syntaxRuleMode :: SyntaxRuleMode
   } deriving (Eq,Show)
+
+data SyntaxRuleMode
+  = ExpressionMode
+  | FunctionMode
+  deriving (Eq, Show)
 
 syntaxRuleCaptures :: SyntaxRule -> [DeclarativeCapture]
 syntaxRuleCaptures rule = case declarativeMatcherPlan rule of
@@ -110,41 +112,6 @@ mapSyntaxRuleCaptures transform rule = rule
         (StringExpressionCapture capture) of
       StringExpressionCapture transformed -> transformed
 
-data SyntaxRuleSemantics
-  = SyntaxAdapter Expression
-  | SyntaxApplication Expression Expression
-  | DependentSyntax DependentSyntaxRule
-  deriving (Eq, Show)
-
-data DependentSyntaxRule = DependentSyntaxRule
-  { dependentSyntaxCaptures
-      :: [Maybe (SimpleIdentifierString, Expression)]
-  , dependentSyntaxImplementation :: Expression
-  , dependentSyntaxInvocation :: DependentSyntaxInvocation
-  } deriving (Eq, Show)
-
-data DependentSyntaxInvocation
-  = DependentSyntaxLookup [StringTemplateInterpolation Expression]
-  deriving (Eq, Show)
-
-syntaxDependentRule :: SyntaxRule -> Maybe DependentSyntaxRule
-syntaxDependentRule rule = case syntaxSemantics rule of
-  SyntaxAdapter {} -> Nothing
-  SyntaxApplication {} -> Nothing
-  DependentSyntax dependent -> Just dependent
-
-syntaxRuleAdapter :: SyntaxRule -> Maybe Expression
-syntaxRuleAdapter rule = case syntaxSemantics rule of
-  SyntaxAdapter adapter -> Just adapter
-  SyntaxApplication _ implementation -> Just implementation
-  DependentSyntax dependent -> Just
-    (dependentSyntaxImplementation dependent)
-
-syntaxApplicationImplementation :: SyntaxRule -> Maybe Expression
-syntaxApplicationImplementation rule = case syntaxSemantics rule of
-  SyntaxApplication _ implementation -> Just implementation
-  _ -> Nothing
-
 declarationRules :: Expression -> [SyntaxRule]
 declarationRules = map third . declarationRuleBranches
   where
@@ -178,21 +145,24 @@ identifierDeclarationRule
 identifierDeclarationRule declaration (SimpleIdentifierString text) =
   identifierApplicationRule
     (SimpleIdentifierString text)
-    (dependentLookup [literalInterpolation text] [])
     (dependentDeclarationImplementation declaration)
 
 identifierApplicationRule
   :: SimpleIdentifierString
   -> Expression
-  -> Expression
   -> SyntaxRule
-identifierApplicationRule literalHead callable implementation = SyntaxRule
+identifierApplicationRule literalHead implementation = SyntaxRule
   { declarativeMatcherPlan = IdentifierApplicationMatcher
       (IdentifierApplicationPattern
         (IdentifierReference literalHead)
         (ExpressionString (AtlasMap [])))
-  , syntaxSemantics = SyntaxApplication callable implementation
+  , syntaxRuleAdapter = adapter
+  , syntaxRuleDomain = domain
+  , syntaxRuleCodomain = codomain
+  , syntaxRuleMode = mode
   }
+  where
+    (adapter, domain, codomain, mode) = ruleContract (AtlasMap []) implementation
 
 directTemplateRule
   :: DependentDeclaration Expression
@@ -202,13 +172,47 @@ directTemplateRule declaration parts =
   SyntaxRule
     { declarativeMatcherPlan =
         LiteralExpressionMatcher (literalExpressionPattern template)
-    , syntaxSemantics = DependentSyntax (DependentSyntaxRule
-        captures
-        (dependentDeclarationImplementation declaration)
-        (DependentSyntaxLookup parts))
+    , syntaxRuleAdapter = adapter
+    , syntaxRuleDomain = domain
+    , syntaxRuleCodomain = codomain
+    , syntaxRuleMode = mode
     }
   where
     (template, captures) = compileDependentDeclarationTemplate parts
+    implementation = dependentDeclarationImplementation declaration
+    fallbackDomain = captureDomain captures
+    (adapter, domain, codomain, mode) = ruleContract
+      fallbackDomain implementation
+
+captureDomain
+  :: [Maybe (SimpleIdentifierString, Expression)]
+  -> Expression
+captureDomain captures = case map capture captures of
+  [] -> AtlasMap []
+  [single] -> single
+  members -> AtlasMap members
+  where
+    capture Nothing = AnyType
+    capture (Just (name, target)) = DependentArgument
+      (literalIdentifierExpression name) (Just target)
+
+ruleContract
+  :: Expression
+  -> Expression
+  -> (Expression, Expression, Expression, SyntaxRuleMode)
+ruleContract fallbackDomain implementation = case implementation of
+  FunctionApplication signature adapter
+    | Just (domain, codomain) <- functionContract signature ->
+        (adapter, domain, codomain, FunctionMode)
+  MapSpecification adapter signature
+    | Just (domain, codomain) <- functionContract signature ->
+        (adapter, domain, codomain, FunctionMode)
+  _ -> (implementation, fallbackDomain, implementation, ExpressionMode)
+  where
+    functionContract value = case value of
+      FunctionTypeExpression _ domain codomain -> Just (domain, codomain)
+      SyntaxBoundary inner -> functionContract inner
+      _ -> Nothing
 
 dependentDeclarationSyntaxAlternatives
   :: DependentDeclaration Expression
@@ -291,78 +295,6 @@ captureDescriptor (DependentArgument nameExpression (Just annotation))
   | Just name <- literalIdentifierName nameExpression =
       (annotation, Just (name, annotation))
 captureDescriptor value = (value, Nothing)
-
--- | Expand captures selected by one declared string interpolation.
-expandSyntax
-  :: SyntaxRule
-  -> TemplateSelection Expression Expression
-  -> Expression
-expandSyntax rule selection =
-  case syntaxSemantics rule of
-    DependentSyntax dependent -> case dependentSyntaxInvocation dependent of
-      DependentSyntaxLookup parts -> selectedDependentLookup parts captures
-    SyntaxAdapter adapter -> FunctionApplication adapter suppliedInput
-    SyntaxApplication callable _ ->
-      FunctionApplication callable suppliedInput
-  where
-    captures = templateSelectionCaptures selection
-    suppliedInput = case captures of
-      [] -> AtlasMap []
-      [value] -> value
-      values -> AtlasMap values
-    -- Function preparation overloads this supplied tail onto the declared
-    -- domain. Empty, singleton, and multi-capture syntax therefore follows the
-    -- same call path as an ordinary partial argumentative map.
-
-dependentLookup
-  :: [StringTemplateInterpolation Expression]
-  -> [Expression]
-  -> Expression
-dependentLookup parts values =
-  lookupExpression (StringTemplate (substituteCaptures parts values))
-
--- Keep the selected branch and its source captures alongside the ordinary
--- lookup query. Evaluation uses them only to preserve deferred fixed points;
--- the lookup still resolves through the normal named-map interface.
-selectedDependentLookup
-  :: [StringTemplateInterpolation Expression]
-  -> [Expression]
-  -> Expression
-selectedDependentLookup parts values =
-  lookupExpression (ArgumentativeMap
-    [ StringTemplate parts
-    , StringTemplate (substituteCaptures parts values)
-    ])
-
-lookupExpression :: Expression -> Expression
-lookupExpression operand =
-  MapAccess
-    (MapAccess
-      (Lookup operand)
-      (EllipsisNatural 0))
-    (EllipsisNatural lookupValueFieldPosition)
-
-substituteCaptures
-  :: [StringTemplateInterpolation Expression]
-  -> [Expression]
-  -> [StringTemplateInterpolation Expression]
-substituteCaptures [] _ = []
-substituteCaptures
-    ( literalPart@(StringTemplateInterpolation (AsciiStringLiteral _))
-      : remaining
-    )
-    arguments =
-  literalPart : substituteCaptures remaining arguments
-substituteCaptures (StringTemplateInterpolation _ : remaining)
-    (argument : arguments) =
-  StringTemplateInterpolation argument :
-    substituteCaptures remaining arguments
-substituteCaptures
-    (interpolation@StringTemplateInterpolation {} : remaining) [] =
-  interpolation : substituteCaptures remaining []
-
-literalInterpolation :: String -> StringTemplateInterpolation Expression
-literalInterpolation = StringTemplateInterpolation . AsciiStringLiteral
 
 -- Literal alternatives of a named type can be spelled as keywords in an AST
 -- pattern, while ordinary application keeps their $identifier value spelling.

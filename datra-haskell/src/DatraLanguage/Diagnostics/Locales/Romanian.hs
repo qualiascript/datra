@@ -173,7 +173,6 @@ candidateRejectionReasonText :: CandidateRejectionReason -> String
 candidateRejectionReasonText reason = case reason of
   TypedHoleMismatch -> "rezultatul capturat este în afara tipului cerut"
   GenericBoundMismatch -> "intrarea generică dedusă încalcă limita"
-  CandidateReturnMismatch -> "tipul rezultatului candidatului nu a putut fi stabilit"
   RequiredChildExhausted -> "expresia copil necesară nu are rezultat aplicabil"
 
 localizeAccessError :: AccessError -> LocalizedMessage

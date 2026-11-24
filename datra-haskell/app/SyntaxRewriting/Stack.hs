@@ -53,7 +53,7 @@ data RewriteStackOperations environment failure syntaxType = RewriteStackOperati
       :: environment
       -> StructuralCandidate syntaxType
       -> CandidateTypingContext syntaxType
-      -> Maybe syntaxType
+      -> syntaxType
   , stackTypesCompatible
       :: syntaxType -> syntaxType -> Compatibility
   , stackRewriteScope

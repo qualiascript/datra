@@ -3,15 +3,10 @@
 -- shared after a match has been produced.
 module StringInterpolation.Matching
   ( ExpressionParser (..)
-  , StringInterpolationMatchFailure (..)
   , SyntaxMatch (..)
   , DeclarativeMatch (..)
   , enumerateSyntaxRulesSelections
   , enumerateSyntaxRuleSelections
-  , matchSyntaxRule
-  , matchSyntaxRules
-  , matchSyntaxRulesWith
-  , expandSyntaxMatch
   ) where
 
 import Data.Functor.Identity (runIdentity)
@@ -32,24 +27,12 @@ import StringInterpolation
   , StringExpression (..)
   , SyntaxRule (..)
   , TemplateSelection (..)
-  , expandSyntax
   )
 import StringInterpolation.Exact (matchExactSegments)
 
 newtype ExpressionParser = ExpressionParser
   { parseExpressionText :: String -> Maybe Expression
   }
-
-data StringInterpolationMatchFailure
-  = NoMatchingStringInterpolation
-  deriving (Eq, Show)
-
-type HoleMatches = DeclarativeCapture -> Expression -> Bool
-type CaptureHole =
-  [(DeclarativeCapture, Expression)]
-  -> DeclarativeCapture
-  -> Expression
-  -> Maybe Expression
 
 data SyntaxMatch = SyntaxMatch
   { syntaxMatchRule :: SyntaxRule
@@ -178,83 +161,3 @@ decodeCapture parser kind captured = pure (captureExpressions kind captured)
         parsed = case parseExpressionText parser sourceText of
           Just expressionValue -> [expressionValue]
           Nothing -> []
-
--- | Match within one application spine. Its explicit head identifier first
--- filters templates by their literal prefix. The selected template
--- still expands to its own binding, whose name may differ. Rules
--- are tried in declaration order. Within the first rule that fits, the rule
--- tries the longest prefix available inside that context; holes likewise try
--- their longest available sequence and backtrack when membership or the
--- remaining pieces fail. Unconsumed arguments are reapplied to the rewritten
--- prefix. Matching never descends through another AST node to enlarge the
--- context.
-matchSyntaxRules
-  :: ExpressionParser
-  -> HoleMatches
-  -> [SyntaxRule]
-  -> Expression
-  -> Either StringInterpolationMatchFailure Expression
-matchSyntaxRules parser holeMatches rules expressionValue =
-  matchSyntaxRulesWith parser
-    (\_ kind value ->
-      if holeMatches kind value then Just value else Nothing)
-    rules expressionValue
-
-matchSyntaxRulesWith
-  :: ExpressionParser
-  -> CaptureHole
-  -> [SyntaxRule]
-  -> Expression
-  -> Either StringInterpolationMatchFailure Expression
-matchSyntaxRulesWith parser captureHole rules expressionValue =
-  expandSyntaxMatch <$> chooseSuccessful
-    [ SyntaxMatch
-        (declarativeMatchRule matched)
-        ((declarativeMatchSelection matched)
-          { templateSelectionCaptures = map snd captures })
-        (declarativeMatchRemaining matched)
-    | matched <- enumerateSyntaxRulesSelections parser rules expressionValue
-    , captures <- maybeToList
-        (validateCaptures captureHole
-          (declarativeMatchCaptures matched))
-    ]
-
-validateCaptures
-  :: CaptureHole
-  -> [(DeclarativeCapture, Expression)]
-  -> Maybe [(DeclarativeCapture, Expression)]
-validateCaptures captureHole = go []
-  where
-    go selected [] = Just selected
-    go selected ((kind, source) : remaining) = do
-      captured <- captureHole selected kind source
-      go (selected <> [(kind, captured)]) remaining
-
-expandSyntaxMatch :: SyntaxMatch -> Expression
-expandSyntaxMatch matched = foldl FunctionApplication expanded
-  (syntaxMatchRemaining matched)
-  where
-    expanded = expandSyntax
-      (syntaxMatchRule matched) (syntaxMatchSelection matched)
-
--- | Match one already admitted declaration. This is the parser integration
--- boundary: parsing establishes the contextual AST extent of a phrase, while
--- this matcher remains solely responsible for interpreting its template.
-matchSyntaxRule
-  :: ExpressionParser
-  -> HoleMatches
-  -> SyntaxRule
-  -> Expression
-  -> Either StringInterpolationMatchFailure Expression
-matchSyntaxRule parser holeMatches rule =
-  matchSyntaxRules parser holeMatches [rule]
-
-chooseSuccessful
-  :: [SyntaxMatch]
-  -> Either StringInterpolationMatchFailure SyntaxMatch
-chooseSuccessful [] = Left NoMatchingStringInterpolation
-chooseSuccessful (matched : _) = Right matched
-
-maybeToList :: Maybe value -> [value]
-maybeToList Nothing = []
-maybeToList (Just value) = [value]

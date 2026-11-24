@@ -62,7 +62,7 @@ advanceCandidateFrameWith
        -> Maybe Expression
      )
   -> (CandidateTypingContext syntaxType -> Int -> Maybe syntaxType)
-  -> (CandidateTypingContext syntaxType -> Maybe syntaxType)
+  -> (CandidateTypingContext syntaxType -> syntaxType)
   -> (syntaxType -> syntaxType -> Compatibility)
   -> StructuralCandidate syntaxType
   -> CandidateFrame syntaxType
@@ -73,21 +73,18 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
   where
     advance frame
       | captureIndex >= length captures =
-          case candidateReturn context of
-            Just resultType -> CandidateFrameAccepted
-              context
-              [ preparedResult
-              | index <- [0 .. length captures - 1]
-              , Just childResult <- [Map.lookup index results]
-              , let preparedResult = childResult
-                      { rewriteResultExpression = Map.findWithDefault
-                          (rewriteResultExpression childResult) index
-                          (candidateFramePreparedCaptures frame)
-                      }
-              ]
-              resultType
-            Nothing -> CandidateFrameRejected
-              (rejectionDetails CandidateReturnMismatch Nothing Nothing frame)
+          CandidateFrameAccepted
+            context
+            [ preparedResult
+            | index <- [0 .. length captures - 1]
+            , Just childResult <- [Map.lookup index results]
+            , let preparedResult = childResult
+                    { rewriteResultExpression = Map.findWithDefault
+                        (rewriteResultExpression childResult) index
+                        (candidateFramePreparedCaptures frame)
+                    }
+            ]
+            (candidateReturn context)
       | otherwise =
           case Map.lookup captureIndex results of
             Nothing -> case extent of
@@ -180,12 +177,12 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
           [] -> templateSelectionWhole
             (structuralCandidateSelection candidate)
 
-compileRewriteRule :: SyntaxRule -> RewriteRule syntaxType
-compileRewriteRule rule = RewriteRule
+compileRewriteRule :: syntaxType -> SyntaxRule -> RewriteRule syntaxType
+compileRewriteRule returnType rule = RewriteRule
   { rewriteRule = rule
   , rewriteRuleBranch = 0
   , rewriteRuleSyntaxInsertion = Nothing
-  , rewriteRuleReturnType = Nothing
+  , rewriteRuleReturnType = returnType
   }
 
 enumerateRuleStructuralCandidates

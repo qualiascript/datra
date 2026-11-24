@@ -1,6 +1,7 @@
 module DatraHost
   ( datraHostIdentifier
   , datraHostValue
+  , datraHostSyntaxRules
   , resolveDatraHostSyntaxInsertion
   ) where
 
@@ -23,6 +24,11 @@ import StringExpression
   ( FunctionSyntax (..)
   , StringExpression (LiteralString)
   )
+import StringInterpolation
+  ( SyntaxRule (..)
+  , SyntaxRuleMode (..)
+  , identifierApplicationRule
+  )
 import DatraTypes
 
 datraHostIdentifier :: String
@@ -31,6 +37,7 @@ datraHostIdentifier = "datra"
 data DatraHostSyntaxRuntime
   = SyntaxBodyRuntime
   | SyntaxFunctionRuntime
+  deriving (Eq)
 
 data DatraHostSyntaxDefinition = DatraHostSyntaxDefinition
   { datraHostSyntaxName :: String
@@ -71,6 +78,23 @@ resolveDatraHostSyntaxInsertion source = case
     ] of
   insertion : _ -> Just insertion
   [] -> Nothing
+
+datraHostSyntaxRules :: [SyntaxRule]
+datraHostSyntaxRules =
+  [ (identifierApplicationRule
+        (SimpleIdentifierString (datraHostSyntaxName definition))
+        (datraHostSyntaxReference definition))
+      { syntaxRuleDomain = AnyType
+      , syntaxRuleCodomain = datraMember "Expr"
+      , syntaxRuleMode = FunctionMode
+      }
+  | definition <- datraHostSyntaxDefinitions
+  , datraHostSyntaxRuntime definition == SyntaxFunctionRuntime
+  ]
+  where
+    datraMember name = ScopeAccess
+      (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
+      (literalIdentifierExpression (SimpleIdentifierString name))
 
 datraHostValue :: Either InterpretingError InterpretedValue
 datraHostValue = do
@@ -149,7 +173,6 @@ datraHostValue = do
         domain
         codomain
         (Just simpleSyntax)
-        (Just simpleSyntax)
         (Just source)
         (Just (EvaluatedSyntaxFunctionBody source insertion))
         anyFunctionSource
@@ -183,7 +206,7 @@ datraHostValue = do
           pure (EvaluatedFunctionInvocation result Nothing)
     runtimeBody source insertion invoke = Right (makeFunctionBodyValue
       (EvaluatedRuntimeFunctionBody source (EvaluatedFunction
-        anyTypeValue anyTypeValue Nothing Nothing (Just source) Nothing
+        anyTypeValue anyTypeValue Nothing (Just source) Nothing
         anyFunctionSource Nothing (Just invoke) True insertion)))
     argumentAt position argument =
       accessValues argument (naturalValue position)

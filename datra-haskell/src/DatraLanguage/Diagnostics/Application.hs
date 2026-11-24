@@ -38,7 +38,6 @@ data ModuleInputFailure
 data CandidateRejectionReason
   = TypedHoleMismatch
   | GenericBoundMismatch
-  | CandidateReturnMismatch
   | RequiredChildExhausted
   deriving (Eq, Ord, Show)
 

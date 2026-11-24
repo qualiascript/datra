@@ -438,7 +438,6 @@ data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
   , functionSyntax :: Maybe (FunctionSyntax InterpretedValue)
-  , functionSyntaxSource :: Maybe (FunctionSyntax String)
   , functionSource :: Maybe FunctionSource
   , functionBody :: Maybe EvaluatedFunctionBody
   , functionSignatureSource :: FunctionSource
@@ -530,15 +529,13 @@ makeFunctionValue function = makeInterpretedValue functionDatraType
 -- capabilities such as dependent-sum, map, and specification evidence views.
 withFunctionSyntax
   :: FunctionSyntax InterpretedValue
-  -> FunctionSyntax String
   -> InterpretedValue
   -> InterpretedValue
-withFunctionSyntax evaluated source value =
+withFunctionSyntax evaluated value =
   case interpretedForm value of
     FunctionForm function -> value
       { interpretedForm = FunctionForm function
           { functionSyntax = Just evaluated
-          , functionSyntaxSource = Just source
           }
       }
     _ -> value

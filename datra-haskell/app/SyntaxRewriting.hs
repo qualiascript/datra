@@ -39,7 +39,7 @@ import StringInterpolation
   , LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
   , SyntaxRule (..)
-  , syntaxRuleAdapter
+  , SyntaxRuleMode (..)
   )
 import StringInterpolation.Matching
   ( SyntaxMatch (..) )
@@ -84,29 +84,13 @@ type RuntimeRewriteResult = RewriteResult SyntaxType
 type RuntimeCandidateRejection = CandidateRejection SyntaxType
 type RuntimeStructuralCandidate = StructuralCandidate SyntaxType
 
-rewriteRuleImplementation :: RuntimeRewriteRule -> Maybe Expression
-rewriteRuleImplementation compiled = do
-  implementation <- syntaxRuleAdapter (rewriteRule compiled)
-  pure (case attachedFunctionImplementation implementation of
+rewriteRuleImplementation :: RuntimeRewriteRule -> Expression
+rewriteRuleImplementation compiled =
+  case attachedFunctionImplementation implementation of
     Just adapter -> adapter
-    Nothing -> implementation)
-
-resolvedRuleReturnType
-  :: (Expression -> SyntaxType)
-  -> SyntaxRule
-  -> Maybe SyntaxType
-resolvedRuleReturnType evaluate rule =
-  evaluate <$> (syntaxRuleAdapter rule >>= functionCodomainExpression)
-
-functionCodomainExpression :: Expression -> Maybe Expression
-functionCodomainExpression expressionValue = case expressionValue of
-  FunctionTypeExpression _ _ codomain -> Just codomain
-  FunctionApplication function _ -> functionCodomainExpression function
-  Fun signature -> functionCodomainExpression signature
-  SyntaxBoundary inner -> functionCodomainExpression inner
-  MapSpecification source _ -> functionCodomainExpression source
-  ReverseMapSpecification _ source -> functionCodomainExpression source
-  _ -> Nothing
+    Nothing -> implementation
+  where
+    implementation = syntaxRuleAdapter (rewriteRule compiled)
 
 prepareSelectedSyntaxMatch
   :: RuntimeRewriteRule
@@ -117,12 +101,14 @@ prepareSelectedSyntaxMatch rule matched = PreparedExpansion
   , preparedExpansionRemaining = syntaxMatchRemaining matched
   }
   where
-    selectedExpansion = case directExpansion of
-      Just value -> value
-      Nothing -> directSyntaxFunctionExpansion rule captures fallback
+    selectedExpansion = case syntaxRuleMode (rewriteRule rule) of
+      ExpressionMode -> SyntaxExpression
+        (syntaxRuleAdapter (rewriteRule rule))
+      FunctionMode -> case directExpansion of
+        Just value -> value
+        Nothing -> directSyntaxFunctionExpansion rule captures
     selection = syntaxMatchSelection matched
     captures = templateSelectionCaptures selection
-    fallback = templateSelectionWhole selection
     directExpansion = rewriteRuleSyntaxInsertion rule >>= \insertion ->
       applySyntaxFunction insertion captures
 
@@ -146,11 +132,10 @@ compileRuleWith
   -> RuntimeRewriteRule
 compileRuleWith resolveInsertion evaluate rule = compiled
   { rewriteRuleSyntaxInsertion = insertion
-  , rewriteRuleReturnType = resolvedRuleReturnType evaluate rule
   }
   where
-    compiled = compileRewriteRule rule
-    insertion = rewriteRuleImplementation compiled >>= resolveInsertion
+    compiled = compileRewriteRule (evaluate (syntaxRuleCodomain rule)) rule
+    insertion = resolveInsertion (rewriteRuleImplementation compiled)
 
 compileRuleFamily
   :: (Expression -> Maybe SyntaxFunctionInsertion)
@@ -246,12 +231,10 @@ runRewriteExpression environment value = do
 directSyntaxFunctionExpansion
   :: RuntimeRewriteRule
   -> [Expression]
-  -> Expression
   -> SyntaxFunctionExpansion
-directSyntaxFunctionExpansion selectedRule captures fallback =
-  SyntaxExpression $ case rewriteRuleImplementation selectedRule of
-    Just adapter -> FunctionApplication adapter suppliedInput
-    Nothing -> fallback
+directSyntaxFunctionExpansion selectedRule captures =
+  SyntaxExpression (FunctionApplication
+    (rewriteRuleImplementation selectedRule) suppliedInput)
   where
     suppliedInput = case captures of
       [] -> AtlasMap []

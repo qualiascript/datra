@@ -83,7 +83,7 @@ data RewriteRule syntaxType = RewriteRule
   { rewriteRule :: SyntaxRule
   , rewriteRuleBranch :: Int
   , rewriteRuleSyntaxInsertion :: Maybe SyntaxFunctionInsertion
-  , rewriteRuleReturnType :: Maybe syntaxType
+  , rewriteRuleReturnType :: syntaxType
   }
 
 data CaptureExtent
