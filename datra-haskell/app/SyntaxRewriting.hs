@@ -2,7 +2,8 @@
 -- Application spines retain logical line breaks until a declaration has
 -- selected the extent it wants to match.
 module SyntaxRewriting
-  ( SyntaxContext (..)
+  ( SyntaxType (..)
+  , SyntaxContext (..)
   , SyntaxRuleFamily (..)
   , RewriteLocus (..)
   , SyntaxRewriteFailure (..)
@@ -11,9 +12,8 @@ module SyntaxRewriting
   , rewriteResourceSyntaxLocated
   ) where
 import Control.Applicative ((<|>))
-import Data.List (nub)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (maybeToList)
+import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.Application
   ( applicationFrom
@@ -27,16 +27,9 @@ import DatraLanguage.Diagnostics
   )
 import Parsing (ResourceEnvelope (..))
 import DatraTypes
-  ( EvaluatedFunction (functionBody, functionCodomain)
-  , EvaluatedFunctionBody
-      ( EvaluatedSyntaxFunctionBody )
-  , SyntaxFunctionExpansion (..)
+  ( SyntaxFunctionExpansion (..)
   , SyntaxFunctionInsertion (..)
-  , InterpretedValue
   , booleanCondition
-  , interpretedFunction
-  , interpretedFunctionBody
-  , makeArgumentativeMapPreservingSingleton
   , subfederationValues
   )
 import StringExpression
@@ -47,9 +40,7 @@ import StringInterpolation
   , LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
   , SyntaxRule (..)
-  , expandSyntax
   , syntaxRuleCaptures
-  , syntaxApplicationImplementation
   , syntaxRuleAdapter
   )
 import StringInterpolation.Matching
@@ -66,6 +57,7 @@ import SyntaxRewriting.Types
   , StructuralCandidate (..)
   , SyntaxContext (..)
   , SyntaxRuleFamily (..)
+  , SyntaxType (..)
   )
 import SyntaxRewriting.Candidates
   ( compileRewriteRule
@@ -85,17 +77,26 @@ import SyntaxRewriting.Stack
   , runRewriteStack
   )
 
-rewriteRuleImplementation :: RewriteRule -> Maybe Expression
-rewriteRuleImplementation = syntaxRuleAdapter . rewriteRule
+type RuntimeSyntaxContext = SyntaxContext SyntaxType
+type RuntimeSyntaxRuleFamily = SyntaxRuleFamily SyntaxType
+type RuntimeRewriteRule = RewriteRule SyntaxType
+type RuntimeRewriteResult = RewriteResult SyntaxType
+type RuntimeCandidateRejection = CandidateRejection SyntaxType
+type RuntimeStructuralCandidate = StructuralCandidate SyntaxType
+
+rewriteRuleImplementation :: RuntimeRewriteRule -> Maybe Expression
+rewriteRuleImplementation compiled = do
+  implementation <- syntaxRuleAdapter (rewriteRule compiled)
+  pure (case attachedFunctionImplementation implementation of
+    Just adapter -> adapter
+    Nothing -> implementation)
 
 resolvedRuleReturnType
-  :: (Expression -> Maybe InterpretedValue)
+  :: (Expression -> Maybe SyntaxType)
   -> SyntaxRule
-  -> Maybe InterpretedValue
+  -> Maybe SyntaxType
 resolvedRuleReturnType evaluate rule =
-  (syntaxRuleAdapter rule >>= evaluate
-    >>= interpretedFunction >>= Just . functionCodomain)
-  <|> (syntaxRuleAdapter rule >>= functionCodomainExpression >>= evaluate)
+  syntaxRuleAdapter rule >>= functionCodomainExpression >>= evaluate
 
 functionCodomainExpression :: Expression -> Maybe Expression
 functionCodomainExpression expressionValue = case expressionValue of
@@ -107,80 +108,53 @@ functionCodomainExpression expressionValue = case expressionValue of
   ReverseMapSpecification _ source -> functionCodomainExpression source
   _ -> Nothing
 
-syntaxFunctionInsertion
-  :: (Expression -> Maybe InterpretedValue)
-  -> Expression
-  -> Maybe SyntaxFunctionInsertion
-syntaxFunctionInsertion evaluate implementation = do
-  value <- evaluate implementation
-  syntaxFunctionInsertionFromValue value
-
-syntaxFunctionInsertionFromValue
-  :: InterpretedValue
-  -> Maybe SyntaxFunctionInsertion
-syntaxFunctionInsertionFromValue value = do
-  body <- interpretedFunctionBody value
-    <|> (interpretedFunction value >>= functionBody)
-  case body of
-    EvaluatedSyntaxFunctionBody _ insertion -> Just insertion
-    _ -> Nothing
-
 prepareSelectedSyntaxMatch
-  :: SyntaxContext
-  -> RewriteRule
+  :: RuntimeRewriteRule
   -> SyntaxMatch
   -> PreparedExpansion
-prepareSelectedSyntaxMatch environment rule matched = PreparedExpansion
-  { preparedExpansionSyntax = case directExpansion of
-      Just value -> value
-      Nothing -> directSyntaxFunctionExpansion environment rule fallback
+prepareSelectedSyntaxMatch rule matched = PreparedExpansion
+  { preparedExpansionSyntax = selectedExpansion
   , preparedExpansionRemaining = syntaxMatchRemaining matched
   }
   where
+    selectedExpansion = case directExpansion of
+      Just value -> value
+      Nothing -> directSyntaxFunctionExpansion rule captures fallback
     selection = syntaxMatchSelection matched
     captures = templateSelectionCaptures selection
-    fallback = expandSyntax (syntaxMatchRule matched) selection
-    evaluate = case rewriteRuleEvaluation rule of
-      Just selected -> selected
-      Nothing -> contextEvaluate environment
-    -- A zero-hole declaration is an exact dependent lookup. Speculatively
-    -- evaluating its implementation is unnecessary; only declarations with
-    -- captures can provide a syntax-function insertion.
-    directExpansion
-      | not (null (syntaxRuleCaptures (rewriteRule rule))) = do
-          implementation <- rewriteRuleImplementation rule
-          insertion <- case rewriteRuleEvaluation rule of
-            Just _ -> rewriteRuleSyntaxInsertion rule
-            Nothing -> syntaxFunctionInsertion evaluate implementation
-          applySyntaxFunction insertion (insertionCaptures rule captures)
-      | otherwise = Nothing
+    fallback = templateSelectionWhole selection
+    directExpansion = rewriteRuleSyntaxInsertion rule >>= \insertion ->
+      applySyntaxFunction insertion captures
 
-insertionCaptures :: RewriteRule -> [Expression] -> [Expression]
-insertionCaptures rule captures
-  | Just _ <- syntaxApplicationImplementation (rewriteRule rule) =
-      concatMap directSyntaxArguments captures
-  | otherwise = captures
-
-isValueSubfederation :: InterpretedValue -> InterpretedValue -> Bool
-isValueSubfederation source target =
-  case subfederationValues source target >>= booleanCondition of
-    Right accepted -> accepted
-    Left _ -> False
+syntaxTypesCompatible :: SyntaxType -> SyntaxType -> Bool
+syntaxTypesCompatible source target = case
+    (syntaxTypeRuntimeValue source, syntaxTypeRuntimeValue target) of
+  (Just sourceValue, Just targetValue) ->
+    case subfederationValues sourceValue targetValue >>= booleanCondition of
+      Right accepted -> accepted
+      Left _ -> False
+  _ -> syntaxTypeExpression source `Set.member` syntaxTypeMembers target
 
 compileRuleWith
-  :: (Expression -> Maybe InterpretedValue)
+  :: (Expression -> Maybe SyntaxFunctionInsertion)
+  -> (Expression -> Maybe SyntaxType)
   -> SyntaxRule
-  -> RewriteRule
-compileRuleWith evaluate rule = (compileRewriteRule rule)
+  -> RuntimeRewriteRule
+compileRuleWith resolveInsertion evaluate rule = compiled
   { rewriteRuleSyntaxInsertion = insertion
   , rewriteRuleReturnType = resolvedRuleReturnType evaluate rule
   }
   where
-    insertion = syntaxRuleAdapter rule >>= syntaxFunctionInsertion evaluate
+    compiled = compileRewriteRule rule
+    insertion = rewriteRuleImplementation compiled >>= resolveInsertion
 
-compileRuleFamily :: SyntaxRuleFamily -> [RewriteRule]
-compileRuleFamily family =
-  [ (compileRuleWith (syntaxRuleFamilyEvaluate family) rule)
+compileRuleFamily
+  :: (Expression -> Maybe SyntaxFunctionInsertion)
+  -> RuntimeSyntaxRuleFamily
+  -> [RuntimeRewriteRule]
+compileRuleFamily resolveInsertion family =
+  [ (compileRuleWith resolveInsertion
+        (syntaxRuleFamilyEvaluate family) rule)
       { rewriteRuleBranch = branch
       , rewriteRuleEvaluation = Just (syntaxRuleFamilyEvaluate family)
       , rewriteRuleHoleFamilies =
@@ -194,15 +168,28 @@ compileRuleFamily family =
   | (branch, rule) <- syntaxRuleFamilyRules family
   ]
 
-contextRewriteRules :: SyntaxContext -> [RewriteRule]
-contextRewriteRules = concatMap compileRuleFamily . contextRuleFamilies
+contextRewriteRules
+  :: RuntimeSyntaxContext
+  -> [RuntimeRewriteRule]
+contextRewriteRules context = concatMap
+  (filter activeRewriteRule
+    . compileRuleFamily (contextSyntaxInsertion context))
+  (contextRuleFamilies context)
+  where
+    activeRewriteRule compiled = case declarativeMatcherPlan
+        (rewriteRule compiled) of
+      LiteralExpressionMatcher {} -> True
+      IdentifierApplicationMatcher {} -> case
+          rewriteRuleSyntaxInsertion compiled of
+        Just _ -> True
+        Nothing -> False
 
 -- | Rewrite one already-delimited expression with the same declaration
 -- environment used by resource rewriting.  Canonical values cross this
 -- boundary after rendering and parsing, so they must recover dependent
 -- declaration invocations before closure collection inspects references.
 rewriteStandaloneSyntax
-  :: SyntaxContext
+  :: RuntimeSyntaxContext
   -> Expression
   -> Either SyntaxRewriteFailure Expression
 rewriteStandaloneSyntax context =
@@ -210,7 +197,7 @@ rewriteStandaloneSyntax context =
 
 rewriteResourceSyntax
   :: ResourceEnvelope
-  -> SyntaxContext
+  -> RuntimeSyntaxContext
   -> Expression
   -> Either SyntaxRewriteFailure Expression
 rewriteResourceSyntax envelope context raw =
@@ -218,7 +205,7 @@ rewriteResourceSyntax envelope context raw =
 
 rewriteResourceSyntaxLocated
   :: ResourceEnvelope
-  -> SyntaxContext
+  -> RuntimeSyntaxContext
   -> Located Expression
   -> Either SyntaxRewriteFailure (Located Expression)
 rewriteResourceSyntaxLocated envelope context
@@ -229,7 +216,7 @@ rewriteResourceSyntaxLocated envelope context
 rewriteResourceSyntaxWithSpan
   :: Maybe SourceSpan
   -> ResourceEnvelope
-  -> SyntaxContext
+  -> RuntimeSyntaxContext
   -> Expression
   -> Either SyntaxRewriteFailure Expression
 rewriteResourceSyntaxWithSpan sourceSpan envelope context raw =
@@ -252,7 +239,7 @@ rewriteResourceSyntaxWithSpan sourceSpan envelope context raw =
 
 runRewriteExpression
   :: CaptureHole
-  -> SyntaxContext
+  -> RuntimeSyntaxContext
   -> Expression
   -> Either SyntaxRewriteFailure Expression
 runRewriteExpression capture environment value = do
@@ -263,68 +250,26 @@ runRewriteExpression capture environment value = do
     _ -> Right (rewriteResultExpression result)
 
 directSyntaxFunctionExpansion
-  :: SyntaxContext
-  -> RewriteRule
+  :: RuntimeRewriteRule
+  -> [Expression]
   -> Expression
   -> SyntaxFunctionExpansion
-directSyntaxFunctionExpansion environment selectedRule application =
-  case syntaxApplicationSpine application of
-    (_, [argument]) ->
-      choose adapters []
-      where
-        captures expected = case expected of
-          Just 0 -> []
-          Just 1 -> [argument]
-          _ -> directSyntaxArguments argument
-        adapters = do
-          implementation <- maybeToList
-            (rewriteRuleImplementation selectedRule)
-          let expected
-                | Just _ <- syntaxApplicationImplementation
-                    (rewriteRule selectedRule) = Nothing
-                | otherwise = Just (captureCount selectedRule)
-              insertion = case rewriteRuleEvaluation selectedRule of
-                Just _ -> rewriteRuleSyntaxInsertion selectedRule
-                Nothing -> syntaxFunctionInsertion
-                  (evaluateRule selectedRule) implementation
-          selected <- maybeToList insertion
-          pure (applySyntaxFunction selected, expected)
-        choose [] successes =
-          case nub successes of
-            [expanded] -> expanded
-            [] -> SyntaxExpression application
-            _ -> SyntaxExpression application
-        choose ((adapter, expected) : remaining) successes =
-          case adapter (captures expected) of
-            Just expanded -> choose remaining (expanded : successes)
-            Nothing -> choose remaining successes
-    _ -> SyntaxExpression application
+directSyntaxFunctionExpansion selectedRule captures fallback =
+  SyntaxExpression $ case rewriteRuleImplementation selectedRule of
+    Just adapter -> FunctionApplication adapter suppliedInput
+    Nothing -> fallback
   where
-    evaluateHere = contextEvaluate environment
-    evaluateRule rule = case rewriteRuleEvaluation rule of
-      Just evaluate -> evaluate
-      Nothing -> evaluateHere
-    captureCount rule = length
-      (syntaxRuleCaptures (rewriteRule rule))
--- Inspect the adapter's AST constructor before rewriting a raw block. A
--- function body already shadows the outer input while its declarations and
--- yield expression are being collected, before the FunctionBody node exists.
-syntaxApplicationSpine :: Expression -> (Expression, [Expression])
-syntaxApplicationSpine value = applicationSpine value
-
-directSyntaxArguments :: Expression -> [Expression]
-directSyntaxArguments argument = case argument of
-  AtlasMap members -> members
-  ArgumentativeMap members -> members
-  MapSequence members -> members
-  SyntaxBoundary inner -> directSyntaxArguments inner
-  _ -> [argument]
+    suppliedInput = case captures of
+      [] -> AtlasMap []
+      [capture] -> capture
+      _ -> AtlasMap captures
 
 runStructuralCandidates
   :: CaptureHole
-  -> SyntaxContext
+  -> RuntimeSyntaxContext
   -> Expression
-  -> Either SyntaxRewriteFailure (RewriteResult, [CandidateRejection])
+  -> Either SyntaxRewriteFailure
+      (RuntimeRewriteResult, [RuntimeCandidateRejection])
 runStructuralCandidates capture environment source =
   runRewriteStack operations environment source
   where
@@ -335,7 +280,7 @@ runStructuralCandidates capture environment source =
       , stackCaptureHole = captureHole
       , stackExpectedHole = expectedHole
       , stackCandidateReturn = candidateReturn
-      , stackTypesCompatible = isValueSubfederation
+      , stackTypesCompatible = syntaxTypesCompatible
       , stackRewriteScope = contextRewriteScope
       , stackFinalizeOrdinary = finalizeOrdinary
       , stackPublishChild = publishChild
@@ -375,57 +320,40 @@ runStructuralCandidates capture environment source =
         nonempty (MapSequence []) = False
         nonempty _ = True
 
-    captureHole selectedEnvironment _ previous kind captured =
-      case contextClassify selectedEnvironment [kind] of
-        [(specialized, Just expected)]
-          | null (expressionChildren captured) -> captureStrict specialized
-          | Just actual <- contextResultType selectedEnvironment captured
-          , isValueSubfederation actual expected -> Just captured
-          | otherwise -> captureStrict specialized
-        [(specialized, _)] -> captureStrict specialized
-        _ -> captureStrict kind
+    captureHole selectedEnvironment _ previous kind captured = result
       where
+        classified = contextClassify selectedEnvironment [kind]
+        result = case classified of
+          [(specialized, Just expected)]
+            | null (expressionChildren captured) ->
+                captureStrict specialized
+            | Just actual <- contextResultType selectedEnvironment captured
+            , syntaxTypesCompatible actual expected -> Just captured
+            | otherwise -> captureStrict specialized
+          [(specialized, _)] -> captureStrict specialized
+          _ -> captureStrict kind
         captureStrict selected = capture previous selected captured
     expectedHole selectedEnvironment candidate context index =
       Map.lookup index (candidateTypingExpectedHoles context)
-        <|> listHead (drop index (rewriteRuleHoleFamilies compiled))
         <|> classified
+        <|> listHead (drop index (rewriteRuleHoleFamilies compiled))
       where
         compiled = structuralCandidateRule candidate
         classified = case drop index
             (structuralCandidateCaptures candidate) of
-          (kind, _) : _ -> case contextClassify selectedEnvironment [kind] of
+          (kind, _, _) : _ -> case contextClassify selectedEnvironment [kind] of
             [(_, family)] -> family
             _ -> Nothing
           [] -> Nothing
         listHead [] = Nothing
         listHead (selected : _) = selected
-    candidateReturn selectedEnvironment candidate context =
-      candidateTypingReturnType context
-        <|> rewriteRuleReturnType compiled
-        <|> instantiatedReturn
-        <|> currentDeclaredReturn
+    candidateReturn _ candidate _ = rewriteRuleReturnType compiled
       where
         compiled = structuralCandidateRule candidate
-        currentDeclaredReturn = do
-          implementation <- rewriteRuleImplementation compiled
-          evaluated <- contextEvaluate selectedEnvironment implementation
-          functionCodomain <$> interpretedFunction evaluated
-        instantiatedReturn = do
-          implementation <- rewriteRuleImplementation compiled
-          let inputs = map snd
-                (Map.toAscList (candidateTypingInputs context))
-          if length inputs /= length
-              (structuralCandidateCaptures candidate)
-            then Nothing
-            else do
-              input <- either (const Nothing) Just
-                (makeArgumentativeMapPreservingSingleton inputs)
-              contextApply selectedEnvironment implementation input
-    prepareCandidate selectedEnvironment selected =
+    prepareCandidate _ selected =
       let candidate = selectedStructuralCandidate selected
           compiled = structuralCandidateRule candidate
-      in prepareSelectedSyntaxMatch selectedEnvironment compiled
+      in prepareSelectedSyntaxMatch compiled
           (structuralCandidateMatch candidate)
     expandCandidate selectedEnvironment prepared = do
       expressionValue <- contextExpandSyntax selectedEnvironment
@@ -436,11 +364,11 @@ runStructuralCandidates capture environment source =
         (preparedExpansionRemaining prepared))
 
 publishChild
-  :: SyntaxContext
+  :: RuntimeSyntaxContext
   -> Expression
   -> Int
-  -> RewriteResult
-  -> Either SyntaxRewriteFailure (Maybe SyntaxContext)
+  -> RuntimeRewriteResult
+  -> Either SyntaxRewriteFailure (Maybe RuntimeSyntaxContext)
 publishChild environment parent cursor result = Right $ case parent of
   AtlasMap {} -> contextPublish environment entry
   MapSequence {} -> contextPublish environment entry
@@ -453,14 +381,13 @@ publishChild environment parent cursor result = Right $ case parent of
     entry = rewriteResultExpression result
 
 structuralCandidatesFor
-  :: SyntaxContext
+  :: RuntimeSyntaxContext
   -> Expression
-  -> [StructuralCandidate]
-structuralCandidatesFor environment value =
-  declaredCandidatesFor environment value
+  -> [RuntimeStructuralCandidate]
+structuralCandidatesFor = declaredCandidatesFor
 
 declaredExtent
-  :: SyntaxContext
+  :: RuntimeSyntaxContext
   -> Expression
   -> Maybe (Expression, [Expression])
 declaredExtent environment value = case declaredCandidatesFor environment value of
@@ -472,7 +399,7 @@ declaredExtent environment value = case declaredCandidatesFor environment value 
       )
     [] -> Nothing
 
-rewriteRuleClaimsSyntax :: RewriteRule -> Bool
+rewriteRuleClaimsSyntax :: RuntimeRewriteRule -> Bool
 rewriteRuleClaimsSyntax compiled = case declarativeMatcherPlan
     (rewriteRule compiled) of
   IdentifierApplicationMatcher {} -> True
@@ -484,9 +411,9 @@ rewriteRuleClaimsSyntax compiled = case declarativeMatcherPlan
     expressionLiteral LiteralExpressionPatternCapture {} = False
 
 declaredCandidatesFor
-  :: SyntaxContext
+  :: RuntimeSyntaxContext
   -> Expression
-  -> [StructuralCandidate]
+  -> [RuntimeStructuralCandidate]
 declaredCandidatesFor environment value =
     enumerate value (contextRewriteRules environment) <> scopedCandidates
   where

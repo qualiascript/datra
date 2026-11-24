@@ -1,9 +1,11 @@
 module SyntaxRewriting.Types
-  ( SyntaxContext (..)
+  ( SyntaxType (..)
+  , SyntaxContext (..)
   , SyntaxRuleFamily (..)
   , ClassifyHoles
   , CaptureHole
   , RewriteRule (..)
+  , CaptureExtent (..)
   , RewriteNodeId (..)
   , RewriteLocus (..)
   , StructuralCandidate (..)
@@ -24,6 +26,7 @@ module SyntaxRewriting.Types
   ) where
 
 import Data.Map.Strict (Map)
+import Data.Set (Set)
 import DatraLanguage.AST (Expression)
 import DatraLanguage.Diagnostics (DatraError, SourceSpan)
 import DatraLanguage.Diagnostics.Application
@@ -35,11 +38,20 @@ import DatraTypes
   , SyntaxFunctionExpansion
   , SyntaxFunctionInsertion
   )
-import StringInterpolation (DeclarativeCapture, SyntaxRule)
+import StringInterpolation
+  ( DeclarativeCapture
+  , SyntaxRule
+  )
 
-type ClassifyHoles =
+data SyntaxType = SyntaxType
+  { syntaxTypeExpression :: Expression
+  , syntaxTypeMembers :: Set Expression
+  , syntaxTypeRuntimeValue :: Maybe InterpretedValue
+  }
+
+type ClassifyHoles syntaxType =
   [DeclarativeCapture]
-  -> [(DeclarativeCapture, Maybe InterpretedValue)]
+  -> [(DeclarativeCapture, Maybe syntaxType)]
 
 type CaptureHole =
   [(DeclarativeCapture, Expression)]
@@ -47,53 +59,48 @@ type CaptureHole =
   -> Expression
   -> Maybe Expression
 
-data SyntaxRuleFamily = SyntaxRuleFamily
+data SyntaxRuleFamily syntaxType = SyntaxRuleFamily
   { syntaxRuleFamilyNames :: [String]
   , syntaxRuleFamilyRules :: [(Int, SyntaxRule)]
-  , syntaxRuleFamilyClassify :: ClassifyHoles
-  , syntaxRuleFamilyEvaluate :: Expression -> Maybe InterpretedValue
-  , syntaxRuleFamilyApply
-      :: Expression
-      -> InterpretedValue
-      -> Maybe InterpretedValue
+  , syntaxRuleFamilyClassify :: ClassifyHoles syntaxType
+  , syntaxRuleFamilyEvaluate :: Expression -> Maybe syntaxType
   }
 
-data SyntaxContext = SyntaxContext
+data SyntaxContext syntaxType = SyntaxContext
   { contextSourceSpan :: Maybe SourceSpan
-  , contextRuleFamilies :: [SyntaxRuleFamily]
-  , contextClassify :: ClassifyHoles
+  , contextRuleFamilies :: [SyntaxRuleFamily syntaxType]
+  , contextClassify :: ClassifyHoles syntaxType
   , contextCapture :: CaptureHole
-  , contextEvaluate :: Expression -> Maybe InterpretedValue
-  , contextResultType :: Expression -> Maybe InterpretedValue
-  , contextEvaluateWithInput
-      :: InterpretedValue
-      -> Expression
-      -> Maybe InterpretedValue
-  , contextApply
+  , contextResultType :: Expression -> Maybe syntaxType
+  , contextSyntaxInsertion
       :: Expression
-      -> InterpretedValue
-      -> Maybe InterpretedValue
+      -> Maybe SyntaxFunctionInsertion
   , contextAssembleImplicitResource
       :: [Expression]
       -> Either SyntaxRewriteFailure Expression
   , contextExpandSyntax
       :: SyntaxFunctionExpansion
       -> Either SyntaxRewriteFailure Expression
-  , contextRewriteScope :: RewriteLocus -> SyntaxContext
-  , contextPublish :: Expression -> Maybe SyntaxContext
-  , contextRecursive :: [Expression] -> SyntaxContext
-  , contextScope :: Expression -> SyntaxContext
-  , contextEnter :: Maybe Expression -> SyntaxContext
+  , contextRewriteScope :: RewriteLocus -> SyntaxContext syntaxType
+  , contextPublish :: Expression -> Maybe (SyntaxContext syntaxType)
+  , contextRecursive :: [Expression] -> SyntaxContext syntaxType
+  , contextScope :: Expression -> SyntaxContext syntaxType
+  , contextEnter :: Maybe Expression -> SyntaxContext syntaxType
   }
 
-data RewriteRule = RewriteRule
+data RewriteRule syntaxType = RewriteRule
   { rewriteRule :: SyntaxRule
   , rewriteRuleBranch :: Int
-  , rewriteRuleEvaluation :: Maybe (Expression -> Maybe InterpretedValue)
-  , rewriteRuleHoleFamilies :: [Maybe InterpretedValue]
+  , rewriteRuleEvaluation :: Maybe (Expression -> Maybe syntaxType)
+  , rewriteRuleHoleFamilies :: [Maybe syntaxType]
   , rewriteRuleSyntaxInsertion :: Maybe SyntaxFunctionInsertion
-  , rewriteRuleReturnType :: Maybe InterpretedValue
+  , rewriteRuleReturnType :: Maybe syntaxType
   }
+
+data CaptureExtent
+  = WholeCaptureExtent
+  | ProperCaptureExtent
+  deriving (Eq, Show)
 
 newtype RewriteNodeId = RewriteNodeId Int
   deriving (Eq, Ord, Show)
@@ -105,20 +112,20 @@ data RewriteLocus
   = RewriteExpression Expression
   | RewriteChild Expression Int Expression
 
-data StructuralCandidate = StructuralCandidate
-  { structuralCandidateRule :: RewriteRule
+data StructuralCandidate syntaxType = StructuralCandidate
+  { structuralCandidateRule :: RewriteRule syntaxType
   , structuralCandidateBranch :: Int
   , structuralCandidateSelection
       :: TemplateSelection Expression Expression
   , structuralCandidateCaptures
-      :: [(DeclarativeCapture, Expression)]
+      :: [(DeclarativeCapture, Expression, CaptureExtent)]
   , structuralCandidateRemaining :: [Expression]
   }
 
-data SelectedCandidate = SelectedCandidate
-  { selectedStructuralCandidate :: StructuralCandidate
-  , selectedCaptures :: [RewriteResult]
-  , selectedReturnType :: InterpretedValue
+data SelectedCandidate syntaxType = SelectedCandidate
+  { selectedStructuralCandidate :: StructuralCandidate syntaxType
+  , selectedCaptures :: [RewriteResult syntaxType]
+  , selectedReturnType :: syntaxType
   }
 
 data PreparedExpansion = PreparedExpansion
@@ -126,81 +133,81 @@ data PreparedExpansion = PreparedExpansion
   , preparedExpansionRemaining :: [Expression]
   }
 
-data CandidateTypingContext = CandidateTypingContext
-  { candidateTypingInputs :: Map Int InterpretedValue
-  , candidateTypingExpectedHoles :: Map Int InterpretedValue
-  , candidateTypingReturnType :: Maybe InterpretedValue
+data CandidateTypingContext syntaxType = CandidateTypingContext
+  { candidateTypingInputs :: Map Int syntaxType
+  , candidateTypingExpectedHoles :: Map Int syntaxType
+  , candidateTypingReturnType :: Maybe syntaxType
   }
 
-data CandidateFrame = CandidateFrame
+data CandidateFrame syntaxType = CandidateFrame
   { candidateFrameNextCapture :: Int
-  , candidateFrameTypingContext :: CandidateTypingContext
-  , candidateFrameResults :: Map Int RewriteResult
+  , candidateFrameTypingContext :: CandidateTypingContext syntaxType
+  , candidateFrameResults :: Map Int (RewriteResult syntaxType)
   , candidateFramePreparedCaptures :: Map Int Expression
   }
 
-data CandidateFrameProgress
+data CandidateFrameProgress syntaxType
   = CandidateFrameNeedsChild
-      CandidateFrame
+      (CandidateFrame syntaxType)
       Int
       DeclarativeCapture
       Expression
-  | CandidateFrameRejected CandidateRejectionDetails
+  | CandidateFrameRejected (CandidateRejectionDetails syntaxType)
   | CandidateFrameAccepted
-      CandidateTypingContext
-      [RewriteResult]
-      InterpretedValue
+      (CandidateTypingContext syntaxType)
+      [RewriteResult syntaxType]
+      syntaxType
 
-data CandidateRejectionDetails = CandidateRejectionDetails
-  { candidateRejectionRule :: RewriteRule
+data CandidateRejectionDetails syntaxType = CandidateRejectionDetails
+  { candidateRejectionRule :: RewriteRule syntaxType
   , candidateRejectionBranch :: Int
   , candidateRejectionCaptureIndex :: Int
   , candidateRejectionSource :: Expression
-  , candidateRejectionExpected :: Maybe InterpretedValue
-  , candidateRejectionActual :: Maybe InterpretedValue
-  , candidateRejectionContext :: CandidateTypingContext
+  , candidateRejectionExpected :: Maybe syntaxType
+  , candidateRejectionActual :: Maybe syntaxType
+  , candidateRejectionContext :: CandidateTypingContext syntaxType
   , candidateRejectionReason :: CandidateRejectionReason
   }
 
-data CandidateRejection = CandidateRejection
+data CandidateRejection syntaxType = CandidateRejection
   { candidateRejectionDiagnostic
-      :: DatraError CandidateRejectionDetails
-  , candidateRejectionChildren :: [CandidateRejection]
+      :: DatraError (CandidateRejectionDetails syntaxType)
+  , candidateRejectionChildren :: [CandidateRejection syntaxType]
   }
 
-data RewriteResult = RewriteResult
+data RewriteResult syntaxType = RewriteResult
   { rewriteResultExpression :: Expression
-  , rewriteResultType :: Maybe InterpretedValue
-  , rewriteResultSelection :: Maybe SelectedCandidate
+  , rewriteResultType :: Maybe syntaxType
+  , rewriteResultSelection :: Maybe (SelectedCandidate syntaxType)
   }
 
-data CandidateSearch = CandidateSearch
-  { candidateSearchCandidates :: [StructuralCandidate]
+data CandidateSearch syntaxType = CandidateSearch
+  { candidateSearchCandidates :: [StructuralCandidate syntaxType]
   , candidateSearchCursor :: Int
-  , candidateSearchRejections :: [CandidateRejection]
-  , candidateSearchFrame :: Maybe CandidateFrame
+  , candidateSearchRejections :: [CandidateRejection syntaxType]
+  , candidateSearchFrame :: Maybe (CandidateFrame syntaxType)
   }
 
-data OrdinaryTraversal = OrdinaryTraversal
+data OrdinaryTraversal syntaxType = OrdinaryTraversal
   { ordinaryTraversalCursor :: Int
-  , ordinaryTraversalSelection :: Maybe SelectedCandidate
+  , ordinaryTraversalSelection :: Maybe (SelectedCandidate syntaxType)
   , ordinaryTraversalFinalizedCaptures :: [Expression]
   }
 
-data RewriteWork
-  = SearchCandidates CandidateSearch
-  | TraverseChildren OrdinaryTraversal
+data RewriteWork syntaxType
+  = SearchCandidates (CandidateSearch syntaxType)
+  | TraverseChildren (OrdinaryTraversal syntaxType)
 
-data RewriteNodeState
+data RewriteNodeState syntaxType
   = NodePending
-  | NodeReady RewriteWork
-  | NodeWaiting RewriteWork RewriteNodeId
-  | NodeFinalized RewriteResult
+  | NodeReady (RewriteWork syntaxType)
+  | NodeWaiting (RewriteWork syntaxType) RewriteNodeId
+  | NodeFinalized (RewriteResult syntaxType)
 
-data RewriteNode environment = RewriteNode
+data RewriteNode environment syntaxType = RewriteNode
   { rewriteNodeExpression :: Expression
   , rewriteNodeEnvironment :: environment
   , rewriteNodeParent :: Maybe RewriteNodeId
-  , rewriteNodeRejections :: [CandidateRejection]
-  , rewriteNodeState :: RewriteNodeState
+  , rewriteNodeRejections :: [CandidateRejection syntaxType]
+  , rewriteNodeState :: RewriteNodeState syntaxType
   }

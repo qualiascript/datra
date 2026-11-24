@@ -12,7 +12,6 @@ import DatraLanguage.AST
 import StringExpression
   ( TemplateSelection (..) )
 import StringInterpolation (DeclarativeCapture)
-import DatraTypes (InterpretedValue)
 import SyntaxRewriting.Candidates
   ( advanceCandidateFrameWith, initialCandidateFrame )
 import SyntaxRewriting.Types
@@ -34,59 +33,64 @@ import SyntaxRewriting.Types
   , StructuralCandidate (..)
   )
 
-data RewriteStackOperations environment failure = RewriteStackOperations
+data RewriteStackOperations environment failure syntaxType = RewriteStackOperations
   { stackEnumerateCandidates
-      :: environment -> Expression -> [StructuralCandidate]
+      :: environment -> Expression -> [StructuralCandidate syntaxType]
   , stackPostRewrite
       :: environment -> Expression -> Maybe Expression
   , stackCaptureHole
       :: environment
-      -> StructuralCandidate
+      -> StructuralCandidate syntaxType
       -> [(DeclarativeCapture, Expression)]
       -> DeclarativeCapture
       -> Expression
       -> Maybe Expression
   , stackExpectedHole
       :: environment
-      -> StructuralCandidate
-      -> CandidateTypingContext
+      -> StructuralCandidate syntaxType
+      -> CandidateTypingContext syntaxType
       -> Int
-      -> Maybe InterpretedValue
+      -> Maybe syntaxType
   , stackCandidateReturn
       :: environment
-      -> StructuralCandidate
-      -> CandidateTypingContext
-      -> Maybe InterpretedValue
+      -> StructuralCandidate syntaxType
+      -> CandidateTypingContext syntaxType
+      -> Maybe syntaxType
   , stackTypesCompatible
-      :: InterpretedValue -> InterpretedValue -> Bool
+      :: syntaxType -> syntaxType -> Bool
   , stackRewriteScope
       :: environment -> RewriteLocus -> environment
   , stackFinalizeOrdinary
-      :: environment -> Expression -> Either failure RewriteResult
+      :: environment
+      -> Expression
+      -> Either failure (RewriteResult syntaxType)
   , stackPublishChild
       :: environment
       -> Expression
       -> Int
-      -> RewriteResult
+      -> RewriteResult syntaxType
       -> Either failure (Maybe environment)
   , stackPrepareCandidate
-      :: environment -> SelectedCandidate -> PreparedExpansion
+      :: environment
+      -> SelectedCandidate syntaxType
+      -> PreparedExpansion
   , stackExpandCandidate
       :: environment -> PreparedExpansion -> Either failure Expression
   , stackCandidateRejection
       :: environment
-      -> CandidateRejectionDetails
-      -> [CandidateRejection]
-      -> CandidateRejection
+      -> CandidateRejectionDetails syntaxType
+      -> [CandidateRejection syntaxType]
+      -> CandidateRejection syntaxType
   }
 
-newtype RewriteMachine environment = RewriteMachine
-  { machineNodes :: Map RewriteNodeId (RewriteNode environment) }
+newtype RewriteMachine environment syntaxType = RewriteMachine
+  { machineNodes
+      :: Map RewriteNodeId (RewriteNode environment syntaxType) }
 
 initialMachine
   :: environment
   -> Expression
-  -> (RewriteNodeId, RewriteMachine environment)
+  -> (RewriteNodeId, RewriteMachine environment syntaxType)
 initialMachine environment source = (rootId,
   RewriteMachine (Map.singleton rootId root))
   where
@@ -101,15 +105,15 @@ initialMachine environment source = (rootId,
 
 nodeAt
   :: RewriteNodeId
-  -> RewriteMachine environment
-  -> RewriteNode environment
+  -> RewriteMachine environment syntaxType
+  -> RewriteNode environment syntaxType
 nodeAt nodeId = (Map.! nodeId) . machineNodes
 
 updateNode
   :: RewriteNodeId
-  -> (RewriteNode environment -> RewriteNode environment)
-  -> RewriteMachine environment
-  -> RewriteMachine environment
+  -> (RewriteNode environment syntaxType -> RewriteNode environment syntaxType)
+  -> RewriteMachine environment syntaxType
+  -> RewriteMachine environment syntaxType
 updateNode nodeId update machine = machine
   { machineNodes = Map.adjust update nodeId (machineNodes machine) }
 
@@ -117,8 +121,8 @@ allocateNode
   :: Expression
   -> environment
   -> Maybe RewriteNodeId
-  -> RewriteMachine environment
-  -> (RewriteNodeId, RewriteMachine environment)
+  -> RewriteMachine environment syntaxType
+  -> (RewriteNodeId, RewriteMachine environment syntaxType)
 allocateNode source environment parent machine =
   (nodeId, machine
     { machineNodes = Map.insert nodeId node (machineNodes machine) })
@@ -138,10 +142,11 @@ nextNodeId = RewriteNodeId . Map.size
 -- | The scheduler stack contains node IDs only.  Every continuation is read
 -- from the popped node's stored state.
 runRewriteStack
-  :: RewriteStackOperations environment failure
+  :: RewriteStackOperations environment failure syntaxType
   -> environment
   -> Expression
-  -> Either failure (RewriteResult, [CandidateRejection])
+  -> Either failure
+      (RewriteResult syntaxType, [CandidateRejection syntaxType])
 runRewriteStack operations initialEnvironment source =
   run (rootId :| []) allocated
   where

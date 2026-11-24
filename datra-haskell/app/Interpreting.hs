@@ -54,6 +54,7 @@ import FunctionClosure
 import DatraHost
   ( datraHostIdentifier
   , datraHostValue
+  , resolveDatraHostSyntaxInsertion
   )
 import DatraLanguage.Identifier
   ( isIdentifierValue
@@ -115,7 +116,8 @@ import Parsing
   , ResourceEnvelope (..)
   )
 import SyntaxRewriting
-  ( RewriteLocus (..)
+  ( SyntaxType (..)
+  , RewriteLocus (..)
   , SyntaxContext (..)
   , SyntaxRuleFamily (..)
   , rewriteResourceSyntaxLocated
@@ -512,6 +514,85 @@ classifySyntaxHoles base modules declarations kinds = map classify kinds
             )
       _ -> (kind, Nothing)
 
+classifySyntaxTypes
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> [DeclarativeCapture]
+  -> [(DeclarativeCapture, Maybe SyntaxType)]
+classifySyntaxTypes base modules declarations = map classify
+  where
+    classify kind = case kind of
+      StringExpressionCapture (ValueString target) -> typed target
+      StringExpressionCapture (StringLiteralString target) -> typed target
+      _ -> (kind, Nothing)
+      where
+        typed target =
+          let (specialized, runtimeValue) = classifySyntaxHole
+                base modules declarations kind
+          in ( specialized
+             , Just SyntaxType
+                { syntaxTypeExpression = target
+                , syntaxTypeMembers = staticSyntaxTypeMembers
+                    declarations target
+                , syntaxTypeRuntimeValue = runtimeValue <|>
+                    evaluateSyntaxValue base modules declarations target
+                }
+             )
+
+evaluateSyntaxType
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> Expression
+  -> Maybe SyntaxType
+evaluateSyntaxType base modules declarations expressionValue =
+  Just SyntaxType
+    { syntaxTypeExpression = expressionValue
+    , syntaxTypeMembers = staticSyntaxTypeMembers
+        declarations expressionValue
+    , syntaxTypeRuntimeValue = evaluateSyntaxValue
+        base modules declarations expressionValue
+    }
+
+-- A parser contract retains nominal federation membership even when its
+-- runtime value cannot yet be materialized. Only declarations whose source
+-- is structurally a federation are unfolded; ordinary implementations remain
+-- opaque nominal members.
+staticSyntaxTypeMembers :: [Expression] -> Expression -> Set.Set Expression
+staticSyntaxTypeMembers declarations = nominalMembers Set.empty
+  where
+    nominalMembers visited expressionValue
+      | expressionValue `Set.member` visited = Set.singleton expressionValue
+      | otherwise = Set.insert expressionValue $ case expressionValue of
+          IdentifierReference (SimpleIdentifierString name) ->
+            maybe Set.empty
+              (federationMembers nextVisited)
+              (declarationImplementation name)
+          SyntaxBoundary inner -> nominalMembers nextVisited inner
+          _ -> Set.empty
+      where
+        nextVisited = Set.insert expressionValue visited
+
+    federationMembers visited expressionValue = case expressionValue of
+      SyntaxBoundary inner -> federationMembers visited inner
+      Coalization inner -> federationMembers visited inner
+      AtlasMap members -> foldMap (nominalMembers visited) members
+      MapSequence members -> foldMap (nominalMembers visited) members
+      EitherType left right ->
+        nominalMembers visited left <> nominalMembers visited right
+      OptionalType inner -> nominalMembers visited inner
+      _ -> Set.empty
+
+    declarationImplementation name = case
+        [ dependentDeclarationImplementation declaration
+        | source <- reverse declarations
+        , name `elem` bindingNames source
+        , Just declaration <- [dependentDeclaration source]
+        ] of
+      implementation : _ -> Just implementation
+      [] -> Nothing
+
 evaluateSyntaxValue
   :: Scope
   -> [(String, ModuleSource)]
@@ -547,41 +628,6 @@ syntaxResultType base modules declarations expressionValue =
   where
     booleanType = evaluateSyntaxValue base modules declarations BooleanType
 
-evaluateSyntaxValueWithInput
-  :: Scope
-  -> [(String, ModuleSource)]
-  -> [Expression]
-  -> InterpretedValue
-  -> Expression
-  -> Maybe InterpretedValue
-evaluateSyntaxValueWithInput base modules declarations input expressionValue = do
-  let enclosing = extendModuleCatalog modules base
-  parent <- either (const Nothing) Just
-    (declareSyntaxScope enclosing
-      (map syntaxValidationDeclaration declarations))
-  let contextual = extendContextualRuntimeDeclarations
-        (constantContextualDeclarations ContextualIt input) parent
-  either (const Nothing) Just (evalInScope contextual [] expressionValue)
-
-applySyntaxValue
-  :: Scope
-  -> [(String, ModuleSource)]
-  -> [Expression]
-  -> Expression
-  -> InterpretedValue
-  -> Maybe InterpretedValue
-applySyntaxValue base modules declarations functionExpression input = do
-  let enclosing = extendModuleCatalog modules base
-  scope <- either (const Nothing) Just
-    (declareSyntaxScope enclosing
-      (map syntaxValidationDeclaration declarations))
-  callable <- either (const Nothing) Just
-    (evalInScope scope [] functionExpression)
-  (result, _) <- either (const Nothing) Just
-    (applyFunction
-      (scopeActivation scope) UnrestrictedReduction callable input)
-  pure result
-
 -- Syntax evaluation uses the same contextual declaration shape as runtime
 -- evaluation. The supplied value is lazy here: unknown runtime inputs need
 -- not prevent rewriting syntax that does not inspect them.
@@ -591,7 +637,7 @@ syntaxContext
   -> [(String, String, [SyntaxRule])]
   -> [SyntaxRule]
   -> [Expression]
-  -> SyntaxContext
+  -> SyntaxContext SyntaxType
 syntaxContext base modules availableRules initialRules initialDeclarations =
   make base initialDeclarations initialFamilies
   where
@@ -606,14 +652,18 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
           , contextRuleFamilies = filter
               (not . null . syntaxRuleFamilyRules)
               families
-          , contextClassify = classifySyntaxHoles currentBase modules declarations
+          , contextClassify = classifySyntaxTypes
+              currentBase modules declarations
           , contextCapture = captureSyntaxHole currentBase modules
               `withDeclarations` declarations
-          , contextEvaluate = evaluateSyntaxValue currentBase modules declarations
-          , contextResultType = syntaxResultType currentBase modules declarations
-          , contextEvaluateWithInput =
-              evaluateSyntaxValueWithInput currentBase modules declarations
-          , contextApply = applySyntaxValue currentBase modules declarations
+          , contextResultType = \expressionValue -> Just SyntaxType
+              { syntaxTypeExpression = expressionValue
+              , syntaxTypeMembers = staticSyntaxTypeMembers
+                  declarations expressionValue
+              , syntaxTypeRuntimeValue = syntaxResultType
+                  currentBase modules declarations expressionValue
+              }
+          , contextSyntaxInsertion = resolveDatraHostSyntaxInsertion
           , contextAssembleImplicitResource = assembleImplicitSyntaxResource
           , contextExpandSyntax = expandSyntaxExpression
           , contextRewriteScope = rewriteScope context
@@ -742,11 +792,10 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
           | (_, branch, rule) <-
               declarationRuleBranches resolved
           ]
-      , syntaxRuleFamilyClassify = classifySyntaxHoles
+      , syntaxRuleFamilyClassify = classifySyntaxTypes
           currentBase modules visible
-      , syntaxRuleFamilyEvaluate = evaluateSyntaxValue
+      , syntaxRuleFamilyEvaluate = evaluateSyntaxType
           currentBase modules visible
-      , syntaxRuleFamilyApply = applySyntaxValue currentBase modules visible
       }
       where
         specialize = mapSyntaxRuleCaptures (fst . classify)
@@ -755,11 +804,9 @@ syntaxContext base modules availableRules initialRules initialDeclarations =
     externalFamily currentBase declarations rules = SyntaxRuleFamily
       { syntaxRuleFamilyNames = concatMap syntaxRuleLiteralHeads rules
       , syntaxRuleFamilyRules = map (0,) rules
-      , syntaxRuleFamilyClassify = classifySyntaxHoles
+      , syntaxRuleFamilyClassify = classifySyntaxTypes
           currentBase modules declarations
-      , syntaxRuleFamilyEvaluate = evaluateSyntaxValue
-          currentBase modules declarations
-      , syntaxRuleFamilyApply = applySyntaxValue
+      , syntaxRuleFamilyEvaluate = evaluateSyntaxType
           currentBase modules declarations
       }
 

@@ -351,6 +351,7 @@ executable datra-haskell
         CanonicalParsing
         Interpreting
         DatraHost
+        DatraHost.Syntax
         ModuleInputs
         FunctionClosure
         GenericScopeProtection
@@ -416,6 +417,7 @@ test-suite datra-parsing-test
         CanonicalParsing
         Interpreting
         DatraHost
+        DatraHost.Syntax
         FunctionClosure
         GenericScopeProtection
         Rendering
@@ -465,6 +467,7 @@ test-suite datra-interpreting-test
         Datra.TestSupport
         Interpreting
         DatraHost
+        DatraHost.Syntax
         ModuleInputs
         FunctionClosure
         GenericScopeProtection

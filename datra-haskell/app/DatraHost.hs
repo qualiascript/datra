@@ -1,18 +1,23 @@
-{-# LANGUAGE LambdaCase #-}
-
 module DatraHost
   ( datraHostIdentifier
   , datraHostValue
+  , resolveDatraHostSyntaxInsertion
   ) where
 
 import DatraLanguage.AST
 import DatraLanguage.Identifier
   ( canonicalNaturalValue
-  , identifierNaturalValue
   )
-import DatraLanguage.DependentDeclaration
-  ( applyDeclarationModifier
-  , removeDeclarationModifier
+import DatraHost.Syntax
+  ( beginSyntaxInsertion
+  , defSyntaxInsertion
+  , doSyntaxInsertion
+  , funSyntaxInsertion
+  , ifSyntaxInsertion
+  , letSyntaxInsertion
+  , parseNaturalSyntaxInsertion
+  , valSyntaxInsertion
+  , withSyntaxInsertion
   )
 import StringExpression
   ( FunctionSyntax (..)
@@ -22,6 +27,50 @@ import DatraTypes
 
 datraHostIdentifier :: String
 datraHostIdentifier = "datra"
+
+data DatraHostSyntaxRuntime
+  = SyntaxBodyRuntime
+  | SyntaxFunctionRuntime
+
+data DatraHostSyntaxDefinition = DatraHostSyntaxDefinition
+  { datraHostSyntaxName :: String
+  , datraHostSyntaxRuntime :: DatraHostSyntaxRuntime
+  , datraHostSyntaxInsertion :: SyntaxFunctionInsertion
+  }
+
+datraHostSyntaxDefinitions :: [DatraHostSyntaxDefinition]
+datraHostSyntaxDefinitions =
+  [ definition "let_body" SyntaxBodyRuntime letSyntaxInsertion
+  , definition "def_body" SyntaxBodyRuntime defSyntaxInsertion
+  , definition "val_body" SyntaxBodyRuntime valSyntaxInsertion
+  , definition "parse_natural" SyntaxBodyRuntime
+      parseNaturalSyntaxInsertion
+  , definition "begin" SyntaxFunctionRuntime beginSyntaxInsertion
+  , definition "do_body" SyntaxBodyRuntime doSyntaxInsertion
+  , definition "fun_body" SyntaxBodyRuntime funSyntaxInsertion
+  , definition "if_body" SyntaxBodyRuntime ifSyntaxInsertion
+  , definition "with_body" SyntaxBodyRuntime withSyntaxInsertion
+  ]
+  where
+    definition = DatraHostSyntaxDefinition
+
+datraHostSyntaxReference :: DatraHostSyntaxDefinition -> Expression
+datraHostSyntaxReference definition = ScopeAccess
+  (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
+  (literalIdentifierExpression (SimpleIdentifierString name))
+  where
+    name = datraHostSyntaxName definition
+
+resolveDatraHostSyntaxInsertion
+  :: Expression
+  -> Maybe SyntaxFunctionInsertion
+resolveDatraHostSyntaxInsertion source = case
+    [ datraHostSyntaxInsertion definition
+    | definition <- datraHostSyntaxDefinitions
+    , datraHostSyntaxReference definition == source
+    ] of
+  insertion : _ -> Just insertion
+  [] -> Nothing
 
 datraHostValue :: Either InterpretingError InterpretedValue
 datraHostValue = do
@@ -40,7 +89,7 @@ datraHostValue = do
     , ordinalComparisonBody "gt" ordinalGTValues
     , ordinalComparisonBody "gte" ordinalGTEValues
     ]
-  hostMap
+  hostMap $
     [ ("Any", Right anyTypeValue)
     , ("never", Right neverValue)
     , ("Ordinal", Right ordinalTypeValue)
@@ -72,75 +121,29 @@ datraHostValue = do
         number <- requireFiniteInteger value
         pure (integerValue (abs number))
     , ("ordinal", Right ordinalMembers)
-    , syntaxBody "let_body" (modifierBody DeclarationLet)
-    , syntaxBody "def_body" (modifierBody DeclarationDef)
-    , syntaxBody "val_body" (modifierBody DeclarationVal)
-    , syntaxBody "parse_natural" parseNaturalBody
-    , syntaxFunction "begin" (SyntaxFunctionInsertion
-        (\case
-          [entries, result] -> Just
-            (SyntaxBegin (blockExpressions entries) result)
-          [result] -> Just (SyntaxBegin [] result)
-          _ -> Nothing)
-        (\case
-          Begin entries result -> Just
-            [AtlasMap (map DeclarationExpression entries), result]
-          _ -> Nothing))
-    , syntaxBody "do_body" (SyntaxFunctionInsertion
-        (\case
-          [entries, result] -> Just
-            (SyntaxFunctionBody (blockExpressions entries) result)
-          [result] -> Just (SyntaxFunctionBody [] result)
-          _ -> Nothing)
-        (\case
-          FunctionBody entries result -> Just
-            [AtlasMap (map DeclarationExpression entries), result]
-          _ -> Nothing))
-    , syntaxBody "fun_body" (expressionSyntaxInsertion
-        (\case
-          [entry] -> Just (Fun entry)
-          _ -> Nothing)
-        (\case
-          Fun entry -> Just [entry]
-          _ -> Nothing))
-    , syntaxBody "if_body" (expressionSyntaxInsertion
-        (\case
-          [condition, yes, no] -> Just (Conditional condition yes no)
-          [condition, yes] -> Just
-            (Conditional condition yes (AtlasMap []))
-          _ -> Nothing)
-        (\case
-          Conditional condition yes no -> Just [condition, yes, no]
-          _ -> Nothing))
-    , syntaxBody "with_body" (expressionSyntaxInsertion
-        (\case
-          [modules, FunctionBody bindings result] -> Just
-            (WithScopes
-              (withModuleOperands modules)
-              (Begin bindings result))
-          _ -> Nothing)
-        (\case
-          WithScopes modules (Begin bindings result) -> Just
-            [ArgumentativeMap modules, FunctionBody bindings result]
-          _ -> Nothing))
-    ]
+    ] <> map syntaxEntry datraHostSyntaxDefinitions
   where
-    expressionSyntaxInsertion apply preimage = SyntaxFunctionInsertion
-      (fmap SyntaxExpression . apply)
-      preimage
     expressionType = syntaxCategoryTypeValue ExpressionAST
     dependentArgumentType = syntaxCategoryTypeValue DependentArgumentAST
     identifierExpressionType = syntaxCategoryTypeValue IdentifierExpressionAST
     dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
-    syntaxBody name insertion =
+    syntaxEntry definition = case datraHostSyntaxRuntime definition of
+      SyntaxBodyRuntime -> syntaxBody definition
+      SyntaxFunctionRuntime -> syntaxFunction definition
+    syntaxBody definition =
       (name, Right (makeFunctionBodyValue
         (EvaluatedSyntaxFunctionBody source insertion)))
       where
+        name = datraHostSyntaxName definition
+        insertion = datraHostSyntaxInsertion definition
         source = datraMemberSource [name]
-    syntaxFunction name insertion =
+    syntaxFunction definition =
       typedSyntaxFunction name anyTypeValue anyTypeValue insertion
+      where
+        name = datraHostSyntaxName definition
+        insertion = datraHostSyntaxInsertion definition
     typedSyntaxFunction name domain codomain insertion =
       (name, Right (makeFunctionValue (EvaluatedFunction
         domain
@@ -195,41 +198,6 @@ datraHostValue = do
     ordinalComparisonBody name operation =
       ordinalBinaryBody name $ \left right ->
         booleanValue <$> operation left right
-    blockExpressions (AtlasMap entries) = entries
-    blockExpressions (MapSequence entries) = entries
-    blockExpressions (SyntaxBoundary inner) = blockExpressions inner
-    blockExpressions value = [value]
-    withModuleOperands value = case value of
-      AtlasMap modules -> modules
-      MapSequence modules -> modules
-      MapConcatenation left right ->
-        withModuleOperands left <> withModuleOperands right
-      SyntaxBoundary inner -> withModuleOperands inner
-      _ -> [value]
-    absorbAssignedConcatenation value = case value of
-      MapConcatenation
-          (MapSpecification given (DependentArgument name Nothing)) right ->
-            let assignedValue = MapConcatenation given right
-            in MapSpecification assignedValue
-              (DependentArgument name Nothing)
-      _ -> value
-    modifierBody modifier = expressionSyntaxInsertion
-      (\case
-        [entry] -> applyDeclarationModifier modifier
-          (absorbAssignedConcatenation entry)
-        _ -> Nothing)
-      (removeDeclarationModifier modifier)
-
-    parseNaturalBody = expressionSyntaxInsertion
-      (\case
-        [AsciiStringLiteral name] ->
-          EllipsisNatural <$> identifierNaturalValue name
-        _ -> Nothing)
-      (\case
-        EllipsisNatural value -> Just
-          [AsciiStringLiteral (show value)]
-        _ -> Nothing)
-
     naturalLiteralValue natural =
       stringFederationValue naturalLiteralCodec natural
 
