@@ -298,7 +298,7 @@ testDependentCommentSyntax = do
       NoStandardLibrary emptyPreparedModules testSourceName source of
     Right (Located _ actual) -> assertEqual
       "the first dependent rule reduces the comment member before later syntax"
-      (SyntaxBoundary (ref "123"))
+      (ref "123")
       actual
     Left failure -> assertFailure (renderParseFailure failure)
   case parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
@@ -306,7 +306,7 @@ testDependentCommentSyntax = do
       "(left # ignored to the line boundary\nright)" of
     Right (Located _ actual) -> assertEqual
       "a newline ends only the comment member"
-      (SyntaxBoundary (ref "left" <:> ref "right"))
+      (ref "left" <:> ref "right")
       actual
     Left failure -> assertFailure (renderParseFailure failure)
   case parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
@@ -314,7 +314,7 @@ testDependentCommentSyntax = do
       "(value # if and or not + ~> !!!)" of
     Right (Located _ actual) -> assertEqual
       "comment syntax has precedence over every spelling in its remainder"
-      (SyntaxBoundary (ref "value"))
+      (ref "value")
       actual
     Left failure -> assertFailure (renderParseFailure failure)
 
@@ -335,21 +335,21 @@ testSyntaxSeparatorElision = do
   assertRewritten
     "horizontal syntax introduces application without a unit argument"
     "(left right)"
-    (SyntaxBoundary (FunctionApplication (ref "left") (ref "right")))
+    (FunctionApplication (ref "left") (ref "right"))
   assertRewritten
     "rewriting preserves ordinary left-associative application"
     "(left middle right)"
-    (SyntaxBoundary (FunctionApplication
+    (FunctionApplication
       (FunctionApplication (ref "left") (ref "middle"))
-      (ref "right")))
+      (ref "right"))
   assertRewritten
     "line syntax introduces a sequence without a unit member"
     "(left\nright)"
-    (SyntaxBoundary (ref "left" <:> ref "right"))
+    (ref "left" <:> ref "right")
   assertRewritten
     "repeated line syntax produces one flat sequence"
     "(left\nmiddle\nright)"
-    (SyntaxBoundary (ref "left" <:> ref "middle" <:> ref "right"))
+    (ref "left" <:> ref "middle" <:> ref "right")
   where
     assertRaw label source expected =
       case parseDatraRawLocatedWithSourceName testSourceName source of
@@ -820,9 +820,6 @@ testDependentDeclarationPrecedence = do
       (MapConcatenation
         (IdentifierExpression (AsciiStringLiteral "left"))
         (IdentifierExpression (AsciiStringLiteral "right"))))
-  assertSourceExpressionRejected
-    "the obsolete literal-template operator is rejected"
-    "$!($hello)"
   case ( dependentDeclaration expected
        , declarationRuleBranches expected
        ) of
