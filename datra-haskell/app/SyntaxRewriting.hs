@@ -48,7 +48,6 @@ import StringInterpolation.Matching
 import SyntaxRewriting.Types
   ( CandidateRejection
   , CandidateTypingContext (..)
-  , CaptureHole
   , PreparedExpansion (..)
   , RewriteResult (..)
   , RewriteRule (..)
@@ -193,7 +192,7 @@ rewriteStandaloneSyntax
   -> Expression
   -> Either SyntaxRewriteFailure Expression
 rewriteStandaloneSyntax context =
-  runRewriteExpression (contextCapture context) context
+  runRewriteExpression context
 
 rewriteResourceSyntax
   :: ResourceEnvelope
@@ -222,15 +221,14 @@ rewriteResourceSyntaxWithSpan
 rewriteResourceSyntaxWithSpan sourceSpan envelope context raw =
   case (envelope, raw) of
     (ExplicitMapEnvelope, expressionValue) ->
-      runRewriteExpression capture initial expressionValue
+      runRewriteExpression initial expressionValue
     (ImplicitBlockEnvelope, AtlasMap entries) -> rewriteImplicitResource entries
     (ImplicitBlockEnvelope, expressionValue) ->
       rewriteImplicitResource [expressionValue]
   where
-    capture = contextCapture context
     initial = context { contextSourceSpan = sourceSpan }
     rewriteImplicitResource entries = do
-      rewrittenContainer <- runRewriteExpression capture initial
+      rewrittenContainer <- runRewriteExpression initial
         (AtlasMap entries)
       let rewritten = case rewrittenContainer of
             AtlasMap selected -> selected
@@ -238,12 +236,11 @@ rewriteResourceSyntaxWithSpan sourceSpan envelope context raw =
       contextAssembleImplicitResource initial rewritten
 
 runRewriteExpression
-  :: CaptureHole
-  -> RuntimeSyntaxContext
+  :: RuntimeSyntaxContext
   -> Expression
   -> Either SyntaxRewriteFailure Expression
-runRewriteExpression capture environment value = do
-  (result, rejections) <- runStructuralCandidates capture environment value
+runRewriteExpression environment value = do
+  (result, rejections) <- runStructuralCandidates environment value
   case (rewriteResultSelection result, rejections) of
     (Nothing, _ : _) -> Left
       (RejectedSyntaxCandidates (reportCandidateRejections rejections))
@@ -265,12 +262,11 @@ directSyntaxFunctionExpansion selectedRule captures fallback =
       _ -> AtlasMap captures
 
 runStructuralCandidates
-  :: CaptureHole
-  -> RuntimeSyntaxContext
+  :: RuntimeSyntaxContext
   -> Expression
   -> Either SyntaxRewriteFailure
       (RuntimeRewriteResult, [RuntimeCandidateRejection])
-runStructuralCandidates capture environment source =
+runStructuralCandidates environment source =
   runRewriteStack operations environment source
   where
     operations = RewriteStackOperations
@@ -332,7 +328,8 @@ runStructuralCandidates capture environment source =
             | otherwise -> captureStrict specialized
           [(specialized, _)] -> captureStrict specialized
           _ -> captureStrict kind
-        captureStrict selected = capture previous selected captured
+        captureStrict selected =
+          contextCapture selectedEnvironment previous selected captured
     expectedHole selectedEnvironment candidate context index =
       Map.lookup index (candidateTypingExpectedHoles context)
         <|> classified
