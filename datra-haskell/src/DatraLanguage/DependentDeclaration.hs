@@ -9,7 +9,6 @@ module DatraLanguage.DependentDeclaration
   , dependentDeclaration
   , dependentDeclarationCandidate
   , applyDeclarationModifier
-  , removeDeclarationModifier
   , invalidDependentDeclarationModifiers
   , dependentDeclarationNameExpression
   , dependentDeclarationNameFamilyExpression
@@ -52,21 +51,6 @@ applyDeclarationModifier modifier expressionValue = do
         <> [modifier]
   pure (DeclarationExpression
     (withModifierApplications applications declaration))
-
--- | Inverse used by syntax-function reconstruction. Only the outermost
--- application can be removed, preserving exact modifier history.
-removeDeclarationModifier
-  :: DeclarationModifier
-  -> Expression
-  -> Maybe [Expression]
-removeDeclarationModifier modifier expressionValue = do
-  declaration <- dependentDeclaration expressionValue
-  case reverse (dependentDeclarationModifierApplications declaration) of
-    outermost : remaining
-      | outermost == modifier -> pure
-          [ DeclarationExpression
-              (withModifierApplications (reverse remaining) declaration) ]
-    _ -> Nothing
 
 invalidDependentDeclarationModifiers
   :: DependentDeclaration expression

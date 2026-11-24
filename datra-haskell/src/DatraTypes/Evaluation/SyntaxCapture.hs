@@ -23,7 +23,6 @@ import DatraLanguage.DependentDeclaration (dependentDeclarationCandidate)
 import StringExpression (StringExpression (..))
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.IdentifierErasure (stripOuterIdentifierType)
-import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.Value
   ( SyntaxCategory (..)
   , PrimitiveType (SyntaxPrimitive)
@@ -152,8 +151,6 @@ specializeStringExpression target hole =
   ( PrimitiveTypeForm (SyntaxPrimitive IdentifierExpressionAST)
     , ValueString value
     ) -> IdentifierExpressionString value
-  (_, ValueString value)
-    | valueProducesStrings normalized -> StringLiteralString value
   (_, ValueString value)
     | Just _ <- syntaxListElement normalized -> ExpressionString value
   _ -> hole

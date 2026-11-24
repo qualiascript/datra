@@ -413,19 +413,14 @@ data SyntaxFunctionExpansion
 
 data SyntaxFunctionInsertion = SyntaxFunctionInsertion
   { applySyntaxFunction :: [Expression] -> Maybe SyntaxFunctionExpansion
-  , preimageSyntaxFunction :: Expression -> Maybe [Expression]
+  , syntaxFunctionValidatedCaptures :: [Int]
   }
 
--- | An executable runtime function together with a partial left inverse.
--- The shared forward map keeps the injectivity witness attached to the exact
--- operation used for invocation.
+-- | The executable forward operation attached to a runtime function.
 data RuntimeFunctionInsertion = RuntimeFunctionInsertion
   { applyRuntimeFunction
       :: InterpretedValue
       -> Either InterpretingError InterpretedValue
-  , preimageRuntimeFunction
-      :: InterpretedValue
-      -> Maybe InterpretedValue
   }
 
 data EvaluatedFunctionBody
@@ -438,7 +433,6 @@ data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
   , functionSyntax :: Maybe (FunctionSyntax InterpretedValue)
-  , functionSyntaxSource :: Maybe (FunctionSyntax String)
   , functionSource :: Maybe FunctionSource
   , functionBody :: Maybe EvaluatedFunctionBody
   , functionSignatureSource :: FunctionSource
@@ -503,10 +497,6 @@ functionSyntaxEquivalent left right =
         (IdentifierExpressionString rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
-        (StringLiteralString leftValue)
-        (StringLiteralString rightValue) =
-          equivalent leftValue rightValue
-    holeEquivalent
         (ValueString leftValue) (ValueString rightValue) =
       equivalent leftValue rightValue
     holeEquivalent _ _ = False
@@ -530,15 +520,13 @@ makeFunctionValue function = makeInterpretedValue functionDatraType
 -- capabilities such as dependent-sum, map, and specification evidence views.
 withFunctionSyntax
   :: FunctionSyntax InterpretedValue
-  -> FunctionSyntax String
   -> InterpretedValue
   -> InterpretedValue
-withFunctionSyntax evaluated source value =
+withFunctionSyntax evaluated value =
   case interpretedForm value of
     FunctionForm function -> value
       { interpretedForm = FunctionForm function
           { functionSyntax = Just evaluated
-          , functionSyntaxSource = Just source
           }
       }
     _ -> value

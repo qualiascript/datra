@@ -20,6 +20,9 @@ newtype SymbolLiteral = SymbolLiteral
   }
   deriving (Eq, Ord, Show)
 
+-- | A non-empty identifier-string family represented by its required family
+-- expression. Literal strings are ordinary expressions in this same family;
+-- they are not a separate semantic case.
 newtype IdentifierExpression expression = IdentifierExpressionBody expression
   deriving (Eq, Ord, Show)
 

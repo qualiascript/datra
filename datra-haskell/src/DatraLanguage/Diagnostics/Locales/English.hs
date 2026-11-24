@@ -177,7 +177,8 @@ candidateRejectionReasonText :: CandidateRejectionReason -> String
 candidateRejectionReasonText reason = case reason of
   TypedHoleMismatch -> "captured result is outside the required hole type"
   GenericBoundMismatch -> "inferred generic input violates its bound"
-  CandidateReturnMismatch -> "candidate return type could not be established"
+  CandidateCompatibilityUndecidable ->
+    "captured result compatibility is undecidable"
   RequiredChildExhausted -> "required child expression has no applicable result"
 
 localizeAccessError :: AccessError -> LocalizedMessage
