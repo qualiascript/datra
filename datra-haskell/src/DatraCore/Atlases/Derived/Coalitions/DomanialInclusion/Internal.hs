@@ -45,7 +45,6 @@ module DomanialInclusion.Internal
   , dominionLemma
   ) where
 
-import qualified Pagination
 import Atlas
   ( Atlas
   , AtlasMappedObject
@@ -54,11 +53,8 @@ import Atlas
   , AtlasObjectMap
   , AtlasObjectPaginationScope
   , AtlasWitness
-  , AtlasPresentation
-  , atlasPresentationForPredicate
   , withAtlasPresentation
   , atlasHom
-  , atlasDataAction
   , atlasMorphism
   , atlasMorphismAction
   , atlasObjectMap
@@ -70,7 +66,6 @@ import Atlas.Construction (AtlasConstruction (..), FixedAtlasScope, constructAtl
 import AtlasCoveredPageElement
   ( withAtlasCoveredPageElement
   , AtlasCoverageWitness
-  , atlasCoverageWitness
   )
 import AtlasMap (AtlasMap, atlasMap)
 import AtlasTransposal
@@ -89,11 +84,11 @@ import Coalition.Element
   , coalitionElementCoverageAt
   )
 import Data.Void (Void, absurd)
-import DomanialInclusion.LiquidInternal (coalitionComponentInsertion)
+import DomanialInclusion.LiquidInternal (coalitionComponentInsertion, onePageCoverage)
+import DomanialInclusion.Presentation
+  ( DominionPaginationScope, onePageFolio, onePagePagination, dominionPresentation )
 import DomanialInclusion.Data
   ( DominionCellData
-  , constantDominion
-  , identityDominionCellInsertion
   , domIncHomLeftInverseValue
   , domIncHomNaturalityLeftValue
   , domIncHomNaturalityRightValue
@@ -115,24 +110,13 @@ import Dominion
   ( Dominion
   , dominion
   )
-import Folio (Folio, singletonFolio)
 import OrderedAtlasTransposal (orderedAtlasTransposal)
 import PageElements (PageElement, withPageElement)
-import Pagination (Pagination)
 import Data.Proxy (Proxy (..))
-import PageElements.Construction
-  ( PageElementsConstruction (..), ConstructedPageElementsScope, constructPageElements )
 import StableAtlasTransversal
   ( StableAtlasTransversal
   , stableAtlasTransversal
   )
-
--- The folio is fixed; runtime Dominion actions retain a separately allocated owner.
-data DominionPaginationRecipe a
-type DominionPaginationScope a = ConstructedPageElementsScope (DominionPaginationRecipe a) () ()
-
-instance PageElementsConstruction (DominionPaginationRecipe a) () () where
-  pageElementsRecipe _ = onePageFolio
 
 type DominionAtlasObject owner a =
   AtlasObject
@@ -153,15 +137,6 @@ originObjectMap = atlasObjectMap
 emptyDominion :: Dominion Void
 emptyDominion = dominion absurd (const Nothing) absurd
 
-onePageFolio :: Folio () ()
-onePageFolio = singletonFolio singletonChain
-
--- | The deterministically scoped one-page pagination used by @DomInc@.
-onePagePagination
-  :: forall a. Pagination (DominionPaginationScope a) () ()
-onePagePagination = Pagination.paginationFromPageElements
-  (constructPageElements (Proxy :: Proxy (DominionPaginationRecipe a)))
-
 -- | A runtime inclusion retains the exact Atlas used by all its operations.
 type role DominionAtlas nominal nominal
 data DominionAtlas owner a = DominionAtlas
@@ -176,7 +151,7 @@ type CanonicalDominionAtlasScope a =
   FixedAtlasScope (CanonicalDominionRecipe a) (DominionPaginationScope a) (DominionCellData a) () ()
 
 instance CanonicalDominion a => AtlasConstruction (CanonicalDominionRecipe a)
-    (ConstructedPageElementsScope (DominionPaginationRecipe a) () ()) (DominionCellData a) () () where
+    (DominionPaginationScope a) (DominionCellData a) () () where
   atlasConstructionPresentation _ = dominionPresentation (canonicalDominion (Proxy :: Proxy a))
 
 canonicalDominionAtlas :: forall a. CanonicalDominion a => DominionAtlas (CanonicalDominionAtlasScope a) a
@@ -193,20 +168,6 @@ dominionAtlas :: DominionAtlas owner a
   -> Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
 dominionAtlas (DominionAtlas valueAtlas) = valueAtlas
 
-dominionPresentation :: forall a. Dominion a
-  -> AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () ()
-dominionPresentation valueDominion =
-  atlasPresentationForPredicate
-    (onePagePagination @a)
-    (\_ _ -> True)
-    (atlasDataAction (Pagination.paginationPageElements (onePagePagination @a))
-      (const (constantDominion valueDominion))
-      (const identityDominionCellInsertion))
-    (\_ _ -> ())
-    (\_ _ _ _ -> ())
-    (\_ _ _ _ -> ())
-    (\_ _ _ _ _ _ _ -> ())
-
 -- | Every datum of a one-page dominion atlas is covered by that same cell.
 -- ALIGN: DOMINC-COVERAGE.
 dominionCoverage
@@ -219,9 +180,7 @@ dominionCoverage
   -> PageElement (DominionPaginationScope a) object
   -> DominionCellData a object
   -> AtlasCoverageWitness (DominionAtlasObject owner a)
-dominionCoverage valueAtlas occurrence datum =
-  atlasCoverageWitness
-    valueAtlas occurrence datum occurrence datum ()
+dominionCoverage = onePageCoverage
 
 -- | The one-page domanial inclusion is automatically an Atlas map: its
 -- unique cell is simultaneously the extent and the final region.

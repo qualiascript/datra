@@ -3311,6 +3311,24 @@ testDomanialInclusion =
   coaDomIncIsoLeftInverse naturals seven `seq`
     coaDomIncIsoRightInverse naturals 7 `seq` pure ()
 
+  mapM_ (\page ->
+    case pageElementIndex (atlasPageElements included) page (finiteOrdinal 0) of
+      Nothing -> fail "Domanial Inclusion lost a padded occurrence"
+      Just index -> withPageElement (pageElement index) $ \occurrence ->
+        case unrank (atlasDataAt included occurrence) 7 of
+          Nothing -> fail "Domanial Inclusion lost a padded datum"
+          Just datum -> do
+            let witness = atlasMapCoversDatum (dominionAtlasMap naturals) occurrence datum
+            assert "one-page coverage validates the original padded occurrence"
+              ( pageElementPage occurrence == page
+                && coverageWitnessValid included witness
+                && coverageWitnessCovers included occurrence datum witness
+              )
+            withAtlasCoverageWitness included witness $ \region regionDatum ->
+              assert "one-page coverage retains the datum in its actual final region"
+                (pageElementPage region == 0 && dominionCellDataValue regionDatum == 7))
+    [0, 1, 7]
+
   let includedIdentity =
         dominionMap naturals naturals
           (identityInsertion :: DomanialInsertion Natural Natural)

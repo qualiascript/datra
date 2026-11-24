@@ -450,7 +450,8 @@ The public `Pagination.paginationFromPageElements` constructor retains the
 existing occurrence category and its scope. Generative pagination delegates to
 the public page-elements allocator. Fixed folios use `PageElements.Construction`:
 a pure class instance chooses the entire folio, and a nominal scope records the
-recipe and both carrier types. Dominion inclusion and ranked Dominion paginations
+recipe and both carrier types. Its checked constructor preserves the exact
+recipe folio. Dominion inclusion and ranked Dominion paginations
 use this interface. Runtime chains allocate pagination and Atlas owners once
 through the public generative constructors. Chained Dominion handles retain the
 chain, Dominion, and Atlas together; coverage, maps, and traversals reuse them.
@@ -469,8 +470,9 @@ owner. Its coalition maps, hom equivalence, and traversals reuse that owner.
 Dot uses a fixed `CanonicalDominion` instance through `Atlas.Construction`: the
 complete presentation has no runtime configuration, and its nominal scope
 records the recipe and every presentation index. Lean models allocation of this
-fixed presentation. The inclusion assembly still requires its normalized action
-and coverage contracts to be checked.
+fixed presentation. The inclusion's fixed recipe, one-page presentation, and
+coverage helper are checked. The owning-handle and canonical-allocation
+contracts still need to carry these guarantees through the remaining assembly.
 Ranked Dominion construction allocates an Atlas through the public generative
 constructor. A retained handle ties the supplied Dominion to that exact Atlas;
 coverage, maps, and insertion traversals reuse it. Its region decoder uses the
@@ -487,8 +489,24 @@ uses this exposed carrier interface. Public page allocation likewise carries
 the input-folio equality through its callback; pagination preserves that owner.
 Rejection checks prohibit changed ranks, discarded successful decoder results,
 changed identity data, discarded identity inverses, and substituted allocation
-folios. The full inclusion Atlas presentation and coverage assembly still require their
-normalized contracts to be checked.
+folios. `DomanialInclusion.Presentation` checks the complete constant action's
+normalized identity, composition, coherence, and disjointness laws, retaining
+the supplied pagination and action in its result. Disjointness requires a
+one-page folio and uses the checked fact that valid transport within one page
+preserves position. Lean uses the same argument in the inclusion's actual data
+assembly. Its fixed recipe has a checked class-method contract guaranteeing one
+page, and the actual presentation caller checks that premise. Lean models the
+predicate-action package, its accepted carriers, and both executable directions;
+erasing the always-true membership proofs gives a natural isomorphism to the
+constant functor used by the inclusion interpretation. Ranking and decoding,
+including off-image decoder results, agree through this carrier equivalence.
+The checked coverage helper uses the normalized source as its final region and
+transports the witness back along coherence. Lean's inclusion coverage theorem
+uses the same cached-witness construction. Rejection checks require a one-page
+owner, a valid owning trace, and accepted data. The owning handle, canonical
+allocation, coalition equivalence, and hom-map assemblies still need their full
+contracts checked. The inventory records refined instances, and the trust gate
+rejects assumptions nested inside their method signatures.
 Merge, sequence, the empty Atlas, and Dominion inclusion share the checked
 singleton-chain constructor. Lean uses the same singleton chain and the common
 carrier-reindexing operation in its derived folios.

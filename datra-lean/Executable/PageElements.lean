@@ -63,6 +63,18 @@ theorem Arrow.positionAtPage {source target : PageElement owner}
   rw [PageElement.positionAtPage, ← dropped]
   exact targetShape.2
 
+/-- On a fixed page, transport cannot change the position. This is the
+disjointness contradiction used by constant one-page data assignments. -/
+-- ALIGN: DOMINC-SAME-PAGE-POSITION.
+theorem Arrow.samePagePosition {source target : PageElement owner}
+    (arrow : Arrow source target) (sourceShape : source.traceShape)
+    (targetShape : target.traceShape) (samePage : source.page = target.page) :
+    source.position = target.position := by
+  have transported := arrow.positionAtPage sourceShape targetShape
+  have head := sourceShape.2
+  simpa only [PageElement.positionAtPage, samePage, Nat.sub_self, List.drop_zero, head,
+    Option.some.injEq] using transported
+
 instance (source target : PageElement owner) : Subsingleton (Arrow source target) :=
   ⟨by intro a b; cases a; cases b; rfl⟩
 

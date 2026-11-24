@@ -11,6 +11,10 @@ module DomanialInclusion.Data
   ( DominionCellData
   , constantDominion
   , identityDominionCellInsertion
+  , identityCellMap
+  , identityCellPreimage
+  , identityCellMapIdentity
+  , identityCellMapComposition
   , dominionCellData
   , dominionCellDataValue
   , mapDominionCellData
@@ -123,6 +127,16 @@ identityDominionCellInsertion = domanialInsertion identityCellMap identityCellPr
 {-@ reflect identityCellMap @-}
 identityCellMap :: DominionCellData a source -> DominionCellData a target
 identityCellMap (DominionCellData value) = DominionCellData value
+
+{-@ identityCellMapIdentity :: datum:DominionCellData a object
+      -> {identityCellMap datum == datum} @-}
+identityCellMapIdentity :: DominionCellData a object -> ()
+identityCellMapIdentity (DominionCellData _) = ()
+
+{-@ identityCellMapComposition :: datum:DominionCellData a object
+      -> {identityCellMap (identityCellMap datum) == identityCellMap datum} @-}
+identityCellMapComposition :: DominionCellData a object -> ()
+identityCellMapComposition (DominionCellData _) = ()
 
 {-@ reflect identityCellPreimage @-}
 identityCellPreimage :: DominionCellData a target -> Maybe (DominionCellData a source)

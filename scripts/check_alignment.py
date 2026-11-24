@@ -12,6 +12,13 @@ CORE = ROOT / "datra-haskell/src/DatraCore"
 MANIFEST = ROOT / "datra-lean/lean-correspondence.json"
 
 
+def trust_directives(source):
+    """Include trusted methods nested inside refined class/instance blocks."""
+    return [(match[1], match[2])
+            for annotation in re.finditer(r"\{-@(.*?)@-\}", source, re.S)
+            for match in re.finditer(r"\b(assume|ignore)\s+([^\s:]+)", annotation[1])]
+
+
 def private_liquid_imports(text):
     """Allow only an interface's own implementation to import its proof module."""
     declaration = re.search(r"^\s*module\s+([\w.]+)", text, re.M)
@@ -104,7 +111,9 @@ def check(require_complete=False):
                      re.findall(r"\{-@\s*data\s+variance\s+(.+?)\s*@-\}", text, re.S)]
         path = str(source.relative_to(ROOT))
         refinements = re.findall(r"\{-@\s*(?:assume\s+)?([a-z]\w*)\s*::", text)
-        if reflected or opaque_reflected or types or aliases or predicates or refinement_aliases or refinements or variances:
+        refined_instances = [" ".join(value.split()) for value in
+                             re.findall(r"\{-@\s*instance\s+(.*?)\s+where\b", text, re.S)]
+        if reflected or opaque_reflected or types or aliases or predicates or refinement_aliases or refinements or variances or refined_instances:
             expected = expected_modules.pop(path, None)
             if (expected is None or expected["reflected"] != reflected
                     or expected.get("opaque_reflected", []) != opaque_reflected
@@ -113,10 +122,11 @@ def check(require_complete=False):
                     or expected["refinement_aliases"] != refinement_aliases
                     or expected["embeddings"] != embeddings
                     or expected.get("variances", []) != variances
+                    or expected.get("refined_instances", []) != refined_instances
                     or expected["refinements"] != refinements):
                 errors.append(f"Correspondence inventory drift: {path}")
-        for match in re.finditer(r"\{-@\s*(assume|ignore)\s+(\w+)", text):
-            escapes.append({"file": path, "directive": match[1], "declaration": match[2]})
+        for directive, declaration in trust_directives(text):
+            escapes.append({"file": path, "directive": directive, "declaration": declaration})
         if re.search(r"\bunsafeCoerce\b", text):
             errors.append(f"{path}: unsafeCoerce is forbidden")
         if re.search(r"\{-@\s*fail\s", text):

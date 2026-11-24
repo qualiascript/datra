@@ -15,6 +15,7 @@ variable {origin final : Page}
 def constructPageElements (recipe : PageElementsConstruction origin final) :
     Folio origin final := recipe.folio
 
+-- ALIGN: PE-FIXED-FOLIO.
 theorem constructPageElements_folio (recipe : PageElementsConstruction origin final) :
     recipe.constructPageElements = recipe.folio := rfl
 

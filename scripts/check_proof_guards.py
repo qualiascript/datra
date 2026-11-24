@@ -843,6 +843,47 @@ proofGuard sourceAtlas targetAtlas transversal originProof =
 
 
 DOMINC_DATA_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Data.hs"
+DOMINC_PRESENTATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs"
+DOMINC_PRESENTATION_GUARDS = {
+    "Dominion pagination recipe retains its one-page contract": """
+{-@ proofGuard :: Proxy (DominionPaginationRecipe a)
+      -> {pages:Folio () () | folioLength pages /= 1} @-}
+proofGuard :: Proxy (DominionPaginationRecipe a) -> Folio () ()
+proofGuard = pageElementsRecipe
+""",
+    "Dominion presentation retains its one-page recipe": """
+{-@ proofGuard :: Dominion a
+      -> {presentation:AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () () |
+           folioLength (pageElementsFolio (paginationPageElements (atlasPresentationPagination presentation))) > 1} @-}
+proofGuard :: Dominion a -> AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () ()
+proofGuard = dominionPresentation
+""",
+    "constant Atlas presentation requires a one-page folio": """
+{-@ proofGuard :: Pagination scope origin final -> Dominion a
+      -> AtlasPresentation scope (DominionCellData a) origin final @-}
+proofGuard :: Pagination scope origin final -> Dominion a
+  -> AtlasPresentation scope (DominionCellData a) origin final
+proofGuard = constantPresentation
+""",
+    "same-page position requires valid owning traces": """
+{-@ proofGuard :: category:PageElements scope origin final
+      -> arrow:{PageElementArrow scope source target |
+           pageElementPage (arrowSource arrow) == pageElementPage (arrowTarget arrow)}
+      -> {pageElementPosition (arrowSource arrow) == pageElementPosition (arrowTarget arrow)} @-}
+proofGuard :: PageElements scope origin final -> PageElementArrow scope source target -> ()
+proofGuard = samePagePosition
+""",
+    "same-page position requires equal page numbers": """
+{-@ proofGuard :: category:PageElements scope origin final
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> {pageElementPosition (arrowSource arrow) == pageElementPosition (arrowTarget arrow)} @-}
+proofGuard :: PageElements scope origin final -> PageElementArrow scope source target -> ()
+proofGuard = samePagePosition
+""",
+}
+
 DOMINC_DATA_GUARDS = {
     "constant Dominion preserves the supplied forward rank": """
 {-@ proofGuard :: owner:Dominion a -> value:a
@@ -872,6 +913,29 @@ proofGuard datum = preimage identityDominionCellInsertion datum
 
 DOMINC_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs"
 DOMINC_GUARDS = {
+    "one-page coverage requires a one-page owner": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> CoverageWitness a s d @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWitness a s d
+proofGuard = onePageCoverage
+""",
+    "one-page coverage requires an owning trace": """
+{-@ proofGuard :: owner:{Atlas a s d o f | folioLength (atlasFolio owner) == 1}
+      -> source:PageElement s object
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> CoverageWitness a s d @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWitness a s d
+proofGuard = onePageCoverage
+""",
+    "one-page coverage requires an accepted datum": """
+{-@ proofGuard :: owner:{Atlas a s d o f | folioLength (atlasFolio owner) == 1}
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> d object -> CoverageWitness a s d @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWitness a s d
+proofGuard = onePageCoverage
+""",
     "coalition components reject an inverse that drops every image": """
 proofGuard
   :: Atlas atlasScope scope cellData origin final
@@ -1675,6 +1739,16 @@ proofGuard = lookupRankRoundTrip
 RANKED_DOMINION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs"
 
 PAGE_CONSTRUCTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/PageElements/Construction.hs"
+PAGE_CONSTRUCTION_GUARDS = {
+    "fixed page construction retains its recipe folio": """
+{-@ proofGuard :: PageElementsConstruction recipe origin final
+      => recipe:Proxy recipe
+      -> {result:Folio origin final | result /= pageElementsRecipe recipe} @-}
+proofGuard :: PageElementsConstruction recipe origin final
+  => Proxy recipe -> Folio origin final
+proofGuard recipe = pageElementsFolio (constructPageElements recipe)
+""",
+}
 PAGINATION_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Pagination/Pagination.hs"
 PAGINATION_API_GUARDS = {
     "pagination assembly retains the supplied occurrence category": """
@@ -2193,6 +2267,7 @@ def run(pattern=None):
                                     (STABLE_SOURCE, STABLE_GUARDS),
                                     (DOMINC_SOURCE, DOMINC_GUARDS),
                                     (DOMINC_DATA_SOURCE, DOMINC_DATA_GUARDS),
+                                    (DOMINC_PRESENTATION_SOURCE, DOMINC_PRESENTATION_GUARDS),
                                     (COALITION_ELEMENT_SOURCE, COALITION_ELEMENT_GUARDS),
                                     (TRANSVERSAL_SOURCE, TRANSVERSAL_GUARDS),
                                     (COVERED_API_SOURCE, COVERED_API_GUARDS),
@@ -2210,6 +2285,7 @@ def run(pattern=None):
                                     (PAGE_ARROW_SOURCE, PAGE_ARROW_GUARDS),
                                     (TERRITORY_SOURCE, TERRITORY_GUARDS),
                                     (PAGE_API_SOURCE, PAGE_API_GUARDS),
+                                    (PAGE_CONSTRUCTION_SOURCE, PAGE_CONSTRUCTION_GUARDS),
                                     (DOMINION_LOOKUP_SOURCE, DOMINION_LOOKUP_GUARDS),
                                     (PAGINATION_API_SOURCE, PAGINATION_API_GUARDS),
                                     (PAGE_INDEX_SOURCE, PAGE_INDEX_GUARDS),

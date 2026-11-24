@@ -5124,6 +5124,90 @@
       "haskell_declaration": "pageElements",
       "lean_namespace": "Datra.Executable.PageElementsConstruction",
       "lean_declaration": "withPageElements_folio"
+    },
+    {
+      "id": "PE-FIXED-FOLIO",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Construction.hs",
+      "haskell_declaration": "constructPageElements",
+      "lean_namespace": "Datra.Executable.PageElementsConstruction",
+      "lean_declaration": "constructPageElements_folio"
+    },
+    {
+      "id": "DOMINC-SAME-PAGE-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "samePagePosition",
+      "lean_namespace": "Datra.Executable.PageElement",
+      "lean_declaration": "Arrow.samePagePosition"
+    },
+    {
+      "id": "DOMINC-CONSTANT-LAWS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "constantPresentation",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantPresentation"
+    },
+    {
+      "id": "DOMINC-ONE-PAGE-FOLIO",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "onePageFolio",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "onePageFolio_depth"
+    },
+    {
+      "id": "DOMINC-ONE-PAGE-PAGINATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "onePagePagination",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "onePagePagination_depth"
+    },
+    {
+      "id": "DOMINC-OWNED-PRESENTATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "dominionPresentation",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionPresentation_onePage"
+    },
+    {
+      "id": "DOMINC-PRESENTATION-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "dominionPresentation",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionPresentation_functorIso"
+    },
+    {
+      "id": "DOMINC-CONSTANT-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "constantDataAt",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantMembershipAction_rank"
+    },
+    {
+      "id": "DOMINC-CONSTANT-UNRANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "constantDataAt",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantMembershipAction_unrank"
+    },
+    {
+      "id": "DOMINC-CONSTANT-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "constantDataMap",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantMembershipAction_map"
+    },
+    {
+      "id": "DOMINC-CONSTANT-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "constantDataMap",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantMembershipAction_preimage"
+    },
+    {
+      "id": "DOMINC-ONE-PAGE-COVERAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "onePageCoverage",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "onePageCoverage_spec"
     }
   ],
   "modules": [
@@ -6386,7 +6470,6 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
       "module": "DomanialInclusion.Internal",
       "types": [
-        "DominionPaginationRecipe",
         "OriginObjectMap",
         "DominionAtlas",
         "CanonicalDominion",
@@ -6397,14 +6480,14 @@
       "lean_target": "Datra.Executable.DomanialInclusion",
       "coverage": "partial",
       "aliases": [
-        "DominionPaginationScope",
         "DominionAtlasObject",
         "CanonicalDominionAtlasScope"
       ],
       "embeddings": [],
       "predicates": [],
       "refinement_aliases": [],
-      "opaque_reflected": []
+      "opaque_reflected": [],
+      "refined_instances": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
@@ -6415,16 +6498,20 @@
         "coalitionComponentMap"
       ],
       "refinements": [
+        "onePageCoverage",
         "coalitionComponentInsertion",
         "coalitionComponentRoundTrip"
       ],
       "lean_target": "Datra.Executable.DomanialInclusion",
       "coverage": "partial",
       "aliases": [],
-      "embeddings": [],
+      "embeddings": [
+        "Natural as int"
+      ],
       "predicates": [],
       "refinement_aliases": [],
-      "opaque_reflected": []
+      "opaque_reflected": [],
+      "refined_instances": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformationMaps/AtlasMapFederation/Internal.hs",
@@ -7743,12 +7830,16 @@
         "ConstructedPageElementsScope"
       ],
       "reflected": [],
-      "refinements": [],
+      "refinements": [
+        "constructPageElements"
+      ],
       "aliases": [],
       "embeddings": [],
       "predicates": [],
       "refinement_aliases": [],
-      "opaque_reflected": []
+      "opaque_reflected": [
+        "pageElementsRecipe"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/DataTransformations/DataTransformations/DataTransformation/Core.hs",
@@ -7828,6 +7919,8 @@
         "constantDominion",
         "constantCellRoundTrip",
         "identityDominionCellInsertion",
+        "identityCellMapIdentity",
+        "identityCellMapComposition",
         "identityCellRoundTrip",
         "domIncHomLeftInverseValue",
         "domIncHomRightInverseValue",
@@ -7838,6 +7931,48 @@
       "predicates": [],
       "refinement_aliases": [],
       "embeddings": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "module": "DomanialInclusion.Presentation",
+      "lean_target": "Datra.Executable.DomanialInclusion",
+      "coverage": "partial",
+      "reflected": [
+        "acceptsConstantDatum"
+      ],
+      "opaque_reflected": [
+        "constantDataAt",
+        "constantDominion",
+        "constantDataMap",
+        "atlasActionDataAt",
+        "constantAction",
+        "atlasPresentationAction"
+      ],
+      "refinements": [
+        "onePageFolio",
+        "onePagePagination",
+        "dominionPresentation",
+        "acceptsConstantDatum",
+        "constantDataAt",
+        "constantDataMap",
+        "constantAction",
+        "samePagePosition",
+        "constantPresentation"
+      ],
+      "types": [
+        "DominionPaginationRecipe"
+      ],
+      "aliases": [
+        "DominionPaginationScope"
+      ],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [
+        "Natural as int"
+      ],
+      "refined_instances": [
+        "PageElementsConstruction (DominionPaginationRecipe a) (()) (())"
+      ]
     }
   ],
   "trust_boundary": []

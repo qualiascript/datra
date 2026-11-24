@@ -1,4 +1,5 @@
 import Executable.Atlas.StableTransversal
+import Executable.Atlas.Presentation
 import Executable.Chain.Singleton
 
 namespace Datra.Executable.DomanialInclusion
@@ -83,6 +84,12 @@ def onePagePagination : Pagination :=
 
 theorem onePagePagination_folio : onePagePagination.folio = onePageFolio := rfl
 
+-- ALIGN: DOMINC-ONE-PAGE-FOLIO.
+theorem onePageFolio_depth : onePageFolio.data.depth = 1 := rfl
+
+-- ALIGN: DOMINC-ONE-PAGE-PAGINATION.
+theorem onePagePagination_depth : onePagePagination.pages.depth = 1 := rfl
+
 theorem onePage_position (element : onePagePagination.Element) :
     element.val.position = Ordinal.finiteOrdinal 0 := by
   obtain ⟨occurrence, h⟩ := element.property
@@ -114,18 +121,142 @@ theorem identityCellInsertion_roundTrip {A : Type} {source target : PageElementC
     (identityCellInsertion (target := target)).preimage (identityCellInsertion.map datum) = some datum :=
   (identityCellInsertion (target := target)).leftInverse datum
 
+/-- The normalized constant action has all four constructor laws on any
+one-page pagination. Disjointness uses equal-page transport to the origin. -/
+def constantAtlasData {A : Type} (pagination : Pagination)
+    (onePage : pagination.pages.depth = 1) (D : Dominion A) :
+    AtlasData pagination.pages (CellData A) where
+  action := { dataAt := fun element => constantDominion D element.val.cell
+              mapData := fun _ => identityCellInsertion }
+  identity := fun _ _ => rfl
+  composition := fun _ _ _ => rfl
+  coherence := fun _ _ => rfl
+  disjoint := by
+    intro left right origin hpage hne hbound horigin leftArrow rightArrow
+    have leftPage : left.val.page = origin.val.page := by omega
+    have rightPage : right.val.page = origin.val.page := by omega
+    have shape (x : pagination.Element) : x.val.traceShape :=
+      ⟨FolioData.ValidElement.trace_length x, FolioData.ValidElement.trace_head x⟩
+    have leftPosition := leftArrow.samePagePosition (shape left) (shape origin) leftPage
+    have rightPosition := rightArrow.samePagePosition (shape right) (shape origin) rightPage
+    exact (hne (leftPosition.trans rightPosition.symm)).elim
+
+/-- The runtime predicate accepts every value of the constant carrier. Erasing
+its proof changes neither the datum nor either executable insertion direction. -/
+def constantAcceptedEquiv {A : Type} (cell : PageElementCell) :
+    {_datum : CellData A cell // true = true} ≃ CellData A cell where
+  toFun := Subtype.val
+  invFun datum := ⟨datum, rfl⟩
+  left_inv _ := rfl
+  right_inv _ := rfl
+
+def constantMembershipAction {A : Type} (pagination : Pagination) (D : Dominion A) :
+    AtlasMembershipAction pagination.pages (CellData A) :=
+  AtlasMembershipAction.packagePredicate
+    (PageElementDomain.ofFolio pagination.pages pagination.folio)
+    (fun _ _ => true)
+    (fun occurrence _ => (constantDominion D occurrence.cell).reindex
+      (constantAcceptedEquiv occurrence.cell).symm)
+    (fun {source target} _ _ _ => identityCellInsertion.reindex
+      (constantAcceptedEquiv source.cell).symm (constantAcceptedEquiv target.cell).symm)
+
+instance constantMembershipAction_owner {A : Type} (pagination : Pagination) (D : Dominion A) :
+    (constantMembershipAction pagination D).FolioOwner :=
+  ⟨pagination.folio.valid, rfl⟩
+
+-- ALIGN: DOMINC-CONSTANT-RANK.
+theorem constantMembershipAction_rank {A : Type} (pagination : Pagination) (D : Dominion A)
+    (occurrence : PageElement pagination.pages)
+    (valid : (constantMembershipAction pagination D).domain.contains occurrence = true)
+    (datum : (constantMembershipAction pagination D).membership.Carrier occurrence) :
+    ((constantMembershipAction pagination D).dataAt occurrence valid).rank datum =
+      (constantDominion D occurrence.cell).rank datum.val := rfl
+
+/-- Successful and off-image decoder results are retained after erasing the
+always-true membership proof. -/
+-- ALIGN: DOMINC-CONSTANT-UNRANK.
+theorem constantMembershipAction_unrank {A : Type} (pagination : Pagination) (D : Dominion A)
+    (occurrence : PageElement pagination.pages)
+    (valid : (constantMembershipAction pagination D).domain.contains occurrence = true)
+    (index : Nat) :
+    (((constantMembershipAction pagination D).dataAt occurrence valid).unrank index).map Subtype.val =
+      (constantDominion D occurrence.cell).unrank index := by
+  change (((constantDominion D occurrence.cell).unrank index).map
+    (constantAcceptedEquiv occurrence.cell).symm).map Subtype.val = _
+  cases (constantDominion D occurrence.cell).unrank index <;> rfl
+
+-- ALIGN: DOMINC-CONSTANT-MAP.
+theorem constantMembershipAction_map {A : Type} (pagination : Pagination) (D : Dominion A)
+    {source target : PageElement pagination.pages}
+    (sourceValid : (constantMembershipAction pagination D).domain.contains source = true)
+    (targetValid : (constantMembershipAction pagination D).domain.contains target = true)
+    (arrow : source.Arrow target)
+    (datum : (constantMembershipAction pagination D).membership.Carrier source) :
+    (((constantMembershipAction pagination D).mapData sourceValid targetValid arrow).map datum).val =
+      identityCellInsertion.map datum.val := rfl
+
+-- ALIGN: DOMINC-CONSTANT-PREIMAGE.
+theorem constantMembershipAction_preimage {A : Type} (pagination : Pagination) (D : Dominion A)
+    {source target : PageElement pagination.pages}
+    (sourceValid : (constantMembershipAction pagination D).domain.contains source = true)
+    (targetValid : (constantMembershipAction pagination D).domain.contains target = true)
+    (arrow : source.Arrow target)
+    (datum : (constantMembershipAction pagination D).membership.Carrier target) :
+    (((constantMembershipAction pagination D).mapData sourceValid targetValid arrow).preimage datum).map
+      Subtype.val = (identityCellInsertion (source := source.cell)).preimage datum.val := rfl
+
+def constantMembershipLaws {A : Type} (pagination : Pagination)
+    (onePage : pagination.pages.depth = 1) (D : Dominion A) :
+    (constantMembershipAction pagination D).Laws where
+  identity _ _ := rfl
+  composition _ _ _ := rfl
+  coherence _ _ := rfl
+  disjoint samePage distinct bounded atOrigin leftArrow rightArrow leftDatum rightDatum :=
+    (constantAtlasData pagination onePage D).disjoint samePage distinct bounded atOrigin
+      leftArrow rightArrow leftDatum.val rightDatum.val
+
+/-- The actual predicate-action presentation used by the checked Haskell
+constructor, including its ownership certificate and normalized laws. -/
+-- ALIGN: DOMINC-CONSTANT-LAWS.
+def constantPresentation {A : Type} (pagination : Pagination)
+    (onePage : pagination.pages.depth = 1) (D : Dominion A) : AtlasPresentation :=
+  AtlasPresentation.ofAction pagination (constantMembershipAction pagination D)
+    (constantMembershipLaws pagination onePage D)
+
+theorem constantPresentation_pagination {A : Type} (pagination : Pagination)
+    (onePage : pagination.pages.depth = 1) (D : Dominion A) :
+    (constantPresentation pagination onePage D).pagination = pagination := rfl
+
+/-- Removing the always-true membership proof recovers the constant functor
+used by the Dominion-inclusion interpretation. -/
+def constantPresentation_functorIso {A : Type} (pagination : Pagination)
+    (onePage : pagination.pages.depth = 1) (D : Dominion A) :
+    (constantPresentation pagination onePage D).allocate.data.toFunctor ≅
+      (constantAtlasData pagination onePage D).toFunctor :=
+  (constantPresentation pagination onePage D).allocateFunctorIso ≪≫
+    NatIso.ofComponents (fun occurrence =>
+      { hom := (constantAcceptedEquiv occurrence.val.cell).toEmbedding
+        inv := (constantAcceptedEquiv occurrence.val.cell).symm.toEmbedding
+        hom_inv_id := by apply Function.Embedding.ext; intro datum; rfl
+        inv_hom_id := by apply Function.Embedding.ext; intro datum; rfl })
+      (by intro source target arrow; apply Function.Embedding.ext; intro datum; rfl)
+
 def dominionAtlas {A : Type} (D : Dominion A) : Atlas where
   pagination := onePagePagination
   cellData := CellData A
-  data :=
-    { action := { dataAt := fun element => constantDominion D element.val.cell
-                  mapData := fun _ => identityCellInsertion }
-      identity := fun _ _ => rfl
-      composition := fun _ _ _ => rfl
-      coherence := fun _ _ => rfl
-      disjoint := by
-        intro left right origin hpage hne
-        exact (hne ((onePage_position left).trans (onePage_position right).symm)).elim }
+  data := constantAtlasData onePagePagination rfl D
+
+def dominionPresentation {A : Type} (D : Dominion A) : AtlasPresentation :=
+  constantPresentation onePagePagination onePagePagination_depth D
+
+-- ALIGN: DOMINC-OWNED-PRESENTATION.
+theorem dominionPresentation_onePage {A : Type} (D : Dominion A) :
+    (dominionPresentation D).pagination.pages.depth = 1 := rfl
+
+-- ALIGN: DOMINC-PRESENTATION-INTERPRETATION.
+def dominionPresentation_functorIso {A : Type} (D : Dominion A) :
+    (dominionPresentation D).allocate.data.toFunctor ≅ (dominionAtlas D).data.toFunctor :=
+  constantPresentation_functorIso onePagePagination onePagePagination_depth D
 
 /-- The primitive data action of the inclusion hom correspondence. The
 component inverse is defined on all origin data, including uncovered data. -/
@@ -152,10 +283,31 @@ theorem coalitionMorphism_component {A : Type} (D : Dominion A) (X : Atlas)
     ((coalitionMorphism D X forward backward leftInverse).component source).map datum =
       (forward datum.value).value.val := rfl
 
+theorem onePage_normalized_final (X : Atlas) (onePage : X.pages.depth = 1) (source : X.Element) :
+    source.normalize.val.page = X.coverageFinalPage := by
+  change min source.val.page (X.pages.depth - 1) = X.pages.depth - 1
+  simp [onePage]
+
+/-- The executable witness stores the source datum at its normalized occurrence,
+which is a final region in a one-page Atlas. -/
+def onePageCoverage (X : Atlas) (onePage : X.pages.depth = 1) (source : X.Element)
+    (datum : X.cellData source.val.cell) : X.CoverageWitness :=
+  X.atlasCoverageWitness source source datum datum ⟨onePage_normalized_final X onePage source, rfl⟩
+
+-- ALIGN: DOMINC-ONE-PAGE-COVERAGE.
+theorem onePageCoverage_spec (X : Atlas) (onePage : X.pages.depth = 1) (source : X.Element)
+    (datum : X.cellData source.val.cell) :
+    X.coverageWitnessCovers source datum (onePageCoverage X onePage source datum) = true := by
+  have normalized := (X.atlasCoverageWitness_spec source source datum datum
+    ⟨onePage_normalized_final X onePage source, rfl⟩).2
+  apply Atlas.coverageWitnessAlongArrow source.toNormalized datum
+  simpa only [X.data.coherence] using normalized
+
 -- ALIGN: DOMINC-COVERAGE.
 theorem dominionAtlas_covered {A : Type} (D : Dominion A) (element : (dominionAtlas D).Element)
     (datum : (dominionAtlas D).cellData element.val.cell) : (dominionAtlas D).Covered element datum :=
-  ⟨Chain.singletonChain.chainIndexOf (), ⟨datum.value⟩, rfl⟩
+  let covers := onePageCoverage_spec (dominionAtlas D) rfl element datum
+  Atlas.coverageWitnessCovers_sound (Atlas.coverageWitnessCovers_valid covers) covers
 
 def dominionCoalitionValue {A : Type} (D : Dominion A) (value : A) : (dominionAtlas D).CoalitionValue :=
   ⟨⟨value⟩, dominionAtlas_covered D _ _⟩
