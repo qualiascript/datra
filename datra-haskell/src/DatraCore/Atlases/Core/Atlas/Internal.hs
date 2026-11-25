@@ -186,6 +186,7 @@ atlasPresentationAction (AtlasPresentation value) = atlasActionData (storedAtlas
 -- | Scope selection is confined to the owning implementation.
 -- ALIGN: ATLAS-PRESENTATION-ALLOCATION.
 -- ALIGN: ATLAS-PRESENTATION-PAGINATION.
+{-@ reflect atlasFromPresentationWithScope @-}
 {-@ atlasFromPresentationWithScope :: presentation:AtlasPresentation s d o f
       -> {value:Atlas a s d o f | atlasPagination value == atlasPresentationPagination presentation
            && atlasActionData (storedAtlasData value) == atlasPresentationAction presentation} @-}
@@ -740,6 +741,9 @@ atlasPagination = storedPagination
 
 -- | Recover the finite folio underlying an atlas.
 {-@ reflect atlasFolio @-}
+{-@ atlasFolio :: value:Atlas atlasScope scope cellData origin final
+      -> {pages:Folio origin final |
+           pages == Elements.pageElementsFolio (paginationPageElements (atlasPagination value))} @-}
 atlasFolio
   :: Atlas atlasScope scope cellData origin final
   -> Folio origin final

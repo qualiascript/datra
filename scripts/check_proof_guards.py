@@ -845,6 +845,29 @@ proofGuard sourceAtlas targetAtlas transversal originProof =
 DOMINC_DATA_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Data.hs"
 DOMINC_PRESENTATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs"
 DOMINC_PRESENTATION_GUARDS = {
+    "Dominion owner storage requires a one-page Atlas": """
+{-@ proofGuard :: Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
+      -> DominionAtlas owner a @-}
+proofGuard :: Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
+  -> DominionAtlas owner a
+proofGuard = DominionAtlas
+""",
+    "Dominion owner observation retains its one-page certificate": """
+{-@ proofGuard :: DominionAtlas owner a
+      -> {value:Atlas owner (DominionPaginationScope a) (DominionCellData a) () () |
+           folioLength (atlasFolio value) /= 1} @-}
+proofGuard :: DominionAtlas owner a
+  -> Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
+proofGuard = dominionAtlas
+""",
+    "canonical Dominion allocation retains its one-page certificate": """
+{-@ proofGuard :: CanonicalDominion a => Proxy a
+      -> {value:Atlas (CanonicalDominionAtlasScope a) (DominionPaginationScope a) (DominionCellData a) () () |
+           folioLength (atlasFolio value) /= 1} @-}
+proofGuard :: forall a. CanonicalDominion a => Proxy a
+  -> Atlas (CanonicalDominionAtlasScope a) (DominionPaginationScope a) (DominionCellData a) () ()
+proofGuard _ = dominionAtlas (canonicalDominionAtlas @a)
+""",
     "Dominion pagination recipe retains its one-page contract": """
 {-@ proofGuard :: Proxy (DominionPaginationRecipe a)
       -> {pages:Folio () () | folioLength pages /= 1} @-}
@@ -1172,6 +1195,15 @@ proofGuard = atlasCoveredByWitness
 
 
 ATLAS_MAP_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs"
+ATLAS_MAP_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Cartography/AtlasMap/AtlasMap.hs"
+ATLAS_MAP_API_GUARDS = {
+    "public Atlas map construction rejects unrelated coverage": """
+{-@ proofGuard :: owner:Atlas a s d o f -> CoverageWitness a s d -> AtlasMap (AtlasObject a s d) @-}
+proofGuard :: Atlas a s d o f -> CoverageWitness a s d -> AtlasMap (AtlasObject a s d)
+proofGuard owner witness = atlasMap owner (\\_ _ -> witness)
+""",
+}
+
 ATLAS_MAP_GUARDS = {
     "stored Atlas maps reject coverage for a different extent datum": """
 {-@ proofGuard :: owner:Atlas a s d o f
@@ -1895,6 +1927,16 @@ proofGuard _ _ = []
 
 ATLAS_CONSTRUCTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Construction.hs"
 ATLAS_CONSTRUCTION_GUARDS = {
+    "fixed Atlas construction retains its recipe pagination": """
+{-@ proofGuard :: AtlasConstruction recipe scope cellData origin final
+      => recipe:Proxy recipe
+      -> {value:Atlas (FixedAtlasScope recipe scope cellData origin final) scope cellData origin final |
+           atlasPagination value /= atlasPresentationPagination (atlasConstructionPresentation recipe)} @-}
+proofGuard :: AtlasConstruction recipe scope cellData origin final
+  => Proxy recipe
+  -> Atlas (FixedAtlasScope recipe scope cellData origin final) scope cellData origin final
+proofGuard = constructAtlas
+""",
     "construction instances must satisfy their declared method contracts": """
 data ProofGuardConstruction a s (d :: Type -> Type) object
 
@@ -2274,6 +2316,7 @@ def run(pattern=None):
                                     (COVERAGE_REPRESENTATION_SOURCE, COVERAGE_REPRESENTATION_GUARDS),
                                     (COVERAGE_PUBLIC_SOURCE, COVERAGE_PUBLIC_GUARDS),
                                     (ATLAS_MAP_SOURCE, ATLAS_MAP_GUARDS),
+                                    (ATLAS_MAP_API_SOURCE, ATLAS_MAP_API_GUARDS),
                                     (CHARTER_SOURCE, CHARTER_GUARDS),
                                     (CHARTER_PRESENTATION_SOURCE, CHARTER_PRESENTATION_GUARDS),
                                     (RANK_IMAGE_SOURCE, RANK_IMAGE_GUARDS),

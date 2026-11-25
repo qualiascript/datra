@@ -30,6 +30,11 @@ def main() -> int:
         description="extract embedded LaTeX blueprint blocks from Lean files"
     )
     parser.add_argument(
+        "--exact-sources",
+        action="store_true",
+        help="include only the listed files, in order, without following imports",
+    )
+    parser.add_argument(
         "-L",
         "--lean",
         action="store_true",
@@ -38,7 +43,8 @@ def main() -> int:
     parser.add_argument("files", nargs="+", type=Path, metavar="FILE.lean")
     args = parser.parse_args()
     try:
-        paths = project_sources(args.files)
+        paths = (list(dict.fromkeys(path.resolve() for path in args.files))
+                 if args.exact_sources else project_sources(args.files))
     except (OSError, ValueError) as error:
         parser.error(str(error))
 

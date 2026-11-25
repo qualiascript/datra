@@ -1,5 +1,6 @@
 import Executable.Atlas.StableTransversal
-import Executable.Atlas.Presentation
+import Executable.Atlas.Construction
+import Executable.Atlas.Map
 import Executable.Chain.Singleton
 
 namespace Datra.Executable.DomanialInclusion
@@ -258,6 +259,39 @@ def dominionPresentation_functorIso {A : Type} (D : Dominion A) :
     (dominionPresentation D).allocate.data.toFunctor ≅ (dominionAtlas D).data.toFunctor :=
   constantPresentation_functorIso onePagePagination onePagePagination_depth D
 
+/-- The retained runtime owner carries the one-page certificate used by coverage.
+Its constructors below allocate the actual constant-action presentation. -/
+structure DominionAtlas where
+  atlas : Atlas
+  onePage : atlas.pages.depth = 1
+
+-- ALIGN: DOMINC-OWNER-CARDINALITY.
+theorem DominionAtlas.cardinality (owner : DominionAtlas) :
+    owner.atlas.pages.depth = 1 := owner.onePage
+
+-- ALIGN: DOMINC-OWNER-ALLOCATION.
+def retainedDominionAtlas {A : Type} (D : Dominion A) : DominionAtlas :=
+  ⟨(dominionPresentation D).allocate, dominionPresentation_onePage D⟩
+
+/-- The canonical constructor uses the same fixed presentation through the
+public recipe allocator, retaining its cardinality certificate. -/
+def canonicalDominionRecipe {A : Type} (D : Dominion A) : AtlasConstruction :=
+  ⟨dominionPresentation D⟩
+
+-- ALIGN: DOMINC-CANONICAL-ALLOCATION.
+def canonicalDominionAtlas {A : Type} (D : Dominion A) : DominionAtlas :=
+  ⟨(canonicalDominionRecipe D).constructAtlas, by
+    change (canonicalDominionRecipe D).constructAtlas.pagination.pages.depth = 1
+    rw [AtlasConstruction.constructAtlas_pagination]
+    exact dominionPresentation_onePage D⟩
+
+theorem canonicalDominionAtlas_eq {A : Type} (D : Dominion A) :
+    canonicalDominionAtlas D = retainedDominionAtlas D := rfl
+
+def retainedDominionAtlas_functorIso {A : Type} (D : Dominion A) :
+    (retainedDominionAtlas D).atlas.data.toFunctor ≅ (dominionAtlas D).data.toFunctor :=
+  dominionPresentation_functorIso D
+
 /-- The primitive data action of the inclusion hom correspondence. The
 component inverse is defined on all origin data, including uncovered data. -/
 def coalitionMorphism {A : Type} (D : Dominion A) (X : Atlas)
@@ -302,6 +336,18 @@ theorem onePageCoverage_spec (X : Atlas) (onePage : X.pages.depth = 1) (source :
     ⟨onePage_normalized_final X onePage source, rfl⟩).2
   apply Atlas.coverageWitnessAlongArrow source.toNormalized datum
   simpa only [X.data.coherence] using normalized
+
+/-- Supply the certified one-page witness to the public Atlas-map constructor. -/
+-- ALIGN: DOMINC-OWNER-MAP.
+def dominionAtlasMap (owner : DominionAtlas) : AtlasMap owner.atlas :=
+  AtlasMap.atlasMap owner.atlas (fun datum =>
+    let covers := onePageCoverage_spec owner.atlas owner.onePage _ datum
+    ⟨onePageCoverage owner.atlas owner.onePage _ datum,
+      Atlas.coverageWitnessCovers_valid covers, covers⟩)
+
+theorem dominionAtlasMap_covered (owner : DominionAtlas) (source : owner.atlas.Element)
+    (datum : owner.atlas.cellData source.val.cell) : owner.atlas.Covered source datum :=
+  (dominionAtlasMap owner).allCovered source datum
 
 -- ALIGN: DOMINC-COVERAGE.
 theorem dominionAtlas_covered {A : Type} (D : Dominion A) (element : (dominionAtlas D).Element)

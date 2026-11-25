@@ -114,11 +114,12 @@ LEAN_APPENDIX = r"""
 \appendix
 \section{Lean Formalization}
 
-The following is an ASCII rendering of the complete Lean source corresponding
-to the mathematical development above.  It replaces Lean's conventional
+The following is an ASCII rendering of the Lean source selected for the
+mathematical development above. It replaces Lean's conventional
 Unicode surface notation solely for portable typesetting; the checked source
-modules are imported by \texttt{datra.lean}. Source-file labels identify each
-module in dependency order.
+modules are imported by \texttt{datra.lean}. Source-file labels identify the
+selected modules. The executable Haskell-alignment layer is checked separately
+as part of the complete Lean project.
 
 \lstinputlisting[style=leanSource]{datra_code_ascii.lean}
 """

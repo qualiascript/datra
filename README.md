@@ -54,9 +54,11 @@ The [datra-lean/Executable](datra-lean/Executable) modules model the Haskell rep
 and prove their relationships to those definitions.
 
 Run `lake build` to check the Lean modules. Run
-`make -C datra-docs preprint_full` to build `preprint_full.pdf`, including the
-complete Lean source appendix. The preprint build follows local Lean imports
-and rebuilds when any included module changes.
+`make preprint-full` to build `preprint_full.pdf`, including the Lean source
+relevant to the mathematical exposition. `PREPRINT_SOURCES` in
+`datra-docs/Makefile` explicitly selects `datra-lean/Semantics.lean`; the appendix
+does not expand local imports or include the complete executable alignment layer.
+The preprint rebuilds when its selected sources or extraction tools change.
 
 ## License
 

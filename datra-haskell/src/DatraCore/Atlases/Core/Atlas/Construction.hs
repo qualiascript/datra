@@ -58,10 +58,17 @@ constructAtlasData owner = Internal.atlasFromPresentationWithScope (atlasDataPre
 type role FixedAtlasScope nominal nominal nominal nominal nominal
 data FixedAtlasScope recipe scope (cellData :: Type -> Type) origin final
 
-class AtlasConstruction recipe scope (cellData :: Type -> Type) origin final where
+class AtlasConstruction (recipe :: Type) scope (cellData :: Type -> Type) origin final where
   atlasConstructionPresentation :: Proxy recipe -> AtlasPresentation scope cellData origin final
 
 -- ALIGN: ATLAS-FIXED-CONSTRUCTION.
+-- ALIGN: ATLAS-FIXED-CONSTRUCTION-PAGINATION.
+{-@ opaque-reflect atlasConstructionPresentation @-}
+{-@ reflect constructAtlas @-}
+{-@ constructAtlas :: AtlasConstruction recipe scope cellData origin final
+      => recipe:Proxy recipe
+      -> {value:Atlas (FixedAtlasScope recipe scope cellData origin final) scope cellData origin final |
+           atlasPagination value == atlasPresentationPagination (atlasConstructionPresentation recipe)} @-}
 constructAtlas :: AtlasConstruction recipe scope cellData origin final
   => Proxy recipe
   -> Atlas (FixedAtlasScope recipe scope cellData origin final) scope cellData origin final

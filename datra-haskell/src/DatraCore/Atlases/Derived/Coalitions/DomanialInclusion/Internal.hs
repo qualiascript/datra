@@ -46,14 +46,11 @@ module DomanialInclusion.Internal
   ) where
 
 import Atlas
-  ( Atlas
-  , AtlasMappedObject
-  , AtlasObject
+  ( AtlasMappedObject
   , AtlasObjectCellData
   , AtlasObjectMap
   , AtlasObjectPaginationScope
   , AtlasWitness
-  , withAtlasPresentation
   , atlasHom
   , atlasMorphism
   , atlasMorphismAction
@@ -62,12 +59,9 @@ import Atlas
   , atlasWitness
   , withAtlasWitness
   )
-import Atlas.Construction (AtlasConstruction (..), FixedAtlasScope, constructAtlas)
 import AtlasCoveredPageElement
   ( withAtlasCoveredPageElement
-  , AtlasCoverageWitness
   )
-import AtlasMap (AtlasMap, atlasMap)
 import AtlasTransposal
   ( atlasTransposal
   , atlasTransposalElement
@@ -84,9 +78,12 @@ import Coalition.Element
   , coalitionElementCoverageAt
   )
 import Data.Void (Void, absurd)
-import DomanialInclusion.LiquidInternal (coalitionComponentInsertion, onePageCoverage)
+import DomanialInclusion.LiquidInternal
+  ( coalitionComponentInsertion, dominionCoverage, dominionAtlasMap )
 import DomanialInclusion.Presentation
-  ( DominionPaginationScope, onePageFolio, onePagePagination, dominionPresentation )
+  ( DominionPaginationScope, onePageFolio, onePagePagination
+  , DominionAtlas, DominionAtlasObject, dominionAtlas, withDominionAtlas
+  , CanonicalDominion (..), CanonicalDominionAtlasScope, canonicalDominionAtlas )
 import DomanialInclusion.Data
   ( DominionCellData
   , domIncHomLeftInverseValue
@@ -112,17 +109,10 @@ import Dominion
   )
 import OrderedAtlasTransposal (orderedAtlasTransposal)
 import PageElements (PageElement, withPageElement)
-import Data.Proxy (Proxy (..))
 import StableAtlasTransversal
   ( StableAtlasTransversal
   , stableAtlasTransversal
   )
-
-type DominionAtlasObject owner a =
-  AtlasObject
-    owner
-    (DominionPaginationScope a)
-    (DominionCellData a)
 
 -- | A constant object-map whose codomain is the hidden target-origin cell.
 data OriginObjectMap targetObject
@@ -136,60 +126,6 @@ originObjectMap = atlasObjectMap
 -- | The initial dominion from the Lean construction.
 emptyDominion :: Dominion Void
 emptyDominion = dominion absurd (const Nothing) absurd
-
--- | A runtime inclusion retains the exact Atlas used by all its operations.
-type role DominionAtlas nominal nominal
-data DominionAtlas owner a = DominionAtlas
-  (Atlas owner (DominionPaginationScope a) (DominionCellData a) () ())
-
--- | A canonical Dominion is a fixed instance recipe, with no runtime input.
-class CanonicalDominion a where
-  canonicalDominion :: Proxy a -> Dominion a
-
-data CanonicalDominionRecipe a
-type CanonicalDominionAtlasScope a =
-  FixedAtlasScope (CanonicalDominionRecipe a) (DominionPaginationScope a) (DominionCellData a) () ()
-
-instance CanonicalDominion a => AtlasConstruction (CanonicalDominionRecipe a)
-    (DominionPaginationScope a) (DominionCellData a) () () where
-  atlasConstructionPresentation _ = dominionPresentation (canonicalDominion (Proxy :: Proxy a))
-
-canonicalDominionAtlas :: forall a. CanonicalDominion a => DominionAtlas (CanonicalDominionAtlasScope a) a
-canonicalDominionAtlas = DominionAtlas (constructAtlas (Proxy :: Proxy (CanonicalDominionRecipe a)))
-
--- ALIGN: DOMINC-ATLAS-INTERPRETATION.
--- ALIGN: DOMINC-STABLE-ISOMORPHISM.
-withDominionAtlas :: Dominion a -> (forall owner. DominionAtlas owner a -> result) -> result
-withDominionAtlas valueDominion useOwner =
-  withAtlasPresentation (dominionPresentation valueDominion) (useOwner . DominionAtlas)
-
--- | Regard a dominion as the constant data assignment on a one-page atlas.
-dominionAtlas :: DominionAtlas owner a
-  -> Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
-dominionAtlas (DominionAtlas valueAtlas) = valueAtlas
-
--- | Every datum of a one-page dominion atlas is covered by that same cell.
--- ALIGN: DOMINC-COVERAGE.
-dominionCoverage
-  :: Atlas
-       owner
-       (DominionPaginationScope a)
-       (DominionCellData a)
-       ()
-       ()
-  -> PageElement (DominionPaginationScope a) object
-  -> DominionCellData a object
-  -> AtlasCoverageWitness (DominionAtlasObject owner a)
-dominionCoverage = onePageCoverage
-
--- | The one-page domanial inclusion is automatically an Atlas map: its
--- unique cell is simultaneously the extent and the final region.
-dominionAtlasMap
-  :: DominionAtlas owner a
-  -> AtlasMap (DominionAtlasObject owner a)
-dominionAtlasMap valueDominion =
-  let valueAtlas = dominionAtlas valueDominion
-  in atlasMap valueAtlas (dominionCoverage valueAtlas)
 
 dominionCoalitionElement
   :: DominionAtlas owner a

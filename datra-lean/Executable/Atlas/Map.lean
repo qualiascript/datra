@@ -14,6 +14,7 @@ structure AtlasMap (X : Atlas) where
 namespace AtlasMap
 variable {X : Atlas}
 
+-- ALIGN: ATLAS-MAP-PUBLIC-CONSTRUCTION.
 def atlasMap (X : Atlas)
     (covers : (datum : X.cellData (FolioData.ValidElement.originElement X.pages).val.cell) →
       {w : X.CoverageWitness // w.Valid ∧

@@ -41,6 +41,7 @@ namespace AtlasConstruction
 -- ALIGN: ATLAS-FIXED-CONSTRUCTION.
 def constructAtlas (recipe : AtlasConstruction) : Atlas := recipe.presentation.allocate
 
+-- ALIGN: ATLAS-FIXED-CONSTRUCTION-PAGINATION.
 theorem constructAtlas_pagination (recipe : AtlasConstruction) :
     recipe.constructAtlas.pagination = recipe.presentation.pagination :=
   AtlasPresentation.allocate_pagination recipe.presentation

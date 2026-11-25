@@ -1,4 +1,4 @@
-.PHONY: verify-formal verify-alignment verify-fixtures verify-proof-guards
+.PHONY: verify-formal verify-alignment verify-fixtures verify-proof-guards preprint-full
 
 ifneq ($(wildcard .elan/bin/lake),)
 LAKE ?= $(CURDIR)/.elan/bin/lake
@@ -28,3 +28,6 @@ verify-fixtures:
 
 verify-proof-guards:
 	python3 scripts/check_proof_guards.py
+
+preprint-full:
+	$(MAKE) -C datra-docs preprint_full

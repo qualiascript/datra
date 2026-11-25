@@ -969,14 +969,14 @@
     },
     {
       "id": "DOMINC-ATLAS-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
       "haskell_declaration": "withDominionAtlas",
       "lean_namespace": "Datra.Executable.DomanialInclusion",
       "lean_declaration": "interpretationIso"
     },
     {
       "id": "DOMINC-COVERAGE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
       "haskell_declaration": "dominionCoverage",
       "lean_namespace": "Datra.Executable.DomanialInclusion",
       "lean_declaration": "dominionAtlas_covered"
@@ -1375,7 +1375,7 @@
     },
     {
       "id": "DOMINC-STABLE-ISOMORPHISM",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
       "haskell_declaration": "withDominionAtlas",
       "lean_namespace": "Datra.Executable.DomanialInclusion",
       "lean_declaration": "interpretationStableIso"
@@ -5208,6 +5208,48 @@
       "haskell_declaration": "onePageCoverage",
       "lean_namespace": "Datra.Executable.DomanialInclusion",
       "lean_declaration": "onePageCoverage_spec"
+    },
+    {
+      "id": "ATLAS-FIXED-CONSTRUCTION-PAGINATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Construction.hs",
+      "haskell_declaration": "constructAtlas",
+      "lean_namespace": "Datra.Executable.AtlasConstruction",
+      "lean_declaration": "constructAtlas_pagination"
+    },
+    {
+      "id": "DOMINC-OWNER-CARDINALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "dominionAtlas",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "DominionAtlas.cardinality"
+    },
+    {
+      "id": "DOMINC-OWNER-ALLOCATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "withDominionAtlas",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "retainedDominionAtlas"
+    },
+    {
+      "id": "DOMINC-CANONICAL-ALLOCATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "canonicalDominionAtlas",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "canonicalDominionAtlas"
+    },
+    {
+      "id": "DOMINC-OWNER-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "dominionAtlasMap",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionAtlasMap"
+    },
+    {
+      "id": "ATLAS-MAP-PUBLIC-CONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/AtlasMap.hs",
+      "haskell_declaration": "atlasMap",
+      "lean_namespace": "Datra.Executable.AtlasMap",
+      "lean_declaration": "atlasMap"
     }
   ],
   "modules": [
@@ -5221,6 +5263,7 @@
       "reflected": [
         "atlasPresentationPagination",
         "atlasPresentationAction",
+        "atlasFromPresentationWithScope",
         "atlasFinalPage",
         "atlasTraceLimit",
         "atlasPagination",
@@ -5242,6 +5285,7 @@
         "atlas",
         "atlasWithScope",
         "atlasPresentation",
+        "atlasFolio",
         "normalizeAtlasElement",
         "normalizeAtlasArrow",
         "atlasNormalizationAgrees",
@@ -6470,19 +6514,13 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
       "module": "DomanialInclusion.Internal",
       "types": [
-        "OriginObjectMap",
-        "DominionAtlas",
-        "CanonicalDominion",
-        "CanonicalDominionRecipe"
+        "OriginObjectMap"
       ],
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.DomanialInclusion",
       "coverage": "partial",
-      "aliases": [
-        "DominionAtlasObject",
-        "CanonicalDominionAtlasScope"
-      ],
+      "aliases": [],
       "embeddings": [],
       "predicates": [],
       "refinement_aliases": [],
@@ -6499,6 +6537,8 @@
       ],
       "refinements": [
         "onePageCoverage",
+        "dominionCoverage",
+        "dominionAtlasMap",
         "coalitionComponentInsertion",
         "coalitionComponentRoundTrip"
       ],
@@ -7808,9 +7848,12 @@
         "FixedAtlasScope",
         "AtlasConstruction"
       ],
-      "reflected": [],
+      "reflected": [
+        "constructAtlas"
+      ],
       "refinements": [
-        "constructAtlasData"
+        "constructAtlasData",
+        "constructAtlas"
       ],
       "lean_target": "Datra.Executable.AtlasDataConstruction",
       "coverage": "partial",
@@ -7818,7 +7861,10 @@
       "embeddings": [],
       "predicates": [],
       "refinement_aliases": [],
-      "opaque_reflected": []
+      "opaque_reflected": [
+        "atlasConstructionPresentation"
+      ],
+      "refined_instances": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/Construction.hs",
@@ -7952,6 +7998,9 @@
         "onePageFolio",
         "onePagePagination",
         "dominionPresentation",
+        "retainOnePageAtlas",
+        "dominionAtlas",
+        "withDominionAtlas",
         "acceptsConstantDatum",
         "constantDataAt",
         "constantDataMap",
@@ -7960,10 +8009,16 @@
         "constantPresentation"
       ],
       "types": [
-        "DominionPaginationRecipe"
+        "DominionPaginationRecipe",
+        "DominionAtlasData",
+        "CanonicalDominion",
+        "CanonicalDominionRecipe"
       ],
       "aliases": [
-        "DominionPaginationScope"
+        "DominionPaginationScope",
+        "DominionAtlasObject",
+        "DominionAtlas",
+        "CanonicalDominionAtlasScope"
       ],
       "predicates": [],
       "refinement_aliases": [],
@@ -7971,8 +8026,24 @@
         "Natural as int"
       ],
       "refined_instances": [
-        "PageElementsConstruction (DominionPaginationRecipe a) (()) (())"
+        "PageElementsConstruction (DominionPaginationRecipe a) (()) (())",
+        "CanonicalDominion a => AtlasConstruction (CanonicalDominionRecipe a) (DominionPaginationScope a) (DominionCellData a) (()) (())"
       ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/AtlasMap.hs",
+      "module": "AtlasMap",
+      "types": [],
+      "reflected": [],
+      "refinements": [
+        "atlasMap"
+      ],
+      "lean_target": "Datra.Executable.AtlasMap",
+      "coverage": "partial",
+      "aliases": [],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": []
     }
   ],
   "trust_boundary": []

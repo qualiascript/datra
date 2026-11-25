@@ -1,11 +1,13 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
 
 -- | Checked coalition-dependent assembly for Dominion inclusion.
-module DomanialInclusion.LiquidInternal (coalitionComponentInsertion, onePageCoverage) where
+module DomanialInclusion.LiquidInternal
+  ( coalitionComponentInsertion, onePageCoverage, dominionCoverage, dominionAtlasMap ) where
 
 import Atlas
   ( Atlas, AtlasObject, atlasFolio, atlasPageElements, atlasAcceptsDatum
@@ -13,9 +15,12 @@ import Atlas
 import AtlasCoveredPageElement
   ( CoverageWitness, atlasCoverageWitness, coverageWitnessCovers, coverageWitnessAlongArrow )
 import AtlasExtent (cellTraceValid)
+import AtlasMap (AtlasMap, atlasMap)
 import Coalition.Element (CoalitionElement, coalitionElementAt)
 import DomanialInsertion (DomanialInsertion, domanialInsertion, composeInsertions)
 import DomanialInclusion.Data (DominionCellData, dominionCellProjection)
+import DomanialInclusion.Presentation
+  ( DominionAtlas, DominionAtlasObject, DominionPaginationScope, dominionAtlas )
 import Folio (folioLength)
 import PageElements (PageElement, normalizePageElement)
 import PageElements.Structure (pageElementPage)
@@ -39,6 +44,28 @@ onePageCoverage owner source datum =
       witness = atlasCoverageWitness owner source datum source datum ()
   in atlasCoherenceWitness owner source arrow datum `seq`
      coverageWitnessAlongArrow owner arrow datum witness `seq` witness
+
+-- | The public owner supplies the one-page premise to the general coverage law.
+-- ALIGN: DOMINC-COVERAGE.
+{-@ dominionCoverage :: owner:{Atlas a (DominionPaginationScope value) (DominionCellData value) () () |
+           folioLength (atlasFolio owner) == 1}
+      -> source:{PageElement (DominionPaginationScope value) object | cellTraceValid owner source}
+      -> datum:{DominionCellData value object | atlasAcceptsDatum owner source datum}
+      -> {witness:CoverageWitness a (DominionPaginationScope value) (DominionCellData value) |
+           coverageWitnessCovers owner source datum witness} @-}
+dominionCoverage
+  :: forall a owner object. Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
+  -> PageElement (DominionPaginationScope a) object
+  -> DominionCellData a object
+  -> CoverageWitness owner (DominionPaginationScope a) (DominionCellData a)
+dominionCoverage = onePageCoverage
+
+-- ALIGN: DOMINC-OWNER-MAP.
+{-@ dominionAtlasMap :: DominionAtlas owner a -> AtlasMap (DominionAtlasObject owner a) @-}
+dominionAtlasMap :: forall a owner. DominionAtlas owner a -> AtlasMap (DominionAtlasObject owner a)
+dominionAtlasMap owner =
+  let valueAtlas = dominionAtlas owner
+  in atlasMap valueAtlas (\source datum -> dominionCoverage valueAtlas source datum)
 
 -- | A coalition inverse is defined only on covered values. The component
 -- inverse additionally handles arbitrary target data, including uncovered data.

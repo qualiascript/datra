@@ -471,8 +471,17 @@ Dot uses a fixed `CanonicalDominion` instance through `Atlas.Construction`: the
 complete presentation has no runtime configuration, and its nominal scope
 records the recipe and every presentation index. Lean models allocation of this
 fixed presentation. The inclusion's fixed recipe, one-page presentation, and
-coverage helper are checked. The owning-handle and canonical-allocation
-contracts still need to carry these guarantees through the remaining assembly.
+coverage helper are checked. Its retained owner stores the one-page certificate.
+Generative and canonical allocation preserve that certificate through the exposed
+presentation and fixed-recipe interfaces. Fixed Atlas scopes retain the recipe
+and every presentation index, and their allocator exposes both its defining equation and
+pagination preservation. The public folio observation retains its equality with
+the owning pagination's folio. The inclusion's Atlas-map constructor supplies its
+one-page coverage through the checked public `AtlasMap` constructor, which retains
+the origin, owning-trace, and accepted-datum conditions on its callback. Lean models
+both allocation paths and proves coverage for the resulting Atlas map.
+The coalition isomorphism and hom-correspondence assembly still need their
+complete Haskell contracts.
 Ranked Dominion construction allocates an Atlas through the public generative
 constructor. A retained handle ties the supplied Dominion to that exact Atlas;
 coverage, maps, and insertion traversals reuse it. Its region decoder uses the
@@ -766,7 +775,9 @@ definitions, constructions, and results. Each section's code must correspond
 to its written definitions; those written definitions remain unchanged. The
 source appendix must not automatically include the entire `Executable`
 alignment layer merely because it is reachable through local imports.
-Preprint source selection must be explicit and separate from the complete Lean
+`PREPRINT_SOURCES` in `datra-docs/Makefile` selects `datra-lean/Semantics.lean`.
+The extractor's `--exact-sources` mode includes only that explicit selection,
+without expanding local imports. This selection is separate from the complete Lean
 build: all executable models and interpretation proofs remain in the project
 and continue to compile, while only code needed for the preprint's exposition
 is included in `make preprint-full`. Check this target once at final completion,
