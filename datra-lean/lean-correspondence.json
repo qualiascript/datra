@@ -1598,6 +1598,27 @@
       "lean_declaration": "comp"
     },
     {
+      "id": "INSERTION-COMPOSITION-APPLY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
+      "haskell_declaration": "composeInsertionsApply",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "comp_map"
+    },
+    {
+      "id": "INSERTION-COMPOSITION-PREIMAGE-NOTHING",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
+      "haskell_declaration": "composeInsertionsPreimageNothing",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "comp_preimage_none"
+    },
+    {
+      "id": "INSERTION-COMPOSITION-PREIMAGE-JUST",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
+      "haskell_declaration": "composeInsertionsPreimageJust",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "comp_preimage_some"
+    },
+    {
       "id": "INSERTION-COMPOSITION-ROUNDTRIP",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
       "haskell_declaration": "composeInsertionRoundTrip",
@@ -5565,6 +5586,20 @@
       "haskell_declaration": "stableAtlasTransversal",
       "lean_namespace": "Datra.Executable.Atlas",
       "lean_declaration": "StableTransversalAction.ofInverse"
+    },
+    {
+      "id": "ATLAS-STABLE-OWNED-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "stableCoalitionPreimage",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "coalitionPreimage"
+    },
+    {
+      "id": "ATLAS-STABLE-OWNED-PREIMAGE-ELIMINATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "withStableAtlasTransversalCoalitionPreimage",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "withCoalitionPreimage"
     }
   ],
   "modules": [
@@ -5955,8 +5990,11 @@
       "reflected": [
         "composeInsertionMap",
         "composeInsertionPreimage",
+        "composeInsertionRoundTrip",
+        "composeInsertions",
         "identityMap",
         "identityPreimage",
+        "identityRoundTrip",
         "identityInsertion",
         "pullbackUnrank",
         "rankImage",
@@ -5967,6 +6005,10 @@
       "refinements": [
         "domanialInsertion",
         "composeInsertionRoundTrip",
+        "composeInsertions",
+        "composeInsertionsApply",
+        "composeInsertionsPreimageNothing",
+        "composeInsertionsPreimageJust",
         "identityRoundTrip",
         "identityInsertionApply",
         "pullbackRoundTrip",
@@ -6623,7 +6665,9 @@
       "module": "StableAtlasTransversal.Internal",
       "types": [
         "StableAtlasTransversal",
-        "StableTransversalAction"
+        "StableTransversalAction",
+        "CoalitionPreimageData",
+        "StableCoalitionPreimage"
       ],
       "reflected": [
         "stableAtlasOrigin",
@@ -6634,7 +6678,11 @@
       "refinements": [
         "checkedStableOrigin",
         "stableCoalitionInsertionOn",
-        "stableAtlasTransversal"
+        "stableAtlasTransversal",
+        "withCoalitionPreimageData",
+        "stableAtlasTransversalSize",
+        "stableCoalitionPreimage",
+        "withStableAtlasTransversalCoalitionPreimage"
       ],
       "lean_target": "Datra.Executable.Atlas.StableTransversal",
       "coverage": "partial",

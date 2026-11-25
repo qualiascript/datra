@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
@@ -20,6 +21,7 @@ module StableAtlasTransversal.Internal
   , stableAtlasTransversalHom
   , stableAtlasTransversalSourceWitness
   , stableAtlasTransversalCoalitionInsertion
+  , withStableAtlasTransversalCoalitionPreimage
   , stableAtlasTransversalPreservesExtent
   , identityStableAtlasTransversal
   , composeStableAtlasTransversals
@@ -286,6 +288,90 @@ stableAtlasTransversalCoalitionInsertion (CompositeStableAtlasTransversal second
   composeInsertions
     (stableAtlasTransversalCoalitionInsertion second)
     (stableAtlasTransversalCoalitionInsertion first)
+
+-- | A successful primitive inverse retains its certifying source Atlas.
+type role CoalitionPreimageData nominal nominal nominal nominal nominal
+{-@ data CoalitionPreimageData a s d o f = CoalitionPreimageData
+      { coalitionPreimageOwner :: Atlas a s d o f
+      , coalitionPreimageValue :: {value:CoalitionData a s d |
+           StableCoalitionValid coalitionPreimageOwner value}
+      } @-}
+data CoalitionPreimageData a s d o f = CoalitionPreimageData
+  { coalitionPreimageOwner :: Atlas a s d o f
+  , coalitionPreimageValue :: CoalitionData a s d
+  }
+
+type role StableCoalitionPreimage nominal nominal
+data StableCoalitionPreimage source target where
+  UnchangedCoalitionPreimage :: StableCoalitionPreimage object object
+  RestoredCoalitionPreimage :: CoalitionPreimageData a s d o f
+    -> StableCoalitionPreimage (AtlasObject a s d) target
+
+{-@ withCoalitionPreimageData :: image:CoalitionPreimageData a s d o f
+      -> (owner:Atlas a s d o f
+            -> {value:CoalitionData a s d | StableCoalitionValid owner value}
+            -> result)
+      -> result @-}
+withCoalitionPreimageData :: CoalitionPreimageData a s d o f
+  -> (Atlas a s d o f -> CoalitionData a s d -> result) -> result
+withCoalitionPreimageData image usePreimage =
+  usePreimage (coalitionPreimageOwner image) (coalitionPreimageValue image)
+
+{-@ measure stableAtlasTransversalSize @-}
+{-@ stableAtlasTransversalSize :: StableAtlasTransversal source target
+      -> {size:Integer | size > 0} @-}
+stableAtlasTransversalSize :: StableAtlasTransversal source target -> Integer
+stableAtlasTransversalSize IdentityStableAtlasTransversal = 1
+stableAtlasTransversalSize (PrimitiveStableAtlasTransversal _) = 1
+stableAtlasTransversalSize (CompositeStableAtlasTransversal second first) =
+  1 + stableAtlasTransversalSize second + stableAtlasTransversalSize first
+
+-- ALIGN: ATLAS-STABLE-OWNED-PREIMAGE.
+{-@ stableCoalitionPreimage :: arrow:StableAtlasTransversal source target
+      -> CoalitionElement target -> Maybe (StableCoalitionPreimage source target)
+      / [stableAtlasTransversalSize arrow] @-}
+stableCoalitionPreimage :: StableAtlasTransversal source target
+  -> CoalitionElement target -> Maybe (StableCoalitionPreimage source target)
+stableCoalitionPreimage IdentityStableAtlasTransversal _ = Just UnchangedCoalitionPreimage
+stableCoalitionPreimage (PrimitiveStableAtlasTransversal action) target =
+  case preimage (stableActionInsertion action) target of
+    Nothing -> Nothing
+    Just source -> Just (RestoredCoalitionPreimage
+      (CoalitionPreimageData (stableActionSource action) source))
+stableCoalitionPreimage (CompositeStableAtlasTransversal second first) target =
+  let restoreFirst = stableCoalitionPreimage first
+  in case stableCoalitionPreimage second target of
+    Nothing -> Nothing
+    Just UnchangedCoalitionPreimage -> restoreFirst target
+    Just (RestoredCoalitionPreimage middle) ->
+      case restoreFirst (coalitionPreimageValue middle) of
+        Nothing -> Nothing
+        Just UnchangedCoalitionPreimage -> Just (RestoredCoalitionPreimage middle)
+        Just (RestoredCoalitionPreimage source) -> Just (RestoredCoalitionPreimage source)
+
+-- | Inspect a successful inverse with the actual source owner. Identity keeps
+-- the caller's target owner; a primitive inverse supplies its stored source.
+-- ALIGN: ATLAS-STABLE-OWNED-PREIMAGE-ELIMINATION.
+{-@ withStableAtlasTransversalCoalitionPreimage
+      :: targetOwner:Atlas ta ts td to tf
+      -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> target:{CoalitionData ta ts td | StableCoalitionValid targetOwner target}
+      -> (forall o f. sourceOwner:Atlas sa ss sd o f
+            -> {source:CoalitionData sa ss sd | StableCoalitionValid sourceOwner source}
+            -> result)
+      -> Maybe result @-}
+withStableAtlasTransversalCoalitionPreimage
+  :: Atlas ta ts td to tf
+  -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData ta ts td
+  -> (forall o f. Atlas sa ss sd o f -> CoalitionData sa ss sd -> result)
+  -> Maybe result
+withStableAtlasTransversalCoalitionPreimage targetOwner arrow target usePreimage =
+  let targetImage = CoalitionPreimageData targetOwner target
+  in case stableCoalitionPreimage arrow target of
+    Nothing -> Nothing
+    Just UnchangedCoalitionPreimage -> Just (withCoalitionPreimageData targetImage usePreimage)
+    Just (RestoredCoalitionPreimage source) -> Just (withCoalitionPreimageData source usePreimage)
 
 -- | Forget the extent restriction while retaining every transversal law.
 stableAtlasTransversalTransversal

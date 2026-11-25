@@ -287,6 +287,28 @@ testRankedDominionAtlas =
       && preimage composedMap targetElement == Just sourceElement)
   assert "composed coalition inverses reject values outside the image"
     (isNothing (preimage composedMap (rankedDominionCoalitionElement ranked 3)))
+  let observePreimage :: Atlas a s d o f -> CoalitionElement.CoalitionData a s d
+        -> (Bool, Natural, Bool)
+      observePreimage owner recovered =
+        ( CoalitionElement.coalitionElementValid owner recovered
+        , coalitionElementRank recovered
+        , withCoalitionElement recovered $ \source _ ->
+            withPageElement (atlasOriginCell owner) $ \origin ->
+              pageElementPage source == pageElementPage origin
+                && pageElementPosition source == pageElementPosition origin
+        )
+  assert "the identity coalition inverse retains its caller's owner"
+    (withStableAtlasTransversalCoalitionPreimage included identityStableAtlasTransversal
+      sourceElement observePreimage == Just (True, 7, True))
+  assert "a primitive coalition inverse retains its source owner across folio depths"
+    (withStableAtlasTransversalCoalitionPreimage valueAtlas traversal
+      (applyInsertion coalitionMap sourceElement) observePreimage == Just (True, 7, True))
+  assert "a composed coalition inverse retains the recovered canonical source"
+    (withStableAtlasTransversalCoalitionPreimage valueAtlas composed
+      targetElement observePreimage == Just (True, 7, True))
+  assert "the owned coalition inverse retains composed lookup failure"
+    (isNothing (withStableAtlasTransversalCoalitionPreimage valueAtlas composed
+      (rankedDominionCoalitionElement ranked 3) observePreimage))
 
 testRankedDominionOffImage :: IO ()
 testRankedDominionOffImage =

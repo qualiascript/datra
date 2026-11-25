@@ -289,5 +289,82 @@ theorem coalitionCarrierInsertion_interpretation {X Y : Atlas} (f : StableTransv
   rw [CoalitionValue.presentation_value]
   exact f.coalitionInsertion_interpretation c.value
 
+/-- An unchanged inverse retains the caller's owner. A restored inverse stores
+the certified source carrier, whose Atlas index is the retained owner. -/
+inductive CoalitionPreimage : Atlas → Atlas → Type 2
+  | unchanged {X} : CoalitionPreimage X X
+  | restored {X Y} : X.Coalition → CoalitionPreimage X Y
+
+def CoalitionPreimage.resolve {X Y : Atlas} : CoalitionPreimage X Y → Y.Coalition → X.Coalition
+  | .unchanged, value => value
+  | .restored source, _ => source
+
+def CoalitionPreimage.bind {X Y Z : Atlas} (image : CoalitionPreimage Y Z)
+    (target : Z.Coalition) (restore : Y.Coalition → Option (CoalitionPreimage X Y)) :
+    Option (CoalitionPreimage X Z) :=
+  match image with
+  | .unchanged => restore target
+  | .restored middle => (restore middle).map fun source =>
+    match source with
+    | .unchanged => .restored middle
+    | .restored source => .restored source
+
+theorem CoalitionPreimage.resolve_bind {X Y Z : Atlas} (image : CoalitionPreimage Y Z)
+    (target : Z.Coalition) (restore : Y.Coalition → Option (CoalitionPreimage X Y)) :
+    (image.bind target restore).map (fun source => source.resolve target) =
+      (restore (image.resolve target)).map (fun source => source.resolve (image.resolve target)) := by
+  cases image with
+  | unchanged => rfl
+  | restored middle =>
+    cases found : restore middle with
+    | none => simp [bind, resolve, found]
+    | some source => cases source <;> simp [bind, resolve, found]
+
+-- ALIGN: ATLAS-STABLE-OWNED-PREIMAGE.
+def coalitionPreimage {X Y : Atlas} (arrow : StableTransversal X Y)
+    (target : Y.Coalition) : Option (CoalitionPreimage X Y) :=
+  match arrow with
+  | .identity => some .unchanged
+  | .primitive transversal preserves backward leftInverse =>
+    ((primitive transversal preserves backward leftInverse).coalitionCarrierInsertion.preimage target).map
+      CoalitionPreimage.restored
+  | .composite second first =>
+    (second.coalitionPreimage target).bind fun middle =>
+      middle.bind target first.coalitionPreimage
+
+theorem coalitionPreimage_resolve {X Y : Atlas} (arrow : StableTransversal X Y)
+    (target : Y.Coalition) :
+    (arrow.coalitionPreimage target).map (fun source => source.resolve target) =
+      arrow.coalitionCarrierInsertion.preimage target := by
+  induction arrow with
+  | primitive transversal preserves backward leftInverse =>
+    simp [coalitionPreimage, Option.map_map, CoalitionPreimage.resolve, Function.comp_def]
+  | identity =>
+    simp [coalitionPreimage, CoalitionPreimage.resolve,
+      coalitionCarrierInsertion_identity, DomanialInsertion.identity]
+  | @composite X Y Z second first ihSecond ihFirst =>
+    have composition : (composite second first).coalitionCarrierInsertion =
+        first.coalitionCarrierInsertion.comp second.coalitionCarrierInsertion :=
+      DomanialInsertion.reindex_comp _ _ _ _ _
+    rw [composition]
+    simp only [coalitionPreimage, Option.map_bind, Function.comp_def]
+    simp_rw [CoalitionPreimage.resolve_bind, ihFirst]
+    change _ = (second.coalitionCarrierInsertion.preimage target).bind
+      first.coalitionCarrierInsertion.preimage
+    rw [← ihSecond target, Option.bind_map]
+    rfl
+
+-- ALIGN: ATLAS-STABLE-OWNED-PREIMAGE-ELIMINATION.
+def withCoalitionPreimage {X Y : Atlas} {Result : Type*} (arrow : StableTransversal X Y)
+    (target : Y.Coalition) (usePreimage : X.Coalition → Result) : Option Result :=
+  (arrow.coalitionPreimage target).map fun source => usePreimage (source.resolve target)
+
+theorem withCoalitionPreimage_eq {X Y : Atlas} {Result : Type*} (arrow : StableTransversal X Y)
+    (target : Y.Coalition) (usePreimage : X.Coalition → Result) :
+    arrow.withCoalitionPreimage target usePreimage =
+      (arrow.coalitionCarrierInsertion.preimage target).map usePreimage := by
+  rw [← coalitionPreimage_resolve]
+  simp [withCoalitionPreimage, Option.map_map, Function.comp_def]
+
 end StableTransversal
 end Datra.Executable.Atlas

@@ -1,3 +1,7 @@
+{-# LANGUAGE CPP #-}
+#include "../../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+
 -- | Stable Atlas transversals: Atlas transversals whose object action sends the
 -- source extent cell to the target extent cell.
 module StableAtlasTransversal
@@ -9,6 +13,7 @@ module StableAtlasTransversal
   , stableAtlasTransversalHom
   , stableAtlasTransversalSourceWitness
   , stableAtlasTransversalCoalitionInsertion
+  , withStableAtlasTransversalCoalitionPreimage
   , stableAtlasTransversalPreservesExtent
   , identityStableAtlasTransversal
   , composeStableAtlasTransversals
@@ -37,6 +42,7 @@ import StableAtlasTransversal.Internal
   , stableAtlasTransversalHom
   , stableAtlasTransversalSourceWitness
   , stableAtlasTransversalCoalitionInsertion
+  , withStableAtlasTransversalCoalitionPreimage
   , stableAtlasTransversalLeftInverse
   , stableAtlasTransversalOrderedTransposal
   , stableAtlasTransversalPagination

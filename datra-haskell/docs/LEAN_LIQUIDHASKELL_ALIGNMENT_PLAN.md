@@ -151,6 +151,21 @@ coalitions. The stored forward function is exactly the coalition mapper, and
 every successful inverse result satisfies the same source-domain condition,
 including on inputs outside the forward image. The generic insertion eliminator
 and its identity/composition cases still need contracts retaining those domains.
+The exposed `DomanialInsertion.Core` interface checks the composed forward
+equation and both partial-inverse cases: failure of the second inverse is
+retained, and its successful intermediate is passed to the first inverse.
+Lean proves these same equations for arbitrary target inputs. These generic
+composition laws do not by themselves connect a stable action's target owner
+to the next action's source-domain predicate.
+The public inverse callback retains source ownership through the full stable
+syntax. A successful primitive lookup carries its stored source Atlas and a
+valid canonical coalition. Identity retains the caller's target owner, and
+composition passes a recovered intermediate through the first inverse while
+retaining the owner of the resulting source. The callback requires a valid
+canonical target, supplies a valid canonical source, and preserves failed
+lookups. Lean proves that this observation agrees with the existing carrier
+insertion's partial inverse for every canonical target. The generic insertion
+accessor's forward-domain contract remains separate from this inverse boundary.
 Lean accepts a stable
 primitive's explicit inverse on canonical coalition records and transports it
 through the covered-value equivalence. Returning to the record carrier recovers

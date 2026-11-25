@@ -1958,6 +1958,121 @@ proofGuard valueAtlas occurrence datum witness =
 
 
 RANK_IMAGE_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs"
+STABLE_PREIMAGE_PUBLIC_SOURCE = """
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE RankNTypes #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module PublicStablePreimageGuard where
+import Atlas (Atlas, AtlasObject, atlasPageElements)
+import Coalition.Element (CoalitionData, coalitionElementValid, coalitionElementSource)
+import PageElements (originPageElement)
+import StableAtlasTransversal (StableAtlasTransversal, withStableAtlasTransversalCoalitionPreimage)
+{-@ predicate PublicCanonical A E = coalitionElementValid A E
+      && coalitionElementSource E == originPageElement (atlasPageElements A) @-}
+"""
+STABLE_PREIMAGE_PUBLIC_GUARDS = {
+    "owned stable inverse cannot substitute another source owner": """
+{-@ chosenOwnerCallback :: chosen:Atlas a s d co cf -> Atlas a s d o f
+      -> {value:CoalitionData a s d | PublicCanonical chosen value} -> Bool @-}
+chosenOwnerCallback :: Atlas a s d co cf -> Atlas a s d o f -> CoalitionData a s d -> Bool
+chosenOwnerCallback _ _ _ = True
+{-@ proofGuard :: Atlas sa ss sd co cf -> owner:Atlas ta ts td to tf
+      -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> {value:CoalitionData ta ts td | PublicCanonical owner value} -> Maybe Bool @-}
+proofGuard :: Atlas sa ss sd co cf -> Atlas ta ts td to tf
+  -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData ta ts td -> Maybe Bool
+proofGuard chosen owner arrow value =
+  withStableAtlasTransversalCoalitionPreimage owner arrow value (chosenOwnerCallback chosen)
+""",
+    "owned stable inverse requires target owning validity": """
+{-@ proofGuard :: owner:Atlas ta ts td to tf
+      -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> CoalitionData ta ts td -> Maybe Bool @-}
+proofGuard :: Atlas ta ts td to tf
+  -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData ta ts td -> Maybe Bool
+proofGuard owner arrow value = withStableAtlasTransversalCoalitionPreimage owner arrow value (\\_ _ -> True)
+""",
+    "owned stable inverse requires the canonical target origin": """
+{-@ proofGuard :: owner:Atlas ta ts td to tf
+      -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> {value:CoalitionData ta ts td | coalitionElementValid owner value} -> Maybe Bool @-}
+proofGuard :: Atlas ta ts td to tf
+  -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData ta ts td -> Maybe Bool
+proofGuard owner arrow value = withStableAtlasTransversalCoalitionPreimage owner arrow value (\\_ _ -> True)
+""",
+    "owned stable inverse cannot supply an invalid source to its callback": """
+{-@ invalidSource :: owner:Atlas a s d o f
+      -> {value:CoalitionData a s d | not (coalitionElementValid owner value)} -> Bool @-}
+invalidSource :: Atlas a s d o f -> CoalitionData a s d -> Bool
+invalidSource _ _ = True
+{-@ proofGuard :: owner:Atlas ta ts td to tf
+      -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> {value:CoalitionData ta ts td | PublicCanonical owner value} -> Maybe Bool @-}
+proofGuard :: Atlas ta ts td to tf
+  -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData ta ts td -> Maybe Bool
+proofGuard owner arrow value = withStableAtlasTransversalCoalitionPreimage owner arrow value invalidSource
+""",
+    "owned stable inverse cannot change the recovered source origin": """
+{-@ changedOrigin :: owner:Atlas a s d o f
+      -> {value:CoalitionData a s d | coalitionElementSource value /= originPageElement (atlasPageElements owner)}
+      -> Bool @-}
+changedOrigin :: Atlas a s d o f -> CoalitionData a s d -> Bool
+changedOrigin _ _ = True
+{-@ proofGuard :: owner:Atlas ta ts td to tf
+      -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> {value:CoalitionData ta ts td | PublicCanonical owner value} -> Maybe Bool @-}
+proofGuard :: Atlas ta ts td to tf
+  -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData ta ts td -> Maybe Bool
+proofGuard owner arrow value = withStableAtlasTransversalCoalitionPreimage owner arrow value changedOrigin
+""",
+}
+
+INSERTION_COMPOSITION_PUBLIC_SOURCE = """
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module PublicInsertionCompositionGuard where
+import DomanialInsertion.Core
+{-@ qualif Positive(v:Int) { v > 0 } @-}
+"""
+INSERTION_COMPOSITION_PUBLIC_GUARDS = {
+    "insertion composition cannot discard the second forward action": """
+{-@ proofGuard :: second:DomanialInsertion Int Int
+      -> first:DomanialInsertion Int Int -> value:Int
+      -> {applyInsertion (composeInsertions second first) value == applyInsertion first value} @-}
+proofGuard :: DomanialInsertion Int Int -> DomanialInsertion Int Int -> Int -> ()
+proofGuard = composeInsertionsApply
+""",
+    "insertion composition retains a failed second inverse": """
+{-@ proofGuard :: second:DomanialInsertion b c -> first:DomanialInsertion a b
+      -> value:{c | preimage second value == Nothing}
+      -> {preimage (composeInsertions second first) value /= Nothing} @-}
+proofGuard :: DomanialInsertion b c -> DomanialInsertion a b -> c -> ()
+proofGuard = composeInsertionsPreimageNothing
+""",
+    "insertion composition requires the actual inverse intermediate": """
+{-@ proofGuard :: second:DomanialInsertion b c -> first:DomanialInsertion a b
+      -> value:c -> middle:b
+      -> {preimage (composeInsertions second first) value == preimage first middle} @-}
+proofGuard :: DomanialInsertion b c -> DomanialInsertion a b -> c -> b -> ()
+proofGuard = composeInsertionsPreimageJust
+""",
+    "insertion composition retains its restricted source domain": """
+{-@ proofGuard :: DomanialInsertion Int Int
+      -> DomanialInsertion {value:Int | value > 0} Int -> Int -> Int @-}
+proofGuard :: DomanialInsertion Int Int -> DomanialInsertion Int Int -> Int -> Int
+proofGuard second first value = applyInsertion (composeInsertions second first) value
+""",
+}
+
 RANK_IMAGE_GUARDS = {
     "unranking does not certify a rank outside the Dominion image": """
 {-@
@@ -2863,6 +2978,8 @@ def run(pattern=None):
         check_group(COALITION_PUBLIC_SOURCE, COALITION_CANONICAL_GUARDS)
         check_group(COALITION_ACTION_PUBLIC_SOURCE, COALITION_ACTION_PUBLIC_GUARDS)
         check_group(TRANSVERSAL_PUBLIC_SOURCE, TRANSVERSAL_PUBLIC_GUARDS)
+        check_group(INSERTION_COMPOSITION_PUBLIC_SOURCE, INSERTION_COMPOSITION_PUBLIC_GUARDS)
+        check_group(STABLE_PREIMAGE_PUBLIC_SOURCE, STABLE_PREIMAGE_PUBLIC_GUARDS)
 
         typing_guards = [
             ("module PublicCoveredGuard where\nimport AtlasCoveredPageElement (CoveredPageElement)\n",

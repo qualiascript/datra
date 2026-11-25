@@ -54,6 +54,22 @@ def comp (first : DomanialInsertion A B) (second : DomanialInsertion B C) : Doma
   preimage := fun x => (second.preimage x).bind first.preimage
   leftInverse := fun x => by simp [second.leftInverse, first.leftInverse]
 
+-- ALIGN: INSERTION-COMPOSITION-APPLY.
+theorem comp_map (first : DomanialInsertion A B) (second : DomanialInsertion B C)
+    (value : A) : (comp first second).map value = second.map (first.map value) := rfl
+
+-- ALIGN: INSERTION-COMPOSITION-PREIMAGE-NOTHING.
+theorem comp_preimage_none (first : DomanialInsertion A B) (second : DomanialInsertion B C)
+    (value : C) (missing : second.preimage value = none) :
+    (comp first second).preimage value = none := by
+  simp [comp, missing]
+
+-- ALIGN: INSERTION-COMPOSITION-PREIMAGE-JUST.
+theorem comp_preimage_some (first : DomanialInsertion A B) (second : DomanialInsertion B C)
+    (value : C) (middle : B) (found : second.preimage value = some middle) :
+    (comp first second).preimage value = first.preimage middle := by
+  simp [comp, found]
+
 @[ext] theorem ext (f g : DomanialInsertion A B) (hm : f.map = g.map)
     (hp : f.preimage = g.preimage) : f = g := by cases f; cases g; cases hm; cases hp; rfl
 

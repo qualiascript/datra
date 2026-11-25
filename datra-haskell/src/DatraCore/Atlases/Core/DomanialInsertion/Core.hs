@@ -11,6 +11,9 @@ module DomanialInsertion.Core
   , identityInsertion
   , identityInsertionApply
   , composeInsertions
+  , composeInsertionsApply
+  , composeInsertionsPreimageNothing
+  , composeInsertionsPreimageJust
   , pullbackDominion
   , rankImageInsertion
   , rankImage
@@ -67,6 +70,7 @@ composeInsertionPreimage second first value =
     Nothing -> Nothing
     Just middle -> preimage first middle
 
+{-@ reflect composeInsertionRoundTrip @-}
 {-@
 composeInsertionRoundTrip
   :: second:DomanialInsertion b c
@@ -83,6 +87,9 @@ composeInsertionRoundTrip second first value =
 -- | Compose the maps and derive the certificate from both stored laws.
 -- ALIGN: INSERTION-COMPOSITION.
 -- ALIGN: INSERTION-COMPOSITION-INTERPRETATION.
+{-@ reflect composeInsertions @-}
+{-@ composeInsertions :: DomanialInsertion b c -> DomanialInsertion a b
+      -> DomanialInsertion a c @-}
 composeInsertions
   :: DomanialInsertion b c
   -> DomanialInsertion a b
@@ -93,6 +100,32 @@ composeInsertions second first =
     (composeInsertionPreimage second first)
     (composeInsertionRoundTrip second first)
 
+-- | Observe composition through the exposed interface, including arbitrary
+-- inverse lookups outside the forward image.
+-- ALIGN: INSERTION-COMPOSITION-APPLY.
+{-@ composeInsertionsApply :: second:DomanialInsertion b c
+      -> first:DomanialInsertion a b -> value:a
+      -> {applyInsertion (composeInsertions second first) value
+           == applyInsertion second (applyInsertion first value)} @-}
+composeInsertionsApply :: DomanialInsertion b c -> DomanialInsertion a b -> a -> ()
+composeInsertionsApply _ _ _ = ()
+
+-- ALIGN: INSERTION-COMPOSITION-PREIMAGE-NOTHING.
+{-@ composeInsertionsPreimageNothing :: second:DomanialInsertion b c
+      -> first:DomanialInsertion a b
+      -> value:{c | preimage second value == Nothing}
+      -> {preimage (composeInsertions second first) value == Nothing} @-}
+composeInsertionsPreimageNothing :: DomanialInsertion b c -> DomanialInsertion a b -> c -> ()
+composeInsertionsPreimageNothing _ _ _ = ()
+
+-- ALIGN: INSERTION-COMPOSITION-PREIMAGE-JUST.
+{-@ composeInsertionsPreimageJust :: second:DomanialInsertion b c
+      -> first:DomanialInsertion a b -> value:c
+      -> middle:{b | preimage second value == Just middle}
+      -> {preimage (composeInsertions second first) value == preimage first middle} @-}
+composeInsertionsPreimageJust :: DomanialInsertion b c -> DomanialInsertion a b -> c -> b -> ()
+composeInsertionsPreimageJust _ _ _ _ = ()
+
 {-@ reflect identityMap @-}
 identityMap :: a -> a
 identityMap value = value
@@ -101,6 +134,7 @@ identityMap value = value
 identityPreimage :: a -> Maybe a
 identityPreimage value = Just value
 
+{-@ reflect identityRoundTrip @-}
 {-@ identityRoundTrip :: value:a ->
       {proof:() | identityPreimage (identityMap value) == Just value} @-}
 -- ALIGN: INSERTION-IDENTITY-ROUNDTRIP.
