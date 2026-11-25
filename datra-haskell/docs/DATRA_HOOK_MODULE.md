@@ -18,7 +18,7 @@ The intended result is:
 
 ## Current failure
 
-`libs/std.datra` begins with:
+`libs/std.datra` currently begins with:
 
 ```datra
 (datra.begin (()
@@ -31,9 +31,11 @@ The intended result is:
 
 The current `DatraHost.datraHostValue` still supplies constants, types,
 runtime functions, `parse_natural`, and range bodies, but it no longer supplies
-`datra.begin`. The opening application therefore cannot rewrite to a resource
-block. Module preparation reaches `resourceBlock` with an application and
-reports:
+`datra.begin`. The hook refactor renames these two body declarations to
+`datra.parse_natural_body` and `datra.begin_body`. Until the opening reference
+is renamed and `begin_body` is restored, the application cannot rewrite to a
+resource block. Module preparation reaches `resourceBlock` with an application
+and reports:
 
 ```text
 ModuleEvaluationFailed ModuleRequiresBlock
@@ -88,8 +90,8 @@ deduplication and diagnostics.
 
 Module identity does not define lookup semantics. Lookup continues through the
 dependent declaration layer retained by the prepared module. Qualified access
-such as `datra.begin` is the ordinary application/access of the `datra`
-declaration followed by the `begin` declaration in its public scope.
+such as `datra.begin_body` is the ordinary application/access of the `datra`
+declaration followed by the `begin_body` declaration in its public scope.
 
 ## The built-in `datra` module
 
@@ -120,7 +122,7 @@ The existing `installPreparedModule` remains the installation boundary.
 
 A native member is a normal dependent declaration whose implementation is
 supplied by Haskell rather than an `Expression`. Refactor the scoped
-declaration representation around a declaration body capability, for example:
+declaration representation around a function-body capability, for example:
 
 ```haskell
 data ScopedDeclarationBody
@@ -135,13 +137,27 @@ layout. The important properties are:
 - the declaration itself owns its head, modifiers, capture schema, and body;
 - `def` and `val` are declaration modifiers rather than booleans in a runtime
   payload;
+- every native function-body value uses the existing `functionBodyType`, whose
+  Datra category is `FunctionBodyAST`;
+- `functionBodyType` classifies the body value and is distinct from a function
+  signature;
+- a function body owns behavior and closure state, with no function domain or
+  codomain;
+- applying a function signature to a body constructs the typed function;
 - native invocation uses the ordinary dependent-declaration application path;
-- a body can expose a real federation insertion where it has a forward and an
-  inverse;
+- a body may retain bidirectional implementation capability which becomes a
+  typed federation insertion when a compatible signature is applied;
 - the declaration's public scope and evaluated cache remain attached to the
   declaration/module rather than forming a second node kind; and
-- native syntax-valued functions return typed syntax values through ordinary
-  function evaluation.
+- after signature application, native syntax-valued bodies return typed syntax
+  values through ordinary function evaluation.
+
+The current `DatraHost.runtimeBody` embeds an `EvaluatedFunction` with
+`anyTypeValue` as both domain and codomain. Replace those placeholder function
+types with a body value classified by `functionBodyType`. Reuse the existing
+type value rather than introducing a second native-body category. This applies
+to every `datra` hook member implemented as a function body, regardless of
+whether its exported name ends in `_body`.
 
 Once source and native declarations share this representation, remove
 `ScopedRuntimeSingletonDeclaration` and `RuntimeSingletonPayload`. Runtime
@@ -150,33 +166,34 @@ prepared declaration; they no longer define another declaration language.
 
 ## Required `datra.*` declarations
 
-The current branch accidentally removed eight native bodies still referenced
-by `libs/std.datra`:
+The hook module requires these eight native bodies:
 
 1. `datra.let_body`
 2. `datra.def_body`
 3. `datra.val_body`
-4. `datra.begin`
+4. `datra.begin_body`
 5. `datra.do_body`
 6. `datra.fun_body`
 7. `datra.if_body`
 8. `datra.with_body`
 
-`datra.parse_natural` exists in the current `DatraHost` and must be retained.
-It is an ordinary body of type:
+Update every standard-library reference from `datra.begin` to
+`datra.begin_body`, including the two bootstrap applications and the surface
+`begin` declaration implementation.
 
-```datra
-_NaturalLiteral -> Nat
-```
+The current `DatraHost` member `datra.parse_natural` is renamed to
+`datra.parse_natural_body`. Its value has `functionBodyType`, while its domain
+and codomain belong to the function signature which consumes it.
 
 The standard declaration:
 
 ```datra
 def val $"%(_NaturalLiteral)" :=
-  (_NaturalLiteral -> Nat) datra.parse_natural
+  (_NaturalLiteral -> Nat) datra.parse_natural_body
 ```
 
-applies that body exactly like any other declaration implementation.
+applies the signature to the body, producing the typed function used by the
+declaration implementation.
 
 The eight restored bodies are also ordinary native declaration bodies. Their
 implementations may manipulate typed syntax values, but their discovery and
@@ -192,13 +209,21 @@ The body behavior to preserve is:
 | `let_body` | adds the `let` declaration modifier |
 | `def_body` | adds the `def` declaration modifier |
 | `val_body` | adds the `val` declaration modifier |
-| `begin` | constructs a block expression from entries and a result |
+| `begin_body` | constructs a block expression from entries and a result |
 | `do_body` | constructs a function body from entries and a result |
 | `fun_body` | constructs `Fun` from its expression |
 | `if_body` | constructs a conditional, with an optional else branch |
 | `with_body` | constructs scoped evaluation from module operands and a body |
 
-`parse_natural` converts the supplied natural-literal syntax value to `Nat`.
+`parse_natural_body`, once paired with the signature above, converts the
+supplied natural-literal value to `Nat`.
+
+That conversion is total over the applied `_NaturalLiteral -> Nat` signature.
+The typed function validates membership before invoking the body, and the body
+recovers the unique retained `Nat` witness. It does not reparse an arbitrary
+string or report `NoApplicableFunctionAlternative` for a valid
+`_NaturalLiteral`. Canonical string decoding remains at the construction and
+membership boundary of `_NaturalLiteral`.
 
 All currently retained `datra` constants, types, boolean/ordinal operations,
 range bodies, and other native functions must migrate into this module as
@@ -246,8 +271,8 @@ The bootstrap crosses three ordinary execution phases:
 1. **Raw parsing** produces an unresolved AST and does not consult declarations.
 2. **Syntax rewriting** derives visible rules from the declaration layers in
    `Scope`. During standard-library bootstrap, this is where native bodies such
-   as `datra.begin` and `datra.val_body` become callable through their ordinary
-   declarations.
+   as `datra.begin_body` and `datra.val_body` become available through their
+   ordinary declarations and receive their signatures from `std.datra`.
 3. **Evaluation/module preparation** evaluates declaration bodies, retains
    public scopes, and produces the `PreparedModule` installed by later scopes.
 
@@ -261,10 +286,18 @@ The built-in namespace declaration and the bridge
 `def val datra := datra` are zero-capture values, so their injectivity proof is
 the singleton case described in `DEPENDENT_DECLARATION_INJECTIVITY.md`.
 
-Native bodies which represent true insertions, especially `from_body` and
-`range_body`, must expose the shared forward/preimage insertion capability.
-The hook module must not retain the current forward-only
-`RuntimeFunctionInsertion` as a private exception.
+Native bodies are `functionBodyType` values without intrinsic function
+signatures. When `std.datra` applies a compatible signature to a bidirectional
+body such as `parse_natural_body`, `from_body`, or `range_body`, the resulting
+typed function receives the shared
+forward/preimage insertion capability. The hook module must not retain the
+current forward-only `RuntimeFunctionInsertion` as a private exception.
+
+For `parse_natural_body`, applying `_NaturalLiteral -> Nat` yields an
+isomorphism. The inverse maps each `Nat` to its canonical natural-literal value.
+The body itself is neither a typed function nor an isomorphism until that
+signature is applied. Its forward operation is total for every member admitted
+by that signature.
 
 The internal `$val` modifier remains present on `val` declarations. The
 injectivity proof is separate evidence retained by their prepared value.
@@ -272,11 +305,13 @@ injectivity proof is separate evidence retained by their prepared value.
 ## Implementation sequence
 
 1. Add explicit module identity and construct a minimal built-in `datra`
-   `PreparedModule` containing `datra.begin`.
+   `PreparedModule` containing `datra.begin_body`; update the standard-library
+   bootstrap and declaration references to that name.
 2. Move standard-library parsing/preparation to the private bootstrap lifecycle
    and remove the basename-triggered installation.
-3. Restore the remaining seven missing syntax-valued bodies and retain
-   `parse_natural` as ordinary native declarations.
+3. Restore the remaining seven missing syntax-valued bodies and rename the
+   retained natural-literal body to `parse_natural_body`; construct every
+   body-valued member with the existing `functionBodyType`.
 4. Migrate every remaining `DatraHost` constant and function into native
    declarations within the same module.
 5. Replace runtime singleton declarations with the unified scoped declaration
@@ -306,8 +341,11 @@ members, or rematerializing a host map.
 ### Native declarations
 
 - all eight restored bodies resolve through dependent declaration lookup;
-- `parse_natural` accepts `_NaturalLiteral` and produces `Nat` through its
-  regular function body;
+- every body-valued hook member has `functionBodyType` and no intrinsic
+  function signature;
+- applying `_NaturalLiteral -> Nat` to `parse_natural_body` produces a total
+  typed function and a true isomorphism with canonical natural literals;
+- valid natural literals never take a partial body-failure path;
 - `from_body` and `range_body` retain their true insertion capability;
 - aliases and complex dependent heads follow the same lookup path as simple
   identifiers;

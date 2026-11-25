@@ -207,6 +207,16 @@ may always be invoked when its type permits it. A containing `val` may use that
 call as injectivity evidence only if the chosen function also carries a real
 insertion with an inverse.
 
+A function body value has the existing `functionBodyType` (`FunctionBodyAST`).
+That category type does not provide a function domain or codomain: the body
+owns evaluation behavior and closure state, while applying a function
+signature constructs the typed function. Signature application is the point
+where compatible forward/preimage behavior becomes insertion evidence. In
+particular, `datra.parse_natural_body` becomes the isomorphism
+`_NaturalLiteral -> Nat` only after `std.datra` applies that signature to the
+body. Its forward operation is total on `_NaturalLiteral` and recovers the
+retained `Nat` witness rather than reparsing the rendered text.
+
 Range constructors are the motivating native case: their insertion must be
 able to recover the endpoints from the range value. A native or source
 function without that capability is still callable, but a `val` depending on
