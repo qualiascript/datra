@@ -845,12 +845,50 @@ proofGuard sourceAtlas targetAtlas transversal originProof =
 DOMINC_DATA_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Data.hs"
 DOMINC_PRESENTATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs"
 DOMINC_PRESENTATION_GUARDS = {
-    "Dominion owner storage requires a one-page Atlas": """
-{-@ proofGuard :: Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
+    "Dominion owner storage requires constant membership": """
+{-@ proofGuard :: presentation:{AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () () |
+      folioLength (pageElementsFolio (paginationPageElements (atlasPresentationPagination presentation))) == 1
+      && atlasActionMap (atlasPresentationAction presentation) == constantDataMap}
+      -> value:{Atlas owner (DominionPaginationScope a) (DominionCellData a) () () |
+        atlasDescription value == presentation && atlasPagination value == atlasPresentationPagination presentation}
       -> DominionAtlas owner a @-}
-proofGuard :: Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
+proofGuard :: AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () ()
+  -> Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
   -> DominionAtlas owner a
-proofGuard = DominionAtlas
+proofGuard presentation value = retainDominionAtlas presentation value
+""",
+    "Dominion owner storage requires identity insertion": """
+{-@ proofGuard :: presentation:{AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () () |
+      folioLength (pageElementsFolio (paginationPageElements (atlasPresentationPagination presentation))) == 1
+      && atlasActionMembership (atlasPresentationAction presentation) == atlasMembership acceptsConstantDatum}
+      -> value:{Atlas owner (DominionPaginationScope a) (DominionCellData a) () () |
+        atlasDescription value == presentation && atlasPagination value == atlasPresentationPagination presentation}
+      -> DominionAtlas owner a @-}
+proofGuard :: AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () ()
+  -> Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
+  -> DominionAtlas owner a
+proofGuard presentation value = retainDominionAtlas presentation value
+""",
+    "Dominion owner accepts every constant datum": """
+{-@ proofGuard :: owner:DominionAtlas ownerScope a
+      -> occurrence:PageElement (DominionPaginationScope a) object
+      -> datum:DominionCellData a object
+      -> {not (atlasAcceptsDatum (dominionAtlas owner) occurrence datum)} @-}
+proofGuard :: DominionAtlas owner a
+  -> PageElement (DominionPaginationScope a) object -> DominionCellData a object -> ()
+proofGuard = dominionAcceptsDatum
+""",
+    "Dominion owner storage requires a one-page Atlas": """
+{-@ proofGuard :: presentation:{AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () () |
+      atlasActionMembership (atlasPresentationAction presentation) == atlasMembership acceptsConstantDatum
+      && atlasActionMap (atlasPresentationAction presentation) == constantDataMap}
+      -> value:{Atlas owner (DominionPaginationScope a) (DominionCellData a) () () |
+        atlasDescription value == presentation && atlasPagination value == atlasPresentationPagination presentation}
+      -> DominionAtlas owner a @-}
+proofGuard :: AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () ()
+  -> Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
+  -> DominionAtlas owner a
+proofGuard presentation value = retainDominionAtlas presentation value
 """,
     "Dominion owner observation retains its one-page certificate": """
 {-@ proofGuard :: DominionAtlas owner a
@@ -1927,6 +1965,16 @@ proofGuard _ _ = []
 
 ATLAS_CONSTRUCTION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Construction.hs"
 ATLAS_CONSTRUCTION_GUARDS = {
+    "fixed Atlas construction retains its complete presentation": """
+{-@ proofGuard :: AtlasConstruction recipe scope cellData origin final
+      => recipe:Proxy recipe
+      -> {value:Atlas (FixedAtlasScope recipe scope cellData origin final) scope cellData origin final |
+           atlasDescription value /= atlasConstructionPresentation recipe} @-}
+proofGuard :: AtlasConstruction recipe scope cellData origin final
+  => Proxy recipe
+  -> Atlas (FixedAtlasScope recipe scope cellData origin final) scope cellData origin final
+proofGuard = constructAtlas
+""",
     "fixed Atlas construction retains its recipe pagination": """
 {-@ proofGuard :: AtlasConstruction recipe scope cellData origin final
       => recipe:Proxy recipe
@@ -1963,6 +2011,15 @@ proofGuard owner _ = constructAtlasData owner
 
 ATLAS_PRESENTATION_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Atlas.hs"
 ATLAS_PRESENTATION_GUARDS = {
+    "public Atlas allocation retains its complete presentation": """
+-- Check the rank-polymorphic callback from its explicit contracts.
+{-@ LIQUID "--fast" @-}
+{-@ proofGuard :: presentation:AtlasPresentation scope cellData origin final
+      -> {result:AtlasPresentation scope cellData origin final | result /= presentation} @-}
+proofGuard :: AtlasPresentation scope cellData origin final
+  -> AtlasPresentation scope cellData origin final
+proofGuard presentation = withAtlasPresentation presentation (\\value -> atlasDescription value)
+""",
     "Atlas presentation construction requires normalized action laws": """
 {-@ proofGuard :: pages:Pagination scope origin final
       -> accepts:(forall object. PageElement scope object -> cellData object -> Bool)

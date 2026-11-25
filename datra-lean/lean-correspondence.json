@@ -4913,7 +4913,7 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
       "haskell_declaration": "atlasFromPresentationWithScope",
       "lean_namespace": "Datra.Executable.AtlasPresentation",
-      "lean_declaration": "allocate"
+      "lean_declaration": "allocateStored"
     },
     {
       "id": "ATLAS-PRESENTATION-PAGINATION",
@@ -5250,6 +5250,41 @@
       "haskell_declaration": "atlasMap",
       "lean_namespace": "Datra.Executable.AtlasMap",
       "lean_declaration": "atlasMap"
+    },
+    {
+      "id": "ATLAS-OWNER-DESCRIPTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasDescription",
+      "lean_namespace": "Datra.Executable.AtlasAllocation",
+      "lean_declaration": "atlasDescription"
+    },
+    {
+      "id": "ATLAS-ALLOCATION-DESCRIPTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasFromPresentationWithScope",
+      "lean_namespace": "Datra.Executable.AtlasPresentation",
+      "lean_declaration": "allocateStored_description"
+    },
+    {
+      "id": "ATLAS-DESCRIPTION-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasDescriptionMembership",
+      "lean_namespace": "Datra.Executable.AtlasAllocation",
+      "lean_declaration": "descriptionMembership"
+    },
+    {
+      "id": "DOMINC-OWNER-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "dominionAcceptsDatum",
+      "lean_namespace": "Datra.Executable.DomanialInclusion.DominionAtlas",
+      "lean_declaration": "acceptsDatum"
+    },
+    {
+      "id": "DOMINC-OWNER-COALITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "dominionCoalitionElement",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionCoalitionElement"
     }
   ],
   "modules": [
@@ -5263,6 +5298,7 @@
       "reflected": [
         "atlasPresentationPagination",
         "atlasPresentationAction",
+        "atlasDescription",
         "atlasFromPresentationWithScope",
         "atlasFinalPage",
         "atlasTraceLimit",
@@ -5277,6 +5313,7 @@
         "atlasDataCoherence"
       ],
       "refinements": [
+        "atlasDescription",
         "atlasFromPresentationWithScope",
         "withAtlasPresentation",
         "atlasDataAction",
@@ -5293,6 +5330,7 @@
         "atlasNormalizationArrow",
         "normalizeAtlasElementTraceValid",
         "normalizeAtlasArrowTraceValid",
+        "atlasDescriptionMembership",
         "atlasAcceptsDatumNormalized",
         "atlasDataAt",
         "mapAtlasData",
@@ -6539,6 +6577,7 @@
         "onePageCoverage",
         "dominionCoverage",
         "dominionAtlasMap",
+        "dominionCoalitionElement",
         "coalitionComponentInsertion",
         "coalitionComponentRoundTrip"
       ],
@@ -7984,6 +8023,7 @@
       "lean_target": "Datra.Executable.DomanialInclusion",
       "coverage": "partial",
       "reflected": [
+        "dominionAtlas",
         "acceptsConstantDatum"
       ],
       "opaque_reflected": [
@@ -7998,9 +8038,11 @@
         "onePageFolio",
         "onePagePagination",
         "dominionPresentation",
-        "retainOnePageAtlas",
+        "retainDominionAtlas",
         "dominionAtlas",
+        "dominionAcceptsDatum",
         "withDominionAtlas",
+        "canonicalDominionAtlas",
         "acceptsConstantDatum",
         "constantDataAt",
         "constantDataMap",
@@ -8021,13 +8063,18 @@
         "CanonicalDominionAtlasScope"
       ],
       "predicates": [],
-      "refinement_aliases": [],
+      "refinement_aliases": [
+        "DominionAtlas"
+      ],
       "embeddings": [
         "Natural as int"
       ],
       "refined_instances": [
         "PageElementsConstruction (DominionPaginationRecipe a) (()) (())",
         "CanonicalDominion a => AtlasConstruction (CanonicalDominionRecipe a) (DominionPaginationScope a) (DominionCellData a) (()) (())"
+      ],
+      "variances": [
+        "DominionAtlasData invariant invariant"
       ]
     },
     {

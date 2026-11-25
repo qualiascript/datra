@@ -32,6 +32,8 @@ module Atlas.Internal
   , atlasPresentation
   , atlasPresentationPagination
   , atlasPresentationAction
+  , atlasDescription
+  , atlasDescriptionMembership
   , withAtlasPresentation
   , atlasFromPresentationWithScope
   , atlasPagination
@@ -183,19 +185,32 @@ atlasPresentationPagination (AtlasPresentation value) = storedPagination value
 atlasPresentationAction :: AtlasPresentation s d o f -> AtlasDataAction s d
 atlasPresentationAction (AtlasPresentation value) = atlasActionData (storedAtlasData value)
 
+-- | Recover the complete checked presentation, forgetting only the Atlas scope.
+-- ALIGN: ATLAS-OWNER-DESCRIPTION.
+{-@ reflect atlasDescription @-}
+{-@ atlasDescription :: value:Atlas a s d o f
+      -> {presentation:AtlasPresentation s d o f |
+           atlasPresentationPagination presentation == atlasPagination value
+           && atlasPresentationAction presentation == atlasActionData (storedAtlasData value)} @-}
+atlasDescription :: Atlas a s d o f -> AtlasPresentation s d o f
+atlasDescription (Atlas pages stored) = AtlasPresentation (Atlas pages stored)
+
 -- | Scope selection is confined to the owning implementation.
 -- ALIGN: ATLAS-PRESENTATION-ALLOCATION.
 -- ALIGN: ATLAS-PRESENTATION-PAGINATION.
+-- ALIGN: ATLAS-ALLOCATION-DESCRIPTION.
 {-@ reflect atlasFromPresentationWithScope @-}
 {-@ atlasFromPresentationWithScope :: presentation:AtlasPresentation s d o f
-      -> {value:Atlas a s d o f | atlasPagination value == atlasPresentationPagination presentation
+      -> {value:Atlas a s d o f | atlasDescription value == presentation
+           && atlasPagination value == atlasPresentationPagination presentation
            && atlasActionData (storedAtlasData value) == atlasPresentationAction presentation} @-}
 atlasFromPresentationWithScope :: AtlasPresentation s d o f -> Atlas a s d o f
-atlasFromPresentationWithScope (AtlasPresentation value) = Atlas (storedPagination value) (storedAtlasData value)
+atlasFromPresentationWithScope (AtlasPresentation (Atlas pages stored)) = Atlas pages stored
 
 -- | Allocate a checked description without permitting a caller-chosen scope.
 {-@ withAtlasPresentation :: presentation:AtlasPresentation s d o f
-      -> (forall a. value:{Atlas a s d o f | atlasPagination value == atlasPresentationPagination presentation}
+      -> (forall a. value:{Atlas a s d o f | atlasDescription value == presentation
+           && atlasPagination value == atlasPresentationPagination presentation}
            -> result) -> result @-}
 withAtlasPresentation :: AtlasPresentation s d o f -> (forall a. Atlas a s d o f -> result) -> result
 withAtlasPresentation presentation useAtlas = useAtlas (atlasFromPresentationWithScope presentation)
@@ -870,6 +885,17 @@ atlasAcceptsDatum
 atlasAcceptsDatum value occurrence datum =
   atlasActionAccepts (atlasActionData (storedAtlasData value))
     (normalizeAtlasElement value occurrence) datum
+
+-- | Observe membership through the retained presentation without unpacking it
+-- at a specialized dependent carrier in client proofs.
+-- ALIGN: ATLAS-DESCRIPTION-MEMBERSHIP.
+{-@ atlasDescriptionMembership :: value:Atlas a s d o f
+      -> occurrence:PageElement s object -> datum:d object
+      -> {atlasAcceptsDatum value occurrence datum ==
+           atlasMembershipAccepts (atlasActionMembership (atlasPresentationAction (atlasDescription value)))
+             (normalizeAtlasElement value occurrence) datum} @-}
+atlasDescriptionMembership :: Atlas a s d o f -> PageElement s object -> d object -> ()
+atlasDescriptionMembership _ _ _ = ()
 
 -- ALIGN: ATLAS-DATUM-MEMBERSHIP-NORMALIZATION.
 {-@ atlasAcceptsDatumNormalized :: value:Atlas atlasScope scope cellData origin final

@@ -21,7 +21,7 @@ module Atlas.Construction
 import Data.Kind (Type)
 import Data.Proxy (Proxy)
 import Atlas
-  ( Atlas, AtlasPresentation, atlasPagination, atlasPresentationPagination )
+  ( Atlas, AtlasPresentation, atlasPagination, atlasPresentationPagination, atlasDescription )
 import qualified Atlas.Internal as Internal (atlasFromPresentationWithScope)
 
 -- | The recipe and original owner jointly name the derived Atlas. All indices
@@ -68,7 +68,8 @@ class AtlasConstruction (recipe :: Type) scope (cellData :: Type -> Type) origin
 {-@ constructAtlas :: AtlasConstruction recipe scope cellData origin final
       => recipe:Proxy recipe
       -> {value:Atlas (FixedAtlasScope recipe scope cellData origin final) scope cellData origin final |
-           atlasPagination value == atlasPresentationPagination (atlasConstructionPresentation recipe)} @-}
+           atlasDescription value == atlasConstructionPresentation recipe
+           && atlasPagination value == atlasPresentationPagination (atlasConstructionPresentation recipe)} @-}
 constructAtlas :: AtlasConstruction recipe scope cellData origin final
   => Proxy recipe
   -> Atlas (FixedAtlasScope recipe scope cellData origin final) scope cellData origin final

@@ -471,15 +471,25 @@ Dot uses a fixed `CanonicalDominion` instance through `Atlas.Construction`: the
 complete presentation has no runtime configuration, and its nominal scope
 records the recipe and every presentation index. Lean models allocation of this
 fixed presentation. The inclusion's fixed recipe, one-page presentation, and
-coverage helper are checked. Its retained owner stores the one-page certificate.
-Generative and canonical allocation preserve that certificate through the exposed
-presentation and fixed-recipe interfaces. Fixed Atlas scopes retain the recipe
-and every presentation index, and their allocator exposes both its defining equation and
-pagination preservation. The public folio observation retains its equality with
+coverage helper are checked. Its retained owner stores the one-page certificate,
+constant membership, and identity insertion action. Generative and canonical
+allocation preserve the exact raw presentation through the exposed presentation
+and fixed-recipe interfaces. Lean retains this raw allocation before interpreting
+its accepted carriers; the Dominion owner certifies both directions of the
+constant insertion. Its carrier equivalence recovers the original constant value
+and commutes with normalized forward maps and partial inverses. Fixed Atlas scopes retain the recipe and every presentation
+index, and their allocator exposes its defining equation and exact presentation
+and pagination preservation. The public folio observation retains its equality with
 the owning pagination's folio. The inclusion's Atlas-map constructor supplies its
 one-page coverage through the checked public `AtlasMap` constructor, which retains
 the origin, owning-trace, and accepted-datum conditions on its callback. Lean models
-both allocation paths and proves coverage for the resulting Atlas map.
+both allocation paths and proves coverage for the resulting Atlas map. A public
+Atlas lemma relates datum membership to the retained presentation's normalized
+action. The Dominion helper uses it to prove that every constant datum is
+accepted. Coalition-element construction is checked through the public coalition
+constructor with that membership fact, the canonical origin's owning trace,
+and one-page coverage. Lean packages the same origin datum and coverage witness
+as a certified coalition element.
 The coalition isomorphism and hom-correspondence assembly still need their
 complete Haskell contracts.
 Ranked Dominion construction allocates an Atlas through the public generative
@@ -512,9 +522,8 @@ including off-image decoder results, agree through this carrier equivalence.
 The checked coverage helper uses the normalized source as its final region and
 transports the witness back along coherence. Lean's inclusion coverage theorem
 uses the same cached-witness construction. Rejection checks require a one-page
-owner, a valid owning trace, and accepted data. The owning handle, canonical
-allocation, coalition equivalence, and hom-map assemblies still need their full
-contracts checked. The inventory records refined instances, and the trust gate
+owner, a valid owning trace, and accepted data. The coalition equivalence and
+hom-map assemblies still need their full contracts checked. The inventory records refined instances, and the trust gate
 rejects assumptions nested inside their method signatures.
 Merge, sequence, the empty Atlas, and Dominion inclusion share the checked
 singleton-chain constructor. Lean uses the same singleton chain and the common

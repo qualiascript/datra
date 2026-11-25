@@ -18,12 +18,14 @@ module DomanialInclusion.Presentation
   ( constantPresentation, DominionPaginationScope
   , onePageFolio, onePagePagination, dominionPresentation
   , DominionAtlas, DominionAtlasObject, dominionAtlas, withDominionAtlas
+  , dominionAcceptsDatum
   , CanonicalDominion (..), CanonicalDominionAtlasScope, canonicalDominionAtlas ) where
 
 import Atlas
-  ( Atlas, AtlasObject, atlasPagination, atlasFolio, withAtlasPresentation
+  ( Atlas, AtlasObject, atlasPagination, atlasFolio, atlasDescription, withAtlasPresentation, atlasAcceptsDatum
   , AtlasPresentation, atlasPresentationForPredicate, atlasPresentationPagination, atlasPresentationAction
   , AtlasDataAction, atlasActionDomain, atlasActionMembership, atlasActionDataAt
+  , atlasDescriptionMembership, normalizeAtlasElement
   , atlasActionMap, atlasMembership, atlasPredicateDataAction )
 import Atlas.Construction (AtlasConstruction (..), FixedAtlasScope, constructAtlas)
 import DomanialInclusion.Data
@@ -84,7 +86,9 @@ onePagePagination =
 -- ALIGN: DOMINC-PRESENTATION-INTERPRETATION.
 {-@ dominionPresentation :: Dominion a
       -> {presentation:AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () () |
-           folioLength (pageElementsFolio (paginationPageElements (atlasPresentationPagination presentation))) == 1} @-}
+           folioLength (pageElementsFolio (paginationPageElements (atlasPresentationPagination presentation))) == 1
+           && atlasActionMembership (atlasPresentationAction presentation) == atlasMembership acceptsConstantDatum
+           && atlasActionMap (atlasPresentationAction presentation) == constantDataMap} @-}
 dominionPresentation :: forall a. Dominion a
   -> AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () ()
 dominionPresentation owner = constantPresentation (onePagePagination @a) owner
@@ -92,35 +96,59 @@ dominionPresentation owner = constantPresentation (onePagePagination @a) owner
 type DominionAtlasObject owner a =
   AtlasObject owner (DominionPaginationScope a) (DominionCellData a)
 
--- | Keep the dependent family as a parameter of the checked record. The public
--- alias fixes the Dominion family and pagination without partially applying a
--- datatype constructor inside the solver's datatype declaration.
-type role DominionAtlasData nominal nominal nominal nominal nominal
-{-@ data DominionAtlasData owner scope cellData origin final = DominionAtlas
-      { storedDominionAtlas :: {value:Atlas owner scope cellData origin final |
-           folioLength (atlasFolio value) == 1} } @-}
-data DominionAtlasData owner scope cellData origin final = DominionAtlas
-  { storedDominionAtlas :: Atlas owner scope cellData origin final }
+-- | Retain the whole Atlas type and its checked construction predicate. Making
+-- the payload a parameter keeps dependent families out of SMT datatype fields.
+type role DominionAtlasData nominal
+{-@ data variance DominionAtlasData invariant invariant @-}
+{-@ data DominionAtlasData atlas <ownsAction :: atlas -> Bool> = DominionAtlas
+      { storedDominionAtlas :: atlas<ownsAction> } @-}
+data DominionAtlasData atlas = DominionAtlas
+  { storedDominionAtlas :: atlas }
 
 type DominionAtlas owner a =
-  DominionAtlasData owner (DominionPaginationScope a) (DominionCellData a) () ()
+  DominionAtlasData (Atlas owner (DominionPaginationScope a) (DominionCellData a) () ())
 
-{-@ retainOnePageAtlas :: presentation:{AtlasPresentation scope cellData origin final |
-           folioLength (pageElementsFolio (paginationPageElements (atlasPresentationPagination presentation))) == 1}
-      -> value:{Atlas owner scope cellData origin final |
-           atlasPagination value == atlasPresentationPagination presentation}
-      -> DominionAtlasData owner scope cellData origin final @-}
-retainOnePageAtlas :: AtlasPresentation scope cellData origin final
-  -> Atlas owner scope cellData origin final -> DominionAtlasData owner scope cellData origin final
-retainOnePageAtlas _ value = atlasFolio value `seq` DominionAtlas value
+{-@ type DominionAtlas owner a = DominionAtlasData
+      <{\value -> folioLength (atlasFolio value) == 1
+        && atlasActionMembership (atlasPresentationAction (atlasDescription value)) == atlasMembership acceptsConstantDatum
+        && atlasActionMap (atlasPresentationAction (atlasDescription value)) == constantDataMap}>
+      (Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()) @-}
+
+{-@ retainDominionAtlas :: presentation:{AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () () |
+           folioLength (pageElementsFolio (paginationPageElements (atlasPresentationPagination presentation))) == 1
+           && atlasActionMembership (atlasPresentationAction presentation) == atlasMembership acceptsConstantDatum
+           && atlasActionMap (atlasPresentationAction presentation) == constantDataMap}
+      -> value:{Atlas owner (DominionPaginationScope a) (DominionCellData a) () () |
+           atlasDescription value == presentation && atlasPagination value == atlasPresentationPagination presentation}
+      -> DominionAtlas owner a @-}
+retainDominionAtlas :: AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () ()
+  -> Atlas owner (DominionPaginationScope a) (DominionCellData a) () () -> DominionAtlas owner a
+retainDominionAtlas _ value = atlasFolio value `seq` DominionAtlas value
 
 -- ALIGN: DOMINC-OWNER-CARDINALITY.
+{-@ reflect dominionAtlas @-}
 {-@ dominionAtlas :: DominionAtlas owner a
       -> {value:Atlas owner (DominionPaginationScope a) (DominionCellData a) () () |
-           folioLength (atlasFolio value) == 1} @-}
+           folioLength (atlasFolio value) == 1
+           && atlasActionMembership (atlasPresentationAction (atlasDescription value)) == atlasMembership acceptsConstantDatum
+           && atlasActionMap (atlasPresentationAction (atlasDescription value)) == constantDataMap} @-}
 dominionAtlas :: DominionAtlas owner a
   -> Atlas owner (DominionPaginationScope a) (DominionCellData a) () ()
 dominionAtlas (DominionAtlas value) = value
+
+-- | Every value of the retained constant carrier is accepted at every cell.
+-- ALIGN: DOMINC-OWNER-MEMBERSHIP.
+{-@ dominionAcceptsDatum :: owner:DominionAtlas ownerScope a
+      -> occurrence:PageElement (DominionPaginationScope a) object
+      -> datum:DominionCellData a object
+      -> {atlasAcceptsDatum (dominionAtlas owner) occurrence datum} @-}
+dominionAcceptsDatum :: DominionAtlas owner a
+  -> PageElement (DominionPaginationScope a) object -> DominionCellData a object -> ()
+dominionAcceptsDatum owner occurrence datum =
+  let value = dominionAtlas owner
+  in atlasDescriptionMembership value occurrence datum `seq`
+     atlasMembership acceptsConstantDatum `seq`
+     acceptsConstantDatum (normalizeAtlasElement value occurrence) datum `seq` ()
 
 -- ALIGN: DOMINC-ATLAS-INTERPRETATION.
 -- ALIGN: DOMINC-STABLE-ISOMORPHISM.
@@ -130,7 +158,7 @@ dominionAtlas (DominionAtlas value) = value
 withDominionAtlas :: Dominion a -> (forall owner. DominionAtlas owner a -> result) -> result
 withDominionAtlas owner useOwner =
   let presentation = dominionPresentation owner
-  in withAtlasPresentation presentation (\value -> useOwner (retainOnePageAtlas presentation value))
+  in withAtlasPresentation presentation (\value -> useOwner (retainDominionAtlas presentation value))
 
 -- | A canonical Dominion is a fixed instance recipe, with no runtime input.
 class CanonicalDominion a where
@@ -144,20 +172,23 @@ type CanonicalDominionAtlasScope a =
       (DominionPaginationScope a) (DominionCellData a) (()) (()) where
       atlasConstructionPresentation :: Proxy Type (CanonicalDominionRecipe a)
         -> {presentation:AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () () |
-             folioLength (pageElementsFolio (paginationPageElements (atlasPresentationPagination presentation))) == 1}
+             folioLength (pageElementsFolio (paginationPageElements (atlasPresentationPagination presentation))) == 1
+             && atlasActionMembership (atlasPresentationAction presentation) == atlasMembership acceptsConstantDatum
+             && atlasActionMap (atlasPresentationAction presentation) == constantDataMap}
   @-}
 instance CanonicalDominion a => AtlasConstruction (CanonicalDominionRecipe a)
     (DominionPaginationScope a) (DominionCellData a) () () where
   atlasConstructionPresentation _ = dominionPresentation (canonicalDominion (Proxy :: Proxy a))
 
 -- ALIGN: DOMINC-CANONICAL-ALLOCATION.
+{-@ canonicalDominionAtlas :: CanonicalDominion a => DominionAtlas (CanonicalDominionAtlasScope a) a @-}
 canonicalDominionAtlas :: forall a. CanonicalDominion a => DominionAtlas (CanonicalDominionAtlasScope a) a
 canonicalDominionAtlas =
   let recipe = Proxy :: Proxy (CanonicalDominionRecipe a)
       presentation = atlasConstructionPresentation recipe
         :: AtlasPresentation (DominionPaginationScope a) (DominionCellData a) () ()
       valueAtlas = constructAtlas recipe
-  in retainOnePageAtlas presentation valueAtlas
+  in retainDominionAtlas presentation valueAtlas
 
 {-@ reflect acceptsConstantDatum @-}
 {-@ acceptsConstantDatum :: PageElement scope object -> DominionCellData a object -> {value:Bool | value} @-}
@@ -224,7 +255,9 @@ samePagePosition category arrow =
       -> owner:Dominion a
       -> {presentation:AtlasPresentation scope (DominionCellData a) origin final |
            atlasPresentationPagination presentation == pages
-           && atlasPresentationAction presentation == constantAction (paginationPageElements pages) owner} @-}
+           && atlasPresentationAction presentation == constantAction (paginationPageElements pages) owner
+           && atlasActionMembership (atlasPresentationAction presentation) == atlasMembership acceptsConstantDatum
+           && atlasActionMap (atlasPresentationAction presentation) == constantDataMap} @-}
 constantPresentation :: Pagination scope origin final -> Dominion a
   -> AtlasPresentation scope (DominionCellData a) origin final
 constantPresentation pages owner =

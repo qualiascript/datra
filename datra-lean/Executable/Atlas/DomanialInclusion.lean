@@ -259,19 +259,73 @@ def dominionPresentation_functorIso {A : Type} (D : Dominion A) :
     (dominionPresentation D).allocate.data.toFunctor ≅ (dominionAtlas D).data.toFunctor :=
   constantPresentation_functorIso onePagePagination onePagePagination_depth D
 
-/-- The retained runtime owner carries the one-page certificate used by coverage.
-Its constructors below allocate the actual constant-action presentation. -/
-structure DominionAtlas where
-  atlas : Atlas
-  onePage : atlas.pages.depth = 1
+/-- The owner retains the raw constant carrier and action, before interpretation
+passes to accepted carriers. Both directions of transport preserve the value. -/
+structure DominionAtlas (A : Type) where
+  allocation : AtlasAllocation Unit
+  carrier : allocation.atlasDescription.cellData = CellData A
+  onePage : allocation.atlasDescription.pagination.pages.depth = 1
+  membershipConstant : allocation.atlasDescription.action.membership =
+    .predicate (fun _ _ => true)
+  mapIdentity :
+    let action := allocation.atlasDescription.action
+    ∀ {source target : PageElement allocation.atlasDescription.pagination.pages}
+      (sourceValid : action.domain.contains source = true)
+      (targetValid : action.domain.contains target = true) (arrow : source.Arrow target)
+      (datum : action.membership.Carrier source),
+      cast (congrFun carrier target.cell) ((action.mapData sourceValid targetValid arrow).map datum).val =
+        mapCellData id (cast (congrFun carrier source.cell) datum.val)
+  preimageIdentity :
+    let action := allocation.atlasDescription.action
+    ∀ {source target : PageElement allocation.atlasDescription.pagination.pages}
+      (sourceValid : action.domain.contains source = true)
+      (targetValid : action.domain.contains target = true) (arrow : source.Arrow target)
+      (datum : action.membership.Carrier target),
+      (((action.mapData sourceValid targetValid arrow).preimage datum).map Subtype.val).map
+          (cast (congrFun carrier source.cell)) =
+        (identityCellInsertion (source := source.cell)).preimage
+          (cast (congrFun carrier target.cell) datum.val)
+
+def DominionAtlas.atlas {A : Type} (owner : DominionAtlas A) : Atlas := owner.allocation.toAtlas
+
+theorem DominionAtlas.acceptsAll {A : Type} (owner : DominionAtlas A)
+    (occurrence : PageElement owner.allocation.atlasDescription.pagination.pages)
+    (datum : owner.allocation.atlasDescription.cellData occurrence.cell) :
+    owner.allocation.atlasDescription.action.membership.accepts occurrence datum = true := by
+  rw [owner.membershipConstant]
+  rfl
+
+-- ALIGN: DOMINC-OWNER-MEMBERSHIP.
+theorem DominionAtlas.acceptsDatum {A : Type} (owner : DominionAtlas A)
+    (occurrence : PageElement owner.allocation.atlasDescription.pagination.pages)
+    (datum : owner.allocation.atlasDescription.cellData occurrence.cell) :
+    owner.allocation.acceptsDatum occurrence datum = true := by
+  rw [AtlasAllocation.descriptionMembership]
+  exact owner.acceptsAll
+    (occurrence.normalize (owner.allocation.atlasDescription.pagination.pages.depth - 1)
+      owner.allocation.atlasDescription.pagination.pages.depth) datum
 
 -- ALIGN: DOMINC-OWNER-CARDINALITY.
-theorem DominionAtlas.cardinality (owner : DominionAtlas) :
+theorem DominionAtlas.cardinality {A : Type} (owner : DominionAtlas A) :
     owner.atlas.pages.depth = 1 := owner.onePage
 
+/-- Share the constructor certificates for a concrete constant presentation. -/
+def retainConstantAllocation {A : Type} (D : Dominion A) (allocation : AtlasAllocation Unit)
+    (same : allocation.atlasDescription = dominionPresentation D) : DominionAtlas A := by
+  rcases allocation with ⟨presentation⟩
+  change presentation = dominionPresentation D at same
+  subst presentation
+  exact {
+    allocation := (dominionPresentation D).allocateStored
+    carrier := rfl
+    onePage := rfl
+    membershipConstant := rfl
+    mapIdentity := fun _ _ _ _ => rfl
+    preimageIdentity := fun _ _ _ _ => rfl }
+
 -- ALIGN: DOMINC-OWNER-ALLOCATION.
-def retainedDominionAtlas {A : Type} (D : Dominion A) : DominionAtlas :=
-  ⟨(dominionPresentation D).allocate, dominionPresentation_onePage D⟩
+def retainedDominionAtlas {A : Type} (D : Dominion A) : DominionAtlas A :=
+  retainConstantAllocation D (dominionPresentation D).allocateStored rfl
 
 /-- The canonical constructor uses the same fixed presentation through the
 public recipe allocator, retaining its cardinality certificate. -/
@@ -279,11 +333,11 @@ def canonicalDominionRecipe {A : Type} (D : Dominion A) : AtlasConstruction :=
   ⟨dominionPresentation D⟩
 
 -- ALIGN: DOMINC-CANONICAL-ALLOCATION.
-def canonicalDominionAtlas {A : Type} (D : Dominion A) : DominionAtlas :=
-  ⟨(canonicalDominionRecipe D).constructAtlas, by
-    change (canonicalDominionRecipe D).constructAtlas.pagination.pages.depth = 1
-    rw [AtlasConstruction.constructAtlas_pagination]
-    exact dominionPresentation_onePage D⟩
+def canonicalDominionAtlas {A : Type} (D : Dominion A) : DominionAtlas A :=
+  retainConstantAllocation D (canonicalDominionRecipe D).presentation.allocateStored rfl
+
+theorem canonicalDominionAtlas_allocated {A : Type} (D : Dominion A) :
+    (canonicalDominionAtlas D).atlas = (canonicalDominionRecipe D).constructAtlas := rfl
 
 theorem canonicalDominionAtlas_eq {A : Type} (D : Dominion A) :
     canonicalDominionAtlas D = retainedDominionAtlas D := rfl
@@ -339,15 +393,81 @@ theorem onePageCoverage_spec (X : Atlas) (onePage : X.pages.depth = 1) (source :
 
 /-- Supply the certified one-page witness to the public Atlas-map constructor. -/
 -- ALIGN: DOMINC-OWNER-MAP.
-def dominionAtlasMap (owner : DominionAtlas) : AtlasMap owner.atlas :=
+def dominionAtlasMap {A : Type} (owner : DominionAtlas A) : AtlasMap owner.atlas :=
   AtlasMap.atlasMap owner.atlas (fun datum =>
     let covers := onePageCoverage_spec owner.atlas owner.onePage _ datum
     ⟨onePageCoverage owner.atlas owner.onePage _ datum,
       Atlas.coverageWitnessCovers_valid covers, covers⟩)
 
-theorem dominionAtlasMap_covered (owner : DominionAtlas) (source : owner.atlas.Element)
+theorem dominionAtlasMap_covered {A : Type} (owner : DominionAtlas A) (source : owner.atlas.Element)
     (datum : owner.atlas.cellData source.val.cell) : owner.atlas.Covered source datum :=
   (dominionAtlasMap owner).allCovered source datum
+
+/-- The accepted-carrier interpretation retains exactly the constant values. -/
+def DominionAtlas.carrierEquiv {A : Type} (owner : DominionAtlas A)
+    (source : owner.atlas.Element) : owner.atlas.cellData source.val.cell ≃ CellData A source.val.cell :=
+  letI := owner.allocation.atlasDescription.ownership
+  (owner.allocation.atlasDescription.action.canonicalCarrierEquiv source).trans {
+    toFun datum := cast (congrFun owner.carrier source.val.cell) datum.val
+    invFun datum :=
+      let raw := cast (congrFun owner.carrier source.val.cell).symm datum
+      ⟨raw, owner.acceptsAll source.normalize.val raw⟩
+    left_inv datum := by apply Subtype.ext; simp
+    right_inv datum := by simp }
+
+/-- Reindex the constant carrier into the canonical accepted-carrier model. -/
+def DominionAtlas.datum {A : Type} (owner : DominionAtlas A)
+    (source : owner.atlas.Element) (value : A) : owner.atlas.cellData source.val.cell :=
+  (owner.carrierEquiv source).symm ⟨value⟩
+
+theorem DominionAtlas.datum_value {A : Type} (owner : DominionAtlas A)
+    (source : owner.atlas.Element) (value : A) :
+    owner.carrierEquiv source (owner.datum source value) = ⟨value⟩ :=
+  (owner.carrierEquiv source).apply_symm_apply _
+
+/-- Normalized transport still acts as the identity on the constant value. -/
+theorem DominionAtlas.carrierEquiv_map {A : Type} (owner : DominionAtlas A)
+    {source target : owner.atlas.Element} (arrow : source ⟶ target)
+    (datum : owner.atlas.cellData source.val.cell) :
+    owner.carrierEquiv target ((owner.atlas.data.action.normalizedMap arrow).map datum) =
+      mapCellData id (owner.carrierEquiv source datum) := by
+  let presentation := owner.allocation.atlasDescription
+  letI := presentation.ownership
+  change cast (congrFun owner.carrier target.val.cell)
+      (((presentation.action.toCanonicalAtlas presentation.pagination presentation.laws).data.action.normalizedMap arrow).map datum).val = _
+  rw [AtlasMembershipAction.canonical_map]
+  exact owner.mapIdentity _ _ (FolioData.ValidElement.normalizeArrow arrow)
+    (presentation.action.canonicalCarrierEquiv source datum)
+
+theorem DominionAtlas.carrierEquiv_preimage {A : Type} (owner : DominionAtlas A)
+    {source target : owner.atlas.Element} (arrow : source ⟶ target)
+    (datum : owner.atlas.cellData target.val.cell) :
+    ((owner.atlas.data.action.normalizedMap arrow).preimage datum).map (owner.carrierEquiv source) =
+      (identityCellInsertion (source := source.val.cell)).preimage (owner.carrierEquiv target datum) := by
+  let presentation := owner.allocation.atlasDescription
+  letI := presentation.ownership
+  calc
+    _ = (((owner.atlas.data.action.normalizedMap arrow).preimage datum).map
+        (fun value => value.val)).map (cast (congrFun owner.carrier source.val.cell)) := by
+      simp only [Option.map_map, Function.comp_def]
+      rfl
+    _ = _ := by
+      change ((((presentation.action.toCanonicalAtlas presentation.pagination presentation.laws).data.action.normalizedMap arrow).preimage datum).map
+        Subtype.val).map (cast (congrFun owner.carrier source.val.cell)) = _
+      exact (congrArg (Option.map (cast (congrFun owner.carrier source.val.cell)))
+        (AtlasMembershipAction.canonical_preimage presentation.pagination presentation.action
+          presentation.laws arrow datum)).trans
+        (owner.preimageIdentity _ _ (FolioData.ValidElement.normalizeArrow arrow)
+          (presentation.action.canonicalCarrierEquiv target datum))
+
+-- ALIGN: DOMINC-OWNER-COALITION.
+def dominionCoalitionElement {A : Type} (owner : DominionAtlas A) (value : A) :
+    owner.atlas.CertifiedCoalitionElement :=
+  let source := FolioData.ValidElement.originElement owner.atlas.pages
+  let datum := owner.datum source value
+  Atlas.coalitionElement_checked source rfl datum
+    (onePageCoverage owner.atlas owner.onePage source datum)
+    (onePageCoverage_spec owner.atlas owner.onePage source datum)
 
 -- ALIGN: DOMINC-COVERAGE.
 theorem dominionAtlas_covered {A : Type} (D : Dominion A) (element : (dominionAtlas D).Element)

@@ -11,6 +11,43 @@ structure AtlasPresentation where
   ownership : action.FolioOwner
   laws : letI := ownership; action.Laws
 
+/-- The runtime allocation retains the raw membership action and its laws.
+The owner is a phantom scope; interpretation into `Atlas` passes to accepted
+carriers only after this stored representation has been retained. -/
+structure AtlasAllocation (_owner : Type) where
+  storedPresentation : AtlasPresentation
+
+namespace AtlasAllocation
+
+-- ALIGN: ATLAS-OWNER-DESCRIPTION.
+def atlasDescription {Owner : Type} (value : AtlasAllocation Owner) : AtlasPresentation :=
+  value.storedPresentation
+
+/-- Membership uses the raw stored action at the normalized occurrence. -/
+def acceptsDatum {Owner : Type} (value : AtlasAllocation Owner)
+    (occurrence : PageElement value.atlasDescription.pagination.pages)
+    (datum : value.atlasDescription.cellData occurrence.cell) : Bool :=
+  value.storedPresentation.action.acceptsAt
+    (value.storedPresentation.pagination.pages.depth - 1)
+    value.storedPresentation.pagination.pages.depth occurrence datum
+
+-- ALIGN: ATLAS-DESCRIPTION-MEMBERSHIP.
+theorem descriptionMembership {Owner : Type} (value : AtlasAllocation Owner)
+    (occurrence : PageElement value.atlasDescription.pagination.pages)
+    (datum : value.atlasDescription.cellData occurrence.cell) :
+    value.acceptsDatum occurrence datum =
+      value.atlasDescription.action.membership.accepts
+        (occurrence.normalize (value.atlasDescription.pagination.pages.depth - 1)
+          value.atlasDescription.pagination.pages.depth) datum := rfl
+
+/-- Interpret the stored raw action through the canonical accepted carriers. -/
+def toAtlas {Owner : Type} (value : AtlasAllocation Owner) : Atlas :=
+  let presentation := value.atlasDescription
+  letI := presentation.ownership
+  AtlasMembershipAction.toCanonicalAtlas presentation.pagination presentation.action presentation.laws
+
+end AtlasAllocation
+
 namespace AtlasPresentation
 open CategoryTheory
 
@@ -21,9 +58,16 @@ def ofAction (pagination : Pagination) {cellData : PageElementCell → Type}
   ⟨pagination, cellData, action, owner, laws⟩
 
 -- ALIGN: ATLAS-PRESENTATION-ALLOCATION.
+def allocateStored {Owner : Type} (presentation : AtlasPresentation) : AtlasAllocation Owner :=
+  ⟨presentation⟩
+
+-- ALIGN: ATLAS-ALLOCATION-DESCRIPTION.
+theorem allocateStored_description {Owner : Type} (presentation : AtlasPresentation) :
+    (presentation.allocateStored (Owner := Owner)).atlasDescription = presentation := rfl
+
+/-- The category-level Atlas interprets the exact retained allocation. -/
 def allocate (presentation : AtlasPresentation) : Atlas :=
-  letI := presentation.ownership
-  AtlasMembershipAction.toCanonicalAtlas presentation.pagination presentation.action presentation.laws
+  (presentation.allocateStored (Owner := Unit)).toAtlas
 
 -- ALIGN: ATLAS-PRESENTATION-PAGINATION.
 theorem allocate_pagination (presentation : AtlasPresentation) :

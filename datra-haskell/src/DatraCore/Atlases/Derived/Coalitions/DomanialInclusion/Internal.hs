@@ -74,12 +74,11 @@ import Coalition
   , withCoalitionElement
   )
 import Coalition.Element
-  ( coalitionElement
-  , coalitionElementCoverageAt
+  ( coalitionElementCoverageAt
   )
 import Data.Void (Void, absurd)
 import DomanialInclusion.LiquidInternal
-  ( coalitionComponentInsertion, dominionCoverage, dominionAtlasMap )
+  ( coalitionComponentInsertion, dominionAtlasMap, dominionCoalitionElement )
 import DomanialInclusion.Presentation
   ( DominionPaginationScope, onePageFolio, onePagePagination
   , DominionAtlas, DominionAtlasObject, dominionAtlas, withDominionAtlas
@@ -90,7 +89,6 @@ import DomanialInclusion.Data
   , domIncHomNaturalityLeftValue
   , domIncHomNaturalityRightValue
   , domIncHomRightInverseValue
-  , dominionCellData
   , dominionCellDataValue
   , dominionFunctorCompositionValue
   , dominionFunctorIdentityValue
@@ -126,22 +124,6 @@ originObjectMap = atlasObjectMap
 -- | The initial dominion from the Lean construction.
 emptyDominion :: Dominion Void
 emptyDominion = dominion absurd (const Nothing) absurd
-
-dominionCoalitionElement
-  :: DominionAtlas owner a
-  -> a
-  -> CoalitionElement (DominionAtlasObject owner a)
-dominionCoalitionElement valueDominion value =
-  withPageElement
-    (atlasOriginCell valueAtlas) $ \origin ->
-      let datum = dominionCellData value
-      in coalitionElement
-          valueAtlas
-          origin
-          datum
-          (dominionCoverage valueAtlas origin datum)
-  where
-    valueAtlas = dominionAtlas valueDominion
 
 coalitionValue :: CoalitionElement (DominionAtlasObject owner a) -> a
 coalitionValue element =

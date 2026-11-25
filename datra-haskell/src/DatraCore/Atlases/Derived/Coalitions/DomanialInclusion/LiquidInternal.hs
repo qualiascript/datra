@@ -7,7 +7,8 @@
 
 -- | Checked coalition-dependent assembly for Dominion inclusion.
 module DomanialInclusion.LiquidInternal
-  ( coalitionComponentInsertion, onePageCoverage, dominionCoverage, dominionAtlasMap ) where
+  ( coalitionComponentInsertion, onePageCoverage, dominionCoverage, dominionAtlasMap
+  , dominionCoalitionElement ) where
 
 import Atlas
   ( Atlas, AtlasObject, atlasFolio, atlasPageElements, atlasAcceptsDatum
@@ -16,13 +17,13 @@ import AtlasCoveredPageElement
   ( CoverageWitness, atlasCoverageWitness, coverageWitnessCovers, coverageWitnessAlongArrow )
 import AtlasExtent (cellTraceValid)
 import AtlasMap (AtlasMap, atlasMap)
-import Coalition.Element (CoalitionElement, coalitionElementAt)
+import Coalition.Element (CoalitionElement, coalitionElementAt, coalitionElement)
 import DomanialInsertion (DomanialInsertion, domanialInsertion, composeInsertions)
-import DomanialInclusion.Data (DominionCellData, dominionCellProjection)
+import DomanialInclusion.Data (DominionCellData, dominionCellProjection, dominionCellData)
 import DomanialInclusion.Presentation
-  ( DominionAtlas, DominionAtlasObject, DominionPaginationScope, dominionAtlas )
+  ( DominionAtlas, DominionAtlasObject, DominionPaginationScope, dominionAtlas, dominionAcceptsDatum )
 import Folio (folioLength)
-import PageElements (PageElement, normalizePageElement)
+import PageElements (PageElement, normalizePageElement, withPageElement, originPageElement)
 import PageElements.Structure (pageElementPage)
 import Numeric.Natural (Natural)
 
@@ -66,6 +67,19 @@ dominionAtlasMap :: forall a owner. DominionAtlas owner a -> AtlasMap (DominionA
 dominionAtlasMap owner =
   let valueAtlas = dominionAtlas owner
   in atlasMap valueAtlas (\source datum -> dominionCoverage valueAtlas source datum)
+
+-- | Constant membership and one-page coverage justify the public constructor.
+-- ALIGN: DOMINC-OWNER-COALITION.
+{-@ dominionCoalitionElement :: DominionAtlas owner a -> a
+      -> CoalitionElement (DominionAtlasObject owner a) @-}
+dominionCoalitionElement :: forall a owner. DominionAtlas owner a -> a
+  -> CoalitionElement (DominionAtlasObject owner a)
+dominionCoalitionElement owner value =
+  let valueAtlas = dominionAtlas owner
+  in withPageElement (originPageElement (atlasPageElements valueAtlas)) $ \origin ->
+       let datum = dominionCellData value
+       in dominionAcceptsDatum owner origin datum `seq`
+          coalitionElement valueAtlas origin datum (dominionCoverage valueAtlas origin datum)
 
 -- | A coalition inverse is defined only on covered values. The component
 -- inverse additionally handles arbitrary target data, including uncovered data.

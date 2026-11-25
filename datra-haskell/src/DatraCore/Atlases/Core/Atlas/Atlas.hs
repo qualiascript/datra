@@ -42,6 +42,8 @@ module Atlas
   , atlasPresentationForPredicate
   , atlasPresentationPagination
   , atlasPresentationAction
+  , atlasDescription
+  , atlasDescriptionMembership
   , withAtlasPresentation
   , atlasPagination
   , atlasFolio
@@ -105,6 +107,8 @@ import Atlas.Internal
   ( AtlasPresentation
   , atlasPresentationPagination
   , atlasPresentationAction
+  , atlasDescription
+  , atlasDescriptionMembership
   , Atlas
   , atlasPredicateDataAction
   , atlasActionDomain
@@ -433,7 +437,8 @@ atlasPresentationForPredicate paginationValue accepts action identityLaw composi
 
 -- ALIGN: ATLAS-PRESENTATION-CONTINUATION.
 {-@ withAtlasPresentation :: presentation:AtlasPresentation s d o f
-      -> (forall a. value:{Atlas a s d o f | atlasPagination value == atlasPresentationPagination presentation}
+      -> (forall a. value:{Atlas a s d o f | atlasDescription value == presentation
+           && atlasPagination value == atlasPresentationPagination presentation}
            -> result) -> result @-}
 withAtlasPresentation :: AtlasPresentation s d o f -> (forall a. Atlas a s d o f -> result) -> result
 withAtlasPresentation = Internal.withAtlasPresentation
