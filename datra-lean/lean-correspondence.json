@@ -983,21 +983,21 @@
     },
     {
       "id": "DOMINC-COALITION-EQUIVALENCE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
       "haskell_declaration": "coaDomIncIso",
       "lean_namespace": "Datra.Executable.DomanialInclusion",
-      "lean_declaration": "coalitionValueEquiv"
+      "lean_declaration": "allocatedCoalitionEquiv"
     },
     {
       "id": "DOMINC-COALITION-LEFT-INVERSE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
       "haskell_declaration": "coaDomIncIsoLeftInverse",
       "lean_namespace": "Datra.Executable.DomanialInclusion",
       "lean_declaration": "coaDomInc_leftInverse"
     },
     {
       "id": "DOMINC-COALITION-RIGHT-INVERSE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
       "haskell_declaration": "coaDomIncIsoRightInverse",
       "lean_namespace": "Datra.Executable.DomanialInclusion",
       "lean_declaration": "coaDomInc_rightInverse"
@@ -5334,6 +5334,69 @@
       "haskell_declaration": "withCoalitionElementOf",
       "lean_namespace": "Datra.Executable.Atlas",
       "lean_declaration": "withCoalitionElementOf"
+    },
+    {
+      "id": "ATLAS-COVERAGE-CACHED-RANK-MATCHES",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "coverageWitnessRankMatches",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coverageWitnessRankMatches"
+    },
+    {
+      "id": "COALITION-CANONICAL-RECONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs",
+      "haskell_declaration": "coalitionElementReconstruct",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionElement_checked_reconstruct"
+    },
+    {
+      "id": "COALITION-WITNESS-INDEPENDENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs",
+      "haskell_declaration": "coalitionElementWitnessIndependent",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionElement_checked_witnessIndependent"
+    },
+    {
+      "id": "COALITION-CONSTRUCTOR-VIEW",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs",
+      "haskell_declaration": "coalitionElementView",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionElement_checked_view"
+    },
+    {
+      "id": "DOMINC-CELL-RECONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Data.hs",
+      "haskell_declaration": "dominionCellDataReconstruct",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "cellData_reconstruct"
+    },
+    {
+      "id": "COALITION-VIEW-EXTENSIONALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs",
+      "haskell_declaration": "coalitionElementExtensionality",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "CertifiedCoalitionElement.ext_view"
+    },
+    {
+      "id": "DOMINC-COALITION-RECONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "dominionCoalitionReconstruct",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionCoalitionElement_reconstruct"
+    },
+    {
+      "id": "DOMINC-CHECKED-COALITION-COUNIT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "dominionCoalitionCounit",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionCoalitionCounit"
+    },
+    {
+      "id": "COALITION-VIEW-SOURCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs",
+      "haskell_declaration": "coalitionElementViewSource",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "viewCoalitionElement_source"
     }
   ],
   "modules": [
@@ -6196,6 +6259,7 @@
       ],
       "refinements": [
         "withAtlasCoverageWitness",
+        "coverageWitnessRankMatches",
         "coverageWitnessCode",
         "coverageWitnessBound",
         "coverageCodeFor",
@@ -6590,7 +6654,8 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
       "module": "Coalition.Element.Internal",
       "types": [
-        "CoalitionData"
+        "CoalitionData",
+        "CoalitionView"
       ],
       "reflected": [],
       "refinements": [],
@@ -6626,9 +6691,11 @@
       "module": "DomanialInclusion.LiquidInternal",
       "types": [],
       "reflected": [
-        "coalitionDatumValue",
         "coalitionValue",
+        "dominionViewValue",
+        "dominionViewFrom",
         "coalitionValuePreimage",
+        "coalitionElementPreimage",
         "coalitionElementAt",
         "coalitionComponentMap"
       ],
@@ -6637,8 +6704,20 @@
         "dominionCoverage",
         "dominionAtlasMap",
         "dominionCoalitionElement",
+        "dominionCoalitionElementAt",
+        "coalitionValueConstructed",
+        "dominionViewReconstruct",
         "dominionCoalitionRoundTrip",
         "dominionCoalitionUnit",
+        "dominionCoalitionReconstruct",
+        "coalitionElementPreimage",
+        "dominionCoalitionCounitRoundTrip",
+        "dominionCoalitionCounit",
+        "coalitionCounitInsertion",
+        "coalitionUnitInsertion",
+        "coaDomIncIso",
+        "coaDomIncIsoLeftInverse",
+        "coaDomIncIsoRightInverse",
         "coalitionComponentInsertion",
         "coalitionComponentRoundTrip"
       ],
@@ -6648,10 +6727,15 @@
       "embeddings": [
         "Natural as int"
       ],
-      "predicates": [],
-      "refinement_aliases": [],
+      "predicates": [
+        "DominionCoalitionValid"
+      ],
+      "refinement_aliases": [
+        "DominionCoalition"
+      ],
       "opaque_reflected": [
-        "dominionCoalitionElement"
+        "dominionCoalitionElement",
+        "coaDomIncIso"
       ],
       "refined_instances": []
     },
@@ -7829,15 +7913,26 @@
       "types": [],
       "reflected": [
         "Internal.coalitionElement",
-        "atlasCoveredByWitness",
         "withCoalitionElement",
-        "coalitionCoveredElement",
+        "viewCoalitionElement",
         "coalitionElementRank",
-        "coalitionElement"
+        "coalitionElementSource",
+        "coalitionElementValid",
+        "coalitionElement",
+        "coalitionViewSource",
+        "coalitionViewCovered",
+        "rebuildCoalitionView"
       ],
       "refinements": [
         "coalitionElement",
         "coalitionElementEliminate",
+        "coalitionElementView",
+        "coalitionElementReconstruct",
+        "coalitionElementWitnessIndependent",
+        "coalitionElementViewSource",
+        "rebuildCoalitionView",
+        "coalitionViewWitnessIndependent",
+        "coalitionElementExtensionality",
         "withCoalitionElementOf"
       ],
       "aliases": [],
@@ -8074,6 +8169,7 @@
         "unrank"
       ],
       "refinements": [
+        "dominionCellDataReconstruct",
         "dominionFunctorIdentityValue",
         "dominionFunctorCompositionValue",
         "constantDominion",

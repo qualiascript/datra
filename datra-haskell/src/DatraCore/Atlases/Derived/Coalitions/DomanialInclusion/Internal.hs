@@ -78,7 +78,7 @@ import Coalition.Element
 import Data.Void (Void, absurd)
 import DomanialInclusion.LiquidInternal
   ( coalitionComponentInsertion, dominionAtlasMap, dominionCoalitionElement
-  , coalitionValue, dominionCoalitionUnit )
+  , coalitionValue, coaDomIncIso, coaDomIncIsoLeftInverse, coaDomIncIsoRightInverse )
 import DomanialInclusion.Presentation
   ( DominionPaginationScope, onePageFolio, onePagePagination
   , DominionAtlas, DominionAtlasObject, dominionAtlas, withDominionAtlas
@@ -97,7 +97,6 @@ import DomanialInsertion
   ( DomanialInsertion
   , applyInsertion
   , composeInsertions
-  , domanialInsertion
   , insertionLeftInverse
   , preimage
   )
@@ -124,37 +123,6 @@ originObjectMap = atlasObjectMap
 -- | The initial dominion from the Lean construction.
 emptyDominion :: Dominion Void
 emptyDominion = dominion absurd (const Nothing) absurd
-
--- | The canonical isomorphism @Coa (DomInc X) ≅ X@, represented by its two
--- proof-carrying domanial insertions.
--- ALIGN: DOMINC-COALITION-EQUIVALENCE.
-coaDomIncIso
-  :: DominionAtlas owner a
-  -> ( DomanialInsertion (CoalitionElement (DominionAtlasObject owner a)) a
-     , DomanialInsertion a (CoalitionElement (DominionAtlasObject owner a))
-     )
-coaDomIncIso valueDominion = (counit, unit)
-  where
-    counit =
-      domanialInsertion
-        coalitionValue
-        (Just . dominionCoalitionElement valueDominion)
-        (const ())
-
-    unit = dominionCoalitionUnit valueDominion
-
--- ALIGN: DOMINC-COALITION-LEFT-INVERSE.
-coaDomIncIsoLeftInverse
-  :: DominionAtlas owner a
-  -> CoalitionElement (DominionAtlasObject owner a)
-  -> ()
-coaDomIncIsoLeftInverse valueDominion =
-  insertionLeftInverse (fst (coaDomIncIso valueDominion))
-
--- ALIGN: DOMINC-COALITION-RIGHT-INVERSE.
-coaDomIncIsoRightInverse :: DominionAtlas owner a -> a -> ()
-coaDomIncIsoRightInverse valueDominion =
-  insertionLeftInverse (snd (coaDomIncIso valueDominion))
 
 -- | Forward half of the adjunction hom equivalence.
 -- ALIGN: DOMINC-HOM-TO.

@@ -10,6 +10,10 @@ open CategoryTheory
 structure CellData (A : Type) (_cell : PageElementCell) where
   value : A
 
+-- ALIGN: DOMINC-CELL-RECONSTRUCTION.
+theorem cellData_reconstruct {A : Type} {cell : PageElementCell} (datum : CellData A cell) :
+    CellData.mk datum.value = datum := rfl
+
 def mapCellData {A B : Type} {source target : PageElementCell} (f : A → B)
     (datum : CellData A source) : CellData B target := ⟨f datum.value⟩
 
@@ -475,7 +479,8 @@ theorem dominionCoalitionElement_source {A : Type} (owner : DominionAtlas A) (va
 
 def coalitionValue {A : Type} (owner : DominionAtlas A)
     (element : owner.atlas.CertifiedCoalitionElement) : A :=
-  (owner.carrierEquiv element.val.source element.val.datum).value
+  let viewed := Atlas.viewCoalitionElement element.val
+  (owner.carrierEquiv viewed.1 viewed.2).value
 
 -- ALIGN: DOMINC-COALITION-VALUE-ROUNDTRIP.
 theorem dominionCoalitionElement_value {A : Type} (owner : DominionAtlas A) (value : A) :
@@ -502,26 +507,22 @@ theorem coalitionValue_eq_iff {A : Type} (owner : DominionAtlas A)
   · intro same
     rw [same]
 
-/-- Reconstruction preserves coalition equality, independently of the stored
-coverage presentation. It does not identify distinct witness records. -/
+/-- Reconstruction preserves the canonical coalition carrier itself. -/
+-- ALIGN: DOMINC-COALITION-RECONSTRUCTION.
 theorem dominionCoalitionElement_reconstruct {A : Type} (owner : DominionAtlas A)
     (element : owner.atlas.CertifiedCoalitionElement) :
-    (dominionCoalitionElement owner (coalitionValue owner element)).equal element = true := by
-  apply (Atlas.CertifiedCoalitionElement.equal_iff _ _).mpr
+    dominionCoalitionElement owner (coalitionValue owner element) = element := by
+  apply Atlas.CertifiedCoalitionElement.ext
   apply (coalitionValue_eq_iff owner _ _).mp
   exact dominionCoalitionElement_value owner _
 
-/-- The allocated Dominion's coalition equivalence uses the public equality
-quotient while retaining the executable constructor and value projection. -/
+/-- The allocated Dominion's coalition equivalence retains the executable
+constructor and value projection over the canonical carrier. -/
+-- ALIGN: DOMINC-COALITION-EQUIVALENCE.
 def allocatedCoalitionEquiv {A : Type} (owner : DominionAtlas A) : owner.atlas.Coalition ≃ A where
-  toFun := Quotient.lift (coalitionValue owner)
-    (fun left right same => (coalitionValue_eq_iff owner left right).mpr same)
-  invFun value := Quotient.mk _ (dominionCoalitionElement owner value)
-  left_inv element := by
-    induction element using Quotient.inductionOn with
-    | _ element =>
-      exact Quotient.sound
-        ((Atlas.CertifiedCoalitionElement.equal_iff _ _).mp (dominionCoalitionElement_reconstruct owner element))
+  toFun := coalitionValue owner
+  invFun := dominionCoalitionElement owner
+  left_inv := dominionCoalitionElement_reconstruct owner
   right_inv := dominionCoalitionElement_value owner
 
 -- ALIGN: DOMINC-CHECKED-COALITION-UNIT.
@@ -530,6 +531,25 @@ def dominionCoalitionUnit {A : Type} (owner : DominionAtlas A) :
   map := dominionCoalitionElement owner
   preimage element := some (coalitionValue owner element)
   leftInverse value := congrArg some (dominionCoalitionElement_value owner value)
+
+-- ALIGN: DOMINC-CHECKED-COALITION-COUNIT.
+def dominionCoalitionCounit {A : Type} (owner : DominionAtlas A) :
+    DomanialInsertion owner.atlas.CertifiedCoalitionElement A where
+  map := coalitionValue owner
+  preimage value := some (dominionCoalitionElement owner value)
+  leftInverse element := congrArg some (dominionCoalitionElement_reconstruct owner element)
+
+-- ALIGN: DOMINC-COALITION-LEFT-INVERSE.
+theorem coaDomInc_leftInverse {A : Type} (owner : DominionAtlas A)
+    (element : owner.atlas.CertifiedCoalitionElement) :
+    (dominionCoalitionCounit owner).preimage ((dominionCoalitionCounit owner).map element) =
+      some element :=
+  (dominionCoalitionCounit owner).leftInverse element
+
+-- ALIGN: DOMINC-COALITION-RIGHT-INVERSE.
+theorem coaDomInc_rightInverse {A : Type} (owner : DominionAtlas A) (value : A) :
+    (dominionCoalitionUnit owner).preimage ((dominionCoalitionUnit owner).map value) = some value :=
+  (dominionCoalitionUnit owner).leftInverse value
 
 -- ALIGN: DOMINC-COVERAGE.
 theorem dominionAtlas_covered {A : Type} (D : Dominion A) (element : (dominionAtlas D).Element)
@@ -540,31 +560,16 @@ theorem dominionAtlas_covered {A : Type} (D : Dominion A) (element : (dominionAt
 def dominionCoalitionValue {A : Type} (D : Dominion A) (value : A) : (dominionAtlas D).CoalitionValue :=
   ⟨⟨value⟩, dominionAtlas_covered D _ _⟩
 
--- ALIGN: DOMINC-COALITION-EQUIVALENCE.
 def coalitionValueEquiv {A : Type} (D : Dominion A) : (dominionAtlas D).CoalitionValue ≃ A where
   toFun c := c.val.value
   invFun := dominionCoalitionValue D
   left_inv _ := rfl
   right_inv _ := rfl
 
-def coaDomIncCounit {A : Type} (D : Dominion A) : DomanialInsertion (dominionAtlas D).CoalitionValue A where
-  map := coalitionValueEquiv D
-  preimage value := some ((coalitionValueEquiv D).symm value)
-  leftInverse c := congrArg some ((coalitionValueEquiv D).left_inv c)
-
 def coaDomIncUnit {A : Type} (D : Dominion A) : DomanialInsertion A (dominionAtlas D).CoalitionValue where
   map := (coalitionValueEquiv D).symm
   preimage c := some (coalitionValueEquiv D c)
   leftInverse _ := rfl
-
--- ALIGN: DOMINC-COALITION-LEFT-INVERSE.
-theorem coaDomInc_leftInverse {A : Type} (D : Dominion A) (c : (dominionAtlas D).CoalitionValue) :
-    (coaDomIncCounit D).preimage ((coaDomIncCounit D).map c) = some c :=
-  (coaDomIncCounit D).leftInverse c
-
--- ALIGN: DOMINC-COALITION-RIGHT-INVERSE.
-theorem coaDomInc_rightInverse {A : Type} (D : Dominion A) (value : A) :
-    (coaDomIncUnit D).preimage ((coaDomIncUnit D).map value) = some value := rfl
 
 theorem onePage_normalized_unique (element : onePagePagination.Element) :
     element.normalize = FolioData.ValidElement.originElement onePagePagination.pages := by
@@ -664,17 +669,16 @@ def coalitionTransversal {A : Type} (D : Dominion A) (X : Atlas)
     (leftInverse : ∀ value, backward (forward value).value.val = some value) :
     Atlas.Transversal (dominionAtlas D) X :=
   Atlas.atlasTransversal (coalitionOrdered D X forward backward leftInverse) (fun covered =>
-    ⟨(forward covered.val.datum.value).val.witness,
-      (forward covered.val.datum.value).property.1.1, by
+    ⟨(forward covered.val.datum.value).coveredElement.val.witness,
+      (forward covered.val.datum.value).coveredElement.property.1, by
         change X.coverageWitnessCovers
           (FolioData.ValidElement.originElement X.pages).normalize
           (forward covered.val.datum.value).value.val
-          (forward covered.val.datum.value).val.witness = true
+          (forward covered.val.datum.value).coveredElement.val.witness = true
         have h := Atlas.coalitionElementAt_coverage
-          (forward covered.val.datum.value).val
+          (forward covered.val.datum.value)
           (FolioData.ValidElement.originElement X.pages)
           (forward covered.val.datum.value).val.source.toOrigin
-          (forward covered.val.datum.value).property.1
         simpa only [Atlas.coverageWitnessCovers, X.originImageRank_normalize] using h⟩)
 
 theorem coalitionTransversal_stable {A : Type} (D : Dominion A) (X : Atlas)

@@ -106,6 +106,14 @@ theorem coverageWitnessCovers_valid {X : Atlas} {source : X.Element}
   simp only [coverageWitnessCovers, Bool.and_eq_true] at covers
   exact (coverageWitnessValid_iff X witness).mp covers.1
 
+-- ALIGN: ATLAS-COVERAGE-CACHED-RANK-MATCHES.
+theorem coverageWitnessRankMatches (X : Atlas) (source : X.Element)
+    (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
+    (covers : X.coverageWitnessCovers source datum witness = true) :
+    witness.regionOriginRank = X.originImageRank source datum := by
+  simp only [coverageWitnessCovers, Bool.and_eq_true, beq_iff_eq] at covers
+  exact covers.2.2.symm
+
 theorem CoverageWitness.Valid.covered {X : Atlas} {witness : X.CoverageWitness}
     (valid : witness.Valid) : X.Covered witness.region witness.datum := by
   obtain ⟨⟨index, datum⟩, rfl⟩ := valid

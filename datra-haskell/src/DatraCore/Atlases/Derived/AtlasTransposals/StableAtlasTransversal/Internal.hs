@@ -206,7 +206,7 @@ stableAtlasTransversal
   -> backward:(CoalitionData targetAtlasScope targetScope targetCellData
        -> Maybe (CoalitionData sourceAtlasScope sourceScope sourceCellData))
   -> (value:CoalitionData sourceAtlasScope sourceScope sourceCellData
-       -> { proof:() | backward (mapCoalitionElement targetAtlas transversal value) == Just value })
+       -> { proof:() | backward (mapCoalitionElement sourceAtlas targetAtlas transversal value) == Just value })
   -> StableAtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
@@ -231,7 +231,7 @@ stableAtlasTransversal sourceAtlas targetAtlas transversal proof backward leftIn
     targetAtlas
     transversal
     (checkedStableOrigin sourceAtlas targetAtlas transversal proof)
-    (domanialInsertion (mapCoalitionElement targetAtlas transversal) backward leftInverse)
+    (domanialInsertion (mapCoalitionElement sourceAtlas targetAtlas transversal) backward leftInverse)
 
 -- | Primitive inverses are supplied with their exact-image law; identities and
 -- composites use the ordinary checked insertion operations.

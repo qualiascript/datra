@@ -22,6 +22,7 @@ import Chain
 import ChainedDominionAtlas
 import Charter
 import Coalition
+import qualified Coalition.Element as CoalitionElement
 import qualified Consolidation.Ordered as Ordered
 import Consolidation
 import qualified Control.Category as Category
@@ -112,6 +113,7 @@ testTree =
         , testCase "atlas transversal" testAtlasTransversal
         , testCase "stable atlas transversal" testStableAtlasTransversal
         , testCase "coalition" testCoalition
+        , testCase "coalition canonicalizes duplicate decoder codes" testCoalitionCanonicalCodes
         , testCase "domanial inclusion" testDomanialInclusion
         , testCase "domanial inclusion rejects uncovered inverse" testDomanialInclusionUncoveredInverse
         ]
@@ -2698,10 +2700,10 @@ onePageChartInverse valueAtlas occurrence datum =
   Just (chartCellData valueAtlas occurrence datum
     (atlasCoverageWitness valueAtlas occurrence datum occurrence datum ()) ())
 
--- A Dominion may decode unused ranks to values already in its image. Charter
--- must identify such successful aliases by the least coverage code.
-testCharterCanonicalCodes :: IO ()
-testCharterCanonicalCodes =
+-- A Dominion may decode unused ranks to values already in its image. Canonical
+-- covered carriers identify these aliases by the least coverage code.
+withAliasingDominionAtlas :: (forall a s. Atlas a s TestCellData () () -> result) -> result
+withAliasingDominionAtlas useAtlas =
   pagination (singletonFolio unitChain) $ \valuePagination ->
     let dataAt _ = dominion
           (\(TestCellData value) -> 2 * value)
@@ -2709,20 +2711,24 @@ testCharterCanonicalCodes =
           (const ())
     in atlas valuePagination
       (atlasDataAction (paginationPageElements valuePagination) dataAt testAtlasMapData)
-      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \valueAtlas ->
-        withAtlasMapExtent (chartAtlasMap valueAtlas) $ \_ _ chartedDom _ ->
-          case [(code, value) | code <- [0 .. 30], Just value <- [unrank chartedDom code],
-                chartedCellDataValue value == TestCellData 0] of
-            (firstCode, first) : (aliasCode, alias) : _ -> do
-              assert "distinct successful codes retain one canonical rank"
-                (firstCode /= aliasCode && rank chartedDom first == firstCode
-                  && rank chartedDom alias == firstCode)
-              case unrank chartedDom (rank chartedDom alias) of
-                Nothing -> fail "canonical Charter rank failed to decode"
-                Just recovered -> assert "canonical decoding preserves datum and stored rank"
-                  (chartedCellDataValue recovered == TestCellData 0
-                    && rank chartedDom recovered == firstCode)
-            _ -> fail "test setup failed: expected two decoder codes for one datum"
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw useAtlas
+
+testCharterCanonicalCodes :: IO ()
+testCharterCanonicalCodes =
+  withAliasingDominionAtlas $ \valueAtlas ->
+    withAtlasMapExtent (chartAtlasMap valueAtlas) $ \_ _ chartedDom _ ->
+      case [(code, value) | code <- [0 .. 30], Just value <- [unrank chartedDom code],
+            chartedCellDataValue value == TestCellData 0] of
+        (firstCode, first) : (aliasCode, alias) : _ -> do
+          assert "distinct successful codes retain one canonical rank"
+            (firstCode /= aliasCode && rank chartedDom first == firstCode
+              && rank chartedDom alias == firstCode)
+          case unrank chartedDom (rank chartedDom alias) of
+            Nothing -> fail "canonical Charter rank failed to decode"
+            Just recovered -> assert "canonical decoding preserves datum and stored rank"
+              (chartedCellDataValue recovered == TestCellData 0
+                && rank chartedDom recovered == firstCode)
+        _ -> fail "test setup failed: expected two decoder codes for one datum"
 
 testCharter :: IO ()
 testCharter =
@@ -3183,6 +3189,28 @@ testStableAtlasTransversal =
           stableAtlasTransversalPreservesExtent composed `seq`
             assert "stable Atlas transversals send extent to extent"
               (mappedOrigin == originElement)
+
+testCoalitionCanonicalCodes :: IO ()
+testCoalitionCanonicalCodes =
+  withAliasingDominionAtlas $ \valueAtlas ->
+    let values = coalition valueAtlas
+    in case [(code, value) | code <- [0 .. 30], Just value <- [unrank values code],
+             coalitionElementRank value == 0] of
+      (firstCode, first) : (aliasCode, alias) : _ -> do
+        assert "coalition decoder aliases retain a single canonical code"
+          (firstCode /= aliasCode && rank values first == firstCode
+            && rank values alias == firstCode)
+        assert "coalition decoding retains canonical payload validity"
+          (CoalitionElement.coalitionElementValid valueAtlas first
+            && CoalitionElement.coalitionElementValid valueAtlas alias)
+        case unrank values (rank values alias) of
+          Nothing -> fail "canonical coalition rank failed to decode"
+          Just recovered -> do
+            assert "coalition canonical decoding retains its public rank"
+              (coalitionElementRank recovered == 0 && rank values recovered == firstCode)
+            withCoalitionElement recovered $ \_ datum ->
+              assert "coalition canonical decoding retains its datum" (datum == TestCellData 0)
+      _ -> fail "test setup failed: expected two coalition decoder codes for one datum"
 
 testCoalition :: IO ()
 testCoalition =

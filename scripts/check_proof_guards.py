@@ -974,6 +974,40 @@ proofGuard datum = preimage identityDominionCellInsertion datum
 
 DOMINC_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs"
 DOMINC_GUARDS = {
+    "Dominion coalition counit requires its owning validity": """
+{-@ proofGuard :: DominionAtlas owner a
+      -> CoalitionData owner (DominionPaginationScope a) (DominionCellData a) -> a @-}
+proofGuard :: DominionAtlas owner a
+  -> CoalitionData owner (DominionPaginationScope a) (DominionCellData a) -> a
+proofGuard owner = applyInsertion (dominionCoalitionCounit owner)
+""",
+    "Dominion coalition isomorphism requires its owning validity": """
+{-@ proofGuard :: DominionAtlas owner a
+      -> CoalitionData owner (DominionPaginationScope a) (DominionCellData a) -> () @-}
+proofGuard :: DominionAtlas owner a
+  -> CoalitionData owner (DominionPaginationScope a) (DominionCellData a) -> ()
+proofGuard = coaDomIncIsoLeftInverse
+""",
+    "Dominion coalition counit requires the canonical origin": """
+{-@ proofGuard :: owner:DominionAtlas ownerScope a
+      -> {element:CoalitionData ownerScope (DominionPaginationScope a) (DominionCellData a) |
+           coalitionElementValid (dominionAtlas owner) element} -> a @-}
+proofGuard :: DominionAtlas owner a
+  -> CoalitionData owner (DominionPaginationScope a) (DominionCellData a) -> a
+proofGuard owner = applyInsertion (dominionCoalitionCounit owner)
+""",
+    "Dominion coalition counit cannot discard its inverse": """
+{-@ proofGuard :: owner:DominionAtlas ownerScope a
+      -> element:{CoalitionData ownerScope (DominionPaginationScope a) (DominionCellData a) |
+           DominionCoalitionValid owner element}
+      -> {result:Maybe (CoalitionData ownerScope (DominionPaginationScope a) (DominionCellData a)) |
+           result == Nothing} @-}
+proofGuard :: DominionAtlas owner a
+  -> CoalitionData owner (DominionPaginationScope a) (DominionCellData a)
+  -> Maybe (CoalitionData owner (DominionPaginationScope a) (DominionCellData a))
+proofGuard owner element = dominionCoalitionReconstruct owner element `seq`
+  preimage (dominionCoalitionCounit owner) (applyInsertion (dominionCoalitionCounit owner) element)
+""",
     "Dominion coalition construction retains the original value": """
 {-@ proofGuard :: DominionAtlas owner a -> value:a -> {result:a | result /= value} @-}
 proofGuard :: DominionAtlas owner a -> a -> a
@@ -1022,6 +1056,44 @@ proofGuard targetAtlas targetOccurrence forward =
 
 COALITION_ELEMENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs"
 COALITION_ELEMENT_GUARDS = {
+    "coalition extensionality requires equal dependent views": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> left:{CoalitionData a s d | CoalitionValid owner left}
+      -> right:{CoalitionData a s d | CoalitionValid owner right}
+      -> {left == right} @-}
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> CoalitionData a s d -> ()
+proofGuard = coalitionElementExtensionality
+""",
+    "coalition constructor view preserves its dependent payload": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source
+           && SomePageElement source == originPageElement (atlasPageElements owner)}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> witness:{CoverageWitness a s d | coverageWitnessCovers owner source datum witness}
+      -> {viewCoalitionElement (coalitionElement owner source datum witness) /= CoalitionView source datum} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWitness a s d -> ()
+proofGuard = coalitionElementView
+""",
+    "canonical coalition reconstruction preserves the stored carrier": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> element:{CoalitionData a s d | CoalitionValid owner element}
+      -> {result:CoalitionData a s d | result /= element} @-}
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> CoalitionData a s d
+proofGuard owner element =
+  withCoalitionElementOf owner element (\\source datum witness -> coalitionElement owner source datum witness)
+""",
+    "canonical coalition construction is independent of its witness": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source
+           && SomePageElement source == originPageElement (atlasPageElements owner)}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> first:{CoverageWitness a s d | coverageWitnessCovers owner source datum first}
+      -> second:{CoverageWitness a s d | coverageWitnessCovers owner source datum second}
+      -> {coalitionElement owner source datum first /= coalitionElement owner source datum second} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object
+  -> CoverageWitness a s d -> CoverageWitness a s d -> ()
+proofGuard = coalitionElementWitnessIndependent
+""",
     "certified coalition elimination requires its owning validity": """
 proofGuard :: Atlas a s d o f -> CoalitionData a s d -> Bool
 proofGuard owner element =

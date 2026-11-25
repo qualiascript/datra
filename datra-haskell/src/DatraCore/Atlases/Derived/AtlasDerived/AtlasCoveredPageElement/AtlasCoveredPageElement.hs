@@ -14,6 +14,8 @@ module AtlasCoveredPageElement
   , coverageWitnessValid
   , withAtlasCoverageWitness
   , coverageWitnessOriginRank
+  , coverageWitnessRankMatches
+  , atlasOriginImageRank
   , coverageWitnessCode
   , coverageWitnessBound
   , coverageWitnessAlongArrow
@@ -50,6 +52,8 @@ import AtlasCoveredPageElement.Internal
   , coverageWitnessValid
   , withAtlasCoverageWitness
   , coverageWitnessOriginRank
+  , coverageWitnessRankMatches
+  , atlasOriginImageRank
   , coverageWitnessCode
   , coverageWitnessAlongArrow
   , atlasCoveredPageElement

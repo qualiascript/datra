@@ -23,6 +23,7 @@ module AtlasCoveredPageElement.Internal
   , coverageWitnessValid
   , withAtlasCoverageWitness
   , coverageWitnessOriginRank
+  , coverageWitnessRankMatches
   , coverageWitnessCode
   , coverageWitnessBound
   , coverageWitnessAlongArrow
@@ -155,6 +156,17 @@ withAtlasCoverageWitness _owner (AtlasCoverageWitness value) useRegion =
 {-# OPAQUE coverageWitnessOriginRank #-}
 coverageWitnessOriginRank :: CoverageWitness a s d -> Natural
 coverageWitnessOriginRank (AtlasCoverageWitness value) = coverageRegionRank value
+
+-- | Coverage certifies the cached rank of this exact source datum.
+-- ALIGN: ATLAS-COVERAGE-CACHED-RANK-MATCHES.
+{-@ coverageWitnessRankMatches :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> witness:{CoverageWitness a s d | coverageWitnessCovers owner source datum witness}
+      -> {coverageWitnessOriginRank witness == atlasOriginImageRank owner source datum} @-}
+coverageWitnessRankMatches :: Atlas a s d o f -> PageElement s object -> d object
+  -> CoverageWitness a s d -> ()
+coverageWitnessRankMatches _ _ _ (AtlasCoverageWitness _) = ()
 
 -- | Encode the datum after transporting it to the territory representative
 -- selected by its final-page position. Reconstruction is certified to succeed;

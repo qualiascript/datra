@@ -17,6 +17,7 @@ module DomanialInclusion.Data
   , identityCellMapComposition
   , dominionCellData
   , dominionCellDataValue
+  , dominionCellDataReconstruct
   , mapDominionCellData
   , dominionFunctorIdentityValue
   , dominionFunctorCompositionValue
@@ -49,6 +50,13 @@ dominionCellData = DominionCellData
 {-@ reflect dominionCellDataValue @-}
 dominionCellDataValue :: DominionCellData a object -> a
 dominionCellDataValue (DominionCellData value) = value
+
+-- | Projection retains the entire constant datum, including its cell index.
+-- ALIGN: DOMINC-CELL-RECONSTRUCTION.
+{-@ dominionCellDataReconstruct :: datum:DominionCellData a object
+      -> {dominionCellData (dominionCellDataValue datum) == datum} @-}
+dominionCellDataReconstruct :: DominionCellData a object -> ()
+dominionCellDataReconstruct (DominionCellData _) = ()
 
 {-@ reflect mapDominionCellData @-}
 mapDominionCellData

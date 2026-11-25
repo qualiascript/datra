@@ -94,20 +94,32 @@ payload keeps its dependent region and datum together; the abstract
 `CoverageWitness` type exposes the three owner parameters directly in checked
 contracts, and `AtlasCoverageWitness` is its object-indexed form. Public
 elimination retains the final-region, membership, and cached-rank certificates;
-rank observation keeps the constructor private. Coalition uses the shared
-covered-element carrier, its finite decoder, and its public constructors and
-eliminators. `CoveredPageElement` and `CoalitionData` expose the Atlas scope,
+rank observation keeps the constructor private. Coalition stores the shared
+canonical `ChartedDatum` at its origin, together with the cached origin rank.
+Its finite decoder canonicalizes successful codes, and coverage witnesses are
+recovered through Charter's checked interface. `CoveredPageElement` and
+`CoalitionData` expose the Atlas scope,
 page scope, and datum family directly to checked contracts; their object-indexed
 forms are aliases. All three parameters have nominal roles, and the constructors
 remain private. The public coalition constructor/eliminator law retains the exact
 stored source and datum for a rank-polymorphic callback. Lean proves the same law
-for the certified constructor. Covered-element construction and decoding retain
+for the certified constructor. A public read-only `CoalitionView` exposes those
+dependent values through a first-order constructor law; it cannot construct a
+coalition. The constant-value projection uses this view so its checked equation
+does not depend on storing a polymorphic callback. Covered-element construction and decoding retain
 `coveredPageElementValid` for the supplied Atlas. Its certified eliminator exposes
 the exact source and witness together with owning-trace, datum-membership, and
 coverage certificates. The coalition interface additionally retains its canonical
-origin and the equality between the witness's cached rank and the coalition's
-rank observation. Coalition ranking uses the public witness-bounded search through
-the exposed coverage interface. Negative checks reject elimination without owning
+origin and the equality between a recovered witness's cached rank and the
+coalition's rank observation. Coalition ranking reads the stored canonical code;
+construction obtains it through the public witness-bounded search. Certified
+elimination also proves that rebuilding from the recovered datum and witness
+returns the exact original coalition record. Canonical-code uniqueness proves
+construction independent of the supplied coverage witness in both languages.
+Equal dependent views reconstruct equal canonical carriers. The checked view
+source law and constant-datum reconstruction transfer this equality to the
+Dominion value projection without exposing private constructors to clients.
+Negative checks reject elimination without owning
 validity, substitution of the stored witness, changed coalition origin or rank,
 and loss of the decoder's payload-validity certificate.
 
@@ -503,21 +515,22 @@ Atlas lemma relates datum membership to the retained presentation's normalized
 action. The Dominion helper uses it to prove that every constant datum is
 accepted. Coalition-element construction is checked through the public coalition
 constructor with that membership fact, the canonical origin's owning trace,
-and one-page coverage. Lean packages the same origin datum and coverage witness
-as a certified coalition element. The constructor retains the equation that
+and one-page coverage. Lean packages the same origin datum with its canonical
+coverage code as a certified coalition element. The constructor retains the equation that
 reading the constant datum recovers the original value. This checks the
 value-to-coalition insertion, including its exact forward function, inverse,
 and left-inverse law, in both languages. The isomorphism uses this checked
-insertion. Coalition's public `Eq` compares cached origin ranks. Lean therefore
-quotients certified presentations by their covered origin value: different
-coverage witnesses represent the same coalition value. The opposite insertion
-must respect this equality, while the checked generic `DomanialInsertion`
-contract currently requires raw carrier equality for its left inverse. Lean
-proves reconstruction preserves public coalition equality for the allocated
-owner and packages the constructor and value projection as an equivalence on
-the coalition quotient. The Haskell carrier/equality bridge, opposite insertion,
-and hom-correspondence assembly remain outstanding; witness choices cannot be
-silently identified by an unchecked callback.
+insertion. Coalition's public `Eq` compares cached origin ranks. Canonical-code
+uniqueness and the fixed origin make equality of certified coalition values
+imply equality of their stored records. Lean proves this extensionality law and
+the allocated owner's reconstruction law, then packages the constructor and
+value projection as an equivalence on the canonical carrier. The reverse
+insertion reconstructs the exact canonical carrier in both languages.
+Haskell checks both insertions and the public isomorphism package, including its
+left- and right-inverse eliminators. Their contracts retain owning validity and
+the exact canonical origin. The construction helpers preserve these two carrier
+conditions separately when instantiating the insertion datatype. The larger
+hom-correspondence assembly still needs checked contracts.
 Ranked Dominion construction allocates an Atlas through the public generative
 constructor. A retained handle ties the supplied Dominion to that exact Atlas;
 coverage, maps, and insertion traversals reuse it. Its region decoder uses the
