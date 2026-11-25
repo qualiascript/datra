@@ -49,6 +49,7 @@ datraHostValue = do
     , ("NatValRange", Right naturalValuedRangeTypeValue)
     , ("IntValRange", Right integerValuedRangeTypeValue)
     , suppliedBody "len_body" mapLengthValue
+    , suppliedBody "parse_natural" parseNaturalValue
     , suppliedInsertionBody "from_body" valuedIntegerRangeInsertion
     , suppliedInsertionBody "range_body" boundedIntegerRangeInsertion
     , nativeBody [] "add" (binaryArgument addValues)
@@ -100,6 +101,14 @@ datraHostValue = do
       operation left right
     unaryArgument operation argument =
       argumentAt 0 argument >>= operation
+    parseNaturalValue argument = do
+      characters <- maybe invalid Right
+        (asciiStringFromInterpretedMap (interpretedMap argument))
+      value <- maybe invalid Right (canonicalNaturalValue characters)
+      pure (naturalValue value)
+      where
+        invalid = Left (FunctionEvaluationFailed
+          NoApplicableFunctionAlternative)
     ordinalBinaryBody name operation = nativeBody
       ["ordinal"] name (binaryArgument operation)
     ordinalComparisonBody name operation =
