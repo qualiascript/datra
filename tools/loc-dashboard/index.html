@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Datra · Implementation footprint</title>
+  <style>
+    :root{color-scheme:dark;--bg:#10161d;--surface:#17212b;--fg:#edf3f7;--muted:#a8b8c5;--grid:#30414f;--line:#79ddb0;--growth:#e8c27b;--danger:#ffafa5;--font:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 var(--font)}main{max-width:1120px;margin:0 auto;padding:36px 28px 28px}button,input{font:inherit}button{background:transparent;color:var(--fg);border:1px solid var(--grid);border-radius:7px;padding:8px 14px;cursor:pointer}button:hover{background:var(--surface)}button:focus-visible,input:focus-visible{outline:2px solid var(--line);outline-offset:4px}button:disabled{opacity:.5;cursor:default}header{display:flex;justify-content:space-between;gap:20px;align-items:start}h1{font-size:clamp(1.65rem,4vw,2.5rem);font-weight:550;letter-spacing:-.035em;line-height:1.18;margin:10px 0}h2{font-size:1.1rem;font-weight:500;margin:0}p{margin:0}.eyebrow{font-size:.8rem;letter-spacing:.13em;text-transform:uppercase;color:var(--line)}.muted{color:var(--muted)}.toolbar{display:flex;gap:8px;flex-wrap:wrap}.branch{display:inline-block;max-width:100%;overflow-wrap:anywhere;color:var(--line);font-family:ui-monospace,monospace}.context{display:flex;gap:12px;flex-wrap:wrap;margin:24px 0 8px;align-items:center}.context span+span{color:var(--muted)}.status{font-size:.875rem;color:var(--muted);min-height:1.5em}.notice{padding:14px 16px;background:var(--surface);border-left:3px solid var(--growth);margin:18px 0;overflow-wrap:anywhere}.error{color:var(--danger)}[hidden]{display:none!important}.stats{display:grid;grid-template-columns:1fr 1fr;gap:28px;padding:26px 0;margin-top:12px;border-block:1px solid var(--grid)}.stat-label{font-size:.875rem;color:var(--muted)}.stat-value{font-size:clamp(1.9rem,5vw,2.75rem);font-variant-numeric:tabular-nums;letter-spacing:-.035em;margin:4px 0}.stat-detail{font-size:.875rem;color:var(--muted)}.plot{margin-top:28px}.plot-header{display:flex;justify-content:space-between;gap:14px;align-items:baseline;flex-wrap:wrap}.plot-header p{font-size:.875rem;color:var(--muted)}svg.chart{display:block;width:100%;overflow:visible;touch-action:pan-y}svg text{font-family:var(--font);font-size:14px;fill:var(--muted)}.inspector{margin-top:24px;padding:20px;background:var(--surface);border-radius:10px}.inspect-header{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.inspect-header label{font-size:.875rem;color:var(--muted)}input[type=range]{width:100%;accent-color:var(--line);margin:10px 0 15px}.day-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.day-grid p{font-variant-numeric:tabular-nums}.day-grid span{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px}footer{margin-top:28px;color:var(--muted);font-size:.875rem}summary{cursor:pointer;color:var(--fg);padding:7px 0}details p{margin:10px 0;max-width:90ch}code{font-family:ui-monospace,monospace;font-size:.9em;overflow-wrap:anywhere}.loading{padding:70px 0;color:var(--muted)}.tiny{font-size:.8rem}.export-status{min-height:1em}a{color:var(--line)}
+    @media(max-width:600px){main{padding:24px 16px}header{flex-direction:column}.stats{gap:16px}.day-grid{gap:10px}.stat-detail{font-size:.8rem}.plot{margin-top:24px}.inspector{padding:14px}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><p class="eyebrow">Datra / code footprint</p><h1>Implementation footprint</h1><p class="muted">Aim: keep net code growth below zero.</p></div>
+    <div class="toolbar"><button id="refresh" type="button">Refresh</button><button id="download" type="button" disabled>Download CSV</button></div>
+  </header>
+  <div class="context"><span id="branch" class="branch">Reading current branch</span><span id="revision"></span></div>
+  <p id="status" class="status" aria-live="polite">Connecting to the local Git helper…</p>
+  <div id="warning" class="notice" hidden></div>
+  <div id="error" class="notice error" role="alert" hidden></div>
+  <div id="startup" class="notice" hidden><p>This page needs the local Git helper to read your checkout.</p><p>From the folder containing these files, run:</p><p><code>python3 serve.py --repo /path/to/datra</code></p><p>Then open <a href="http://127.0.0.1:8765">http://127.0.0.1:8765</a>.</p></div>
+  <p id="loading" class="loading">Reconstructing the daily history. The first run also retrieves original squash-PR commits.</p>
+  <div id="dashboard" hidden>
+    <section class="stats" aria-label="Latest code size and growth">
+      <div><p class="stat-label">Total implementation footprint</p><p id="total" class="stat-value">—</p><p id="peak" class="stat-detail"></p></div>
+      <div><p class="stat-label">Net growth · trailing 7 days</p><p id="rate" class="stat-value">—</p><p id="net7" class="stat-detail"></p></div>
+    </section>
+    <section class="plot"><div class="plot-header"><h2>Total lines</h2><p id="date-range"></p></div><svg id="stock-chart" class="chart" role="img" aria-label="Daily implementation line count on the current branch"></svg></section>
+    <section class="plot"><div class="plot-header"><h2>Growth rate</h2><p>Lines/day · 7-day mean · below zero means shrinking</p></div><svg id="rate-chart" class="chart" role="img" aria-label="Seven-day average net change in implementation lines"></svg></section>
+    <section class="inspector" aria-label="Inspect an individual day"><div class="inspect-header"><label for="day">Inspect day</label><p id="selected-date"></p></div><input id="day" type="range" min="0" max="0" value="0"><div class="day-grid" aria-live="polite"><p><span>Total lines</span><strong id="day-total"></strong></p><p><span>Net change that day</span><strong id="day-net"></strong></p><p><span>7-day mean / day</span><strong id="day-rate"></strong></p></div></section>
+  </div>
+  <footer>
+    <p>Excludes <code>docs/</code>, <code>src/DatraCore/</code>, and <code>test/</code> under <code>datra-haskell/</code>.</p>
+    <details><summary>Counting and reconstruction</summary><p>Counts physical lines in tracked text, including comments and blank lines. The entire test directory and fixtures are excluded. Build/configuration files and root text files remain included. Binary files and symlinks are excluded. Only committed history is counted; uncommitted edits are not.</p><p>Original commits behind squash PRs are dated by author date. Other changes use committer dates. Imported branch history is deduplicated through Git ancestry, with merge-day reconciliation where needed. The reconstructed daily totals combine branch work and may differ from historical checkouts of master. The latest total is checked against the selected commit's full tree.</p><p>Days without changes carry forward. The seven-day rate sums the last seven calendar days’ net changes and divides by seven. The first six days have no full-window rate. The helper checks the checked-out branch every ten seconds; the page refreshes automatically.</p><p id="provenance"></p><p id="reconciliations"></p></details>
+    <p id="export-status" class="export-status" aria-live="polite"></p>
+  </footer>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const fmt = new Intl.NumberFormat(undefined,{maximumFractionDigits:0});
+const decimal = new Intl.NumberFormat(undefined,{maximumFractionDigits:1});
+const signed = (n,d=false) => n==null?'—':(n>0?'+':n<0?'−':'')+(d?decimal:fmt).format(Math.abs(n));
+const dateLabel = date => new Date(date+'T12:00:00Z').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'});
+let data=null, version='', selected=0, pending=false;
+const plots=[];
+const ns='http://www.w3.org/2000/svg';
+function node(tag,attrs={},text){const el=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,v);if(text!==undefined)el.textContent=text;return el;}
+function extent(values,rate){let lo=Math.min(0,...values),hi=Math.max(0,...values);if(hi===lo){hi=1;if(rate)lo=-1;}const pad=(hi-lo)*.08;return [lo<0?lo-pad:0,hi+pad];}
+function chart(svg,field,height){
+  const rows=data.rows,w=Math.max(280,svg.getBoundingClientRect().width),left=w<450?58:72,right=18,top=28,bottom=40;
+  const values=rows.map(r=>r[field]).filter(n=>n!==null),[lo,hi]=extent(values,field==='rate');
+  const inner=w-left-right,innerH=height-top-bottom;
+  const x=i=>left+(rows.length===1?inner/2:i*inner/(rows.length-1));
+  const y=n=>top+(hi-n)/(hi-lo)*innerH;
+  svg.replaceChildren();svg.setAttribute('viewBox',`0 0 ${w} ${height}`);svg.setAttribute('height',height);
+  svg.append(node('title',{},field==='rate'?'Seven-day mean net code change':'Daily implementation line count'));
+  const grid=node('g');
+  if(field==='rate'&&lo<0)grid.append(node('rect',{x:left,y:y(0),width:inner,height:height-bottom-y(0),fill:'var(--line)',opacity:.055}));
+  const ticks=4;
+  for(let k=0;k<=ticks;k++){const value=lo+(hi-lo)*k/ticks,pos=y(value);grid.append(node('line',{x1:left,x2:w-right,y1:pos,y2:pos,stroke:'var(--grid)','stroke-width':.7}));grid.append(node('text',{x:left-10,y:pos+5,'text-anchor':'end'},Math.abs(value)>=1000?decimal.format(value/1000)+'k':fmt.format(value)));}
+  if(field==='rate'){grid.append(node('line',{x1:left,x2:w-right,y1:y(0),y2:y(0),stroke:'var(--muted)','stroke-width':1}));grid.append(node('text',{x:w-right,y:y(0)-8,'text-anchor':'end'},'Net zero growth'));}
+  const labels=w<450?3:6;const ids=[...new Set(Array.from({length:Math.min(labels,rows.length)},(_,k)=>Math.round(k*(rows.length-1)/Math.max(1,Math.min(labels,rows.length)-1))))];
+  for(const i of ids){const d=new Date(rows[i].date+'T12:00:00Z').toLocaleDateString(undefined,{month:'short',day:'numeric',timeZone:'UTC'});grid.append(node('text',{x:x(i),y:height-10,'text-anchor':i===0?'start':i===rows.length-1?'end':'middle'},d));}
+  svg.append(grid);
+  let path='',open=false;for(let i=0;i<rows.length;i++){const v=rows[i][field];if(v==null){open=false;continue;}path+=(open?' L ':' M ')+x(i)+' '+y(v);open=true;}
+  const color=field==='rate'?'var(--growth)':'var(--line)';
+  svg.append(node('path',{d:path,fill:'none',stroke:color,'stroke-width':2.5,'stroke-linejoin':'round','stroke-linecap':'round'}));
+  const cross=node('line',{x1:0,x2:0,y1:top,y2:height-bottom,stroke:'var(--muted)','stroke-width':1,'stroke-dasharray':'3 5',opacity:.55});
+  const dot=node('circle',{r:4.5,fill:color,stroke:'var(--bg)','stroke-width':2});svg.append(cross,dot);
+  const info={svg,x,y,cross,dot,field,left,inner,w};plots.push(info);
+  svg.onpointermove=event=>{if(event.pointerType==='touch'&&event.buttons===0)return;const rect=svg.getBoundingClientRect();const local=(event.clientX-rect.left)*w/rect.width;inspect(Math.round((local-left)/inner*Math.max(0,rows.length-1)));};
+}
+function inspect(index){
+  if(!data)return;selected=Math.min(data.rows.length-1,Math.max(0,index));const row=data.rows[selected];$('day').value=selected;$('day').setAttribute('aria-valuetext',dateLabel(row.date));$('selected-date').textContent=dateLabel(row.date);$('day-total').textContent=fmt.format(row.total_loc);$('day-net').textContent=signed(row.net_loc);$('day-rate').textContent=signed(row.rate,true);
+  for(const plot of plots){const x=plot.x(selected);plot.cross.setAttribute('x1',x);plot.cross.setAttribute('x2',x);plot.dot.setAttribute('cx',x);plot.dot.setAttribute('cy',row[plot.field]===null?0:plot.y(row[plot.field]));plot.dot.style.display=row[plot.field]===null?'none':'';}
+}
+function draw(){if(!data||$('dashboard').hidden)return;plots.length=0;chart($('stock-chart'),'total_loc',300);chart($('rate-chart'),'rate',250);inspect(selected);}
+function display(next){
+  const key=next.head+'|'+next.branch+'|'+next.generated_at; if(key===version)return;
+  const wasLatest=!data||selected===data.rows.length-1;data=next;version=key;if(wasLatest)selected=data.rows.length-1;
+  $('dashboard').hidden=false;$('loading').hidden=true;$('branch').textContent=data.branch;$('revision').textContent=data.repo+' · '+data.head.slice(0,8);
+  $('total').textContent=fmt.format(data.total)+' lines';const diff=data.peak-data.total;$('peak').textContent=diff?fmt.format(diff)+' below this branch’s peak of '+fmt.format(data.peak):'At this branch’s peak';
+  $('rate').textContent=signed(data.rate,true)+' / day';$('net7').textContent=data.net_7d===null?'Waiting for a complete seven-day window':fmt.format(Math.abs(data.net_7d))+' net lines '+(data.net_7d<=0?'removed':'added')+' in the last seven days';
+  $('date-range').textContent=dateLabel(data.rows[0].date)+' – '+dateLabel(data.rows.at(-1).date);$('day').max=data.rows.length-1;$('download').disabled=false;
+  $('provenance').textContent=`${data.expanded_prs} squash PRs expanded into ${data.original_commits} original commits. ${data.rows.length} daily readings. Timezone: ${data.timezone}. Last calculated ${new Date(data.generated_at).toLocaleString()}.`;
+  $('reconciliations').textContent=data.reconciliations.length?'Merge-day reconciliation: '+data.reconciliations.map(r=>'#'+r.pr+' ('+signed(r.lines)+' lines)').join(', '):'All expanded PR totals reconcile without adjustments.';
+  $('warning').hidden=!data.warnings.length;$('warning').textContent=data.warnings.join(' ');draw();
+}
+async function refresh(){
+  if(pending)return;if(location.protocol==='file:'){$('startup').hidden=false;$('loading').hidden=true;$('status').textContent='Open this page through the local helper.';return;}
+  pending=true;$('refresh').disabled=true;
+  try{
+    const response=await fetch('/api/status',{cache:'no-store'});if(!response.ok)throw new Error('The local helper did not respond.');const status=await response.json();
+    $('error').hidden=!status.error;$('error').textContent=status.error||'';
+    if(status.data)display(status.data);
+    $('status').textContent=status.busy?status.stage+'…':status.error?(data?'Showing the last successful reading. Retrying automatically.':'Unable to calculate this branch. Retrying automatically.'):'Watching committed HEAD · automatic refresh is on';
+    if(status.error&&!data)$('loading').hidden=true;
+  }catch(error){$('error').hidden=false;$('error').textContent='Could not reach the local Git helper. Start serve.py, then refresh this page.';$('status').textContent=data?'Showing the last successful reading.':'Not connected';$('loading').hidden=true;}
+  finally{pending=false;$('refresh').disabled=false;}
+}
+$('refresh').addEventListener('click',refresh);$('day').addEventListener('input',e=>inspect(Number(e.target.value)));
+$('download').addEventListener('click',()=>{if(!data)return;const lines=['date,total_loc,net_loc,seven_day_net,seven_day_mean'];for(const r of data.rows)lines.push([r.date,r.total_loc,r.net_loc,r.net_7d??'',r.rate??''].join(','));const url=URL.createObjectURL(new Blob([lines.join('\n')+'\n'],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='datra-implementation-'+data.head.slice(0,8)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);$('export-status').textContent='Exported '+data.rows.length+' daily readings.';});
+new ResizeObserver(()=>draw()).observe($('stock-chart'));refresh();setInterval(refresh,4000);
+</script>
+</body>
+</html>

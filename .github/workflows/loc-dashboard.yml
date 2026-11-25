@@ -1,0 +1,23 @@
+name: loc-dashboard
+
+on:
+  push:
+    paths:
+      - ".github/workflows/loc-dashboard.yml"
+      - "tools/loc-dashboard/**"
+  pull_request:
+    paths:
+      - ".github/workflows/loc-dashboard.yml"
+      - "tools/loc-dashboard/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test history reconstruction
+        run: python3 -m unittest discover -s tools/loc-dashboard -p 'test_*.py' -v
