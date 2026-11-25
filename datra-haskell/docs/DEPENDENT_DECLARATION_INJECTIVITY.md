@@ -1,423 +1,349 @@
-# Dependent Declaration Injectivity
+# Injective `val` Values
 
-## Status and scope
+## Status
 
-This document defines the injectivity law for dependent `val` declarations and
-the federation machinery which proves, refutes, or declines to decide that law.
-The same machinery owns canonical string images for every Datra value.
+This is an implementation plan. The current string-oriented injectivity path
+is a deletion target and its replacement is a true injected value.
 
-The design has three required outcomes:
+The central change is to replace the string-oriented approximation in
+`Evaluation/ToString/Injectivity.hs` with genuinely injective values. A `val`
+family is valid only when its semantic result retains enough information to
+recover the unique capture witness which produced it. Its canonical name is
+then derived from that witness.
 
-1. A dependent `val` declaration is admitted only with a genuine proof that
-   distinct capture members cannot evaluate to the same semantic value.
-2. Canonical string conversion is an ordinary proven federation injection,
-   including its executable inverse. It is not inferred from a table of
-   `ValueSemantics` constructors.
-3. The old string-specific proof representation, marker-based `val` handling,
-   and stale diagnostic paths are removed rather than retained as
-   compatibility paths.
+For example, the value selected by:
 
-`def` consistency is separate. It constrains replacement of an existing
-binding; it does not prove that a declaration family is injective.
+```datra
+from 2 to 5
+```
 
-## Semantic law
+must be distinguishable as that particular range. Given its semantic value,
+the declaration machinery must be able to recover the capture witness
+`(2, 5)` and therefore the canonical name `from 2 to 5`. Merely rendering the
+value as that text, or observing that the text looks unambiguous, is not an
+injectivity proof.
 
-For a prepared dependent declaration, let:
+This work is separate from `def` consistency. `def` constrains replacement of
+an existing declaration; it says nothing about whether a `val` family is
+one-to-one.
+
+## What is broken today
+
+The present code has several disconnected substitutes for the missing
+invariant:
+
+- `Evaluation/ToString/Injectivity.hs` switches on `ValueSemantics`, guesses
+  exact strings and alphabets, and returns `ProvenInjectiveToString`. These
+  properties concern rendered strings, not whether a declaration result has a
+  unique source witness.
+- Unknown string properties still produce a value named
+  `ProvenInjectiveToString`; this layer lacks a proved/refuted/undecidable
+  decision boundary.
+- `ToStringAtlasMapFederation`, `ProvenInjectiveToString`, and
+  `ToStringInverseDecision` make this guessed string conversion look like a
+  federation insertion.
+- `RuntimeFunctionInsertion` contains only `applyRuntimeFunction`. It has no
+  inverse and therefore is not an insertion. In particular,
+  `declarationFamilyFunction` in `Evaluation/Expression.hs` manufactures one
+  around every dependent declaration family merely to expose its forward
+  application.
+- `canonicalValueMarker = "val"` records the internal `val` modifier on a
+  declaration descriptor. It remains declaration metadata, while injectivity
+  and canonical identity move to retained proof evidence.
+- `dynamicDependentDeclarationNamedView` gives a `val` family an ordinal
+  collection projection, but does not validate that the implementation is
+  injective.
+- `NonInjectiveDependentDeclaration` exists, and a test expects it for a
+  constant dependent `val`, but no production path currently constructs this
+  diagnostic. `DependentDeclarationInjectivityUndecidable` does not exist.
+
+The result is that the code can attach canonical presentation without proving
+that two captures cannot collapse to one semantic value.
+
+## Required semantic invariant
+
+For one prepared declaration branch, let:
 
 - `C` be the federation of valid capture tuples;
-- `name : C -> Str` be the evaluated declaration-name template; and
-- `value : C -> V` be the evaluated declaration implementation.
+- `name : C -> Str` evaluate the declaration name template; and
+- `value : C -> V` evaluate its implementation.
 
-A `val` declaration requires both maps to be insertions over their admitted
-federation members:
+A `val` declaration requires both maps to be genuine insertions:
 
 ```text
 name^-1(name(c)) = c
 value^-1(value(c)) = c
 ```
 
-Equality in this law is presentation-free semantic equality. It uses the same
-identity as `interpretedSemanticResult`; an attached reference, import path, or
-other presentation cannot make two equal results distinct.
+The equality here is semantic equality after removing presentation. References,
+module paths, markers, or different renderings do not make equal results
+distinct.
 
-The canonical presentation of a declared value is then the composition:
-
-```text
-canonicalName : image(value) -> image(name)
-canonicalName = name . value^-1
-```
-
-Its inverse is:
+Once both insertions are proved, canonical naming is composition rather than a
+separate heuristic:
 
 ```text
-canonicalName^-1 = value . name^-1
+canonicalName     = name . value^-1
+canonicalName^-1  = value . name^-1
 ```
 
-Consequently, every canonical name identifies exactly one semantic value and
-every value in the declaration image has exactly one canonical name.
+Thus each admitted value has exactly one capture witness and exactly one
+canonical declaration name.
 
-For example:
+For a range declaration, `value^-1` recovers the endpoints from the semantic
+range. This is what makes `from 2 to 5` a canonical unique value. For:
 
 ```datra
-val `pair %(_x : Int) with %(_y : Int)` := it
+val `constant %(_x : Int)` := 1
 ```
 
-is injective because the result retains the complete capture tuple. This is
-not injective:
+distinct captures produce the same semantic integer, so no such inverse can
+exist and the declaration is refuted.
 
-```datra
-val `pair %(_x : Int)` := 1
-```
+A singleton capture federation is trivially injective. A finite or infinite
+family is never accepted because a sample happened to contain no collision.
 
-Every capture maps to the same semantic integer. The declaration must be
-refuted, even though each individual lookup can be evaluated.
+## A true injected federation value
 
-Singleton capture federations are trivially injective. A non-singleton family
-is never accepted merely because no collision was found in a sample.
-
-## Diagnostic contract
-
-`NonInjectiveDependentDeclaration String` is the compiler diagnostic for a
-refuted `val` insertion. The constructor name and its localized headline,
-"dependent declaration is not injective", are retained. Its `String` payload
-is the rendered declaration which failed validation.
-
-The diagnostic is emitted by dependent-declaration evaluation after the
-federation decision returns `AtlasMapFederationRefuted`; syntax rewriting does
-not attempt to decide injectivity. The constructor therefore moves out of
-`SyntaxRewriteFailure` into the evaluation/compiler error path without being
-renamed or replaced. If collision witnesses are exposed to diagnostics, they
-are added as structured details beneath this same error.
-
-`AtlasMapFederationUndecidable` is not a demonstrated injectivity failure and
-must not emit `NonInjectiveDependentDeclaration`. It produces the separate
-`DependentDeclarationInjectivityUndecidable` diagnostic.
-
-## One federation-insertion abstraction
-
-DatraTypes owns one evaluated insertion abstraction for all federation images.
-Conceptually it contains:
+DatraTypes needs one general representation for the image of an evaluated
+insertion, shared by all target types:
 
 ```haskell
 data EvaluatedFederationInsertion = EvaluatedFederationInsertion
-  { federationInsertionSource :: InterpretedValue
-  , federationInsertionTarget :: InterpretedValue
-  , applyFederationInsertion
-      :: InterpretedValue
+  { insertionSource :: InterpretedValue
+  , insertionTarget :: InterpretedValue
+  , applyInsertion :: InterpretedValue
       -> Either InterpretingError InterpretedValue
-  , selectFederationPreimage
-      :: InterpretedValue
+  , selectPreimage :: InterpretedValue
       -> Decision InterpretedValue
   }
 ```
 
-The constructor is not public. Callers receive an insertion only from a
-federation decision:
+The exact record is illustrative. Its constructor is restricted to proof
+rules. A successful decision carries the usable forward map and inverse; a
+refutation carries a collision; undecidable means that no implemented proof
+rule applies.
+
+The federation image can then be represented conceptually as:
 
 ```haskell
-type FederationInsertionDecision =
-  AtlasMapFederationDecision
-    FederationInsertionRefutation
-    FederationInsertionUncertainty
-    EvaluatedFederationInsertion
+InjectedAtlasMapFederation source target insertion
 ```
 
-`AtlasMapFederationProved` carries the usable forward map and partial inverse.
-`AtlasMapFederationRefuted` carries a collision witness. An undecidable result
-states that no implemented proof rule applies; it is not a weak proof and is
-not reported as a demonstrated collision.
+It retains the source federation and the inverse instead of reducing the image
+to an ordinary target value plus presentation text. Selection of an image
+member must:
 
-At the typed core, `DomanialInsertion` remains the law-carrying representation:
+1. select the target member;
+2. recover its unique source with the insertion inverse; and
+3. verify that the recovered source belongs to the source federation.
 
-```text
-preimage (applyInsertion source) = Just source
-```
+This retained source identity is the important property. Rendering and
+parsing may implement part of an insertion, but neither is proof by itself.
 
-The evaluated wrapper erases the concrete witness types needed by the
-interpreter, but it may only be constructed from typed insertions, structural
-composition rules, or a complete finite decision. There is no public record
-constructor that permits an arbitrary forward function to be paired with
-`const Nothing`.
+At the typed core, `DomanialInsertion` remains the law-carrying abstraction.
+The evaluated wrapper is built from a typed insertion, structural composition,
+or an exhaustive finite decision. Every constructed wrapper therefore has an
+executable inverse.
 
-### Proof rules
+## Decision rules
 
-The federation decision procedure is structural:
+The decision procedure should be structural and shared by declaration values,
+canonical strings, and native invertible functions:
 
-- identity is proved with the identity insertion;
-- a singleton source is proved once its sole result is successfully evaluated;
-- composition is proved by composing insertions and their preimages;
-- a structural constructor is proved when its varying components retain a
-  source discriminator and its component images cannot collide;
-- `Either` is proved when both branches are injective and their target images
-  are disjoint;
-- sequential, expansion, coalization, map, argumentative-map, and
-  concatenation cases reuse their ordinary federation construction rules;
-- a function application preserves injectivity only when the selected function
-  carries a proven federation insertion;
-- a finite ordinal-indexed source may be decided completely by evaluating all
-  members, comparing presentation-free results, and constructing the inverse
-  from the resulting unique table;
-- an infinite primitive family is handled only by a structural rule supplied
+- identity is injective;
+- a singleton source is injective after its one result evaluates;
+- composition of proved insertions is injective;
+- product/record constructors are injective when all varying components retain
+  their source discriminators;
+- an `Either` image is injective when both branches are injective and their
+  target images are disjoint;
+- map, argumentative-map, expansion, coalization, concatenation, and ordinal
+  families compose their existing federation structure rather than flattening
+  it;
+- a finite source may be checked exhaustively, producing either an exact
+  inverse table or two distinct sources with a common target;
+- an infinite primitive is accepted only with a structural insertion supplied
   by that primitive; it is never sampled;
-- an unsupported operation is undecidable.
+- function application preserves injectivity only when the selected function
+  carries a real forward/inverse insertion;
+- any unsupported case is undecidable.
 
-The existing concatenation collision logic becomes one rule of this general
-image decision. It is no longer a string-only boolean exception layered over
-the federation decision type.
+The existing concatenation collision analysis can become one rule of this
+general decision. String alphabets and delimiter facts remain properties of a
+target string federation; they are not injectivity evidence for its source.
 
-## Injected federation images
+## Preparing a dependent `val`
 
-An injective pointwise image is represented by a generic federation primitive,
-not by a `ToString` primitive:
+Validation belongs to semantic declaration preparation. Syntax rewriting may
+see the source declaration, while the semantic canonical `val` descriptor and
+materialized members become available after the proof is constructed.
 
-```haskell
-InjectedAtlasMapFederation
-  sourceFederation
-  targetFederation
-  insertion
-```
+For every prepared branch:
 
-The concrete representation may erase redundant fields, but it must retain:
+1. Evaluate capture schemas and construct `C` without erasing ordinal/product
+   structure or capture witnesses.
+2. Evaluate the name template pointwise and decide `name : C -> Str`.
+3. Evaluate the implementation pointwise while retaining the same source
+   witnesses, producing the semantic target federation `V`.
+4. Decide `value : C -> V` using the shared insertion rules.
+5. On success, construct the injected value and its composed canonical-name
+   insertion.
+6. Only then expose the canonical descriptor and concrete projection.
 
-- the source federation used to validate membership;
-- the ordinary target federation used by access, specification, and
-  subfederation;
-- the insertion needed to recover the unique source witness.
+The `$val` marker remains the internal declaration-modifier tag. The proof
+lives on the prepared declaration/image and travels with it through
+`ScopedDependentDeclaration`, declaration layers, module preparation, imports,
+aliases, and projections. Simple identifiers and complex dependent heads use
+the same path.
 
-Forward enumeration follows the source federation and applies the insertion.
-Selection first selects a target member, then applies the insertion preimage,
-then verifies that the recovered source belongs to the source federation.
-This is the generic version of the provenance currently needed by string
-federations.
+Non-`val` declarations retain the same lookup machinery without requiring
+their implementations to be injective.
 
-String-language facts such as exact members, possible characters, and excluded
-delimiters are properties of the target string federation. They are derived by
-folding that federation's ordinary singleton, range, concatenation, and
-primitive nodes. They are not fields on an alleged injectivity proof and are
-not inferred by switching over unrelated source semantics.
+### Functions and native bodies
 
-## Validating a dependent `val` declaration
+Callability and injectivity are separate capabilities. An ordinary function
+may always be invoked when its type permits it. A containing `val` may use that
+call as injectivity evidence only if the chosen function also carries a real
+insertion with an inverse.
 
-Validation happens after capture bounds and the declaration-name family have
-been evaluated, but before the declaration is published into its scope.
+Range constructors are the motivating native case: their insertion must be
+able to recover the endpoints from the range value. A native or source
+function without that capability is still callable, but a `val` depending on
+it is undecidable unless another structural rule proves the whole expression.
 
-For each prepared declaration branch:
+`declarationFamilyFunction` must stop manufacturing a forward-only
+`RuntimeFunctionInsertion`. Its normal invocation belongs on the ordinary
+function path.
 
-1. Construct the capture federation `C` from the evaluated capture schemas.
-   Preserve its ordinal/product structure and source witness at every member.
-2. Evaluate the name template pointwise over `C`, producing the ordinary string
-   federation `N`.
-3. Ask the federation insertion procedure to decide `name : C -> N`.
-   Exact template decoding supplies the inverse, but the inverse is accepted
-   only when the federation decision establishes a unique semantic capture.
-4. Evaluate the declaration implementation pointwise with each source witness
-   as contextual `it`, producing the result federation `V` without erasing its
-   source provenance.
-5. Ask the same procedure to decide `value : C -> V`.
-6. Compose the inverse of `value` with `name` and attach the resulting canonical
-   string insertion to `V`.
-7. Publish the descriptor and concrete lookup projection only after both
-   decisions are proved.
+## Canonical strings after the change
 
-A refuted value insertion produces the existing
-`NonInjectiveDependentDeclaration` diagnostic. When the decision procedure has
-concrete witnesses, its structured details include the two distinct
-capture/name witnesses and their shared semantic result. An undecidable
-insertion produces `DependentDeclarationInjectivityUndecidable`, identifying
-the unsupported operation. Unknown is never silently accepted and is never
-misreported as a proven collision.
-
-Non-`val` dependent declarations continue to use the same lookup and name
-family machinery without requiring the implementation map to be injective.
-
-### Function application
-
-Ordinary function invocation and proof of injectivity are separate
-capabilities. A declaration implementation may always invoke an ordinary
-function when its type permits it, but the containing `val` is provable only if
-that invocation also has a federation-insertion rule.
-
-Native range constructors and other invertible hooks attach a real insertion.
-An ordinary callable attaches no insertion. The declaration-family wrapper
-must not manufacture an insertion merely to gain access to its forward call;
-forward invocation goes through the ordinary function invocation path.
-
-## Canonical string conversion
-
-Canonical string conversion is defined as an injected federation image:
+Canonical string conversion becomes a client of true injected values:
 
 ```text
 canonicalString : T -> Str
 ```
 
-Every conversion request goes through the federation insertion decision,
-including total values. A total singleton is proved trivially, but it does not
-bypass the common construction path.
+- strings use identity;
+- an accepted `val` uses `name . value^-1`;
+- structural values compose their components' insertions;
+- primitive families provide typed render/decode insertions where those laws
+  genuinely hold;
+- syntax values require their parser-backed inverse plus an exact canonical
+  round trip;
+- a function or host value with no canonical insertion fails explicitly.
 
-The standard cases are:
+`_StrExpr T` is the target image of this insertion. Specification against it
+recovers the unique source member through the generic preimage operation. The
+generic image replaces `ToStringAtlasMapFederation` and the semantic-constructor
+table.
 
-- strings use the identity insertion;
-- a proven `val` family uses its composed declaration-name insertion;
-- structural values compose the canonical insertions of their components;
-- built-in primitive families provide typed canonical insertions and inverses;
-- syntax values use their parser-backed inverse and exact canonical
-  round-trip check;
-- functions or host values without a canonical insertion fail with
-  `NoCanonicalStringConversion`;
-- a conversion whose proof procedure is incomplete reports a distinct
-  undecidable diagnostic.
+## Diagnostics
 
-`_StrExpr T` is the target string federation of this insertion. For non-total
-`T`, the generic injected-image node retains `T` and its inverse. For total
-`T`, the same operation yields a singleton string federation. Specification of
-a string against `_StrExpr T` recovers a unique member of `T` through the
-generic preimage operation.
+The decision has exactly three outcomes:
 
-Rendering and parsing are not themselves proofs. A renderer/parser pair is an
-implementation candidate which becomes a canonical insertion only after the
-federation rules establish its left-inverse law over the relevant source.
-Returning several parse candidates is permitted during parsing, but successful
-canonical selection must reduce them to exactly one semantic source member.
+- proved: retain the insertion and admit the `val`;
+- refuted: emit the existing
+  `NonInjectiveDependentDeclaration String`, ideally with two distinct capture
+  witnesses and their shared semantic result;
+- undecidable: emit a new
+  `DependentDeclarationInjectivityUndecidable` diagnostic identifying the
+  unsupported operation.
 
-## Specification, subfederation, and termination
+The undecidable outcome uses its own diagnostic. A collision is required for
+`NonInjectiveDependentDeclaration`.
 
-Injected images participate in the ordinary Datra type operations:
+## Current architecture and ownership
 
-- specification selects the target member, reverses the insertion, and retains
-  the source selection witness;
-- `Image f S of Image f T` reduces to `S of T` only when both images carry the
-  same insertion identity;
-- images with different insertions compare through their ordinary target
-  federations without assuming that equal target shapes imply equal sources;
-- `_StrExpr S of _StrExpr T` follows from `S of T` when both use the canonical
-  string insertion;
-- optional names retain their named/unnamed source alternative through the
-  inverse; they are not conflated with optional values;
-- access and ordinal enumeration follow the target view while preserving the
-  source witness in the selected member.
+The scope refactor changes where this evidence must be retained:
 
-Each specification or subfederation rule unwraps at most one injected-image
-layer before recurring. It must not reconstruct an image during the same
-decision. This supplies the termination measure and prevents `_StrExpr`
-comparison from cycling through canonical conversion.
+- `Scope` owns ordered `DependentDeclarationLayer`s.
+- `ScopedDatraDependentDeclaration` retains the declaration together with its
+  family and captured scopes.
+- `PreparedModule` retains a declaration layer rather than flattening exports
+  to a host map.
+- syntax rewriting obtains declaration rules from those same scope layers.
 
-## Ownership
+The implementation should build on that structure. A new DatraTypes federation
+insertion module should own decisions and composition; the current
+`Evaluation/Expression.hs` declaration preparation path should consume it
+until that responsibility is moved into a focused declaration-evaluation
+module. `Scope` remains the single context and every declaration head uses the
+same validation path.
 
-Responsibilities are divided as follows:
+## Removal plan
 
-- `DomanialInsertion` owns the typed forward/preimage law and its LiquidHaskell
-  verification.
-- `Evaluation.Federation.Insertion` owns evaluated insertion decisions,
-  structural composition, finite completion, and collision witnesses.
-- `Evaluation.Federation` delegates concatenation and other image-sensitive
-  operations to that shared decision procedure.
-- `Evaluation.DependentDeclaration` prepares capture/name/value federations and
-  requires the `val` decisions.
-- `Evaluation.ToString` is a thin client which asks for the canonical string
-  insertion and constructs its injected target image.
-- primitive evaluation modules own the canonical insertions for their values.
-- the application parser owns syntax-value decoding; it does not own the
-  injectivity decision.
-- DatraLanguage owns declaration syntax and diagnostics, not runtime proof
-  records or presentation algorithms.
+1. Introduce the general evaluated insertion decision and generic injected
+   federation image, with no dependency on string rendering.
+2. Give existing genuinely invertible primitives, especially range
+   constructors, typed forward/preimage implementations.
+3. Change dependent `val` preparation to decide and retain `value : C -> V`,
+   then derive canonical naming from the proof.
+4. Route canonical string conversion and `_StrExpr` through the generic image.
+5. Remove the obsolete implementation completely:
+   - delete `Evaluation/ToString/Injectivity.hs`;
+   - delete `StringConversionProperties`, `ProvenInjectiveToString`, and
+     `ToStringInverseDecision`;
+   - delete `ToStringAtlasMapFederation` and its special cases in
+     specification, projection, `Either`, access, and subfederation;
+   - retain `$val` as declaration metadata, but remove every branch which
+     treats that marker as sufficient injectivity or canonical-name evidence;
+   - remove the forward-only `RuntimeFunctionInsertion` abstraction after real
+     native insertions have migrated;
+   - remove `CanonicalStringImplementation` where it is being used as alleged
+     proof evidence; type-family routing may remain only as routing;
+   - remove obsolete identifier-string projection primitives once their
+     consumers use the generic injected image;
+   - remove stale string-only injectivity diagnostics and tests.
+6. Audit exports, locale entries, and comments and remove the semantic
+   hardcoding table.
 
-No DatraTypes injectivity module imports AST operators, reserved spellings, or
-concrete-syntax strings to approximate the language of rendered values.
+Land the generic proof path and switch its consumers in the same implementation
+series, then delete `Injectivity.hs` and its representations.
 
-## Required simplification
+## Tests
 
-The implementation removes the superseded paths completely:
-
-- delete `Evaluation.ToString.Injectivity`;
-- delete `ProvenInjectiveToString` and `ToStringInverseDecision`;
-- replace `ToStringAtlasMapFederation` with the generic injected federation
-  image;
-- remove `StringConversionProperties`, semantic-constructor alphabet tables,
-  exact-string tables, and their delimiter heuristics from the source side;
-- remove `CanonicalStringImplementation` and its family tags as purported
-  proof evidence; a Datra type family routes operations, while an evaluated
-  insertion proves a particular conversion;
-- remove the `$val` trailing string marker, `canonicalValueMarker`, and all
-  import/export branches which infer canonical behavior from that marker;
-- carry canonical presentation as a typed insertion capability on the
-  declaration image and through module exports;
-- remove the declaration-family `RuntimeFunctionInsertion` whose preimage is
-  `const Nothing`;
-- remove `RuntimeFunctionInsertion`; ordinary calls use the existing invocation
-  capability, while range constructors and other invertible functions migrate
-  their forward/preimage pairs to evaluated federation insertions;
-- replace `IdentifierStringProjectionForm`,
-  `IdentifierStringProjectionSemantics`, and
-  `IdentifierStringProjectionAtlasMapFederation` with the generic canonical
-  string image;
-- retain `NonInjectiveDependentDeclaration`, move it out of syntax-rewrite
-  failures, and emit it from the refuted declaration-evaluation branch;
-- add the distinct undecidable declaration diagnostic;
-- delete the unused `NonInjectiveStringInterpolation`; interpolation collisions
-  use the ordinary federation refutation/uncertainty diagnostics;
-- remove special-case inverse selection for `ToStringAtlasMapFederation` from
-  string specification, `Either`, projection, subfederation, and access
-  modules;
-- remove exports, localized messages, tests, and comments which refer to the
-  deleted representations.
-
-There is no compatibility constructor and no fallback to the semantic
-hardcoding table.
-
-## Required tests
-
-### Federation insertion
+### Core insertion behavior
 
 - identity and composition satisfy the executable left-inverse law;
 - finite images construct exact preimages;
-- finite collisions return both distinct sources and the common target;
+- finite collisions report both sources and their common target;
 - infinite identity families are proved structurally;
 - infinite constant families are refuted structurally;
 - unsupported infinite transformations are undecidable;
-- `Either`, concatenation, map, and argumentative-map composition preserve or
-  reject insertions correctly.
+- structural products, `Either`, maps, and concatenation preserve or reject
+  insertions correctly.
 
-### Dependent declarations
+### `val` behavior
 
-- `val pair (_x : Int) with (_y : Int) := it` is accepted;
-- `val pair (_x : Int) := 1` is rejected as non-injective;
-- two syntactically different captures with equal semantic results still
-  collide;
-- an implementation using a proven native insertion is accepted;
-- an implementation using an ordinary unproved function is undecidable;
-- singleton, finite, infinite, optional-name, optional-value, imported, and
-  nested declaration families retain the required behavior;
-- ordinary non-`val` declarations remain valid when many-to-one;
-- specification and `of` involving declared canonical values preserve source
-  witnesses and terminate.
+- an `it`-preserving dependent family is accepted;
+- a constant dependent family is rejected with
+  `NonInjectiveDependentDeclaration`;
+- syntactically different captures producing the same semantic result collide;
+- `from 2 to 5` retains and recovers `(2, 5)` and has that canonical name;
+- distinct range endpoints remain distinct canonical values;
+- a proved native insertion is accepted;
+- a forward-only or otherwise unsupported function is undecidable;
+- singleton, finite, infinite, imported, aliased, nested, and complex-headed
+  declarations preserve the proof evidence;
+- ordinary non-`val` many-to-one declarations remain valid.
 
-### Canonical strings
+### Canonical strings and cleanup
 
-- every built-in canonical insertion round-trips each representative source
-  member by semantic equality;
-- every accepted `val` value round-trips through its declaration name;
+- accepted values round-trip through their canonical declaration names by
+  semantic equality;
 - total and non-total values use the same insertion entry point;
-- strings use identity without adding source delimiters as data;
-- ambiguous parser candidates are reduced to one semantic source or rejected;
-- `_StrExpr` specification, subfederation, concatenation, and delimiter
-  decisions operate on the generic target federation;
-- a value without a proven canonical insertion cannot enter `_StrExpr`;
-- no test relies on a global parse candidate list as proof of injectivity.
+- `_StrExpr` specification and subfederation recover source witnesses and
+  terminate;
+- values without a proven canonical insertion cannot enter `_StrExpr`;
+- source search finds no `Evaluation.ToString.Injectivity`,
+  `ToStringAtlasMapFederation`, alleged proof record, or dummy inverse, and no
+  use of `$val` claims to be that proof.
 
-### Cleanup
+## Completion criterion
 
-Source searches must find no remaining references to the deleted module,
-proof records, `ToString` federation primitive, `$val` marker, dummy preimage,
-or stale diagnostics. Focused tests cover each new proof rule; the final suite
-runs with LiquidHaskell disabled, and the `DomanialInsertion` laws are verified
-separately with LiquidHaskell.
-
-## Completion criteria
-
-The design is complete when dependent declaration construction has exactly
-three outcomes—proved, refuted with a collision, or undecidable—and only the
-proved outcome can publish a `val`. The resulting proof must be the same
-evidence used to invert that declaration's canonical string conversion. No
-module may claim injectivity from a constructor tag, a marker string, a
-renderer alone, a parser alone, finite sampling of an infinite family, or an
-inverse which does not recover every admitted source member.
+The work is complete when `val` construction has exactly the three decision
+outcomes above and only the proved outcome produces a canonical value. The
+same retained inverse distinguishes values such as `from 2 to 5` and derives
+their canonical names. The `$val` modifier identifies declarations requiring
+this invariant; the retained insertion supplies the evidence.
