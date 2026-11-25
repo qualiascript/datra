@@ -102,6 +102,21 @@ keep coverage constructors private. Derived constructions allocate and retain
 their owners through exposed interfaces; their outstanding assembly contracts
 are tracked separately from this ownership boundary.
 
+Total Atlas maps store singleton certificates for accepted data at each valid
+final-page occurrence of their retained Atlas map. The checked constructor and
+public eliminator keep the owner, final-region predicate, and membership
+restriction together. The singleton constructor retains its selected value;
+uniqueness applies only to the certified carrier. Lean models this package and
+proves that every semantic territory is inhabited and subsingleton, establishing
+the written totality predicate. The module remains partial while its complete
+raw-presentation interpretation and exact public construction/observation laws
+are audited. Public positive checks exercise accepted selection, restricted
+uniqueness, and reconstruction through the eliminator. Rejection checks prevent
+dummy uniqueness proofs, owner substitution, unchecked region lookup, rejected
+selected values, and uniqueness claims about unaccepted candidates. The runtime
+regression uses a singleton accepted subset of a larger datum type and excludes
+padded occurrences from the genuine final regions.
+
 Coverage validation checks the retained region's owning trace, datum membership,
 final page, and both cache equalities. Matching the source's origin rank is only
 accepted after that validation. Lean proves that the executable validator is
@@ -158,10 +173,12 @@ Lean proves these same equations for arbitrary target inputs. These generic
 composition laws do not by themselves connect a stable action's target owner
 to the next action's source-domain predicate.
 The public inverse callback retains source ownership through the full stable
-syntax. A successful primitive lookup carries its stored source Atlas and a
-valid canonical coalition. Identity retains the caller's target owner, and
-composition passes a recovered intermediate through the first inverse while
-retaining the owner of the resulting source. The callback requires a valid
+syntax. Its hidden function package stores the source Atlas and an inverse
+whose every successful result is a valid canonical source, including for raw
+targets outside the forward image. Identity retains the caller's target owner.
+Composition retains the first inverse's owner and uses the same checked
+partial-inverse composition helper as ordinary domanial insertions. The package
+is built independently of a target lookup. The callback requires a valid
 canonical target, supplies a valid canonical source, and preserves failed
 lookups. Lean proves that this observation agrees with the existing carrier
 insertion's partial inverse for every canonical target. The generic insertion

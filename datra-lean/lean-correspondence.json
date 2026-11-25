@@ -5588,11 +5588,11 @@
       "lean_declaration": "StableTransversalAction.ofInverse"
     },
     {
-      "id": "ATLAS-STABLE-OWNED-PREIMAGE",
+      "id": "ATLAS-STABLE-OWNED-INVERSE",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
-      "haskell_declaration": "stableCoalitionPreimage",
+      "haskell_declaration": "stableCoalitionInverse",
       "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
-      "lean_declaration": "coalitionPreimage"
+      "lean_declaration": "coalitionInverse"
     },
     {
       "id": "ATLAS-STABLE-OWNED-PREIMAGE-ELIMINATION",
@@ -5600,6 +5600,62 @@
       "haskell_declaration": "withStableAtlasTransversalCoalitionPreimage",
       "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
       "lean_declaration": "withCoalitionPreimage"
+    },
+    {
+      "id": "INSERTION-PARTIAL-INVERSE-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
+      "haskell_declaration": "composePartialInverses",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "composePartialInverses"
+    },
+    {
+      "id": "ATLAS-STABLE-OWNED-INVERSE-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "composeStableCoalitionInverses",
+      "lean_namespace": "Datra.Executable.Atlas.StableTransversal",
+      "lean_declaration": "CoalitionInverse.comp"
+    },
+    {
+      "id": "SINGLETON-DOMINION-CONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap/Internal.hs",
+      "haskell_declaration": "singletonDominion",
+      "lean_namespace": "Datra.Executable.SingletonDominion",
+      "lean_declaration": "singletonDominion"
+    },
+    {
+      "id": "ATLAS-MAP-FINAL-REGION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs",
+      "haskell_declaration": "atlasMapRegionValid",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "AtlasMap.regionValid"
+    },
+    {
+      "id": "TOTAL-ATLAS-MAP-CONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap/Internal.hs",
+      "haskell_declaration": "totalAtlasMap",
+      "lean_namespace": "Datra.Executable.TotalAtlasMap",
+      "lean_declaration": "totalAtlasMap"
+    },
+    {
+      "id": "TOTAL-ATLAS-MAP-ELIMINATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap/Internal.hs",
+      "haskell_declaration": "withTotalAtlasMap",
+      "lean_namespace": "Datra.Executable.TotalAtlasMap",
+      "lean_declaration": "withTotalAtlasMap"
+    },
+    {
+      "id": "SINGLETON-DOMINION-UNIQUENESS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap/Internal.hs",
+      "haskell_declaration": "singletonDominionUnique",
+      "lean_namespace": "Datra.Executable.SingletonDominion",
+      "lean_declaration": "singletonDominionUnique"
+    },
+    {
+      "id": "TOTAL-ATLAS-MAP-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap/Internal.hs",
+      "haskell_declaration": "totalAtlasMap",
+      "lean_namespace": "Datra.Executable.TotalAtlasMap",
+      "lean_declaration": "isTotalAtlasMap"
     }
   ],
   "modules": [
@@ -5989,7 +6045,7 @@
       ],
       "reflected": [
         "composeInsertionMap",
-        "composeInsertionPreimage",
+        "composePartialInverses",
         "composeInsertionRoundTrip",
         "composeInsertions",
         "identityMap",
@@ -6667,7 +6723,8 @@
         "StableAtlasTransversal",
         "StableTransversalAction",
         "CoalitionPreimageData",
-        "StableCoalitionPreimage"
+        "CoalitionInverseData",
+        "StableCoalitionInverse"
       ],
       "reflected": [
         "stableAtlasOrigin",
@@ -6679,9 +6736,11 @@
         "checkedStableOrigin",
         "stableCoalitionInsertionOn",
         "stableAtlasTransversal",
+        "composeCoalitionInverseData",
         "withCoalitionPreimageData",
         "stableAtlasTransversalSize",
-        "stableCoalitionPreimage",
+        "stableCoalitionInverse",
+        "withCoalitionInverseData",
         "withStableAtlasTransversalCoalitionPreimage"
       ],
       "lean_target": "Datra.Executable.Atlas.StableTransversal",
@@ -6705,6 +6764,7 @@
       ],
       "reflected": [
         "atlasMapCellValid",
+        "atlasMapRegionValid",
         "atlasMapAcceptsDatum",
         "atlasMapWitnessCovers"
       ],
@@ -6863,16 +6923,18 @@
       "types": [
         "SingletonDominion",
         "SingletonDominion",
-        "FinalAtlasRegion",
-        "TotalAtlasMap"
+        "TotalAtlasMap",
+        "TotalAtlasMapData"
       ],
       "reflected": [],
       "refinements": [
+        "singletonDominionUnique",
         "singletonDominion",
-        "totalAtlasMap"
+        "totalAtlasMap",
+        "withTotalAtlasMap"
       ],
       "lean_target": "Datra.Executable.TotalAtlasMap",
-      "coverage": "pending",
+      "coverage": "partial",
       "aliases": [],
       "embeddings": [],
       "predicates": [],

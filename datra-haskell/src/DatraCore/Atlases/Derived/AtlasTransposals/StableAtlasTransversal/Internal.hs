@@ -79,7 +79,8 @@ import Coalition.Element
   ( CoalitionElement, CoalitionData, mapCoalitionElement
   , coalitionElementValid, coalitionElementSource )
 import DomanialInsertion.Core
-  ( DomanialInsertion (..), domanialInsertion, identityInsertion, composeInsertions )
+  ( DomanialInsertion (..), domanialInsertion, identityInsertion, composeInsertions
+  , composePartialInverses )
 import Control.Category (Category (..))
 import DatraOrdinal (Ordinal)
 import Numeric.Natural (Natural)
@@ -289,7 +290,8 @@ stableAtlasTransversalCoalitionInsertion (CompositeStableAtlasTransversal second
     (stableAtlasTransversalCoalitionInsertion second)
     (stableAtlasTransversalCoalitionInsertion first)
 
--- | A successful primitive inverse retains its certifying source Atlas.
+-- | Keep a canonical value paired with the Atlas that certifies it while
+-- transporting through the identity constructor's type equality.
 type role CoalitionPreimageData nominal nominal nominal nominal nominal
 {-@ data CoalitionPreimageData a s d o f = CoalitionPreimageData
       { coalitionPreimageOwner :: Atlas a s d o f
@@ -301,11 +303,33 @@ data CoalitionPreimageData a s d o f = CoalitionPreimageData
   , coalitionPreimageValue :: CoalitionData a s d
   }
 
-type role StableCoalitionPreimage nominal nominal
-data StableCoalitionPreimage source target where
-  UnchangedCoalitionPreimage :: StableCoalitionPreimage object object
-  RestoredCoalitionPreimage :: CoalitionPreimageData a s d o f
-    -> StableCoalitionPreimage (AtlasObject a s d) target
+type role CoalitionInverseData nominal nominal nominal nominal nominal nominal nominal nominal
+{-@ data CoalitionInverseData a s d o f ta ts td = CoalitionInverseData
+      { coalitionInverseOwner :: Atlas a s d o f
+      , coalitionInverseFunction :: CoalitionData ta ts td
+          -> Maybe ({source:CoalitionData a s d | StableCoalitionValid coalitionInverseOwner source})
+      } @-}
+data CoalitionInverseData a s d o f ta ts td = CoalitionInverseData
+  { coalitionInverseOwner :: Atlas a s d o f
+  , coalitionInverseFunction :: CoalitionData ta ts td -> Maybe (CoalitionData a s d)
+  }
+
+type role StableCoalitionInverse nominal nominal
+data StableCoalitionInverse source target where
+  UnchangedCoalitionInverse :: StableCoalitionInverse object object
+  RestoringCoalitionInverse :: CoalitionInverseData a s d o f ta ts td
+    -> StableCoalitionInverse (AtlasObject a s d) (AtlasObject ta ts td)
+
+{-@ composeCoalitionInverseData :: first:CoalitionInverseData a s d o f ma ms md
+      -> second:(CoalitionData ta ts td -> Maybe (CoalitionData ma ms md))
+      -> {result:CoalitionInverseData a s d o f ta ts td |
+           coalitionInverseOwner result == coalitionInverseOwner first
+           && coalitionInverseFunction result == composePartialInverses (coalitionInverseFunction first) second} @-}
+composeCoalitionInverseData :: CoalitionInverseData a s d o f ma ms md
+  -> (CoalitionData ta ts td -> Maybe (CoalitionData ma ms md))
+  -> CoalitionInverseData a s d o f ta ts td
+composeCoalitionInverseData (CoalitionInverseData owner first) second =
+  CoalitionInverseData owner (composePartialInverses first second)
 
 {-@ withCoalitionPreimageData :: image:CoalitionPreimageData a s d o f
       -> (owner:Atlas a s d o f
@@ -326,28 +350,41 @@ stableAtlasTransversalSize (PrimitiveStableAtlasTransversal _) = 1
 stableAtlasTransversalSize (CompositeStableAtlasTransversal second first) =
   1 + stableAtlasTransversalSize second + stableAtlasTransversalSize first
 
--- ALIGN: ATLAS-STABLE-OWNED-PREIMAGE.
-{-@ stableCoalitionPreimage :: arrow:StableAtlasTransversal source target
-      -> CoalitionElement target -> Maybe (StableCoalitionPreimage source target)
+-- ALIGN: ATLAS-STABLE-OWNED-INVERSE.
+{-@ stableCoalitionInverse :: arrow:StableAtlasTransversal source target
+      -> StableCoalitionInverse source target
       / [stableAtlasTransversalSize arrow] @-}
-stableCoalitionPreimage :: StableAtlasTransversal source target
-  -> CoalitionElement target -> Maybe (StableCoalitionPreimage source target)
-stableCoalitionPreimage IdentityStableAtlasTransversal _ = Just UnchangedCoalitionPreimage
-stableCoalitionPreimage (PrimitiveStableAtlasTransversal action) target =
-  case preimage (stableActionInsertion action) target of
+stableCoalitionInverse :: StableAtlasTransversal source target -> StableCoalitionInverse source target
+stableCoalitionInverse IdentityStableAtlasTransversal = UnchangedCoalitionInverse
+stableCoalitionInverse (PrimitiveStableAtlasTransversal action) =
+  RestoringCoalitionInverse
+    (CoalitionInverseData (stableActionSource action) (preimage (stableActionInsertion action)))
+stableCoalitionInverse (CompositeStableAtlasTransversal second first) =
+  composeStableCoalitionInverses (stableCoalitionInverse second) (stableCoalitionInverse first)
+
+-- ALIGN: ATLAS-STABLE-OWNED-INVERSE-COMPOSITION.
+composeStableCoalitionInverses :: StableCoalitionInverse middle target
+  -> StableCoalitionInverse source middle -> StableCoalitionInverse source target
+composeStableCoalitionInverses UnchangedCoalitionInverse first = first
+composeStableCoalitionInverses (RestoringCoalitionInverse second) first =
+  case first of
+    UnchangedCoalitionInverse -> RestoringCoalitionInverse second
+    RestoringCoalitionInverse source ->
+      RestoringCoalitionInverse
+        (composeCoalitionInverseData source (coalitionInverseFunction second))
+
+{-@ withCoalitionInverseData :: inverse:CoalitionInverseData a s d o f ta ts td
+      -> CoalitionData ta ts td
+      -> (owner:Atlas a s d o f
+            -> {source:CoalitionData a s d | StableCoalitionValid owner source}
+            -> result)
+      -> Maybe result @-}
+withCoalitionInverseData :: CoalitionInverseData a s d o f ta ts td -> CoalitionData ta ts td
+  -> (Atlas a s d o f -> CoalitionData a s d -> result) -> Maybe result
+withCoalitionInverseData inverse target usePreimage =
+  case coalitionInverseFunction inverse target of
     Nothing -> Nothing
-    Just source -> Just (RestoredCoalitionPreimage
-      (CoalitionPreimageData (stableActionSource action) source))
-stableCoalitionPreimage (CompositeStableAtlasTransversal second first) target =
-  let restoreFirst = stableCoalitionPreimage first
-  in case stableCoalitionPreimage second target of
-    Nothing -> Nothing
-    Just UnchangedCoalitionPreimage -> restoreFirst target
-    Just (RestoredCoalitionPreimage middle) ->
-      case restoreFirst (coalitionPreimageValue middle) of
-        Nothing -> Nothing
-        Just UnchangedCoalitionPreimage -> Just (RestoredCoalitionPreimage middle)
-        Just (RestoredCoalitionPreimage source) -> Just (RestoredCoalitionPreimage source)
+    Just source -> Just (usePreimage (coalitionInverseOwner inverse) source)
 
 -- | Inspect a successful inverse with the actual source owner. Identity keeps
 -- the caller's target owner; a primitive inverse supplies its stored source.
@@ -366,12 +403,13 @@ withStableAtlasTransversalCoalitionPreimage
   -> CoalitionData ta ts td
   -> (forall o f. Atlas sa ss sd o f -> CoalitionData sa ss sd -> result)
   -> Maybe result
-withStableAtlasTransversalCoalitionPreimage targetOwner arrow target usePreimage =
-  let targetImage = CoalitionPreimageData targetOwner target
-  in case stableCoalitionPreimage arrow target of
-    Nothing -> Nothing
-    Just UnchangedCoalitionPreimage -> Just (withCoalitionPreimageData targetImage usePreimage)
-    Just (RestoredCoalitionPreimage source) -> Just (withCoalitionPreimageData source usePreimage)
+withStableAtlasTransversalCoalitionPreimage targetOwner arrow =
+  let inverse = stableCoalitionInverse arrow
+  in \target usePreimage ->
+    let targetImage = CoalitionPreimageData targetOwner target
+    in case inverse of
+      UnchangedCoalitionInverse -> Just (withCoalitionPreimageData targetImage usePreimage)
+      RestoringCoalitionInverse restored -> withCoalitionInverseData restored target usePreimage
 
 -- | Forget the extent restriction while retaining every transversal law.
 stableAtlasTransversalTransversal

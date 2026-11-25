@@ -11,6 +11,7 @@ module DomanialInsertion.Core
   , identityInsertion
   , identityInsertionApply
   , composeInsertions
+  , composePartialInverses
   , composeInsertionsApply
   , composeInsertionsPreimageNothing
   , composeInsertionsPreimageJust
@@ -63,12 +64,14 @@ domanialInsertion = DomanialInsertion
 composeInsertionMap :: DomanialInsertion b c -> DomanialInsertion a b -> a -> c
 composeInsertionMap second first value = applyInsertion second (applyInsertion first value)
 
-{-@ reflect composeInsertionPreimage @-}
-composeInsertionPreimage :: DomanialInsertion b c -> DomanialInsertion a b -> c -> Maybe a
-composeInsertionPreimage second first value =
-  case preimage second value of
+-- | Partial inverses compose in reverse arrow order, preserving failure.
+-- ALIGN: INSERTION-PARTIAL-INVERSE-COMPOSITION.
+{-@ reflect composePartialInverses @-}
+composePartialInverses :: (b -> Maybe a) -> (c -> Maybe b) -> c -> Maybe a
+composePartialInverses first second value =
+  case second value of
     Nothing -> Nothing
-    Just middle -> preimage first middle
+    Just middle -> first middle
 
 {-@ reflect composeInsertionRoundTrip @-}
 {-@
@@ -76,7 +79,7 @@ composeInsertionRoundTrip
   :: second:DomanialInsertion b c
   -> first:DomanialInsertion a b
   -> value:a
-  -> {proof:() | composeInsertionPreimage second first
+  -> {proof:() | composePartialInverses (preimage first) (preimage second)
        (composeInsertionMap second first value) == Just value}
 @-}
 -- ALIGN: INSERTION-COMPOSITION-ROUNDTRIP.
@@ -97,7 +100,7 @@ composeInsertions
 composeInsertions second first =
   DomanialInsertion
     (composeInsertionMap second first)
-    (composeInsertionPreimage second first)
+    (composePartialInverses (preimage first) (preimage second))
     (composeInsertionRoundTrip second first)
 
 -- | Observe composition through the exposed interface, including arbitrary

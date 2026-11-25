@@ -820,6 +820,18 @@ proofGuard = atlasMergePageChain
 
 STABLE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs"
 STABLE_GUARDS = {
+    "composed inverse packages retain source validity on arbitrary raw targets": """
+{-@ proofGuard :: first:CoalitionInverseData a s d o f ma ms md
+      -> (CoalitionData ta ts td -> Maybe (CoalitionData ma ms md))
+      -> CoalitionData ta ts td
+      -> Maybe ({source:CoalitionData a s d |
+           not (coalitionElementValid (coalitionInverseOwner first) source)}) @-}
+proofGuard :: CoalitionInverseData a s d o f ma ms md
+  -> (CoalitionData ta ts td -> Maybe (CoalitionData ma ms md))
+  -> CoalitionData ta ts td -> Maybe (CoalitionData a s d)
+proofGuard first second target =
+  coalitionInverseFunction (composeCoalitionInverseData first second) target
+""",
     "stored stable insertions require canonical source inputs": """
 proofGuard :: StableTransversalAction sa ss sd so sf ta ts td to tf
   -> CoalitionData sa ss sd -> CoalitionData ta ts td
@@ -2885,6 +2897,111 @@ proofGuardCallback _ owner source =
 }
 
 
+TOTAL_MAP_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module TotalMapPublicGuard where
+import Atlas (AtlasObject)
+import AtlasMap (AtlasMap, atlasMapRegionValid, atlasMapAcceptsDatum)
+import PageElements.Structure (PageElement)
+import TotalAtlasMap
+
+{-@ selectedAt :: owner:AtlasMap (AtlasObject a s d)
+      -> (forall cell. region:{PageElement s cell | atlasMapRegionValid owner region}
+            -> SingletonDominion ({datum:d cell | atlasMapAcceptsDatum owner region datum}))
+      -> PageElement s object -> {result:Bool | result} @-}
+selectedAt :: AtlasMap (AtlasObject a s d)
+  -> (forall cell. PageElement s cell -> SingletonDominion (d cell))
+  -> PageElement s object -> Bool
+selectedAt owner singleton region =
+  if atlasMapRegionValid owner region
+    then atlasMapAcceptsDatum owner region (singletonDominionValue (singleton region))
+    else True
+
+{-@ selectedAccepted :: TotalAtlasMap (AtlasObject a s d) -> PageElement s object
+      -> {result:Bool | result} @-}
+selectedAccepted :: TotalAtlasMap (AtlasObject a s d) -> PageElement s object -> Bool
+selectedAccepted value = withTotalAtlasMap value selectedAt
+
+{-@ uniqueAt :: owner:AtlasMap (AtlasObject a s d)
+      -> (forall cell. region:{PageElement s cell | atlasMapRegionValid owner region}
+            -> SingletonDominion ({datum:d cell | atlasMapAcceptsDatum owner region datum}))
+      -> PageElement s object -> d object -> () @-}
+uniqueAt :: AtlasMap (AtlasObject a s d)
+  -> (forall cell. PageElement s cell -> SingletonDominion (d cell))
+  -> PageElement s object -> d object -> ()
+uniqueAt owner singleton region candidate =
+  if atlasMapRegionValid owner region && atlasMapAcceptsDatum owner region candidate
+    then singletonDominionUnique (singleton region) candidate else ()
+
+acceptedUnique :: TotalAtlasMap (AtlasObject a s d) -> PageElement s object -> d object -> ()
+acceptedUnique value = withTotalAtlasMap value uniqueAt
+
+{-@ exactSingleton :: selected:value
+      -> (candidate:value -> {candidate == selected})
+      -> {result:SingletonDominion value | singletonDominionValue result == selected} @-}
+exactSingleton :: value -> (value -> ()) -> SingletonDominion value
+exactSingleton = singletonDominion
+
+{-@ restrictedSingleton :: SingletonDominion {value:Int | value == 7} @-}
+restrictedSingleton :: SingletonDominion Int
+restrictedSingleton = singletonDominion 7 (\_ -> ())
+
+rebuildTotal :: TotalAtlasMap (AtlasObject a s d) -> TotalAtlasMap (AtlasObject a s d)
+rebuildTotal value = withTotalAtlasMap value totalAtlasMap
+"""
+TOTAL_MAP_PUBLIC_GUARDS = {
+    "total map singleton construction rejects a dummy uniqueness proof": r"""
+proofGuard :: Int -> SingletonDominion Int
+proofGuard selected = singletonDominion selected (\_ -> ())
+""",
+    "total map singleton construction retains its selected value": r"""
+{-@ proofGuard :: selected:value
+      -> (candidate:value -> {candidate == selected})
+      -> {result:SingletonDominion value | singletonDominionValue result /= selected} @-}
+proofGuard :: value -> (value -> ()) -> SingletonDominion value
+proofGuard = singletonDominion
+""",
+    "total map singleton lookup requires an owning final region": r"""
+proofGuard :: TotalAtlasMap (AtlasObject a s d) -> PageElement s object -> d object
+proofGuard value region = withTotalAtlasMap value $ \_ singleton ->
+  singletonDominionValue (singleton region)
+""",
+    "total map singleton lookup cannot substitute another owner": r"""
+proofGuard :: TotalAtlasMap (AtlasObject a s d) -> AtlasMap (AtlasObject a s d)
+  -> PageElement s object -> Maybe (d object)
+proofGuard value other region = withTotalAtlasMap value $ \_ singleton ->
+  if atlasMapRegionValid other region
+    then Just (singletonDominionValue (singleton region)) else Nothing
+""",
+    "total map singleton lookup cannot return rejected data": r"""
+{-@ proofGuard :: TotalAtlasMap (AtlasObject a s d) -> PageElement s object
+      -> {result:Bool | result} @-}
+proofGuard :: TotalAtlasMap (AtlasObject a s d) -> PageElement s object -> Bool
+proofGuard value region = withTotalAtlasMap value $ \owner singleton ->
+  if atlasMapRegionValid owner region
+    then not (atlasMapAcceptsDatum owner region (singletonDominionValue (singleton region)))
+    else True
+""",
+    "total map singleton uniqueness requires an accepted candidate": r"""
+proofGuard :: TotalAtlasMap (AtlasObject a s d) -> PageElement s object -> d object -> ()
+proofGuard value region candidate = withTotalAtlasMap value $ \owner singleton ->
+  if atlasMapRegionValid owner region
+    then singletonDominionUnique (singleton region) candidate else ()
+""",
+    "total map construction requires accepted singleton witnesses": r"""
+proofGuard :: AtlasMap (AtlasObject a s d)
+  -> (forall object. PageElement s object -> SingletonDominion (d object))
+  -> TotalAtlasMap (AtlasObject a s d)
+proofGuard = totalAtlasMap
+""",
+}
+
+
 def run(pattern=None):
     plan = json.loads((HASKELL / "dist-newstyle/cache/plan.json").read_text())
     library = next(unit for unit in plan["install-plan"]
@@ -2980,6 +3097,7 @@ def run(pattern=None):
         check_group(TRANSVERSAL_PUBLIC_SOURCE, TRANSVERSAL_PUBLIC_GUARDS)
         check_group(INSERTION_COMPOSITION_PUBLIC_SOURCE, INSERTION_COMPOSITION_PUBLIC_GUARDS)
         check_group(STABLE_PREIMAGE_PUBLIC_SOURCE, STABLE_PREIMAGE_PUBLIC_GUARDS)
+        check_group(TOTAL_MAP_PUBLIC_SOURCE, TOTAL_MAP_PUBLIC_GUARDS)
 
         typing_guards = [
             ("module PublicCoveredGuard where\nimport AtlasCoveredPageElement (CoveredPageElement)\n",

@@ -51,6 +51,7 @@ import StableConfederalDataKleisli
 import qualified StableConfederalDataKleisli.Syntax as Kleisli
 import StableConfederalDataMonoidal
 import StableDataTransversal
+import TotalAtlasMap
 
 import Data.Maybe (isJust, isNothing)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -99,6 +100,7 @@ testTree =
         , testCase "atlas confederation" testAtlasConfederation
         , testCase "atlas federation" testAtlasFederation
         , testCase "atlas map" testAtlasMap
+        , testCase "total atlas map accepted final region" testTotalAtlasMap
         , testCase "navigation and expedition" testNavigationAndExpedition
         , testCase "data transformation map" testDataTransformationMap
         , testCase "restricted data transformations" testRestrictedDataTransformations
@@ -2282,6 +2284,45 @@ testAtlasFederation = do
                   (SeparatedCorrespondingPageElements
                     0 correspondingPosition)
             )
+
+testTotalAtlasMap :: IO ()
+testTotalAtlasMap =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    let membership = atlasMembership (\_ (TestCellData value) -> value == 7)
+        dataAt _ = dominion
+          (\(TestCellData value) -> value)
+          (\value -> if value == 7 then Just (TestCellData value) else Nothing)
+          (const ())
+        mapData _ = domanialInsertion
+          (\(TestCellData value) -> TestCellData value)
+          (\(TestCellData value) -> if value == 7 then Just (TestCellData value) else Nothing)
+          (const ())
+    in atlas valuePagination
+      (atlasRestrictedDataAction (paginationPageElements valuePagination) membership dataAt mapData)
+      testAtlasIdentityLaw testAtlasCompositionLaw testAtlasCoherenceLaw testAtlasDisjointLaw $ \owner ->
+        let valueMap = atlasMap owner $ \extent datum ->
+              atlasCoverageWitness owner extent datum extent datum ()
+            total = totalAtlasMap valueMap $ \_ -> singletonDominion (TestCellData 7) (const ())
+        in withTotalAtlasMap total $ \stored singleton -> do
+          withAtlasMapExtent stored $ \_ extent _ _ -> do
+            assert "the single genuine page supplies a final region"
+              (atlasMapRegionValid stored extent)
+            let selected = singletonDominionValue (singleton extent)
+            assert "singletonhood applies to the accepted region, not all raw naturals"
+              ( selected == TestCellData 7
+                && atlasMapAcceptsDatum stored extent selected
+                && not (atlasMapAcceptsDatum stored extent (TestCellData 8))
+              )
+          mapM_ (\page -> case pageElementIndex (atlasPageElements owner) page (finiteOrdinal 0) of
+            Nothing -> fail "missing padded total-map cell"
+            Just index -> withPageElement (pageElement index) $ \cell ->
+              assert "padded occurrences are valid cells but not genuine final regions"
+                (atlasMapCellValid stored cell && not (atlasMapRegionValid stored cell))
+            ) [1, 7]
+          withAtlasMapExtent (totalAtlasMapUnderlying total) $ \_ extent _ _ ->
+            assert "forgetting totality retains the accepted carrier"
+              (atlasMapAcceptsDatum valueMap extent (TestCellData 7)
+                && not (atlasMapAcceptsDatum valueMap extent (TestCellData 8)))
 
 testAtlasMap :: IO ()
 testAtlasMap =

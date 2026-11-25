@@ -17,6 +17,7 @@ module AtlasMap
   , atlasMapCoversDatum
   , atlasMapAcceptsDatum
   , atlasMapCellValid
+  , atlasMapRegionValid
   , atlasMapWitnessCovers
   , withAtlasMapExtent
   , AtlasMapHom
@@ -42,6 +43,7 @@ import AtlasMap.Internal
   , atlasMapCoversDatum
   , atlasMapAcceptsDatum
   , atlasMapCellValid
+  , atlasMapRegionValid
   , atlasMapWitnessCovers
   , atlasMapHom
   , atlasMapHomPagination

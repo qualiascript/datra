@@ -48,10 +48,17 @@ theorem injective (f : DomanialInsertion A B) : Function.Injective f.map := by
 -- ALIGN: INSERTION-IDENTITY.
 def identity (A : Type u) : DomanialInsertion A A := ⟨id, some, fun _ => rfl⟩
 
+-- ALIGN: INSERTION-PARTIAL-INVERSE-COMPOSITION.
+def composePartialInverses (first : B → Option A) (second : C → Option B)
+    (value : C) : Option A := (second value).bind first
+
+@[simp] theorem composePartialInverses_apply (first : B → Option A) (second : C → Option B)
+    (value : C) : composePartialInverses first second value = (second value).bind first := rfl
+
 -- ALIGN: INSERTION-COMPOSITION.
 def comp (first : DomanialInsertion A B) (second : DomanialInsertion B C) : DomanialInsertion A C where
   map := second.map ∘ first.map
-  preimage := fun x => (second.preimage x).bind first.preimage
+  preimage := composePartialInverses first.preimage second.preimage
   leftInverse := fun x => by simp [second.leftInverse, first.leftInverse]
 
 -- ALIGN: INSERTION-COMPOSITION-APPLY.

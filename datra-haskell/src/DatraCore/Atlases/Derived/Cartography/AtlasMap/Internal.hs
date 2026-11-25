@@ -20,6 +20,7 @@ module AtlasMap.Internal
   , atlasMapCoversDatum
   , atlasMapAcceptsDatum
   , atlasMapCellValid
+  , atlasMapRegionValid
   , atlasMapWitnessCovers
   , AtlasMapHom
   , atlasMapHom
@@ -47,6 +48,7 @@ import Atlas
   , AtlasObjectPaginationScope
   , AtlasWitness
   , atlasDataAt
+  , atlasFolio
   , atlasAcceptsDatum
   , atlasPageElements
   , atlasHomPagination
@@ -67,7 +69,8 @@ import AtlasCoveredPageElement
   , coverageWitnessAlongArrow
   )
 import AtlasExtent (cellTraceValid, cellTraceHasOrigin)
-import PageElements.Structure (SomePageElement (..))
+import PageElements.Structure (SomePageElement (..), pageElementPage)
+import Folio (folioLength)
 import Control.Category (Category (..))
 import DomanialInsertion (applyInsertion)
 import Dominion (Dominion)
@@ -112,6 +115,15 @@ atlasMapCellValid
   :: forall a s d cell. AtlasMap (AtlasObject a s d) -> PageElement s cell -> Bool
 atlasMapCellValid (AtlasMap (value :: AtlasMapData a s d o f extent)) source =
   cellTraceValid (mapOwner value) source
+
+-- | An owning occurrence on the final genuine page, excluding padded copies.
+-- ALIGN: ATLAS-MAP-FINAL-REGION.
+{-@ reflect atlasMapRegionValid @-}
+atlasMapRegionValid
+  :: forall a s d cell. AtlasMap (AtlasObject a s d) -> PageElement s cell -> Bool
+atlasMapRegionValid (AtlasMap (value :: AtlasMapData a s d o f extent)) source =
+  cellTraceValid (mapOwner value) source
+    && pageElementPage source == folioLength (atlasFolio (mapOwner value)) - 1
 
 {-@ reflect atlasMapAcceptsDatum @-}
 atlasMapAcceptsDatum
