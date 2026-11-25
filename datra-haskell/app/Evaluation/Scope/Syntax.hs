@@ -8,17 +8,16 @@ module Evaluation.Scope.Syntax
   , openSyntaxScope
   ) where
 
-import Control.Applicative ((<|>))
 import DatraLanguage.AST
 import DatraLanguage.DependentDeclaration
+import DatraTypes (InterpretedValue)
 import DatraTypes.Scope
 import Evaluation.Scope
 import Evaluation.Scope.GenericProtection (genericContinuationHandoff)
 import StringInterpolation
 
 data ScopeSyntaxRule = ScopeSyntaxRule
-  { scopeSyntaxRuleNames :: [String]
-  , scopeSyntaxRuleBranch :: Int
+  { scopeSyntaxRuleBranch :: Int
   , scopeSyntaxRuleValue :: SyntaxRule
   , scopeSyntaxRuleFamilyScope :: Scope
   , scopeSyntaxRuleImportPolicy :: DeclarationLayerImportPolicy
@@ -28,8 +27,7 @@ data ScopeSyntaxRule = ScopeSyntaxRule
 scopeSyntaxRules :: Scope -> [ScopeSyntaxRule]
 scopeSyntaxRules scope =
   [ ScopeSyntaxRule
-      { scopeSyntaxRuleNames = bindingNames expressionValue
-      , scopeSyntaxRuleBranch = branch
+      { scopeSyntaxRuleBranch = branch
       , scopeSyntaxRuleValue = rule
       , scopeSyntaxRuleFamilyScope = scopedDependentDeclarationFamilyScope scoped
       , scopeSyntaxRuleImportPolicy =
@@ -88,32 +86,15 @@ predeclareSyntaxLets entries scope = foldl publish scope entries
       | otherwise = current
 
 openSyntaxScope
-  :: DeclarationLayerImportPolicy
+  :: (Scope -> Expression -> Maybe InterpretedValue)
+  -> DeclarationLayerImportPolicy
   -> Scope
   -> Expression
   -> Scope
-openSyntaxScope policy enclosing source =
-  case source of
-    IdentifierReference (SimpleIdentifierString name) ->
-      maybe enclosing (installOpenedLayers policy enclosing)
-        (openedIdentifier name)
-    SyntaxBoundary inner -> openSyntaxScope policy enclosing inner
-    _ -> enclosing
-  where
-    openedIdentifier name = moduleScopeFor name <|> definitionScopeFor name
-    moduleScopeFor name = do
-      runtime <- runtimeDeclarationByName name enclosing
-      runtimeDeclarationPublicScope runtime
-    definitionScopeFor name = do
-      (captured, _, implementation) <- declarationDefinitionByName enclosing name
-      entries <- blockEntries implementation
-      pure (foldl publish (enterSyntaxFrame captured) entries)
-    blockEntries value = case value of
-      Begin declarations _ -> Just (map DeclarationExpression declarations)
-      FunctionBody declarations _ -> Just (map DeclarationExpression declarations)
-      SyntaxBoundary inner -> blockEntries inner
-      _ -> Nothing
-    publish scope entry = maybe scope id (publishSyntaxDeclaration entry scope)
+openSyntaxScope evaluate policy enclosing source =
+  case evaluate enclosing source >>= (`runtimePublicScopeForValue` enclosing) of
+    Just public -> installOpenedLayers policy enclosing public
+    Nothing -> enclosing
 
 installOpenedLayers
   :: DeclarationLayerImportPolicy

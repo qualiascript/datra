@@ -47,7 +47,7 @@ runProgram source = do
   expression <- first SourceParseFailure
     (locatedValue <$> parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
       AllStandardLibrary emptyPreparedModules
-      "test/Datra/TestSupport.hs" source)
+      "test/Datra/TestSupport.hs" ("(begin\n" <> source <> "\n)"))
   first SourceEvaluationFailure
     (interpretWithModules emptyPreparedModules expression)
 

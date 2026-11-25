@@ -11,7 +11,8 @@ import DatraTypes
   , ScopeProtection (..)
   , ScopeProtectionPolicy (..)
   , InterpretingError
-      ( InconsistentShadowing
+      ( AmbiguousStrictImport
+      , InconsistentShadowing
       , FunctionEvaluationFailed
       , LetBindingCannotShadowConsistentIdentifier
       , OperationHasNoEffect
@@ -98,9 +99,6 @@ scopeTests =
         , expressionCase "explicit begin sees earlier declarations"
             "begin a := 1; b := a + 1 yield b"
             "2 <~ begin a := 1; b := a + 1; yield b"
-        , programCase "implicit begin sees earlier declarations"
-            "a := 1\nb := a + 1\nyield b"
-            "2"
         , programFailureCase "an annotated assignment is not a declaration"
             "x : Int := 2\nyield x"
             (SourceEvaluationFailure OperationHasNoEffect)
@@ -128,18 +126,6 @@ scopeTests =
         , expressionCase "a parenthesized begin retains block provenance"
             "begin yield 5"
             "5 <~ begin yield 5"
-        , programFailureCase "an implicit resource does not introduce this"
-            "yield this"
-            (SourceEvaluationFailure (UnknownIdentifier "this"))
-        , programFailureCase "implicit programs do not introduce this"
-            "value := 4\nmy_this := this\nyield my_this.value"
-            (SourceEvaluationFailure (UnknownIdentifier "this"))
-        , programFailureCase "implicit fallback resources do not introduce this"
-            "yield this"
-            (SourceEvaluationFailure (UnknownIdentifier "this"))
-        , programFailureCase "implicit fallback resources do not introduce it"
-            "yield it"
-            (SourceEvaluationFailure (UnknownIdentifier "it"))
         , expressionFailureCase "explicit resources do not introduce this"
             "this"
             (SourceEvaluationFailure (UnknownIdentifier "this"))
@@ -152,9 +138,6 @@ scopeTests =
         , programCase "ordinary identifier named this remains addressable"
             "this := 23\nyield this"
             "23"
-        , programFailureCase "implicit resources have no private this"
-            "value := 4\nyield (_this 0).value"
-            (SourceEvaluationFailure (UnknownIdentifier "_this"))
         , programFailureCase "def declarations require override consistency"
             "def locked := 1\nyield begin locked := 2; yield locked"
             (SourceEvaluationFailure (InconsistentShadowing "locked"))
@@ -187,9 +170,6 @@ scopeTests =
             "2"
         , expressionFailureCase "explicit begin cannot see later declarations"
             "begin a := b; b := 1 yield a"
-            (SourceEvaluationFailure (UnknownIdentifier "b"))
-        , programFailureCase "implicit begin cannot see later declarations"
-            "a := b\nb := 1\nyield a"
             (SourceEvaluationFailure (UnknownIdentifier "b"))
         , expressionFailureCase "a declaration cannot see itself"
             "begin a := a yield a"
@@ -235,13 +215,41 @@ scopeTests =
             "def locked := 1\nsource := (locked:1)\nyield source.locked"
             "1"
         ]
+    , testGroup "with strict imports"
+        [ expressionCase "unused overlap is accepted"
+            ( "begin\n"
+                <> " first := (x:1; only_first:2)\n"
+                <> " second := (x:3; only_second:4)\n"
+                <> "yield with first; second do yield 0"
+            )
+            "0 <~ begin first := (x : 1; only_first : 2); second := (x : 3; only_second : 4); yield 0"
+        , expressionCase "disjoint members remain available beside overlap"
+            ( "begin\n"
+                <> " first := (x:1; only_first:2)\n"
+                <> " second := (x:3; only_second:4)\n"
+                <> "yield with first; second do "
+                <> "yield only_first + only_second"
+            )
+            "6 <~ begin first := (x : 1; only_first : 2); second := (x : 3; only_second : 4); yield 6"
+        , expressionFailureCase "using overlap reports strict-import ambiguity"
+            ( "begin\n"
+                <> " first := (x:1; only_first:2)\n"
+                <> " second := (x:3; only_second:4)\n"
+                <> "yield with first; second do yield x"
+            )
+            (SourceEvaluationFailure (AmbiguousStrictImport "x"))
+        , expressionCase "a higher local declaration wins over overlap"
+            ( "begin\n"
+                <> " first := (x:1)\n"
+                <> " second := (x:3)\n"
+                <> "yield with first; second do x := 9; yield x"
+            )
+            "9 <~ begin first := (x : 1); second := (x : 3); yield 9"
+        ]
     , testGroup "let block declarations"
         [ expressionCase "let is visible before its declaration"
             "begin a := x + 1; let x := 10 yield a"
             "11 <~ begin a := x + 1; let x := 10; yield a"
-        , programCase "implicit let is visible before its declaration"
-            "a := x + 1\nlet x := 10\nyield a"
-            "11"
         ]
     , testGroup "function bodies"
         [ programCase "explicit do sees earlier declarations"

@@ -80,9 +80,7 @@ import DatraLanguage.Diagnostics
   , atSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
-  ( ModuleInputFailure (ModuleNamespaceCollision)
-  , ParseFailure (DatraSourceParseFailure)
-  )
+  ( ParseFailure (DatraSourceParseFailure) )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
   , LocalizedDiagnostic (localizeDiagnostic)
@@ -555,24 +553,6 @@ testDiagnostics = do
       && localizeDiagnostic Romanian (DatraSourceParseFailure "bad token")
         == LocalizedMessage "sursa nu a putut fi analizată" ["bad token"]
     )
-  assert "module-input failures have exact bilingual localization"
-    ( localizeDiagnostic English
-        (ModuleNamespaceCollision "Shared" "first.datra" "second.datra")
-        == LocalizedMessage "module namespace is declared more than once"
-          [ "namespace: Shared"
-          , "first module: first.datra"
-          , "second module: second.datra"
-          ]
-      && localizeDiagnostic Romanian
-        (ModuleNamespaceCollision "Shared" "first.datra" "second.datra")
-        == LocalizedMessage
-          "spațiul de nume al modulului este declarat de mai multe ori"
-          [ "spațiu de nume: Shared"
-          , "primul modul: first.datra"
-          , "al doilea modul: second.datra"
-          ]
-    )
-
 testGenericIdentifierDisjointness :: IO ()
 testGenericIdentifierDisjointness = do
   first <- expectRight "construct first identifier name"

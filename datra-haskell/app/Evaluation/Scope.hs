@@ -14,15 +14,12 @@ module Evaluation.Scope
   , extendImportedDeclarationLayer
   , dependentDeclarationCandidates
   , extendRuntimeDeclarations
-  , extendImportedRuntimeDeclarations
   , extendImportedRuntimeScope
   , extendContextualRuntimeDeclarations
-  , extendRuntimeProjection
-  , withoutRuntimeDeclarations
   , runtimeDeclarationByName
   , declarationDefinitionByName
   , scopedDeclarationDefinition
-  , runtimePublicDeclarations
+  , runtimePublicScopeForValue
   , evaluatedRuntimeDeclaration
   , contextualRuntimeDeclaration
   , constantContextualRuntimeDeclaration
@@ -30,7 +27,6 @@ module Evaluation.Scope
   , withPresentationOwner
   , enterScope
   , enterRuntimeScope
-  , enterLexicalScope
   , enterScopeWithReceiver
   , handoffScopeValue
   , scopeProtectedValues
@@ -173,18 +169,12 @@ dependentDeclarationCandidates name layer =
     (not . null . scopedIdentifierMatchingBranches name)
     (dependentDeclarationLayerMembers layer)
 
-scopedRuntimeDeclaration
-  :: Scope
-  -> RuntimeSingletonPayload
-  -> ScopedDependentDeclaration
-scopedRuntimeDeclaration = ScopedRuntimeSingletonDeclaration
-
 scopedRuntimeDeclarations
   :: Scope
   -> RuntimeSingletonPayload
   -> [ScopedDependentDeclaration]
 scopedRuntimeDeclarations scope runtime =
-  [scopedRuntimeDeclaration scope runtime]
+  [ScopedRuntimeSingletonDeclaration scope runtime]
 
 scopedContextualSurfaceDeclarations
   :: Scope
@@ -204,13 +194,6 @@ scopedContextualSurfaceDeclarations captured declarations =
 extendRuntimeDeclarations :: [RuntimeSingletonPayload] -> Scope -> Scope
 extendRuntimeDeclarations = extendRuntimeDeclarationsWithPolicy
   LocalDeclarationLayer
-
-extendImportedRuntimeDeclarations
-  :: DeclarationLayerImportPolicy
-  -> [RuntimeSingletonPayload]
-  -> Scope
-  -> Scope
-extendImportedRuntimeDeclarations = extendRuntimeDeclarationsWithPolicy
 
 extendImportedRuntimeScope
   :: DeclarationLayerImportPolicy
@@ -272,23 +255,6 @@ extendContextualRuntimeDeclarations declarations parent = surfaceScope
                 : scopeDependentDeclarationLayers primitiveScope
           }
 
-extendRuntimeProjection :: NamedMapView -> Scope -> Scope
-extendRuntimeProjection projection parent = scope
-  where
-    scope = parent
-      { scopeDependentDeclarationLayers =
-          runtimeDeclarationLayer [scopedProjection] :
-            scopeDependentDeclarationLayers parent
-      }
-    scopedProjection = ScopedProjectedDependentDeclaration scope projection
-
-withoutRuntimeDeclarations :: Scope -> Scope
-withoutRuntimeDeclarations scope = scope
-  { scopeDependentDeclarationLayers =
-      filter ((== SourceDeclarationLayer) . dependentDeclarationLayerOrigin)
-        (scopeDependentDeclarationLayers scope)
-  }
-
 runtimeDeclarationByName :: String -> Scope -> Maybe RuntimeSingletonPayload
 runtimeDeclarationByName name scope = firstLayer
   (scopeDependentDeclarationLayers scope)
@@ -333,14 +299,26 @@ scopedDeclarationDefinition scoped =
         , dependentDeclarationImplementation declaration
         )
 
-runtimePublicDeclarations :: Scope -> [RuntimeSingletonPayload]
-runtimePublicDeclarations scope =
-  [ runtime
-  | layer <- scopeDependentDeclarationLayers scope
-  , scoped <- dependentDeclarationLayerMembers layer
-  , Just runtime <- [scopedDependentDeclarationRuntime scoped]
-  , Just _ <- [runtimeDeclarationPublicScope runtime]
-  ]
+-- | Recover the retained declaration scope which produced an evaluated
+-- namespace value.  Namespace opening is based on the selected value and its
+-- declaration provenance, never on the syntactic shape of the expression
+-- which selected it.  An identifier reference, an alias, and a dependent
+-- declaration application therefore all use this same path.
+runtimePublicScopeForValue :: InterpretedValue -> Scope -> Maybe Scope
+runtimePublicScopeForValue selected scope = firstLayer
+  (scopeDependentDeclarationLayers scope)
+  where
+    firstLayer [] = Nothing
+    firstLayer (layer : outer) = case
+        [ public
+        | scoped <- dependentDeclarationLayerMembers layer
+        , Just runtime <- [scopedDependentDeclarationRuntime scoped]
+        , EvaluatedRuntimeValue value <- [runtimeDeclarationValue runtime]
+        , interpretedSemanticResult value == interpretedSemanticResult selected
+        , Just public <- [runtimeDeclarationPublicScope runtime]
+        ] of
+      public : _ -> Just public
+      [] -> firstLayer outer
 
 evaluatedRuntimeDeclaration
   :: String
@@ -417,24 +395,6 @@ enterRuntimeScope
   -> Scope
 enterRuntimeScope salt declarations decide parent =
   extendRuntimeDeclarations declarations (enterScope salt decide parent)
-
--- Enter an already-assembled lexical scope without flattening it to ordinary
--- declarations. Dependent declarations and named-map projections are lexical
--- members too, so module-local evaluation must carry all three views.
-enterLexicalScope
-  :: salt
-  -> Scope
-  -> (ScopeProtectionPolicy -> ScopeHandoffDecision)
-  -> Scope
-  -> Scope
-enterLexicalScope salt lexical decide parent =
-  (enterScope salt decide parent)
-    { scopeDependentDeclarationLayers =
-        scopeDependentDeclarationLayers lexical <>
-          scopeDependentDeclarationLayers parent
-    , scopePresentationOwner =
-        scopePresentationOwner lexical <|> scopePresentationOwner parent
-    }
 
 enterScopeWithReceiver
   :: salt

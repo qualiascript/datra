@@ -155,8 +155,7 @@ data ProvisionalCandidate = ProvisionalCandidate
   }
 
 data CandidateSearch = CandidateSearch
-  { candidateSearchCandidates :: [StructuralCandidate]
-  , candidateSearchCursor :: Int
+  { candidateSearchRemaining :: [StructuralCandidate]
   , candidateSearchRejections :: [CandidateRejection]
   , candidateSearchFrame :: Maybe CandidateFrame
   , candidateSearchProvisional :: Maybe ProvisionalCandidate

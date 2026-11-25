@@ -33,9 +33,9 @@ module Evaluation.Expression
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
   , canonicalStringCodec
-  -- Internal source-rewriting bridge.  OBSOLETE: these exports disappear when
-  -- syntax rule visibility is derived directly from Scope.
-  , standardLibraryParsingEnvironment
+  -- Stateless evaluation capabilities used while source rewriting derives
+  -- syntax visibility directly from Scope.
+  , standardLibraryEnvironment
   , syntaxExpressionType
   , parsedDefaultModule
   ) where
@@ -238,12 +238,6 @@ standardLibraryEnvironment visibility raw = case visibility of
   NoStandardLibrary -> Right (rootScope raw)
   QualifiedStandardLibrary -> standardModuleScope False
   AllStandardLibrary -> standardModuleScope True
-
-standardLibraryParsingEnvironment
-  :: StandardLibraryVisibility
-  -> Expression
-  -> Either InterpretingError Scope
-standardLibraryParsingEnvironment = standardLibraryEnvironment
 
 standardModuleScope
   :: Bool
@@ -693,20 +687,6 @@ evalInContextualContinuationScopeWith
   value <- evalInScopeWith reduction child resolving expressionValue
   pure (handoffScopeValue child value)
 
-evalInLexicalContinuationScopeWith
-  :: salt
-  -> ReductionContext
-  -> Scope
-  -> Scope
-  -> ResolutionStack
-  -> Interpreter
-evalInLexicalContinuationScopeWith
-    salt reduction lexical parent resolving expressionValue = do
-  let child = enterLexicalScope
-        salt lexical genericContinuationHandoff parent
-  value <- evalInScopeWith reduction child resolving expressionValue
-  pure (handoffScopeValue child value)
-
 evaluateBlockInScope
   :: Bool
   -> Maybe String
@@ -881,10 +861,10 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             AST.operatorPreferredSymbol AST.GenericProductOperator
           GenericSum ->
             AST.operatorPreferredSymbol AST.ExponentiationOperator))
-    InModule path body -> do
-      definitionScope <- lookupModuleDefinitionScope scope path
-      evalInLexicalContinuationScopeWith body reduction
-        definitionScope scope resolving body
+    -- Module identity is presentation metadata, not a scope lookup key.
+    -- Retained declarations already carry their lexical scope, so this old
+    -- canonical wrapper is semantically transparent.
+    InModule _ body -> interpret body
     FunctionTypeExpression [] domain codomain ->
       evaluateFunctionType [] expressionValue domain codomain
     FunctionTypeExpression generics domain codomain -> do
@@ -980,9 +960,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       , isContextualAccessOf ContextualThis thisValue
       , contextualThisAvailable scope
           -> resolveIdentifierAccess reduction scope resolving name
-    -- @with@ alone flattens several namespace values. Keep every source's
-    -- declarations in the same layer: duplicate names are then harmless until
-    -- resolution selects one, at which point the layer reports ambiguity.
+    -- @with@ retains every namespace as a separate strict import layer.
+    -- Overlap is harmless until a concrete use is accepted by more than one
+    -- strict layer.
     WithScopes operands body -> do
       let distinctOperands = nub operands
       sources <- traverse interpret distinctOperands
@@ -998,40 +978,16 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             selected <- namedAccessValue actual name
             validateOpenedBinding actual (name, selected)
             payload <- accessValues selected (naturalValue 1)
-            let moduleBinding = case operand of
-                  IdentifierReference (SimpleIdentifierString namespace) ->
-                    do
-                      runtime <- runtimeDeclarationByName namespace scope
-                      public <- runtimeDeclarationPublicScope runtime
-                      dependency <- case
-                          runtimeDeclarationPresentation runtime of
-                        ReferencedRuntimePresentation
-                            (dependency : _) -> Just dependency
-                        _ -> Nothing
-                      pure
-                        ( dependency
-                        , public
-                        )
-                  _ -> Nothing
-                exportedPayload = case moduleBinding of
-                  Just (_, internal) -> withoutCanonicalOwners
-                    (scopePresentationOwners internal)
-                    payload
-                  Nothing -> payload
             if hasTrailingIdentifierMarker canonicalValueMarker selected
               then do
-                let dependencies = case moduleBinding of
-                      Just (dependency, _) -> [dependency]
-                      Nothing -> maybe [] fst
-                        (interpretedCanonicalPresentation actual)
+                let dependencies = maybe [] fst
+                      (interpretedCanonicalPresentation actual)
                 pure (withCanonicalNamedAccess
                   dependencies
                   (interpretedCanonicalResult actual)
                   name
-                  exportedPayload)
-              else case moduleBinding of
-                Just _ -> transparentEitherAlias exportedPayload
-                Nothing -> pure exportedPayload
+                  payload)
+              else pure payload
           _ -> Right neverValue
     ScopedExpression operand body -> do
       source <- interpret operand
@@ -1178,69 +1134,27 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             else Left (InconsistentShadowing name)
         else Right ()
     enterOpenedScope salt actual contributions selectedBody = do
-      validateShortScopeMember actual selectedBody
-      namedLayer <- case namedMapViewForValue actual of
-        Nothing -> Right Nothing
-        Just view -> Right (Just view)
-      opened <- case namedMembers actual of
-        Right members -> Right members
-        Left failure -> case namedLayer of
-          Just _ -> Right []
-          Nothing -> Left failure
-      bindings <- concat <$>
-        traverse (openedContribution namedLayer) contributions
-      validateShortScopeAccess actual opened selectedBody
+      prepared <- traverse
+        (prepareOpenedScopeContribution scope) contributions
+      opened <- moduleNamedMembers actual
       mapM_ (validateOpenedBinding actual) opened
       let activated = enterScope salt genericContinuationHandoff scope
-          declared = extendRuntimeDeclarations bindings activated
-          child = case namedLayer of
-            Nothing -> declared
-            Just view -> extendRuntimeProjection view declared
+          child = foldl
+            (flip (installOpenedScopeContribution PreferentialImport))
+            activated
+            prepared
       value <- evalResourceInScopeWith reduction child resolving selectedBody
       pure (handoffScopeValue child value)
     enterStrictOpenedScopes salt contributions selectedBody = do
-      prepared <- traverse prepare contributions
+      prepared <- traverse
+        (prepareOpenedScopeContribution scope) contributions
       let activated = enterScope salt genericContinuationHandoff scope
-          install imported (declarations, projection) =
-            extendImportedRuntimeScope
-              StrictImport
-              declarations
-              projection
-              imported
-          child = foldl install activated prepared
+          child = foldl
+            (flip (installOpenedScopeContribution StrictImport))
+            activated
+            prepared
       value <- evalResourceInScopeWith reduction child resolving selectedBody
       pure (handoffScopeValue child value)
-      where
-        prepare contribution@(_, actual) = do
-          let projection = namedMapViewForValue actual
-          opened <- case namedMembers actual of
-            Right members -> Right members
-            Left failure -> case projection of
-              Just _ -> Right []
-              Nothing -> Left failure
-          declarations <- openedContribution projection contribution
-          mapM_ (validateOpenedBinding actual) opened
-          pure (declarations, projection)
-    openedContribution namedLayer contribution =
-      case openedScopeContributionDeclarations scope contribution of
-        Right declarations -> Right declarations
-        Left (ModuleEvaluationFailed
-            ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes)
-          | Just _ <- namedLayer -> Right []
-        Left failure -> Left failure
-    validateShortScopeAccess actual opened selectedBody =
-      case selectedBody of
-        IdentifierReference (SimpleIdentifierString name)
-          | name `elem` map fst opened -> Right ()
-          | otherwise -> case namedAccessValue actual name of
-              Left failure -> Left failure
-              Right _ -> Left (UnknownIdentifier name)
-        _ -> Right ()
-    validateShortScopeMember actual selectedBody =
-      case selectedBody of
-        IdentifierReference (SimpleIdentifierString name) ->
-          () <$ namedAccessValue actual name
-        _ -> Right ()
     interpretProtectedValues expressions operation = do
       values <- traverse interpret expressions
       runProtectedOperation protection values operation
@@ -2240,28 +2154,30 @@ installPreparedModule scope openMembers prepared =
                 : scopeDependentDeclarationLayers current }
         [] -> current
 
--- Both evaluated scope access and resource preparation install opened
--- members through this boundary. Module binders retain their definition
--- scopes and presentation metadata; ordinary local values use the members
--- already selected by the source value.
-openedScopeContributionDeclarations
+-- An opened namespace either contributes the exact declaration layer retained
+-- by its selected value or, for an ordinary runtime map, its native named-map
+-- projection.  In particular, this boundary never inspects whether the source
+-- expression is a simple identifier: aliases and dependent declaration
+-- applications follow the same provenance lookup.
+data OpenedScopeContribution
+  = OpenedDeclarationLayer DependentDeclarationLayer
+  | OpenedRuntimeScope
+      [RuntimeSingletonPayload]
+      (Maybe NamedMapView)
+
+prepareOpenedScopeContribution
   :: Scope
   -> (Expression, InterpretedValue)
-  -> Either InterpretingError [RuntimeSingletonPayload]
-openedScopeContributionDeclarations scope (operand, actual) =
-  case operand of
-    IdentifierReference (SimpleIdentifierString namespace)
-      | Just runtime <- runtimeDeclarationByName namespace scope
-      , Just public <- runtimeDeclarationPublicScope runtime -> do
-          exported <- moduleExportsFromValue actual
-          moduleExportDeclarations
-            scope
-            namespace
-            public
-            exported
-    _ -> do
-      members <- namedMembers actual
-      traverse openedDeclaration members
+  -> Either InterpretingError OpenedScopeContribution
+prepareOpenedScopeContribution scope (_, actual) =
+  case runtimePublicScopeForValue actual scope >>= publicDeclarationLayer of
+    Just layer -> Right (OpenedDeclarationLayer layer)
+    Nothing -> case namedMapViewForValue actual of
+      Just projection -> Right (OpenedRuntimeScope [] (Just projection))
+      Nothing -> do
+        members <- namedMembers actual
+        declarations <- traverse openedDeclaration members
+        Right (OpenedRuntimeScope declarations Nothing)
   where
     openedDeclaration (name, selected) = do
       payload <- moduleMemberPayload selected
@@ -2270,36 +2186,24 @@ openedScopeContributionDeclarations scope (operand, actual) =
             hasTrailingIdentifierMarker definitionMarker selected
         })
 
-moduleExportDeclarations
-  :: Scope
-  -> String
+publicDeclarationLayer :: Scope -> Maybe DependentDeclarationLayer
+publicDeclarationLayer public = case
+    [ layer
+    | layer <- scopeDependentDeclarationLayers public
+    , dependentDeclarationLayerOrigin layer == SourceDeclarationLayer
+    ] of
+  layer : _ -> Just layer
+  [] -> Nothing
+
+installOpenedScopeContribution
+  :: DeclarationLayerImportPolicy
+  -> OpenedScopeContribution
   -> Scope
-  -> [ModuleExport]
-  -> Either InterpretingError [RuntimeSingletonPayload]
-moduleExportDeclarations scope namespace internal exportedValues =
-  pure
-    [ RuntimeSingletonPayload
-        { runtimeDeclarationName = name
-        , runtimeDeclarationIsDefinition = isDefinition
-        , runtimeDeclarationValue = EvaluatedRuntimeValue evaluated
-        , runtimeDeclarationPresentation = case presentation of
-            CanonicalModuleMemberPresentation ->
-              ReferencedRuntimePresentation [dependency]
-            TransparentModuleMemberPresentation -> TransparentRuntimePresentation
-        , runtimeDeclarationOrigin = Just (DependencyAddress
-            [SimpleIdentifierString namespace, SimpleIdentifierString name])
-        , runtimeDeclarationDefinition =
-            declarationDefinitionByName internal name
-        , runtimeDeclarationPublicScope = Nothing
-        , runtimeDeclarationReevaluatesForRestrictedReduction = False
-        }
-    | ModuleExport name presentation isDefinition evaluated <- exportedValues
-    ]
-  where
-    dependency = case scopePresentationOwner internal <|>
-        scopePresentationOwner scope of
-      Just current -> current
-      Nothing -> LexicalPresentationOwner Nothing []
+  -> Scope
+installOpenedScopeContribution policy contribution = case contribution of
+  OpenedDeclarationLayer layer -> extendImportedDeclarationLayer policy layer
+  OpenedRuntimeScope declarations projection ->
+    extendImportedRuntimeScope policy declarations projection
 
 prepareModuleWithBase
   :: Scope
@@ -2411,15 +2315,22 @@ prepareModuleResource base expressionValue = case expressionValue of
   SyntaxBoundary body -> prepareModuleResource base body
   ScopedExpression source body -> do
     value <- evalInScope base [] source
-    declarations <- openedScopeContributionDeclarations base (source, value)
-    prepareModuleResource (extendRuntimeDeclarations declarations base) body
+    contribution <- prepareOpenedScopeContribution base (source, value)
+    prepareModuleResource
+      (installOpenedScopeContribution PreferentialImport contribution base)
+      body
   WithScopes sources body -> do
     let distinctSources = nub sources
     values <- traverse (evalInScope base []) distinctSources
-    declarations <- concat <$> traverse
-      (openedScopeContributionDeclarations base)
+    contributions <- traverse
+      (prepareOpenedScopeContribution base)
       (zip distinctSources values)
-    prepareModuleResource (extendRuntimeDeclarations declarations base) body
+    prepareModuleResource
+      (foldl
+        (flip (installOpenedScopeContribution StrictImport))
+        base
+        contributions)
+      body
   _ -> Right (base, expressionValue)
 
 moduleExportNames :: ModuleSource -> Either InterpretingError [String]
@@ -2560,22 +2471,6 @@ moduleMemberPayload
   :: InterpretedValue
   -> Either InterpretingError InterpretedValue
 moduleMemberPayload selected = accessValues selected (naturalValue 1)
-
-lookupModuleDefinitionScope
-  :: Scope
-  -> String
-  -> Either InterpretingError Scope
-lookupModuleDefinitionScope scope path =
-  case runtimeDeclarationByName path scope >>= runtimeDeclarationPublicScope of
-    Just public -> Right public
-    Nothing -> case
-      [ public
-      | runtime <- runtimePublicDeclarations scope
-      , Just public <- [runtimeDeclarationPublicScope runtime]
-      , scopePresentationOwner public == Just (ModulePresentationOwner path)
-      ] of
-      public : _ -> Right public
-      [] -> Left (ModuleEvaluationFailed (ModuleNotLoaded path))
 
 resourceBlock
   :: Expression
@@ -4424,7 +4319,7 @@ closureResolver :: Scope -> Resolver
 closureResolver scope = resolver
   where
     resolver = Resolver
-      resolve moduleResolver scopeIndex contextualDepth definitionReference
+      resolve scopeIndex contextualDepth definitionReference
     definitionReference path
       | dependencyPathRoot path == ContextualRoot ContextualThis = True
       | otherwise = case dependencyPathSegments path of
@@ -4451,9 +4346,6 @@ closureResolver scope = resolver
       member <- either (const Nothing) id
         (namedMapOrdinalMemberAt view position)
       pure (namedMemberName member)
-    moduleResolver path = case lookupModuleDefinitionScope scope path of
-      Right definitionScope -> Just (closureResolver definitionScope)
-      Left _ -> Nothing
     contextualDepth role depth = do
       let selected = contextualAccessAt role depth
       value <- either (const Nothing) Just (evalInScope scope [] selected)
@@ -4548,7 +4440,6 @@ singletonDependencyDeclaration name implementation = DependentDeclaration
 
 emptyResolver :: Resolver
 emptyResolver = Resolver
-  (const Nothing)
   (const Nothing)
   (const Nothing)
   (\_ _ -> Nothing)

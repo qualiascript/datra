@@ -1,7 +1,6 @@
 module Evaluation.Identifier
   ( interpretIdentifierExpression
   , interpretSimpleDependentArgument
-  , transparentEitherAlias
   ) where
 
 import DatraLanguage.AST
@@ -43,12 +42,3 @@ interpretSimpleDependentArgument protection identifierString typeAnnotation =
         | otherwise -> Right
             (simpleIdentifierTypeValue identifierString actualAnnotation)
       _ -> Right neverValue
-
-transparentEitherAlias
-  :: InterpretedValue
-  -> Either InterpretingError InterpretedValue
-transparentEitherAlias value =
-  case stripOuterIdentifierType value of
-    Right underlying
-      | interpretedValueKind underlying == EitherValueKind -> Right underlying
-    _ -> Right value

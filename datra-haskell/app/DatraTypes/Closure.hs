@@ -44,7 +44,6 @@ data DependencyPath = DependencyPath
 
 data Resolver = Resolver
   { resolveDependency :: DependencyPath -> Maybe Dependency
-  , resolveDependencyModule :: String -> Maybe Resolver
   , resolveScopeIndex :: Expression -> Maybe String
   , resolveContextualDepth :: ContextualRole -> Natural -> Maybe Dependency
   , resolveDefinitionReference :: DependencyPath -> Bool

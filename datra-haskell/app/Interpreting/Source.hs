@@ -19,7 +19,7 @@ import DatraTypes.FunctionType (resolveGenericFunctionTypes)
 import Evaluation.Expression
   ( installPreparedModules
   , parsedDefaultModule
-  , standardLibraryParsingEnvironment
+  , standardLibraryEnvironment
   , syntaxExpressionType
   )
 import LibraryFiles (requiredBundledLibrarySource, standardLibraryFileName)
@@ -48,7 +48,7 @@ parseDatraSourceSyntax standardLibraryVisibility sourceName source = do
     parseDatraRawLocatedWithSourceName sourceName source
   base <-
     Bifunctor.first (SyntaxEnvironmentParseFailure . show)
-      (standardLibraryParsingEnvironment standardLibraryVisibility raw)
+      (standardLibraryEnvironment standardLibraryVisibility raw)
   pure ParsedDatraSource
     { parsedRawExpression = locatedRaw
     , parsedBaseScope = base

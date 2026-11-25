@@ -198,8 +198,7 @@ runRewriteStack operations initialEnvironment source =
           (rewriteNodeRejections node) stack machine
         _ ->
           let ready = SearchCandidates CandidateSearch
-                { candidateSearchCandidates = candidates
-                , candidateSearchCursor = 0
+                { candidateSearchRemaining = candidates
                 , candidateSearchRejections = []
                 , candidateSearchFrame = Nothing
                 , candidateSearchProvisional = Nothing
@@ -231,8 +230,7 @@ runRewriteStack operations initialEnvironment source =
         traverseOrdinary nodeId traversal stack machine
 
     searchCandidate nodeId search stack machine =
-      case drop (candidateSearchCursor search)
-          (candidateSearchCandidates search) of
+      case candidateSearchRemaining search of
         [] -> case candidateSearchProvisional search of
           Nothing -> continueAfterCandidates nodeId
             (candidateSearchRejections search) stack machine
@@ -247,7 +245,8 @@ runRewriteStack operations initialEnvironment source =
         candidate : _ ->
           if not (candidateEligible search candidate)
             then searchCandidate nodeId search
-              { candidateSearchCursor = candidateSearchCursor search + 1
+              { candidateSearchRemaining = drop 1
+                  (candidateSearchRemaining search)
               , candidateSearchFrame = Nothing
               } stack machine
             else
@@ -285,8 +284,8 @@ runRewriteStack operations initialEnvironment source =
                       rejection = stackCandidateRejection operations
                         environment details childRejections
                       advancedSearch = search
-                        { candidateSearchCursor =
-                            candidateSearchCursor search + 1
+                        { candidateSearchRemaining = drop 1
+                            (candidateSearchRemaining search)
                         , candidateSearchRejections =
                             candidateSearchRejections search <> [rejection]
                         , candidateSearchFrame = Nothing
@@ -357,7 +356,8 @@ runRewriteStack operations initialEnvironment source =
                     , provisionalCandidateReturnType = returnType
                     }
                   advancedSearch = search
-                    { candidateSearchCursor = candidateSearchCursor search + 1
+                    { candidateSearchRemaining = drop 1
+                        (candidateSearchRemaining search)
                     , candidateSearchFrame = Nothing
                     , candidateSearchProvisional = Just provisional
                     }
@@ -415,7 +415,8 @@ runRewriteStack operations initialEnvironment source =
             (heldCandidateFallback held) childRejections
           search = heldCandidateSearch held
           advancedSearch = search
-            { candidateSearchCursor = candidateSearchCursor search + 1
+            { candidateSearchRemaining = drop 1
+                (candidateSearchRemaining search)
             , candidateSearchRejections =
                 candidateSearchRejections search <> [rejection]
             , candidateSearchFrame = Nothing
@@ -478,21 +479,21 @@ runRewriteStack operations initialEnvironment source =
     resumeNode nodeId work childId stack machine =
       case rewriteNodeState (nodeAt childId machine) of
         NodeFinalized childResult -> case work of
-          SearchCandidates search ->
-            let frame = maybe
-                  (initialCandidateFrame
-                    (candidateSearchCandidates search !!
-                      candidateSearchCursor search))
-                  id (candidateSearchFrame search)
-                index = candidateFrameNextCapture frame
-                consumed = frame
-                  { candidateFrameResults = Map.insert index childResult
-                      (candidateFrameResults frame) }
-                readySearch = search { candidateSearchFrame = Just consumed }
-                ready = updateNode nodeId (\current -> current
-                  { rewriteNodeState = NodeReady
-                      (SearchCandidates readySearch) }) machine
-            in run (nodeId : stack) ready
+          SearchCandidates search -> case candidateSearchRemaining search of
+            [] -> Left (stackExhausted operations)
+            candidate : _ ->
+              let frame = maybe
+                    (initialCandidateFrame candidate)
+                    id (candidateSearchFrame search)
+                  index = candidateFrameNextCapture frame
+                  consumed = frame
+                    { candidateFrameResults = Map.insert index childResult
+                        (candidateFrameResults frame) }
+                  readySearch = search { candidateSearchFrame = Just consumed }
+                  ready = updateNode nodeId (\current -> current
+                    { rewriteNodeState = NodeReady
+                        (SearchCandidates readySearch) }) machine
+              in run (nodeId : stack) ready
           DecideCandidate held -> decideHeldCandidate nodeId held stack machine
           TraverseChildren traversal -> do
             let node = nodeAt nodeId machine

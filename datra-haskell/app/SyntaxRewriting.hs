@@ -223,12 +223,12 @@ runStructuralCandidates evaluate sourceSpan environment source =
       , stackCandidateReturn = candidateReturn
       , stackDecideCandidate = decideCandidate
       , stackBlockerResolved = blockerResolved
-      , stackRewriteScope = rewriteScope
+      , stackRewriteScope = rewriteScope evaluate
       , stackFinalizeOrdinary = finalizeOrdinary
       , stackPublishChild = publishChild
       , stackPrepareCandidate = prepareCandidate
       , stackExpandCandidate = expandCandidate
-      , stackCandidateRejection = \selectedEnvironment details ->
+      , stackCandidateRejection = \_ details ->
           candidateRejectionAt
             sourceSpan details
       , stackStrictImportAmbiguity = \_ -> AmbiguousStrictSyntaxImport
@@ -266,7 +266,7 @@ runStructuralCandidates evaluate sourceSpan environment source =
         nonempty (MapSequence []) = False
         nonempty _ = True
 
-    expectedHole selectedEnvironment candidate context index =
+    expectedHole _ candidate context index =
       Map.lookup index (candidateTypingExpectedHoles context)
         <|> classified
       where
@@ -281,7 +281,7 @@ runStructuralCandidates evaluate sourceSpan environment source =
                 (structuralCandidateRule selectedCandidate))
               target
           _ -> Nothing
-    candidateReturn selectedEnvironment candidate _ =
+    candidateReturn _ candidate _ =
       rewriteRuleReturnType compiled <|>
         evaluate (rewriteRuleFamilyScope compiled)
           (syntaxRuleCodomain (rewriteRule compiled))
@@ -382,8 +382,8 @@ runStructuralCandidates evaluate sourceSpan environment source =
         (preparedExpansionExpression prepared)
         (preparedExpansionRemaining prepared))
 
-rewriteScope :: Scope -> RewriteLocus -> Scope
-rewriteScope environment locus = case locus of
+rewriteScope :: SyntaxEvaluator -> Scope -> RewriteLocus -> Scope
+rewriteScope evaluate environment locus = case locus of
   RewriteExpression expressionValue ->
     expressionScope environment expressionValue
   RewriteChild parent cursor child ->
@@ -397,12 +397,15 @@ rewriteScope environment locus = case locus of
       ScopedExpression source _ ->
         [ environment
         , enterSyntaxScope Nothing
-            (openSyntaxScope PreferentialImport environment source)
+            (openSyntaxScope evaluate PreferentialImport environment source)
         ]
       WithScopes sources _ ->
         replicate (length sources) environment <>
           [ enterSyntaxScope Nothing
-              (foldl (openSyntaxScope StrictImport) environment sources)
+              (foldl
+                (openSyntaxScope evaluate StrictImport)
+                environment
+                sources)
           ]
       _ -> map (const environment)
         (expressionChildren expressionValue)
@@ -486,13 +489,13 @@ declaredCandidatesFor evaluate environment value =
     scopedCandidates = case applicationSpine value of
       (ScopedExpression source body, arguments@(_ : _)) ->
         let scopedEnvironment = openSyntaxScope
-              PreferentialImport environment source
+              evaluate PreferentialImport environment source
             compiled = scopeRewriteRules evaluate scopedEnvironment
             scopedValue = applicationFrom (body : arguments)
         in enumerate scopedValue compiled
       (WithScopes sources body, arguments@(_ : _)) ->
         let scopedEnvironment = foldl
-              (openSyntaxScope StrictImport) environment sources
+              (openSyntaxScope evaluate StrictImport) environment sources
             compiled = scopeRewriteRules evaluate scopedEnvironment
             scopedValue = applicationFrom (body : arguments)
         in enumerate scopedValue compiled

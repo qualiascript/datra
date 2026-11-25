@@ -73,8 +73,7 @@ import Interpreting.Source
   , parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
   )
 import Parsing
-  ( ResourceEnvelope (..)
-  , parseDatraRawLocatedWithSourceName
+  ( parseDatraRawLocatedWithSourceName
   , parseSourceExpression
   , expressionParser
   )
@@ -121,7 +120,7 @@ testSourceName = "test/DatraParsingTests.hs"
 
 parseDatra :: String -> Either ParseFailure Expression
 parseDatra source = do
-  (_, Located _ parsed) <-
+  Located _ parsed <-
     parseDatraRawLocatedWithSourceName testSourceName source
   pure (case parsed of
     SyntaxBoundary value -> value
@@ -289,7 +288,7 @@ testDependentCommentSyntax :: IO ()
 testDependentCommentSyntax = do
   let source = "(123 #this is a comment)"
   case parseDatraRawLocatedWithSourceName testSourceName source of
-    Right (_, Located _ actual) -> assertEqual
+    Right (Located _ actual) -> assertEqual
       "the enclosing parenthesized boundary owns the comment extent"
       (SyntaxBoundary (ref "123"))
       actual
@@ -353,7 +352,7 @@ testSyntaxSeparatorElision = do
   where
     assertRaw label source expected =
       case parseDatraRawLocatedWithSourceName testSourceName source of
-        Right (_, Located _ actual) -> assertEqual label
+        Right (Located _ actual) -> assertEqual label
           (SyntaxBoundary expected)
           actual
         Left failure -> assertFailure (renderParseFailure failure)
@@ -452,7 +451,7 @@ testUnresolvedPostfixSyntax = do
       . enumerateSyntaxRuleSelections expressionParser rule
     assertRaw label source expected =
       case parseDatraRawLocatedWithSourceName testSourceName source of
-        Right (_, Located _ parsed) ->
+        Right (Located _ parsed) ->
           assertEqual label (SyntaxBoundary expected) parsed
         Left failure -> assertFailure (renderParseFailure failure)
 
@@ -878,20 +877,6 @@ regressionTests = do
     "this" (ref "this")
   assertParsed "an explicit resource does not introduce surface it"
     "it" (ref "it")
-  case parseSource "yield this" of
-    Right actual
-      | actual == Begin [] (ref "this") -> pure ()
-      | otherwise -> fail
-          ("implicit resource rewrote surface this: " <> show actual)
-    Left failure -> fail
-      ("implicit resource unexpectedly failed: " <> renderParseFailure failure)
-  case parseSource "begin yield 5" of
-    Right actual
-      | actual == Begin [] (Begin [] (natural 5)) -> pure ()
-      | otherwise -> fail
-          ("top-level begin had the wrong block shape: " <> show actual)
-    Left failure -> fail
-      ("top-level begin unexpectedly failed: " <> renderParseFailure failure)
   assertParsed "a nested begin introduces surface this"
     "value := begin yield this"
     (AST.assignment "value"
@@ -1262,7 +1247,6 @@ regressionTests = do
     (name <> " : Nat") (AST.dependentArgumentType name (ref "Nat")))
     ["Nat", "Int", "Str", "IdenStr", "Bool", "true", "false", "nothing"]
   assertLocatedParse
-  assertResourceEnvelopes
   assertAstSyntax
   assertAstOutput
     "flat map"
@@ -2586,61 +2570,6 @@ assertLocatedParse =
     Right actual ->
       fail ("located parse returned an unexpected value: " <> show actual)
 
-assertResourceEnvelopes :: IO ()
-assertResourceEnvelopes = do
-  assertEnvelope
-    "explicit outer map parentheses"
-    "(1; 2)"
-    ExplicitMapEnvelope
-  assertEnvelope
-    "implicit program"
-    "1\n2"
-    ImplicitBlockEnvelope
-  assertEnvelope
-    "parenthesized operands are not an outer envelope"
-    "(1) <~ (2)"
-    ImplicitBlockEnvelope
-  mapM_ (\(source, expected) ->
-    case parseSource source of
-      Right actual -> do
-        assert ("program AST: " <> source) (actual == expected)
-        assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
-      Left message -> fail (renderParseFailure message))
-    [ ("a := 6\nyield a", Begin
-        [declarationEntry (AST.assignment "a" (natural 6) (natural 6))]
-        (IdentifierReference (SimpleIdentifierString "a")))
-    , ( "yield 5 >> {a? : Nat := 3}"
-      , Begin []
-          (Overload
-            (ArgumentativeMap
-              [OptionalType (AST.assignment "a" (ref "Nat") (natural 3))])
-            (natural 5))
-      )
-    , ( "yield \"a\" >>> {x? : Nat := 2; Str}"
-      , Begin []
-          (SafeOverload
-            (ArgumentativeMap
-              [ OptionalType
-                  (AST.assignment "x" (ref "Nat") (natural 2))
-              , ref "Str"
-              ])
-            (AST.asciiString "a"))
-      )
-    , ( "yield Nat <~ (fun 5)"
-      , Begin [] (MapSpecification (Fun (natural 5)) (ref "Nat"))
-      )
-    , ("a := 6", Begin
-        [declarationEntry (AST.assignment "a" (natural 6) (natural 6))]
-        (AtlasMap []))
-    , ("", Begin [] (AtlasMap []))
-    ]
-  where
-    assertEnvelope label source expected =
-      case parseDatraRawLocatedWithSourceName testSourceName source of
-        Left message -> fail
-          (label <> ": unexpected failure: " <> renderParseFailure message)
-        Right (actual, _) -> assert label (actual == expected)
-
 assertBundledModuleBlockShape :: IO ()
 assertBundledModuleBlockShape = do
   assertModule "libs/std.datra" NoStandardLibrary "Std"
@@ -2675,7 +2604,7 @@ assertStandardSyntaxDeclarationsAdmissible = do
   case parseDatraRawLocatedWithSourceName "libs/std.datra" source of
     Left failure -> fail
       ("Std source parse failed: " <> renderParseFailure failure)
-    Right (_, Located _ raw) -> do
+    Right (Located _ raw) -> do
       let declarations = syntaxDeclarations raw
       assert "Std contains syntax declarations" (not (null declarations))
       assert "every Std syntax declaration is admissible"

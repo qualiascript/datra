@@ -159,9 +159,6 @@ rewrite _ _ _ resolver _ expression
 
 rewrite mode inDefinition active resolver bound expression =
   case expression of
-    InModule path body
-      | Just moduleResolver <- resolveDependencyModule resolver path ->
-          rewrite mode inDefinition active moduleResolver bound body
     FunctionApplication
         (FunctionTypeExpression generics domain codomain)
         (FunctionBody entries result) -> do
