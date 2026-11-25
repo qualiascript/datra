@@ -974,6 +974,17 @@ proofGuard datum = preimage identityDominionCellInsertion datum
 
 DOMINC_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs"
 DOMINC_GUARDS = {
+    "Dominion coalition construction retains the original value": """
+{-@ proofGuard :: DominionAtlas owner a -> value:a -> {result:a | result /= value} @-}
+proofGuard :: DominionAtlas owner a -> a -> a
+proofGuard owner value = coalitionValue (dominionCoalitionElement owner value)
+""",
+    "Dominion coalition unit cannot discard its inverse": """
+{-@ proofGuard :: DominionAtlas owner a -> a -> {result:Maybe a | result == Nothing} @-}
+proofGuard :: DominionAtlas owner a -> a -> Maybe a
+proofGuard owner value = dominionCoalitionRoundTrip owner value `seq`
+  preimage (dominionCoalitionUnit owner) (applyInsertion (dominionCoalitionUnit owner) value)
+""",
     "one-page coverage requires a one-page owner": """
 {-@ proofGuard :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source}
@@ -1011,15 +1022,50 @@ proofGuard targetAtlas targetOccurrence forward =
 
 COALITION_ELEMENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs"
 COALITION_ELEMENT_GUARDS = {
+    "certified coalition elimination requires its owning validity": """
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> Bool
+proofGuard owner element =
+  withCoalitionElementOf owner element (\\_ _ _ -> True)
+""",
+    "certified coalition elimination retains the cached rank": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> element:{CoalitionData a s d | CoalitionValid owner element}
+      -> {result:Bool | not result} @-}
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> Bool
+proofGuard owner element =
+  withCoalitionElementOf owner element
+    (\\_ _ witness -> coverageWitnessOriginRank witness == coalitionElementRank element)
+""",
+    "certified coalition elimination retains the canonical origin": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> element:{CoalitionData a s d | CoalitionValid owner element}
+      -> {source:SomePageElement s | source /= originPageElement (atlasPageElements owner)} @-}
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> SomePageElement s
+proofGuard owner element =
+  withCoalitionElementOf owner element (\\source _ _ -> SomePageElement source)
+""",
+    "public coalition elimination preserves its constructor payload": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source
+           && SomePageElement source == originPageElement (atlasPageElements owner)}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> witness:{CoverageWitness a s d | coverageWitnessCovers owner source datum witness}
+      -> useElement:(forall other. PageElement s other -> d other -> result)
+      -> {withCoalitionElement (coalitionElement owner source datum witness) useElement
+           /= useElement source datum} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWitness a s d
+  -> (forall other. PageElement s other -> d other -> result) -> ()
+proofGuard = coalitionElementEliminate
+""",
     "public coalitions require coverage of the exact origin datum": """
 {-@ proofGuard :: owner:Atlas a s d o f
       -> origin:{PageElement s object | cellTraceValid owner origin
            && SomePageElement origin == originPageElement (atlasPageElements owner)}
       -> datum:{d object | atlasAcceptsDatum owner origin datum}
       -> CoverageWitness a s d
-      -> CoalitionElement (AtlasObject a s d) @-}
+      -> CoalitionData a s d @-}
 proofGuard :: Atlas a s d o f -> PageElement s object -> d object
-  -> CoverageWitness a s d -> CoalitionElement (AtlasObject a s d)
+  -> CoverageWitness a s d -> CoalitionData a s d
 proofGuard = coalitionElement
 """,
     "public coalitions reject a covered cell without origin evidence": """
@@ -1028,9 +1074,9 @@ proofGuard = coalitionElement
       -> datum:{d object | atlasAcceptsDatum owner source datum}
       -> witness:{CoverageWitness a s d |
            coverageWitnessCovers owner source datum witness}
-      -> CoalitionElement (AtlasObject a s d) @-}
+      -> CoalitionData a s d @-}
 proofGuard :: Atlas a s d o f -> PageElement s object -> d object
-  -> CoverageWitness a s d -> CoalitionElement (AtlasObject a s d)
+  -> CoverageWitness a s d -> CoalitionData a s d
 proofGuard = coalitionElement
 """,
 }
@@ -1201,6 +1247,27 @@ proofGuard owner source datum region regionDatum =
 
 COVERED_API_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/AtlasCoveredPageElement.hs"
 COVERED_API_GUARDS = {
+    "certified covered elimination retains the exact witness": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> element:{CoveredPageElement a s d | coveredPageElementValid owner element}
+      -> {witness:CoverageWitness a s d | witness /= atlasCoveredPageElementWitness element} @-}
+proofGuard :: Atlas a s d o f -> CoveredPageElement a s d -> CoverageWitness a s d
+proofGuard owner element =
+  withAtlasCoveredPageElementOf owner element (\\_ _ witness -> witness)
+""",
+    "certified covered elimination requires its owning validity": """
+proofGuard :: Atlas a s d o f -> CoveredPageElement a s d -> Bool
+proofGuard owner element =
+  withAtlasCoveredPageElementOf owner element (\\_ _ _ -> True)
+""",
+    "covered decoding retains the owning payload validity": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellTraceValid owner source} -> Natural
+      -> Maybe ({element:CoveredPageElement a s d | not (coveredPageElementValid owner element)}) @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> Natural
+  -> Maybe (CoveredPageElement a s d)
+proofGuard = atlasCoveredAt
+""",
     "coverage elimination rejects an invalid retained region": """
 {-@ proofGuard :: owner:Atlas a s d o f
       -> witness:{CoverageWitness a s d | not (coverageWitnessValid owner witness)}
@@ -2414,6 +2481,22 @@ def run(pattern=None):
                 print(f"Rejected false law: {description}")
 
         typing_guards = [
+            ("module PublicCoveredGuard where\nimport AtlasCoveredPageElement (CoveredPageElement)\n",
+             "covered carriers retain their Atlas owner",
+             "proofGuard :: CoveredPageElement first s d -> CoveredPageElement second s d\nproofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            ("module PublicCoveredGuard where\nimport AtlasCoveredPageElement (CoveredPageElement)\n",
+             "covered carriers retain their page owner",
+             "proofGuard :: CoveredPageElement a first d -> CoveredPageElement a second d\nproofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            ("module PublicCoalitionGuard where\nimport Coalition.Element (CoalitionData)\n",
+             "coalition carriers retain their Atlas owner",
+             "proofGuard :: CoalitionData first s d -> CoalitionData second s d\nproofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
+            ("module PublicCoalitionGuard where\nimport Coalition.Element (CoalitionData)\n",
+             "coalition carriers retain their page owner",
+             "proofGuard :: CoalitionData a first d -> CoalitionData a second d\nproofGuard = coerce\n",
+             ("Couldn't match type", "coerce")),
             ("module PublicChainedGuard where\nimport ChainedDominionAtlas\nimport Chain (Chain)\nimport Dominion (Dominion)\n",
              "chained Dominion construction cannot escape its owners",
              "proofGuard :: value -> Chain value -> Dominion value -> ChainedDominionAtlas chosen pages value\n"

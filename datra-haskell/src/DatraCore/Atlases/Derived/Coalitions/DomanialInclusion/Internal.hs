@@ -71,14 +71,14 @@ import Chain.Singleton (singletonChain)
 import Coalition
   ( CoalitionElement
   , stableCoalitionMap
-  , withCoalitionElement
   )
 import Coalition.Element
   ( coalitionElementCoverageAt
   )
 import Data.Void (Void, absurd)
 import DomanialInclusion.LiquidInternal
-  ( coalitionComponentInsertion, dominionAtlasMap, dominionCoalitionElement )
+  ( coalitionComponentInsertion, dominionAtlasMap, dominionCoalitionElement
+  , coalitionValue, dominionCoalitionUnit )
 import DomanialInclusion.Presentation
   ( DominionPaginationScope, onePageFolio, onePagePagination
   , DominionAtlas, DominionAtlasObject, dominionAtlas, withDominionAtlas
@@ -125,11 +125,6 @@ originObjectMap = atlasObjectMap
 emptyDominion :: Dominion Void
 emptyDominion = dominion absurd (const Nothing) absurd
 
-coalitionValue :: CoalitionElement (DominionAtlasObject owner a) -> a
-coalitionValue element =
-  withCoalitionElement element $ \_ datum ->
-    dominionCellDataValue datum
-
 -- | The canonical isomorphism @Coa (DomInc X) ≅ X@, represented by its two
 -- proof-carrying domanial insertions.
 -- ALIGN: DOMINC-COALITION-EQUIVALENCE.
@@ -146,11 +141,7 @@ coaDomIncIso valueDominion = (counit, unit)
         (Just . dominionCoalitionElement valueDominion)
         (const ())
 
-    unit =
-      domanialInsertion
-        (dominionCoalitionElement valueDominion)
-        (Just . coalitionValue)
-        (const ())
+    unit = dominionCoalitionUnit valueDominion
 
 -- ALIGN: DOMINC-COALITION-LEFT-INVERSE.
 coaDomIncIsoLeftInverse

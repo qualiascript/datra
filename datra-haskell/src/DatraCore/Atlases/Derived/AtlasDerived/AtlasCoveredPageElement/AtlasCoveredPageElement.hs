@@ -8,6 +8,7 @@ module AtlasCoveredPageElement
   ( AtlasCoverageWitness
   , CoverageWitness
   , AtlasCoveredPageElement
+  , CoveredPageElement
   , atlasCoverageWitness
   , coverageWitnessCovers
   , coverageWitnessValid
@@ -33,6 +34,9 @@ module AtlasCoveredPageElement
   , coverageRankNormalized
   , atlasCoveredAt
   , withAtlasCoveredPageElement
+  , coveredPageElementValid
+  , coveredPageElementSource
+  , withAtlasCoveredPageElementOf
   , atlasCoveredPageElementWitness
   ) where
 
@@ -40,6 +44,7 @@ import AtlasCoveredPageElement.Internal
   ( AtlasCoverageWitness
   , CoverageWitness
   , AtlasCoveredPageElement
+  , CoveredPageElement
   , atlasCoverageWitness
   , coverageWitnessCovers
   , coverageWitnessValid
@@ -49,6 +54,9 @@ import AtlasCoveredPageElement.Internal
   , coverageWitnessAlongArrow
   , atlasCoveredPageElement
   , withAtlasCoveredPageElement
+  , coveredPageElementValid
+  , coveredPageElementSource
+  , withAtlasCoveredPageElementOf
   , atlasCoveredPageElementWitness
   , atlasCoverageAt
   , coverageResultCovers
@@ -64,20 +72,23 @@ import AtlasCoveredPageElement.Internal
 import qualified AtlasCoveredPageElement.Internal as Internal
 import Atlas (Atlas, AtlasObject, atlasAcceptsDatum, mapAtlasData, normalizeAtlasElement)
 import AtlasExtent (cellTraceValid)
-import PageElements.Structure (PageElement, PageElementArrow, arrowSource, arrowTarget)
+import PageElements.Structure (PageElement, SomePageElement (..), PageElementArrow, arrowSource, arrowTarget)
 import DomanialInsertion.Core (applyInsertion)
 import Numeric.Natural (Natural)
 
 -- | Retain coverage evidence for the exact cell and datum it certifies.
 -- ALIGN: ATLAS-COVERED-BY-WITNESS.
+{-@ ple atlasCoveredByWitness @-}
 {-@ atlasCoveredByWitness :: owner:Atlas a s d o f
       -> source:PageElement s object -> datum:d object
       -> witness:{CoverageWitness a s d |
            coverageWitnessCovers owner source datum witness}
-      -> AtlasCoveredPageElement (AtlasObject a s d) @-}
+      -> {element:CoveredPageElement a s d | coveredPageElementValid owner element
+           && coveredPageElementSource element == SomePageElement source
+           && atlasCoveredPageElementWitness element == witness} @-}
 atlasCoveredByWitness
   :: Atlas a s d o f -> PageElement s object -> d object
-  -> CoverageWitness a s d -> AtlasCoveredPageElement (AtlasObject a s d)
+  -> CoverageWitness a s d -> CoveredPageElement a s d
 atlasCoveredByWitness _ source datum witness = Internal.AtlasCoveredPageElement source datum witness
 
 -- | Decode one finite enumeration index, retaining its checked coverage.
@@ -85,10 +96,10 @@ atlasCoveredByWitness _ source datum witness = Internal.AtlasCoveredPageElement 
 {-@ ple atlasCoveredAt @-}
 {-@ atlasCoveredAt :: owner:Atlas a s d o f
       -> source:{PageElement s object | cellTraceValid owner source} -> Natural
-      -> Maybe (AtlasCoveredPageElement (AtlasObject a s d)) @-}
+      -> Maybe ({element:CoveredPageElement a s d | coveredPageElementValid owner element}) @-}
 atlasCoveredAt
   :: Atlas a s d o f -> PageElement s object -> Natural
-  -> Maybe (AtlasCoveredPageElement (AtlasObject a s d))
+  -> Maybe (CoveredPageElement a s d)
 atlasCoveredAt owner source candidate =
   case atlasCoverageAt owner source candidate of
     Nothing -> Nothing

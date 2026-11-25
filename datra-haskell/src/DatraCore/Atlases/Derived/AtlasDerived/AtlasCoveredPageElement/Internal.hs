@@ -16,7 +16,8 @@
 module AtlasCoveredPageElement.Internal
   ( AtlasCoverageWitness
   , CoverageWitness
-  , AtlasCoveredPageElement (..)
+  , AtlasCoveredPageElement
+  , CoveredPageElement (..)
   , atlasCoverageWitness
   , coverageWitnessCovers
   , coverageWitnessValid
@@ -46,6 +47,9 @@ module AtlasCoveredPageElement.Internal
   , atlasCoveredPageElementAt
   , atlasCoveredPageElement
   , withAtlasCoveredPageElement
+  , coveredPageElementValid
+  , coveredPageElementSource
+  , withAtlasCoveredPageElementOf
   , atlasCoveredPageElementWitness
   ) where
 
@@ -147,6 +151,8 @@ withAtlasCoverageWitness _owner (AtlasCoverageWitness value) useRegion =
 
 -- ALIGN: ATLAS-COVERAGE-RANK-OBSERVE.
 {-@ reflect coverageWitnessOriginRank @-}
+-- Keep callers' reflected equations in terms of this checked observation.
+{-# OPAQUE coverageWitnessOriginRank #-}
 coverageWitnessOriginRank :: CoverageWitness a s d -> Natural
 coverageWitnessOriginRank (AtlasCoverageWitness value) = coverageRegionRank value
 
@@ -197,13 +203,33 @@ coverageCodeFor owner source datum region regionDatum =
 
 -- | A page element paired with its datum and evidence that it is covered by a
 -- final region.
-type role AtlasCoveredPageElement nominal
-data AtlasCoveredPageElement atlasObject where
+type AtlasCoveredPageElement atlasObject =
+  CoveredPageElement (AtlasObjectAtlasScope atlasObject)
+    (AtlasObjectPaginationScope atlasObject) (AtlasObjectCellData atlasObject)
+
+type role CoveredPageElement nominal nominal nominal
+{-@ data CoveredPageElement a s d where
+      AtlasCoveredPageElement :: forall a s d object.
+        PageElement s object -> d object -> CoverageWitness a s d
+        -> CoveredPageElement a s d @-}
+data CoveredPageElement atlasScope scope cellData where
   AtlasCoveredPageElement
-    :: PageElement (AtlasObjectPaginationScope atlasObject) object
-    -> AtlasObjectCellData atlasObject object
-    -> AtlasCoverageWitness atlasObject
-    -> AtlasCoveredPageElement atlasObject
+    :: forall atlasScope scope cellData object. PageElement scope object
+    -> cellData object
+    -> CoverageWitness atlasScope scope cellData
+    -> CoveredPageElement atlasScope scope cellData
+
+-- | Validate coverage for the exact dependent source and datum stored here.
+-- ALIGN: ATLAS-COVERED-PAYLOAD-VALIDITY.
+{-@ reflect coveredPageElementValid @-}
+coveredPageElementValid :: Atlas a s d o f -> CoveredPageElement a s d -> Bool
+coveredPageElementValid owner (AtlasCoveredPageElement source datum witness) =
+  coverageWitnessCovers owner source datum witness
+
+-- ALIGN: ATLAS-COVERED-SOURCE.
+{-@ reflect coveredPageElementSource @-}
+coveredPageElementSource :: CoveredPageElement a s d -> SomePageElement s
+coveredPageElementSource (AtlasCoveredPageElement source _ _) = SomePageElement source
 
 -- | Rank the image of a datum in the Atlas extent. Dominion ranks are
 -- injective, so equality of these ranks is equality of the origin images.
@@ -395,7 +421,8 @@ atlasCoveredPageElement
                valueAtlas
                (coverageNormalize valueAtlas region)
                regionDatum }
-  -> AtlasCoveredPageElement (AtlasObject atlasScope scope cellData)
+  -> {element:CoveredPageElement atlasScope scope cellData |
+       coveredPageElementValid valueAtlas element}
 @-}
 -- ALIGN: ATLAS-COVERED-CONSTRUCTOR.
 atlasCoveredPageElement
@@ -405,8 +432,7 @@ atlasCoveredPageElement
   -> PageElement scope regionObject
   -> cellData regionObject
   -> ()
-  -> AtlasCoveredPageElement
-       (AtlasObject atlasScope scope cellData)
+  -> CoveredPageElement atlasScope scope cellData
 atlasCoveredPageElement
   valueAtlas source sourceDatum region regionDatum conditions =
     AtlasCoveredPageElement
@@ -420,20 +446,39 @@ atlasCoveredPageElement
 -- ALIGN: ATLAS-COVERED-SEMANTICS.
 {-@ reflect withAtlasCoveredPageElement @-}
 withAtlasCoveredPageElement
-  :: AtlasCoveredPageElement atlasObject
+  :: CoveredPageElement atlasScope scope cellData
   -> (forall object.
-        PageElement (AtlasObjectPaginationScope atlasObject) object
-        -> AtlasObjectCellData atlasObject object
+        PageElement scope object
+        -> cellData object
         -> result)
   -> result
 withAtlasCoveredPageElement
   (AtlasCoveredPageElement occurrence datum _)
   useCovered = useCovered occurrence datum
 
+-- | Eliminate a validated payload while keeping its owner-specific evidence.
+-- ALIGN: ATLAS-COVERED-CERTIFIED-ELIM.
+{-@ withAtlasCoveredPageElementOf :: owner:Atlas a s d o f
+      -> element:{CoveredPageElement a s d | coveredPageElementValid owner element}
+      -> (forall object. source:{PageElement s object | cellTraceValid owner source
+                && SomePageElement source == coveredPageElementSource element}
+           -> datum:{d object | atlasAcceptsDatum owner source datum}
+           -> witness:{CoverageWitness a s d | coverageWitnessCovers owner source datum witness
+                && witness == atlasCoveredPageElementWitness element}
+           -> result)
+      -> result @-}
+withAtlasCoveredPageElementOf :: Atlas a s d o f -> CoveredPageElement a s d
+  -> (forall object. PageElement s object -> d object -> CoverageWitness a s d -> result) -> result
+withAtlasCoveredPageElementOf _ (AtlasCoveredPageElement source datum witness) useCovered =
+  useCovered source datum witness
+
 -- | Recover the evidence already carried by a covered datum.
 -- ALIGN: ATLAS-COVERED-WITNESS.
+{-@ reflect atlasCoveredPageElementWitness @-}
+-- Preserve the public observation across worker/wrapper optimization.
+{-# OPAQUE atlasCoveredPageElementWitness #-}
 atlasCoveredPageElementWitness
-  :: AtlasCoveredPageElement atlasObject -> AtlasCoverageWitness atlasObject
+  :: CoveredPageElement atlasScope scope cellData -> CoverageWitness atlasScope scope cellData
 atlasCoveredPageElementWitness (AtlasCoveredPageElement _ _ witness) = witness
 
 -- | Test whether a finite candidate decodes the requested source datum.

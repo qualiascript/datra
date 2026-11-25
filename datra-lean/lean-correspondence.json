@@ -5285,6 +5285,55 @@
       "haskell_declaration": "dominionCoalitionElement",
       "lean_namespace": "Datra.Executable.DomanialInclusion",
       "lean_declaration": "dominionCoalitionElement"
+    },
+    {
+      "id": "COALITION-PUBLIC-CONSTRUCTOR-ELIM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs",
+      "haskell_declaration": "coalitionElementEliminate",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionElement_checked_eliminate"
+    },
+    {
+      "id": "DOMINC-COALITION-VALUE-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "dominionCoalitionElement",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionCoalitionElement_value"
+    },
+    {
+      "id": "DOMINC-CHECKED-COALITION-UNIT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_declaration": "dominionCoalitionUnit",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionCoalitionUnit"
+    },
+    {
+      "id": "ATLAS-COVERED-PAYLOAD-VALIDITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "coveredPageElementValid",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coveredPageElementValid"
+    },
+    {
+      "id": "ATLAS-COVERED-SOURCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "coveredPageElementSource",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coveredPageElementSource"
+    },
+    {
+      "id": "ATLAS-COVERED-CERTIFIED-ELIM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/Internal.hs",
+      "haskell_declaration": "withAtlasCoveredPageElementOf",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "withAtlasCoveredPageElementOf"
+    },
+    {
+      "id": "COALITION-CERTIFIED-ELIM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs",
+      "haskell_declaration": "withCoalitionElementOf",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "withCoalitionElementOf"
     }
   ],
   "modules": [
@@ -6114,11 +6163,13 @@
       "types": [
         "CoverageWitness",
         "CoverageRegionData",
-        "AtlasCoveredPageElement"
+        "CoveredPageElement"
       ],
       "reflected": [
         "ordinalCoefficients",
         "coverageWitnessOriginRank",
+        "coveredPageElementValid",
+        "coveredPageElementSource",
         "atlasOriginImageRank",
         "coveragePage",
         "coverageNormalize",
@@ -6128,6 +6179,7 @@
         "coverageWitnessCovers",
         "coverageWitnessAtRank",
         "withAtlasCoveredPageElement",
+        "atlasCoveredPageElementWitness",
         "atlasCoveredPageElementAt",
         "coverageRankCandidate",
         "coverageValueMatches",
@@ -6153,6 +6205,7 @@
         "coverageRegionWitness",
         "atlasCoverageWitness",
         "atlasCoveredPageElement",
+        "withAtlasCoveredPageElementOf",
         "coverageRankCandidate",
         "coverageValueMatchesExact",
         "coverageRankCandidateExact",
@@ -6183,7 +6236,8 @@
       "lean_target": "Datra.Executable.Atlas.CoverageWitness",
       "coverage": "aligned",
       "aliases": [
-        "AtlasCoverageWitness"
+        "AtlasCoverageWitness",
+        "AtlasCoveredPageElement"
       ],
       "embeddings": [
         "Natural as int"
@@ -6536,13 +6590,15 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
       "module": "Coalition.Element.Internal",
       "types": [
-        "CoalitionElement"
+        "CoalitionData"
       ],
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.Atlas.CoalitionElement",
       "coverage": "partial",
-      "aliases": [],
+      "aliases": [
+        "CoalitionElement"
+      ],
       "embeddings": [],
       "predicates": [],
       "refinement_aliases": [],
@@ -6570,6 +6626,9 @@
       "module": "DomanialInclusion.LiquidInternal",
       "types": [],
       "reflected": [
+        "coalitionDatumValue",
+        "coalitionValue",
+        "coalitionValuePreimage",
         "coalitionElementAt",
         "coalitionComponentMap"
       ],
@@ -6578,6 +6637,8 @@
         "dominionCoverage",
         "dominionAtlasMap",
         "dominionCoalitionElement",
+        "dominionCoalitionRoundTrip",
+        "dominionCoalitionUnit",
         "coalitionComponentInsertion",
         "coalitionComponentRoundTrip"
       ],
@@ -6589,7 +6650,9 @@
       ],
       "predicates": [],
       "refinement_aliases": [],
-      "opaque_reflected": [],
+      "opaque_reflected": [
+        "dominionCoalitionElement"
+      ],
       "refined_instances": []
     },
     {
@@ -7764,14 +7827,26 @@
       "lean_target": "Datra.Executable.Atlas.CoalitionElement",
       "coverage": "partial",
       "types": [],
-      "reflected": [],
-      "refinements": [
+      "reflected": [
+        "Internal.coalitionElement",
+        "atlasCoveredByWitness",
+        "withCoalitionElement",
+        "coalitionCoveredElement",
+        "coalitionElementRank",
         "coalitionElement"
+      ],
+      "refinements": [
+        "coalitionElement",
+        "coalitionElementEliminate",
+        "withCoalitionElementOf"
       ],
       "aliases": [],
       "embeddings": [],
-      "predicates": [],
-      "refinement_aliases": []
+      "predicates": [
+        "CoalitionValid"
+      ],
+      "refinement_aliases": [],
+      "opaque_reflected": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement/AtlasCoveredPageElement.hs",

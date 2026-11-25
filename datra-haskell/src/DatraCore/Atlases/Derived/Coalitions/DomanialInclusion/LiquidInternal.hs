@@ -8,18 +8,21 @@
 -- | Checked coalition-dependent assembly for Dominion inclusion.
 module DomanialInclusion.LiquidInternal
   ( coalitionComponentInsertion, onePageCoverage, dominionCoverage, dominionAtlasMap
-  , dominionCoalitionElement ) where
+  , dominionCoalitionElement, coalitionValue, dominionCoalitionUnit ) where
 
 import Atlas
   ( Atlas, AtlasObject, atlasFolio, atlasPageElements, atlasAcceptsDatum
   , atlasNormalizationAgrees, atlasNormalizationArrow, atlasCoherenceWitness )
 import AtlasCoveredPageElement
-  ( CoverageWitness, atlasCoverageWitness, coverageWitnessCovers, coverageWitnessAlongArrow )
+  ( CoverageWitness, atlasCoverageWitness, coverageWitnessCovers, coverageWitnessAlongArrow
+  , coveredPageElementValid, coveredPageElementSource )
 import AtlasExtent (cellTraceValid)
 import AtlasMap (AtlasMap, atlasMap)
-import Coalition.Element (CoalitionElement, coalitionElementAt, coalitionElement)
-import DomanialInsertion (DomanialInsertion, domanialInsertion, composeInsertions)
-import DomanialInclusion.Data (DominionCellData, dominionCellProjection, dominionCellData)
+import Coalition.Element
+  ( CoalitionElement, CoalitionData, coalitionElementAt, coalitionElement
+  , coalitionElementEliminate, withCoalitionElement, coalitionCoveredElement )
+import DomanialInsertion.Core (DomanialInsertion, domanialInsertion, composeInsertions, applyInsertion, preimage)
+import DomanialInclusion.Data (DominionCellData, dominionCellProjection, dominionCellData, dominionCellDataValue)
 import DomanialInclusion.Presentation
   ( DominionAtlas, DominionAtlasObject, DominionPaginationScope, dominionAtlas, dominionAcceptsDatum )
 import Folio (folioLength)
@@ -70,16 +73,51 @@ dominionAtlasMap owner =
 
 -- | Constant membership and one-page coverage justify the public constructor.
 -- ALIGN: DOMINC-OWNER-COALITION.
-{-@ dominionCoalitionElement :: DominionAtlas owner a -> a
-      -> CoalitionElement (DominionAtlasObject owner a) @-}
+-- ALIGN: DOMINC-COALITION-VALUE-ROUNDTRIP.
+{-@ opaque-reflect dominionCoalitionElement @-}
+{-@ dominionCoalitionElement :: owner:DominionAtlas ownerScope a -> value:a
+      -> {element:CoalitionData ownerScope (DominionPaginationScope a) (DominionCellData a) |
+           coalitionValue element == value
+           && coveredPageElementValid (dominionAtlas owner) (coalitionCoveredElement element)
+           && coveredPageElementSource (coalitionCoveredElement element)
+                == originPageElement (atlasPageElements (dominionAtlas owner))} @-}
 dominionCoalitionElement :: forall a owner. DominionAtlas owner a -> a
-  -> CoalitionElement (DominionAtlasObject owner a)
+  -> CoalitionData owner (DominionPaginationScope a) (DominionCellData a)
 dominionCoalitionElement owner value =
   let valueAtlas = dominionAtlas owner
   in withPageElement (originPageElement (atlasPageElements valueAtlas)) $ \origin ->
        let datum = dominionCellData value
        in dominionAcceptsDatum owner origin datum `seq`
-          coalitionElement valueAtlas origin datum (dominionCoverage valueAtlas origin datum)
+          let witness = dominionCoverage valueAtlas origin datum
+          in coalitionElementEliminate valueAtlas origin datum witness coalitionDatumValue `seq`
+             coalitionElement valueAtlas origin datum witness
+
+{-@ reflect coalitionDatumValue @-}
+coalitionDatumValue :: PageElement scope object -> DominionCellData a object -> a
+coalitionDatumValue _ datum = dominionCellDataValue datum
+
+{-@ reflect coalitionValue @-}
+coalitionValue :: CoalitionData owner scope (DominionCellData a) -> a
+coalitionValue element = withCoalitionElement element coalitionDatumValue
+
+{-@ reflect coalitionValuePreimage @-}
+coalitionValuePreimage :: CoalitionData owner scope (DominionCellData a) -> Maybe a
+coalitionValuePreimage element = Just (coalitionValue element)
+
+{-@ dominionCoalitionRoundTrip :: owner:DominionAtlas ownerScope a -> value:a
+      -> {coalitionValuePreimage (dominionCoalitionElement owner value) == Just value} @-}
+dominionCoalitionRoundTrip :: DominionAtlas owner a -> a -> ()
+dominionCoalitionRoundTrip owner value = dominionCoalitionElement owner value `seq` ()
+
+-- ALIGN: DOMINC-CHECKED-COALITION-UNIT.
+{-@ dominionCoalitionUnit :: owner:DominionAtlas ownerScope a
+      -> {insertion:DomanialInsertion a (CoalitionData ownerScope (DominionPaginationScope a) (DominionCellData a)) |
+           applyInsertion insertion == dominionCoalitionElement owner
+           && preimage insertion == coalitionValuePreimage} @-}
+dominionCoalitionUnit :: DominionAtlas owner a
+  -> DomanialInsertion a (CoalitionData owner (DominionPaginationScope a) (DominionCellData a))
+dominionCoalitionUnit owner = domanialInsertion
+  (dominionCoalitionElement owner) coalitionValuePreimage (dominionCoalitionRoundTrip owner)
 
 -- | A coalition inverse is defined only on covered values. The component
 -- inverse additionally handles arbitrary target data, including uncovered data.

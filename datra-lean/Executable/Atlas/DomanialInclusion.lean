@@ -469,6 +469,68 @@ def dominionCoalitionElement {A : Type} (owner : DominionAtlas A) (value : A) :
     (onePageCoverage owner.atlas owner.onePage source datum)
     (onePageCoverage_spec owner.atlas owner.onePage source datum)
 
+theorem dominionCoalitionElement_source {A : Type} (owner : DominionAtlas A) (value : A) :
+    (dominionCoalitionElement owner value).val.source =
+      FolioData.ValidElement.originElement owner.atlas.pages := rfl
+
+def coalitionValue {A : Type} (owner : DominionAtlas A)
+    (element : owner.atlas.CertifiedCoalitionElement) : A :=
+  (owner.carrierEquiv element.val.source element.val.datum).value
+
+-- ALIGN: DOMINC-COALITION-VALUE-ROUNDTRIP.
+theorem dominionCoalitionElement_value {A : Type} (owner : DominionAtlas A) (value : A) :
+    coalitionValue owner (dominionCoalitionElement owner value) = value :=
+  congrArg CellData.value (owner.datum_value _ value)
+
+theorem coalitionValue_origin {A : Type} (owner : DominionAtlas A)
+    (element : owner.atlas.CertifiedCoalitionElement) :
+    coalitionValue owner element =
+      (owner.carrierEquiv (FolioData.ValidElement.originElement owner.atlas.pages)
+        element.value.val).value := by
+  exact (congrArg CellData.value
+    (owner.carrierEquiv_map element.val.source.toOrigin element.val.datum)).symm
+
+theorem coalitionValue_eq_iff {A : Type} (owner : DominionAtlas A)
+    (left right : owner.atlas.CertifiedCoalitionElement) :
+    coalitionValue owner left = coalitionValue owner right ↔ left.value = right.value := by
+  rw [coalitionValue_origin, coalitionValue_origin]
+  constructor
+  · intro same
+    apply Subtype.ext
+    apply (owner.carrierEquiv _).injective
+    exact congrArg CellData.mk same
+  · intro same
+    rw [same]
+
+/-- Reconstruction preserves coalition equality, independently of the stored
+coverage presentation. It does not identify distinct witness records. -/
+theorem dominionCoalitionElement_reconstruct {A : Type} (owner : DominionAtlas A)
+    (element : owner.atlas.CertifiedCoalitionElement) :
+    (dominionCoalitionElement owner (coalitionValue owner element)).equal element = true := by
+  apply (Atlas.CertifiedCoalitionElement.equal_iff _ _).mpr
+  apply (coalitionValue_eq_iff owner _ _).mp
+  exact dominionCoalitionElement_value owner _
+
+/-- The allocated Dominion's coalition equivalence uses the public equality
+quotient while retaining the executable constructor and value projection. -/
+def allocatedCoalitionEquiv {A : Type} (owner : DominionAtlas A) : owner.atlas.Coalition ≃ A where
+  toFun := Quotient.lift (coalitionValue owner)
+    (fun left right same => (coalitionValue_eq_iff owner left right).mpr same)
+  invFun value := Quotient.mk _ (dominionCoalitionElement owner value)
+  left_inv element := by
+    induction element using Quotient.inductionOn with
+    | _ element =>
+      exact Quotient.sound
+        ((Atlas.CertifiedCoalitionElement.equal_iff _ _).mp (dominionCoalitionElement_reconstruct owner element))
+  right_inv := dominionCoalitionElement_value owner
+
+-- ALIGN: DOMINC-CHECKED-COALITION-UNIT.
+def dominionCoalitionUnit {A : Type} (owner : DominionAtlas A) :
+    DomanialInsertion A owner.atlas.CertifiedCoalitionElement where
+  map := dominionCoalitionElement owner
+  preimage element := some (coalitionValue owner element)
+  leftInverse value := congrArg some (dominionCoalitionElement_value owner value)
+
 -- ALIGN: DOMINC-COVERAGE.
 theorem dominionAtlas_covered {A : Type} (D : Dominion A) (element : (dominionAtlas D).Element)
     (datum : (dominionAtlas D).cellData element.val.cell) : (dominionAtlas D).Covered element datum :=

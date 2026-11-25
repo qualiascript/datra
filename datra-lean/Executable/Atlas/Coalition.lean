@@ -71,12 +71,30 @@ def coalitionElement_checked {X : Atlas} (source : X.Element)
     rw [atOrigin, FolioData.ValidElement.originElement_interpretation]
     exact FolioData.ValidElement.normalize_fromFinite _ _⟩
 
+-- ALIGN: COALITION-PUBLIC-CONSTRUCTOR-ELIM.
+theorem coalitionElement_checked_eliminate {X : Atlas} {Result : Sort*} (source : X.Element)
+    (atOrigin : source = FolioData.ValidElement.originElement X.pages)
+    (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
+    (covers : X.coverageWitnessCovers source datum witness = true)
+    (useElement : (source : X.Element) → X.cellData source.val.cell → Result) :
+    withCoalitionElement (coalitionElement_checked source atOrigin datum witness covers).val useElement =
+      useElement source datum := rfl
+
 def CertifiedCoalitionElement.value {X : Atlas} (c : X.CertifiedCoalitionElement) : X.CoalitionValue :=
   ⟨X.originImage c.val.source c.val.datum,
     covered_originImage (CoveredPageElement.covered c.property.1)⟩
 
 def CertifiedCoalitionElement.rank {X : Atlas} (c : X.CertifiedCoalitionElement) : Nat :=
   c.val.witness.regionOriginRank
+
+-- ALIGN: COALITION-CERTIFIED-ELIM.
+def withCoalitionElementOf (X : Atlas) {Result : Sort*} (element : X.CertifiedCoalitionElement)
+    (atOrigin : element.val.source = FolioData.ValidElement.originElement X.pages)
+    (useElement : (source : X.Element) → (datum : X.cellData source.val.cell) →
+      (witness : X.CoverageWitness) → X.coverageWitnessCovers source datum witness = true →
+      source = FolioData.ValidElement.originElement X.pages →
+      witness.regionOriginRank = element.rank → Result) : Result :=
+  useElement element.val.source element.val.datum element.val.witness element.property.1.2 atOrigin rfl
 
 -- ALIGN: COALITION-CACHED-RANK.
 theorem CertifiedCoalitionElement.rank_spec {X : Atlas} (c : X.CertifiedCoalitionElement) :

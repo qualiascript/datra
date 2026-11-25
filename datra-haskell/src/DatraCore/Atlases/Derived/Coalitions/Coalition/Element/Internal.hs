@@ -5,8 +5,10 @@
 -- | Coalition carriers and the forward action, independent of stable arrows.
 module Coalition.Element.Internal
   ( CoalitionElement
+  , CoalitionData (..)
   , coalitionElement
   , coalitionElementRank
+  , coalitionCoveredElement
   , withCoalitionElement
   , coalitionElementAt
   , coalitionElementCoverageAt
@@ -15,10 +17,10 @@ module Coalition.Element.Internal
   ) where
 
 import Atlas
-  ( Atlas, AtlasObject, AtlasObjectCellData, AtlasObjectPaginationScope
+  ( Atlas, AtlasObject, AtlasObjectAtlasScope, AtlasObjectCellData, AtlasObjectPaginationScope
   , atlasOriginCell, mapAtlasData )
 import AtlasCoveredPageElement
-  ( AtlasCoveredPageElement, CoverageWitness, atlasCoveredAt, atlasCoverageWitness
+  ( CoveredPageElement, CoverageWitness, atlasCoveredAt, atlasCoverageWitness
   , atlasCoveredByWitness, atlasCoveredPageElementWitness, withAtlasCoveredPageElement
   , withAtlasCoverageWitness, coverageWitnessOriginRank, atlasCoverageRank )
 import AtlasTransversal (AtlasTransversal, mapAtlasTransversalCoveredPageElement)
@@ -29,37 +31,44 @@ import PageElements (PageElement, pageElementArrow, withPageElement)
 
 -- | A coalition element retains a covered origin datum through the shared
 -- covered-element carrier. Its public constructor checks the origin condition.
-type role CoalitionElement nominal
-data CoalitionElement atlasObject = CoalitionElement
-  (AtlasCoveredPageElement atlasObject)
+type CoalitionElement atlasObject =
+  CoalitionData (AtlasObjectAtlasScope atlasObject)
+    (AtlasObjectPaginationScope atlasObject) (AtlasObjectCellData atlasObject)
 
-coalitionElement :: AtlasCoveredPageElement atlasObject -> CoalitionElement atlasObject
+type role CoalitionData nominal nominal nominal
+data CoalitionData atlasScope scope cellData = CoalitionElement
+  (CoveredPageElement atlasScope scope cellData)
+
+coalitionElement :: CoveredPageElement a s d -> CoalitionData a s d
 coalitionElement = CoalitionElement
 
-instance Eq (CoalitionElement atlasObject) where
+coalitionCoveredElement :: CoalitionData a s d -> CoveredPageElement a s d
+coalitionCoveredElement (CoalitionElement covered) = covered
+
+instance Eq (CoalitionData a s d) where
   (==) = coalitionElementsEqual
 
 -- ALIGN: COALITION-EQUALITY.
-coalitionElementsEqual :: CoalitionElement atlasObject -> CoalitionElement atlasObject -> Bool
+coalitionElementsEqual :: CoalitionData a s d -> CoalitionData a s d -> Bool
 coalitionElementsEqual left right = coalitionElementRank left == coalitionElementRank right
 
-instance Show (CoalitionElement atlasObject) where
+instance Show (CoalitionData a s d) where
   showsPrec _ element =
     showString "CoalitionElement " . shows (coalitionElementRank element)
 
 -- | The rank of the underlying datum in the uncharted origin dominion.
 -- ALIGN: COALITION-CACHED-RANK.
-coalitionElementRank :: CoalitionElement atlasObject -> Natural
-coalitionElementRank (CoalitionElement covered) =
-  coverageWitnessOriginRank (atlasCoveredPageElementWitness covered)
+coalitionElementRank :: CoalitionData a s d -> Natural
+coalitionElementRank element =
+  coverageWitnessOriginRank (atlasCoveredPageElementWitness (coalitionCoveredElement element))
 
 -- | Eliminate a coalition element at its exact dependent origin cell.
 -- ALIGN: COALITION-CONSTRUCTOR-ELIM.
 withCoalitionElement
-  :: CoalitionElement atlasObject
+  :: CoalitionData atlasScope scope cellData
   -> (forall object.
-       PageElement (AtlasObjectPaginationScope atlasObject) object
-       -> AtlasObjectCellData atlasObject object
+       PageElement scope object
+       -> cellData object
        -> result)
   -> result
 withCoalitionElement (CoalitionElement covered) = withAtlasCoveredPageElement covered
@@ -118,9 +127,10 @@ coalition valueAtlas =
 -- ALIGN: COALITION-FORWARD-INTERPRETATION.
 mapCoalitionElement
   :: Atlas targetAtlasScope targetScope targetCellData targetOrigin targetFinal
-  -> AtlasTransversal source (AtlasObject targetAtlasScope targetScope targetCellData)
-  -> CoalitionElement source
-  -> CoalitionElement (AtlasObject targetAtlasScope targetScope targetCellData)
+  -> AtlasTransversal (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+       (AtlasObject targetAtlasScope targetScope targetCellData)
+  -> CoalitionData sourceAtlasScope sourceScope sourceCellData
+  -> CoalitionData targetAtlasScope targetScope targetCellData
 mapCoalitionElement targetAtlas transversal (CoalitionElement covered) =
   let mapped = mapAtlasTransversalCoveredPageElement transversal covered
   in withAtlasCoveredPageElement mapped $ \mappedOrigin mappedDatum ->

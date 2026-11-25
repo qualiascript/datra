@@ -177,6 +177,18 @@ def atlasCoveredPageElementWitness {X : Atlas} (covered : X.CoveredPageElement) 
 def CoveredPageElement.Valid {X : Atlas} (covered : X.CoveredPageElement) : Prop :=
   covered.witness.Valid ∧ X.coverageWitnessCovers covered.source covered.datum covered.witness = true
 
+-- ALIGN: ATLAS-COVERED-PAYLOAD-VALIDITY.
+def coveredPageElementValid (X : Atlas) (covered : X.CoveredPageElement) : Bool :=
+  X.coverageWitnessCovers covered.source covered.datum covered.witness
+
+-- ALIGN: ATLAS-COVERED-SOURCE.
+def coveredPageElementSource {X : Atlas} (covered : X.CoveredPageElement) : X.Element :=
+  covered.source
+
+theorem coveredPageElementValid_iff (X : Atlas) (covered : X.CoveredPageElement) :
+    X.coveredPageElementValid covered = true ↔ covered.Valid :=
+  ⟨fun valid => ⟨coverageWitnessCovers_valid valid, valid⟩, fun valid => valid.2⟩
+
 -- ALIGN: ATLAS-COVERED-BY-WITNESS.
 def atlasCoveredByWitness (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) (witness : X.CoverageWitness)
@@ -204,6 +216,14 @@ theorem atlasCoveredPageElement_spec (X : Atlas) (source region : X.Element)
 def withAtlasCoveredPageElement {X : Atlas} {Result : Sort*} (covered : X.CoveredPageElement)
     (useCovered : (source : X.Element) → X.cellData source.val.cell → Result) : Result :=
   useCovered covered.source covered.datum
+
+-- ALIGN: ATLAS-COVERED-CERTIFIED-ELIM.
+def withAtlasCoveredPageElementOf (X : Atlas) {Result : Sort*} (covered : X.CoveredPageElement)
+    (valid : X.coveredPageElementValid covered = true)
+    (useCovered : (source : X.Element) → (datum : X.cellData source.val.cell) →
+      (witness : X.CoverageWitness) → X.coverageWitnessCovers source datum witness = true →
+      source = covered.source → witness = covered.witness → Result) : Result :=
+  useCovered covered.source covered.datum covered.witness valid rfl rfl
 
 theorem CoveredPageElement.covered {X : Atlas} {element : X.CoveredPageElement}
     (valid : element.Valid) : X.Covered element.source element.datum :=

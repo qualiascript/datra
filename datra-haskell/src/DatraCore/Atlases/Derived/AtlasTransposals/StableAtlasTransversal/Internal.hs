@@ -68,7 +68,7 @@ import AtlasTransversal
   , mapAtlasTransversalElement
   , mapAtlasTransversalObject
   )
-import Coalition.Element (CoalitionElement, mapCoalitionElement)
+import Coalition.Element (CoalitionElement, CoalitionData, mapCoalitionElement)
 import DomanialInsertion
   ( DomanialInsertion, domanialInsertion, identityInsertion, composeInsertions )
 import Control.Category (Category (..))
@@ -203,9 +203,9 @@ stableAtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
   -> { proof:() | stableOriginPreserved sourceAtlas targetAtlas transversal }
-  -> backward:(CoalitionElement (AtlasObject targetAtlasScope targetScope targetCellData)
-       -> Maybe (CoalitionElement (AtlasObject sourceAtlasScope sourceScope sourceCellData)))
-  -> (value:CoalitionElement (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+  -> backward:(CoalitionData targetAtlasScope targetScope targetCellData
+       -> Maybe (CoalitionData sourceAtlasScope sourceScope sourceCellData))
+  -> (value:CoalitionData sourceAtlasScope sourceScope sourceCellData
        -> { proof:() | backward (mapCoalitionElement targetAtlas transversal value) == Just value })
   -> StableAtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
@@ -219,9 +219,9 @@ stableAtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
   -> ()
-  -> (CoalitionElement (AtlasObject targetAtlasScope targetScope targetCellData)
-       -> Maybe (CoalitionElement (AtlasObject sourceAtlasScope sourceScope sourceCellData)))
-  -> (CoalitionElement (AtlasObject sourceAtlasScope sourceScope sourceCellData) -> ())
+  -> (CoalitionData targetAtlasScope targetScope targetCellData
+       -> Maybe (CoalitionData sourceAtlasScope sourceScope sourceCellData))
+  -> (CoalitionData sourceAtlasScope sourceScope sourceCellData -> ())
   -> StableAtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
