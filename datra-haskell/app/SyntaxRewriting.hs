@@ -2,8 +2,7 @@
 -- Application spines retain logical line breaks until a declaration has
 -- selected the extent it wants to match.
 module SyntaxRewriting
-  ( SyntaxType (..)
-  , SyntaxContext (..)
+  ( SyntaxContext (..)
   , SyntaxRuleFamily (..)
   , RewriteLocus (..)
   , SyntaxRewriteFailure (..)
@@ -19,7 +18,9 @@ import DatraLanguage.Application
   , applicationSpine
   )
 import DatraLanguage.Diagnostics.Application
-  ( SyntaxRewriteFailure (..) )
+  ( CandidateRejectionReason (..)
+  , SyntaxRewriteFailure (..)
+  )
 import DatraLanguage.Diagnostics
   ( Located (..)
   , SourceSpan
@@ -27,15 +28,17 @@ import DatraLanguage.Diagnostics
 import Parsing (ResourceEnvelope (..))
 import DatraTypes
   ( Decision (..)
-  , SyntaxFunctionExpansion (..)
-  , SyntaxFunctionInsertion (..)
+  , InterpretedValue
+  , asciiStringValue
   , decideValueSubfederation
   )
 import StringExpression
-  ( TemplateSelection (..)
+  ( StringExpression (..)
+  , TemplateSelection (..)
   )
 import StringInterpolation
-  ( DeclarativeMatcherPlan (..)
+  ( DeclarativeCapture (..)
+  , DeclarativeMatcherPlan (..)
   , LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
   , SyntaxRule (..)
@@ -45,9 +48,9 @@ import StringInterpolation.Matching
   ( SyntaxMatch (..) )
 import SyntaxRewriting.Types
   ( CandidateRejection
-  , CandidatePreparation (..)
+  , CandidateDecision (..)
+  , CandidateRejectionDetails (..)
   , CandidateTypingContext (..)
-  , Compatibility (..)
   , PreparedExpansion (..)
   , RewriteResult (..)
   , RewriteRule (..)
@@ -56,7 +59,6 @@ import SyntaxRewriting.Types
   , StructuralCandidate (..)
   , SyntaxContext (..)
   , SyntaxRuleFamily (..)
-  , SyntaxType (..)
   )
 import SyntaxRewriting.Candidates
   ( compileRewriteRule
@@ -78,12 +80,12 @@ import SyntaxRewriting.Stack
   , runRewriteStack
   )
 
-type RuntimeSyntaxContext = SyntaxContext SyntaxType
-type RuntimeSyntaxRuleFamily = SyntaxRuleFamily SyntaxType
-type RuntimeRewriteRule = RewriteRule SyntaxType
-type RuntimeRewriteResult = RewriteResult SyntaxType
-type RuntimeCandidateRejection = CandidateRejection SyntaxType
-type RuntimeStructuralCandidate = StructuralCandidate SyntaxType
+type RuntimeSyntaxContext = SyntaxContext
+type RuntimeSyntaxRuleFamily = SyntaxRuleFamily
+type RuntimeRewriteRule = RewriteRule
+type RuntimeRewriteResult = RewriteResult
+type RuntimeCandidateRejection = CandidateRejection
+type RuntimeStructuralCandidate = StructuralCandidate
 
 rewriteRuleImplementation :: RuntimeRewriteRule -> Expression
 rewriteRuleImplementation compiled =
@@ -96,60 +98,33 @@ rewriteRuleImplementation compiled =
 prepareSelectedSyntaxMatch
   :: RuntimeRewriteRule
   -> SyntaxMatch
-  -> CandidatePreparation
+  -> PreparedExpansion
 prepareSelectedSyntaxMatch rule matched =
   case syntaxRuleMode (rewriteRule rule) of
     ExpressionMode -> prepared
-      (SyntaxExpression (syntaxRuleAdapter (rewriteRule rule))) []
-    FunctionMode -> case rewriteRuleSyntaxInsertion rule of
-      Nothing -> prepared
-        (directSyntaxFunctionExpansion rule captures) []
-      Just insertion -> case applySyntaxFunction insertion captures of
-        Nothing -> CandidateInapplicable
-        Just expansion -> prepared expansion
-          (syntaxFunctionValidatedCaptures insertion)
+      (syntaxRuleAdapter (rewriteRule rule))
+    FunctionMode -> prepared
+      (functionApplicationExpression rule captures)
   where
     selection = syntaxMatchSelection matched
     captures = templateSelectionCaptures selection
-    prepared expansion evidence = CandidatePrepared
-      PreparedExpansion
-        { preparedExpansionSyntax = expansion
-        , preparedExpansionRemaining = syntaxMatchRemaining matched
-        }
-      evidence
-
-syntaxTypesCompatibility :: SyntaxType -> SyntaxType -> Compatibility
-syntaxTypesCompatibility source target
-  | syntaxTypeExpression source == syntaxTypeExpression target =
-      CompatibilityProved
-  | otherwise = case
-      (syntaxTypeRuntimeValue source, syntaxTypeRuntimeValue target) of
-      (Just sourceValue, Just targetValue) ->
-        case decideValueSubfederation sourceValue targetValue of
-          DecisionProved () -> CompatibilityProved
-          DecisionRefuted -> CompatibilityRefuted
-          DecisionUndecidable -> CompatibilityUndecidable
-      _ -> CompatibilityUndecidable
+    prepared expansion = PreparedExpansion
+      { preparedExpansionExpression = expansion
+      , preparedExpansionRemaining = syntaxMatchRemaining matched
+      }
 
 compileRuleWith
-  :: (Expression -> Maybe SyntaxFunctionInsertion)
-  -> (Expression -> SyntaxType)
+  :: (Expression -> Maybe InterpretedValue)
   -> SyntaxRule
   -> RuntimeRewriteRule
-compileRuleWith resolveInsertion evaluate rule = compiled
-  { rewriteRuleSyntaxInsertion = insertion
-  }
-  where
-    compiled = compileRewriteRule (evaluate (syntaxRuleCodomain rule)) rule
-    insertion = resolveInsertion (rewriteRuleImplementation compiled)
+compileRuleWith evaluate rule =
+  compileRewriteRule (evaluate (syntaxRuleCodomain rule)) rule
 
 compileRuleFamily
-  :: (Expression -> Maybe SyntaxFunctionInsertion)
-  -> RuntimeSyntaxRuleFamily
+  :: RuntimeSyntaxRuleFamily
   -> [RuntimeRewriteRule]
-compileRuleFamily resolveInsertion family =
-  [ (compileRuleWith resolveInsertion
-        (syntaxRuleFamilyEvaluate family) rule)
+compileRuleFamily family =
+  [ (compileRuleWith (syntaxRuleFamilyEvaluate family) rule)
       { rewriteRuleBranch = branch
       }
   | (branch, rule) <- syntaxRuleFamilyRules family
@@ -158,18 +133,7 @@ compileRuleFamily resolveInsertion family =
 contextRewriteRules
   :: RuntimeSyntaxContext
   -> [RuntimeRewriteRule]
-contextRewriteRules context = concatMap
-  (filter activeRewriteRule
-    . compileRuleFamily (contextSyntaxInsertion context))
-  (contextRuleFamilies context)
-  where
-    activeRewriteRule compiled = case declarativeMatcherPlan
-        (rewriteRule compiled) of
-      LiteralExpressionMatcher {} -> True
-      IdentifierApplicationMatcher {} -> case
-          rewriteRuleSyntaxInsertion compiled of
-        Just _ -> True
-        Nothing -> False
+contextRewriteRules = concatMap compileRuleFamily . contextRuleFamilies
 
 -- | Rewrite one already-delimited expression with the same declaration
 -- environment used by resource rewriting.  Canonical values cross this
@@ -234,13 +198,13 @@ runRewriteExpression environment value = do
       (RejectedSyntaxCandidates (reportCandidateRejections rejections))
     _ -> Right (rewriteResultExpression result)
 
-directSyntaxFunctionExpansion
+functionApplicationExpression
   :: RuntimeRewriteRule
   -> [Expression]
-  -> SyntaxFunctionExpansion
-directSyntaxFunctionExpansion selectedRule captures =
-  SyntaxExpression (FunctionApplication
-    (rewriteRuleImplementation selectedRule) suppliedInput)
+  -> Expression
+functionApplicationExpression selectedRule captures =
+  FunctionApplication
+    (rewriteRuleImplementation selectedRule) suppliedInput
   where
     suppliedInput = case captures of
       [] -> AtlasMap []
@@ -256,13 +220,15 @@ runStructuralCandidates environment source =
   runRewriteStack operations environment source
   where
     operations = RewriteStackOperations
-      { stackEnumerateCandidates = structuralCandidatesFor
+      { stackExhausted = RewriteStackExhausted
+      , stackEnumerateCandidates = structuralCandidatesFor
       , stackPostRewrite = \selectedEnvironment ->
           terminalFallback (declaredExtent selectedEnvironment)
       , stackPrepareStructuralCapture = prepareStructuralCapture
       , stackExpectedHole = expectedHole
       , stackCandidateReturn = candidateReturn
-      , stackTypesCompatible = \_ -> syntaxTypesCompatibility
+      , stackDecideCandidate = decideCandidate
+      , stackBlockerResolved = blockerResolved
       , stackRewriteScope = contextRewriteScope
       , stackFinalizeOrdinary = finalizeOrdinary
       , stackPublishChild = publishChild
@@ -312,20 +278,106 @@ runStructuralCandidates environment source =
             [(_, family)] -> family
             _ -> Nothing
           [] -> Nothing
-    candidateReturn _ candidate _ = rewriteRuleReturnType compiled
+    candidateReturn selectedEnvironment candidate _ =
+      rewriteRuleReturnType compiled <|>
+        contextResultType selectedEnvironment
+          (syntaxRuleCodomain (rewriteRule compiled))
       where
         compiled = structuralCandidateRule candidate
+    decideCandidate selectedEnvironment selected =
+      case firstRefuted checks of
+        Just rejectedDetails -> CandidateRefuted rejectedDetails
+        Nothing -> case blockers of
+          _ : _ -> CandidateHeld blockers fallback
+          [] -> case returnType of
+            Just selectedReturn
+              | allProved checks -> CandidateAccepted selectedReturn
+            _ -> CandidateRefuted fallback
+      where
+        candidate = selectedStructuralCandidate selected
+        context = selectedTypingContext selected
+        captures = selectedCaptures selected
+        checks =
+          [ checkCapture index captureSource result
+          | (index, ((_, captureSource, _), result)) <- zip [0 ..]
+              (zip (structuralCandidateCaptures candidate) captures)
+          ]
+        checkCapture index captureSource result =
+          case (actual, expected) of
+            (Just actualValue, Just expectedValue) ->
+              case decideValueSubfederation actualValue expectedValue of
+                DecisionProved () -> Right True
+                DecisionRefuted -> Left (rejectionDetails index captureSource
+                  (Just expectedValue) (Just actualValue) TypedHoleMismatch)
+                DecisionUndecidable -> Right False
+            _ -> Right False
+          where
+            expected = expectedHole selectedEnvironment candidate context index
+            actual = captureActual result
+        firstRefuted [] = Nothing
+        firstRefuted (Left detailsValue : _) = Just detailsValue
+        firstRefuted (_ : remaining) = firstRefuted remaining
+        allProved = all proved
+        proved (Right True) = True
+        proved _ = False
+        blockers = concat
+          [ missingCaptureBlockers index kind result
+          | (index, (kind, _, _), result) <- zip3 [0 ..]
+              (structuralCandidateCaptures candidate) captures
+          ] <> returnBlockers
+        missingCaptureBlockers index kind result =
+          expectedBlockers <> actualBlockers
+          where
+            expectedBlockers = case expectedHole selectedEnvironment
+                candidate context index of
+              Just _ -> []
+              Nothing -> case kind of
+                StringExpressionCapture (ValueString target) ->
+                  [target]
+                _ -> []
+            actualBlockers = case captureActual result of
+              Just _ -> []
+              Nothing -> [rewriteResultExpression result]
+        captureActual result = rewriteResultType result <|> lexicalValue
+          where
+            lexicalValue = case rewriteResultExpression result of
+              IdentifierReference (SimpleIdentifierString name) ->
+                either (const Nothing) Just (asciiStringValue name)
+              _ -> Nothing
+        returnType = candidateReturn selectedEnvironment candidate context
+        returnBlockers = case returnType of
+          Just _ -> []
+          Nothing -> [syntaxRuleCodomain (rewriteRule
+            (structuralCandidateRule candidate))]
+        fallback = rejectionDetails 0
+          (templateSelectionWhole (structuralCandidateSelection candidate))
+          Nothing Nothing TypedHoleMismatch
+        rejectionDetails index captureSource expected actual reason =
+          CandidateRejectionDetails
+          { candidateRejectionRule = structuralCandidateRule candidate
+          , candidateRejectionBranch = rewriteRuleBranch
+              (structuralCandidateRule candidate)
+          , candidateRejectionCaptureIndex = index
+          , candidateRejectionSource = captureSource
+          , candidateRejectionExpected = expected
+          , candidateRejectionActual = actual
+          , candidateRejectionContext = context
+          , candidateRejectionReason = reason
+          }
+    blockerResolved selectedEnvironment blocker =
+      case contextClassify selectedEnvironment
+          [StringExpressionCapture (ValueString blocker)] of
+        [(_, Just _)] -> True
+        _ -> False
     prepareCandidate _ selected =
       let candidate = selectedStructuralCandidate selected
           compiled = structuralCandidateRule candidate
       in prepareSelectedSyntaxMatch compiled
           (structuralCandidateMatch candidate)
     expandCandidate selectedEnvironment prepared = do
-      expressionValue <- contextExpandSyntax selectedEnvironment
-        (preparedExpansionSyntax prepared)
       pure (postRewriteExpansion
         (declaredExtent selectedEnvironment)
-        expressionValue
+        (preparedExpansionExpression prepared)
         (preparedExpansionRemaining prepared))
 
 publishChild

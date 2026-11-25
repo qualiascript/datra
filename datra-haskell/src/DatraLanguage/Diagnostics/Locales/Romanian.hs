@@ -129,6 +129,8 @@ localizeSyntaxRewriteFailure :: SyntaxRewriteFailure -> LocalizedMessage
 localizeSyntaxRewriteFailure failure = case failure of
   AmbiguousBareSkipApplication ->
     LocalizedMessage "aplicarea simplă de omitere este ambiguă" []
+  RewriteStackExhausted ->
+    LocalizedMessage "stiva de rescriere sintactică s-a epuizat înainte de finalizare" []
   OverlappingDependentDeclarations earlier later ->
     LocalizedMessage "declarațiile dependente se suprapun"
       [ "declarația anterioară: " <> earlier
@@ -173,8 +175,6 @@ candidateRejectionReasonText :: CandidateRejectionReason -> String
 candidateRejectionReasonText reason = case reason of
   TypedHoleMismatch -> "rezultatul capturat este în afara tipului cerut"
   GenericBoundMismatch -> "intrarea generică dedusă încalcă limita"
-  CandidateCompatibilityUndecidable ->
-    "compatibilitatea rezultatului capturat este indecidabilă"
   RequiredChildExhausted -> "expresia copil necesară nu are rezultat aplicabil"
 
 localizeAccessError :: AccessError -> LocalizedMessage

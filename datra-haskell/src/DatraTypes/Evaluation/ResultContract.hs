@@ -34,7 +34,6 @@ decideClosedPublicResultContract = go 256
             PrimitiveTypeForm IntValRangePrimitive -> eligible
             PrimitiveTypeForm _ -> ineligible
             FunctionForm _ -> ineligible
-            FunctionBodyForm _ -> ineligible
             ExplicitForm _ -> eligible
             IntegerForm _ -> eligible
             BooleanForm _ -> eligible

@@ -38,7 +38,6 @@ data ModuleInputFailure
 data CandidateRejectionReason
   = TypedHoleMismatch
   | GenericBoundMismatch
-  | CandidateCompatibilityUndecidable
   | RequiredChildExhausted
   deriving (Eq, Ord, Show)
 
@@ -55,6 +54,7 @@ data CandidateRejectionReport = CandidateRejectionReport
 
 data SyntaxRewriteFailure
   = AmbiguousBareSkipApplication
+  | RewriteStackExhausted
   | OverlappingDependentDeclarations String String
   | NonInjectiveDependentDeclaration String
   | InvalidDependentDeclarationModifiers [String] [String]

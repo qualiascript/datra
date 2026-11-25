@@ -17,9 +17,12 @@ This document covers only:
 - the separate runtime canonical-value render/parse bridge which must not be
   reused by parser syntax selection.
 
-The rewrite-stack scheduler is not the current problem. Candidate scheduling,
-deferred type constraints, child ownership, and selection order must remain
-unchanged while the matcher projection is replaced.
+The rewrite stack suspends a completed candidate decision when an exact
+identifier-expression needed by its type check is unresolved. Suspended
+candidates are indexed by that expression and are woken only after the
+existing capture classifier can resolve it. Matching, capture rewriting, and
+finalized child nodes are retained; waking a candidate resumes only its type
+decision.
 
 ## Required parser invariant
 
@@ -148,8 +151,8 @@ AST:
 At the enclosing phrase, the `begin ... yield ...` pattern is therefore not a
 candidate. At the nested `begin` node, the matcher cannot see the following
 siblings. The generic whole-capture natural-literal rule is the only candidate
-at these positions; its host insertion rejects the non-natural capture as
-inapplicable, after which ordinary traversal leaves the block syntax raw.
+at these positions; after it is rejected, ordinary traversal leaves the block
+syntax raw.
 
 The blocker is therefore:
 
@@ -240,7 +243,7 @@ and scheduling.
 6. Delete matcher-provenance capture-extent rules. Capture extent must follow
    the compiled structural pattern itself.
 7. Verify block, function-body, conditional, infix, optional, and literal-only
-   patterns without changing the stack scheduler.
+   patterns without replaying finalized nodes or candidate captures.
 
 `matchExactSegments` remains valid for runtime string-template inversion,
 where the input genuinely is a string. It must no longer be used to match an
@@ -283,8 +286,8 @@ The parser-facing cleanup is complete when:
    mechanism, without a second delimiter recognizer.
 6. Raw parser tests retain effective boundaries, while completed rewrite tests
    contain no inert `SyntaxBoundary` nodes.
-7. The full parsing suite passes without a stack scheduling change or an
-   execution-time regression.
+7. The full parsing suite passes without replaying finalized nodes and without
+   an execution-time regression.
 
 ## Non-solutions
 
@@ -299,5 +302,4 @@ The following preserve the broken ownership boundary:
 - allowing the generic natural-literal candidate to suppress the missing
   block candidate;
 - routing syntax selection through `closedSourceExpressionIn`; or
-- changing stack deferral or scheduling to compensate for a candidate that
-  was never structurally enumerated.
+- treating a missing structural candidate as a deferred type decision.

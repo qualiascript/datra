@@ -1,6 +1,5 @@
 module Interpreting.Syntax
   ( assembleImplicitSyntaxResource
-  , expandSyntaxExpression
   , sourceSyntaxRuleSets
   ) where
 
@@ -19,9 +18,6 @@ import DatraLanguage.DependentDeclaration
 import DatraLanguage.Diagnostics.Application
   ( SyntaxRewriteFailure (..)
   )
-import DatraTypes
-  ( SyntaxFunctionExpansion (..)
-  )
 import StringInterpolation
   ( SyntaxRule
   , declarationRules
@@ -35,16 +31,6 @@ assembleImplicitSyntaxResource expressions = case reverse expressions of
   result : reversedDeclarations -> do
     declarations <- lowerSyntaxDeclarations (reverse reversedDeclarations)
     Right (Begin declarations result)
-
-expandSyntaxExpression
-  :: SyntaxFunctionExpansion
-  -> Either SyntaxRewriteFailure Expression
-expandSyntaxExpression expansion = case expansion of
-  SyntaxExpression expressionValue -> Right expressionValue
-  SyntaxBegin entries result ->
-    Begin <$> lowerSyntaxDeclarations entries <*> pure result
-  SyntaxFunctionBody entries result ->
-    FunctionBody <$> lowerSyntaxDeclarations entries <*> pure result
 
 lowerSyntaxDeclarations
   :: [Expression]

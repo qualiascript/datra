@@ -1,100 +1,16 @@
 module DatraHost
   ( datraHostIdentifier
   , datraHostValue
-  , datraHostSyntaxRules
-  , resolveDatraHostSyntaxInsertion
   ) where
 
 import DatraLanguage.AST
 import DatraLanguage.Identifier
   ( canonicalNaturalValue
   )
-import DatraHost.Syntax
-  ( beginSyntaxInsertion
-  , defSyntaxInsertion
-  , doSyntaxInsertion
-  , funSyntaxInsertion
-  , ifSyntaxInsertion
-  , letSyntaxInsertion
-  , parseNaturalSyntaxInsertion
-  , valSyntaxInsertion
-  , withSyntaxInsertion
-  )
-import StringExpression
-  ( FunctionSyntax (..)
-  , StringExpression (LiteralString)
-  )
-import StringInterpolation
-  ( SyntaxRule (..)
-  , SyntaxRuleMode (..)
-  , identifierApplicationRule
-  )
 import DatraTypes
 
 datraHostIdentifier :: String
 datraHostIdentifier = "datra"
-
-data DatraHostSyntaxRuntime
-  = SyntaxBodyRuntime
-  | SyntaxFunctionRuntime
-  deriving (Eq)
-
-data DatraHostSyntaxDefinition = DatraHostSyntaxDefinition
-  { datraHostSyntaxName :: String
-  , datraHostSyntaxRuntime :: DatraHostSyntaxRuntime
-  , datraHostSyntaxInsertion :: SyntaxFunctionInsertion
-  }
-
-datraHostSyntaxDefinitions :: [DatraHostSyntaxDefinition]
-datraHostSyntaxDefinitions =
-  [ definition "let_body" SyntaxBodyRuntime letSyntaxInsertion
-  , definition "def_body" SyntaxBodyRuntime defSyntaxInsertion
-  , definition "val_body" SyntaxBodyRuntime valSyntaxInsertion
-  , definition "parse_natural" SyntaxBodyRuntime
-      parseNaturalSyntaxInsertion
-  , definition "begin" SyntaxFunctionRuntime beginSyntaxInsertion
-  , definition "do_body" SyntaxBodyRuntime doSyntaxInsertion
-  , definition "fun_body" SyntaxBodyRuntime funSyntaxInsertion
-  , definition "if_body" SyntaxBodyRuntime ifSyntaxInsertion
-  , definition "with_body" SyntaxBodyRuntime withSyntaxInsertion
-  ]
-  where
-    definition = DatraHostSyntaxDefinition
-
-datraHostSyntaxReference :: DatraHostSyntaxDefinition -> Expression
-datraHostSyntaxReference definition = ScopeAccess
-  (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
-  (literalIdentifierExpression (SimpleIdentifierString name))
-  where
-    name = datraHostSyntaxName definition
-
-resolveDatraHostSyntaxInsertion
-  :: Expression
-  -> Maybe SyntaxFunctionInsertion
-resolveDatraHostSyntaxInsertion source = case
-    [ datraHostSyntaxInsertion definition
-    | definition <- datraHostSyntaxDefinitions
-    , datraHostSyntaxReference definition == source
-    ] of
-  insertion : _ -> Just insertion
-  [] -> Nothing
-
-datraHostSyntaxRules :: [SyntaxRule]
-datraHostSyntaxRules =
-  [ (identifierApplicationRule
-        (SimpleIdentifierString (datraHostSyntaxName definition))
-        (datraHostSyntaxReference definition))
-      { syntaxRuleDomain = AnyType
-      , syntaxRuleCodomain = datraMember "Expr"
-      , syntaxRuleMode = FunctionMode
-      }
-  | definition <- datraHostSyntaxDefinitions
-  , datraHostSyntaxRuntime definition == SyntaxFunctionRuntime
-  ]
-  where
-    datraMember name = ScopeAccess
-      (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
-      (literalIdentifierExpression (SimpleIdentifierString name))
 
 datraHostValue :: Either InterpretingError InterpretedValue
 datraHostValue = do
@@ -145,7 +61,7 @@ datraHostValue = do
         number <- requireFiniteInteger value
         pure (integerValue (abs number))
     , ("ordinal", Right ordinalMembers)
-    ] <> map syntaxEntry datraHostSyntaxDefinitions
+    ]
   where
     expressionType = syntaxCategoryTypeValue ExpressionAST
     dependentArgumentType = syntaxCategoryTypeValue DependentArgumentAST
@@ -153,38 +69,6 @@ datraHostValue = do
     dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
-    syntaxEntry definition = case datraHostSyntaxRuntime definition of
-      SyntaxBodyRuntime -> syntaxBody definition
-      SyntaxFunctionRuntime -> syntaxFunction definition
-    syntaxBody definition =
-      (name, Right (makeFunctionBodyValue
-        (EvaluatedSyntaxFunctionBody source insertion)))
-      where
-        name = datraHostSyntaxName definition
-        insertion = datraHostSyntaxInsertion definition
-        source = datraMemberSource [name]
-    syntaxFunction definition =
-      typedSyntaxFunction name anyTypeValue anyTypeValue insertion
-      where
-        name = datraHostSyntaxName definition
-        insertion = datraHostSyntaxInsertion definition
-    typedSyntaxFunction name domain codomain insertion =
-      (name, Right (makeFunctionValue (EvaluatedFunction
-        domain
-        codomain
-        (Just simpleSyntax)
-        (Just source)
-        (Just (EvaluatedSyntaxFunctionBody source insertion))
-        anyFunctionSource
-        Nothing
-        Nothing
-        True
-        Nothing)))
-      where
-        source = datraMemberSource [name]
-        simpleSyntax :: FunctionSyntax value
-        simpleSyntax = FunctionSyntax
-          [[StringTemplateInterpolation (LiteralString name)]]
     nativeBody namespace name implementation =
       (name, runtimeBody source Nothing invoke)
       where

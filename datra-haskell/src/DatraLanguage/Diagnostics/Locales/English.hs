@@ -133,6 +133,8 @@ localizeSyntaxRewriteFailure :: SyntaxRewriteFailure -> LocalizedMessage
 localizeSyntaxRewriteFailure failure = case failure of
   AmbiguousBareSkipApplication ->
     LocalizedMessage "bare skip application is ambiguous" []
+  RewriteStackExhausted ->
+    LocalizedMessage "syntax rewrite stack exhausted before completion" []
   OverlappingDependentDeclarations earlier later ->
     LocalizedMessage "dependent declarations overlap"
       [ "earlier declaration: " <> earlier
@@ -177,8 +179,6 @@ candidateRejectionReasonText :: CandidateRejectionReason -> String
 candidateRejectionReasonText reason = case reason of
   TypedHoleMismatch -> "captured result is outside the required hole type"
   GenericBoundMismatch -> "inferred generic input violates its bound"
-  CandidateCompatibilityUndecidable ->
-    "captured result compatibility is undecidable"
   RequiredChildExhausted -> "required child expression has no applicable result"
 
 localizeAccessError :: AccessError -> LocalizedMessage

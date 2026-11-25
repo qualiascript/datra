@@ -51,7 +51,6 @@ accessSource value =
     NeverForm -> ordinarySource []
     PrimitiveTypeForm _ -> ordinarySource []
     FunctionForm _ -> ordinarySource []
-    FunctionBodyForm _ -> ordinarySource []
     RangeForm valueRange ->
       rangeSource [evaluatedDescribedRange valueRange]
     NaturalRangeForm valueRange ->

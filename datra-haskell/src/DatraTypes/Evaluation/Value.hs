@@ -18,8 +18,6 @@ module Evaluation.Value
   , canonicalStringImplementation
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
-  , SyntaxFunctionExpansion (..)
-  , SyntaxFunctionInsertion (..)
   , RuntimeFunctionInsertion (..)
   , FunctionSource (..)
   , applyFunctionSource
@@ -402,20 +400,6 @@ data EvaluatedFunctionInvocation = EvaluatedFunctionInvocation
   , functionInvocationContract :: Maybe InterpretedValue
   }
 
--- | A syntax hook can return a semantic expression immediately or hand a raw
--- declaration block back to the syntax rewriter. Raw blocks remain an
--- application-layer phase value and never enter the language AST.
-data SyntaxFunctionExpansion
-  = SyntaxExpression Expression
-  | SyntaxBegin [Expression] Expression
-  | SyntaxFunctionBody [Expression] Expression
-  deriving (Eq, Show)
-
-data SyntaxFunctionInsertion = SyntaxFunctionInsertion
-  { applySyntaxFunction :: [Expression] -> Maybe SyntaxFunctionExpansion
-  , syntaxFunctionValidatedCaptures :: [Int]
-  }
-
 -- | The executable forward operation attached to a runtime function.
 data RuntimeFunctionInsertion = RuntimeFunctionInsertion
   { applyRuntimeFunction
@@ -424,10 +408,7 @@ data RuntimeFunctionInsertion = RuntimeFunctionInsertion
   }
 
 data EvaluatedFunctionBody
-  = EvaluatedSyntaxFunctionBody
-      FunctionSource
-      SyntaxFunctionInsertion
-  | EvaluatedRuntimeFunctionBody FunctionSource EvaluatedFunction
+  = EvaluatedRuntimeFunctionBody FunctionSource EvaluatedFunction
 
 data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
@@ -532,9 +513,7 @@ withFunctionSyntax evaluated value =
     _ -> value
 
 makeFunctionBodyValue :: EvaluatedFunctionBody -> InterpretedValue
-makeFunctionBodyValue body = case body of
-  EvaluatedSyntaxFunctionBody {} -> bodyValue (FunctionBodyForm body)
-  EvaluatedRuntimeFunctionBody _ implementation ->
+makeFunctionBodyValue body@(EvaluatedRuntimeFunctionBody _ implementation) =
     bodyValue (FunctionForm implementation)
   where
     bodyValue form = makeInterpretedValue
@@ -547,13 +526,10 @@ makeFunctionBodyValue body = case body of
       (FunctionBodySemantics (functionBodySource body))
 
 functionBodySource :: EvaluatedFunctionBody -> FunctionSource
-functionBodySource body = case body of
-  EvaluatedSyntaxFunctionBody source _ -> source
-  EvaluatedRuntimeFunctionBody source _ -> source
+functionBodySource (EvaluatedRuntimeFunctionBody source _) = source
 
 interpretedFunctionBody :: InterpretedValue -> Maybe EvaluatedFunctionBody
 interpretedFunctionBody value = case interpretedForm value of
-  FunctionBodyForm body -> Just body
   FunctionForm function -> case datraTypeFamily
       (interpretedDatraType value) of
     PrimitiveTypeFamily (SyntaxPrimitive FunctionBodyAST) ->
@@ -582,9 +558,8 @@ interpretedRuntimeFunctionInsertion value =
     Just insertion -> Just insertion
     Nothing -> interpretedFunctionBody value >>= bodyInsertion
   where
-    bodyInsertion body = case body of
-      EvaluatedRuntimeFunctionBody _ function -> functionInsertionFrom function
-      EvaluatedSyntaxFunctionBody {} -> Nothing
+    bodyInsertion (EvaluatedRuntimeFunctionBody _ function) =
+      functionInsertionFrom function
     functionInsertionFrom function =
       case functionInsertion function of
         Just insertion -> Just insertion
@@ -653,7 +628,6 @@ syntaxCategoryTypeValue = primitiveTypeValue . SyntaxPrimitive
 data ValueForm
   = NeverForm
   | PrimitiveTypeForm PrimitiveType
-  | FunctionBodyForm EvaluatedFunctionBody
   | FunctionForm EvaluatedFunction
   | ExplicitForm EvaluatedExplicit
   | IntegerForm Integer
@@ -1590,7 +1564,6 @@ interpretedValueKind value =
   case interpretedForm value of
     NeverForm -> MapValueKind
     PrimitiveTypeForm (SyntaxPrimitive _) -> FunctionValueKind
-    FunctionBodyForm _ -> FunctionValueKind
     PrimitiveTypeForm _ -> RangeValueKind
     FunctionForm _ -> FunctionValueKind
     ExplicitForm (EvaluatedExplicit _ NaturalOrigin _) -> NaturalValueKind

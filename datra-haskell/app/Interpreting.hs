@@ -53,9 +53,7 @@ import DatraLanguage.DependentDeclaration
 import FunctionClosure
 import DatraHost
   ( datraHostIdentifier
-  , datraHostSyntaxRules
   , datraHostValue
-  , resolveDatraHostSyntaxInsertion
   )
 import DatraLanguage.Identifier
   ( isIdentifierValue
@@ -114,8 +112,7 @@ import Parsing
   , ResourceEnvelope (..)
   )
 import SyntaxRewriting
-  ( SyntaxType (..)
-  , RewriteLocus (..)
+  ( RewriteLocus (..)
   , SyntaxContext (..)
   , SyntaxRuleFamily (..)
   , rewriteResourceSyntaxLocated
@@ -123,7 +120,6 @@ import SyntaxRewriting
   )
 import Interpreting.Syntax
   ( assembleImplicitSyntaxResource
-  , expandSyntaxExpression
   , sourceSyntaxRuleSets
   )
 import Rendering (renderCanonicalResult, renderInterpretedValue)
@@ -278,7 +274,9 @@ rewriteParsedDatraSourceWithModules prepared parsed = do
       availableModuleRules = baseModuleRules <> dependencyRules
       initialRules = standardRules
       rewrite = rewriteResourceSyntaxLocated envelope
-        (syntaxContext availableModuleRules initialRules [])
+        (syntaxContext (parsedBaseScope parsed)
+          (preparedModuleSources prepared)
+          availableModuleRules initialRules [])
         (parsedRawExpression parsed)
   rewritten <- Bifunctor.first rewriteParseFailure rewrite
   pure (resolveGenericFunctionTypes <$> rewritten)
@@ -399,65 +397,91 @@ mapScopeEntries value = case value of
   SyntaxBoundary inner -> mapScopeEntries inner
   _ -> []
 
-classifySyntaxTypes
-  :: [DeclarativeCapture]
-  -> [(DeclarativeCapture, Maybe SyntaxType)]
-classifySyntaxTypes = map classify
+classifySyntaxHoles
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> [DeclarativeCapture]
+  -> [(DeclarativeCapture, Maybe InterpretedValue)]
+classifySyntaxHoles base modules declarations = map classify
   where
+    enclosing = extendModuleCatalog modules base
+    declared = declareSyntaxScope enclosing
+      (map syntaxValidationDeclaration declarations)
     classify kind = case kind of
-      StringExpressionCapture (ValueString target) -> typed target
+      StringExpressionCapture valueKind@(ValueString target) ->
+        case declared >>= \scope -> evalInScope scope [] target of
+          Left _ -> (kind, Nothing)
+          Right value ->
+            ( StringExpressionCapture
+                (specializeStringExpression value valueKind)
+            , Just value
+            )
       _ -> (kind, Nothing)
-      where
-        typed target =
-          ( kind
-          , Just SyntaxType
-                { syntaxTypeExpression = target
-                , syntaxTypeRuntimeValue = Nothing
-                }
-          )
 
-evaluateSyntaxType
-  :: Expression
-  -> SyntaxType
-evaluateSyntaxType expressionValue =
-  SyntaxType
-    { syntaxTypeExpression = expressionValue
-    , syntaxTypeRuntimeValue = Nothing
-    }
+evaluateSyntaxValue
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> Expression
+  -> Maybe InterpretedValue
+evaluateSyntaxValue base modules declarations expressionValue = do
+  let enclosing = extendModuleCatalog modules base
+  scope <- either (const Nothing) Just
+    (declareSyntaxScope enclosing
+      (map syntaxValidationDeclaration declarations))
+  either (const Nothing) Just (evalInScope scope [] expressionValue)
+
+syntaxResultType
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> Expression
+  -> Maybe InterpretedValue
+syntaxResultType base modules declarations expressionValue =
+  case expressionValue of
+    Equality {} -> booleanType
+    Inequality {} -> booleanType
+    LessThan {} -> booleanType
+    LessThanOrEqual {} -> booleanType
+    GreaterThan {} -> booleanType
+    GreaterThanOrEqual {} -> booleanType
+    _ -> evaluateSyntaxValue base modules declarations expressionValue
+  where
+    booleanType = evaluateSyntaxValue base modules declarations BooleanType
 
 -- Parser scope contains only structural rule visibility and nominal types.
 syntaxContext
-  :: [(String, String, [SyntaxRule])]
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [(String, String, [SyntaxRule])]
   -> [SyntaxRule]
   -> [Expression]
-  -> SyntaxContext SyntaxType
-syntaxContext availableRules initialRules initialDeclarations =
-  make initialDeclarations initialFamilies
+  -> SyntaxContext
+syntaxContext base modules availableRules initialRules initialDeclarations =
+  make base initialDeclarations initialFamilies
   where
     initialFamilies =
-      externalFamily initialRules
-        : declarationFamilies initialDeclarations
+      externalFamily base initialDeclarations initialRules
+        : declarationFamilies base initialDeclarations
 
-    make declarations families = context
+    make currentBase declarations families = context
       where
         context = SyntaxContext
           { contextSourceSpan = Nothing
           , contextRuleFamilies = filter
               (not . null . syntaxRuleFamilyRules)
               families
-          , contextClassify = classifySyntaxTypes
-          , contextResultType = \expressionValue -> SyntaxType
-              { syntaxTypeExpression = expressionValue
-              , syntaxTypeRuntimeValue = Nothing
-              }
-          , contextSyntaxInsertion = resolveDatraHostSyntaxInsertion
+          , contextClassify = classifySyntaxHoles
+              currentBase modules declarations
+          , contextResultType = syntaxResultType
+              currentBase modules declarations
           , contextAssembleImplicitResource = assembleImplicitSyntaxResource
-          , contextExpandSyntax = expandSyntaxExpression
           , contextRewriteScope = rewriteScope context
-          , contextPublish = publish declarations families
-          , contextRecursive = recursive declarations families
-          , contextScope = scoped declarations families
-          , contextEnter = enter families
+          , contextPublish = publish currentBase declarations families
+          , contextRecursive = recursive currentBase declarations families
+          , contextScope = scoped currentBase declarations families
+          , contextEnter = enter currentBase declarations families
           }
     rewriteScope environment locus = case locus of
       RewriteExpression expressionValue ->
@@ -504,19 +528,20 @@ syntaxContext availableRules initialRules initialDeclarations =
         (map DeclarationExpression declarations <> [result])
       _ -> environment
 
-    publish declarations families entry = do
+    publish currentBase declarations families entry = do
       let resolved = entry
       _ <- dependentDeclaration resolved
       let names = bindingNames entry
           retainedDeclarations = retainDeclarations names declarations
           retainedFamilies = retainFamilies names families
           nextDeclarations = retainedDeclarations <> [entry]
-          introduced = declarationFamily entry resolved
-      pure (make nextDeclarations
+          introduced = declarationFamily currentBase retainedDeclarations
+            entry resolved
+      pure (make currentBase nextDeclarations
         (retainedFamilies <> [introduced]))
 
-    recursive declarations families entries =
-      foldl publishLet (make declarations families)
+    recursive currentBase declarations families entries =
+      foldl publishLet (make currentBase declarations families)
         [ entry
         | entry <- entries
         , maybe False dependentDeclarationIsLet
@@ -528,15 +553,22 @@ syntaxContext availableRules initialRules initialDeclarations =
             Just next -> next
             Nothing -> context
 
-    scoped declarations families source =
-      make declarations
-        (families <> [externalFamily rules])
+    scoped currentBase declarations families source =
+      make currentBase declarations
+        (families <> [externalFamily currentBase declarations rules])
       where
         rules = moduleSyntaxRules availableRules declarations source
 
-    enter families _ = make [] families
+    enter currentBase declarations families input =
+      make child [] families
+      where
+        enclosing = extendModuleCatalog modules currentBase
+        declared = declareSyntaxScope enclosing
+          (map syntaxValidationDeclaration declarations)
+        parent = either (const enclosing) id declared
+        child = enterScope input genericContinuationHandoff parent
 
-    declarationFamilies = snd . foldl introduce ([], [])
+    declarationFamilies currentBase = snd . foldl introduce ([], [])
       where
         introduce (visible, families) entry =
           case dependentDeclaration resolved of
@@ -547,27 +579,29 @@ syntaxContext availableRules initialRules initialDeclarations =
                   next = retained <> [entry]
               in ( next
                  , retainFamilies names families <>
-                    [declarationFamily entry resolved]
+                    [declarationFamily currentBase retained entry resolved]
                  )
           where
             resolved = entry
 
-    declarationFamily entry resolved = SyntaxRuleFamily
+    declarationFamily currentBase visible entry resolved = SyntaxRuleFamily
       { syntaxRuleFamilyNames = bindingNames entry
       , syntaxRuleFamilyRules =
           [ (branch, specialize rule)
           | (_, branch, rule) <-
               declarationRuleBranches resolved
           ]
-      , syntaxRuleFamilyEvaluate = evaluateSyntaxType
+      , syntaxRuleFamilyEvaluate = evaluateSyntaxValue
+          currentBase modules visible
       }
       where
         specialize = id
 
-    externalFamily rules = SyntaxRuleFamily
+    externalFamily currentBase declarations rules = SyntaxRuleFamily
       { syntaxRuleFamilyNames = concatMap syntaxRuleLiteralHeads rules
       , syntaxRuleFamilyRules = map (0,) rules
-      , syntaxRuleFamilyEvaluate = evaluateSyntaxType
+      , syntaxRuleFamilyEvaluate = evaluateSyntaxValue
+          currentBase modules declarations
       }
 
     retainDeclarations names = filter
@@ -691,8 +725,6 @@ staticStandardModuleBundle allNames raw = do
         [ (identity, namespace, rules)
         | (namespace, rules) <- sourceSyntaxRuleSets sourceExpression
         ]
-      hostRuleSets =
-        [(datraHostIdentifier, datraHostIdentifier, datraHostSyntaxRules)]
   pure
     ( rootScope raw
     , [ rule
@@ -700,7 +732,7 @@ staticStandardModuleBundle allNames raw = do
       , (_, _, rules) <- standardRuleSets
       , rule <- rules
       ]
-    , hostRuleSets <> standardRuleSets
+    , standardRuleSets
     )
 
 standardModuleScope
@@ -733,12 +765,11 @@ installDatraHost base = do
 
 parsedDefaultModule :: Either InterpretingError Expression
 parsedDefaultModule = do
-  (envelope, locatedRaw) <- either parseFailure Right
+  (envelope, locatedRaw@(Located _ raw)) <- either parseFailure Right
     (parseDatraRawLocatedWithSourceName standardLibraryFileName
       (requiredBundledLibrarySource standardLibraryFileName))
-  let hostRules =
-        [(datraHostIdentifier, datraHostIdentifier, datraHostSyntaxRules)]
-      context = syntaxContext hostRules [] []
+  base <- installDatraHost (rootScope raw)
+  let context = syntaxContext base [] [] [] []
       rewritten = rewriteResourceSyntaxLocated
         envelope context locatedRaw
   rewrittenValue <- locatedValue <$> either
@@ -2756,6 +2787,39 @@ resolveInferredEitherAlias Nothing value =
       | interpretedValueKind underlying == EitherValueKind -> underlying
     _ -> value
 resolveInferredEitherAlias (Just _) value = value
+
+declareSyntaxScope
+  :: Scope
+  -> [Expression]
+  -> Either InterpretingError Scope
+declareSyntaxScope enclosing entries = do
+  declarations <- traverse requireDeclaration entries
+  (rebuild, _, _) <- scopeBuilderWithContextualThisAndValidation
+    False True enclosing declarations
+  pure (rebuild [])
+  where
+    requireDeclaration expressionValue = maybe
+      (Left OperationHasNoEffect)
+      Right
+      (dependentDeclaration expressionValue)
+
+syntaxValidationDeclaration :: Expression -> Expression
+syntaxValidationDeclaration expressionValue = case expressionValue of
+  DeclarationExpression declaration
+    | dependentDeclarationIsLet declaration ->
+        DeclarationExpression declaration
+          { dependentDeclarationImplementation = recursiveSeed
+              (dependentDeclarationImplementation declaration) }
+  _ -> expressionValue
+  where
+    recursiveSeed original@(MapSpecification definition
+        (DependentArgument name _)) =
+      case recursiveFunctionImplementation definition of
+        Just implementation ->
+          MapSpecification implementation
+            (DependentArgument name Nothing)
+        Nothing -> original
+    recursiveSeed value = value
 
 -- A recursive let-bound function can be used while its public signature is
 -- being assembled. The unrefined implementation is the fixed-point seed;
@@ -5673,5 +5737,5 @@ closedSourceExpressionIn definitions text = do
   rewritten <- Bifunctor.first
     (const NoCanonicalStringConversion)
     (rewriteStandaloneSyntax
-      (syntaxContext [] rules declarations) expressionValue)
+      (syntaxContext definitions [] [] rules declarations) expressionValue)
   pure (inlineDependencies (closureResolver definitions) rewritten)

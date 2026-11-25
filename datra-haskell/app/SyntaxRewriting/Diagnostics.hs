@@ -19,15 +19,14 @@ import SyntaxRewriting.Types
   ( CandidateRejection (..)
   , CandidateRejectionDetails (..)
   , CandidateTypingContext (..)
-  , SyntaxType (..)
   )
 import Data.Map.Strict qualified as Map
 
 candidateRejectionAt
   :: Maybe SourceSpan
-  -> CandidateRejectionDetails syntaxType
-  -> [CandidateRejection syntaxType]
-  -> CandidateRejection syntaxType
+  -> CandidateRejectionDetails
+  -> [CandidateRejection]
+  -> CandidateRejection
 candidateRejectionAt sourceSpan details children = CandidateRejection
   { candidateRejectionDiagnostic = maybe
       (withoutSourceSpan details)
@@ -37,7 +36,7 @@ candidateRejectionAt sourceSpan details children = CandidateRejection
   }
 
 reportCandidateRejections
-  :: [CandidateRejection SyntaxType]
+  :: [CandidateRejection]
   -> [DatraError CandidateRejectionReport]
 reportCandidateRejections = map report . flattenCandidateRejections
   where
@@ -49,26 +48,23 @@ reportCandidateRejections = map report . flattenCandidateRejections
       , rejectedCandidateSource = renderSourceExpression
           (candidateRejectionSource details)
       , rejectedCandidateExpected =
-          renderSyntaxType <$> candidateRejectionExpected details
+          renderInterpretedValue <$> candidateRejectionExpected details
       , rejectedCandidateActual =
-          renderSyntaxType <$> candidateRejectionActual details
+          renderInterpretedValue <$> candidateRejectionActual details
       , rejectedCandidateInputs =
-          [ (index, renderSyntaxType value)
+          [ (index, renderInterpretedValue value)
           | (index, value) <- Map.toAscList
               (candidateTypingInputs (candidateRejectionContext details))
           ]
       , rejectedCandidateReason = candidateRejectionReason details
       }
-    renderSyntaxType syntaxType = case syntaxTypeRuntimeValue syntaxType of
-      Just runtimeValue -> renderInterpretedValue runtimeValue
-      Nothing -> renderSourceExpression (syntaxTypeExpression syntaxType)
 
 -- | Preserve semantic attempt order while exposing nested causal paths to a
 -- diagnostic renderer.  Children immediately follow the parent candidate
 -- whose required match exhausted.
 flattenCandidateRejections
-  :: [CandidateRejection syntaxType]
-  -> [CandidateRejection syntaxType]
+  :: [CandidateRejection]
+  -> [CandidateRejection]
 flattenCandidateRejections = concatMap flatten
   where
     flatten rejection = rejection :

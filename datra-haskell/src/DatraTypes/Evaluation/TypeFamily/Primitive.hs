@@ -31,7 +31,6 @@ decidePrimitiveSubfederation source target =
           DecisionProved () -> True
           _ -> False
       (_, AnyPrimitive) -> True
-      (FunctionBodyForm _, SyntaxPrimitive FunctionBodyAST) -> True
       (_, OrdinalPrimitive) -> isTransfiniteOrdinal
         (interpretedSemantics source)
       (PrimitiveTypeForm actual, expected) | actual == expected -> True
