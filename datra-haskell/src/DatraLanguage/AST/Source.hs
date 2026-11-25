@@ -106,11 +106,11 @@ source context expression =
       unary (op AST.CoalizationOperator <> sourceSpace) operand
     OptionalValue operand -> wrapped 10
       (source 10 operand <> op AST.OptionalOperator)
-    ScopeAccessValue operand (IdentifierExpressionValue selector) ->
+    ScopedExpressionValue operand (IdentifierExpressionValue selector) ->
       wrapped 12
         (source 12 operand <> op AST.ScopeAccessOperator
           <> scopeSelectorSource selector)
-    ScopeAccessValue operand body ->
+    ScopedExpressionValue operand body ->
       wrapped 12 (source 12 operand <> op AST.ScopeAccessOperator <> scopeBody body)
     WithScopesValue sources body -> wrapped 0
       (canonicalFormName WithScopesForm <> sourceSpace

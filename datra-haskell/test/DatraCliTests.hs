@@ -54,7 +54,8 @@ main = defaultMain $ testGroup "Datra CLI"
   , testCase "bundled modules are explicit inputs" testBundledModules
   , testCase "module inputs establish ordered dependencies" testOrderedModuleDependencies
   , testCase "integration fixtures receive modules from the CLI" testComposedModuleFixture
-  , testCase "module namespace collisions fail during setup" testModuleNamespaceCollision
+  , testCase "later overlapping module namespaces take precedence"
+      testModuleNamespacePrecedence
   , testCase "missing modules identify the requested path" testMissingModule
   , testCase "unreadable modules fail during setup" testUnreadableModule
   , testCase "malformed modules fail during setup" testMalformedModule
@@ -369,18 +370,15 @@ testComposedModuleFixture = do
   assertEqual "composed integration result"
     "(true; true; true; true; true; true; true; true)\n" output
 
-testModuleNamespaceCollision :: Assertion
-testModuleNamespaceCollision = do
+testModuleNamespacePrecedence :: Assertion
+testModuleNamespacePrecedence = do
   (status, _, errors) <- runDatra
     [ "ast", "--qualified-std"
     , "--module", moduleFixture "overlap_one"
     , "--module", moduleFixture "overlap_two"
     , "--source", "Shared", "--output", "-"
     ]
-  case status of
-    ExitSuccess -> assertFailure "overlapping namespaces unexpectedly succeeded"
-    ExitFailure _ -> assertBool ("unexpected diagnostic: " <> errors)
-      ("namespace: Shared" `isInfixOf` errors)
+  assertEqual ("exit status; stderr: " <> errors) ExitSuccess status
 
 testMissingModule :: Assertion
 testMissingModule = do

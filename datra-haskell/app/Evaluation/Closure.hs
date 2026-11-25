@@ -1,6 +1,6 @@
 -- | Close a function over exactly the identifier definitions it references.
 -- Dependency blocks are executable Datra, not snapshots of an ambient scope.
-module FunctionClosure
+module Evaluation.Closure
   ( DependencyKey (..)
   , DependencyAddress (..)
   , DependencyPath (..)
@@ -11,6 +11,7 @@ module FunctionClosure
   , inlineDependencies
   ) where
 
+import DatraTypes.Closure
 import DatraLanguage.DependentDeclaration
   ( bindingNames
   , dependentDeclarationWithImplementation
@@ -23,46 +24,6 @@ import DatraLanguage.Identifier
   ( isIdentifierValue, privateIdentifierPrefixCharacter )
 import Control.Monad.Trans.State.Strict (State, get, modify', put, runState)
 import Numeric.Natural (Natural)
-
--- Keys identify bindings during this traversal only; they never enter source.
--- The resolver belongs to the definition's original environment.
-newtype DependencyAddress = DependencyAddress
-  { dependencyAddressSegments :: [SimpleIdentifierString]
-  }
-  deriving (Eq, Show)
-
-data DependencyKey
-  = BindingDependency String Expression
-  | SelectedDependency [SimpleIdentifierString] Expression
-  | ContextualDependency ContextualRole Natural Expression
-  | ModuleDependency FilePath DependencyKey
-  deriving (Eq, Show)
-
-data Dependency = Dependency
-  { dependencyKey :: DependencyKey
-  , dependencyAddress :: DependencyAddress
-  , dependencyDeclaration :: DependentDeclaration Expression
-  , dependencyResolver :: Resolver
-  }
-
-data DependencyRoot
-  = AmbientRoot
-  | ContextualRoot ContextualRole
-  deriving (Eq, Show)
-
-data DependencyPath = DependencyPath
-  { dependencyPathRoot :: DependencyRoot
-  , dependencyPathSegments :: [String]
-  }
-  deriving (Eq, Show)
-
-data Resolver = Resolver
-  { resolveDependency :: DependencyPath -> Maybe Dependency
-  , resolveDependencyModule :: String -> Maybe Resolver
-  , resolveScopeIndex :: Expression -> Maybe String
-  , resolveContextualDepth :: ContextualRole -> Natural -> Maybe Dependency
-  , resolveDefinitionReference :: DependencyPath -> Bool
-  }
 
 data DependencyMode = BindDependencies | InlineDependencies deriving (Eq)
 
@@ -198,9 +159,6 @@ rewrite _ _ _ resolver _ expression
 
 rewrite mode inDefinition active resolver bound expression =
   case expression of
-    InModule path body
-      | Just moduleResolver <- resolveDependencyModule resolver path ->
-          rewrite mode inDefinition active moduleResolver bound body
     FunctionApplication
         (FunctionTypeExpression generics domain codomain)
         (FunctionBody entries result) -> do
@@ -332,7 +290,7 @@ dependencyReference (DependencyAddress (root : fields)) =
 
 namedScopeAccess :: Expression -> SimpleIdentifierString -> Expression
 namedScopeAccess source name =
-  ScopeAccess source (literalIdentifierExpression name)
+  ScopedExpression source (IdentifierReference name)
 
 prependIdentifier :: SimpleIdentifierString -> SimpleIdentifierString
 prependIdentifier (SimpleIdentifierString name) = SimpleIdentifierString
@@ -410,10 +368,8 @@ transparentDependencyBlock definitions result =
 
 referencePath :: Expression -> Maybe DependencyPath
 referencePath
-    (ScopeAccess
-      thisValue
-      selector)
-  | Just (SimpleIdentifierString name) <- literalIdentifierName selector
+    (ScopedExpression thisValue body)
+  | Just (SimpleIdentifierString name) <- scopedLiteralMemberName body
   , isContextualAccessOf ContextualThis thisValue =
       Just (DependencyPath (ContextualRoot ContextualThis) [name])
 referencePath expression
@@ -423,13 +379,19 @@ referencePath expression
       <- expression = Just (DependencyPath AmbientRoot [name])
 referencePath (IdentifierReference (SimpleIdentifierString name)) =
   Just (DependencyPath AmbientRoot [name])
-referencePath (ScopeAccess source selector)
-  | Just (SimpleIdentifierString name) <- literalIdentifierName selector =
+referencePath (ScopedExpression source body)
+  | Just (SimpleIdentifierString name) <- scopedLiteralMemberName body =
   appendPath name <$> referencePath source
   where
     appendPath field path = path
       { dependencyPathSegments = dependencyPathSegments path <> [field] }
 referencePath _ = Nothing
+
+scopedLiteralMemberName :: Expression -> Maybe SimpleIdentifierString
+scopedLiteralMemberName expressionValue = case expressionValue of
+  IdentifierReference name -> Just name
+  SyntaxBoundary inner -> scopedLiteralMemberName inner
+  _ -> Nothing
 
 dependencyPathLexicalName :: DependencyPath -> Maybe String
 dependencyPathLexicalName path = case dependencyPathSegments path of

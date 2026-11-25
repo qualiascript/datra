@@ -8,9 +8,11 @@ module SyntaxRewriting.Candidates
 
 import DatraLanguage.AST (Expression)
 import StringExpression
-  ( TemplateSelection (..) )
+  ( StringExpression (..)
+  , TemplateSelection (..)
+  )
 import StringInterpolation
-  ( DeclarativeCapture
+  ( DeclarativeCapture (..)
   , DeclarativeMatcherPlan (..)
   , LiteralExpressionPattern (..)
   , LiteralExpressionPatternPart (..)
@@ -18,6 +20,9 @@ import StringInterpolation
   , syntaxRuleCaptures
   )
 import Data.Map.Strict qualified as Map
+import DatraTypes (InterpretedValue)
+import DatraTypes.Scope
+  ( DeclarationLayerImportPolicy, Scope )
 import SyntaxRewriting.Types
   ( CaptureExtent (..)
   , CandidateFrame (..)
@@ -25,8 +30,6 @@ import SyntaxRewriting.Types
   , CandidateRejectionDetails (..)
   , CandidateRejectionReason (..)
   , CandidateTypingContext (..)
-  , Compatibility (..)
-  , CompatibilityConstraint (..)
   , RewriteResult (..)
   , RewriteRule (..)
   , StructuralCandidate (..)
@@ -39,14 +42,13 @@ import StringInterpolation.Matching
 import Parsing (expressionParser)
 
 initialCandidateFrame
-  :: StructuralCandidate syntaxType
-  -> CandidateFrame syntaxType
+  :: StructuralCandidate
+  -> CandidateFrame
 initialCandidateFrame _ = CandidateFrame
   { candidateFrameNextCapture = 0
   , candidateFrameTypingContext = CandidateTypingContext
       { candidateTypingInputs = Map.empty
       , candidateTypingExpectedHoles = Map.empty
-      , candidateTypingBlocked = []
       }
   , candidateFrameResults = Map.empty
   , candidateFramePreparedCaptures = Map.empty
@@ -61,14 +63,11 @@ advanceCandidateFrameWith
        -> Expression
        -> Maybe Expression
      )
-  -> (CandidateTypingContext syntaxType -> Int -> Maybe syntaxType)
-  -> (CandidateTypingContext syntaxType -> syntaxType)
-  -> (syntaxType -> syntaxType -> Compatibility)
-  -> StructuralCandidate syntaxType
-  -> CandidateFrame syntaxType
-  -> CandidateFrameProgress syntaxType
-advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
-    compatible candidate =
+  -> (CandidateTypingContext -> Int -> Maybe InterpretedValue)
+  -> StructuralCandidate
+  -> CandidateFrame
+  -> CandidateFrameProgress
+advanceCandidateFrameWith prepareCapture expectedHole candidate =
   advance
   where
     advance frame
@@ -84,7 +83,6 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
                         (candidateFramePreparedCaptures frame)
                     }
             ]
-            (candidateReturn context)
       | otherwise =
           case Map.lookup captureIndex results of
             Nothing -> case extent of
@@ -102,16 +100,11 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
     checkResult frame result = check
       where
         check = case expected of
-          Just wanted -> case compatible (rewriteResultType result) wanted of
-            CompatibilityProved -> acceptSelectedCapture frame [] result
-            CompatibilityUndecidable -> acceptSelectedCapture frame
-              [CompatibilityConstraint index
-                (rewriteResultType result) wanted]
-              result
-            CompatibilityRefuted -> CandidateFrameRejected
-              (rejectionDetails TypedHoleMismatch
-                (Just wanted) (Just (rewriteResultType result)) frame)
-          Nothing -> prepareStructuralResult frame result
+          Just _ -> acceptSelectedCapture frame result
+          Nothing -> case kind of
+            StringExpressionCapture ValueString {} ->
+              acceptSelectedCapture frame result
+            _ -> prepareStructuralResult frame result
 
         index = candidateFrameNextCapture frame
         context = candidateFrameTypingContext frame
@@ -119,32 +112,32 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
         captures = structuralCandidateCaptures
           candidate
         (kind, _, _) = captures !! index
-        acceptSelectedCapture selectedFrame deferred selectedResult =
-          acceptPreparedCapture selectedFrame deferred selectedResult
+        acceptSelectedCapture selectedFrame selectedResult =
+          acceptPreparedCapture selectedFrame selectedResult
             (rewriteResultExpression selectedResult)
 
         prepareStructuralResult selectedFrame selectedResult =
           case prepareCapture kind
               (rewriteResultExpression selectedResult) of
             Just preparedExpression -> acceptPreparedCapture
-              selectedFrame [] selectedResult preparedExpression
+              selectedFrame selectedResult preparedExpression
             Nothing -> CandidateFrameRejected
               (rejectionDetails RequiredChildExhausted expected Nothing
                 selectedFrame)
 
-    acceptPreparedCapture frame deferred result preparedExpression = advance frame
+    acceptPreparedCapture frame result preparedExpression = advance frame
           { candidateFrameNextCapture = index + 1
           , candidateFrameTypingContext = context
-              { candidateTypingInputs = Map.insert index
-                  (rewriteResultType result)
+              { candidateTypingInputs = maybe
                   (candidateTypingInputs context)
+                  (\actual -> Map.insert index actual
+                    (candidateTypingInputs context))
+                  (rewriteResultType result)
               , candidateTypingExpectedHoles = maybe
                   (candidateTypingExpectedHoles context)
                   (\wanted -> Map.insert index wanted
                     (candidateTypingExpectedHoles context))
                   expected
-              , candidateTypingBlocked =
-                  candidateTypingBlocked context <> deferred
               }
           , candidateFramePreparedCaptures = Map.insert
               index preparedExpression
@@ -177,18 +170,26 @@ advanceCandidateFrameWith prepareCapture expectedHole candidateReturn
           [] -> templateSelectionWhole
             (structuralCandidateSelection candidate)
 
-compileRewriteRule :: syntaxType -> SyntaxRule -> RewriteRule syntaxType
-compileRewriteRule returnType rule = RewriteRule
+compileRewriteRule
+  :: Scope
+  -> DeclarationLayerImportPolicy
+  -> Int
+  -> Maybe InterpretedValue
+  -> SyntaxRule
+  -> RewriteRule
+compileRewriteRule familyScope importPolicy layer returnType rule = RewriteRule
   { rewriteRule = rule
   , rewriteRuleBranch = 0
-  , rewriteRuleSyntaxInsertion = Nothing
   , rewriteRuleReturnType = returnType
+  , rewriteRuleFamilyScope = familyScope
+  , rewriteRuleImportPolicy = importPolicy
+  , rewriteRuleLayer = layer
   }
 
 enumerateRuleStructuralCandidates
-  :: RewriteRule syntaxType
+  :: RewriteRule
   -> Expression
-  -> [StructuralCandidate syntaxType]
+  -> [StructuralCandidate]
 enumerateRuleStructuralCandidates compiled expressionValue =
   [ StructuralCandidate
       { structuralCandidateRule = compiled
@@ -220,7 +221,7 @@ ruleCaptureExtents rule = case declarativeMatcherPlan rule of
       ]
 
 structuralCandidateMatch
-  :: StructuralCandidate syntaxType
+  :: StructuralCandidate
   -> SyntaxMatch
 structuralCandidateMatch candidate = SyntaxMatch
   { syntaxMatchRule = rewriteRule (structuralCandidateRule candidate)

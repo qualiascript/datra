@@ -1,7 +1,7 @@
 -- | The scope-protection policy used by generic sums.  The shared substrate
 -- deliberately knows nothing about why this policy is introduced or which
 -- future operations may eliminate it.
-module GenericScopeProtection
+module Evaluation.Scope.GenericProtection
   ( protectGenericExistential
   , genericOperationResultDecision
   , genericContinuationHandoff
@@ -11,7 +11,7 @@ module GenericScopeProtection
 
 import Data.List.NonEmpty (NonEmpty (..))
 import DatraTypes
-import ScopeProtection
+import Evaluation.Scope.Protection
 
 protectGenericExistential
   :: DynamicScopeLabel

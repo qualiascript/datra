@@ -11,11 +11,13 @@ module Datra.TestSupport
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Application (ParseFailure)
 import DatraTypes (InterpretedValue, InterpretingError)
-import Interpreting
+import Evaluation.Expression
+  ( interpretExpressionReason
+  , interpretWithModules
+  )
+import Interpreting.Source
   ( StandardLibraryVisibility (AllStandardLibrary)
   , emptyPreparedModules
-  , interpretExpressionReason
-  , interpretWithModules
   , parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
   )
 import Rendering (renderInterpretedValue)
@@ -45,7 +47,7 @@ runProgram source = do
   expression <- first SourceParseFailure
     (locatedValue <$> parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
       AllStandardLibrary emptyPreparedModules
-      "test/Datra/TestSupport.hs" source)
+      "test/Datra/TestSupport.hs" ("(begin\n" <> source <> "\n)"))
   first SourceEvaluationFailure
     (interpretWithModules emptyPreparedModules expression)
 

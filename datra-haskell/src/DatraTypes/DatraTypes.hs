@@ -8,8 +8,6 @@ module DatraTypes
   , DatraType
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
-  , SyntaxFunctionExpansion (..)
-  , SyntaxFunctionInsertion (..)
   , RuntimeFunctionInsertion (..)
   , FunctionSource (..)
   , applyFunctionSource
@@ -498,8 +496,6 @@ import Evaluation.Value
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , EvaluatedFunctionBody (..)
-  , SyntaxFunctionExpansion (..)
-  , SyntaxFunctionInsertion (..)
   , RuntimeFunctionInsertion (..)
   , FunctionSource (..)
   , applyFunctionSource

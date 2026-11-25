@@ -11,10 +11,7 @@ import Datra.Interpreter.IntegrationTests (integrationTests)
 import Datra.Interpreter.OverloadTests (overloadTests)
 import Datra.Interpreter.ScopeTests (scopeTests)
 import Datra.Interpreter.StandardLibraryTests (standardLibraryTests)
-import Datra.TestSupport
-  ( SourceFailure (SourceEvaluationFailure)
-  , runProgram
-  )
+import Datra.TestSupport (runProgram)
 import DatraLanguage.AST
   ( DependentDeclaration (..)
   , Expression (..)
@@ -39,21 +36,17 @@ import DatraLanguage.AST.Syntax
   )
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraTypes qualified as Types
-import Interpreting
-  ( StandardLibraryVisibility (AllStandardLibrary)
-  , ModuleSource (..)
-  , PreparedModules
-  , emptyPreparedModules
-  , InterpretedValue
+import Evaluation.Expression
+  ( InterpretedValue
   , InterpretedValueKind (..)
   , InterpretingError (..)
-  , interpretExpressionReason
-  , interpretWithModules
-  , interpretLocatedExpression
   , canonicalStringCodec
+  , interpretExpressionReason
+  , interpretLocatedExpression
+  , interpretWithModules
   , interpretedExplicitOrdinal
-  , interpretedInteger
   , interpretedFormulationLevel
+  , interpretedInteger
   , interpretedMap
   , interpretedMapCardinality
   , interpretedMapFinalOrderType
@@ -61,6 +54,12 @@ import Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   , moduleExportNames
+  )
+import Interpreting.Source
+  ( StandardLibraryVisibility (AllStandardLibrary)
+  , ModuleSource (..)
+  , PreparedModules
+  , emptyPreparedModules
   , parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
   )
 import DatraLanguage.Diagnostics.Interpreter
@@ -139,7 +138,6 @@ testTree =
         , testCase "begin/yield scope and provenance" testBegin
         , testCase "begin/yield scope rejections" testBeginRejections
         , testCase "module aliases retain syntax rules" testModuleSyntaxAlias
-        , testCase "implicit programs" testPrograms
         , testCase "integers and integer ranges" testIntegers
         , testCase "closed infinite valued range" testClosedInfiniteValuedRange
         , testCase "booleans and Either" testBooleansAndEither
@@ -224,9 +222,9 @@ hostOperator body arguments =
   FunctionApplication
     (FunctionApplication
       (FunctionType domain (identifierReference "Any"))
-      (ScopeAccess
+      (ScopedExpression
         (identifierReference "datra")
-        (literalIdentifierExpression (SimpleIdentifierString body))))
+        (identifierReference body)))
     supplied
   where
     domain = case arguments of
@@ -272,9 +270,9 @@ maybeExpansion value =
 ordinalCall :: String -> [Expression] -> Expression
 ordinalCall name arguments =
   FunctionApplication
-    (ScopeAccess
+    (ScopedExpression
       (identifierReference "Ordinals")
-      (literalIdentifierExpression (SimpleIdentifierString name)))
+      (identifierReference name))
     (AtlasMap arguments)
 
 ordinalSum, ordinalProduct, ordinalExponent :: Expression -> Expression -> Expression
@@ -1099,35 +1097,6 @@ testCanonicalTypes = do
           Left rejection -> fail
             (source <> " canonical conversion was rejected: " <> show rejection)
           Right _ -> pure ()
-
-testPrograms :: IO ()
-testPrograms = do
-  mapM_ (\(source, expected) ->
-    case parseProductionSource source of
-      Left message -> fail (renderParseFailure message)
-      Right expression -> case interpretWithModules emptyPreparedModules expression of
-        Left rejection -> fail
-          (source <> ": unexpected rejection: " <> show rejection)
-        Right value -> assert (source <> ": " <> renderInterpretedValue value)
-          (renderInterpretedValue value == expected))
-    [ ("a := 2 * 3\nb := 5\nyield a + b", "11")
-    , ("a := 2 * 3\nb := 8\nyield a + b", "14")
-    , ("a := 2 * 3\nb := 5", "()")
-    , ("", "()")
-    , ("# comment\n(2 + 3) # trailing comment", "5")
-    , ("yield (1; 2)", "(1; 2)")
-    , ("yield 2 + 3", "5")
-    , ("(2 + 3)", "5")
-    , ("yield begin a := 6 yield a + 5", "11")
-    , ("a := x + 1\nlet x := 10\nyield a", "11")
-    ]
-  case runProgram "2 + 3" of
-    Left (SourceEvaluationFailure OperationHasNoEffect) -> pure ()
-    Left failure -> fail
-      ("an unyielded operation returned an unexpected failure: " <> show failure)
-    Right value -> fail
-      ("an unyielded operation unexpectedly produced "
-        <> renderInterpretedValue value)
 
 testBeginRejections :: IO ()
 testBeginRejections = do

@@ -1,4 +1,4 @@
-module ScopeProtection
+module Evaluation.Scope.Protection
   ( initialScopeActivation
   , enterScopeActivation
   , currentScopeLabel
@@ -17,6 +17,7 @@ import Data.List.NonEmpty (NonEmpty (..))
 import System.IO.Unsafe (unsafePerformIO)
 
 import DatraTypes
+import DatraTypes.Scope.Protection
 
 -- Labels are evaluator-internal and never affect canonical identity.  Each
 -- top-level pure evaluation owns one private monotonic supply.  Activated
@@ -133,12 +134,6 @@ protectWithPoliciesOf context operands result =
 
 valueIsScopeProtected :: InterpretedValue -> Bool
 valueIsScopeProtected = maybe False (const True) . interpretedScopeProtection
-
-data ScopeHandoffDecision
-  = PreserveScopeProtection
-  | TransferScopeProtection
-  | RejectScopeProtection
-  deriving (Eq, Show)
 
 -- | Hand a value from one lexical-scope activation to another without ever
 -- exposing its payload.  Every carried policy must choose the same

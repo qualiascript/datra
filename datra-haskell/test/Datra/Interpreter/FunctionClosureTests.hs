@@ -4,11 +4,13 @@ import Control.Monad (when)
 import Data.List (isInfixOf, isPrefixOf, tails)
 import Datra.TestSupport
 import DatraTypes
-import Interpreting
-  ( StandardLibraryVisibility (AllStandardLibrary)
-  , canonicalStringCodec
-  , emptyPreparedModules
+import Evaluation.Expression
+  ( canonicalStringCodec
   , interpretClosedExpression
+  )
+import Interpreting.Source
+  ( StandardLibraryVisibility (AllStandardLibrary)
+  , emptyPreparedModules
   , parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
   )
 import DatraLanguage.Diagnostics (locatedValue)
