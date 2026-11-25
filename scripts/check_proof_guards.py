@@ -1043,10 +1043,17 @@ proofGuard :: Atlas a s d o f -> PageElement s object -> d object -> CoverageWit
 proofGuard = onePageCoverage
 """,
     "coalition components reject an inverse that drops every image": """
+{-@ proofGuard :: targetAtlas:Atlas atlasScope scope cellData origin final
+      -> targetOccurrence:{PageElement scope object | cellTraceValid targetAtlas targetOccurrence}
+      -> (a -> {element:CoalitionData atlasScope scope cellData |
+           coalitionElementValid targetAtlas element
+           && coalitionElementSource element == originPageElement (atlasPageElements targetAtlas)
+           && coalitionElementReaches element targetOccurrence})
+      -> DomanialInsertion (DominionCellData a sourceObject) (cellData object) @-}
 proofGuard
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
-  -> (a -> CoalitionElement (AtlasObject atlasScope scope cellData))
+  -> (a -> CoalitionData atlasScope scope cellData)
   -> DomanialInsertion (DominionCellData a sourceObject) (cellData object)
 proofGuard targetAtlas targetOccurrence forward =
   coalitionComponentInsertion targetAtlas targetOccurrence forward
@@ -1054,8 +1061,196 @@ proofGuard targetAtlas targetOccurrence forward =
 """,
 }
 
-COALITION_ELEMENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs"
+COALITION_ELEMENT_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Data.hs"
+COALITION_PUBLIC_SOURCE = """
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
+module PublicCoalitionGuard where
+import Coalition.Element
+import Atlas (Atlas, atlasPageElements)
+import AtlasCoveredPageElement
+  ( CoveredPageElement, coveredPageElementValid, coverageWitnessOriginRank
+  , atlasCoveredPageElementWitness )
+import PageElements (originPageElement)
+{-@ predicate PublicCoalitionValid A E = coalitionElementValid A E
+      && coalitionElementSource E == originPageElement (atlasPageElements A) @-}
+"""
+
+COALITION_CANONICAL_GUARDS = {
+    "coalition canonicalization rank equality requires equal ranks": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> left:{CoalitionData a s d | PublicCoalitionValid owner left}
+      -> right:{CoalitionData a s d | PublicCoalitionValid owner right}
+      -> {left == right} @-}
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> CoalitionData a s d -> ()
+proofGuard = coalitionElementRankExtensionality
+""",
+    "coalition canonicalization round trip preserves the exact record": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> element:{CoalitionData a s d | PublicCoalitionValid owner element}
+      -> {coalitionFromCovered owner (coalitionCoveredElement owner element) /= element} @-}
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> ()
+proofGuard = coalitionFromCoveredRoundTrip
+""",
+    "coalition canonicalization requires covered owning validity": """
+{-@ proofGuard :: Atlas a s d o f -> CoveredPageElement a s d -> CoalitionData a s d @-}
+proofGuard :: Atlas a s d o f -> CoveredPageElement a s d -> CoalitionData a s d
+proofGuard = coalitionFromCovered
+""",
+    "coalition canonicalization retains the witness origin rank": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> covered:{CoveredPageElement a s d | coveredPageElementValid owner covered}
+      -> {element:CoalitionData a s d |
+           coalitionElementRank element /= coverageWitnessOriginRank (atlasCoveredPageElementWitness covered)} @-}
+proofGuard :: Atlas a s d o f -> CoveredPageElement a s d -> CoalitionData a s d
+proofGuard = coalitionFromCovered
+""",
+    "coalition canonicalization retains the canonical origin": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> {covered:CoveredPageElement a s d | coveredPageElementValid owner covered}
+      -> {element:CoalitionData a s d |
+           coalitionElementSource element /= originPageElement (atlasPageElements owner)} @-}
+proofGuard :: Atlas a s d o f -> CoveredPageElement a s d -> CoalitionData a s d
+proofGuard = coalitionFromCovered
+""",
+    "coalition covered conversion requires owning validity": """
+{-@ proofGuard :: Atlas a s d o f -> CoalitionData a s d -> CoveredPageElement a s d @-}
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> CoveredPageElement a s d
+proofGuard = coalitionCoveredElement
+""",
+}
+
+COALITION_ACTION_PUBLIC_SOURCE = """
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
+module PublicCoalitionActionGuard where
+import Atlas (Atlas, AtlasObject, atlasPageElements)
+import AtlasTransversal (AtlasTransversal)
+import Coalition.Element
+import AtlasCoveredPageElement (CoveredPageElement)
+import PageElements (originPageElement)
+{-@ predicate PublicCoalitionValid A E = coalitionElementValid A E
+      && coalitionElementSource E == originPageElement (atlasPageElements A) @-}
+discardMappedCoalition :: Atlas a s d o f -> CoalitionData a s d -> ()
+discardMappedCoalition _ _ = ()
+"""
+
+COALITION_ACTION_PUBLIC_GUARDS = {
+    "owned coalition mapping requires source owning validity": """
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> ()
+proofGuard owner arrow source =
+  withMappedCoalitionElement owner arrow source discardMappedCoalition
+""",
+    "owned coalition mapping requires the canonical source origin": """
+{-@ proofGuard :: owner:Atlas sa ss sd so sf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoalitionData sa ss sd | coalitionElementValid owner source} -> () @-}
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> ()
+proofGuard owner arrow source =
+  withMappedCoalitionElement owner arrow source discardMappedCoalition
+""",
+    "owned coalition mapping cannot substitute the retained target": """
+{-@ proofGuard :: owner:Atlas sa ss sd so sf -> other:Atlas ta ts td to tf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoalitionData sa ss sd | PublicCoalitionValid owner source}
+      -> CoveredPageElement ta ts td @-}
+proofGuard :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> CoveredPageElement ta ts td
+proofGuard owner other arrow source =
+  withMappedCoalitionElement owner arrow source (wrongCoalitionOwner other)
+
+{-@ wrongCoalitionOwner :: other:Atlas a s d oo ofinal -> actual:Atlas a s d o f
+      -> {element:CoalitionData a s d | PublicCoalitionValid actual element}
+      -> CoveredPageElement a s d @-}
+wrongCoalitionOwner :: Atlas a s d oo ofinal -> Atlas a s d o f
+  -> CoalitionData a s d -> CoveredPageElement a s d
+wrongCoalitionOwner other _ element = coalitionCoveredElement other element
+""",
+}
+
 COALITION_ELEMENT_GUARDS = {
+    "coalition transport requires an owning target": """
+{-@ proofGuard :: owner:Atlas a s d o f -> target:PageElement s object
+      -> element:{CoalitionData a s d | CoalitionValid owner element
+           && coalitionElementReaches element target} -> d object @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> CoalitionData a s d -> d object
+proofGuard = coalitionElementAt
+""",
+    "coalition transport requires an actual arrow": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> target:{PageElement s object | cellTraceValid owner target}
+      -> {element:CoalitionData a s d | CoalitionValid owner element} -> d object @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> CoalitionData a s d -> d object
+proofGuard = coalitionElementAt
+""",
+    "coalition transport preserves the stored origin rank": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> target:{PageElement s object | cellTraceValid owner target}
+      -> element:{CoalitionData a s d | CoalitionValid owner element
+           && coalitionElementReaches element target}
+      -> {datum:d object | atlasOriginImageRank owner target datum /= coalitionElementRank element} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> CoalitionData a s d -> d object
+proofGuard = coalitionElementAt
+""",
+    "coalition transport retains coverage of its exact datum": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> target:{PageElement s object | cellTraceValid owner target}
+      -> element:{CoalitionData a s d | CoalitionValid owner element
+           && coalitionElementReaches element target}
+      -> {witness:CoverageWitness a s d |
+           not (coverageWitnessCovers owner target (coalitionElementAt owner target element) witness)} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> CoalitionData a s d -> CoverageWitness a s d
+proofGuard = coalitionElementCoverageAt
+""",
+    "coalition dominion requires its owning validity": """
+{-@ proofGuard :: Atlas a s d o f -> CoalitionData a s d -> Natural @-}
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> Natural
+proofGuard owner = rank (coalition owner)
+""",
+    "coalition dominion requires its canonical origin": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> {element:CoalitionData a s d | coalitionElementValid owner element} -> Natural @-}
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> Natural
+proofGuard owner = rank (coalition owner)
+""",
+    "coalition dominion recovers the exact stored record": """
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> element:{CoalitionData a s d | CoalitionValid owner element}
+      -> {result:Maybe (CoalitionData a s d) | result /= Just element} @-}
+proofGuard :: Atlas a s d o f -> CoalitionData a s d -> Maybe (CoalitionData a s d)
+proofGuard owner element = coalitionRankRoundTrip owner element `seq`
+  unrank (coalition owner) (rank (coalition owner) element)
+""",
+    "coalition finite decoding retains its owning validity": """
+{-@ proofGuard :: owner:Atlas a s d o f -> Natural
+      -> Maybe ({element:CoalitionData a s d | not (coalitionElementValid owner element)}) @-}
+proofGuard :: Atlas a s d o f -> Natural -> Maybe (CoalitionData a s d)
+proofGuard = coalitionUnrank
+""",
+    "coalition finite decoding retains its canonical origin": """
+{-@ proofGuard :: owner:Atlas a s d o f -> Natural
+      -> Maybe ({element:CoalitionData a s d |
+           coalitionElementSource element /= originPageElement (atlasPageElements owner)}) @-}
+proofGuard :: Atlas a s d o f -> Natural -> Maybe (CoalitionData a s d)
+proofGuard = coalitionUnrank
+""",
+    "coalition finite decoding can reject a candidate": """
+{-@ proofGuard :: Atlas a s d o f -> Natural
+      -> {result:Maybe (CoalitionData a s d) | result /= Nothing} @-}
+proofGuard :: Atlas a s d o f -> Natural -> Maybe (CoalitionData a s d)
+proofGuard = coalitionUnrank
+""",
     "coalition extensionality requires equal dependent views": """
 {-@ proofGuard :: owner:Atlas a s d o f
       -> left:{CoalitionData a s d | CoalitionValid owner left}
@@ -1156,17 +1351,37 @@ proofGuard = coalitionElement
 
 TRANSVERSAL_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransversal/Internal.hs"
 TRANSVERSAL_GUARDS = {
+    "stored transversal images require coverage for their retained owner": """
+proofGuard :: Atlas a s d o f -> CoveredPageElement a s d -> CoveredImageData a s d o f
+proofGuard = CoveredImageData
+""",
+    "primitive transversal mapping cannot substitute its target owner": """
+{-@ proofGuard :: action:TransversalAction sa ss sd so sf ta ts td to tf
+      -> other:Atlas ta ts td to tf -> covered:CoveredPageElement sa ss sd
+      -> {result:CoveredPageElement ta ts td | coveredPageElementValid other result} @-}
+proofGuard :: TransversalAction sa ss sd so sf ta ts td to tf
+  -> Atlas ta ts td to tf -> CoveredPageElement sa ss sd -> CoveredPageElement ta ts td
+proofGuard action _ covered = mapTransversalAction action covered
+""",
+    "primitive transversal mapping cannot substitute its coverage witness": """
+{-@ proofGuard :: action:TransversalAction sa ss sd so sf ta ts td to tf
+      -> other:CoverageWitness ta ts td -> covered:CoveredPageElement sa ss sd
+      -> {result:CoveredPageElement ta ts td | atlasCoveredPageElementWitness result == other} @-}
+proofGuard :: TransversalAction sa ss sd so sf ta ts td to tf
+  -> CoverageWitness ta ts td -> CoveredPageElement sa ss sd -> CoveredPageElement ta ts td
+proofGuard action _ covered = mapTransversalAction action covered
+""",
     "stored transversal actions reject coverage evidence for the wrong image": """
 {-@ proofGuard
       :: sourceAtlas:Atlas sa ss sd so sf -> targetAtlas:Atlas ta ts td to tf
       -> ordered:OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
-      -> badCoverage:(covered:AtlasCoveredPageElement (AtlasObject sa ss sd)
+      -> badCoverage:(covered:CoveredPageElement sa ss sd
            -> {w:CoverageWitness ta ts td |
                 not (transversalImageCovered sourceAtlas targetAtlas ordered covered w)})
       -> TransversalAction sa ss sd so sf ta ts td to tf @-}
 proofGuard :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
   -> OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
-  -> (AtlasCoveredPageElement (AtlasObject sa ss sd) -> CoverageWitness ta ts td)
+  -> (CoveredPageElement sa ss sd -> CoverageWitness ta ts td)
   -> TransversalAction sa ss sd so sf ta ts td to tf
 proofGuard = TransversalAction
 """,
@@ -1176,7 +1391,7 @@ proofGuard
   :: sourceAtlas:Atlas sa ss sd so sf
   -> targetAtlas:Atlas ta ts td to tf
   -> ordered:OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
-  -> badCoverage:(covered:AtlasCoveredPageElement (AtlasObject sa ss sd)
+  -> badCoverage:(covered:CoveredPageElement sa ss sd
        -> {w:CoverageWitness ta ts td |
          not (transversalImageCovered sourceAtlas targetAtlas ordered covered w)})
   -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
@@ -1185,11 +1400,52 @@ proofGuard
   :: Atlas sa ss sd so sf
   -> Atlas ta ts td to tf
   -> OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
-  -> (AtlasCoveredPageElement (AtlasObject sa ss sd)
+  -> (CoveredPageElement sa ss sd
        -> CoverageWitness ta ts td)
   -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
 proofGuard sourceAtlas targetAtlas ordered badCoverage =
   atlasTransversal sourceAtlas targetAtlas ordered badCoverage
+""",
+}
+
+TRANSVERSAL_PUBLIC_SOURCE = """
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
+module PublicTransversalGuard where
+import Atlas (Atlas, AtlasObject)
+import AtlasTransversal (AtlasTransversal, withAtlasTransversalCoveredImage)
+import AtlasCoveredPageElement (CoveredPageElement, coveredPageElementValid)
+import Coalition.Element (CoalitionData, coalitionFromCovered)
+"""
+
+TRANSVERSAL_PUBLIC_GUARDS = {
+    "owned transversal elimination requires source owning validity": """
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoveredPageElement sa ss sd -> CoalitionData ta ts td
+proofGuard owner arrow source =
+  withAtlasTransversalCoveredImage owner arrow source coalitionFromCovered
+""",
+    "owned transversal elimination cannot replace the certified target": """
+{-@ proofGuard :: owner:Atlas sa ss sd so sf -> other:Atlas ta ts td to tf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoveredPageElement sa ss sd | coveredPageElementValid owner source}
+      -> CoalitionData ta ts td @-}
+proofGuard :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoveredPageElement sa ss sd -> CoalitionData ta ts td
+proofGuard owner other arrow source =
+  withAtlasTransversalCoveredImage owner arrow source (wrongOwnerCanonical other)
+
+{-@ wrongOwnerCanonical :: other:Atlas a s d oo ofinal -> actual:Atlas a s d o f
+      -> {image:CoveredPageElement a s d | coveredPageElementValid actual image}
+      -> CoalitionData a s d @-}
+wrongOwnerCanonical :: Atlas a s d oo ofinal -> Atlas a s d o f
+  -> CoveredPageElement a s d -> CoalitionData a s d
+wrongOwnerCanonical other _ image = coalitionFromCovered other image
 """,
 }
 
@@ -2483,6 +2739,23 @@ def run(pattern=None):
                    "-i" + str(Path(library["dist-dir"]) / "build")]
         for dependency in library["depends"]:
             command.extend(["-package-id", dependency])
+        def check_group(source, guards):
+            source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
+                            f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
+                            source)
+            for description, guard in guards.items():
+                if pattern and not re.search(pattern, description):
+                    continue
+                target.write_text(source + "\n" + guard)
+                result = subprocess.run(command + [str(target)], cwd=HASKELL,
+                                        text=True, capture_output=True)
+                output = result.stdout + result.stderr
+                error_lines = re.findall(re.escape(str(target)) + r":(\d+):\d+: error:", output)
+                if (result.returncode == 0 or "Liquid Type Mismatch" not in output
+                        or not any(int(line) > source.count("\n") for line in error_lines)):
+                    raise SystemExit(f"Proof guard did not produce the required rejection: {description}\n{output}")
+                print(f"Rejected false law: {description}")
+
         for source_path, guards in [(SOURCE, GUARDS), (CHAIN_SOURCE, CHAIN_GUARDS),
                                     (DATA_TRANSFORMATION_SOURCE, DATA_TRANSFORMATION_GUARDS),
                                     (DATA_TRANSFORMATION_CORE_SOURCE, DATA_TRANSFORMATION_CORE_GUARDS),
@@ -2536,21 +2809,11 @@ def run(pattern=None):
                                     (MERGE_RESOLUTION_SOURCE, MERGE_RESOLUTION_GUARDS),
                                     (MERGE_CELL_SOURCE, MERGE_CELL_GUARDS),
                                     (SEQUENCE_RESOLUTION_SOURCE, SEQUENCE_RESOLUTION_GUARDS)]:
-            source = re.sub(r'#include "[^"]*LiquidPlugin.h"',
-                            f'#include "{HASKELL / "src/DatraCore/LiquidPlugin.h"}"',
-                            source_path.read_text())
-            for description, guard in guards.items():
-                if pattern and not re.search(pattern, description):
-                    continue
-                target.write_text(source + "\n" + guard)
-                result = subprocess.run(command + [str(target)], cwd=HASKELL,
-                                        text=True, capture_output=True)
-                output = result.stdout + result.stderr
-                error_lines = re.findall(re.escape(str(target)) + r":(\d+):\d+: error:", output)
-                if (result.returncode == 0 or "Liquid Type Mismatch" not in output
-                        or not any(int(line) > source.count("\n") for line in error_lines)):
-                    raise SystemExit(f"Proof guard did not produce the required rejection: {description}\n{output}")
-                print(f"Rejected false law: {description}")
+            check_group(source_path.read_text(), guards)
+
+        check_group(COALITION_PUBLIC_SOURCE, COALITION_CANONICAL_GUARDS)
+        check_group(COALITION_ACTION_PUBLIC_SOURCE, COALITION_ACTION_PUBLIC_GUARDS)
+        check_group(TRANSVERSAL_PUBLIC_SOURCE, TRANSVERSAL_PUBLIC_GUARDS)
 
         typing_guards = [
             ("module PublicCoveredGuard where\nimport AtlasCoveredPageElement (CoveredPageElement)\n",

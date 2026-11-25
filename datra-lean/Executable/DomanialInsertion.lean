@@ -71,6 +71,19 @@ theorem comp_assoc (f : DomanialInsertion A B) (g : DomanialInsertion B C)
   · rfl
   · funext x; simp [comp, Option.bind_assoc]
 
+theorem reindex_identity (carrier : A ≃ B) :
+    (identity A).reindex carrier carrier = identity B := by
+  apply ext <;> funext value <;> simp [reindex, identity]
+
+theorem reindex_comp {E : Type*} {F : Type*} (first : DomanialInsertion A B)
+    (second : DomanialInsertion B C) (source : A ≃ D) (middle : B ≃ E) (target : C ≃ F) :
+    (first.comp second).reindex source target =
+      (first.reindex source middle).comp (second.reindex middle target) := by
+  apply ext
+  · funext value; simp [reindex, comp]
+  · funext value
+    cases found : second.preimage (target.symm value) <;> simp [reindex, comp, found]
+
 def toSemantics (f : DomanialInsertion A B) : A ↪ B := ⟨f.map, f.injective⟩
 
 -- ALIGN: INSERTION-IDENTITY-ROUNDTRIP.

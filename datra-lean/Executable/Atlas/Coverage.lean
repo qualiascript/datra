@@ -42,6 +42,15 @@ def coverageWitnessCovers (X : Atlas) (source : X.Element)
     (witness.regionPage == X.coverageFinalPage &&
       X.originImageRank source datum == witness.regionOriginRank)
 
+-- ALIGN: ATLAS-COVERAGE-TRANSPORT-EQUALITY.
+-- ALIGN: ATLAS-COVERAGE-TRANSPORT-PUBLIC.
+theorem coverageWitnessTransport {X : Atlas} {source target : X.Element}
+    (arrow : source ⟶ target) (datum : X.cellData source.val.cell)
+    (witness : X.CoverageWitness) :
+    X.coverageWitnessCovers source datum witness =
+      X.coverageWitnessCovers target ((X.data.action.normalizedMap arrow).map datum) witness := by
+  simp only [coverageWitnessCovers, originImageRank, originImage_map]
+
 -- ALIGN: ATLAS-COVERAGE-TRANSPORT.
 -- Transport preserves the origin image, so the cached witness covers both data.
 theorem coverageWitnessAlongArrow {X : Atlas} {source target : X.Element}
@@ -50,7 +59,7 @@ theorem coverageWitnessAlongArrow {X : Atlas} {source target : X.Element}
     (covers : X.coverageWitnessCovers target
       ((X.data.action.normalizedMap arrow).map datum) witness = true) :
     X.coverageWitnessCovers source datum witness = true := by
-  simpa only [coverageWitnessCovers, originImageRank, originImage_map] using covers
+  exact (coverageWitnessTransport arrow datum witness).trans covers
 
 abbrev CoverageRegion (X : Atlas) :=
   (index : X.TerritoryIndex) × X.cellData (X.territory index).element.val.cell

@@ -50,8 +50,11 @@ under `Datra.Semantics`. This denotational layer is mostly extensional:
 - `DaTra` is then the ordinary Mathlib presheaf category `Atl^op -> Type`.
 
 The `datra-lean/Executable` modules model the executable representations and
-prove their interpretations into this denotational layer. Derived construction
-bridges still need work; the correspondence manifest records their coverage
+prove their interpretations into this denotational layer. Executable Dominion is
+universe-polymorphic, accommodating dependent carriers that retain their page
+presentation. Its conversion to the written Dominion applies to small carriers;
+coalition's canonical carrier is equivalent to its small covered-data carrier.
+Derived construction bridges still need work; the correspondence manifest records their coverage
 separately. Presheaf and Yoneda packages have checked construction and elimination
 laws in both languages, with no LiquidHaskell trust directives. The executable coalition-to-inclusion
 arrow and inclusion action on insertions have interpretation theorems, including
@@ -75,7 +78,21 @@ region and recompute the charted caches, matching the Haskell algorithm.
 
 Primitive transversal actions store their exact-image coverage law in a checked
 record. The image operation retains the dependent target cell and datum before
-the public coverage constructor packages them. Atlas maps likewise store their
+the public coverage constructor packages them. Their shared primitive mapper
+retains validity for the action's stored target Atlas and the exact witness
+returned by its coverage callback. Both languages check these guarantees;
+rejection checks prevent substituting another target owner or coverage witness.
+The categorical mapper retains an unchanged image or a certified image paired
+with its actual target owner. Identity retains the caller's source owner;
+composition keeps the intermediate owner when the second map is an identity
+and otherwise retains the second map's target. A checked public eliminator
+requires source owning validity and supplies target owning validity to its
+rank-polymorphic callback. The raw covered-element mapper erases this same
+result, so it shares the certified execution path. Lean proves the composite
+equation and preserves the semantic interpretation for that path. Coalition's
+checked mapping worker consumes this interface and retains target ownership
+through canonicalization. Its raw-result wrapper shares the same worker.
+Atlas maps likewise store their
 owning Atlas, canonical origin, and accepted-datum coverage law together. Their
 extent eliminator exposes that owner to its callback. Coverage of an arbitrary
 accepted datum follows by transporting it to the stored origin and applying the
@@ -112,7 +129,29 @@ the exact source and witness together with owning-trace, datum-membership, and
 coverage certificates. The coalition interface additionally retains its canonical
 origin and the equality between a recovered witness's cached rank and the
 coalition's rank observation. Coalition ranking reads the stored canonical code;
-construction obtains it through the public witness-bounded search. Certified
+construction obtains it through the public witness-bounded search. The coalition
+Dominion uses Charter's checked finite decoder and reconstructs the cached origin
+rank from its returned canonical datum. Both languages prove that decoding the
+stored code recovers the exact coalition record. The Haskell package retains its
+rank and decoder functions and restricts its carrier to owning validity and the
+exact canonical origin. Lean relates the stored code to the least coverage rank
+and proves that projecting a decoded coalition yields the original Atlas decoder's
+result, including failure. The Lean forward map acts on the full canonical
+coalition record: it recovers the covered source, applies the transversal,
+transports the image to the target origin, and retains its certified coverage
+witness when building the canonical target cache. Its value
+projection agrees with the covered-data map, and its semantic interpretation
+agrees with the written extent map. Canonical-carrier extensionality proves
+that rebuilding this value recovers the entire mapped record and that the
+identity transversal returns the exact input record. Haskell's checked mapping
+worker requires a valid canonical source and gives its callback a valid canonical
+target with the retained owner. Stable-insertion assembly still needs to retain
+that source-domain contract through construction and elimination. Lean accepts a stable
+primitive's explicit inverse on canonical coalition records and transports it
+through the covered-value equivalence. Returning to the record carrier recovers
+the exact forward map and supplied inverse, including failed lookups. Identity,
+composition, the left-inverse law, and interpretation into the written stable
+coalition map hold on that record carrier. Certified
 elimination also proves that rebuilding from the recovered datum and witness
 returns the exact original coalition record. Canonical-code uniqueness proves
 construction independent of the supplied coverage witness in both languages.
@@ -121,7 +160,43 @@ source law and constant-datum reconstruction transfer this equality to the
 Dominion value projection without exposing private constructors to clients.
 Negative checks reject elimination without owning
 validity, substitution of the stored witness, changed coalition origin or rank,
-and loss of the decoder's payload-validity certificate.
+and loss of the decoder's payload-validity certificate. Coalition Dominion guards
+reject ranking without owning validity or the canonical origin, a decoding result
+different from the stored record, invalid or non-origin decoder payloads, and
+the claim that every candidate decodes successfully.
+
+Coalition datum transport requires an owning target and the stored source's
+page-order and trace-transport conditions. Its checked result belongs to the
+target carrier and retains the coalition's cached origin rank. Coverage transport
+uses the same certified witness: a shared checked equivalence relates coverage
+before and after an Atlas data arrow. The Dominion-inclusion component requires
+valid canonical coalitions with those transport conditions from its forward
+callback, and its insertion retains target-carrier membership. Its separately
+supplied component inverse still handles uncovered target data. Lean models the
+same arrow conditions, certified inputs, and transported rank. Negative checks
+reject missing target ownership or arrow evidence, a changed origin rank, loss
+of coverage for the transported datum, and an inverse that drops every image
+even when all forward-input conditions are supplied.
+Coalition's checked covered-element conversion retains its source and witness
+origin rank. The reverse conversion transports the covered datum to the owning
+origin, retains that witness's rank, and computes the canonical cache through the
+checked constructor. Equal cached origin ranks imply equal canonical coverage
+codes; the checked finite decoder then identifies the complete records. This
+extensionality law proves exact record recovery for a coalition converted to
+covered data and back in both languages. `Coalition.Element` is the exposed interface; its checked
+carrier implementation is separate from transversal assembly, allowing the
+forward mapper to use both checked conversions. The transversal's checked image
+eliminator supplies its actual target owner. `withMappedCoalitionElement` uses
+that owner for canonicalization and retains target validity and the canonical
+origin for its callback. `mapCoalitionElement` erases this callback boundary; it
+takes only the source Atlas and transversal, since the target comes from the
+certified image. The raw-result wrapper remains an unchecked source-validity
+boundary for stable-insertion assembly; completing that boundary is separate
+from checking the mapping worker. Lean uses the same callback path and proves
+its equality to the record-level forward action.
+Consumer-level rejection checks import only the exposed interface and reject
+missing owning validity, changed origin or witness rank, equality without equal
+ranks, and a round trip that changes the stored record.
 
 Finite coverage decoding retains source-datum membership and coverage of that
 exact returned datum. Its public interface can package the result as a covered
@@ -855,8 +930,10 @@ commuting theorems are preferable to pervasive casts.
 
 ## The Atlas alignment in detail
 
-Atlas is the critical boundary because every remaining assumption concerns the
-Atlas category or presheaves over it.
+Atlas is the critical boundary because its dependent data action and ownership
+contracts underpin the derived constructions. The structural Atlas and presheaf
+laws are checked without assumptions; the remaining work connects executable
+representations and their complete assembly contracts to those laws.
 
 ### A. Reproduce the executable foundations
 
@@ -1056,7 +1133,7 @@ Port the Lean proofs for the two structural facts back to Haskell:
 Do not replace these assumptions with a differently named assumed lemma or an
 unchecked `unsafeCoerce` boundary.
 
-Exit criterion: the first two `assume` declarations are gone and
+Exit criterion: both structural laws are checked without trust directives and
 `make verify-liquid` passes.
 
 ### Phase 5: align presheaves and Yoneda packaging
@@ -1078,8 +1155,8 @@ these separate:
 The first group is mathematics; the second is an encoding theorem specific to
 GHC and LiquidHaskell.
 
-Exit criterion: Lean models both the mathematical law and the exact packaging
-boundary at which LiquidHaskell currently fails.
+Exit criterion: Lean models both the mathematical law and the exact indexed,
+rank-polymorphic packaging boundary checked by LiquidHaskell.
 
 ### Phase 6: checked Yoneda packaging
 
@@ -1241,19 +1318,21 @@ The alignment is complete when all of the following hold:
   to gain its semantic bridge before downstream migration, and retire obsolete
   compatibility aliases after their callers move.
 
-## Recommended first vertical slice
+## Current implementation priorities
 
-The first implementation change should be deliberately narrow:
+1. Retain canonical source validity through stable-insertion construction and
+   elimination. Coalition's checked mapping worker already retains the target
+   owner and canonical target validity through identity and composition.
+2. Close the raw coalition mapper's source-validity boundary using those stored
+   insertion contracts, retaining the existing exact forward/inverse laws.
+3. Complete the Charter and Dominion-inclusion assembly contracts, preserving
+   their existing Lean interpretation and inverse laws.
+4. Finish the remaining core representation bridges and derived constructions
+   in Phase 7's dependency order. Keep the manifest's partial and pending
+   statuses until their complete obligations are checked.
+5. Remove superseded code and perform the final validation and preprint audit
+   required by the definition of done.
 
-1. Add executable `AtlasHom` syntax in Lean with exactly the Haskell constructors.
-2. Port `presheafIdentity` and `presheafCompose` verbatim at the equation level.
-3. Prove right identity and associativity by structural induction.
-4. Connect syntax evaluation to the existing `AtlHom` composition where possible,
-   using the current coherence lemmas for the padded presentation.
-5. Port the two proof recipes to LiquidHaskell and remove the first two
-   assumptions.
-
-This slice tests the proof-transfer method against real trust holes before the
-larger representation migration. The full Atlas rewrite should follow once it
-has confirmed which indexed/GADT proof patterns both Lean and LiquidHaskell can
-support cleanly.
+Use focused positive and rejection checks while completing each construction.
+The absence of trust directives is an invariant throughout this work, not a
+substitute for the remaining representation and assembly proofs.

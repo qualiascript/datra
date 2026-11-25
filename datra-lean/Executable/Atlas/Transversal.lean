@@ -56,6 +56,22 @@ structure TransversalAction (X Y : Atlas) where
   preserves : (c : X.CertifiedCoveredElement) →
     {w : Y.CoverageWitness // w.Valid ∧ transversalImageCovered ordered c w = true}
 
+-- ALIGN: ATLAS-TRANSVERSAL-PRIMITIVE-COVERED.
+def mapTransversalAction {X Y : Atlas} (action : TransversalAction X Y)
+    (covered : X.CertifiedCoveredElement) : Y.CertifiedCoveredElement :=
+  let witness := action.preserves covered
+  let image := transversalImage action.ordered covered
+  Y.atlasCoveredByWitness image.1 image.2 witness.val witness.property.2
+
+theorem mapTransversalAction_valid {X Y : Atlas} (action : TransversalAction X Y)
+    (covered : X.CertifiedCoveredElement) :
+    Y.coveredPageElementValid (mapTransversalAction action covered).val = true :=
+  (mapTransversalAction action covered).property.2
+
+theorem mapTransversalAction_witness {X Y : Atlas} (action : TransversalAction X Y)
+    (covered : X.CertifiedCoveredElement) :
+    (mapTransversalAction action covered).val.witness = (action.preserves covered).val := rfl
+
 inductive Transversal : Atlas → Atlas → Type 2
   | primitive {X Y} (action : TransversalAction X Y) : Transversal X Y
   | identity {X} : Transversal X X
@@ -66,6 +82,50 @@ def atlasTransversal {X Y : Atlas} (ordered : OrderedTransposal X Y)
       {w : Y.CoverageWitness // w.Valid ∧ transversalImageCovered ordered c w = true}) : Transversal X Y :=
   .primitive ⟨ordered, preserves⟩
 
+/-- An unchanged result retains the caller's source owner. An actual mapped
+result retains its certified target, even when followed by an identity. -/
+inductive TransversalCoveredImage : Atlas → Atlas → Type 2
+  | unchanged {X} : TransversalCoveredImage X X
+  | mapped {X Y} (image : Y.CertifiedCoveredElement) : TransversalCoveredImage X Y
+
+def TransversalCoveredImage.resolve {X Y : Atlas} (image : TransversalCoveredImage X Y)
+    (source : X.CertifiedCoveredElement) : Y.CertifiedCoveredElement :=
+  match image with
+  | .unchanged => source
+  | .mapped covered => covered
+
+def TransversalCoveredImage.bind {X Y Z : Atlas} (image : TransversalCoveredImage X Y)
+    (next : Y.CertifiedCoveredElement → TransversalCoveredImage Y Z)
+    (source : X.CertifiedCoveredElement) : TransversalCoveredImage X Z :=
+  match image with
+  | .unchanged => next source
+  | .mapped covered =>
+      match next covered with
+      | .unchanged => .mapped covered
+      | .mapped result => .mapped result
+
+theorem TransversalCoveredImage.resolve_bind {X Y Z : Atlas} (image : TransversalCoveredImage X Y)
+    (next : Y.CertifiedCoveredElement → TransversalCoveredImage Y Z)
+    (source : X.CertifiedCoveredElement) :
+    (image.bind next source).resolve source = (next (image.resolve source)).resolve (image.resolve source) := by
+  cases image with
+  | unchanged => rfl
+  | mapped covered => cases h : next covered <;> simp [bind, resolve, h]
+
+-- ALIGN: ATLAS-TRANSVERSAL-OWNED-IMAGE.
+def transversalCoveredImage {X Y : Atlas} :
+    Transversal X Y → X.CertifiedCoveredElement → TransversalCoveredImage X Y
+  | .identity, _ => .unchanged
+  | .primitive action, covered => .mapped (mapTransversalAction action covered)
+  | .composite second first, covered =>
+      (transversalCoveredImage first covered).bind (transversalCoveredImage second) covered
+
+-- ALIGN: ATLAS-TRANSVERSAL-OWNED-ELIMINATION.
+def withAtlasTransversalCoveredImage {X Y : Atlas} {Result : Sort*}
+    (f : Transversal X Y) (covered : X.CertifiedCoveredElement)
+    (useImage : Y.CertifiedCoveredElement → Result) : Result :=
+  useImage ((transversalCoveredImage f covered).resolve covered)
+
 namespace Transversal
 
 def underlying {X Y : Atlas} : Transversal X Y → OrderedTransposal X Y
@@ -73,13 +133,33 @@ def underlying {X Y : Atlas} : Transversal X Y → OrderedTransposal X Y
   | .identity => .identity
   | .composite second first => OrderedTransposal.comp second.underlying first.underlying
 
-def mapCovered {X Y : Atlas} : Transversal X Y → X.CertifiedCoveredElement → Y.CertifiedCoveredElement
-  | .identity, c => c
-  | .composite second first, c => second.mapCovered (first.mapCovered c)
-  | .primitive action, c =>
-      let witness := action.preserves c
-      let image := transversalImage action.ordered c
-      Y.atlasCoveredByWitness image.1 image.2 witness.val witness.property.2
+def mapCovered {X Y : Atlas} (f : Transversal X Y)
+    (c : X.CertifiedCoveredElement) : Y.CertifiedCoveredElement :=
+  (transversalCoveredImage f c).resolve c
+
+theorem mapCovered_composite {X Y Z : Atlas} (second : Transversal Y Z) (first : Transversal X Y)
+    (c : X.CertifiedCoveredElement) :
+    (composite second first).mapCovered c = second.mapCovered (first.mapCovered c) :=
+  TransversalCoveredImage.resolve_bind (transversalCoveredImage first c) (transversalCoveredImage second) c
+
+theorem withCoveredImage_agrees {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
+    (c : X.CertifiedCoveredElement) (useImage : Y.CertifiedCoveredElement → Result) :
+    withAtlasTransversalCoveredImage f c useImage = useImage (f.mapCovered c) := rfl
+
+/-- Coverage callbacks may choose different witnesses, but the dependent image
+is determined by the source cell and datum. -/
+theorem mapCovered_data_congr {X Y : Atlas} (f : Transversal X Y)
+    (left right : X.CertifiedCoveredElement) (same : left.data = right.data) :
+    (f.mapCovered left).data = (f.mapCovered right).data := by
+  induction f with
+  | identity => exact same
+  | primitive action =>
+      change action.ordered.underlying.hom.mapData left.data =
+        action.ordered.underlying.hom.mapData right.data
+      rw [same]
+  | composite second first ih₂ ih₁ =>
+      rw [mapCovered_composite, mapCovered_composite]
+      exact ih₂ _ _ (ih₁ left right same)
 
 theorem underlying_composite {X Y Z : Atlas} (second : Transversal Y Z) (first : Transversal X Y) :
     (composite second first).underlying.underlying.hom.finiteSemantics =
@@ -104,7 +184,7 @@ theorem mapCovered_interpretation {X Y : Atlas} (f : Transversal X Y)
       rw [Hom.finiteSemantics_identity]
       exact h
   | composite second first ih₂ ih₁ =>
-      rw [underlying_composite]
+      rw [underlying_composite, mapCovered_composite]
       exact ih₂ (first.mapCovered c)
         (mapSemanticData first.underlying.underlying.hom.finiteSemantics source) (ih₁ c source h)
 

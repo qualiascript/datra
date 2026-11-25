@@ -9,6 +9,8 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
+-- Explicit contracts avoid inferred predicates on existential GADT type arguments.
+{-@ LIQUID "--fast" @-}
 
 -- | Hidden implementation of Atlas transversals using Atlas coverage evidence.
 module AtlasTransversal.Internal
@@ -21,6 +23,8 @@ module AtlasTransversal.Internal
   , atlasTransversalHom
   , atlasTransversalPreservesCoverage
   , mapAtlasTransversalCoveredPageElement
+  , withAtlasTransversalCoveredImage
+  , atlasTransversalSize
   , identityAtlasTransversal
   , composeAtlasTransversals
   , mapAtlasTransversalObject
@@ -46,10 +50,13 @@ import Atlas
   )
 import AtlasCoveredPageElement
   ( CoverageWitness
+  , CoveredPageElement
   , AtlasCoveredPageElement
   , withAtlasCoveredPageElement
   , atlasCoveredByWitness
   , coverageWitnessCovers
+  , coveredPageElementValid
+  , atlasCoveredPageElementWitness
   )
 import AtlasTransposal (AtlasTransposal, AtlasTransposalElement)
 import Control.Category (Category (..))
@@ -100,7 +107,7 @@ type role TransversalAction nominal nominal nominal nominal nominal nominal nomi
       { transversalSource :: Atlas sa ss sd so sf
       , transversalTarget :: Atlas ta ts td to tf
       , transversalOrdered :: OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
-      , transversalCoverage :: covered:AtlasCoveredPageElement (AtlasObject sa ss sd)
+      , transversalCoverage :: covered:CoveredPageElement sa ss sd
           -> {witness:CoverageWitness ta ts td |
                 transversalImageCovered transversalSource transversalTarget transversalOrdered covered witness}
       } @-}
@@ -108,7 +115,7 @@ data TransversalAction sa ss sd so sf ta ts td to tf = TransversalAction
   { transversalSource :: Atlas sa ss sd so sf
   , transversalTarget :: Atlas ta ts td to tf
   , transversalOrdered :: OrderedAtlasTransposal (AtlasObject sa ss sd) (AtlasObject ta ts td)
-  , transversalCoverage :: AtlasCoveredPageElement (AtlasObject sa ss sd)
+  , transversalCoverage :: CoveredPageElement sa ss sd
       -> CoverageWitness ta ts td
   }
 
@@ -125,7 +132,7 @@ data TransversalImage target where
 transversalImage
   :: Atlas sa ss sd so sf
   -> OrderedAtlasTransposal (AtlasObject sa ss sd) target
-  -> AtlasCoveredPageElement (AtlasObject sa ss sd)
+  -> CoveredPageElement sa ss sd
   -> TransversalImage target
 transversalImage sourceAtlas ordered covered =
   withAtlasCoveredPageElement covered $ \sourceOccurrence sourceDatum ->
@@ -141,7 +148,7 @@ transversalImage sourceAtlas ordered covered =
 withTransversalImage
   :: Atlas sourceAtlasScope sourceScope sourceCellData sourceOrigin sourceFinal
   -> OrderedAtlasTransposal (AtlasObject sourceAtlasScope sourceScope sourceCellData) target
-  -> AtlasCoveredPageElement (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+  -> CoveredPageElement sourceAtlasScope sourceScope sourceCellData
   -> (forall object. PageElement (AtlasObjectPaginationScope target) object
         -> AtlasObjectCellData target object -> result)
   -> result
@@ -158,7 +165,7 @@ transversalImageCovered
   -> OrderedAtlasTransposal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
-  -> AtlasCoveredPageElement (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+  -> CoveredPageElement sourceAtlasScope sourceScope sourceCellData
   -> CoverageWitness targetAtlasScope targetScope targetCellData
   -> Bool
 transversalImageCovered sourceAtlas targetAtlas ordered covered witness =
@@ -177,8 +184,7 @@ atlasTransversal
   -> ordered:OrderedAtlasTransposal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
-  -> preservesCoverage:(covered:AtlasCoveredPageElement
-         (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+  -> preservesCoverage:(covered:CoveredPageElement sourceAtlasScope sourceScope sourceCellData
        -> { witness:CoverageWitness targetAtlasScope targetScope targetCellData |
             transversalImageCovered sourceAtlas targetAtlas ordered covered witness })
   -> AtlasTransversal
@@ -194,8 +200,7 @@ atlasTransversal
   -> OrderedAtlasTransposal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
-  -> (AtlasCoveredPageElement
-         (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+  -> (CoveredPageElement sourceAtlasScope sourceScope sourceCellData
        -> CoverageWitness targetAtlasScope targetScope targetCellData)
   -> AtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
@@ -231,6 +236,106 @@ atlasTransversalHom
 atlasTransversalHom =
   orderedAtlasTransposalHom . atlasTransversalOrderedTransposal
 
+-- | Package the primitive's exact image with its supplied witness, retaining
+-- validity for the target Atlas stored in the same action.
+-- ALIGN: ATLAS-TRANSVERSAL-PRIMITIVE-COVERED.
+{-@ mapTransversalAction
+      :: action:TransversalAction sa ss sd so sf ta ts td to tf
+      -> covered:CoveredPageElement sa ss sd
+      -> {result:CoveredPageElement ta ts td |
+           coveredPageElementValid (transversalTarget action) result
+           && atlasCoveredPageElementWitness result == transversalCoverage action covered} @-}
+mapTransversalAction
+  :: TransversalAction sa ss sd so sf ta ts td to tf
+  -> CoveredPageElement sa ss sd
+  -> CoveredPageElement ta ts td
+mapTransversalAction action covered =
+  let witness = transversalCoverage action covered
+  in case transversalImage (transversalSource action) (transversalOrdered action) covered of
+    TransversalImage targetOccurrence targetDatum ->
+      atlasCoveredByWitness (transversalTarget action) targetOccurrence targetDatum witness
+
+-- | Identity needs no new owner. Every actual image retains the Atlas used to
+-- certify it, including when a later identity leaves that image unchanged.
+type role TransversalCoveredImage nominal nominal
+data TransversalCoveredImage source target where
+  UnchangedTransversalCoveredImage :: TransversalCoveredImage object object
+  MappedTransversalCoveredImage
+    :: CoveredImageData a s d o f
+    -> TransversalCoveredImage source (AtlasObject a s d)
+
+type role CoveredImageData nominal nominal nominal nominal nominal
+{-@ data CoveredImageData a s d o f = CoveredImageData
+      { coveredImageOwner :: Atlas a s d o f
+      , coveredImageValue :: {covered:CoveredPageElement a s d |
+                               coveredPageElementValid coveredImageOwner covered}
+      } @-}
+data CoveredImageData a s d o f = CoveredImageData
+  { coveredImageOwner :: Atlas a s d o f
+  , coveredImageValue :: CoveredPageElement a s d
+  }
+
+{-@ withCoveredImageData :: image:CoveredImageData a s d o f
+      -> (owner:Atlas a s d o f
+            -> {covered:CoveredPageElement a s d | coveredPageElementValid owner covered}
+            -> result)
+      -> result @-}
+withCoveredImageData :: CoveredImageData a s d o f
+  -> (Atlas a s d o f -> CoveredPageElement a s d -> result) -> result
+withCoveredImageData image useImage = useImage (coveredImageOwner image) (coveredImageValue image)
+
+{-@ measure atlasTransversalSize @-}
+{-@ atlasTransversalSize :: AtlasTransversal source target -> {size:Integer | size > 0} @-}
+atlasTransversalSize :: AtlasTransversal source target -> Integer
+atlasTransversalSize IdentityAtlasTransversal = 1
+atlasTransversalSize (PrimitiveAtlasTransversal _) = 1
+atlasTransversalSize (CompositeAtlasTransversal second first) =
+  1 + atlasTransversalSize second + atlasTransversalSize first
+
+-- ALIGN: ATLAS-TRANSVERSAL-OWNED-IMAGE.
+{-@ transversalCoveredImage :: transversal:AtlasTransversal source target
+      -> AtlasCoveredPageElement source -> TransversalCoveredImage source target
+      / [atlasTransversalSize transversal] @-}
+transversalCoveredImage
+  :: AtlasTransversal source target
+  -> AtlasCoveredPageElement source
+  -> TransversalCoveredImage source target
+transversalCoveredImage IdentityAtlasTransversal _ = UnchangedTransversalCoveredImage
+transversalCoveredImage (PrimitiveAtlasTransversal action) covered =
+  MappedTransversalCoveredImage
+    (CoveredImageData (transversalTarget action) (mapTransversalAction action covered))
+transversalCoveredImage (CompositeAtlasTransversal second first) covered =
+  let mapSecond = transversalCoveredImage second
+  in case transversalCoveredImage first covered of
+    UnchangedTransversalCoveredImage -> mapSecond covered
+    MappedTransversalCoveredImage image ->
+      case mapSecond (coveredImageValue image) of
+        UnchangedTransversalCoveredImage -> MappedTransversalCoveredImage image
+        MappedTransversalCoveredImage result -> MappedTransversalCoveredImage result
+
+-- | Inspect a covered image with the exact owner that certifies it. The target
+-- origin and final-page carriers remain existential inside the callback.
+-- ALIGN: ATLAS-TRANSVERSAL-OWNED-ELIMINATION.
+{-@ withAtlasTransversalCoveredImage
+      :: sourceOwner:Atlas sa ss sd so sf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoveredPageElement sa ss sd | coveredPageElementValid sourceOwner source}
+      -> (forall o f. owner:Atlas ta ts td o f
+            -> {image:CoveredPageElement ta ts td | coveredPageElementValid owner image}
+            -> result)
+      -> result @-}
+withAtlasTransversalCoveredImage
+  :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoveredPageElement sa ss sd
+  -> (forall o f. Atlas ta ts td o f -> CoveredPageElement ta ts td -> result)
+  -> result
+withAtlasTransversalCoveredImage sourceOwner transversal covered useImage =
+  let sourceImage = CoveredImageData sourceOwner covered
+  in case transversalCoveredImage transversal covered of
+    UnchangedTransversalCoveredImage -> withCoveredImageData sourceImage useImage
+    MappedTransversalCoveredImage image -> withCoveredImageData image useImage
+
 -- | Map a covered page element and derive coverage of its exact target image. This
 -- is total: malformed preservation callbacks are rejected when the primitive
 -- transversal is compiled, rather than producing a runtime failure here.
@@ -239,20 +344,10 @@ mapAtlasTransversalCoveredPageElement
   :: AtlasTransversal source target
   -> AtlasCoveredPageElement source
   -> AtlasCoveredPageElement target
-mapAtlasTransversalCoveredPageElement IdentityAtlasTransversal covered =
-  covered
-mapAtlasTransversalCoveredPageElement
-  (CompositeAtlasTransversal second first)
-  covered =
-    mapAtlasTransversalCoveredPageElement second
-      (mapAtlasTransversalCoveredPageElement first covered)
-mapAtlasTransversalCoveredPageElement
-  (PrimitiveAtlasTransversal action)
-  covered =
-    let witness = transversalCoverage action covered
-    in case transversalImage (transversalSource action) (transversalOrdered action) covered of
-      TransversalImage targetOccurrence targetDatum ->
-        atlasCoveredByWitness (transversalTarget action) targetOccurrence targetDatum witness
+mapAtlasTransversalCoveredPageElement transversal covered =
+  case transversalCoveredImage transversal covered of
+    UnchangedTransversalCoveredImage -> covered
+    MappedTransversalCoveredImage image -> coveredImageValue image
 
 -- | The covered-page-element preservation condition of an Atlas transversal.
 -- This is named separately from the operational mapper so downstream

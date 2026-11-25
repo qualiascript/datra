@@ -44,6 +44,26 @@ inductive StableTransversal : Atlas → Atlas → Type 2
 
 namespace StableTransversal
 
+/-- A primitive executable certificate acts on the canonical record. The
+covered-value presentation is an equivalent carrier, including for failed
+inverse lookups. -/
+-- ALIGN: ATLAS-STABLE-CARRIER-CONSTRUCTOR.
+def primitiveFromCarrier {X Y : Atlas} (transversal : Transversal X Y)
+    (preserves : stableOriginPreserved transversal = true)
+    (backward : Y.Coalition → Option X.Coalition)
+    (leftInverse : ∀ value, backward (mapCoalitionElement transversal value) = some value) :
+    StableTransversal X Y :=
+  .primitive transversal preserves
+    (fun value => (backward value.presentation).map CertifiedCoalitionElement.value)
+    (fun value => by
+      change (backward (mapCoalitionValue transversal value).presentation).map
+        CertifiedCoalitionElement.value = some value
+      have mapped : (mapCoalitionValue transversal value).presentation =
+          mapCoalitionElement transversal value.presentation := by
+        rw [mapCoalitionElement_presentation, value.presentation_value]
+      rw [mapped, leftInverse]
+      exact congrArg some value.presentation_value)
+
 def underlying {X Y : Atlas} : StableTransversal X Y → Transversal X Y
   | .primitive transversal _ _ _ => transversal
   | .identity => .identity
@@ -118,16 +138,44 @@ def coalitionInsertion {X Y : Atlas} : StableTransversal X Y → DomanialInserti
   | .identity => DomanialInsertion.identity _
   | .composite second first => first.coalitionInsertion.comp second.coalitionInsertion
 
+/-- Retain both directions on the exact executable carrier. The value-level
+insertion remains the small-carrier interface to the written mathematics. -/
+def coalitionCarrierInsertion {X Y : Atlas} (f : StableTransversal X Y) :
+    DomanialInsertion X.Coalition Y.Coalition :=
+  f.coalitionInsertion.reindex (coalitionValueEquiv X).symm (coalitionValueEquiv Y).symm
+
+-- ALIGN: ATLAS-STABLE-CARRIER-FORWARD.
+theorem coalitionCarrierInsertion_primitive_map {X Y : Atlas} (transversal : Transversal X Y)
+    (preserves : stableOriginPreserved transversal = true)
+    (backward : Y.Coalition → Option X.Coalition)
+    (leftInverse : ∀ value, backward (mapCoalitionElement transversal value) = some value)
+    (value : X.Coalition) :
+    (primitiveFromCarrier transversal preserves backward leftInverse).coalitionCarrierInsertion.map value =
+      mapCoalitionElement transversal value :=
+  (mapCoalitionElement_presentation transversal value).symm
+
+-- ALIGN: ATLAS-STABLE-CARRIER-INVERSE.
+theorem coalitionCarrierInsertion_primitive_preimage {X Y : Atlas} (transversal : Transversal X Y)
+    (preserves : stableOriginPreserved transversal = true)
+    (backward : Y.Coalition → Option X.Coalition)
+    (leftInverse : ∀ value, backward (mapCoalitionElement transversal value) = some value)
+    (value : Y.Coalition) :
+    (primitiveFromCarrier transversal preserves backward leftInverse).coalitionCarrierInsertion.preimage value =
+      backward value := by
+  change ((backward value.value.presentation).map CertifiedCoalitionElement.value).map
+    CoalitionValue.presentation = backward value
+  have rebuild (c : X.Coalition) : c.value.presentation = c :=
+    (coalitionValueEquiv X).left_inv c
+  have targetRebuild : value.value.presentation = value := (coalitionValueEquiv Y).left_inv value
+  rw [targetRebuild, Option.map_map]
+  simp only [Function.comp_def, rebuild]
+  cases backward value <;> rfl
+
 -- ALIGN: COALITION-LEFT-INVERSE.
-theorem coalition_leftInverse {X Y : Atlas} (f : StableTransversal X Y) (value : X.CoalitionValue) :
-    f.coalitionInsertion.preimage (f.coalitionInsertion.map value) = some value :=
-  f.coalitionInsertion.leftInverse value
+theorem coalitionCarrier_leftInverse {X Y : Atlas} (f : StableTransversal X Y) (value : X.Coalition) :
+    f.coalitionCarrierInsertion.preimage (f.coalitionCarrierInsertion.map value) = some value :=
+  f.coalitionCarrierInsertion.leftInverse value
 
--- ALIGN: COALITION-IDENTITY.
-theorem coalitionInsertion_identity (X : Atlas) :
-    (identity : StableTransversal X X).coalitionInsertion = DomanialInsertion.identity _ := rfl
-
--- ALIGN: COALITION-COMPOSITION.
 theorem coalitionInsertion_comp {X Y Z : Atlas} (second : StableTransversal Y Z)
     (first : StableTransversal X Y) :
     (comp second first).coalitionInsertion = first.coalitionInsertion.comp second.coalitionInsertion := by
@@ -137,7 +185,6 @@ theorem coalitionInsertion_comp {X Y Z : Atlas} (second : StableTransversal Y Z)
   | composite middle first ih _ =>
       cases second <;> simp_all [comp, coalitionInsertion, DomanialInsertion.comp_assoc]
 
--- ALIGN: COALITION-STABLE-INTERPRETATION.
 theorem coalitionInsertion_interpretation {X Y : Atlas} (f : StableTransversal X Y)
     (c : X.CoalitionValue) :
     CoalitionValue.semanticsEquiv Y (f.coalitionInsertion.map c) =
@@ -161,6 +208,30 @@ theorem coalitionInsertion_interpretation {X Y : Atlas} (f : StableTransversal X
       rw [Datra.Semantics.Coa.map_comp]
       exact (ih₂ (first.coalitionInsertion.map c)).trans
         (congrArg (Datra.Semantics.stableCoalitionMap second.toSemantics) (ih₁ c))
+
+-- ALIGN: COALITION-IDENTITY.
+theorem coalitionCarrierInsertion_identity (X : Atlas) :
+    (identity : StableTransversal X X).coalitionCarrierInsertion = DomanialInsertion.identity _ := by
+  exact DomanialInsertion.reindex_identity (coalitionValueEquiv X).symm
+
+-- ALIGN: COALITION-COMPOSITION.
+theorem coalitionCarrierInsertion_comp {X Y Z : Atlas} (second : StableTransversal Y Z)
+    (first : StableTransversal X Y) :
+    (comp second first).coalitionCarrierInsertion =
+      first.coalitionCarrierInsertion.comp second.coalitionCarrierInsertion := by
+  unfold coalitionCarrierInsertion
+  rw [coalitionInsertion_comp]
+  exact DomanialInsertion.reindex_comp _ _ _ _ _
+
+-- ALIGN: COALITION-STABLE-INTERPRETATION.
+theorem coalitionCarrierInsertion_interpretation {X Y : Atlas} (f : StableTransversal X Y)
+    (c : X.Coalition) :
+    coalitionSemanticsEquiv Y (f.coalitionCarrierInsertion.map c) =
+      Datra.Semantics.stableCoalitionMap f.toSemantics (coalitionSemanticsEquiv X c) := by
+  change CoalitionValue.semanticsEquiv Y
+    (f.coalitionInsertion.map c.value).presentation.value = _
+  rw [CoalitionValue.presentation_value]
+  exact f.coalitionInsertion_interpretation c.value
 
 end StableTransversal
 end Datra.Executable.Atlas

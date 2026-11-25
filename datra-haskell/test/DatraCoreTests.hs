@@ -3157,6 +3157,16 @@ testAtlasTransversal =
                     ( pageElementPage mapped == 2
                       && rank (atlasDataAt valueAtlas mapped) datum == 9
                     )
+                mapM_ (\arrow ->
+                  withAtlasTransversalCoveredImage valueAtlas arrow covered $ \owner image -> do
+                    assert "transversal elimination retains the image's certifying owner"
+                      (coveredPageElementValid owner image)
+                    let canonical = CoalitionElement.coalitionFromCovered owner image
+                    assert "transversal images canonicalize using the retained owner"
+                      (CoalitionElement.coalitionElementValid owner canonical
+                        && CoalitionElement.coalitionElementRank canonical ==
+                          coverageWitnessOriginRank (atlasCoveredPageElementWitness image)))
+                  [identityAtlasTransversal, transversal, composed]
 
 testStableAtlasTransversal :: IO ()
 testStableAtlasTransversal =
@@ -3287,6 +3297,18 @@ testCoalition =
                       )
               assert "a coalition is the covered chart extent"
                 (decoded == (0, 7))
+              mapM_ (\arrow ->
+                CoalitionElement.withMappedCoalitionElement valueAtlas arrow element $ \owner result -> do
+                  assert "coalition mapping retains its certifying target owner"
+                    (CoalitionElement.coalitionElementValid owner result)
+                  withCoalitionElement result $ \source _ ->
+                    withPageElement (atlasOriginCell owner) $ \origin ->
+                      assert "coalition mapping retains the canonical target origin coordinates"
+                        (pageElementPage source == pageElementPage origin
+                          && pageElementPosition source == pageElementPosition origin)
+                  assert "coalition mapping agrees with its raw carrier action"
+                    (result == CoalitionElement.mapCoalitionElement valueAtlas arrow element))
+                [identityAtlasTransversal, transversal, transversal Category.. transversal]
               let mapped =
                     applyInsertion
                       (coalizingFunctorHom witness witness stable)

@@ -27,6 +27,7 @@ module AtlasCoveredPageElement.Internal
   , coverageWitnessCode
   , coverageWitnessBound
   , coverageWitnessAlongArrow
+  , coverageWitnessTransport
   , coverageFinalPage
   , coverageNormalize
   , atlasOriginImageRank
@@ -339,6 +340,25 @@ coverageWitnessAtRank owner sourceRank
     && coverageRegionPage value == coverageFinalPage owner
     && sourceRank == coverageRegionRank value
 
+-- | The same witness covers a datum exactly when it covers its transported image.
+-- ALIGN: ATLAS-COVERAGE-TRANSPORT-EQUALITY.
+{-@ coverageWitnessTransport :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
+      -> datum:{d source | atlasAcceptsDatum owner (arrowSource arrow) datum}
+      -> witness:CoverageWitness a s d
+      -> {coverageWitnessCovers owner (arrowSource arrow) datum witness
+           == coverageWitnessCovers owner (arrowTarget arrow)
+                (applyInsertion (mapAtlasData owner arrow) datum) witness} @-}
+coverageWitnessTransport
+  :: Atlas a s d o f -> PageElementArrow s source target -> d source
+  -> CoverageWitness a s d -> ()
+coverageWitnessTransport owner arrow datum _witness =
+  cellTraceHasOrigin owner (arrowSource arrow) `seq`
+  cellTraceHasOrigin owner (arrowTarget arrow) `seq`
+  applyInsertion (mapAtlasData owner arrow) datum `seq`
+  cellOriginRankMap owner arrow datum
+
 -- | A witness for a transported datum also covers the original datum.
 -- ALIGN: ATLAS-COVERAGE-TRANSPORT.
 {-@ coverageWitnessAlongArrow :: owner:Atlas a s d o f
@@ -352,10 +372,7 @@ coverageWitnessAtRank owner sourceRank
 coverageWitnessAlongArrow
   :: Atlas a s d o f -> PageElementArrow s source target -> d source
   -> CoverageWitness a s d -> ()
-coverageWitnessAlongArrow owner arrow datum _witness =
-  cellTraceHasOrigin owner (arrowSource arrow) `seq`
-  cellTraceHasOrigin owner (arrowTarget arrow) `seq`
-  cellOriginRankMap owner arrow datum
+coverageWitnessAlongArrow = coverageWitnessTransport
 
 {-@ opaque-reflect coverageRegionWitness @-}
 {-@ coverageRegionWitness :: owner:Atlas a s d o f

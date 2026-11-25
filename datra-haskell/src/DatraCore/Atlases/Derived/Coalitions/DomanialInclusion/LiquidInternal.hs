@@ -17,14 +17,14 @@ module DomanialInclusion.LiquidInternal
   , coaDomIncIso, coaDomIncIsoLeftInverse, coaDomIncIsoRightInverse ) where
 
 import Atlas
-  ( Atlas, AtlasObject, atlasFolio, atlasPageElements, atlasAcceptsDatum
+  ( Atlas, atlasFolio, atlasPageElements, atlasAcceptsDatum
   , atlasNormalizationAgrees, atlasNormalizationArrow, atlasCoherenceWitness )
 import AtlasCoveredPageElement
   ( CoverageWitness, atlasCoverageWitness, coverageWitnessCovers, coverageWitnessAlongArrow )
 import AtlasExtent (cellTraceValid)
 import AtlasMap (AtlasMap, atlasMap)
 import Coalition.Element
-  ( CoalitionElement, CoalitionData, coalitionElementAt, coalitionElement
+  ( CoalitionData, coalitionElementAt, coalitionElementReaches, coalitionElement
   , coalitionElementExtensionality, coalitionViewSource, coalitionElementViewSource
   , CoalitionView (..), viewCoalitionElement, coalitionElementView, coalitionElementValid, coalitionElementSource )
 import DomanialInsertion.Core (DomanialInsertion (..), domanialInsertion, composeInsertions)
@@ -281,44 +281,67 @@ coaDomIncIsoRightInverse owner value = case coaDomIncIso owner of
 
 -- | A coalition inverse is defined only on covered values. The component
 -- inverse additionally handles arbitrary target data, including uncovered data.
-{-@ reflect coalitionElementAt @-}
 {-@
 coalitionComponentInsertion
   :: targetAtlas:Atlas atlasScope scope cellData origin final
-  -> targetOccurrence:PageElement scope object
-  -> forward:(a -> CoalitionElement (AtlasObject atlasScope scope cellData))
+  -> targetOccurrence:{PageElement scope object | cellTraceValid targetAtlas targetOccurrence}
+  -> forward:(a -> {element:CoalitionData atlasScope scope cellData |
+       coalitionElementValid targetAtlas element
+       && coalitionElementSource element == originPageElement (atlasPageElements targetAtlas)
+       && coalitionElementReaches element targetOccurrence})
   -> backward:(cellData object -> Maybe a)
   -> (value:a -> { backward (coalitionElementAt targetAtlas targetOccurrence
                               (forward value)) == Just value })
-  -> DomanialInsertion (DominionCellData a sourceObject) (cellData object)
+  -> DomanialInsertion (DominionCellData a sourceObject)
+       ({datum:cellData object | atlasAcceptsDatum targetAtlas targetOccurrence datum})
 @-}
 -- ALIGN: DOMINC-COMPONENT-INVERSE.
 coalitionComponentInsertion
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
-  -> (a -> CoalitionElement (AtlasObject atlasScope scope cellData))
+  -> (a -> CoalitionData atlasScope scope cellData)
   -> (cellData object -> Maybe a)
   -> (a -> ())
   -> DomanialInsertion (DominionCellData a sourceObject) (cellData object)
 coalitionComponentInsertion targetAtlas targetOccurrence forward backward leftInverse =
-  composeInsertions
-    (domanialInsertion (coalitionComponentMap targetAtlas targetOccurrence forward) backward
-      (coalitionComponentRoundTrip targetAtlas targetOccurrence forward backward leftInverse))
-    dominionCellProjection
+  coalitionComponentInsertionOn (atlasAcceptsDatum targetAtlas targetOccurrence)
+    (coalitionComponentMap targetAtlas targetOccurrence forward) backward
+    (coalitionComponentRoundTrip targetAtlas targetOccurrence forward backward leftInverse)
+
+-- | Keep target membership explicit while composing the constant-cell projection.
+{-@ coalitionComponentInsertionOn :: accepts:(b -> Bool)
+      -> forward:(a -> {datum:b | accepts datum})
+      -> backward:(b -> Maybe a)
+      -> (value:a -> {backward (forward value) == Just value})
+      -> DomanialInsertion (DominionCellData a object) ({datum:b | accepts datum}) @-}
+coalitionComponentInsertionOn :: (b -> Bool) -> (a -> b) -> (b -> Maybe a) -> (a -> ())
+  -> DomanialInsertion (DominionCellData a object) b
+coalitionComponentInsertionOn _ forward backward leftInverse =
+  composeInsertions (domanialInsertion forward backward leftInverse) dominionCellProjection
 
 {-@ reflect coalitionComponentMap @-}
+{-@ coalitionComponentMap :: targetAtlas:Atlas atlasScope scope cellData origin final
+      -> targetOccurrence:{PageElement scope object | cellTraceValid targetAtlas targetOccurrence}
+      -> forward:(a -> {element:CoalitionData atlasScope scope cellData |
+           coalitionElementValid targetAtlas element
+           && coalitionElementSource element == originPageElement (atlasPageElements targetAtlas)
+           && coalitionElementReaches element targetOccurrence})
+      -> a -> {datum:cellData object | atlasAcceptsDatum targetAtlas targetOccurrence datum} @-}
 coalitionComponentMap
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
-  -> (a -> CoalitionElement (AtlasObject atlasScope scope cellData))
+  -> (a -> CoalitionData atlasScope scope cellData)
   -> a -> cellData object
 coalitionComponentMap targetAtlas targetOccurrence forward value =
   coalitionElementAt targetAtlas targetOccurrence (forward value)
 
 {-@ coalitionComponentRoundTrip
       :: targetAtlas:Atlas atlasScope scope cellData origin final
-      -> targetOccurrence:PageElement scope object
-      -> forward:(a -> CoalitionElement (AtlasObject atlasScope scope cellData))
+      -> targetOccurrence:{PageElement scope object | cellTraceValid targetAtlas targetOccurrence}
+      -> forward:(a -> {element:CoalitionData atlasScope scope cellData |
+           coalitionElementValid targetAtlas element
+           && coalitionElementSource element == originPageElement (atlasPageElements targetAtlas)
+           && coalitionElementReaches element targetOccurrence})
       -> backward:(cellData object -> Maybe a)
       -> (value:a -> {backward (coalitionElementAt targetAtlas targetOccurrence (forward value)) == Just value})
       -> value:a
@@ -326,7 +349,7 @@ coalitionComponentMap targetAtlas targetOccurrence forward value =
 coalitionComponentRoundTrip
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
-  -> (a -> CoalitionElement (AtlasObject atlasScope scope cellData))
+  -> (a -> CoalitionData atlasScope scope cellData)
   -> (cellData object -> Maybe a)
   -> (a -> ()) -> a -> ()
 coalitionComponentRoundTrip _ _ _ _ leftInverse value = leftInverse value

@@ -31,22 +31,22 @@ theorem mapCellData_composition {A B C : Type} {source middle target : PageEleme
 inverse alone accepts only covered values, so it cannot perform this job. -/
 -- ALIGN: DOMINC-COMPONENT-INVERSE.
 def coalitionComponentInsertion {A : Type} {X : Atlas} {source : PageElementCell}
-    (target : X.Element) (forward : A → X.CoalitionElement)
-    (arrow : ∀ value, (forward value).source ⟶ target)
+    (target : X.Element) (forward : A → X.CertifiedCoalitionElement)
+    (arrow : ∀ value, (forward value).val.source ⟶ target)
     (backward : X.cellData target.val.cell → Option A)
     (leftInverse : ∀ value,
-      backward (Atlas.coalitionElementAt (forward value) target (arrow value)) = some value) :
+      backward (Atlas.coalitionElementAt (forward value).val target (arrow value)) = some value) :
     DomanialInsertion (CellData A source) (X.cellData target.val.cell) where
-  map datum := Atlas.coalitionElementAt (forward datum.value) target (arrow datum.value)
+  map datum := Atlas.coalitionElementAt (forward datum.value).val target (arrow datum.value)
   preimage datum := (backward datum).map CellData.mk
   leftInverse datum := by simp only [leftInverse, Option.map_some]
 
 theorem coalitionComponentInsertion_preimage {A : Type} {X : Atlas} {source : PageElementCell}
-    (target : X.Element) (forward : A → X.CoalitionElement)
-    (arrow : ∀ value, (forward value).source ⟶ target)
+    (target : X.Element) (forward : A → X.CertifiedCoalitionElement)
+    (arrow : ∀ value, (forward value).val.source ⟶ target)
     (backward : X.cellData target.val.cell → Option A)
     (leftInverse : ∀ value,
-      backward (Atlas.coalitionElementAt (forward value) target (arrow value)) = some value)
+      backward (Atlas.coalitionElementAt (forward value).val target (arrow value)) = some value)
     (datum : X.cellData target.val.cell) :
     (coalitionComponentInsertion (source := source) target forward arrow backward leftInverse).preimage datum =
       (backward datum).map CellData.mk := rfl
@@ -358,7 +358,7 @@ def coalitionMorphism {A : Type} (D : Dominion A) (X : Atlas)
     (leftInverse : ∀ value, backward (forward value).value.val = some value) :
     PrimitiveAtlasMorphism (dominionAtlas D) X where
   object _ := FolioData.ValidElement.originElement X.pages
-  component _ := coalitionComponentInsertion _ (fun value => (forward value).val)
+  component _ := coalitionComponentInsertion _ forward
     (fun value => (forward value).val.source.toOrigin) backward leftInverse
   arrow _ := 𝟙 _
   naturality := by

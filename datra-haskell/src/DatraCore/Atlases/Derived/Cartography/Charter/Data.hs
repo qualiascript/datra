@@ -27,6 +27,8 @@ module Charter.Data
   , chartedCellDataRank
   , chartedCellCoverage
   , chartedCellDataEqual
+  , chartedUnrank
+  , chartedRankRoundTrip
   , chartedDataMap
   , chartedDominion
   , chartedInsertion

@@ -19,6 +19,7 @@ module AtlasCoveredPageElement
   , coverageWitnessCode
   , coverageWitnessBound
   , coverageWitnessAlongArrow
+  , coverageWitnessTransport
   , atlasCoveredPageElement
   , atlasCoveredByWitness
   , atlasCoverageAt
@@ -32,6 +33,7 @@ module AtlasCoveredPageElement
   , atlasCoverageRankLeast
   , coverageRankCanonical
   , coverageRankCanonicalUnique
+  , coverageRankCanonicalSameOrigin
   , coverageRankAlongArrow
   , coverageRankNormalized
   , atlasCoveredAt
@@ -165,3 +167,31 @@ coverageRankAlongArrow = Internal.coverageRankAlongArrow
            == coverageRankCanonical owner (normalizeAtlasElement owner source) datum candidate} @-}
 coverageRankNormalized :: Atlas a s d o f -> PageElement s object -> d object -> Natural -> ()
 coverageRankNormalized = Internal.coverageRankNormalized
+
+-- | Retain both directions of coverage transport at the public interface.
+-- ALIGN: ATLAS-COVERAGE-TRANSPORT-PUBLIC.
+{-@ coverageWitnessTransport :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
+      -> datum:{d source | atlasAcceptsDatum owner (arrowSource arrow) datum}
+      -> witness:CoverageWitness a s d
+      -> {coverageWitnessCovers owner (arrowSource arrow) datum witness
+           == coverageWitnessCovers owner (arrowTarget arrow)
+                (applyInsertion (mapAtlasData owner arrow) datum) witness} @-}
+coverageWitnessTransport :: Atlas a s d o f -> PageElementArrow s source target
+  -> d source -> CoverageWitness a s d -> ()
+coverageWitnessTransport = Internal.coverageWitnessTransport
+
+-- | Equal origin images have the same canonical-code predicate.
+{-@ coverageRankCanonicalSameOrigin :: owner:Atlas a s d o f
+      -> source:{PageElement s sourceObject | cellTraceValid owner source}
+      -> datum:{d sourceObject | atlasAcceptsDatum owner source datum}
+      -> target:{PageElement s targetObject | cellTraceValid owner target}
+      -> targetDatum:{d targetObject | atlasAcceptsDatum owner target targetDatum
+           && atlasOriginImageRank owner source datum == atlasOriginImageRank owner target targetDatum}
+      -> candidate:Natural
+      -> {coverageRankCanonical owner source datum candidate == coverageRankCanonical owner target targetDatum candidate} @-}
+coverageRankCanonicalSameOrigin
+  :: Atlas a s d o f -> PageElement s sourceObject -> d sourceObject
+  -> PageElement s targetObject -> d targetObject -> Natural -> ()
+coverageRankCanonicalSameOrigin = Internal.coverageRankCanonicalSameOrigin

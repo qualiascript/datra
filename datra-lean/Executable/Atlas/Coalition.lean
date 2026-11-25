@@ -28,6 +28,9 @@ structure CoalitionElement (X : Atlas) where
 def CoalitionElement.datum {X : Atlas} (c : X.CoalitionElement) : X.cellData c.source.val.cell :=
   c.charted.value
 
+-- ALIGN: COALITION-CODE.
+def coalitionElementCode {X : Atlas} (c : X.CoalitionElement) : Nat := c.charted.code
+
 abbrev CoalitionView (X : Atlas) := (source : X.Element) × X.cellData source.val.cell
 
 def viewCoalitionElement {X : Atlas} (c : X.CoalitionElement) : X.CoalitionView :=
@@ -56,6 +59,20 @@ theorem coalitionElement_eliminate {X : Atlas} {Result : Sort*} (source : X.Elem
 def coalitionElementAt {X : Atlas} (c : X.CoalitionElement) (target : X.Element)
     (arrow : c.source ⟶ target) : X.cellData target.val.cell :=
   (X.data.action.normalizedMap arrow).map c.datum
+
+def coalitionElementReaches {X : Atlas} (c : X.CoalitionElement) (target : X.Element) : Bool :=
+  decide (target.val.page ≤ c.source.val.page) &&
+    Trace.traceSuffix c.source.val.trace target.val.trace
+
+-- ALIGN: COALITION-TRANSPORT-ARROW.
+theorem coalitionElementReaches_iff {X : Atlas} (c : X.CoalitionElement) (target : X.Element) :
+    coalitionElementReaches c target = true ↔ Nonempty (c.source ⟶ target) := by
+  simp only [coalitionElementReaches, Bool.and_eq_true, decide_eq_true_eq]
+  constructor
+  · rintro ⟨precedes, transported⟩
+    exact ⟨⟨precedes, transported⟩⟩
+  · rintro ⟨arrow⟩
+    exact ⟨arrow.precedes, arrow.transported⟩
 
 -- ALIGN: COALITION-DATUM-TRANSPORT.
 theorem coalitionElementAt_originImage {X : Atlas} (c : X.CoalitionElement) (target : X.Element)
@@ -99,6 +116,7 @@ theorem coalitionElement_checked_view {X : Atlas} (source : X.Element)
     viewCoalitionElement (coalitionElement_checked source atOrigin datum witness covers).val =
       ⟨source, datum⟩ := rfl
 
+-- ALIGN: COALITION-COVERED-CARRIER.
 def CertifiedCoalitionElement.coveredElement {X : Atlas}
     (c : X.CertifiedCoalitionElement) : X.CertifiedCoveredElement :=
   let accepted := Charter.CachedCellData.accepted c.property.1
@@ -120,6 +138,14 @@ def CertifiedCoalitionElement.value {X : Atlas} (c : X.CertifiedCoalitionElement
 
 def CertifiedCoalitionElement.rank {X : Atlas} (c : X.CertifiedCoalitionElement) : Nat :=
   c.val.originRank
+
+-- ALIGN: COALITION-DATUM-RANK.
+theorem coalitionElementAt_rank {X : Atlas} (c : X.CertifiedCoalitionElement)
+    (target : X.Element) (arrow : c.val.source ⟶ target) :
+    X.originImageRank target (coalitionElementAt c.val target arrow) = c.rank := by
+  unfold originImageRank
+  rw [coalitionElementAt_originImage]
+  exact c.property.2.1.symm
 
 -- ALIGN: COALITION-CACHED-RANK.
 theorem CertifiedCoalitionElement.rank_spec {X : Atlas} (c : X.CertifiedCoalitionElement) :
@@ -175,6 +201,11 @@ theorem CertifiedCoalitionElement.ext_view {X : Atlas}
   apply CertifiedCoalitionElement.ext
   apply Subtype.ext
   exact congrArg (fun viewed : CoalitionView X => X.originImage viewed.1 viewed.2) same
+
+-- ALIGN: COALITION-RANK-EXTENSIONALITY.
+theorem CertifiedCoalitionElement.ext_rank {X : Atlas}
+    (left right : X.CertifiedCoalitionElement) (same : left.rank = right.rank) : left = right :=
+  CertifiedCoalitionElement.ext left right ((left.rank_eq_iff right).mp same)
 
 -- ALIGN: COALITION-CANONICAL-RECONSTRUCTION.
 theorem coalitionElement_checked_reconstruct {X : Atlas} (element : X.CertifiedCoalitionElement)
@@ -253,27 +284,70 @@ noncomputable def coalitionSemanticsEquiv (X : Atlas) :
     X.Coalition ≃ Datra.Semantics.coveredDom X.toSemantics X.toSemantics.Fo.originElement :=
   (coalitionValueEquiv X).trans (CoalitionValue.semanticsEquiv X)
 
-def coalitionRank {X : Atlas} (c : X.CoalitionValue) : Nat :=
-  X.findAtlasCoverageRank (FolioData.ValidElement.originElement X.pages) c.val c.property
+/-- Canonical charted data determine every field of the coalition carrier. -/
+-- ALIGN: COALITION-FROM-CHARTED.
+def coalitionFromCharted {X : Atlas} (source : X.Element)
+    (atOrigin : source = FolioData.ValidElement.originElement X.pages)
+    (datum : Charter.CertifiedCachedCellData X source) : X.CertifiedCoalitionElement :=
+  ⟨⟨source, datum.val, X.originImageRank source datum.val.value⟩,
+    datum.property, rfl, atOrigin⟩
 
-def coalitionUnrank (X : Atlas) (candidate : Nat) : Option X.CoalitionValue :=
-  ((X.coveredPageElementAt (FolioData.ValidElement.originElement X.pages) candidate).attach).map
-    (fun datum => ⟨datum.val, coveredPageElementAt_sound datum.property⟩)
+/-- The finite decoder shares Charter's canonicalization and retains its origin. -/
+-- ALIGN: COALITION-DECODE.
+def coalitionUnrank (X : Atlas) (candidate : Nat) : Option X.CertifiedCoalitionElement :=
+  (Charter.cachedUnrank X (FolioData.ValidElement.originElement X.pages) candidate).map
+    (coalitionFromCharted (FolioData.ValidElement.originElement X.pages) rfl)
 
 -- ALIGN: COALITION-ROUNDTRIP.
-theorem coalition_roundtrip {X : Atlas} (c : X.CoalitionValue) :
-    coalitionUnrank X (coalitionRank c) = some c := by
-  unfold coalitionUnrank coalitionRank
-  have h := X.findAtlasCoverageRank_roundtrip (FolioData.ValidElement.originElement X.pages) c.val c.property
-  rw [Option.attach_eq_some _ ⟨c.val, h⟩]
-  rfl
+theorem coalition_roundtrip {X : Atlas} (c : X.CertifiedCoalitionElement) :
+    coalitionUnrank X (coalitionElementCode c.val) = some c := by
+  rcases c with ⟨⟨source, datum, cachedRank⟩, valid⟩
+  change datum.Valid source ∧ cachedRank = X.originImageRank source datum.value ∧
+    source = FolioData.ValidElement.originElement X.pages at valid
+  rcases valid with ⟨validDatum, rankEq, rfl⟩
+  have decoded := (Charter.cachedDominion X (FolioData.ValidElement.originElement X.pages)).coherence
+    ⟨datum, validDatum⟩
+  change Charter.cachedUnrank X (FolioData.ValidElement.originElement X.pages) datum.code =
+    some ⟨datum, validDatum⟩ at decoded
+  dsimp only [coalitionUnrank, coalitionElementCode]
+  rw [decoded, Option.map_some]
+  apply congrArg some
+  apply Subtype.ext
+  simp only [coalitionFromCharted, rankEq]
 
-/-- The executable ranking uses the first coverage candidate, rather than
-the origin datum's rank used by the public equality observation. -/
-def coalitionDominion (X : Atlas) : Dominion X.CoalitionValue where
-  rank := coalitionRank
+/-- Ranking reads the retained code; decoding recovers the exact canonical record. -/
+-- ALIGN: COALITION-DOMINION.
+def coalitionDominion (X : Atlas) : Dominion X.Coalition where
+  rank c := coalitionElementCode c.val
   unrank := coalitionUnrank X
   coherence := coalition_roundtrip
+
+-- ALIGN: COALITION-CODE-INTERPRETATION.
+theorem coalitionElementCode_interpretation {X : Atlas} (c : X.CertifiedCoalitionElement) :
+    coalitionElementCode c.val =
+      X.findAtlasCoverageRank (FolioData.ValidElement.originElement X.pages) c.value.val c.value.property := by
+  rcases c with ⟨⟨source, datum, cachedRank⟩, valid⟩
+  change datum.Valid source ∧ cachedRank = X.originImageRank source datum.value ∧
+    source = FolioData.ValidElement.originElement X.pages at valid
+  rcases valid with ⟨validDatum, _, rfl⟩
+  simpa only [coalitionElementCode, CertifiedCoalitionElement.value, CoalitionElement.datum,
+    originImage_origin] using Charter.CachedCellData.rank_spec validDatum
+
+-- ALIGN: COALITION-DECODE-VALUE.
+theorem coalitionUnrank_value (X : Atlas) (candidate : Nat) :
+    (coalitionUnrank X candidate).map (fun c => c.value.val) =
+      X.coveredPageElementAt (FolioData.ValidElement.originElement X.pages) candidate := by
+  unfold coalitionUnrank Charter.cachedUnrank
+  split
+  · rename_i found
+    change none = X.coveredPageElementAt (FolioData.ValidElement.originElement X.pages) candidate
+    exact (congrArg (Option.map Prod.fst) found).symm
+  · rename_i datum witness found
+    have decoded : X.coveredPageElementAt (FolioData.ValidElement.originElement X.pages) candidate =
+        some datum := congrArg (Option.map Prod.fst) found
+    rw [decoded]
+    change some (X.originImage (FolioData.ValidElement.originElement X.pages) datum) = some datum
+    rw [originImage_origin]
 
 /-- The executable forward action: map the covered source and transport the
 resulting datum to the target origin. No inverse is inferred from coverage. -/
@@ -281,6 +355,77 @@ def mapCoalitionValue {X Y : Atlas} (f : Transversal X Y) (c : X.CoalitionValue)
   let image := f.mapCovered c.coveredElement
   ⟨Y.originImage image.val.source image.val.datum,
     covered_originImage (CoveredPageElement.covered image.property)⟩
+
+/-- Transport covered data to the owning origin using the same valid witness,
+then recover the unique canonical cache. -/
+-- ALIGN: COALITION-FROM-COVERED.
+def coalitionFromCovered {X : Atlas} (covered : X.CertifiedCoveredElement) : X.Coalition :=
+  coalitionElement_checked (FolioData.ValidElement.originElement X.pages) rfl
+    (X.originImage covered.val.source covered.val.datum) covered.val.witness (by
+      simpa only [coverageWitnessCovers, originImageRank, originImage_origin]
+        using covered.property.2)
+
+theorem coalitionFromCovered_rank {X : Atlas} (covered : X.CertifiedCoveredElement) :
+    (coalitionFromCovered covered).rank = covered.val.witness.regionOriginRank := rfl
+
+-- ALIGN: COALITION-FROM-COVERED-ROUNDTRIP.
+theorem coalitionFromCovered_roundtrip {X : Atlas} (c : X.Coalition) :
+    coalitionFromCovered c.coveredElement = c := by
+  apply CertifiedCoalitionElement.ext
+  apply Subtype.ext
+  exact originImage_origin X (X.originImage c.val.source c.val.datum)
+
+/-- Retain the image's owner through canonicalization and pass its certified
+coalition to the caller. -/
+-- ALIGN: COALITION-FORWARD-OWNED-ELIMINATION.
+def withMappedCoalitionElement {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
+    (c : X.CertifiedCoalitionElement) (useElement : Y.CertifiedCoalitionElement → Result) : Result :=
+  withAtlasTransversalCoveredImage f c.coveredElement
+    (fun image => useElement (coalitionFromCovered image))
+
+/-- Erase the callback boundary while retaining the same certified action. -/
+-- ALIGN: COALITION-FORWARD-CARRIER.
+def mapCoalitionElement {X Y : Atlas} (f : Transversal X Y)
+    (c : X.CertifiedCoalitionElement) : Y.CertifiedCoalitionElement :=
+  withMappedCoalitionElement f c id
+
+theorem withMappedCoalitionElement_agrees {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
+    (c : X.CertifiedCoalitionElement) (useElement : Y.CertifiedCoalitionElement → Result) :
+    withMappedCoalitionElement f c useElement = useElement (mapCoalitionElement f c) := rfl
+
+theorem CertifiedCoalitionElement.coveredElement_data {X : Atlas}
+    (c : X.CertifiedCoalitionElement) : c.coveredElement.data = c.value.coveredElement.data := by
+  rcases c with ⟨⟨source, datum, originRank⟩, valid⟩
+  change datum.Valid source ∧ originRank = X.originImageRank source datum.value ∧
+    source = FolioData.ValidElement.originElement X.pages at valid
+  rcases valid with ⟨_, _, rfl⟩
+  change (⟨_, datum.value⟩ : X.DataElement) = ⟨_, X.originImage _ datum.value⟩
+  rw [originImage_origin]
+
+theorem mapCoalitionElement_value {X Y : Atlas} (f : Transversal X Y)
+    (c : X.CertifiedCoalitionElement) :
+    (mapCoalitionElement f c).value = mapCoalitionValue f c.value := by
+  apply Subtype.ext
+  change Y.originImage (FolioData.ValidElement.originElement Y.pages)
+    (Y.originImage (f.mapCovered c.coveredElement).val.source
+      (f.mapCovered c.coveredElement).val.datum) = _
+  rw [originImage_origin]
+  exact congrArg (fun image : Y.DataElement => Y.originImage image.1 image.2)
+    (f.mapCovered_data_congr c.coveredElement c.value.coveredElement c.coveredElement_data)
+
+/-- Rebuilding the mapped value recovers every field of the executable result. -/
+theorem mapCoalitionElement_presentation {X Y : Atlas} (f : Transversal X Y)
+    (c : X.CertifiedCoalitionElement) :
+    mapCoalitionElement f c = (mapCoalitionValue f c.value).presentation := by
+  apply CertifiedCoalitionElement.ext
+  rw [mapCoalitionElement_value, CoalitionValue.presentation_value]
+
+theorem mapCoalitionElement_identity {X : Atlas} (c : X.CertifiedCoalitionElement) :
+    mapCoalitionElement .identity c = c := by
+  apply CertifiedCoalitionElement.ext
+  rw [mapCoalitionElement_value]
+  apply Subtype.ext
+  exact originImage_origin X c.value.val
 
 theorem fromSemanticOriginData (X : Atlas)
     (datum : X.cellData (FolioData.ValidElement.originElement X.pages).val.cell) :
@@ -296,7 +441,6 @@ theorem originDatumEquiv_originImage (X : Atlas) (source : X.SemanticDataElement
   apply eq_of_heq
   exact (cast_heq _ _).trans (X.originImage_interpretation source.1 source.2)
 
--- ALIGN: COALITION-FORWARD-INTERPRETATION.
 theorem mapCoalitionValue_interpretation {X Y : Atlas} (f : Transversal X Y) (c : X.CoalitionValue) :
     (CoalitionValue.semanticsEquiv Y (mapCoalitionValue f c)).val =
       Datra.Semantics.extentMap f.toSemantics.val (CoalitionValue.semanticsEquiv X c).val := by
@@ -310,5 +454,14 @@ theorem mapCoalitionValue_interpretation {X Y : Atlas} (f : Transversal X Y) (c 
     ((f.mapCovered c.coveredElement).data).2) = _
   rw [image, originDatumEquiv_originImage]
   rfl
+
+-- ALIGN: COALITION-FORWARD-INTERPRETATION.
+theorem mapCoalitionElement_interpretation {X Y : Atlas} (f : Transversal X Y)
+    (c : X.CertifiedCoalitionElement) :
+    (coalitionSemanticsEquiv Y (mapCoalitionElement f c)).val =
+      Datra.Semantics.extentMap f.toSemantics.val (coalitionSemanticsEquiv X c).val := by
+  change (CoalitionValue.semanticsEquiv Y (mapCoalitionElement f c).value).val = _
+  rw [mapCoalitionElement_value]
+  exact mapCoalitionValue_interpretation f c.value
 
 end Datra.Executable.Atlas
