@@ -145,8 +145,13 @@ agrees with the written extent map. Canonical-carrier extensionality proves
 that rebuilding this value recovers the entire mapped record and that the
 identity transversal returns the exact input record. Haskell's checked mapping
 worker requires a valid canonical source and gives its callback a valid canonical
-target with the retained owner. Stable-insertion assembly still needs to retain
-that source-domain contract through construction and elimination. Lean accepts a stable
+target with the retained owner. A primitive stable action stores its source
+Atlas together with an insertion restricted to that Atlas's valid canonical
+coalitions. The stored forward function is exactly the coalition mapper, and
+every successful inverse result satisfies the same source-domain condition,
+including on inputs outside the forward image. The generic insertion eliminator
+and its identity/composition cases still need contracts retaining those domains.
+Lean accepts a stable
 primitive's explicit inverse on canonical coalition records and transports it
 through the covered-value equivalence. Returning to the record carrier recovers
 the exact forward map and supplied inverse, including failed lookups. Identity,
@@ -190,9 +195,13 @@ eliminator supplies its actual target owner. `withMappedCoalitionElement` uses
 that owner for canonicalization and retains target validity and the canonical
 origin for its callback. `mapCoalitionElement` erases this callback boundary; it
 takes only the source Atlas and transversal, since the target comes from the
-certified image. The raw-result wrapper remains an unchecked source-validity
-boundary for stable-insertion assembly; completing that boundary is separate
-from checking the mapping worker. Lean uses the same callback path and proves
+certified image. This raw-result wrapper also checks owning validity and the
+canonical source origin. Stable primitive construction retains that domain in
+its insertion record instead of reflecting a weaker imported mapper signature.
+Lean models the stored insertion from certified source records to raw target
+records, including its inverse on arbitrary raw targets. Restricting the target
+input to certified records recovers the existing categorical insertion with
+the exact forward map and inverse. Lean uses the same callback path and proves
 its equality to the record-level forward action.
 Consumer-level rejection checks import only the exposed interface and reject
 missing owning validity, changed origin or witness rank, equality without equal
@@ -1320,11 +1329,11 @@ The alignment is complete when all of the following hold:
 
 ## Current implementation priorities
 
-1. Retain canonical source validity through stable-insertion construction and
-   elimination. Coalition's checked mapping worker already retains the target
-   owner and canonical target validity through identity and composition.
-2. Close the raw coalition mapper's source-validity boundary using those stored
-   insertion contracts, retaining the existing exact forward/inverse laws.
+1. Retain the stored canonical source domain through the generic stable-insertion
+   eliminator and its identity/composition cases. Primitive construction and
+   the raw coalition mapper already check that domain.
+2. Connect each mapped target's validity to the next insertion's source domain
+   when composing stable insertions, preserving the exact forward/inverse laws.
 3. Complete the Charter and Dominion-inclusion assembly contracts, preserving
    their existing Lean interpretation and inverse laws.
 4. Finish the remaining core representation bridges and derived constructions

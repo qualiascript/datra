@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
--- LiquidHaskell retains the re-exported carrier contracts for public callers.
+-- LiquidHaskell retains the carrier and action contracts, including the raw
+-- mapper's canonical-source precondition, for callers of this public interface.
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 

@@ -31,6 +31,42 @@ theorem stableOriginPreserved_interpretation {X Y : Atlas} (f : Transversal X Y)
     stableOrigin_interpretation, stableOrigin_interpretation]
   rfl
 
+/-- Specialize an insertion to accepted values at a specified canonical key. -/
+-- ALIGN: ATLAS-STABLE-SOURCE-INSERTION.
+def stableCoalitionInsertionOn {Source Target Key : Type*} (accepts : Source → Bool)
+    (key : Source → Key) (origin : Key)
+    (forward : {value // accepts value = true ∧ key value = origin} → Target)
+    (backward : Target → Option {value // accepts value = true ∧ key value = origin})
+    (leftInverse : ∀ value, backward (forward value) = some value) :
+    DomanialInsertion {value // accepts value = true ∧ key value = origin} Target :=
+  ⟨forward, backward, leftInverse⟩
+
+/-- The stored primitive insertion restricts its source to canonical records.
+Its inverse accepts raw target records and returns only certified source data. -/
+structure StableTransversalAction (X Y : Atlas) where
+  transversal : Transversal X Y
+  preserves : stableOriginPreserved transversal = true
+  insertion : DomanialInsertion X.Coalition Y.CoalitionElement
+  forward : ∀ value, insertion.map value = (mapCoalitionElement transversal value).val
+
+-- ALIGN: ATLAS-STABLE-SOURCE-PACKAGE.
+def StableTransversalAction.ofInverse {X Y : Atlas} (transversal : Transversal X Y)
+    (preserves : stableOriginPreserved transversal = true)
+    (backward : Y.CoalitionElement → Option X.Coalition)
+    (leftInverse : ∀ value, backward (mapCoalitionElement transversal value).val = some value) :
+    StableTransversalAction X Y where
+  transversal := transversal
+  preserves := preserves
+  insertion := ⟨fun value => (mapCoalitionElement transversal value).val, backward, leftInverse⟩
+  forward _ := rfl
+
+theorem StableTransversalAction.ofInverse_preimage {X Y : Atlas} (transversal : Transversal X Y)
+    (preserves : stableOriginPreserved transversal = true)
+    (backward : Y.CoalitionElement → Option X.Coalition)
+    (leftInverse : ∀ value, backward (mapCoalitionElement transversal value).val = some value)
+    (value : Y.CoalitionElement) :
+    (ofInverse transversal preserves backward leftInverse).insertion.preimage value = backward value := rfl
+
 /-- The primitive certificate is precisely the checked Haskell boundary.
 Identity and composition derive stability by their constructor cases. -/
 inductive StableTransversal : Atlas → Atlas → Type 2
@@ -63,6 +99,16 @@ def primitiveFromCarrier {X Y : Atlas} (transversal : Transversal X Y)
         rw [mapCoalitionElement_presentation, value.presentation_value]
       rw [mapped, leftInverse]
       exact congrArg some value.presentation_value)
+
+/-- Restrict only the target input of the stored inverse to the certified
+carrier used by the semantic bridge. Its successful source data are unchanged. -/
+def ofAction {X Y : Atlas} (action : StableTransversalAction X Y) : StableTransversal X Y :=
+  primitiveFromCarrier action.transversal action.preserves
+    (fun value => action.insertion.preimage value.val)
+    (fun value => by
+      change action.insertion.preimage (mapCoalitionElement action.transversal value).val = some value
+      rw [← action.forward value]
+      exact action.insertion.leftInverse value)
 
 def underlying {X Y : Atlas} : StableTransversal X Y → Transversal X Y
   | .primitive transversal _ _ _ => transversal
@@ -170,6 +216,16 @@ theorem coalitionCarrierInsertion_primitive_preimage {X Y : Atlas} (transversal 
   rw [targetRebuild, Option.map_map]
   simp only [Function.comp_def, rebuild]
   cases backward value <;> rfl
+
+theorem coalitionCarrierInsertion_ofAction_map {X Y : Atlas} (action : StableTransversalAction X Y)
+    (value : X.Coalition) :
+    (ofAction action).coalitionCarrierInsertion.map value = mapCoalitionElement action.transversal value :=
+  coalitionCarrierInsertion_primitive_map _ _ _ _ value
+
+theorem coalitionCarrierInsertion_ofAction_preimage {X Y : Atlas} (action : StableTransversalAction X Y)
+    (value : Y.Coalition) :
+    (ofAction action).coalitionCarrierInsertion.preimage value = action.insertion.preimage value.val :=
+  coalitionCarrierInsertion_primitive_preimage _ _ _ _ value
 
 -- ALIGN: COALITION-LEFT-INVERSE.
 theorem coalitionCarrier_leftInverse {X Y : Atlas} (f : StableTransversal X Y) (value : X.Coalition) :

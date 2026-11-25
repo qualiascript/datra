@@ -5551,6 +5551,20 @@
       "haskell_declaration": "withMappedCoalitionElement",
       "lean_namespace": "Datra.Executable.Atlas",
       "lean_declaration": "withMappedCoalitionElement"
+    },
+    {
+      "id": "ATLAS-STABLE-SOURCE-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "stableCoalitionInsertionOn",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "stableCoalitionInsertionOn"
+    },
+    {
+      "id": "ATLAS-STABLE-SOURCE-PACKAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "stableAtlasTransversal",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "StableTransversalAction.ofInverse"
     }
   ],
   "modules": [
@@ -6608,25 +6622,29 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
       "module": "StableAtlasTransversal.Internal",
       "types": [
-        "StableAtlasTransversal"
+        "StableAtlasTransversal",
+        "StableTransversalAction"
       ],
       "reflected": [
         "stableAtlasOrigin",
         "stableElementPage",
         "stableElementPosition",
-        "stableOriginPreserved",
-        "mapCoalitionElement"
+        "stableOriginPreserved"
       ],
       "refinements": [
         "checkedStableOrigin",
+        "stableCoalitionInsertionOn",
         "stableAtlasTransversal"
       ],
       "lean_target": "Datra.Executable.Atlas.StableTransversal",
       "coverage": "partial",
       "aliases": [],
       "embeddings": [],
-      "predicates": [],
-      "refinement_aliases": []
+      "predicates": [
+        "StableCoalitionValid"
+      ],
+      "refinement_aliases": [],
+      "opaque_reflected": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs",
@@ -8469,6 +8487,24 @@
       ],
       "refinement_aliases": [],
       "opaque_reflected": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Action/Internal.hs",
+      "module": "Coalition.Action.Internal",
+      "lean_target": "Datra.Executable.Atlas",
+      "coverage": "partial",
+      "types": [],
+      "reflected": [
+        "mapCoalitionElement"
+      ],
+      "opaque_reflected": [],
+      "refinements": [
+        "mapCoalitionElement"
+      ],
+      "aliases": [],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": []
     }
   ],
   "trust_boundary": []

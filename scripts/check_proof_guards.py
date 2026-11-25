@@ -820,6 +820,39 @@ proofGuard = atlasMergePageChain
 
 STABLE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs"
 STABLE_GUARDS = {
+    "stored stable insertions require canonical source inputs": """
+proofGuard :: StableTransversalAction sa ss sd so sf ta ts td to tf
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+proofGuard action value = applyInsertion (stableActionInsertion action) value
+""",
+    "stored stable insertions retain the actual forward action": """
+{-@ proofGuard :: source:Atlas sa ss sd so sf -> target:Atlas ta ts td to tf
+      -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> {proof:() | stableOriginPreserved source target arrow}
+      -> DomanialInsertion ({value:CoalitionData sa ss sd | StableCoalitionValid source value})
+           (CoalitionData ta ts td)
+      -> StableTransversalAction sa ss sd so sf ta ts td to tf @-}
+proofGuard :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td) -> ()
+  -> DomanialInsertion (CoalitionData sa ss sd) (CoalitionData ta ts td)
+  -> StableTransversalAction sa ss sd so sf ta ts td to tf
+proofGuard = StableTransversalAction
+""",
+    "stable inverses must retain source validity outside the forward image": """
+{-@ proofGuard :: source:Atlas sa ss sd so sf -> target:Atlas ta ts td to tf
+      -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> {proof:() | stableOriginPreserved source target arrow}
+      -> backward:(CoalitionData ta ts td -> Maybe (CoalitionData sa ss sd))
+      -> (value:{CoalitionData sa ss sd | StableCoalitionValid source value}
+            -> {backward (mapCoalitionElement source arrow value) == Just value})
+      -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td) @-}
+proofGuard :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td) -> ()
+  -> (CoalitionData ta ts td -> Maybe (CoalitionData sa ss sd))
+  -> (CoalitionData sa ss sd -> ())
+  -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+proofGuard = stableAtlasTransversal
+""",
     "stable transversals reject an inverse that drops every image": """
 {-@
 proofGuard
@@ -1142,6 +1175,22 @@ discardMappedCoalition _ _ = ()
 """
 
 COALITION_ACTION_PUBLIC_GUARDS = {
+    "raw coalition mapping requires source owning validity": """
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+proofGuard = mapCoalitionElement
+""",
+    "raw coalition mapping requires the canonical source origin": """
+{-@ proofGuard :: owner:Atlas sa ss sd so sf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoalitionData sa ss sd | coalitionElementValid owner source}
+      -> CoalitionData ta ts td @-}
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+proofGuard = mapCoalitionElement
+""",
     "owned coalition mapping requires source owning validity": """
 proofGuard :: Atlas sa ss sd so sf
   -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
