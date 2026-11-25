@@ -27,8 +27,8 @@ import DatraTypes
   )
 import Rendering (renderInterpretedValue)
 import DatraLanguage.AST (Expression (AnyType, FunctionTypeExpression))
-import GenericScopeProtection
-import ScopeProtection
+import Evaluation.Scope.GenericProtection
+import Evaluation.Scope.Protection
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 

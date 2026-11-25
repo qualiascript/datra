@@ -39,21 +39,17 @@ import DatraLanguage.AST.Syntax
   )
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraTypes qualified as Types
-import Interpreting
-  ( StandardLibraryVisibility (AllStandardLibrary)
-  , ModuleSource (..)
-  , PreparedModules
-  , emptyPreparedModules
-  , InterpretedValue
+import Evaluation.Expression
+  ( InterpretedValue
   , InterpretedValueKind (..)
   , InterpretingError (..)
-  , interpretExpressionReason
-  , interpretWithModules
-  , interpretLocatedExpression
   , canonicalStringCodec
+  , interpretExpressionReason
+  , interpretLocatedExpression
+  , interpretWithModules
   , interpretedExplicitOrdinal
-  , interpretedInteger
   , interpretedFormulationLevel
+  , interpretedInteger
   , interpretedMap
   , interpretedMapCardinality
   , interpretedMapFinalOrderType
@@ -61,6 +57,12 @@ import Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   , moduleExportNames
+  )
+import Interpreting.Source
+  ( StandardLibraryVisibility (AllStandardLibrary)
+  , ModuleSource (..)
+  , PreparedModules
+  , emptyPreparedModules
   , parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
   )
 import DatraLanguage.Diagnostics.Interpreter

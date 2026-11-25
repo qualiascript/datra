@@ -15,9 +15,10 @@ import DatraLanguage.Diagnostics.Localization
   , LocalizedDiagnostic
   , renderDatraError
   )
-import Interpreting
+import Evaluation.Expression
+  ( interpretLocatedWithModulesAndStandardLibraryVisibility )
+import Interpreting.Source
   ( StandardLibraryVisibility (..)
-  , interpretLocatedWithModulesAndStandardLibraryVisibility
   , parseDatraSourceSyntax
   , rewriteParsedDatraSourceWithModules
   )

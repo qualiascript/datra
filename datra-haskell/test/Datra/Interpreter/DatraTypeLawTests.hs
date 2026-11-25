@@ -13,7 +13,7 @@ import DatraTypes
   , interpretedTypeIsTotal
   , toStringValue
   )
-import Interpreting (canonicalStringCodec)
+import Evaluation.Expression (canonicalStringCodec)
 import Rendering (renderInterpretedValue)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit

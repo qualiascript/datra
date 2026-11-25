@@ -9,17 +9,19 @@ import Data.Bifunctor qualified as Bifunctor
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Application
   ( ModuleInputFailure (..))
-import Interpreting
+import Evaluation.Expression
+  ( prepareModuleSource
+  , standardLibraryModuleSource
+  )
+import Interpreting.Source
   ( ModuleSource (..)
   , PreparedModules
   , StandardLibraryVisibility (QualifiedStandardLibrary)
   , emptyPreparedModules
   , parseDatraSourceSyntax
-  , prepareModuleSource
   , preparedModuleContains
   , preparedModuleNamespaceOrigins
   , rewriteParsedDatraSourceWithModules
-  , standardLibraryModuleSource
   )
 import LibraryFiles (bundledLibrary, standardLibraryFileName)
 import System.Directory (canonicalizePath)

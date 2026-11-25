@@ -349,12 +349,26 @@ executable datra-haskell
     main-is:          Main.hs
     other-modules:
         CanonicalParsing
-        Interpreting
+        DatraTypes.Closure
+        DatraTypes.Contextual
+        DatraTypes.Declaration
+        DatraTypes.Evaluation
+        DatraTypes.LookupCapture
+        DatraTypes.Module
+        DatraTypes.Module.Source
+        DatraTypes.Resolution
+        DatraTypes.Scope
+        DatraTypes.Scope.Protection
+        Interpreting.Source
         Interpreting.Syntax
+        Interpreting.Obsolete.SyntaxEnvironment
         DatraHost
         ModuleInputs
-        FunctionClosure
-        GenericScopeProtection
+        Evaluation.Closure
+        Evaluation.Expression
+        Evaluation.Identifier
+        Evaluation.Scope
+        Evaluation.Scope.GenericProtection
         LibraryFiles
         Parsing
         SyntaxRewriting
@@ -365,7 +379,7 @@ executable datra-haskell
         SyntaxRewriting.Diagnostics
         SyntaxRewriting.Stack
         Rendering
-        ScopeProtection
+        Evaluation.Scope.Protection
         StringParsing
         Paths_datra_haskell
     autogen-modules:
@@ -416,13 +430,27 @@ test-suite datra-parsing-test
     main-is:          DatraParsingTests.hs
     other-modules:
         CanonicalParsing
-        Interpreting
+        DatraTypes.Closure
+        DatraTypes.Contextual
+        DatraTypes.Declaration
+        DatraTypes.Evaluation
+        DatraTypes.LookupCapture
+        DatraTypes.Module
+        DatraTypes.Module.Source
+        DatraTypes.Resolution
+        DatraTypes.Scope
+        DatraTypes.Scope.Protection
+        Interpreting.Source
         Interpreting.Syntax
+        Interpreting.Obsolete.SyntaxEnvironment
         DatraHost
-        FunctionClosure
-        GenericScopeProtection
+        Evaluation.Closure
+        Evaluation.Expression
+        Evaluation.Identifier
+        Evaluation.Scope
+        Evaluation.Scope.GenericProtection
         Rendering
-        ScopeProtection
+        Evaluation.Scope.Protection
         StringParsing
         LibraryFiles
         Parsing
@@ -459,6 +487,16 @@ test-suite datra-interpreting-test
     main-is:          DatraInterpretingTests.hs
     other-modules:
         CanonicalParsing
+        DatraTypes.Closure
+        DatraTypes.Contextual
+        DatraTypes.Declaration
+        DatraTypes.Evaluation
+        DatraTypes.LookupCapture
+        DatraTypes.Module
+        DatraTypes.Module.Source
+        DatraTypes.Resolution
+        DatraTypes.Scope
+        DatraTypes.Scope.Protection
         Datra.Interpreter.DatraTypeLawTests
         Datra.Interpreter.FunctionClosureTests
         Datra.Interpreter.FunctionTests
@@ -467,12 +505,16 @@ test-suite datra-interpreting-test
         Datra.Interpreter.ScopeTests
         Datra.Interpreter.StandardLibraryTests
         Datra.TestSupport
-        Interpreting
+        Interpreting.Source
         Interpreting.Syntax
+        Interpreting.Obsolete.SyntaxEnvironment
         DatraHost
         ModuleInputs
-        FunctionClosure
-        GenericScopeProtection
+        Evaluation.Closure
+        Evaluation.Expression
+        Evaluation.Identifier
+        Evaluation.Scope
+        Evaluation.Scope.GenericProtection
         LibraryFiles
         Parsing
         SyntaxRewriting
@@ -483,7 +525,7 @@ test-suite datra-interpreting-test
         SyntaxRewriting.Diagnostics
         SyntaxRewriting.Stack
         Rendering
-        ScopeProtection
+        Evaluation.Scope.Protection
         StringParsing
         Paths_datra_haskell
     autogen-modules:

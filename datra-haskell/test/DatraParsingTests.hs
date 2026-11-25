@@ -66,7 +66,7 @@ import DatraLanguage.Diagnostics.Localization
   , renderDatraError
   )
 import DatraLanguage.Identifier qualified as Identifier
-import Interpreting
+import Interpreting.Source
   ( StandardLibraryVisibility
       (AllStandardLibrary, NoStandardLibrary, QualifiedStandardLibrary)
   , emptyPreparedModules

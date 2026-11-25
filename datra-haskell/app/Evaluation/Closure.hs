@@ -1,6 +1,6 @@
 -- | Close a function over exactly the identifier definitions it references.
 -- Dependency blocks are executable Datra, not snapshots of an ambient scope.
-module FunctionClosure
+module Evaluation.Closure
   ( DependencyKey (..)
   , DependencyAddress (..)
   , DependencyPath (..)
@@ -11,6 +11,7 @@ module FunctionClosure
   , inlineDependencies
   ) where
 
+import DatraTypes.Closure
 import DatraLanguage.DependentDeclaration
   ( bindingNames
   , dependentDeclarationWithImplementation
@@ -23,46 +24,6 @@ import DatraLanguage.Identifier
   ( isIdentifierValue, privateIdentifierPrefixCharacter )
 import Control.Monad.Trans.State.Strict (State, get, modify', put, runState)
 import Numeric.Natural (Natural)
-
--- Keys identify bindings during this traversal only; they never enter source.
--- The resolver belongs to the definition's original environment.
-newtype DependencyAddress = DependencyAddress
-  { dependencyAddressSegments :: [SimpleIdentifierString]
-  }
-  deriving (Eq, Show)
-
-data DependencyKey
-  = BindingDependency String Expression
-  | SelectedDependency [SimpleIdentifierString] Expression
-  | ContextualDependency ContextualRole Natural Expression
-  | ModuleDependency FilePath DependencyKey
-  deriving (Eq, Show)
-
-data Dependency = Dependency
-  { dependencyKey :: DependencyKey
-  , dependencyAddress :: DependencyAddress
-  , dependencyDeclaration :: DependentDeclaration Expression
-  , dependencyResolver :: Resolver
-  }
-
-data DependencyRoot
-  = AmbientRoot
-  | ContextualRoot ContextualRole
-  deriving (Eq, Show)
-
-data DependencyPath = DependencyPath
-  { dependencyPathRoot :: DependencyRoot
-  , dependencyPathSegments :: [String]
-  }
-  deriving (Eq, Show)
-
-data Resolver = Resolver
-  { resolveDependency :: DependencyPath -> Maybe Dependency
-  , resolveDependencyModule :: String -> Maybe Resolver
-  , resolveScopeIndex :: Expression -> Maybe String
-  , resolveContextualDepth :: ContextualRole -> Natural -> Maybe Dependency
-  , resolveDefinitionReference :: DependencyPath -> Bool
-  }
 
 data DependencyMode = BindDependencies | InlineDependencies deriving (Eq)
 

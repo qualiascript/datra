@@ -171,6 +171,8 @@ rewriteResourceSyntaxWithSpan
   -> Expression
   -> Either SyntaxRewriteFailure Expression
 rewriteResourceSyntaxWithSpan sourceSpan envelope context raw =
+  -- OBSOLETE normalization seam: the rewrite stack must return the final tree
+  -- instead of relying on this post-rewrite reshaping pass.
   normalizeExpression <$> case (envelope, raw) of
     (ExplicitMapEnvelope, expressionValue) ->
       runRewriteExpression initial expressionValue
@@ -246,9 +248,12 @@ runStructuralCandidates environment source =
         , rewriteResultSelection = Nothing
         }
       where
-        expressionValue = normalizeRewrittenSequence rawExpression
+        expressionValue = obsoleteNormalizeRewrittenSequence rawExpression
 
-    normalizeRewrittenSequence value = case value of
+    -- OBSOLETE: candidate expansion currently relies on a second, external
+    -- sequence-flattening pass. Rewriting should construct the final sequence
+    -- shape directly instead.
+    obsoleteNormalizeRewrittenSequence value = case value of
       AtlasMap members -> rebuild AtlasMap (concatMap flatten members)
       MapSequence members -> rebuild MapSequence (concatMap flatten members)
       ArgumentativeMap members ->

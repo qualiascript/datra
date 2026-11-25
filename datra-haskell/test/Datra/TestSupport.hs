@@ -11,11 +11,13 @@ module Datra.TestSupport
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Application (ParseFailure)
 import DatraTypes (InterpretedValue, InterpretingError)
-import Interpreting
+import Evaluation.Expression
+  ( interpretExpressionReason
+  , interpretWithModules
+  )
+import Interpreting.Source
   ( StandardLibraryVisibility (AllStandardLibrary)
   , emptyPreparedModules
-  , interpretExpressionReason
-  , interpretWithModules
   , parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
   )
 import Rendering (renderInterpretedValue)
