@@ -106,12 +106,6 @@ localizeModuleInputFailure failure =
             localizeInterpretingError preparationFailure
       in LocalizedMessage "module could not be prepared"
           (["module: " <> path, "cause: " <> summary] <> details)
-    ModuleNamespaceCollision namespace first second ->
-      LocalizedMessage "module namespace is declared more than once"
-        [ "namespace: " <> namespace
-        , "first module: " <> first
-        , "second module: " <> second
-        ]
 
 embeddedParseFailure :: ParseFailure -> [String]
 embeddedParseFailure failure = summary : details
@@ -133,6 +127,11 @@ localizeSyntaxRewriteFailure :: SyntaxRewriteFailure -> LocalizedMessage
 localizeSyntaxRewriteFailure failure = case failure of
   AmbiguousBareSkipApplication ->
     LocalizedMessage "bare skip application is ambiguous" []
+  AmbiguousStrictSyntaxImport expressionValue ->
+    LocalizedMessage "strictly imported declarations are ambiguous"
+      ["expression: " <> renderSourceExpression expressionValue]
+  RewriteStackExhausted ->
+    LocalizedMessage "syntax rewrite stack exhausted before completion" []
   OverlappingDependentDeclarations earlier later ->
     LocalizedMessage "dependent declarations overlap"
       [ "earlier declaration: " <> earlier
@@ -177,8 +176,6 @@ candidateRejectionReasonText :: CandidateRejectionReason -> String
 candidateRejectionReasonText reason = case reason of
   TypedHoleMismatch -> "captured result is outside the required hole type"
   GenericBoundMismatch -> "inferred generic input violates its bound"
-  CandidateCompatibilityUndecidable ->
-    "captured result compatibility is undecidable"
   RequiredChildExhausted -> "required child expression has no applicable result"
 
 localizeAccessError :: AccessError -> LocalizedMessage
@@ -212,6 +209,10 @@ localizeInterpretingError reason =
       LocalizedMessage "operation has no effect" []
     OverlappingBindings name ->
       LocalizedMessage "bindings overlap in the same scope" ["binding: " <> name]
+    AmbiguousStrictImport name ->
+      LocalizedMessage
+        "strictly imported declarations are ambiguous"
+        ["binding: " <> name]
     InconsistentShadowing name ->
       LocalizedMessage
         "identifier shadowing is inconsistent with its existing binding"

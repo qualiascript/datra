@@ -124,6 +124,7 @@ data InterpretingError
   | OverloadError OverloadFailure
   | OperationHasNoEffect
   | OverlappingBindings String
+  | AmbiguousStrictImport String
   | InconsistentShadowing String
   | LetBindingCannotShadowConsistentIdentifier String
   | UnknownIdentifier String

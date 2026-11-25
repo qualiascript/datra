@@ -288,12 +288,8 @@ data Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
-  -- | Select a named member from a scope. The selector is an identifier
-  -- expression, just like a dependent declaration or argument head.
-  | ScopeAccess Expression (IdentifierExpression Expression)
-  -- | Evaluate an ordinary expression with the left operand opened as its
-  -- lexical scope. This is the general form used by parenthesized scope
-  -- bodies and is deliberately distinct from named member selection.
+  -- | Evaluate an expression with the left operand opened as its lexical
+  -- scope. Named access is the ordinary identifier-body case.
   | ScopedExpression Expression Expression
   -- | Open several explicitly selected namespaces for a @with@ body. This is
   -- distinct from opening an ordinary argumentative-map value: overlaps are
@@ -498,9 +494,7 @@ applyBinaryExpressionOperator operator left right = case operator of
   MaybeThenOperator -> Just (MaybeThen left right)
   MultiplicationOperator -> Just (Multiplication left right)
   ExponentiationOperator -> Just (Exponentiation left right)
-  ScopeAccessOperator -> Just (case identifierExpressionFromExpression right of
-    Just selector -> ScopeAccess left selector
-    Nothing -> ScopedExpression left right)
+  ScopeAccessOperator -> Just (ScopedExpression left right)
   AccessOperator -> Just (MapAccess left right)
   SpecificationOperator -> Just (MapSpecification left right)
   SafeOverloadOperator -> Just (SafeOverload left right)
@@ -635,7 +629,7 @@ data OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
-  | ScopeAccessValue OperatorExpression OperatorExpression
+  | ScopedExpressionValue OperatorExpression OperatorExpression
   | WithScopesValue [OperatorExpression] OperatorExpression
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
@@ -772,10 +766,6 @@ normalizeExpression (Exponentiation left right) =
   Exponentiation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapConcatenation left right) =
   MapConcatenation (normalizeExpression left) (normalizeExpression right)
-normalizeExpression (ScopeAccess source selector) =
-  ScopeAccess
-    (normalizeExpression source)
-    (mapIdentifierExpression normalizeExpression selector)
 normalizeExpression (ScopedExpression source body) =
   ScopedExpression (normalizeExpression source) (normalizeExpression body)
 normalizeExpression (WithScopes sources body) =
@@ -938,13 +928,8 @@ lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
   Concatenate (lower left) (lower right)
-lower (ScopeAccess source selector) =
-  ScopeAccessValue
-    (lower source)
-    (case mapIdentifierExpression lower selector of
-      IdentifierExpressionBody body -> IdentifierExpressionValue body)
 lower (ScopedExpression source body) =
-  ScopeAccessValue (lower source) (lower body)
+  ScopedExpressionValue (lower source) (lower body)
 lower (WithScopes sources body) =
   WithScopesValue (map lower sources) (lower body)
 lower (MapAccess left right) = Access (lower left) (lower right)
@@ -1060,9 +1045,6 @@ traverseExpressionChildren visit expression = case expression of
     <*> visit y
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
-  ScopeAccess source selector -> ScopeAccess
-    <$> visit source
-    <*> traverseIdentifierExpressionInterpolations visit selector
   ScopedExpression source body ->
     ScopedExpression <$> visit source <*> visit body
   WithScopes sources body ->

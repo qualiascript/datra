@@ -208,7 +208,7 @@ prettyOperator (Power left right) =
   prettyBinary ExponentiationOperator left right
 prettyOperator (Concatenate left right) =
   prettyBinary ConcatenationOperator left right
-prettyOperator (ScopeAccessValue source body) =
+prettyOperator (ScopedExpressionValue source body) =
   prettyForm (operatorCanonicalSymbol ScopeAccessOperator)
     [prettyOperator source, prettyOperator body]
 prettyOperator (WithScopesValue sources body) =
