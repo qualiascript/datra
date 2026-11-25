@@ -15,7 +15,7 @@ The design removes parallel representations of visibility. In particular:
 - qualified module namespaces are ordinary dependent declarations;
 - unqualified imports push ordered declaration layers;
 - `with` pushes the same layers as strict imports and diagnoses ambiguity only
-  when more than one strict import origin accepts a concrete use; and
+  when more than one strict layer accepts a concrete use; and
 - candidate suspension records exact blocker expressions and is resumed only
   when publication into `Scope` can resolve one of them.
 
@@ -42,9 +42,10 @@ The implementation must preserve these invariants:
    scope operations.
 7. Syntax candidates are enumerated in declaration-layer order. A candidate in
    an inner layer is decided or refuted before an applicable candidate in an
-   outer layer is selected, except that acceptance from a strict import remains
-   provisional until every peer origin in that strict import group has been
-   checked.
+   outer layer is selected. A local or preferential match wins immediately,
+   including over matching strict layers below it. Only when the highest
+   matching layer is strict does acceptance remain provisional while lower
+   strict layers are checked.
 8. An undecidable candidate with blockers is suspended. It is not retried,
    structurally rematched, or externally normalized.
 9. A suspended candidate is reconsidered only after publication makes one of
@@ -92,15 +93,29 @@ selection:
 ```haskell
 data DeclarationLayerImportPolicy
   = LocalDeclarationLayer
-  | PreferentialImport ImportOrigin
-  | StrictImport StrictImportGroup ImportOrigin
+  | PreferentialImport
+  | StrictImport
 ```
 
-`ImportOrigin` identifies the namespace or module projection which contributed
-the layer. `StrictImportGroup` identifies the layers introduced by one `with`
-expression. A preferential import participates in ordinary stack precedence.
-A strict import retains its stack position but cannot be accepted until all
-other origins in the same group have been shown not to accept the same use.
+The layer's position and policy contain all information required for selection.
+A preferential import participates in ordinary stack precedence. A strict
+import retains its stack position but cannot be accepted until the lower strict
+layers have been shown not to accept the same use. No group identifier or
+declaration-origin value is retained.
+
+Resolution is governed by the highest layer that actually matches:
+
+1. A matching `LocalDeclarationLayer` is accepted immediately. Lower local,
+   preferential, and strict matches are irrelevant.
+2. A matching `PreferentialImport` is accepted immediately for the same reason.
+3. A matching `StrictImport` is provisional. Lower strict layers are checked
+   for another match; lower local and preferential layers cannot override it.
+4. If a layer does not match, resolution continues downward without changing
+   the selection mode.
+
+Thus policy never overrides stack precedence. Strictness changes how a match
+is validated; it does not allow a lower strict import to compete with a higher
+local or preferential match.
 
 The existing source-versus-runtime layer origin remains separate from import
 policy. A layer can therefore retain both how its declarations were produced
@@ -135,8 +150,8 @@ operations remain distinct:
 
 - pushing preserves layer boundaries and establishes precedence;
 - entering establishes activation and handoff boundaries;
-- importing preserves each origin as a separate layer and attaches its
-  preferential or strict selection policy.
+- importing preserves each declaration source as a separate layer and attaches
+  its preferential or strict selection policy.
 
 These operations retain existing `ScopedDependentDeclaration` values. They do
 not flatten declarations into named runtime values or reconstruct declarations
@@ -276,8 +291,8 @@ Standard-library visibility is expressed through the same operations:
 ## `with` scope composition
 
 `with` performs strict importing. It pushes the same public declaration layers
-used by ordinary unqualified imports, but marks every pushed layer with one
-shared `StrictImportGroup` and its distinct `ImportOrigin`.
+used by ordinary unqualified imports, but marks each pushed layer as
+`StrictImport`.
 
 For:
 
@@ -288,13 +303,14 @@ with First; Second do body
 the body scope is conceptually:
 
 ```text
-Second public declarations  [strict group G, origin Second]
-First public declarations   [strict group G, origin First]
+Second public declarations  [strict]
+First public declarations   [strict]
 enclosing declarations
 ```
 
-The layers remain separate. Their order determines traversal but does not give
-one strict origin permission to hide another matching strict origin.
+The layers remain separate. Their order determines traversal. If the highest
+matching layer is strict, its match does not hide a match in another lower
+strict layer.
 
 Overlapping declarations are valid while they remain unused. This expression
 is valid even when `First` and `Second` contain overlapping families:
@@ -303,59 +319,67 @@ is valid even when `First` and `Second` contain overlapping families:
 with First; Second do yield 0
 ```
 
-Selection begins with the ordinary top-to-bottom lookup. When a declaration in
-a strict layer accepts, that acceptance is provisional. The compiler must
-continue checking every remaining layer in the same strict import group:
+Selection begins with ordinary top-to-bottom lookup. A matching local or
+preferential layer is accepted immediately, even if a lower strict layer also
+matches. When the first matching declaration is instead in a strict layer,
+that acceptance is provisional and the compiler checks the lower strict
+layers:
 
-1. If no peer origin accepts, the provisional declaration is the unique match
+1. If no lower strict layer accepts, the provisional declaration is the unique match
    and is accepted.
-2. If a declaration from another strict origin accepts, selection fails with
+2. If a declaration from another strict layer accepts, selection fails with
    the dedicated strict-import ambiguity diagnostic.
-3. If a peer declaration remains undecidable with blockers, the provisional
-   acceptance remains held until that peer is accepted or refuted.
-4. Declarations from the same origin retain their ordinary family and overload
+3. If a lower strict declaration remains undecidable with blockers, the
+   provisional acceptance remains held until that declaration is accepted or
+   refuted.
+4. Declarations within each layer retain their ordinary family and overload
    semantics; strict ambiguity concerns accepted declarations from different
-   origins.
-5. After the strict group has no accepted match, resolution may continue into
-   the enclosing non-strict layers.
+   strict layers.
+5. If a strict layer has no match, ordinary resolution continues downward. A
+   local or preferential match reached this way then wins over all layers below
+   it.
 
 For simple names, if both `First.x` and `Second.x` exist, using `x` directly in
-the body checks both origins and reports ambiguity. If only `First.y` exists,
-using `y` accepts the unique declaration from `First`.
+the body checks both strict layers and reports ambiguity. If only `First.y`
+exists, using `y` accepts the unique declaration from `First`. If the body adds
+a local declaration of `x` above both imports, that local declaration wins and
+there is no strict-import ambiguity. A preferential import above the strict
+layers behaves the same way.
 
 Dependent declarations use the same rule. Declarations with heads equivalent
-to these can coexist in different strict origins:
+to these can coexist in different strict layers:
 
 ```datra
 `convert %Nat`
 `convert %Int`
 ```
 
-An application admitted by both origins is ambiguous. An application admitted
-by exactly one origin selects that declaration normally.
+An application admitted by both strict layers is ambiguous. An application
+admitted by exactly one strict layer selects that declaration normally.
 
 The compiler introduces a dedicated structured reason, conceptually:
 
 ```haskell
-AmbiguousStrictImport String [ImportOrigin]
+AmbiguousStrictImport String
 ```
 
 The payload identifies the requested identifier or rendered dependent
-application and the accepting origins. It is not `OverlappingBindings`, because
-the declarations are allowed to coexist. It is not `NamedFieldAmbiguous`,
-because the ambiguity is between declarations selected from strict import
-origins rather than members of one named map.
+application. It is not `OverlappingBindings`, because the declarations are
+allowed to coexist. It is not `NamedFieldAmbiguous`, because the ambiguity is
+between declarations selected from separate strict layers rather than members
+of one named map.
 
 Declarative syntax follows the same rule. Rules from all `with` operands are
-available in their original layers. A rule accepted from one strict origin is
-provisional until matching rules in every peer origin are decided. A single
-accepting origin succeeds; multiple accepting origins for the same rewritten
-extent produce `AmbiguousStrictImport`.
+available in their original layers. A rule accepted from the highest matching
+strict layer is provisional until matching rules in lower strict layers are
+decided. A single accepting strict layer succeeds; multiple accepting strict
+layers for the same rewritten extent produce `AmbiguousStrictImport`. A higher
+local or preferential syntax match wins before this strict check begins.
 
 When a `with` source is not yet resolvable during rewriting, the source
 expression is a blocker. The body scope is not constructed until all source
-layers are available. Once installed, the layers remain distinct and carry
-their shared strict group and individual origin metadata.
+layers are available. Once installed, the layers remain distinct and retain
+only their `StrictImport` policy.
 
 ## Namespace aliases
 
@@ -407,13 +431,13 @@ operations:
 | Recursive declarations | Predeclare lexical `let` families once |
 | Qualified syntax | Open the namespace declaration's public layer |
 | Unqualified syntax | Read the imported layers already in `Scope` |
-| `with` syntax | Push strict import layers; accept only after peer origins are checked |
+| `with` syntax | Push strict import layers; validate a highest strict match against lower strict layers |
 | Child lexical scope | Use ordinary scope-entry operations |
 | Diagnostics | Carry source span separately |
 
 Scope transitions remain persistent structural updates. Entering a `with` body
 does not fail merely because its operands contain overlapping declarations.
-Strict-origin checking occurs as part of declaration or syntax-candidate
+Strict-layer checking occurs as part of declaration or syntax-candidate
 selection for a concrete use.
 
 ## Candidate suspension
@@ -448,23 +472,26 @@ inner imported layer prevents premature selection of an outer module's
 candidate.
 
 Strict imports add one selection state without changing structural traversal.
-Every candidate is enumerated once and retains its layer policy, strict group,
-and origin. Acceptance from a strict layer is stored as a provisional accepted
-selection while the existing candidate search advances through peer origins
-in the same group:
+Every candidate is enumerated once and retains its layer policy. A local or
+preferential acceptance commits immediately. Acceptance from the highest
+matching strict layer is stored as a provisional accepted selection while the
+existing candidate search advances through lower strict layers:
 
-- a refuted peer is discarded;
-- a held peer keeps the provisional selection suspended under the peer's exact
+- a refuted lower strict candidate is discarded;
+- a held lower strict candidate keeps the provisional selection suspended under its exact
   blockers;
-- an accepted peer from the same origin participates in that origin's ordinary
+- candidates in the same layer participate in that layer's ordinary
   declaration-family decision;
-- an accepted peer from another origin produces
+- an accepted candidate from another strict layer produces
   `AmbiguousStrictImport`; and
-- exhaustion of all peer origins commits the unique provisional selection.
+- exhaustion of lower strict candidates commits the unique provisional
+  selection.
 
-Candidates in outer non-strict layers are not considered after a strict origin
-has a provisionally accepted match. No candidate is re-enumerated or
-structurally rematched during this uniqueness check.
+Matches in lower non-strict layers cannot replace a provisionally accepted
+strict match. Conversely, a local or preferential match found before any
+strict match commits immediately, so strict candidates below it are never
+considered. No candidate is re-enumerated or structurally rematched during
+this uniqueness check.
 
 ## Module loading and dependencies
 
@@ -516,9 +543,9 @@ No module owns a copied syntax-rule catalog or an independent namespace table.
 ### 1. Establish declaration-layer operations
 
 Add and test persistent layer push, lexical entry, namespace opening, and
-import-policy operations. Extend declaration-layer metadata with preferential
-and strict import policies, a strict group identity, and an import origin.
-Keep every imported public layer separate.
+import-policy operations. Extend declaration-layer metadata with nullary
+preferential and strict import policies. Keep every imported public layer
+separate; its policy and stack position are the complete selection metadata.
 
 Do not change module installation in this step.
 
@@ -544,10 +571,11 @@ overlapping qualified and unqualified module inputs.
 
 Make qualified access use ordinary dependent declaration resolution. Make
 unqualified opening push preferential public declaration layers. Make `with`
-push the same layers with one shared strict group and distinct origins. Extend
-declaration and syntax selection so a strict match is committed only after all
-peer origins have been refuted; route multiple accepting origins to
-`AmbiguousStrictImport`.
+push the same layers marked strict. Extend declaration and syntax selection so
+a highest strict match is committed only after lower strict candidates have
+been refuted; route multiple accepting strict layers to
+`AmbiguousStrictImport`. Preserve immediate precedence for higher local and
+preferential matches.
 
 Retain scope activation, protection, and handoff at the entered lexical
 boundary.
@@ -639,10 +667,13 @@ Cover:
   `NamedFieldAmbiguous`;
 - unresolved namespace sources suspending the scope transition;
 - private declarations remaining unavailable in the strict public layers;
-- acceptance from the top strict layer waiting for an undecidable peer origin;
-- one strict match being committed only after every peer origin is refuted;
-  and
-- operand order not suppressing strict peer-origin checks.
+- a higher local declaration winning over matching strict imports;
+- a higher preferential import winning over matching strict imports;
+- acceptance from the top matching strict layer waiting for an undecidable
+  lower strict candidate;
+- one strict match being committed only after every lower strict candidate is
+  refuted; and
+- operand order not suppressing checks of lower strict layers.
 
 ### Syntax-stack tests
 

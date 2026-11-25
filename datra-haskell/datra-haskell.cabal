@@ -360,8 +360,6 @@ executable datra-haskell
         DatraTypes.Scope
         DatraTypes.Scope.Protection
         Interpreting.Source
-        Interpreting.Syntax
-        Interpreting.Obsolete.SyntaxEnvironment
         DatraHost
         ModuleInputs
         Evaluation.Closure
@@ -369,6 +367,7 @@ executable datra-haskell
         Evaluation.Identifier
         Evaluation.Scope
         Evaluation.Scope.GenericProtection
+        Evaluation.Scope.Syntax
         LibraryFiles
         Parsing
         SyntaxRewriting
@@ -441,14 +440,13 @@ test-suite datra-parsing-test
         DatraTypes.Scope
         DatraTypes.Scope.Protection
         Interpreting.Source
-        Interpreting.Syntax
-        Interpreting.Obsolete.SyntaxEnvironment
         DatraHost
         Evaluation.Closure
         Evaluation.Expression
         Evaluation.Identifier
         Evaluation.Scope
         Evaluation.Scope.GenericProtection
+        Evaluation.Scope.Syntax
         Rendering
         Evaluation.Scope.Protection
         StringParsing
@@ -506,8 +504,6 @@ test-suite datra-interpreting-test
         Datra.Interpreter.StandardLibraryTests
         Datra.TestSupport
         Interpreting.Source
-        Interpreting.Syntax
-        Interpreting.Obsolete.SyntaxEnvironment
         DatraHost
         ModuleInputs
         Evaluation.Closure
@@ -515,6 +511,7 @@ test-suite datra-interpreting-test
         Evaluation.Identifier
         Evaluation.Scope
         Evaluation.Scope.GenericProtection
+        Evaluation.Scope.Syntax
         LibraryFiles
         Parsing
         SyntaxRewriting

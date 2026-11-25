@@ -7,6 +7,7 @@
 -- structural scope and closure operations live in sibling Evaluation modules.
 module Evaluation.Expression
   ( prepareModuleSource
+  , installPreparedModules
   , standardLibraryModuleSource
   , moduleExportNames
   , interpretLocatedWithModulesAndStandardLibraryVisibility
@@ -35,7 +36,7 @@ module Evaluation.Expression
   -- Internal source-rewriting bridge.  OBSOLETE: these exports disappear when
   -- syntax rule visibility is derived directly from Scope.
   , standardLibraryParsingEnvironment
-  , syntaxContext
+  , syntaxExpressionType
   , parsedDefaultModule
   ) where
 
@@ -91,7 +92,6 @@ import DatraLanguage.AST
   , identifierExpressionExpression
   , literalIdentifierExpression
   , literalIdentifierName
-  , namedBeginBlock
   , optionalIdentifierExpression
   , mapExpressionChildren
   , mapDependentDeclaration
@@ -116,23 +116,14 @@ import Parsing
   , parseDatraRawLocatedWithSourceName
   )
 import SyntaxRewriting
-  ( SyntaxContext (..)
-  , rewriteResourceSyntaxLocated
+  ( rewriteResourceSyntaxLocated
   , rewriteStandaloneSyntax
-  )
-import Interpreting.Syntax
-  ( sourceSyntaxRuleSets )
-import Interpreting.Obsolete.SyntaxEnvironment
-  ( ObsoleteSyntaxEvaluation (..)
-  , obsoleteSyntaxContext
   )
 import Rendering (renderCanonicalResult, renderInterpretedValue)
 import Evaluation.Scope.GenericProtection
 import Evaluation.Scope.Protection
 import StringInterpolation
-  ( SyntaxRule (..)
-  , declarationRules
-  , identifierExpressionBranches
+  ( identifierExpressionBranches
   , identifierExpressionMatchingBranches
   )
 import DatraLanguage.Application (applicationFrom)
@@ -162,23 +153,6 @@ import System.FilePath (takeFileName)
 
 shadowingConsistencyFuel :: Int
 shadowingConsistencyFuel = 64
-
--- OBSOLETE: compatibility wrapper for the parallel SyntaxContext model.  The
--- implementation is quarantined so evaluation otherwise depends on Scope.
-syntaxContext
-  :: Scope
-  -> [(String, ModuleSource)]
-  -> [(String, String, [SyntaxRule])]
-  -> [SyntaxRule]
-  -> [Expression]
-  -> SyntaxContext
-syntaxContext = obsoleteSyntaxContext ObsoleteSyntaxEvaluation
-  { obsoleteDeclareSyntaxScope = obsoleteBuildSyntaxScope
-  , obsoleteEvaluateInScope = evalInScope
-  , obsoletePrepareSyntaxValidationDeclaration = obsoletePrepareSyntaxDeclaration
-  }
-
-
 
 interpretLocatedExpression
   :: Located Expression
@@ -239,11 +213,10 @@ installPreparedModules
   :: PreparedModules
   -> Scope
   -> Either InterpretingError Scope
-installPreparedModules prepared@(PreparedModules modules) base =
-  foldM install catalogued modules
+installPreparedModules (PreparedModules modules) base =
+  foldM install base modules
   where
-    catalogued = extendModuleCatalog (preparedModuleSources prepared) base
-    install scope = installLoadedModuleResult scope False . preparedModuleResult
+    install scope prepared = installPreparedModule scope False prepared
 
 prepareModuleSource
   :: PreparedModules
@@ -251,10 +224,8 @@ prepareModuleSource
   -> Either InterpretingError PreparedModules
 prepareModuleSource prepared@(PreparedModules modules) source = do
   base <- installPreparedModules prepared (rootScope source)
-  loaded <- loadedModuleResultWithBase base source
-  let ModuleSource _ expressionValue = source
-      rules = sourceSyntaxRuleSets expressionValue
-  pure (PreparedModules (modules <> [PreparedModule source loaded rules]))
+  loaded <- prepareModuleWithBase base source
+  pure (PreparedModules (modules <> [loaded]))
 
 defaultModuleScope :: Either InterpretingError Scope
 defaultModuleScope = standardModuleScope True
@@ -271,53 +242,17 @@ standardLibraryEnvironment visibility raw = case visibility of
 standardLibraryParsingEnvironment
   :: StandardLibraryVisibility
   -> Expression
-  -> Either InterpretingError
-      (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
-standardLibraryParsingEnvironment visibility raw = case visibility of
-  NoStandardLibrary -> Right (rootScope raw, [], [])
-  QualifiedStandardLibrary -> staticStandardModuleBundle False raw
-  AllStandardLibrary -> staticStandardModuleBundle True raw
-
-staticStandardModuleBundle
-  :: Bool
-  -> Expression
-  -> Either InterpretingError
-      (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
-staticStandardModuleBundle allNames raw = do
-  ModuleSource identity sourceExpression <- standardLibraryModuleSource
-  let standardRuleSets =
-        [ (identity, namespace, rules)
-        | (namespace, rules) <- sourceSyntaxRuleSets sourceExpression
-        ]
-  pure
-    ( rootScope raw
-    , [ rule
-      | allNames
-      , (_, _, rules) <- standardRuleSets
-      , rule <- rules
-      ]
-    , standardRuleSets
-    )
+  -> Either InterpretingError Scope
+standardLibraryParsingEnvironment = standardLibraryEnvironment
 
 standardModuleScope
   :: Bool
   -> Either InterpretingError Scope
 standardModuleScope allNames = do
   source <- standardLibraryModuleSource
-  let unseeded = extendModuleCatalog
-        [(standardLibraryFileName, source)]
-        (rootScope source)
-  base <- installDatraHost unseeded
-  scope <- installLoadedModule base allNames source
-  let installed = any
-        (maybe False
-          ((== standardLibraryFileName) . runtimeModuleIdentity)
-          . runtimeDeclarationModule)
-        (runtimeModuleDeclarations scope)
-  if not installed
-    then Left (ModuleEvaluationFailed
-      (ModuleNotLoaded standardLibraryFileName))
-    else pure scope
+  base <- installDatraHost (rootScope source)
+  prepared <- prepareModuleWithBase base source
+  installPreparedModule base allNames prepared
 
 installDatraHost :: Scope -> Either InterpretingError Scope
 installDatraHost base = do
@@ -327,15 +262,27 @@ installDatraHost base = do
         { runtimeDeclarationIsDefinition = True }
   pure (extendRuntimeDeclarations [declaration] base)
 
+syntaxExpressionType :: Scope -> Expression -> Maybe InterpretedValue
+syntaxExpressionType scope expressionValue = either (const Nothing) Just
+  (evalInScope scope [] typeExpression)
+  where
+    typeExpression = case expressionValue of
+      Equality {} -> BooleanType
+      Inequality {} -> BooleanType
+      LessThan {} -> BooleanType
+      LessThanOrEqual {} -> BooleanType
+      GreaterThan {} -> BooleanType
+      GreaterThanOrEqual {} -> BooleanType
+      _ -> expressionValue
+
 parsedDefaultModule :: Either InterpretingError Expression
 parsedDefaultModule = do
-  (envelope, locatedRaw@(Located _ raw)) <- either parseFailure Right
+  locatedRaw@(Located _ raw) <- either parseFailure Right
     (parseDatraRawLocatedWithSourceName standardLibraryFileName
       (requiredBundledLibrarySource standardLibraryFileName))
   base <- installDatraHost (rootScope raw)
-  let context = syntaxContext base [] [] [] []
-      rewritten = rewriteResourceSyntaxLocated
-        envelope context locatedRaw
+  let rewritten = rewriteResourceSyntaxLocated
+        syntaxExpressionType base locatedRaw
   rewrittenValue <- locatedValue <$> either
     (parseFailure . SyntaxRewriteParseFailure)
     Right
@@ -701,6 +648,12 @@ selectionMaximum insertion = do
 evalInScope :: Scope -> ResolutionStack -> Interpreter
 evalInScope = evalInScopeWith UnrestrictedReduction
 
+scopedLiteralMemberName :: Expression -> Maybe SimpleIdentifierString
+scopedLiteralMemberName expressionValue = case expressionValue of
+  IdentifierReference name -> Just name
+  SyntaxBoundary inner -> scopedLiteralMemberName inner
+  _ -> Nothing
+
 -- OBSOLETE normalization seam: evaluation must consume the AST selected by
 -- parsing and syntax rewriting without reshaping it here.
 evalInScopeWith :: ReductionContext -> Scope -> ResolutionStack -> Interpreter
@@ -1022,10 +975,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       binary safeOverloadValues defaults supplied
     -- Project one declared binding without forcing the whole scope map. This
     -- also permits projections next to recursive function declarations.
-    ScopeAccess
-        thisValue
-        selector
-      | Just (SimpleIdentifierString name) <- literalIdentifierName selector
+    ScopedExpression thisValue body
+      | Just (SimpleIdentifierString name) <- scopedLiteralMemberName body
       , isContextualAccessOf ContextualThis thisValue
       , contextualThisAvailable scope
           -> resolveIdentifierAccess reduction scope resolving name
@@ -1036,13 +987,10 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       let distinctOperands = nub operands
       sources <- traverse interpret distinctOperands
       runProtectedOperation protection sources $ \actuals -> do
-        members <- concat <$> traverse namedMembers actuals
-        let combined = makeAtlasMapPreservingSingleton 2
-              (map snd members)
-        enterOpenedScope expressionValue combined
+        enterStrictOpenedScopes expressionValue
           (zip distinctOperands actuals) body
-    ScopeAccess operand selector -> do
-      name <- scopeSelectorName interpret selector
+    ScopedExpression operand body
+      | Just (SimpleIdentifierString name) <- scopedLiteralMemberName body -> do
       source <- interpret operand
       runProtectedOperation protection [source] $ \actuals ->
         case actuals of
@@ -1054,7 +1002,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                   IdentifierReference (SimpleIdentifierString namespace) ->
                     do
                       runtime <- runtimeDeclarationByName namespace scope
-                      installedModule <- runtimeDeclarationModule runtime
+                      public <- runtimeDeclarationPublicScope runtime
                       dependency <- case
                           runtimeDeclarationPresentation runtime of
                         ReferencedRuntimePresentation
@@ -1062,19 +1010,18 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                         _ -> Nothing
                       pure
                         ( dependency
-                        , runtimeModuleIdentity installedModule
-                        , runtimeModuleScope installedModule
+                        , public
                         )
                   _ -> Nothing
                 exportedPayload = case moduleBinding of
-                  Just (_, _, internal) -> withoutCanonicalOwners
+                  Just (_, internal) -> withoutCanonicalOwners
                     (scopePresentationOwners internal)
                     payload
                   Nothing -> payload
             if hasTrailingIdentifierMarker canonicalValueMarker selected
               then do
                 let dependencies = case moduleBinding of
-                      Just (dependency, _, _) -> [dependency]
+                      Just (dependency, _) -> [dependency]
                       Nothing -> maybe [] fst
                         (interpretedCanonicalPresentation actual)
                 pure (withCanonicalNamedAccess
@@ -1251,6 +1198,29 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             Just view -> extendRuntimeProjection view declared
       value <- evalResourceInScopeWith reduction child resolving selectedBody
       pure (handoffScopeValue child value)
+    enterStrictOpenedScopes salt contributions selectedBody = do
+      prepared <- traverse prepare contributions
+      let activated = enterScope salt genericContinuationHandoff scope
+          install imported (declarations, projection) =
+            extendImportedRuntimeScope
+              StrictImport
+              declarations
+              projection
+              imported
+          child = foldl install activated prepared
+      value <- evalResourceInScopeWith reduction child resolving selectedBody
+      pure (handoffScopeValue child value)
+      where
+        prepare contribution@(_, actual) = do
+          let projection = namedMapViewForValue actual
+          opened <- case namedMembers actual of
+            Right members -> Right members
+            Left failure -> case projection of
+              Just _ -> Right []
+              Nothing -> Left failure
+          declarations <- openedContribution projection contribution
+          mapM_ (validateOpenedBinding actual) opened
+          pure (declarations, projection)
     openedContribution namedLayer contribution =
       case openedScopeContributionDeclarations scope contribution of
         Right declarations -> Right declarations
@@ -2233,85 +2203,42 @@ contextualSpecificationValue value =
     Nothing -> maybe (Right value) contextualSpecificationValue
       (interpretedSpecificationSourceValue value)
 
-installLoadedModule
+installModuleSource
   :: Scope
   -> Bool
   -> ModuleSource
   -> Either InterpretingError Scope
-installLoadedModule scope openMembers source = do
-  let isolatedBase = withoutRuntimeDeclarations scope
-  loaded <- loadedModuleResultWithBase isolatedBase source
-  installLoadedModuleResult scope openMembers loaded
+installModuleSource scope openMembers source = do
+  prepared <- prepareModuleWithBase scope source
+  installPreparedModule scope openMembers prepared
 
-installLoadedModuleResult
+installPreparedModule
   :: Scope
   -> Bool
-  -> LoadedModuleResult
+  -> PreparedModule
   -> Either InterpretingError Scope
-installLoadedModuleResult scope openMembers loaded = do
-  let identity = loadedModuleIdentity loaded
-      declarations = loadedModuleDeclarations loaded
-  let dependency = case scopePresentationOwner scope of
-        Just current -> current
-        Nothing -> ModulePresentationOwner identity
-      alreadyInstalled = all
-        (sameInstalledDeclaration identity scope) declarations
-  qualified <- foldM (insertDeclaration dependency identity) scope declarations
-  if openMembers
-    then foldM
-      (openDeclarationMembers alreadyInstalled identity) qualified declarations
-    else pure qualified
+installPreparedModule scope openMembers prepared =
+  Right (if openMembers then openNamespaces else qualified)
   where
-    sameInstalledDeclaration identity values binder =
-      case runtimeDeclarationByName (loadedModuleDeclarationName binder) values
-          >>= runtimeDeclarationModule of
-        Just installed -> runtimeModuleIdentity installed == identity
-        Nothing -> False
-    insertDeclaration dependency identity values binder = do
-      let name = loadedModuleDeclarationName binder
-          value = loadedModuleDeclarationValue binder
-          entry = RuntimeSingletonPayload
-            { runtimeDeclarationName = name
-            , runtimeDeclarationIsDefinition =
-                loadedModuleDeclarationIsDefinition binder
-            , runtimeDeclarationValue = EvaluatedRuntimeValue value
-            , runtimeDeclarationPresentation =
-                ReferencedRuntimePresentation [dependency]
-            , runtimeDeclarationOrigin =
-                Just (DependencyAddress [SimpleIdentifierString name])
-            , runtimeDeclarationDefinition = Nothing
-            , runtimeDeclarationModule = Just RuntimeModuleBinding
-                { runtimeModuleIdentity = identity
-                , runtimeModuleValue = value
-                , runtimeModuleScope = loadedModuleDeclarationScope binder
-                }
-            , runtimeDeclarationReevaluatesForRestrictedReduction = False
-            }
-      case runtimeDeclarationByName name values >>= runtimeDeclarationModule of
-        Just installed
-          | runtimeModuleIdentity installed == identity -> Right values
-        _ -> do
-          exists <- scopeNameExists UnrestrictedReduction values [] name
-          if exists
-            then Left (OverlappingBindings name)
-            else Right (extendRuntimeDeclarations [entry] values)
-    openDeclarationMembers alreadyInstalled identity values binder = do
-      exported <- moduleExportsFromValue (loadedModuleDeclarationValue binder)
-      entries <- moduleExportDeclarations
-        values
-        (loadedModuleDeclarationName binder)
-        identity
-        (loadedModuleDeclarationScope binder)
-        exported
-      foldM (insertExport alreadyInstalled) values entries
-    insertExport alreadyInstalled values entry = do
-      let name = runtimeDeclarationName entry
-      exists <- scopeNameExists UnrestrictedReduction values [] name
-      if not exists
-        then Right (extendRuntimeDeclarations [entry] values)
-        else if alreadyInstalled
-          then Right values
-          else Left (OverlappingBindings name)
+    namespaceLayer = preparedModuleNamespaces prepared
+    qualified = scope
+      { scopeDependentDeclarationLayers = namespaceLayer
+          : scopeDependentDeclarationLayers scope }
+    openNamespaces = foldl openNamespace qualified
+      (dependentDeclarationLayerMembers namespaceLayer)
+    openNamespace current scoped = case scopedDependentDeclarationRuntime scoped
+        >>= runtimeDeclarationPublicScope of
+      Nothing -> current
+      Just public -> case
+          [ layer
+          | layer <- scopeDependentDeclarationLayers public
+          , dependentDeclarationLayerOrigin layer == SourceDeclarationLayer
+          ] of
+        layer : _ -> current
+          { scopeDependentDeclarationLayers =
+              withDeclarationLayerImportPolicy PreferentialImport layer
+                : scopeDependentDeclarationLayers current }
+        [] -> current
 
 -- Both evaluated scope access and resource preparation install opened
 -- members through this boundary. Module binders retain their definition
@@ -2325,13 +2252,12 @@ openedScopeContributionDeclarations scope (operand, actual) =
   case operand of
     IdentifierReference (SimpleIdentifierString namespace)
       | Just runtime <- runtimeDeclarationByName namespace scope
-      , Just installed <- runtimeDeclarationModule runtime -> do
+      , Just public <- runtimeDeclarationPublicScope runtime -> do
           exported <- moduleExportsFromValue actual
           moduleExportDeclarations
             scope
             namespace
-            (runtimeModuleIdentity installed)
-            (runtimeModuleScope installed)
+            public
             exported
     _ -> do
       members <- namedMembers actual
@@ -2347,11 +2273,10 @@ openedScopeContributionDeclarations scope (operand, actual) =
 moduleExportDeclarations
   :: Scope
   -> String
-  -> FilePath
   -> Scope
   -> [ModuleExport]
   -> Either InterpretingError [RuntimeSingletonPayload]
-moduleExportDeclarations scope namespace identity internal exportedValues =
+moduleExportDeclarations scope namespace internal exportedValues =
   pure
     [ RuntimeSingletonPayload
         { runtimeDeclarationName = name
@@ -2365,29 +2290,22 @@ moduleExportDeclarations scope namespace identity internal exportedValues =
             [SimpleIdentifierString namespace, SimpleIdentifierString name])
         , runtimeDeclarationDefinition =
             declarationDefinitionByName internal name
-        , runtimeDeclarationModule = Nothing
+        , runtimeDeclarationPublicScope = Nothing
         , runtimeDeclarationReevaluatesForRestrictedReduction = False
         }
     | ModuleExport name presentation isDefinition evaluated <- exportedValues
     ]
   where
-    dependency = case scopePresentationOwner scope of
+    dependency = case scopePresentationOwner internal <|>
+        scopePresentationOwner scope of
       Just current -> current
-      Nothing -> ModulePresentationOwner identity
+      Nothing -> LexicalPresentationOwner Nothing []
 
-loadedModuleDeclarationsWithBase
+prepareModuleWithBase
   :: Scope
   -> ModuleSource
-  -> Either InterpretingError (FilePath, [LoadedModuleDeclaration])
-loadedModuleDeclarationsWithBase base moduleSource = do
-  loaded <- loadedModuleResultWithBase base moduleSource
-  pure (loadedModuleIdentity loaded, loadedModuleDeclarations loaded)
-
-loadedModuleResultWithBase
-  :: Scope
-  -> ModuleSource
-  -> Either InterpretingError LoadedModuleResult
-loadedModuleResultWithBase base
+  -> Either InterpretingError PreparedModule
+prepareModuleWithBase base
     moduleSource@(ModuleSource path expression) = do
   prepared <- moduleBaseScope base moduleSource
   (resourceBase, resource) <- prepareModuleResource prepared expression
@@ -2403,72 +2321,84 @@ loadedModuleResultWithBase base
       ModuleRequiresIdentifierBinderFederation)
     Left _ -> Left (ModuleEvaluationFailed
       ModuleRequiresIdentifierBinderFederation)
-  declarations <- traverse
-    (loadedDeclaration outer resultExpression) exported
-  pure LoadedModuleResult
-    { loadedModuleIdentity = path
-    , loadedModuleFederation = handoffScopeValue outer result
-    , loadedModuleDeclarations = declarations
+  declarations <- concat <$> traverse
+    (preparedDeclarations outer resourceDeclarations) exported
+  pure PreparedModule
+    { preparedModuleIdentity = path
+    , preparedModuleNamespaces = dependentDeclarationLayer declarations
     }
   where
-    loadedDeclaration outer resultExpression
-        (ModuleExport name presentation isDefinition value) = do
-      internal <- moduleDeclarationScope outer resultExpression name
-      pure LoadedModuleDeclaration
-        { loadedModuleDeclarationName = name
-        , loadedModuleDeclarationPresentation = presentation
-        , loadedModuleDeclarationIsDefinition = isDefinition
-        , loadedModuleDeclarationValue = handoffScopeValue outer value
-        , loadedModuleDeclarationScope = internal
-        }
+    preparedDeclarations outer declarations exported@(ModuleExport name _ _ _) =
+      traverse (attachRuntime outer exported)
+        [ scoped
+        | layer <- scopeDependentDeclarationLayers outer
+        , scoped <- dependentDeclarationLayerMembers layer
+        , Just declaration <- [scopedDependentDeclarationValue scoped]
+        , declaration `elem` declarations
+        , either (const False) id
+            (dependentDeclarationContainsName
+              UnrestrictedReduction [] scoped name)
+        ]
+    attachRuntime outer (ModuleExport name presentation isDefinition value)
+        scoped = do
+      public <- declarationPublicScope outer scoped
+      let dependency = ModulePresentationOwner path
+          runtime = RuntimeSingletonPayload
+            { runtimeDeclarationName = name
+            , runtimeDeclarationIsDefinition = isDefinition
+            , runtimeDeclarationValue = EvaluatedRuntimeValue
+                (handoffScopeValue outer value)
+            , runtimeDeclarationPresentation = case presentation of
+                CanonicalModuleMemberPresentation ->
+                  ReferencedRuntimePresentation [dependency]
+                TransparentModuleMemberPresentation ->
+                  TransparentRuntimePresentation
+            , runtimeDeclarationOrigin = Just
+                (DependencyAddress [SimpleIdentifierString name])
+            , runtimeDeclarationDefinition = scopedDeclarationDefinition scoped
+            , runtimeDeclarationPublicScope = Just public
+            , runtimeDeclarationReevaluatesForRestrictedReduction = False
+            }
+      pure (attachRuntimePayload runtime scoped)
 
-moduleDeclarationScope
+attachRuntimePayload
+  :: RuntimeSingletonPayload
+  -> ScopedDependentDeclaration
+  -> ScopedDependentDeclaration
+attachRuntimePayload runtime scoped = case scoped of
+  ScopedDatraDependentDeclaration captured family declaration _ ->
+    ScopedDatraDependentDeclaration captured family declaration (Just runtime)
+  _ -> scoped
+
+declarationPublicScope
   :: Scope
-  -> Expression
-  -> String
+  -> ScopedDependentDeclaration
   -> Either InterpretingError Scope
-moduleDeclarationScope outer resultExpression name =
-  case namedDeclarationValueExpression name resultExpression of
-    Just (Begin declarations _) -> evaluateDeclarationScope outer [] declarations
-    _ -> Right outer
-
-namedDeclarationValueExpression :: String -> Expression -> Maybe Expression
-namedDeclarationValueExpression selected expressionValue = case expressionValue of
-  dependent
-    | Just (nameExpression, annotation, given) <-
-        dependentArgumentExpression dependent
-    , Just (SimpleIdentifierString name) <-
-        literalIdentifierName nameExpression
-    , name == selected -> Just (case given of
-        Nothing -> maybe expressionValue id annotation
-        Just value
-          | Just value == annotation -> value
-          | otherwise -> maybe value (MapSpecification value) annotation)
-  AtlasMap members -> firstJust members
-  ArgumentativeMap members -> firstJust members
-  MapSequence members -> firstJust members
-  MapConcatenation left right ->
-    namedDeclarationValueExpression selected left
-      <|> namedDeclarationValueExpression selected right
-  SyntaxBoundary inner -> namedDeclarationValueExpression selected inner
-  _ -> Nothing
+declarationPublicScope outer scoped =
+  case scopedDependentDeclarationValue scoped of
+    Just declaration -> case dependentDeclarationImplementation declaration of
+      Begin declarations _ -> evaluateDeclarationScope outer [] declarations
+      SyntaxBoundary inner -> publicFrom inner
+      _ -> Right outer
+    Nothing -> Right outer
   where
-    firstJust = foldr
-      ((<|>) . namedDeclarationValueExpression selected)
-      Nothing
+    publicFrom expressionValue = case expressionValue of
+      Begin declarations _ -> evaluateDeclarationScope outer [] declarations
+      SyntaxBoundary inner -> publicFrom inner
+      _ -> Right outer
 
 moduleBaseScope
   :: Scope
   -> ModuleSource
   -> Either InterpretingError Scope
 moduleBaseScope base
-    moduleSource@(ModuleSource path _) = do
+    (ModuleSource path _) = do
   let seeded = withPresentationOwner
         (ModulePresentationOwner path)
-        (extendModuleCatalog [(path, moduleSource)] base)
+        base
   if takeFileName path == standardLibraryFileName
     then installDatraHost seeded
-    else standardLibraryModuleSource >>= installLoadedModule seeded False
+    else standardLibraryModuleSource >>= installModuleSource seeded False
 
 -- Resource-level scope access and import wrap the declarations which produce
 -- a module value. Prepare those lexical scopes once so value evaluation and
@@ -2480,12 +2410,7 @@ prepareModuleResource
 prepareModuleResource base expressionValue = case expressionValue of
   SyntaxBoundary body -> prepareModuleResource base body
   ScopedExpression source body -> do
-    value <- case source of
-      IdentifierReference (SimpleIdentifierString namespace)
-        | Just runtime <- runtimeDeclarationByName namespace base
-        , Just installed <- runtimeDeclarationModule runtime ->
-            Right (runtimeModuleValue installed)
-      _ -> evalInScope base [] source
+    value <- evalInScope base [] source
     declarations <- openedScopeContributionDeclarations base (source, value)
     prepareModuleResource (extendRuntimeDeclarations declarations base) body
   WithScopes sources body -> do
@@ -2499,13 +2424,16 @@ prepareModuleResource base expressionValue = case expressionValue of
 
 moduleExportNames :: ModuleSource -> Either InterpretingError [String]
 moduleExportNames source = do
-  (_, declarations) <- loadedModuleDeclarationsWithBase
-    (rootScope source) source
-  concat <$> traverse declarationExports declarations
+  prepared <- prepareModuleWithBase (rootScope source) source
+  concat <$> traverse declarationExports
+    (dependentDeclarationLayerMembers (preparedModuleNamespaces prepared))
   where
-    declarationExports binder = do
-      exported <- moduleExportsFromValue (loadedModuleDeclarationValue binder)
-      pure (map moduleExportName exported)
+    declarationExports scoped = case scopedDependentDeclarationRuntime scoped of
+      Just runtime -> case runtimeDeclarationValue runtime of
+        EvaluatedRuntimeValue value ->
+          map moduleExportName <$> moduleExportsFromValue value
+        ContextualRuntimeValue {} -> Right []
+      Nothing -> Right []
 
 moduleExportsFromValue
   :: InterpretedValue
@@ -2633,48 +2561,21 @@ moduleMemberPayload
   -> Either InterpretingError InterpretedValue
 moduleMemberPayload selected = accessValues selected (naturalValue 1)
 
-lookupModule :: Scope -> String -> Either InterpretingError ModuleSource
-lookupModule scope path
-  | Just value <- lookup path (scopeModuleCatalog scope) = Right value
-  | otherwise = Left (ModuleEvaluationFailed (ModuleNotLoaded path))
-
--- Installed values and their definition scopes form one module instance.
--- Re-evaluating a module to enter an 'InModule' expression would duplicate
--- that instance and can recursively bootstrap the same module again.
 lookupModuleDefinitionScope
   :: Scope
   -> String
   -> Either InterpretingError Scope
 lookupModuleDefinitionScope scope path =
-  case runtimeDeclarationByName path scope >>= runtimeDeclarationModule of
-    Just installed -> Right (runtimeModuleScope installed)
+  case runtimeDeclarationByName path scope >>= runtimeDeclarationPublicScope of
+    Just public -> Right public
     Nothing -> case
-      [ runtimeModuleScope installed
-      | runtime <- runtimeModuleDeclarations scope
-      , Just installed <- [runtimeDeclarationModule runtime]
-      , runtimeModuleIdentity installed == path
+      [ public
+      | runtime <- runtimePublicDeclarations scope
+      , Just public <- [runtimeDeclarationPublicScope runtime]
+      , scopePresentationOwner public == Just (ModulePresentationOwner path)
       ] of
-      installed : _ -> Right installed
-      [] -> lookupModule scope path >>= moduleScope
-
-moduleScope :: ModuleSource -> Either InterpretingError Scope
-moduleScope source = moduleScopeWithBase (rootScope source) source
-
-moduleScopeWithBase
-  :: Scope
-  -> ModuleSource
-  -> Either InterpretingError Scope
-moduleScopeWithBase base
-    moduleSource@(ModuleSource _ expression) = do
-  prepared <- moduleBaseScope base moduleSource
-  (resourceBase, resource) <- prepareModuleResource prepared expression
-  (resourceBindings, _) <- resourceBlock resource
-  outer <- evaluateDeclarationScopeWithoutContextualThis
-    resourceBase [] resourceBindings
-  case namedBeginBlock resource of
-    Just (_, declarations, _) ->
-      evaluateDeclarationScope outer [] declarations
-    Nothing -> Right outer
+      public : _ -> Right public
+      [] -> Left (ModuleEvaluationFailed (ModuleNotLoaded path))
 
 resourceBlock
   :: Expression
@@ -3000,12 +2901,35 @@ resolveIdentifierAccess reduction scope resolving name =
   where
     firstDeclarationLayer [] = Right Nothing
     firstDeclarationLayer (layer : outer) = do
+      member <- memberInLayer layer
+      case member of
+        Nothing -> firstDeclarationLayer outer
+        Just selected ->
+          case dependentDeclarationLayerImportPolicy layer of
+            LocalDeclarationLayer -> Right (Just selected)
+            PreferentialImport -> Right (Just selected)
+            StrictImport -> do
+              peer <- firstStrictMember outer
+              case peer of
+                Nothing -> Right (Just selected)
+                Just _ -> Left (AmbiguousStrictImport name)
+    firstStrictMember [] = Right Nothing
+    firstStrictMember (layer : outer) =
+      case dependentDeclarationLayerImportPolicy layer of
+        StrictImport -> do
+          member <- memberInLayer layer
+          case member of
+            Nothing -> firstStrictMember outer
+            Just selected -> Right (Just selected)
+        LocalDeclarationLayer -> firstStrictMember outer
+        PreferentialImport -> firstStrictMember outer
+    memberInLayer layer = do
       members <- catMaybes <$> traverse
         (\declaration -> dependentDeclarationMemberByName
           reduction resolving declaration name)
         (dependentDeclarationCandidates name layer)
       case members of
-        [] -> firstDeclarationLayer outer
+        [] -> Right Nothing
         [member] -> Right (Just member)
         _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
 
@@ -3094,43 +3018,6 @@ resolveInferredEitherAlias Nothing value =
       | interpretedValueKind underlying == EitherValueKind -> underlying
     _ -> value
 resolveInferredEitherAlias (Just _) value = value
-
--- OBSOLETE: constructs a semantic scope solely to support the parallel
--- SyntaxContext evaluator. Scope-owned syntax removes this secondary build.
-obsoleteBuildSyntaxScope
-  :: Scope
-  -> [Expression]
-  -> Either InterpretingError Scope
-obsoleteBuildSyntaxScope enclosing entries = do
-  declarations <- traverse requireDeclaration entries
-  (rebuild, _, _) <- obsoleteScopeRebuilderWithContextualThisAndValidation
-    False True enclosing declarations
-  pure (rebuild [])
-  where
-    requireDeclaration expressionValue = maybe
-      (Left OperationHasNoEffect)
-      Right
-      (dependentDeclaration expressionValue)
-
--- OBSOLETE: rewrites recursive declarations into syntax-validation seeds.
--- Syntax validation must eventually observe the declaration family in Scope.
-obsoletePrepareSyntaxDeclaration :: Expression -> Expression
-obsoletePrepareSyntaxDeclaration expressionValue = case expressionValue of
-  DeclarationExpression declaration
-    | dependentDeclarationIsLet declaration ->
-        DeclarationExpression declaration
-          { dependentDeclarationImplementation = recursiveSeed
-              (dependentDeclarationImplementation declaration) }
-  _ -> expressionValue
-  where
-    recursiveSeed original@(MapSpecification definition
-        (DependentArgument name _)) =
-      case recursiveFunctionImplementation definition of
-        Just implementation ->
-          MapSpecification implementation
-            (DependentArgument name Nothing)
-        Nothing -> original
-    recursiveSeed value = value
 
 -- A recursive let-bound function can be used while its public signature is
 -- being assembled. The unrefined implementation is the fixed-point seed;
@@ -3328,7 +3215,7 @@ obsoleteScopeRebuilderActivated validateFamilies introducesThis scopedEnclosing 
                       , Nothing
                       , dependentDeclarationImplementation declaration
                       )
-                  , runtimeDeclarationModule = Nothing
+                  , runtimeDeclarationPublicScope = Nothing
                   , runtimeDeclarationReevaluatesForRestrictedReduction = True
                   }
 
@@ -4564,16 +4451,9 @@ closureResolver scope = resolver
       member <- either (const Nothing) id
         (namedMapOrdinalMemberAt view position)
       pure (namedMemberName member)
-    moduleResolver path = case
-        [ runtimeModuleScope installed
-        | runtime <- runtimeModuleDeclarations scope
-        , Just installed <- [runtimeDeclarationModule runtime]
-        , runtimeModuleIdentity installed == path
-        ] of
-      installed : _ -> Just (closureResolver installed)
-      [] -> case lookupModuleDefinitionScope scope path of
-        Right definitionScope -> Just (closureResolver definitionScope)
-        Left _ -> Nothing
+    moduleResolver path = case lookupModuleDefinitionScope scope path of
+      Right definitionScope -> Just (closureResolver definitionScope)
+      Left _ -> Nothing
     contextualDepth role depth = do
       let selected = contextualAccessAt role depth
       value <- either (const Nothing) Just (evalInScope scope [] selected)
@@ -4601,15 +4481,12 @@ closureResolver scope = resolver
           resolveAmbient [name]
     resolveAmbient (name : fields@(_ : _))
       | Just runtime <- runtimeDeclarationByName name scope
-      , Just installed <- runtimeDeclarationModule runtime
+      , Just public <- runtimeDeclarationPublicScope runtime
       , Just dependency <- resolveDependency
-          (closureResolver (runtimeModuleScope installed))
+          (closureResolver public)
           (DependencyPath AmbientRoot fields) =
           Just dependency
-            { dependencyKey = ModuleDependency
-                (runtimeModuleIdentity installed)
-                (dependencyKey dependency)
-            , dependencyAddress = prependDependencyAddress
+            { dependencyAddress = prependDependencyAddress
                 (originAddress name)
                 (dependencyAddress dependency)
             -- OBSOLETE normalization seam: captured dependencies must retain
@@ -4696,17 +4573,8 @@ obsoleteClosedSourceExpressionIn definitions text = do
     (const (Left NoCanonicalStringConversion))
     (Right . normalizeExpression)
     (parseSourceExpression text)
-  let declarations =
-        [ DeclarationExpression declaration
-        | layer <- scopeDependentDeclarationLayers definitions
-        , dependentDeclarationLayerOrigin layer == SourceDeclarationLayer
-        , scoped <- dependentDeclarationLayerMembers layer
-        , Just declaration <- [scopedDependentDeclarationValue scoped]
-        ]
-      rules = concatMap
-        declarationRules declarations
   rewritten <- Bifunctor.first
     (const NoCanonicalStringConversion)
     (rewriteStandaloneSyntax
-      (syntaxContext definitions [] [] rules declarations) expressionValue)
+      syntaxExpressionType definitions expressionValue)
   pure (inlineDependencies (closureResolver definitions) rewritten)

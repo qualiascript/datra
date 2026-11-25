@@ -3,8 +3,6 @@ module Interpreting.Source
   , PreparedModules
   , emptyPreparedModules
   , preparedModuleContains
-  , preparedModuleNamespaceOrigins
-  , preparedModuleSources
   , StandardLibraryVisibility (..)
   , ParsedDatraSource
   , parseDatraSourceSyntax
@@ -19,17 +17,14 @@ import DatraTypes.Module.Source
 import DatraTypes.Scope (Scope)
 import DatraTypes.FunctionType (resolveGenericFunctionTypes)
 import Evaluation.Expression
-  ( parsedDefaultModule
+  ( installPreparedModules
+  , parsedDefaultModule
   , standardLibraryParsingEnvironment
-  , syntaxContext
+  , syntaxExpressionType
   )
 import LibraryFiles (requiredBundledLibrarySource, standardLibraryFileName)
-import Parsing
-  ( ResourceEnvelope (..)
-  , parseDatraRawLocatedWithSourceName
-  )
+import Parsing (parseDatraRawLocatedWithSourceName)
 import SyntaxRewriting (rewriteResourceSyntaxLocated)
-import StringInterpolation (SyntaxRule)
 import DatraLanguage.Diagnostics (Located (..))
 import DatraLanguage.Diagnostics.Application (ParseFailure (..))
 import System.FilePath (takeFileName)
@@ -39,11 +34,8 @@ import System.FilePath (takeFileName)
 -- this pass then applies the syntax functions visible through Std, explicit
 -- module inputs, and declarations introduced by the resource itself.
 data ParsedDatraSource = ParsedDatraSource
-  { parsedEnvelope :: ResourceEnvelope
-  , parsedRawExpression :: Located Expression
+  { parsedRawExpression :: Located Expression
   , parsedBaseScope :: Scope
-  , parsedStandardRules :: [SyntaxRule]
-  , parsedBaseModuleRules :: [(String, String, [SyntaxRule])]
   }
 
 parseDatraSourceSyntax
@@ -52,17 +44,14 @@ parseDatraSourceSyntax
   -> String
   -> Either ParseFailure ParsedDatraSource
 parseDatraSourceSyntax standardLibraryVisibility sourceName source = do
-  (envelope, locatedRaw@(Located _ raw)) <-
+  locatedRaw@(Located _ raw) <-
     parseDatraRawLocatedWithSourceName sourceName source
-  (base, standardRules, baseModuleRules) <-
+  base <-
     Bifunctor.first (SyntaxEnvironmentParseFailure . show)
       (standardLibraryParsingEnvironment standardLibraryVisibility raw)
   pure ParsedDatraSource
-    { parsedEnvelope = envelope
-    , parsedRawExpression = locatedRaw
+    { parsedRawExpression = locatedRaw
     , parsedBaseScope = base
-    , parsedStandardRules = standardRules
-    , parsedBaseModuleRules = baseModuleRules
     }
 
 parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
@@ -74,11 +63,11 @@ parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
 parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
     standardLibraryVisibility prepared sourceName source = do
   if standardLibraryVisibility == NoStandardLibrary
-      && null (preparedModuleSources prepared)
+      && preparedModulesEmpty prepared
       && takeFileName sourceName == standardLibraryFileName
       && source == requiredBundledLibrarySource standardLibraryFileName
     then do
-      (_, Located sourceSpan _) <-
+      Located sourceSpan _ <-
         parseDatraRawLocatedWithSourceName sourceName source
       expressionValue <- Bifunctor.first
         (SyntaxEnvironmentParseFailure . show)
@@ -89,32 +78,20 @@ parseDatraSourceLocatedWithModulesAndStandardLibraryVisibility
         standardLibraryVisibility sourceName source
       rewritten <- rewriteParsedDatraSourceWithModules prepared parsed
       pure rewritten
+  where
+    preparedModulesEmpty (PreparedModules modules) = null modules
 
 rewriteParsedDatraSourceWithModules
   :: PreparedModules
   -> ParsedDatraSource
   -> Either ParseFailure (Located Expression)
 rewriteParsedDatraSourceWithModules prepared parsed = do
-  let dependencyRules =
-        [ (identity, namespace, rules)
-        | preparedModule <- preparedEntries
-        , let identity = loadedModuleIdentity
-                (preparedModuleResult preparedModule)
-        , (namespace, rules) <- preparedModuleRuleSets preparedModule
-        ]
-      availableModuleRules = baseModuleRules <> dependencyRules
-      initialRules = standardRules
-      rewrite = rewriteResourceSyntaxLocated envelope
-        (syntaxContext (parsedBaseScope parsed)
-          (preparedModuleSources prepared)
-          availableModuleRules initialRules [])
-        (parsedRawExpression parsed)
+  scope <- Bifunctor.first (SyntaxEnvironmentParseFailure . show)
+    (installPreparedModules prepared (parsedBaseScope parsed))
+  let rewrite = rewriteResourceSyntaxLocated
+        syntaxExpressionType scope (parsedRawExpression parsed)
   rewritten <- Bifunctor.first rewriteParseFailure rewrite
   pure (resolveGenericFunctionTypes <$> rewritten)
   where
-    envelope = parsedEnvelope parsed
-    standardRules = parsedStandardRules parsed
-    baseModuleRules = parsedBaseModuleRules parsed
-    PreparedModules preparedEntries = prepared
     rewriteParseFailure = SyntaxRewriteParseFailure
 

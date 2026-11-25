@@ -226,9 +226,9 @@ hostOperator body arguments =
   FunctionApplication
     (FunctionApplication
       (FunctionType domain (identifierReference "Any"))
-      (ScopeAccess
+      (ScopedExpression
         (identifierReference "datra")
-        (literalIdentifierExpression (SimpleIdentifierString body))))
+        (identifierReference body)))
     supplied
   where
     domain = case arguments of
@@ -274,9 +274,9 @@ maybeExpansion value =
 ordinalCall :: String -> [Expression] -> Expression
 ordinalCall name arguments =
   FunctionApplication
-    (ScopeAccess
+    (ScopedExpression
       (identifierReference "Ordinals")
-      (literalIdentifierExpression (SimpleIdentifierString name)))
+      (identifierReference name))
     (AtlasMap arguments)
 
 ordinalSum, ordinalProduct, ordinalExponent :: Expression -> Expression -> Expression

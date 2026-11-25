@@ -5,8 +5,8 @@ module DatraTypes.Scope
   , RuntimeSingletonPayload (..)
   , RuntimeDeclarationValue (..)
   , RuntimeDeclarationPresentation (..)
-  , RuntimeModuleBinding (..)
   , DeclarationLayerOrigin (..)
+  , DeclarationLayerImportPolicy (..)
   , DependentDeclarationLayer (..)
   ) where
 
@@ -15,7 +15,6 @@ import DatraLanguage.ContextualDeclaration (ContextualRole)
 import DatraLanguage.DependentDeclaration (DependentDeclaration)
 import DatraTypes
 import DatraTypes.Closure (DependencyAddress)
-import DatraTypes.Module.Source (ModuleSource)
 import DatraTypes.Resolution (ResolutionStack)
 import DatraTypes.Scope.Protection (ScopeHandoffDecision)
 
@@ -24,7 +23,6 @@ import DatraTypes.Scope.Protection (ScopeHandoffDecision)
 -- layers; it must not be represented by a parallel context.
 data Scope = Scope
   { scopeDependentDeclarationLayers :: [DependentDeclarationLayer]
-  , scopeModuleCatalog :: [(String, ModuleSource)]
   , scopePresentationOwner :: Maybe PresentationOwner
   , scopeActivation :: ScopeActivation
   , scopeHandoff :: Maybe ScopeHandoff
@@ -59,7 +57,7 @@ data RuntimeSingletonPayload = RuntimeSingletonPayload
   , runtimeDeclarationOrigin :: Maybe DependencyAddress
   , runtimeDeclarationDefinition
       :: Maybe (Scope, Maybe Expression, Expression)
-  , runtimeDeclarationModule :: Maybe RuntimeModuleBinding
+  , runtimeDeclarationPublicScope :: Maybe Scope
   , runtimeDeclarationReevaluatesForRestrictedReduction :: Bool
   }
 
@@ -78,18 +76,19 @@ data RuntimeDeclarationPresentation
   | ReferencedRuntimePresentation [PresentationOwner]
   | TransparentRuntimePresentation
 
-data RuntimeModuleBinding = RuntimeModuleBinding
-  { runtimeModuleIdentity :: FilePath
-  , runtimeModuleValue :: InterpretedValue
-  , runtimeModuleScope :: Scope
-  }
-
 data DeclarationLayerOrigin
   = SourceDeclarationLayer
   | RuntimeDeclarationLayer
   deriving (Eq)
 
+data DeclarationLayerImportPolicy
+  = LocalDeclarationLayer
+  | PreferentialImport
+  | StrictImport
+  deriving (Eq)
+
 data DependentDeclarationLayer = DependentDeclarationLayer
   { dependentDeclarationLayerOrigin :: DeclarationLayerOrigin
+  , dependentDeclarationLayerImportPolicy :: DeclarationLayerImportPolicy
   , dependentDeclarationLayerMembers :: [ScopedDependentDeclaration]
   }

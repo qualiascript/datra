@@ -20,7 +20,6 @@ import Interpreting.Source
   , emptyPreparedModules
   , parseDatraSourceSyntax
   , preparedModuleContains
-  , preparedModuleNamespaceOrigins
   , rewriteParsedDatraSourceWithModules
   )
 import LibraryFiles (bundledLibrary, standardLibraryFileName)
@@ -133,23 +132,8 @@ prepareModuleInput prepared input = do
   updated <- Bifunctor.first
     (ModulePreparationFailed (moduleInputIdentity input))
     (prepareModuleSource prepared source)
-  validateNamespaceOrigins (preparedModuleNamespaceOrigins updated)
   pure updated
 
 isStandardLibraryInput :: ModuleInput -> Bool
 isStandardLibraryInput =
   (== standardLibraryFileName) . takeFileName . moduleInputIdentity
-
-validateNamespaceOrigins
-  :: [(String, FilePath)]
-  -> Either ModuleInputFailure ()
-validateNamespaceOrigins origins =
-  () <$ foldl add (Right []) origins
-  where
-    add result entry@(namespace, identity) = do
-      previousOrigins <- result
-      case lookup namespace previousOrigins of
-        Just previous
-          | previous /= identity -> Left (ModuleNamespaceCollision
-              namespace previous identity)
-        _ -> Right (previousOrigins <> [entry])

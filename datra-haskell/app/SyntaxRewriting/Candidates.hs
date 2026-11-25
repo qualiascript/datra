@@ -21,6 +21,8 @@ import StringInterpolation
   )
 import Data.Map.Strict qualified as Map
 import DatraTypes (InterpretedValue)
+import DatraTypes.Scope
+  ( DeclarationLayerImportPolicy, Scope )
 import SyntaxRewriting.Types
   ( CaptureExtent (..)
   , CandidateFrame (..)
@@ -168,11 +170,20 @@ advanceCandidateFrameWith prepareCapture expectedHole candidate =
           [] -> templateSelectionWhole
             (structuralCandidateSelection candidate)
 
-compileRewriteRule :: Maybe InterpretedValue -> SyntaxRule -> RewriteRule
-compileRewriteRule returnType rule = RewriteRule
+compileRewriteRule
+  :: Scope
+  -> DeclarationLayerImportPolicy
+  -> Int
+  -> Maybe InterpretedValue
+  -> SyntaxRule
+  -> RewriteRule
+compileRewriteRule familyScope importPolicy layer returnType rule = RewriteRule
   { rewriteRule = rule
   , rewriteRuleBranch = 0
   , rewriteRuleReturnType = returnType
+  , rewriteRuleFamilyScope = familyScope
+  , rewriteRuleImportPolicy = importPolicy
+  , rewriteRuleLayer = layer
   }
 
 enumerateRuleStructuralCandidates

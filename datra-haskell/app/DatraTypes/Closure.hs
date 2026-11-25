@@ -22,7 +22,6 @@ data DependencyKey
   = BindingDependency String Expression
   | SelectedDependency [SimpleIdentifierString] Expression
   | ContextualDependency ContextualRole Natural Expression
-  | ModuleDependency FilePath DependencyKey
   deriving (Eq, Show)
 
 data Dependency = Dependency

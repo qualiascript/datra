@@ -1,8 +1,5 @@
 module SyntaxRewriting.Types
-  ( SyntaxContext (..)
-  , SyntaxRuleFamily (..)
-  , ClassifyHoles
-  , RewriteRule (..)
+  ( RewriteRule (..)
   , CaptureExtent (..)
   , RewriteNodeId (..)
   , RewriteLocus (..)
@@ -18,6 +15,7 @@ module SyntaxRewriting.Types
   , CandidateRejectionDetails (..)
   , CandidateRejection (..)
   , RewriteResult (..)
+  , ProvisionalCandidate (..)
   , CandidateSearch (..)
   , OrdinaryTraversal (..)
   , RewriteWork (..)
@@ -27,47 +25,27 @@ module SyntaxRewriting.Types
 
 import Data.Map.Strict (Map)
 import DatraLanguage.AST (Expression)
-import DatraLanguage.Diagnostics (DatraError, SourceSpan)
+import DatraLanguage.Diagnostics (DatraError)
 import DatraLanguage.Diagnostics.Application
-  ( CandidateRejectionReason (..), SyntaxRewriteFailure )
+  ( CandidateRejectionReason (..) )
 import StringExpression
   ( TemplateSelection )
 import DatraTypes
   ( InterpretedValue )
+import DatraTypes.Scope
+  ( DeclarationLayerImportPolicy, Scope )
 import StringInterpolation
   ( DeclarativeCapture
   , SyntaxRule
   )
 
-type ClassifyHoles =
-  [DeclarativeCapture]
-  -> [(DeclarativeCapture, Maybe InterpretedValue)]
-
-data SyntaxRuleFamily = SyntaxRuleFamily
-  { syntaxRuleFamilyNames :: [String]
-  , syntaxRuleFamilyRules :: [(Int, SyntaxRule)]
-  , syntaxRuleFamilyEvaluate :: Expression -> Maybe InterpretedValue
-  }
-
-data SyntaxContext = SyntaxContext
-  { contextSourceSpan :: Maybe SourceSpan
-  , contextRuleFamilies :: [SyntaxRuleFamily]
-  , contextClassify :: ClassifyHoles
-  , contextResultType :: Expression -> Maybe InterpretedValue
-  , contextAssembleImplicitResource
-      :: [Expression]
-      -> Either SyntaxRewriteFailure Expression
-  , contextRewriteScope :: RewriteLocus -> SyntaxContext
-  , contextPublish :: Expression -> Maybe SyntaxContext
-  , contextRecursive :: [Expression] -> SyntaxContext
-  , contextScope :: Expression -> SyntaxContext
-  , contextEnter :: Maybe Expression -> SyntaxContext
-  }
-
 data RewriteRule = RewriteRule
   { rewriteRule :: SyntaxRule
   , rewriteRuleBranch :: Int
   , rewriteRuleReturnType :: Maybe InterpretedValue
+  , rewriteRuleFamilyScope :: Scope
+  , rewriteRuleImportPolicy :: DeclarationLayerImportPolicy
+  , rewriteRuleLayer :: Int
   }
 
 data CaptureExtent
@@ -170,11 +148,18 @@ data RewriteResult = RewriteResult
   , rewriteResultSelection :: Maybe SelectedCandidate
   }
 
+data ProvisionalCandidate = ProvisionalCandidate
+  { provisionalCandidateSelected :: SelectedCandidate
+  , provisionalCandidatePrepared :: PreparedExpansion
+  , provisionalCandidateReturnType :: InterpretedValue
+  }
+
 data CandidateSearch = CandidateSearch
   { candidateSearchCandidates :: [StructuralCandidate]
   , candidateSearchCursor :: Int
   , candidateSearchRejections :: [CandidateRejection]
   , candidateSearchFrame :: Maybe CandidateFrame
+  , candidateSearchProvisional :: Maybe ProvisionalCandidate
   }
 
 data OrdinaryTraversal = OrdinaryTraversal

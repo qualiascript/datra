@@ -102,12 +102,6 @@ localizeModuleInputFailure failure =
             localizeInterpretingError preparationFailure
       in LocalizedMessage "modulul nu a putut fi pregătit"
           (["modul: " <> path, "cauză: " <> summary] <> details)
-    ModuleNamespaceCollision namespace first second ->
-      LocalizedMessage "spațiul de nume al modulului este declarat de mai multe ori"
-        [ "spațiu de nume: " <> namespace
-        , "primul modul: " <> first
-        , "al doilea modul: " <> second
-        ]
 
 embeddedParseFailure :: ParseFailure -> [String]
 embeddedParseFailure failure = summary : details
@@ -129,6 +123,9 @@ localizeSyntaxRewriteFailure :: SyntaxRewriteFailure -> LocalizedMessage
 localizeSyntaxRewriteFailure failure = case failure of
   AmbiguousBareSkipApplication ->
     LocalizedMessage "aplicarea simplă de omitere este ambiguă" []
+  AmbiguousStrictSyntaxImport expressionValue ->
+    LocalizedMessage "declarațiile importate strict sunt ambigue"
+      ["expresie: " <> renderSourceExpression expressionValue]
   RewriteStackExhausted ->
     LocalizedMessage "stiva de rescriere sintactică s-a epuizat înainte de finalizare" []
   OverlappingDependentDeclarations earlier later ->
@@ -210,6 +207,10 @@ localizeInterpretingError reason =
       LocalizedMessage "operația nu are efect" []
     OverlappingBindings name ->
       LocalizedMessage "legările se suprapun în același domeniu"
+        ["legare: " <> name]
+    AmbiguousStrictImport name ->
+      LocalizedMessage
+        "declarațiile importate strict sunt ambigue"
         ["legare: " <> name]
     InconsistentShadowing name ->
       LocalizedMessage

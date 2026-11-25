@@ -10,20 +10,23 @@ module Evaluation.Scope
   , dependentDeclarationSingletonName
   , dependentDeclarationLayer
   , runtimeDeclarationLayer
+  , withDeclarationLayerImportPolicy
+  , extendImportedDeclarationLayer
   , dependentDeclarationCandidates
   , extendRuntimeDeclarations
+  , extendImportedRuntimeDeclarations
+  , extendImportedRuntimeScope
   , extendContextualRuntimeDeclarations
   , extendRuntimeProjection
   , withoutRuntimeDeclarations
   , runtimeDeclarationByName
   , declarationDefinitionByName
   , scopedDeclarationDefinition
-  , runtimeModuleDeclarations
+  , runtimePublicDeclarations
   , evaluatedRuntimeDeclaration
   , contextualRuntimeDeclaration
   , constantContextualRuntimeDeclaration
   , rootScope
-  , extendModuleCatalog
   , withPresentationOwner
   , enterScope
   , enterRuntimeScope
@@ -37,7 +40,6 @@ import Control.Applicative ((<|>))
 import DatraLanguage.AST
 import DatraLanguage.ContextualDeclaration
 import DatraTypes
-import DatraTypes.Module.Source
 import DatraTypes.Resolution
 import DatraTypes.Scope
 import DatraTypes.Scope.Protection
@@ -142,7 +144,25 @@ makeDependentDeclarationLayer
   :: DeclarationLayerOrigin
   -> [ScopedDependentDeclaration]
   -> DependentDeclarationLayer
-makeDependentDeclarationLayer = DependentDeclarationLayer
+makeDependentDeclarationLayer origin =
+  DependentDeclarationLayer origin LocalDeclarationLayer
+
+withDeclarationLayerImportPolicy
+  :: DeclarationLayerImportPolicy
+  -> DependentDeclarationLayer
+  -> DependentDeclarationLayer
+withDeclarationLayerImportPolicy policy layer = layer
+  { dependentDeclarationLayerImportPolicy = policy }
+
+extendImportedDeclarationLayer
+  :: DeclarationLayerImportPolicy
+  -> DependentDeclarationLayer
+  -> Scope
+  -> Scope
+extendImportedDeclarationLayer policy layer scope = scope
+  { scopeDependentDeclarationLayers =
+      withDeclarationLayerImportPolicy policy layer
+        : scopeDependentDeclarationLayers scope }
 
 dependentDeclarationCandidates
   :: String
@@ -182,15 +202,51 @@ scopedContextualSurfaceDeclarations captured declarations =
   ]
 
 extendRuntimeDeclarations :: [RuntimeSingletonPayload] -> Scope -> Scope
-extendRuntimeDeclarations [] scope = scope
-extendRuntimeDeclarations declarations parent = scope
+extendRuntimeDeclarations = extendRuntimeDeclarationsWithPolicy
+  LocalDeclarationLayer
+
+extendImportedRuntimeDeclarations
+  :: DeclarationLayerImportPolicy
+  -> [RuntimeSingletonPayload]
+  -> Scope
+  -> Scope
+extendImportedRuntimeDeclarations = extendRuntimeDeclarationsWithPolicy
+
+extendImportedRuntimeScope
+  :: DeclarationLayerImportPolicy
+  -> [RuntimeSingletonPayload]
+  -> Maybe NamedMapView
+  -> Scope
+  -> Scope
+extendImportedRuntimeScope _ [] Nothing scope = scope
+extendImportedRuntimeScope policy declarations projection parent = scope
   where
     scope = parent
       { scopeDependentDeclarationLayers =
-          runtimeDeclarationLayer
-            (concatMap
-              (scopedRuntimeDeclarations scope)
-              declarations)
+          withDeclarationLayerImportPolicy policy
+            (runtimeDeclarationLayer
+              ( concatMap (scopedRuntimeDeclarations scope) declarations
+                <> maybe [] (pure . ScopedProjectedDependentDeclaration scope)
+                  projection
+              ))
+            : scopeDependentDeclarationLayers parent
+      }
+
+extendRuntimeDeclarationsWithPolicy
+  :: DeclarationLayerImportPolicy
+  -> [RuntimeSingletonPayload]
+  -> Scope
+  -> Scope
+extendRuntimeDeclarationsWithPolicy _ [] scope = scope
+extendRuntimeDeclarationsWithPolicy policy declarations parent = scope
+  where
+    scope = parent
+      { scopeDependentDeclarationLayers =
+          withDeclarationLayerImportPolicy policy
+            (runtimeDeclarationLayer
+              (concatMap
+                (scopedRuntimeDeclarations scope)
+                declarations))
             : scopeDependentDeclarationLayers parent
       }
 
@@ -270,7 +326,6 @@ scopedDeclarationDefinition scoped =
     runtimeDefinition = scopedDependentDeclarationRuntime scoped
       >>= runtimeDeclarationDefinition
     sourceDefinition = do
-      _ <- dependentDeclarationSingletonName scoped
       declaration <- scopedDependentDeclarationValue scoped
       pure
         ( scopedDependentDeclarationScope scoped
@@ -278,13 +333,13 @@ scopedDeclarationDefinition scoped =
         , dependentDeclarationImplementation declaration
         )
 
-runtimeModuleDeclarations :: Scope -> [RuntimeSingletonPayload]
-runtimeModuleDeclarations scope =
+runtimePublicDeclarations :: Scope -> [RuntimeSingletonPayload]
+runtimePublicDeclarations scope =
   [ runtime
   | layer <- scopeDependentDeclarationLayers scope
   , scoped <- dependentDeclarationLayerMembers layer
   , Just runtime <- [scopedDependentDeclarationRuntime scoped]
-  , Just _ <- [runtimeDeclarationModule runtime]
+  , Just _ <- [runtimeDeclarationPublicScope runtime]
   ]
 
 evaluatedRuntimeDeclaration
@@ -298,7 +353,7 @@ evaluatedRuntimeDeclaration name value = RuntimeSingletonPayload
   , runtimeDeclarationPresentation = DirectRuntimePresentation
   , runtimeDeclarationOrigin = Nothing
   , runtimeDeclarationDefinition = Nothing
-  , runtimeDeclarationModule = Nothing
+  , runtimeDeclarationPublicScope = Nothing
   , runtimeDeclarationReevaluatesForRestrictedReduction = False
   }
 
@@ -319,7 +374,7 @@ contextualRuntimeDeclaration role includesDependencies declarations value =
     , runtimeDeclarationPresentation = DirectRuntimePresentation
     , runtimeDeclarationOrigin = Nothing
     , runtimeDeclarationDefinition = Nothing
-    , runtimeDeclarationModule = Nothing
+    , runtimeDeclarationPublicScope = Nothing
     , runtimeDeclarationReevaluatesForRestrictedReduction = False
     }
 
@@ -333,15 +388,10 @@ constantContextualRuntimeDeclaration role value =
 rootScope :: salt -> Scope
 rootScope salt = Scope
   { scopeDependentDeclarationLayers = []
-  , scopeModuleCatalog = []
   , scopePresentationOwner = Nothing
   , scopeActivation = initialScopeActivation salt
   , scopeHandoff = Nothing
   }
-
-extendModuleCatalog :: [(String, ModuleSource)] -> Scope -> Scope
-extendModuleCatalog modules scope = scope
-  { scopeModuleCatalog = modules <> scopeModuleCatalog scope }
 
 withPresentationOwner :: PresentationOwner -> Scope -> Scope
 withPresentationOwner owner scope = scope
@@ -354,7 +404,6 @@ enterScope
   -> Scope
 enterScope salt decide parent = Scope
   { scopeDependentDeclarationLayers = scopeDependentDeclarationLayers parent
-  , scopeModuleCatalog = scopeModuleCatalog parent
   , scopePresentationOwner = scopePresentationOwner parent
   , scopeActivation = enterScopeActivation salt (scopeActivation parent)
   , scopeHandoff = Just (ScopeHandoff (scopeActivation parent) decide)
@@ -383,8 +432,6 @@ enterLexicalScope salt lexical decide parent =
     { scopeDependentDeclarationLayers =
         scopeDependentDeclarationLayers lexical <>
           scopeDependentDeclarationLayers parent
-    , scopeModuleCatalog =
-        scopeModuleCatalog lexical <> scopeModuleCatalog parent
     , scopePresentationOwner =
         scopePresentationOwner lexical <|> scopePresentationOwner parent
     }

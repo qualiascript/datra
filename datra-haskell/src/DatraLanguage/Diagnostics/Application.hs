@@ -32,7 +32,6 @@ data ModuleInputFailure
   | ModuleReadFailed String FilePath String
   | ModuleParseFailed FilePath ParseFailure
   | ModulePreparationFailed FilePath InterpretingError
-  | ModuleNamespaceCollision String FilePath FilePath
   deriving (Eq, Show)
 
 data CandidateRejectionReason
@@ -54,6 +53,7 @@ data CandidateRejectionReport = CandidateRejectionReport
 
 data SyntaxRewriteFailure
   = AmbiguousBareSkipApplication
+  | AmbiguousStrictSyntaxImport Expression
   | RewriteStackExhausted
   | OverlappingDependentDeclarations String String
   | NonInjectiveDependentDeclaration String

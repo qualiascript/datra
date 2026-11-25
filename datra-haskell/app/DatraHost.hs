@@ -131,8 +131,8 @@ datraHostValue = do
         (IdentifierReference (SimpleIdentifierString datraHostIdentifier))
         members)
       where
-        access source name = ScopeAccess source
-          (literalIdentifierExpression (SimpleIdentifierString name))
+        access source name = ScopedExpression source
+          (IdentifierReference (SimpleIdentifierString name))
     anyFunctionSource = FunctionSource
       (FunctionType AnyType AnyType)
 

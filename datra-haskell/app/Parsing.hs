@@ -2,8 +2,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 
 module Parsing
-  ( ResourceEnvelope (..)
-  , parseSourceExpression
+  ( parseSourceExpression
   , expressionParser
   , parseDatraRawLocatedWithSourceName
   ) where
@@ -34,7 +33,6 @@ import DatraLanguage.AST
       , Skip
       , EllipsisLiteral
       , Exponentiation
-      , ScopeAccess
       , ScopedExpression
       , MapAccess
       , MapConcatenation
@@ -152,11 +150,6 @@ instance ShowErrorComponent SourceParserError where
 
 type Parser = Parsec SourceParserError Text
 
-data ResourceEnvelope
-  = ExplicitMapEnvelope
-  | ImplicitBlockEnvelope
-  deriving (Eq, Show)
-
 -- | Parse exactly one declaration-independent source phrase.
 parseSourceExpression :: String -> Either ParseFailure Expression
 parseSourceExpression source =
@@ -174,13 +167,12 @@ expressionParser = ExpressionParser
 parseDatraRawLocatedWithSourceName
   :: FilePath
   -> String
-  -> Either ParseFailure (ResourceEnvelope, Located Expression)
+  -> Either ParseFailure (Located Expression)
 parseDatraRawLocatedWithSourceName resourceName source = do
-  (envelope, Located sourceSpan expressionValue) <-
+  Located sourceSpan expressionValue <-
     Bifunctor.first sourceParseFailure (runParser
-      locatedRawResourceWithEnvelope resourceName (Text.pack source))
-  pure (envelope, Located sourceSpan
-    (resolveGenericFunctionTypes expressionValue))
+      locatedRawResource resourceName (Text.pack source))
+  pure (Located sourceSpan (resolveGenericFunctionTypes expressionValue))
 
 sourceParseFailure
   :: ParseErrorBundle Text SourceParserError
@@ -194,12 +186,10 @@ sourceParseFailure bundle@(ParseErrorBundle errors _) =
     reason : _ -> DatraLiteralTemplateParseFailure reason
     [] -> DatraSourceParseFailure (errorBundlePretty bundle)
 
-locatedRawResourceWithEnvelope
-  :: Parser (ResourceEnvelope, Located Expression)
-locatedRawResourceWithEnvelope = do
-  (sourceSpan, (envelope, expressionValue)) <-
-    spanned rawResourceWithEnvelope
-  pure (envelope, Located sourceSpan expressionValue)
+locatedRawResource :: Parser (Located Expression)
+locatedRawResource = do
+  (sourceSpan, expressionValue) <- spanned rawResource
+  pure (Located sourceSpan expressionValue)
 
 
 spanned :: Parser value -> Parser (SourceSpan, value)
@@ -223,15 +213,13 @@ spanned parser = do
     , value
     )
 
-rawResourceWithEnvelope :: Parser (ResourceEnvelope, Expression)
-rawResourceWithEnvelope = do
+rawResource :: Parser Expression
+rawResource = do
   fullSpaceConsumer
-  entries <- elementsUntil eof
+  resource <- parenthesizedExpression
   fullSpaceConsumer
   eof
-  pure (case entries of
-    [explicit@SyntaxBoundary {}] -> (ExplicitMapEnvelope, explicit)
-    _ -> (ImplicitBlockEnvelope, AtlasMap entries))
+  pure resource
 
 sequenceExpression :: [Expression] -> Expression
 sequenceExpression [] = AtlasMap []
@@ -731,11 +719,8 @@ accessedTerm atom = do
 scopeAccessSuffix :: Parser (Expression -> Expression)
 scopeAccessSuffix = choice
   [ do
-      IdentifierExpression body <- dollarIdentifierExpression
-      pure (\source -> ScopeAccess source (IdentifierExpressionBody body))
-  , do
       name <- SimpleIdentifierString <$> bareIdentifierToken
-      pure (\source -> ScopeAccess source (literalIdentifierExpression name))
+      pure (\source -> ScopedExpression source (IdentifierReference name))
   , do
       body <- parenthesizedExpression
       pure (\source -> ScopedExpression source body)

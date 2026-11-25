@@ -293,7 +293,7 @@ dependencyReference (DependencyAddress (root : fields)) =
 
 namedScopeAccess :: Expression -> SimpleIdentifierString -> Expression
 namedScopeAccess source name =
-  ScopeAccess source (literalIdentifierExpression name)
+  ScopedExpression source (IdentifierReference name)
 
 prependIdentifier :: SimpleIdentifierString -> SimpleIdentifierString
 prependIdentifier (SimpleIdentifierString name) = SimpleIdentifierString
@@ -371,10 +371,8 @@ transparentDependencyBlock definitions result =
 
 referencePath :: Expression -> Maybe DependencyPath
 referencePath
-    (ScopeAccess
-      thisValue
-      selector)
-  | Just (SimpleIdentifierString name) <- literalIdentifierName selector
+    (ScopedExpression thisValue body)
+  | Just (SimpleIdentifierString name) <- scopedLiteralMemberName body
   , isContextualAccessOf ContextualThis thisValue =
       Just (DependencyPath (ContextualRoot ContextualThis) [name])
 referencePath expression
@@ -384,13 +382,19 @@ referencePath expression
       <- expression = Just (DependencyPath AmbientRoot [name])
 referencePath (IdentifierReference (SimpleIdentifierString name)) =
   Just (DependencyPath AmbientRoot [name])
-referencePath (ScopeAccess source selector)
-  | Just (SimpleIdentifierString name) <- literalIdentifierName selector =
+referencePath (ScopedExpression source body)
+  | Just (SimpleIdentifierString name) <- scopedLiteralMemberName body =
   appendPath name <$> referencePath source
   where
     appendPath field path = path
       { dependencyPathSegments = dependencyPathSegments path <> [field] }
 referencePath _ = Nothing
+
+scopedLiteralMemberName :: Expression -> Maybe SimpleIdentifierString
+scopedLiteralMemberName expressionValue = case expressionValue of
+  IdentifierReference name -> Just name
+  SyntaxBoundary inner -> scopedLiteralMemberName inner
+  _ -> Nothing
 
 dependencyPathLexicalName :: DependencyPath -> Maybe String
 dependencyPathLexicalName path = case dependencyPathSegments path of

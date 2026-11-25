@@ -14,6 +14,8 @@ import StringExpression
   ( TemplateSelection (..) )
 import StringInterpolation (DeclarativeCapture)
 import DatraTypes (InterpretedValue)
+import DatraTypes.Scope
+  ( DeclarationLayerImportPolicy (StrictImport) )
 import SyntaxRewriting.Candidates
   ( advanceCandidateFrameWith, initialCandidateFrame )
 import SyntaxRewriting.Types
@@ -28,6 +30,7 @@ import SyntaxRewriting.Types
   , HeldCandidate (..)
   , OrdinaryTraversal (..)
   , PreparedExpansion (..)
+  , ProvisionalCandidate (..)
   , RewriteNode (..)
   , RewriteNodeId (..)
   , RewriteNodeState (..)
@@ -89,6 +92,8 @@ data RewriteStackOperations environment failure = RewriteStackOperations
       -> CandidateRejectionDetails
       -> [CandidateRejection]
       -> CandidateRejection
+  , stackStrictImportAmbiguity
+      :: environment -> Expression -> failure
   }
 
 data RewriteMachine environment = RewriteMachine
@@ -197,6 +202,7 @@ runRewriteStack operations initialEnvironment source =
                 , candidateSearchCursor = 0
                 , candidateSearchRejections = []
                 , candidateSearchFrame = Nothing
+                , candidateSearchProvisional = Nothing
                 }
               entered = updateNode nodeId
                 (\current -> current { rewriteNodeState = NodeReady ready })
@@ -227,68 +233,85 @@ runRewriteStack operations initialEnvironment source =
     searchCandidate nodeId search stack machine =
       case drop (candidateSearchCursor search)
           (candidateSearchCandidates search) of
-        [] -> continueAfterCandidates nodeId
-          (candidateSearchRejections search) stack machine
+        [] -> case candidateSearchProvisional search of
+          Nothing -> continueAfterCandidates nodeId
+            (candidateSearchRejections search) stack machine
+          Just provisional -> commitAcceptedCandidate
+            nodeId
+            search
+            (provisionalCandidateSelected provisional)
+            (provisionalCandidatePrepared provisional)
+            (provisionalCandidateReturnType provisional)
+            stack
+            machine
         candidate : _ ->
-          let node = nodeAt nodeId machine
-              environment = rewriteNodeEnvironment node
-              frame = maybe (initialCandidateFrame candidate) id
-                (candidateSearchFrame search)
-              progress = advanceCandidateFrameWith
-                (stackPrepareStructuralCapture operations)
-                (stackExpectedHole operations environment candidate)
-                candidate frame
-          in case progress of
-            CandidateFrameNeedsChild progressed _ _ childSource ->
-              allocateChild nodeId (SearchCandidates search
-                { candidateSearchFrame = Just progressed }) childSource
-                (RewriteExpression childSource) stack machine
-            CandidateFrameNeedsTerminal progressed index _ terminalSource -> do
-              terminalResult <- stackFinalizeOrdinary operations environment
-                terminalSource
-              let consumed = progressed
-                    { candidateFrameResults = Map.insert index terminalResult
-                        (candidateFrameResults progressed) }
-                  readySearch = search
-                    { candidateSearchFrame = Just consumed }
-                  ready = updateNode nodeId (\current -> current
-                    { rewriteNodeState = NodeReady
-                        (SearchCandidates readySearch) }) machine
-              run (nodeId : stack) ready
-            CandidateFrameRejected details ->
-              let childRejections = concatMap rewriteNodeRejections
-                    [ child
-                    | child <- Map.elems (machineNodes machine)
-                    , rewriteNodeParent child == Just nodeId
-                    ]
-                  rejection = stackCandidateRejection operations
-                    environment details childRejections
-                  advancedSearch = search
-                    { candidateSearchCursor = candidateSearchCursor search + 1
-                    , candidateSearchRejections =
-                        candidateSearchRejections search <> [rejection]
-                    , candidateSearchFrame = Nothing
-                    }
-                  advanced = updateNode nodeId (\current -> current
-                    { rewriteNodeState = NodeReady
-                        (SearchCandidates advancedSearch) }) machine
-              in run (nodeId : stack) advanced
-            CandidateFrameComplete typingContext captureResults -> do
-              let rewrittenCaptures = map rewriteResultExpression captureResults
-                  selection = (structuralCandidateSelection candidate)
-                    { templateSelectionCaptures = rewrittenCaptures }
-                  selected = SelectedCandidate
-                    { selectedStructuralCandidate = candidate
-                        { structuralCandidateSelection = selection }
-                    , selectedCaptures = captureResults
-                    , selectedReturnType = stackCandidateReturn operations
-                        environment candidate typingContext
-                    , selectedTypingContext = typingContext
-                    }
-                  prepared = stackPrepareCandidate operations
-                    environment selected
-              decidePreparedCandidate nodeId search selected prepared
-                stack machine
+          if not (candidateEligible search candidate)
+            then searchCandidate nodeId search
+              { candidateSearchCursor = candidateSearchCursor search + 1
+              , candidateSearchFrame = Nothing
+              } stack machine
+            else
+              let node = nodeAt nodeId machine
+                  environment = rewriteNodeEnvironment node
+                  frame = maybe (initialCandidateFrame candidate) id
+                    (candidateSearchFrame search)
+                  progress = advanceCandidateFrameWith
+                    (stackPrepareStructuralCapture operations)
+                    (stackExpectedHole operations environment candidate)
+                    candidate frame
+              in case progress of
+                CandidateFrameNeedsChild progressed _ _ childSource ->
+                  allocateChild nodeId (SearchCandidates search
+                    { candidateSearchFrame = Just progressed }) childSource
+                    (RewriteExpression childSource) stack machine
+                CandidateFrameNeedsTerminal progressed index _ terminalSource -> do
+                  terminalResult <- stackFinalizeOrdinary operations environment
+                    terminalSource
+                  let consumed = progressed
+                        { candidateFrameResults = Map.insert index terminalResult
+                            (candidateFrameResults progressed) }
+                      readySearch = search
+                        { candidateSearchFrame = Just consumed }
+                      ready = updateNode nodeId (\current -> current
+                        { rewriteNodeState = NodeReady
+                            (SearchCandidates readySearch) }) machine
+                  run (nodeId : stack) ready
+                CandidateFrameRejected details ->
+                  let childRejections = concatMap rewriteNodeRejections
+                        [ child
+                        | child <- Map.elems (machineNodes machine)
+                        , rewriteNodeParent child == Just nodeId
+                        ]
+                      rejection = stackCandidateRejection operations
+                        environment details childRejections
+                      advancedSearch = search
+                        { candidateSearchCursor =
+                            candidateSearchCursor search + 1
+                        , candidateSearchRejections =
+                            candidateSearchRejections search <> [rejection]
+                        , candidateSearchFrame = Nothing
+                        }
+                      advanced = updateNode nodeId (\current -> current
+                        { rewriteNodeState = NodeReady
+                            (SearchCandidates advancedSearch) }) machine
+                  in run (nodeId : stack) advanced
+                CandidateFrameComplete typingContext captureResults -> do
+                  let rewrittenCaptures =
+                        map rewriteResultExpression captureResults
+                      selection = (structuralCandidateSelection candidate)
+                        { templateSelectionCaptures = rewrittenCaptures }
+                      selected = SelectedCandidate
+                        { selectedStructuralCandidate = candidate
+                            { structuralCandidateSelection = selection }
+                        , selectedCaptures = captureResults
+                        , selectedReturnType = stackCandidateReturn operations
+                            environment candidate typingContext
+                        , selectedTypingContext = typingContext
+                        }
+                      prepared = stackPrepareCandidate operations
+                        environment selected
+                  decidePreparedCandidate nodeId search selected prepared
+                    stack machine
 
     decidePreparedCandidate nodeId search selected prepared stack
         machine = decideHeldCandidate nodeId held stack machine
@@ -304,23 +327,8 @@ runRewriteStack operations initialEnvironment source =
     decideHeldCandidate nodeId held stack machine =
       case stackDecideCandidate operations environment
           (heldCandidateSelected held) of
-        CandidateAccepted returnType -> do
-          expanded <- stackExpandCandidate operations environment
-            (heldCandidatePrepared held)
-          let selected = (heldCandidateSelected held)
-                { selectedReturnType = Just returnType }
-              traversal = ordinary (Just selected)
-              transitioned = replaceNodeEnvironment nodeId
-                (stackRewriteScope operations environment
-                  (RewriteExpression expanded)) (unregisterNode nodeId machine)
-              advanced = updateNode nodeId (\current -> current
-                { rewriteNodeExpression = expanded
-                , rewriteNodeRejections = candidateSearchRejections
-                    (heldCandidateSearch held)
-                , rewriteNodeState = NodeReady
-                    (TraverseChildren traversal)
-                }) transitioned
-          run (nodeId : stack) advanced
+        CandidateAccepted returnType ->
+          acceptCandidate nodeId held returnType stack machine
         CandidateHeld blockers fallback
           | null blockers -> rejectHeldCandidate nodeId
               held { heldCandidateFallback = fallback } stack machine
@@ -336,6 +344,65 @@ runRewriteStack operations initialEnvironment source =
           held { heldCandidateFallback = details } stack machine
       where
         environment = rewriteNodeEnvironment (nodeAt nodeId machine)
+
+    acceptCandidate nodeId held returnType stack machine =
+      case candidateSearchProvisional search of
+        Just _ -> Left (stackStrictImportAmbiguity operations environment
+          (rewriteNodeExpression (nodeAt nodeId machine)))
+        Nothing
+          | rewriteRuleImportPolicy selectedRule == StrictImport ->
+              let provisional = ProvisionalCandidate
+                    { provisionalCandidateSelected = selected
+                    , provisionalCandidatePrepared = prepared
+                    , provisionalCandidateReturnType = returnType
+                    }
+                  advancedSearch = search
+                    { candidateSearchCursor = candidateSearchCursor search + 1
+                    , candidateSearchFrame = Nothing
+                    , candidateSearchProvisional = Just provisional
+                    }
+                  advanced = updateNode nodeId (\current -> current
+                    { rewriteNodeState = NodeReady
+                        (SearchCandidates advancedSearch) })
+                    (unregisterNode nodeId machine)
+              in run (nodeId : stack) advanced
+          | otherwise -> commitAcceptedCandidate nodeId search selected
+              prepared returnType stack machine
+      where
+        environment = rewriteNodeEnvironment (nodeAt nodeId machine)
+        search = heldCandidateSearch held
+        selected = heldCandidateSelected held
+        prepared = heldCandidatePrepared held
+        selectedRule = structuralCandidateRule
+          (selectedStructuralCandidate selected)
+
+    commitAcceptedCandidate nodeId search selected prepared returnType stack
+        machine = do
+      let environment = rewriteNodeEnvironment (nodeAt nodeId machine)
+      expanded <- stackExpandCandidate operations environment prepared
+      let accepted = selected { selectedReturnType = Just returnType }
+          traversal = ordinary (Just accepted)
+          transitioned = replaceNodeEnvironment nodeId
+            (stackRewriteScope operations environment
+              (RewriteExpression expanded)) (unregisterNode nodeId machine)
+          advanced = updateNode nodeId (\current -> current
+            { rewriteNodeExpression = expanded
+            , rewriteNodeRejections = candidateSearchRejections search
+            , rewriteNodeState = NodeReady (TraverseChildren traversal)
+            }) transitioned
+      run (nodeId : stack) advanced
+
+    candidateEligible search candidate =
+      case candidateSearchProvisional search of
+        Nothing -> True
+        Just provisional ->
+          rewriteRuleImportPolicy candidateRule == StrictImport
+            && rewriteRuleLayer candidateRule > rewriteRuleLayer selectedRule
+          where
+            candidateRule = structuralCandidateRule candidate
+            selectedRule = structuralCandidateRule
+              (selectedStructuralCandidate
+                (provisionalCandidateSelected provisional))
 
     rejectHeldCandidate nodeId held stack machine =
       let environment = rewriteNodeEnvironment (nodeAt nodeId machine)

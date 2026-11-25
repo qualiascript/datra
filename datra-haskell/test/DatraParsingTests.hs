@@ -2470,9 +2470,6 @@ genExpression =
     , MapSequence <$> Gen.list (Range.linear 0 6) genExpression
     , Gen.subterm2 genExpression genExpression FunctionType
     , Gen.subterm2 genExpression genExpression FunctionApplication
-    , Gen.subterm2 genExpression genExpression
-        (\source selector -> ScopeAccess source
-          (IdentifierExpressionBody selector))
     , Gen.subterm2 genExpression genExpression ScopedExpression
     , Gen.subterm2 genExpression genExpression
         (\source body -> WithScopes [source] body)
@@ -2845,8 +2842,8 @@ ref :: String -> Expression
 ref = IdentifierReference . SimpleIdentifierString
 
 scopeAccess :: Expression -> String -> Expression
-scopeAccess source name = ScopeAccess source
-  (literalIdentifierExpression (SimpleIdentifierString name))
+scopeAccess source name = ScopedExpression source
+  (IdentifierReference (SimpleIdentifierString name))
 
 templateLiteral :: String -> StringTemplateInterpolation Expression
 templateLiteral = StringTemplateInterpolation . AsciiStringLiteral

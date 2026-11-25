@@ -1,6 +1,5 @@
 module Evaluation.Identifier
   ( interpretIdentifierExpression
-  , scopeSelectorName
   , interpretSimpleDependentArgument
   , transparentEitherAlias
   ) where
@@ -23,21 +22,6 @@ interpretIdentifierExpression interpret body = case body of
       Just name -> Right
         (makeIdentifierExpression (SimpleIdentifierString name))
       Nothing -> Left (LookupRequiresString (interpretedValueKind rendered))
-
-scopeSelectorName
-  :: Interpreter
-  -> IdentifierExpression Expression
-  -> Either InterpretingError String
-scopeSelectorName interpret selector = case literalIdentifierName selector of
-  Just (SimpleIdentifierString name) -> Right name
-  Nothing -> case selector of
-    IdentifierExpressionBody body -> do
-      identifier <- interpretIdentifierExpression interpret body
-      case asciiStringFromInterpretedMap (interpretedMap identifier) of
-        Just name | not (null name) -> Right name
-        Just _ -> Left (UnknownIdentifier "")
-        Nothing -> Left
-          (LookupRequiresString (interpretedValueKind identifier))
 
 interpretSimpleDependentArgument
   :: ScopeActivation
