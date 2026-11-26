@@ -31,16 +31,6 @@ theorem stableOriginPreserved_interpretation {X Y : Atlas} (f : Transversal X Y)
     stableOrigin_interpretation, stableOrigin_interpretation]
   rfl
 
-/-- Specialize an insertion to accepted values at a specified canonical key. -/
--- ALIGN: ATLAS-STABLE-SOURCE-INSERTION.
-def stableCoalitionInsertionOn {Source Target Key : Type*} (accepts : Source → Bool)
-    (key : Source → Key) (origin : Key)
-    (forward : {value // accepts value = true ∧ key value = origin} → Target)
-    (backward : Target → Option {value // accepts value = true ∧ key value = origin})
-    (leftInverse : ∀ value, backward (forward value) = some value) :
-    DomanialInsertion {value // accepts value = true ∧ key value = origin} Target :=
-  ⟨forward, backward, leftInverse⟩
-
 /-- The stored primitive insertion restricts its source to canonical records.
 Its inverse accepts raw target records and returns only certified source data. -/
 structure StableTransversalAction (X Y : Atlas) where

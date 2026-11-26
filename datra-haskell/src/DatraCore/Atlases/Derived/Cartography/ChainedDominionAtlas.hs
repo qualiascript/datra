@@ -19,7 +19,6 @@ module ChainedDominionAtlas
   ) where
 
 import Atlas (atlasWitness)
-import Coalition (coalitionElementRank)
 import DomanialInclusion
   ( DominionAtlas
   , DominionAtlasObject
@@ -27,24 +26,21 @@ import DomanialInclusion
   )
 import DomanialInsertion
   ( DomanialInsertion
-  , applyInsertion
-  , domanialInsertion
   , insertionLeftInverse
   , preimage
   )
-import Dominion (unrank)
 import ChainedDominionAtlas.Canonical
   ( CanonicalChainedDominion (..), CanonicalChainedAtlasScope, CanonicalChainedPaginationScope
   , canonicalChainedDominionAtlas )
 import ChainedDominionAtlas.Coverage (chainedDominionAtlasMap)
-import ChainedDominionAtlas.Coalition (chainedDominionCoalitionElement)
+import ChainedDominionAtlas.Coalition (chainedDominionCoalitionElement, chainedCoalitionInsertion)
 import ChainedDominionAtlas.Data
   ( ChainedDominionCellData
   , cellValue
   )
 import ChainedDominionAtlas.Owner
   ( ChainedDominionAtlas, ChainedDominionAtlasObject, chainedDominionAtlas, withChainedDominionAtlas
-  , chainedDominionValueDominion )
+  )
 import StableAtlasTransversal (StableAtlasTransversal)
 
 -- | Lift an insertion between dominions to the stable traversal into a
@@ -61,17 +57,8 @@ chainedDominionInsertionTraversal
   coaToDomInc
     sourceOwner
     (atlasWitness targetAtlas)
-    coalitionInsertion
+    (chainedCoalitionInsertion owner insertion)
     (\_ datum -> preimage insertion (cellValue datum))
     (\_ -> insertionLeftInverse insertion)
   where
-    targetDominion = chainedDominionValueDominion owner
     targetAtlas = chainedDominionAtlas owner
-    coalitionInsertion =
-      domanialInsertion
-        (chainedDominionCoalitionElement owner
-          . applyInsertion insertion)
-        (\element ->
-          unrank targetDominion (coalitionElementRank element)
-            >>= preimage insertion)
-        (insertionLeftInverse insertion)

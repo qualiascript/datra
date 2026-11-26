@@ -131,7 +131,6 @@ import Pagination
   , PaginationMorphism
   , paginationCardinality
   , paginationCoherence
-  , paginationCoherenceIdempotent
   , paginationFolio
   , paginationPageElements
   )
@@ -1180,9 +1179,15 @@ atlasElementLT valueAtlas left right =
         _ -> False
 
 -- | Pointwise idempotence of the Atlas coherence map.
+-- ALIGN: ATLAS-COHERENCE-IDEMPOTENT.
+{-@ atlasCoherenceIdempotent :: owner:Atlas a s d o f
+      -> source:PageElement s object
+      -> {normalizeAtlasElement owner (normalizeAtlasElement owner source)
+           == normalizeAtlasElement owner source} @-}
 atlasCoherenceIdempotent
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> ()
-atlasCoherenceIdempotent valueAtlas =
-  paginationCoherenceIdempotent (atlasPagination valueAtlas)
+atlasCoherenceIdempotent owner =
+  normalizePageElementIdempotentAt (atlasDataFinalPage (storedAtlasData owner))
+    (atlasDataTraceLimit (storedAtlasData owner))

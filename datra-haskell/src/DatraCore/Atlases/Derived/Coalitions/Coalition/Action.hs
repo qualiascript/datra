@@ -8,11 +8,11 @@
 {-@ LIQUID "--higherorder" @-}
 
 -- | Checked coalition actions retain the mapped image's certifying owner.
-module Coalition.Action (withMappedCoalitionElement) where
+module Coalition.Action (withMappedCoalitionAction, withMappedCoalitionElement) where
 
 import Atlas (Atlas, AtlasObject, atlasPageElements)
 import AtlasCoveredPageElement (CoveredPageElement, coveredPageElementValid)
-import AtlasTransversal (AtlasTransversal, withAtlasTransversalCoveredImage)
+import AtlasTransversal (AtlasTransversal, withAtlasTransversalCoveredAction)
 import Coalition.Element.Data
   ( CoalitionData, coalitionCoveredElement, coalitionFromCovered
   , coalitionElementValid, coalitionElementSource )
@@ -21,18 +21,36 @@ import PageElements (originPageElement)
 {-@ predicate MappedCoalitionValid A E = coalitionElementValid A E
       && coalitionElementSource E == originPageElement (atlasPageElements A) @-}
 
-{-@ canonicalizeCoalitionImage
-      :: (forall o f. owner:Atlas a s d o f
-            -> {element:CoalitionData a s d | MappedCoalitionValid owner element}
+{-@ mapCanonicalCoalition :: sourceOwner:Atlas sa ss sd so sf -> targetOwner:Atlas ta ts td to tf
+      -> ({source:CoveredPageElement sa ss sd | coveredPageElementValid sourceOwner source}
+           -> {image:CoveredPageElement ta ts td | coveredPageElementValid targetOwner image})
+      -> source:{CoalitionData sa ss sd | MappedCoalitionValid sourceOwner source}
+      -> {target:CoalitionData ta ts td | MappedCoalitionValid targetOwner target} @-}
+mapCanonicalCoalition :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
+  -> (CoveredPageElement sa ss sd -> CoveredPageElement ta ts td)
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+mapCanonicalCoalition sourceOwner targetOwner forward source =
+  coalitionFromCovered targetOwner (forward (coalitionCoveredElement sourceOwner source))
+
+-- | Retain one target owner for every canonical result of the operation.
+-- ALIGN: COALITION-FORWARD-OWNED-ACTION.
+{-@ withMappedCoalitionAction
+      :: sourceOwner:Atlas sa ss sd so sf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> (forall o f. owner:Atlas ta ts td o f
+            -> ({source:CoalitionData sa ss sd | MappedCoalitionValid sourceOwner source}
+                 -> {target:CoalitionData ta ts td | MappedCoalitionValid owner target})
             -> result)
-      -> owner:Atlas a s d origin final
-      -> {image:CoveredPageElement a s d | coveredPageElementValid owner image}
       -> result @-}
-canonicalizeCoalitionImage
-  :: (forall o f. Atlas a s d o f -> CoalitionData a s d -> result)
-  -> Atlas a s d origin final -> CoveredPageElement a s d -> result
-canonicalizeCoalitionImage useElement owner image =
-  useElement owner (coalitionFromCovered owner image)
+withMappedCoalitionAction
+  :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> (forall o f. Atlas ta ts td o f
+        -> (CoalitionData sa ss sd -> CoalitionData ta ts td) -> result)
+  -> result
+withMappedCoalitionAction sourceOwner transversal useAction =
+  withAtlasTransversalCoveredAction sourceOwner transversal
+    (\owner forward -> useAction owner (mapCanonicalCoalition sourceOwner owner forward))
 
 -- | Map and canonicalize using the Atlas retained by the transversal. The
 -- callback receives a valid canonical coalition for that exact target owner.
@@ -52,5 +70,5 @@ withMappedCoalitionElement
   -> (forall o f. Atlas ta ts td o f -> CoalitionData ta ts td -> result)
   -> result
 withMappedCoalitionElement sourceOwner transversal source useElement =
-  withAtlasTransversalCoveredImage sourceOwner transversal
-    (coalitionCoveredElement sourceOwner source) (canonicalizeCoalitionImage useElement)
+  withMappedCoalitionAction sourceOwner transversal
+    (\owner forward -> useElement owner (forward source))

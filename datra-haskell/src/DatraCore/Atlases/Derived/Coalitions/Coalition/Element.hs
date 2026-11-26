@@ -14,6 +14,7 @@ module Coalition.Element
   , coalitionViewSource
   , coalitionElementViewSource
   , coalitionElement
+  , coalitionUnitInsertion, coalitionCounitInsertion
   , coalitionElementEliminate
   , coalitionElementWitnessIndependent
   , coalitionElementExtensionality
@@ -34,8 +35,9 @@ module Coalition.Element
   , coalitionUnrank
   , mapCoalitionElement
   , withMappedCoalitionElement
+  , withMappedCoalitionAction
   ) where
 
 import Coalition.Element.Data
-import Coalition.Action (withMappedCoalitionElement)
+import Coalition.Action (withMappedCoalitionAction, withMappedCoalitionElement)
 import Coalition.Action.Internal (mapCoalitionElement)

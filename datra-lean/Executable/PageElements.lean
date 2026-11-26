@@ -102,6 +102,7 @@ def normalize (finalPage : Nat) (traceLimit : Int) (value : PageElement owner) :
   { value with page := min value.page finalPage, trace := Trace.trimTrace traceLimit value.trace }
 
 -- ALIGN: PE-NORMALIZE-IDEMPOTENT.
+-- ALIGN: ATLAS-COHERENCE-IDEMPOTENT.
 theorem normalize_idempotent (finalPage : Nat) (traceLimit : Int) (value : PageElement owner) :
     normalize finalPage traceLimit (normalize finalPage traceLimit value) =
       normalize finalPage traceLimit value := by

@@ -25,6 +25,7 @@ import AtlasExtent (cellTraceValid)
 import AtlasMap (AtlasMap, atlasMap)
 import Coalition.Element
   ( CoalitionData, coalitionElementAt, coalitionElementReaches, coalitionElement
+  , coalitionUnitInsertion, coalitionCounitInsertion
   , coalitionElementExtensionality, coalitionViewSource, coalitionElementViewSource
   , CoalitionView (..), viewCoalitionElement, coalitionElementView, coalitionElementValid, coalitionElementSource )
 import DomanialInsertion.Core (DomanialInsertion (..), domanialInsertion, composeInsertions)
@@ -218,32 +219,6 @@ dominionCoalitionCounit owner =
       origin = originPageElement (atlasPageElements valueAtlas)
   in coalitionCounitInsertion (coalitionElementValid valueAtlas) coalitionElementSource origin
        coalitionValue (coalitionElementPreimage owner) (dominionCoalitionCounitRoundTrip owner)
-
--- | These constructor specializations retain the coalition's membership and
--- exact origin while leaving the ordinary value carrier unrestricted.
-{-@ coalitionCounitInsertion :: accepts:(element -> Bool)
-      -> source:(element -> SomePageElement scope) -> origin:SomePageElement scope
-      -> forward:({x:element | accepts x && source x == origin} -> value)
-      -> backward:(value -> Maybe ({x:element | accepts x && source x == origin}))
-      -> (x:{element | accepts x && source x == origin} -> {backward (forward x) == Just x})
-      -> {insertion:DomanialInsertion ({x:element | accepts x && source x == origin}) value |
-           applyInsertion insertion == forward && preimage insertion == backward} @-}
-coalitionCounitInsertion :: (element -> Bool) -> (element -> SomePageElement scope)
-  -> SomePageElement scope -> (element -> value) -> (value -> Maybe element) -> (element -> ())
-  -> DomanialInsertion element value
-coalitionCounitInsertion _ _ _ forward backward leftInverse = DomanialInsertion forward backward leftInverse
-
-{-@ coalitionUnitInsertion :: accepts:(element -> Bool)
-      -> source:(element -> SomePageElement scope) -> origin:SomePageElement scope
-      -> forward:(value -> {x:element | accepts x && source x == origin})
-      -> backward:({x:element | accepts x && source x == origin} -> Maybe value)
-      -> (x:value -> {backward (forward x) == Just x})
-      -> {insertion:DomanialInsertion value ({x:element | accepts x && source x == origin}) |
-           applyInsertion insertion == forward && preimage insertion == backward} @-}
-coalitionUnitInsertion :: (element -> Bool) -> (element -> SomePageElement scope)
-  -> SomePageElement scope -> (value -> element) -> (element -> Maybe value) -> (value -> ())
-  -> DomanialInsertion value element
-coalitionUnitInsertion _ _ _ forward backward leftInverse = DomanialInsertion forward backward leftInverse
 
 -- | Both directions retain the canonical carrier and their exact functions.
 -- ALIGN: DOMINC-COALITION-EQUIVALENCE.

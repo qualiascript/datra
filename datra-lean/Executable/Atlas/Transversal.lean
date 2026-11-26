@@ -82,49 +82,51 @@ def atlasTransversal {X Y : Atlas} (ordered : OrderedTransposal X Y)
       {w : Y.CoverageWitness // w.Valid ∧ transversalImageCovered ordered c w = true}) : Transversal X Y :=
   .primitive ⟨ordered, preserves⟩
 
-/-- An unchanged result retains the caller's source owner. An actual mapped
-result retains its certified target, even when followed by an identity. -/
-inductive TransversalCoveredImage : Atlas → Atlas → Type 2
-  | unchanged {X} : TransversalCoveredImage X X
-  | mapped {X Y} (image : Y.CertifiedCoveredElement) : TransversalCoveredImage X Y
+/-- Resolve the owner for the entire operation before consuming a source.
+Identity retains its caller's owner; a mapped operation certifies every result
+for the same target Atlas, including when followed by identity. -/
+inductive TransversalCoveredAction : Atlas → Atlas → Type 2
+  | unchanged {X} : TransversalCoveredAction X X
+  | mapped {X Y} (map : X.CertifiedCoveredElement → Y.CertifiedCoveredElement) :
+      TransversalCoveredAction X Y
 
-def TransversalCoveredImage.resolve {X Y : Atlas} (image : TransversalCoveredImage X Y)
-    (source : X.CertifiedCoveredElement) : Y.CertifiedCoveredElement :=
-  match image with
-  | .unchanged => source
-  | .mapped covered => covered
+def TransversalCoveredAction.resolve {X Y : Atlas} :
+    TransversalCoveredAction X Y → X.CertifiedCoveredElement → Y.CertifiedCoveredElement
+  | .unchanged => id
+  | .mapped forward => forward
 
-def TransversalCoveredImage.bind {X Y Z : Atlas} (image : TransversalCoveredImage X Y)
-    (next : Y.CertifiedCoveredElement → TransversalCoveredImage Y Z)
-    (source : X.CertifiedCoveredElement) : TransversalCoveredImage X Z :=
-  match image with
-  | .unchanged => next source
-  | .mapped covered =>
-      match next covered with
-      | .unchanged => .mapped covered
-      | .mapped result => .mapped result
+def TransversalCoveredAction.comp {X Y Z : Atlas} :
+    TransversalCoveredAction Y Z → TransversalCoveredAction X Y → TransversalCoveredAction X Z
+  | .unchanged, first => first
+  | .mapped second, .unchanged => .mapped second
+  | .mapped second, .mapped first => .mapped (second ∘ first)
 
-theorem TransversalCoveredImage.resolve_bind {X Y Z : Atlas} (image : TransversalCoveredImage X Y)
-    (next : Y.CertifiedCoveredElement → TransversalCoveredImage Y Z)
+theorem TransversalCoveredAction.resolve_comp {X Y Z : Atlas}
+    (second : TransversalCoveredAction Y Z) (first : TransversalCoveredAction X Y)
     (source : X.CertifiedCoveredElement) :
-    (image.bind next source).resolve source = (next (image.resolve source)).resolve (image.resolve source) := by
-  cases image with
+    (comp second first).resolve source = second.resolve (first.resolve source) := by
+  cases second with
   | unchanged => rfl
-  | mapped covered => cases h : next covered <;> simp [bind, resolve, h]
+  | mapped forward => cases first <;> rfl
 
--- ALIGN: ATLAS-TRANSVERSAL-OWNED-IMAGE.
-def transversalCoveredImage {X Y : Atlas} :
-    Transversal X Y → X.CertifiedCoveredElement → TransversalCoveredImage X Y
-  | .identity, _ => .unchanged
-  | .primitive action, covered => .mapped (mapTransversalAction action covered)
-  | .composite second first, covered =>
-      (transversalCoveredImage first covered).bind (transversalCoveredImage second) covered
+-- ALIGN: ATLAS-TRANSVERSAL-OWNED-ACTION.
+def transversalCoveredAction {X Y : Atlas} : Transversal X Y → TransversalCoveredAction X Y
+  | .identity => .unchanged
+  | .primitive action => .mapped (mapTransversalAction action)
+  | .composite second first =>
+      .comp (transversalCoveredAction second) (transversalCoveredAction first)
+
+-- ALIGN: ATLAS-TRANSVERSAL-OWNED-ACTION-ELIMINATION.
+def withAtlasTransversalCoveredAction {X Y : Atlas} {Result : Sort*}
+    (f : Transversal X Y)
+    (useAction : (X.CertifiedCoveredElement → Y.CertifiedCoveredElement) → Result) : Result :=
+  useAction (transversalCoveredAction f).resolve
 
 -- ALIGN: ATLAS-TRANSVERSAL-OWNED-ELIMINATION.
 def withAtlasTransversalCoveredImage {X Y : Atlas} {Result : Sort*}
     (f : Transversal X Y) (covered : X.CertifiedCoveredElement)
     (useImage : Y.CertifiedCoveredElement → Result) : Result :=
-  useImage ((transversalCoveredImage f covered).resolve covered)
+  withAtlasTransversalCoveredAction f (fun forward => useImage (forward covered))
 
 namespace Transversal
 
@@ -135,12 +137,12 @@ def underlying {X Y : Atlas} : Transversal X Y → OrderedTransposal X Y
 
 def mapCovered {X Y : Atlas} (f : Transversal X Y)
     (c : X.CertifiedCoveredElement) : Y.CertifiedCoveredElement :=
-  (transversalCoveredImage f c).resolve c
+  (transversalCoveredAction f).resolve c
 
 theorem mapCovered_composite {X Y Z : Atlas} (second : Transversal Y Z) (first : Transversal X Y)
     (c : X.CertifiedCoveredElement) :
     (composite second first).mapCovered c = second.mapCovered (first.mapCovered c) :=
-  TransversalCoveredImage.resolve_bind (transversalCoveredImage first c) (transversalCoveredImage second) c
+  TransversalCoveredAction.resolve_comp (transversalCoveredAction second) (transversalCoveredAction first) c
 
 theorem withCoveredImage_agrees {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
     (c : X.CertifiedCoveredElement) (useImage : Y.CertifiedCoveredElement → Result) :

@@ -1168,7 +1168,7 @@ proofGuard = coalitionCoveredElement
 """,
 }
 
-COALITION_ACTION_PUBLIC_SOURCE = """
+COALITION_ACTION_PUBLIC_SOURCE = r"""
 {-# LANGUAGE CPP #-}
 #include "LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
@@ -1179,14 +1179,67 @@ import Atlas (Atlas, AtlasObject, atlasPageElements)
 import AtlasTransversal (AtlasTransversal)
 import Coalition.Element
 import AtlasCoveredPageElement (CoveredPageElement)
-import PageElements (originPageElement)
+import PageElements (SomePageElement, originPageElement)
 {-@ predicate PublicCoalitionValid A E = coalitionElementValid A E
       && coalitionElementSource E == originPageElement (atlasPageElements A) @-}
 discardMappedCoalition :: Atlas a s d o f -> CoalitionData a s d -> ()
 discardMappedCoalition _ _ = ()
+
+{-@ observedCoalitionOperation :: owner:Atlas sa ss sd so sf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> first:{CoalitionData sa ss sd | PublicCoalitionValid owner first}
+      -> second:{CoalitionData sa ss sd | PublicCoalitionValid owner second}
+      -> {result:Bool | result} @-}
+observedCoalitionOperation :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> CoalitionData sa ss sd -> Bool
+observedCoalitionOperation owner arrow first second =
+  withMappedCoalitionAction owner arrow (coalitionPairValid owner first second)
+
+{-@ coalitionPairValid :: sourceOwner:Atlas sa ss sd so sf
+      -> first:{CoalitionData sa ss sd | PublicCoalitionValid sourceOwner first}
+      -> second:{CoalitionData sa ss sd | PublicCoalitionValid sourceOwner second}
+      -> targetOwner:Atlas ta ts td to tf
+      -> ({source:CoalitionData sa ss sd | PublicCoalitionValid sourceOwner source}
+           -> {target:CoalitionData ta ts td | PublicCoalitionValid targetOwner target})
+      -> {result:Bool | result} @-}
+coalitionPairValid :: Atlas sa ss sd so sf -> CoalitionData sa ss sd -> CoalitionData sa ss sd
+  -> Atlas ta ts td to tf -> (CoalitionData sa ss sd -> CoalitionData ta ts td) -> Bool
+coalitionPairValid _ first second target forward =
+  canonicalOperationSource target (forward first) `seq`
+    canonicalOperationSource target (forward second) `seq`
+      (coalitionElementValid target (forward first) && coalitionElementValid target (forward second))
+
+{-@ canonicalOperationSource :: owner:Atlas a s d o f
+      -> element:{CoalitionData a s d | PublicCoalitionValid owner element}
+      -> {source:SomePageElement s | source == originPageElement (atlasPageElements owner)} @-}
+canonicalOperationSource :: Atlas a s d o f -> CoalitionData a s d -> SomePageElement s
+canonicalOperationSource _ element = coalitionElementSource element
 """
 
 COALITION_ACTION_PUBLIC_GUARDS = {
+    "owned coalition operation certifies all canonical outputs for one owner": r"""
+{-@ proofGuard :: owner:Atlas sa ss sd so sf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> first:{CoalitionData sa ss sd | PublicCoalitionValid owner first}
+      -> second:{CoalitionData sa ss sd | PublicCoalitionValid owner second}
+      -> {result:Bool | not result} @-}
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> CoalitionData sa ss sd -> Bool
+proofGuard = observedCoalitionOperation
+""",
+    "owned coalition operation requires the canonical source domain": r"""
+{-@ proofGuard :: owner:Atlas sa ss sd so sf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoalitionData sa ss sd | coalitionElementValid owner source}
+      -> CoalitionData ta ts td @-}
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+proofGuard owner arrow source =
+  withMappedCoalitionAction owner arrow (\_ forward -> forward source)
+""",
     "raw coalition mapping requires source owning validity": """
 proofGuard :: Atlas sa ss sd so sf
   -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
@@ -1412,9 +1465,9 @@ proofGuard = coalitionElement
 
 TRANSVERSAL_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransversal/Internal.hs"
 TRANSVERSAL_GUARDS = {
-    "stored transversal images require coverage for their retained owner": """
-proofGuard :: Atlas a s d o f -> CoveredPageElement a s d -> CoveredImageData a s d o f
-proofGuard = CoveredImageData
+    "stored transversal operations require coverage for their retained owner": """
+proofGuard :: Atlas a s d o f -> (source -> CoveredPageElement a s d) -> CoveredActionData source a s d o f
+proofGuard = CoveredActionData
 """,
     "primitive transversal mapping cannot substitute its target owner": """
 {-@ proofGuard :: action:TransversalAction sa ss sd so sf ta ts td to tf
@@ -1469,7 +1522,7 @@ proofGuard sourceAtlas targetAtlas ordered badCoverage =
 """,
 }
 
-TRANSVERSAL_PUBLIC_SOURCE = """
+TRANSVERSAL_PUBLIC_SOURCE = r"""
 {-# LANGUAGE CPP #-}
 #include "LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
@@ -1477,12 +1530,53 @@ TRANSVERSAL_PUBLIC_SOURCE = """
 {-@ LIQUID "--higherorder" @-}
 module PublicTransversalGuard where
 import Atlas (Atlas, AtlasObject)
-import AtlasTransversal (AtlasTransversal, withAtlasTransversalCoveredImage)
+import AtlasTransversal (AtlasTransversal, withAtlasTransversalCoveredImage, withAtlasTransversalCoveredAction)
 import AtlasCoveredPageElement (CoveredPageElement, coveredPageElementValid)
 import Coalition.Element (CoalitionData, coalitionFromCovered)
+
+{-@ observedCoveredOperation :: owner:Atlas sa ss sd so sf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> first:{CoveredPageElement sa ss sd | coveredPageElementValid owner first}
+      -> second:{CoveredPageElement sa ss sd | coveredPageElementValid owner second}
+      -> {result:Bool | result} @-}
+observedCoveredOperation :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoveredPageElement sa ss sd -> CoveredPageElement sa ss sd -> Bool
+observedCoveredOperation owner arrow first second =
+  withAtlasTransversalCoveredAction owner arrow (coveredPairValid owner first second)
+
+{-@ coveredPairValid :: sourceOwner:Atlas sa ss sd so sf
+      -> first:{CoveredPageElement sa ss sd | coveredPageElementValid sourceOwner first}
+      -> second:{CoveredPageElement sa ss sd | coveredPageElementValid sourceOwner second}
+      -> targetOwner:Atlas ta ts td to tf
+      -> ({source:CoveredPageElement sa ss sd | coveredPageElementValid sourceOwner source}
+           -> {target:CoveredPageElement ta ts td | coveredPageElementValid targetOwner target})
+      -> {result:Bool | result} @-}
+coveredPairValid :: Atlas sa ss sd so sf -> CoveredPageElement sa ss sd -> CoveredPageElement sa ss sd
+  -> Atlas ta ts td to tf -> (CoveredPageElement sa ss sd -> CoveredPageElement ta ts td) -> Bool
+coveredPairValid _ first second target forward =
+  coveredPageElementValid target (forward first) && coveredPageElementValid target (forward second)
 """
 
 TRANSVERSAL_PUBLIC_GUARDS = {
+    "owned transversal operation certifies all outputs for one owner": r"""
+{-@ proofGuard :: owner:Atlas sa ss sd so sf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> first:{CoveredPageElement sa ss sd | coveredPageElementValid owner first}
+      -> second:{CoveredPageElement sa ss sd | coveredPageElementValid owner second}
+      -> {result:Bool | not result} @-}
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoveredPageElement sa ss sd -> CoveredPageElement sa ss sd -> Bool
+proofGuard = observedCoveredOperation
+""",
+    "owned transversal operation requires accepted inputs": r"""
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoveredPageElement sa ss sd -> CoveredPageElement ta ts td
+proofGuard owner arrow source =
+  withAtlasTransversalCoveredAction owner arrow (\_ forward -> forward source)
+""",
     "owned transversal elimination requires source owning validity": """
 proofGuard :: Atlas sa ss sd so sf
   -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
@@ -2897,6 +2991,385 @@ proofGuardCallback _ owner source =
 }
 
 
+PRIMITIVE_MORPHISM_SOURCE = HASKELL / "src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs"
+PRIMITIVE_MORPHISM_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
+module PrimitiveMorphismPublicGuard where
+import Atlas
+import qualified PageElements as Elements (pageElementTraceValid)
+import DomanialInsertion.Core (DomanialInsertion, applyInsertion, preimage)
+import PageElements.Structure
+  ( PageElement (..), PageElementArrow, SomePageElement (..), arrowSource, arrowTarget
+  , pageElementArrow, somePageElementPrecedes, somePageElementTransported )
+
+{-@ observedNaturality :: action:AtlasMorphismAction objectMap sa ta ss ts sd td so sf to tf
+      -> sourceArrow:PageElementArrow ss source target -> datum:sd source
+      -> {applyInsertion
+          ((mapAtlasMorphismActionComponent action) (normalizeAtlasElement (atlasMorphismSource action) (arrowTarget sourceArrow)))
+          (applyInsertion (mapAtlasData (atlasMorphismSource action) sourceArrow) datum)
+        == applyInsertion
+          (mapAtlasData (atlasMorphismTarget action)
+            (pageElementArrow
+              (normalizeAtlasElement (atlasMorphismTarget action)
+                ((mapAtlasMorphismActionObject action) (normalizeAtlasElement (atlasMorphismSource action) (arrowSource sourceArrow))))
+              (normalizeAtlasElement (atlasMorphismTarget action)
+                ((mapAtlasMorphismActionObject action) (normalizeAtlasElement (atlasMorphismSource action) (arrowTarget sourceArrow))))))
+          (applyInsertion
+            ((mapAtlasMorphismActionComponent action) (normalizeAtlasElement (atlasMorphismSource action) (arrowSource sourceArrow))) datum)} @-}
+observedNaturality :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElementArrow ss source target -> sd source -> ()
+observedNaturality = atlasMorphismActionNaturality
+
+{-@ observedRelated :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:SomePageElement ss
+      -> target:{SomePageElement ss | somePageElementPrecedes source target
+           && somePageElementTransported source target}
+      -> {result:Bool | result} @-}
+observedRelated :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> SomePageElement ss -> SomePageElement ss -> Bool
+observedRelated action source target =
+  atlasMorphismActionPreservesArrow action source target `seq`
+    (somePageElementPrecedes (mapAtlasMorphismActionElement action source)
+       (mapAtlasMorphismActionElement action target)
+      && somePageElementTransported (mapAtlasMorphismActionElement action source)
+         (mapAtlasMorphismActionElement action target))
+
+{-@ rebuildAction :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> {result:AtlasMorphismAction m sa ta ss ts sd td so sf to tf |
+           atlasMorphismSource result == atlasMorphismSource action
+           && atlasMorphismTarget result == atlasMorphismTarget action
+           && atlasMorphismObjectMapWitness result == atlasMorphismObjectMapWitness action
+           && mapAtlasMorphismActionObject result == mapAtlasMorphismActionObject action
+           && mapAtlasMorphismActionComponent result == mapAtlasMorphismActionComponent action} @-}
+rebuildAction :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+rebuildAction action = atlasMorphismAction
+  (atlasMorphismObjectMapWitness action) (atlasMorphismSource action) (atlasMorphismTarget action)
+  (mapAtlasMorphismActionObject action) (mapAtlasMorphismActionComponent action)
+  (atlasMorphismActionPreservesArrow action) (atlasMorphismActionNaturality action)
+
+{-@ observedNormalizedAction :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> {result:AtlasMorphismAction m sa ta ss ts sd td so sf to tf |
+           atlasMorphismSource result == atlasMorphismSource action
+           && atlasMorphismTarget result == atlasMorphismTarget action} @-}
+observedNormalizedAction :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+observedNormalizedAction = normalizeAtlasMorphismAction
+
+{-@ observedNormalizedObject :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:PageElement ss object
+      -> {target:PageElement ts (AtlasMappedObject m object) |
+           target == normalizeAtlasElement (atlasMorphismTarget action)
+             (mapAtlasMorphismActionObject action
+               (normalizeAtlasElement (atlasMorphismSource action) source))} @-}
+observedNormalizedObject :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> PageElement ts (AtlasMappedObject m object)
+observedNormalizedObject action source =
+  normalizeAtlasMorphismActionRetains action source `seq`
+    mapAtlasMorphismActionObject (normalizeAtlasMorphismAction action) source
+
+{-@ observedNormalizedComponent :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:PageElement ss object
+      -> {insertion:DomanialInsertion (sd object) (td (AtlasMappedObject m object)) |
+           insertion == mapAtlasMorphismActionComponent action
+             (normalizeAtlasElement (atlasMorphismSource action) source)} @-}
+observedNormalizedComponent :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> DomanialInsertion (sd object) (td (AtlasMappedObject m object))
+observedNormalizedComponent action source =
+  normalizeAtlasMorphismActionRetains action source `seq`
+    mapAtlasMorphismActionComponent (normalizeAtlasMorphismAction action) source
+
+
+{-@ observedNormalizationIdempotent :: owner:Atlas a s d o f
+      -> source:PageElement s object
+      -> {normalizeAtlasElement owner (normalizeAtlasElement owner source)
+           == normalizeAtlasElement owner source} @-}
+observedNormalizationIdempotent :: Atlas a s d o f -> PageElement s object -> ()
+observedNormalizationIdempotent = atlasCoherenceIdempotent
+
+
+{-@ observedValidObject :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:{PageElement ss object |
+           Elements.pageElementTraceValid (atlasPageElements (atlasMorphismSource action)) source}
+      -> {target:PageElement ts (AtlasMappedObject m object) |
+           Elements.pageElementTraceValid (atlasPageElements (atlasMorphismTarget action)) target} @-}
+observedValidObject :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> PageElement ts (AtlasMappedObject m object)
+observedValidObject action source = mapAtlasMorphismActionObject action source
+
+{-@ observedValidNormalizedObject :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:{PageElement ss object |
+           Elements.pageElementTraceValid (atlasPageElements (atlasMorphismSource action)) source}
+      -> {target:PageElement ts (AtlasMappedObject m object) |
+           Elements.pageElementTraceValid (atlasPageElements (atlasMorphismTarget action)) target} @-}
+observedValidNormalizedObject :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> PageElement ts (AtlasMappedObject m object)
+observedValidNormalizedObject action source =
+  mapAtlasMorphismActionObject (normalizeAtlasMorphismAction action) source
+
+
+{-@ observedIdentityObject :: owner:Atlas a s d o f -> source:PageElement s object
+      -> {target:PageElement s (AtlasMappedObject IdentityAtlasObjectMap object) |
+           pageElementPage target == pageElementPage source
+           && pageElementPosition target == pageElementPosition source
+           && pageElementTrace target == pageElementTrace source
+           && pageElementCell target == pageElementCell source} @-}
+observedIdentityObject :: Atlas a s d o f -> PageElement s object
+  -> PageElement s (AtlasMappedObject IdentityAtlasObjectMap object)
+observedIdentityObject = identityAtlasMorphismObject
+
+{-@ reflect observedIdentityElement @-}
+observedIdentityElement :: Atlas a s d o f -> SomePageElement s -> SomePageElement s
+observedIdentityElement owner =
+  mapPrimitiveElement identityAtlasObjectMap owner owner (identityAtlasMorphismObject owner)
+
+{-@ observedIdentityRelated :: owner:Atlas a s d o f -> source:SomePageElement s
+      -> target:{SomePageElement s | somePageElementPrecedes source target
+           && somePageElementTransported source target}
+      -> {result:Bool | result} @-}
+observedIdentityRelated :: Atlas a s d o f -> SomePageElement s -> SomePageElement s -> Bool
+observedIdentityRelated owner source target =
+  identityAtlasMorphismPreservesArrow identityAtlasObjectMap owner source target `seq`
+    (somePageElementPrecedes (observedIdentityElement owner source)
+       (observedIdentityElement owner target)
+      && somePageElementTransported (observedIdentityElement owner source)
+         (observedIdentityElement owner target))
+
+"""
+PRIMITIVE_MORPHISM_PUBLIC_GUARDS = {
+    'primitive identity preserves every occurrence field': r"""
+{-@ proofGuard :: owner:Atlas a s d o f -> source:PageElement s object
+      -> {target:PageElement s (AtlasMappedObject IdentityAtlasObjectMap object) |
+           pageElementPage target /= pageElementPage source
+           || pageElementPosition target /= pageElementPosition source
+           || pageElementTrace target /= pageElementTrace source
+           || pageElementCell target /= pageElementCell source} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object
+  -> PageElement s (AtlasMappedObject IdentityAtlasObjectMap object)
+proofGuard = observedIdentityObject
+""",
+    'primitive identity preserves normalized page arrows': r"""
+{-@ proofGuard :: owner:Atlas a s d o f -> source:SomePageElement s
+      -> target:{SomePageElement s | somePageElementPrecedes source target
+           && somePageElementTransported source target}
+      -> {result:Bool | not result} @-}
+proofGuard :: Atlas a s d o f -> SomePageElement s -> SomePageElement s -> Bool
+proofGuard = observedIdentityRelated
+""",
+    'primitive morphism observation retains stored naturality': r"""
+{-@ proofGuard :: action:AtlasMorphismAction objectMap sa ta ss ts sd td so sf to tf
+      -> sourceArrow:PageElementArrow ss source target -> datum:sd source
+      -> {applyInsertion
+          ((mapAtlasMorphismActionComponent action) (normalizeAtlasElement (atlasMorphismSource action) (arrowTarget sourceArrow)))
+          (applyInsertion (mapAtlasData (atlasMorphismSource action) sourceArrow) datum)
+        /= applyInsertion
+          (mapAtlasData (atlasMorphismTarget action)
+            (pageElementArrow
+              (normalizeAtlasElement (atlasMorphismTarget action)
+                ((mapAtlasMorphismActionObject action) (normalizeAtlasElement (atlasMorphismSource action) (arrowSource sourceArrow))))
+              (normalizeAtlasElement (atlasMorphismTarget action)
+                ((mapAtlasMorphismActionObject action) (normalizeAtlasElement (atlasMorphismSource action) (arrowTarget sourceArrow))))))
+          (applyInsertion
+            ((mapAtlasMorphismActionComponent action) (normalizeAtlasElement (atlasMorphismSource action) (arrowSource sourceArrow))) datum)} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElementArrow ss source target -> sd source -> ()
+proofGuard = observedNaturality
+""",
+    'primitive morphism observation retains the normalized page law': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:SomePageElement ss
+      -> target:{SomePageElement ss | somePageElementPrecedes source target
+           && somePageElementTransported source target}
+      -> {result:Bool | result} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> SomePageElement ss -> SomePageElement ss -> Bool
+proofGuard action source target = not (observedRelated action source target)
+""",
+    'primitive morphism assembly retains its source owner': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> {owner:Atlas sa ss sd so sf | owner /= atlasMorphismSource action} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> Atlas sa ss sd so sf
+proofGuard action = atlasMorphismSource (rebuildAction action)
+""",
+    'primitive morphism assembly retains its target owner': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> {owner:Atlas ta ts td to tf | owner /= atlasMorphismTarget action} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> Atlas ta ts td to tf
+proofGuard action = atlasMorphismTarget (rebuildAction action)
+""",
+    'primitive morphism assembly retains its object callback': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:PageElement ss object
+      -> {target:PageElement ts (AtlasMappedObject m object) |
+           target /= mapAtlasMorphismActionObject action source} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> PageElement ts (AtlasMappedObject m object)
+proofGuard action source = mapAtlasMorphismActionObject (rebuildAction action) source
+""",
+    'primitive morphism assembly retains its forward component': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:PageElement ss object -> datum:sd object
+      -> {target:td (AtlasMappedObject m object) |
+           target /= applyInsertion (mapAtlasMorphismActionComponent action source) datum} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> sd object -> td (AtlasMappedObject m object)
+proofGuard action source datum = applyInsertion (mapAtlasMorphismActionComponent (rebuildAction action) source) datum
+""",
+    'primitive morphism assembly retains its entire partial inverse': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:PageElement ss object -> datum:td (AtlasMappedObject m object)
+      -> {result:Maybe (sd object) |
+           result /= preimage (mapAtlasMorphismActionComponent action source) datum} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> td (AtlasMappedObject m object) -> Maybe (sd object)
+proofGuard action source datum = preimage (mapAtlasMorphismActionComponent (rebuildAction action) source) datum
+""",
+    'primitive morphism normalization retains its source owner': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> {owner:Atlas sa ss sd so sf | owner /= atlasMorphismSource action} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> Atlas sa ss sd so sf
+proofGuard action = atlasMorphismSource (observedNormalizedAction action)
+""",
+    'primitive morphism normalization retains its target owner': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> {owner:Atlas ta ts td to tf | owner /= atlasMorphismTarget action} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> Atlas ta ts td to tf
+proofGuard action = atlasMorphismTarget (observedNormalizedAction action)
+""",
+    'primitive morphism normalization retains its object callback': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:PageElement ss object
+      -> {target:PageElement ts (AtlasMappedObject m object) |
+           target /= normalizeAtlasElement (atlasMorphismTarget action)
+             (mapAtlasMorphismActionObject action
+               (normalizeAtlasElement (atlasMorphismSource action) source))} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> PageElement ts (AtlasMappedObject m object)
+proofGuard = observedNormalizedObject
+""",
+    'primitive morphism normalization retains its forward component': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:PageElement ss object -> datum:sd object
+      -> {target:td (AtlasMappedObject m object) |
+           target /= applyInsertion (mapAtlasMorphismActionComponent action
+             (normalizeAtlasElement (atlasMorphismSource action) source)) datum} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> sd object -> td (AtlasMappedObject m object)
+proofGuard action source datum = applyInsertion (observedNormalizedComponent action source) datum
+""",
+    'primitive morphism normalization retains its entire partial inverse': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:PageElement ss object -> datum:td (AtlasMappedObject m object)
+      -> {result:Maybe (sd object) |
+           result /= preimage (mapAtlasMorphismActionComponent action
+             (normalizeAtlasElement (atlasMorphismSource action) source)) datum} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> td (AtlasMappedObject m object) -> Maybe (sd object)
+proofGuard action source datum = preimage (observedNormalizedComponent action source) datum
+""",
+
+    'primitive morphism normalization uses idempotent Atlas coherence': r"""
+{-@ proofGuard :: owner:Atlas a s d o f -> source:PageElement s object
+      -> {normalizeAtlasElement owner (normalizeAtlasElement owner source)
+           /= normalizeAtlasElement owner source} @-}
+proofGuard :: Atlas a s d o f -> PageElement s object -> ()
+proofGuard = observedNormalizationIdempotent
+""",
+
+    'primitive morphism validity retains its target owner': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:{PageElement ss object |
+           Elements.pageElementTraceValid (atlasPageElements (atlasMorphismSource action)) source}
+      -> {target:PageElement ts (AtlasMappedObject m object) |
+           not (Elements.pageElementTraceValid (atlasPageElements (atlasMorphismTarget action)) target)} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> PageElement ts (AtlasMappedObject m object)
+proofGuard = observedValidObject
+""",
+    'primitive morphism validity survives normalization': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:{PageElement ss object |
+           Elements.pageElementTraceValid (atlasPageElements (atlasMorphismSource action)) source}
+      -> {target:PageElement ts (AtlasMappedObject m object) |
+           not (Elements.pageElementTraceValid (atlasPageElements (atlasMorphismTarget action)) target)} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> PageElement ts (AtlasMappedObject m object)
+proofGuard = observedValidNormalizedObject
+""",
+
+    'primitive morphism validity requires an accepted source': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:PageElement ss object
+      -> {target:PageElement ts (AtlasMappedObject m object) |
+           Elements.pageElementTraceValid (atlasPageElements (atlasMorphismTarget action)) target} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> PageElement ss object -> PageElement ts (AtlasMappedObject m object)
+proofGuard = observedValidObject
+""",
+    'primitive morphism validity rejects an unrelated target owner': r"""
+{-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> otherOwner:Atlas ta ts td to tf
+      -> source:{PageElement ss object |
+           Elements.pageElementTraceValid (atlasPageElements (atlasMorphismSource action)) source}
+      -> {target:PageElement ts (AtlasMappedObject m object) |
+           Elements.pageElementTraceValid (atlasPageElements otherOwner) target} @-}
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> Atlas ta ts td to tf -> PageElement ss object -> PageElement ts (AtlasMappedObject m object)
+proofGuard action _ source = observedValidObject action source
+""",
+
+}
+PRIMITIVE_MORPHISM_STORAGE_GUARDS = {
+    'primitive morphism storage rejects an uncertified replacement component': r"""
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> (forall object. PageElement ss object -> DomanialInsertion (sd object) (td (AtlasMappedObject m object)))
+  -> AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+proofGuard action component = action { actionComponent = component }
+""",
+    'primitive morphism storage rejects an uncertified replacement object map': r"""
+proofGuard :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+  -> (forall object. PageElement ss object -> PageElement ts (AtlasMappedObject m object))
+  -> AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+proofGuard action mapObject = action { actionObject = mapObject }
+""",
+}
+
+def primitive_morphism_without_validity_guard():
+    """Drop only owning validity; retain every other constructor certificate."""
+    source = PRIMITIVE_MORPHISM_SOURCE.read_text()
+    match = re.search(r"\{-@\natlasMorphismAction\b.*?@-\}", source, re.S)
+    if match is None:
+        raise ValueError("Primitive morphism constructor contract is missing")
+    annotation = match.group()
+    target_contract = (
+        "{target:PageElement targetScope (AtlasMappedObject objectMap sourceObject) |\n"
+        "            MorphismCellValid sourceAtlas source => MorphismCellValid targetAtlas target}"
+    )
+    if annotation.count(target_contract) != 1:
+        raise ValueError("Primitive object-validity contract changed; update its rejection check")
+    annotation = annotation.replace(target_contract,
+        "PageElement targetScope (AtlasMappedObject objectMap sourceObject)")
+    annotation = annotation.replace("atlasMorphismAction", "proofGuard", 1)
+    signature_start = source.index("\natlasMorphismAction\n  ::", match.end())
+    signature_end = source.index("\natlasMorphismAction\n  objectMapWitness", signature_start)
+    signature = source[signature_start:signature_end].replace("atlasMorphismAction", "proofGuard", 1)
+    return annotation + signature + "\nproofGuard = atlasMorphismAction\n"
+
+PRIMITIVE_MORPHISM_STORAGE_GUARDS[
+    'primitive morphism validity is required at construction'
+] = primitive_morphism_without_validity_guard()
+
+
 TOTAL_MAP_PUBLIC_SOURCE = r"""
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
@@ -3619,9 +4092,11 @@ CHAINED_COALITION_PUBLIC_SOURCE = r"""
 module ChainedCoalitionPublicGuard where
 import Atlas (atlasPageElements)
 import ChainedDominionAtlas (ChainedDominionAtlas, chainedDominionAtlas, chainedDominionCoalitionElement)
-import ChainedDominionAtlas.Coalition (chainedCoalitionValue)
+import ChainedDominionAtlas.Coalition
+  ( chainedCoalitionValue, chainedCoalitionReconstruct, chainedCoalitionInsertion, chainedCoalitionForward, chainedCoalitionBackward )
 import ChainedDominionAtlas.Data (ChainedDominionCellData)
 import Coalition.Element (CoalitionData, coalitionElementValid, coalitionElementSource)
+import DomanialInsertion.Core (DomanialInsertion (..))
 import PageElements (originPageElement)
 
 {-@ observedCoalition :: owner:ChainedDominionAtlas ownerScope scope value -> value:value
@@ -3632,8 +4107,85 @@ import PageElements (originPageElement)
 observedCoalition :: ChainedDominionAtlas ownerScope scope value -> value
   -> CoalitionData ownerScope scope (ChainedDominionCellData value)
 observedCoalition = chainedDominionCoalitionElement
+
+{-@ observedReconstruction :: owner:ChainedDominionAtlas ownerScope scope value
+      -> element:{CoalitionData ownerScope scope (ChainedDominionCellData value) |
+           coalitionElementValid (chainedDominionAtlas owner) element
+           && coalitionElementSource element == originPageElement (atlasPageElements (chainedDominionAtlas owner))}
+      -> {result:CoalitionData ownerScope scope (ChainedDominionCellData value) | result == element} @-}
+observedReconstruction :: ChainedDominionAtlas ownerScope scope value
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value)
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value)
+observedReconstruction owner element =
+  chainedCoalitionReconstruct owner element `seq`
+    chainedDominionCoalitionElement owner (chainedCoalitionValue element)
+
+{-@ observedInverse :: owner:ChainedDominionAtlas ownerScope scope value
+      -> insertion:DomanialInsertion source value
+      -> element:{CoalitionData ownerScope scope (ChainedDominionCellData value) |
+           coalitionElementValid (chainedDominionAtlas owner) element
+           && coalitionElementSource element == originPageElement (atlasPageElements (chainedDominionAtlas owner))}
+      -> {result:Maybe source | result == chainedCoalitionBackward insertion element} @-}
+observedInverse :: ChainedDominionAtlas ownerScope scope value -> DomanialInsertion source value
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value) -> Maybe source
+observedInverse owner insertion element =
+  case chainedCoalitionInsertion owner insertion of
+    DomanialInsertion _ backward _ -> backward element
+
+{-@ observedRoundTrip :: owner:ChainedDominionAtlas ownerScope scope value
+      -> insertion:DomanialInsertion source value -> value:source
+      -> {result:Maybe source | result == Just value} @-}
+observedRoundTrip :: ChainedDominionAtlas ownerScope scope value -> DomanialInsertion source value -> source -> Maybe source
+observedRoundTrip owner insertion value =
+  case chainedCoalitionInsertion owner insertion of
+    DomanialInsertion forward backward leftInverse -> leftInverse value `seq` backward (forward value)
 """
 CHAINED_COALITION_PUBLIC_GUARDS = {
+    "chained coalition reconstruction retains the entire canonical element": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> element:{CoalitionData ownerScope scope (ChainedDominionCellData value) |
+           coalitionElementValid (chainedDominionAtlas owner) element
+           && coalitionElementSource element == originPageElement (atlasPageElements (chainedDominionAtlas owner))}
+      -> {result:CoalitionData ownerScope scope (ChainedDominionCellData value) | result /= element} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value) -> CoalitionData ownerScope scope (ChainedDominionCellData value)
+proofGuard = observedReconstruction
+""",
+    "chained coalition reconstruction requires a valid element": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> element:{CoalitionData ownerScope scope (ChainedDominionCellData value) |
+           coalitionElementSource element == originPageElement (atlasPageElements (chainedDominionAtlas owner))}
+      -> CoalitionData ownerScope scope (ChainedDominionCellData value) @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value) -> CoalitionData ownerScope scope (ChainedDominionCellData value)
+proofGuard = observedReconstruction
+""",
+    "chained coalition reconstruction requires the canonical origin": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> element:{CoalitionData ownerScope scope (ChainedDominionCellData value) |
+           coalitionElementValid (chainedDominionAtlas owner) element}
+      -> CoalitionData ownerScope scope (ChainedDominionCellData value) @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value) -> CoalitionData ownerScope scope (ChainedDominionCellData value)
+proofGuard = observedReconstruction
+""",
+    "chained coalition insertion preserves its partial inverse": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> insertion:DomanialInsertion source value
+      -> element:{CoalitionData ownerScope scope (ChainedDominionCellData value) |
+           coalitionElementValid (chainedDominionAtlas owner) element
+           && coalitionElementSource element == originPageElement (atlasPageElements (chainedDominionAtlas owner))}
+      -> {result:Maybe source | result /= chainedCoalitionBackward insertion element} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value -> DomanialInsertion source value
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value) -> Maybe source
+proofGuard = observedInverse
+""",
+    "chained coalition insertion preserves its left inverse": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> DomanialInsertion source value -> value:source -> {result:Maybe source | result /= Just value} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value -> DomanialInsertion source value -> source -> Maybe source
+proofGuard = observedRoundTrip
+""",
     "chained coalition retains its input value": r"""
 {-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value -> value:value
       -> {element:CoalitionData ownerScope scope (ChainedDominionCellData value) | chainedCoalitionValue element /= value} @-}
@@ -3852,6 +4404,8 @@ def run(pattern=None):
         check_group(TRANSVERSAL_PUBLIC_SOURCE, TRANSVERSAL_PUBLIC_GUARDS)
         check_group(INSERTION_COMPOSITION_PUBLIC_SOURCE, INSERTION_COMPOSITION_PUBLIC_GUARDS)
         check_group(STABLE_PREIMAGE_PUBLIC_SOURCE, STABLE_PREIMAGE_PUBLIC_GUARDS)
+        check_group(PRIMITIVE_MORPHISM_SOURCE.read_text(), PRIMITIVE_MORPHISM_STORAGE_GUARDS)
+        check_group(PRIMITIVE_MORPHISM_PUBLIC_SOURCE, PRIMITIVE_MORPHISM_PUBLIC_GUARDS)
         check_group(TOTAL_MAP_PUBLIC_SOURCE, TOTAL_MAP_PUBLIC_GUARDS)
         check_group(CHAINED_DATA_PUBLIC_SOURCE, CHAINED_DATA_PUBLIC_GUARDS)
         check_group(CHAINED_ACTION_PUBLIC_SOURCE, CHAINED_ACTION_PUBLIC_GUARDS)

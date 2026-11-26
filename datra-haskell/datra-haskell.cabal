@@ -158,6 +158,7 @@ library
         PageElements
         Pagination
         Atlas
+        Atlas.Morphism
         Atlas.Presheaf
         AtlasExtent
         AtlasTerritory

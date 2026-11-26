@@ -76,6 +76,42 @@ stored arrows, and their inclusion actions agree with the semantic full
 subcategories. Charter coverage witnesses reuse the original Atlas decoder's
 region and recompute the charted caches, matching the Haskell algorithm.
 
+Primitive Atlas morphism actions retain their page-arrow and data-naturality
+laws in a checked record tied to the stored owners, object map, and dependent
+components. Public observations expose the normalized page action and invoke
+those same certificates. Construction retains both owners and the exact
+callbacks, including each component's entire partial inverse. Lean retains the
+same operations and laws in its primitive morphism structure. Public-client
+checks consume these contracts through the checked `Atlas.Morphism` interface
+re-exported by `Atlas`. Rejection checks prohibit replacing a stored callback
+without its certificates and contradicting the observed laws or retained owners,
+object operation, forward component, or partial inverse. Matching the
+intermediate owner of composed stable insertions remains a separate contract.
+Primitive action normalization also uses this checked interface. It retains the
+source and target owners, normalizes the object operation at both boundaries,
+and selects the original complete insertion at the normalized source cell.
+Idempotence proves the page-arrow and naturality laws for the rebuilt callbacks.
+The chosen partial inverse is retained for every target datum, including failed
+lookups. Lean proves the same callback retention and equality of the complete
+normalized morphism image. Charter consumes this shared normalization operation
+before restricting the complete action.
+The primitive object callback retains owning trace validity: a source passing
+the stored source Atlas's trace test maps to a target passing the stored target
+Atlas's test. The checked record, constructor, and public observation retain
+this conditional contract. Normalization carries it through both boundary
+normalizations; its certificate remains unevaluated at runtime. Lean proves
+the corresponding trace tests for the original and normalized object maps.
+Identity assembly uses a checked raw object callback preserving its page,
+position, trace, and cell, and a checked page-arrow preservation certificate
+for the normalized callback. Lean proves the matching identity-object and
+page-arrow laws. Identity data-naturality assembly remains open: the Haskell
+type-family specialization must retain the dependent identity insertion's
+application equation across the mapped-object type.
+The module remains partial: owning trace validity checks page, position, and
+trace, while the full carrier interpretation must also retain dependent payload
+and component-membership invariants. Generic identity/composition assembly and
+matching intermediate owners remain separate obligations.
+
 Primitive transversal actions store their exact-image coverage law in a checked
 record. The image operation retains the dependent target cell and datum before
 the public coverage constructor packages them. Their shared primitive mapper
@@ -192,7 +228,16 @@ coalition at the actual origin. Its value observer recovers the supplied value;
 Lean proves the same observation through the retained tagged carrier.
 Public rejection checks enforce coverage's trace and datum premises and reject
 changed coalition values, invalid coalitions, and a different origin.
-Coalition reconstruction, traversal, and identification with the written Atlas
+Canonical coalition reconstruction recovers the entire cached carrier from its
+extent value. The checked coalition insertion retains its exact forward map,
+partial inverse, target validity, and origin. Its inverse reads the retained
+value before invoking the supplied insertion's partial inverse. Lean identifies
+both directions with transport through the value/coalition equivalence, including
+failed inverse lookups. The traversal uses this checked insertion. Constant and
+chained Dominion construction and primitive stable transversals share the public
+coalition insertion constructors, which preserve membership and the exact
+origin on their restricted carriers.
+The remaining traversal assembly and identification with the written Atlas
 construction still need their complete checked contracts. Charter and the
 chained construction share `DomanialInsertion.Core.insertionOn` to retain source
 and target predicates while packaging their callbacks.
@@ -240,7 +285,14 @@ agrees with the written extent map. Canonical-carrier extensionality proves
 that rebuilding this value recovers the entire mapped record and that the
 identity transversal returns the exact input record. Haskell's checked mapping
 worker requires a valid canonical source and gives its callback a valid canonical
-target with the retained owner. A primitive stable action stores its source
+target with the retained owner. The owned-operation interfaces retain one target
+Atlas together with a function mapping every accepted source to that Atlas's
+valid covered or canonical coalition carrier. Identity carries the caller's
+source domain through the callback package; composition retains the final
+mapped owner and composes the stored functions. Pointwise observations use
+this same operation. Lean models the complete operation and proves that its
+application and composition agree with the covered and coalition maps.
+A primitive stable action stores its source
 Atlas together with an insertion restricted to that Atlas's valid canonical
 coalitions. The stored forward function is exactly the coalition mapper, and
 every successful inverse result satisfies the same source-domain condition,
@@ -659,7 +711,7 @@ Consumers must import exposed interfaces rather than another component's
 `Chain.Sum`, `Chain.Position`, `Chain.Singleton`, `Consolidation.Core`, `Consolidation.Ordered`,
 `Consolidation.Sum`, `Consolidation.Reindex`, `Consolidation.Endpoints`,
 `DomanialInsertion.Core`, `Folio.Presentation`, `Folio.Assembly`, `PageElements.Structure`,
-`PageElements.TraceChain`, `AtlasMerge.Assembly`, `AtlasMerge.Data`, and
+`PageElements.TraceChain`, `Atlas.Morphism`, `AtlasMerge.Assembly`, `AtlasMerge.Data`, and
 `AtlasSequence.Data`, `AtlasSequence.Member`, `AtlasSequence.Page`, and `AtlasSequence.Assembly`.
 Their definitions and refinement contracts are checked in
 the exposed modules, including the logical record selectors used by clients.
@@ -1465,5 +1517,10 @@ task; its repair belongs to the bootstrap work in `DATRA_HOOK_MODULE.md`.
 Report its effect on final runtime validation without attempting that repair.
 
 Use focused positive and rejection checks while completing each construction.
+Rebuild the affected public interfaces before testing refinement-only changes:
+GHC export hashes need not change with LiquidHaskell contracts, so cached
+re-exports can retain stale specifications. Final LiquidHaskell verification
+must use fresh `datra-haskell` library artifacts to check the complete dependency
+graph against the final contracts.
 The absence of trust directives is an invariant throughout this work, not a
 substitute for the remaining representation and assembly proofs.

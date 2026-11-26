@@ -20,6 +20,7 @@ module Atlas.Morphism.Internal
   , atlasMorphismSource
   , atlasMorphismTarget
   , mapAtlasMorphismActionObject
+  , mapAtlasMorphismActionElement
   , mapAtlasMorphismActionComponent
   , atlasMorphismObjectMapWitness
   , atlasMorphism
@@ -53,10 +54,8 @@ module Atlas.Morphism.Internal
 
 import Atlas.Internal
   ( Atlas
-  , atlasCardinality
   , atlasCoherence
   , normalizeAtlasElement
-  , normalizeAtlasArrow
   )
 import Atlas.Morphism.LiquidInternal
   ( AtlasMorphismAction
@@ -64,6 +63,8 @@ import Atlas.Morphism.LiquidInternal
   , AtlasMappedObject
   , IdentityAtlasObjectMap
   , identityAtlasObjectMap
+  , identityAtlasMorphismObject
+  , identityAtlasMorphismPreservesArrow
   , atlasObjectMap
   , atlasMorphismAction
   , atlasMorphismActionNaturality
@@ -74,6 +75,8 @@ import Atlas.Morphism.LiquidInternal
   , mapAtlasMorphismActionComponent
   , mapAtlasMorphismActionElement
   , mapAtlasMorphismActionObject
+  , normalizedActionObject
+  , normalizeAtlasMorphismAction
   )
 import Control.Category (Category (..))
 import Data.Kind (Type)
@@ -92,7 +95,6 @@ import PageElements.Structure
   , pageElementArrow
   )
 import PageElements.Structure (SomePageElement (..))
-import PageElements.Structure (normalizeSomePageElementPreservesArrowAt)
 import Pagination
   ( PaginationMorphism
   , SomePageElementArrow
@@ -184,33 +186,6 @@ data CompositeAtlasObjectMap first second
 type instance AtlasMappedObject (CompositeAtlasObjectMap first second) source =
   AtlasMappedObject second (AtlasMappedObject first source)
 
-normalizedActionObject
-  :: AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
-       sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
-  -> PageElement sourceScope sourceObject
-  -> PageElement targetScope (AtlasMappedObject objectMap sourceObject)
-normalizedActionObject action source =
-  normalizeAtlasElement (atlasMorphismTarget action)
-    (mapAtlasMorphismActionObject action
-      (normalizeAtlasElement (atlasMorphismSource action) source))
-
--- | Make all callbacks valid on padded occurrences as well as genuine cells.
--- ALIGN: ATLAS-NORMALIZED-ACTION.
-normalizeAtlasMorphismAction
-  :: AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
-       sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
-  -> AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
-       sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
-normalizeAtlasMorphismAction action =
-  atlasMorphismAction (atlasMorphismObjectMapWitness action)
-    (atlasMorphismSource action) (atlasMorphismTarget action)
-    (normalizedActionObject action)
-    (\source -> mapAtlasMorphismActionComponent action
-      (normalizeAtlasElement (atlasMorphismSource action) source))
-    (atlasMorphismActionPreservesArrow action)
-    (\arrow datum -> atlasMorphismActionNaturality action
-      (normalizeAtlasArrow (atlasMorphismSource action) arrow) datum)
-
 composeAtlasMorphismActions
   :: AtlasMorphismAction second middleAtlasScope targetAtlasScope middleScope targetScope
        middleCellData targetCellData middleOrigin middleFinal targetOrigin targetFinal
@@ -259,10 +234,9 @@ withAtlasMorphismAction
   -> result
 withAtlasMorphismAction (PrimitiveAtlasMorphism action) useAction = useAction action
 withAtlasMorphismAction (IdentityAtlasMorphism valueAtlas) useAction =
-  useAction (atlasMorphismAction identityAtlasObjectMap valueAtlas valueAtlas id
-    (const identityInsertion)
-    (normalizeSomePageElementPreservesArrowAt
-      (atlasCardinality valueAtlas - 1) (fromIntegral (atlasCardinality valueAtlas)))
+  useAction (atlasMorphismAction identityAtlasObjectMap valueAtlas valueAtlas
+    (identityAtlasMorphismObject valueAtlas) (const identityInsertion)
+    (identityAtlasMorphismPreservesArrow identityAtlasObjectMap valueAtlas)
     (\_ _ -> ()))
 withAtlasMorphismAction (CompositeAtlasMorphism second first) useAction =
   withAtlasMorphismAction first $ \firstAction ->

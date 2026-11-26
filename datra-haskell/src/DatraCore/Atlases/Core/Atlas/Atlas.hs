@@ -69,12 +69,17 @@ module Atlas
   , atlasMorphismObjectMapWitness
   , withAtlasMorphismAction
   , normalizeAtlasMorphismAction
+  , normalizeAtlasMorphismActionRetains
   , atlasMorphismActionPreservesArrow
   , atlasMorphismSource
   , atlasMorphismTarget
   , mapAtlasMorphismActionComponent
   , mapAtlasMorphismActionObject
+  , mapAtlasMorphismActionElement
+  , mapPrimitiveElement
   , identityAtlasObjectMap
+  , identityAtlasMorphismObject
+  , identityAtlasMorphismPreservesArrow
   , atlasObjectMap
   , withAtlasMorphismImage
   , atlasMorphism
@@ -145,12 +150,30 @@ import Atlas.Internal
   , withAtlasPageChain
   )
 import qualified Atlas.Internal as Internal (atlasNormalizationAgrees, atlasArrowNormalizationAgrees, atlasPresentation, withAtlasPresentation, normalizeAtlasElementTraceValid, atlasAcceptsDatumNormalized, atlasNormalizationArrow, mapAtlasDataNormalized, normalizeAtlasArrowTraceValid)
-import Atlas.Morphism.Internal
-  ( AtlasMorphism
-  , AtlasMorphismAction
+import Atlas.Morphism
+  ( AtlasMorphismAction
   , AtlasObjectMap
   , AtlasMappedObject
   , IdentityAtlasObjectMap
+  , identityAtlasObjectMap
+  , identityAtlasMorphismObject
+  , identityAtlasMorphismPreservesArrow
+  , atlasObjectMap
+  , atlasMorphismAction
+  , atlasMorphismSource
+  , atlasMorphismTarget
+  , mapAtlasMorphismActionObject
+  , mapAtlasMorphismActionComponent
+  , mapAtlasMorphismActionElement
+  , mapPrimitiveElement
+  , atlasMorphismActionPreservesArrow
+  , atlasMorphismActionNaturality
+  , atlasMorphismObjectMapWitness
+  , normalizeAtlasMorphismAction
+  , normalizeAtlasMorphismActionRetains
+  )
+import Atlas.Morphism.Internal
+  ( AtlasMorphism
   , AtlasMorphismImage
   , AtlasObject
   , AtlasObjectAtlasScope
@@ -161,18 +184,7 @@ import Atlas.Morphism.Internal
   , identityAtlasHom
   , composeAtlasHoms
   , atlasMorphism
-  , atlasMorphismAction
-  , atlasMorphismActionNaturality
-  , atlasMorphismObjectMapWitness
   , withAtlasMorphismAction
-  , normalizeAtlasMorphismAction
-  , atlasMorphismActionPreservesArrow
-  , atlasMorphismSource
-  , atlasMorphismTarget
-  , mapAtlasMorphismActionComponent
-  , mapAtlasMorphismActionObject
-  , identityAtlasObjectMap
-  , atlasObjectMap
   , atlasMorphismPagination
   , atlasWitness
   , withAtlasWitness

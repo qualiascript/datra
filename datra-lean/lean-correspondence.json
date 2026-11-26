@@ -1207,7 +1207,7 @@
     },
     {
       "id": "ATLAS-NORMALIZED-ACTION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs",
       "haskell_declaration": "normalizeAtlasMorphismAction",
       "lean_namespace": "Datra.Executable.Atlas",
       "lean_declaration": "Morphism.normalized_action_image"
@@ -5553,11 +5553,11 @@
       "lean_declaration": "coalitionFromCovered_roundtrip"
     },
     {
-      "id": "ATLAS-TRANSVERSAL-OWNED-IMAGE",
+      "id": "ATLAS-TRANSVERSAL-OWNED-ACTION",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransversal/Internal.hs",
-      "haskell_declaration": "transversalCoveredImage",
+      "haskell_declaration": "transversalCoveredAction",
       "lean_namespace": "Datra.Executable.Atlas",
-      "lean_declaration": "transversalCoveredImage"
+      "lean_declaration": "transversalCoveredAction"
     },
     {
       "id": "ATLAS-TRANSVERSAL-OWNED-ELIMINATION",
@@ -5572,13 +5572,6 @@
       "haskell_declaration": "withMappedCoalitionElement",
       "lean_namespace": "Datra.Executable.Atlas",
       "lean_declaration": "withMappedCoalitionElement"
-    },
-    {
-      "id": "ATLAS-STABLE-SOURCE-INSERTION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
-      "haskell_declaration": "stableCoalitionInsertionOn",
-      "lean_namespace": "Datra.Executable.Atlas",
-      "lean_declaration": "stableCoalitionInsertionOn"
     },
     {
       "id": "ATLAS-STABLE-SOURCE-PACKAGE",
@@ -6244,6 +6237,153 @@
       "haskell_declaration": "chainedCoalitionAt",
       "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
       "lean_declaration": "chainedCoalitionAt"
+    },
+    {
+      "id": "CHAINED-COALITION-VIEW-FROM",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedViewFrom",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedViewFrom"
+    },
+    {
+      "id": "CHAINED-COALITION-ORIGIN-VIEW",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedCoalitionOriginView",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedCoalitionOriginView"
+    },
+    {
+      "id": "CHAINED-COALITION-ORIGIN-VIEW-AT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedOriginViewAt",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedOriginViewAt"
+    },
+    {
+      "id": "CHAINED-COALITION-RECONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedCoalitionReconstruct",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedCoalitionReconstruct"
+    },
+    {
+      "id": "CHAINED-COALITION-FORWARD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedCoalitionForward",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedCoalitionForward"
+    },
+    {
+      "id": "CHAINED-COALITION-BACKWARD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedCoalitionBackward",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedCoalitionBackward"
+    },
+    {
+      "id": "CHAINED-COALITION-INSERTION-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedCoalitionRoundTrip",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedCoalitionRoundTrip"
+    },
+    {
+      "id": "CHAINED-COALITION-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedCoalitionInsertion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedCoalitionInsertion"
+    },
+    {
+      "id": "COALITION-UNIT-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Data.hs",
+      "haskell_declaration": "coalitionUnitInsertion",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionUnitInsertion"
+    },
+    {
+      "id": "COALITION-COUNIT-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Data.hs",
+      "haskell_declaration": "coalitionCounitInsertion",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionCounitInsertion"
+    },
+    {
+      "id": "ATLAS-PRIMITIVE-STORED-PAGE-LAW",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs",
+      "haskell_declaration": "atlasMorphismActionPreservesArrow",
+      "lean_namespace": "Datra.Executable.PrimitiveAtlasMorphism",
+      "lean_declaration": "stored_page_law"
+    },
+    {
+      "id": "ATLAS-PRIMITIVE-STORED-NATURALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs",
+      "haskell_declaration": "atlasMorphismActionNaturality",
+      "lean_namespace": "Datra.Executable.PrimitiveAtlasMorphism",
+      "lean_declaration": "stored_naturality"
+    },
+    {
+      "id": "ATLAS-PRIMITIVE-ASSEMBLY-RETENTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs",
+      "haskell_declaration": "atlasMorphismAction",
+      "lean_namespace": "Datra.Executable.PrimitiveAtlasMorphism",
+      "lean_declaration": "assembly_retains"
+    },
+    {
+      "id": "ATLAS-NORMALIZED-ACTION-RETENTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs",
+      "haskell_declaration": "normalizeAtlasMorphismActionRetains",
+      "lean_namespace": "Datra.Executable.PrimitiveAtlasMorphism",
+      "lean_declaration": "normalized_retains"
+    },
+    {
+      "id": "ATLAS-COHERENCE-IDEMPOTENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Internal.hs",
+      "haskell_declaration": "atlasCoherenceIdempotent",
+      "lean_namespace": "Datra.Executable.PageElement",
+      "lean_declaration": "normalize_idempotent"
+    },
+    {
+      "id": "ATLAS-PRIMITIVE-OBJECT-VALIDITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs",
+      "haskell_declaration": "mapAtlasMorphismActionObject",
+      "lean_namespace": "Datra.Executable.PrimitiveAtlasMorphism",
+      "lean_declaration": "object_trace_valid"
+    },
+    {
+      "id": "ATLAS-NORMALIZED-OBJECT-VALIDITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs",
+      "haskell_declaration": "normalizedActionObject",
+      "lean_namespace": "Datra.Executable.PrimitiveAtlasMorphism",
+      "lean_declaration": "normalized_object_trace_valid"
+    },
+    {
+      "id": "ATLAS-PRIMITIVE-IDENTITY-OBJECT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs",
+      "haskell_declaration": "identityAtlasMorphismObject",
+      "lean_namespace": "Datra.Executable.PrimitiveAtlasMorphism",
+      "lean_declaration": "identity_object"
+    },
+    {
+      "id": "ATLAS-PRIMITIVE-IDENTITY-PAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs",
+      "haskell_declaration": "identityAtlasMorphismPreservesArrow",
+      "lean_namespace": "Datra.Executable.PrimitiveAtlasMorphism",
+      "lean_declaration": "identity_preserves_arrow"
+    },
+    {
+      "id": "ATLAS-TRANSVERSAL-OWNED-ACTION-ELIMINATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransversal/Internal.hs",
+      "haskell_declaration": "withAtlasTransversalCoveredAction",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "withAtlasTransversalCoveredAction"
+    },
+    {
+      "id": "COALITION-FORWARD-OWNED-ACTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Action.hs",
+      "haskell_declaration": "withMappedCoalitionAction",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "withMappedCoalitionAction"
     }
   ],
   "modules": [
@@ -6302,7 +6442,8 @@
         "atlasCoherenceWitness",
         "atlasDisjointWitness",
         "atlasPageCell",
-        "atlasOriginCell"
+        "atlasOriginCell",
+        "atlasCoherenceIdempotent"
       ],
       "lean_target": "Datra.Executable.Atlas",
       "coverage": "partial",
@@ -6383,17 +6524,41 @@
         "IdentityAtlasObjectMap"
       ],
       "reflected": [
-        "mapPrimitiveElement"
+        "atlasMorphismSource",
+        "atlasMorphismTarget",
+        "mapAtlasMorphismActionElement",
+        "atlasMorphismObjectMapWitness",
+        "mapPrimitiveElement",
+        "normalizedActionObject",
+        "retainObjectValidity",
+        "normalizedActionComponent",
+        "identityAtlasMorphismObject"
       ],
       "refinements": [
-        "atlasMorphismAction"
+        "mapAtlasMorphismActionObject",
+        "atlasMorphismActionPreservesArrow",
+        "atlasMorphismActionNaturality",
+        "atlasMorphismAction",
+        "normalizedActionObject",
+        "retainObjectValidity",
+        "normalizedActionElementAgrees",
+        "normalizeAtlasMorphismAction",
+        "normalizeAtlasMorphismActionRetains",
+        "normalizedActionNaturality",
+        "identityAtlasMorphismObject",
+        "identityAtlasMorphismPreservesArrow"
       ],
       "lean_target": "Datra.Executable.Atlas.Morphism",
       "coverage": "partial",
       "aliases": [],
       "embeddings": [],
-      "predicates": [],
-      "refinement_aliases": []
+      "predicates": [
+        "MorphismCellValid"
+      ],
+      "refinement_aliases": [],
+      "opaque_reflected": [
+        "normalizeAtlasMorphismAction"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Internal.hs",
@@ -7261,8 +7426,9 @@
         "AtlasTransversal",
         "TransversalAction",
         "TransversalImage",
-        "TransversalCoveredImage",
-        "CoveredImageData"
+        "TransversalCoveredAction",
+        "CoveredActionData",
+        "CoveredActionConsumer"
       ],
       "reflected": [
         "withTransversalImage",
@@ -7271,9 +7437,10 @@
       "refinements": [
         "atlasTransversal",
         "mapTransversalAction",
-        "withCoveredImageData",
+        "composeCoveredActionData",
         "atlasTransversalSize",
-        "transversalCoveredImage",
+        "transversalCoveredAction",
+        "withAtlasTransversalCoveredAction",
         "withAtlasTransversalCoveredImage"
       ],
       "lean_target": "Datra.Executable.Atlas.Transversal",
@@ -7324,7 +7491,6 @@
       ],
       "refinements": [
         "checkedStableOrigin",
-        "stableCoalitionInsertionOn",
         "stableAtlasTransversal",
         "composeCoalitionInverseData",
         "withCoalitionPreimageData",
@@ -7585,8 +7751,6 @@
         "coalitionElementPreimage",
         "dominionCoalitionCounitRoundTrip",
         "dominionCoalitionCounit",
-        "coalitionCounitInsertion",
-        "coalitionUnitInsertion",
         "coaDomIncIso",
         "coaDomIncIsoLeftInverse",
         "coaDomIncIsoRightInverse",
@@ -8828,7 +8992,9 @@
         "coalitionElementRankExtensionality",
         "coalitionFromCoveredRoundTrip",
         "coalitionDominionOn",
-        "coalition"
+        "coalition",
+        "coalitionCounitInsertion",
+        "coalitionUnitInsertion"
       ],
       "aliases": [],
       "embeddings": [],
@@ -9170,7 +9336,8 @@
       "types": [],
       "reflected": [],
       "refinements": [
-        "canonicalizeCoalitionImage",
+        "mapCanonicalCoalition",
+        "withMappedCoalitionAction",
         "withMappedCoalitionElement"
       ],
       "lean_target": "Datra.Executable.Atlas",
@@ -9424,7 +9591,10 @@
       "coverage": "partial",
       "reflected": [
         "chainedCoalitionValue",
-        "chainedViewValue"
+        "chainedViewValue",
+        "chainedViewFrom",
+        "chainedCoalitionForward",
+        "chainedCoalitionBackward"
       ],
       "opaque_reflected": [
         "chainedDominionCoalitionElement"
@@ -9435,8 +9605,14 @@
       "refinement_aliases": [],
       "embeddings": [],
       "refinements": [
+        "chainedCoalitionOriginView",
+        "chainedOriginViewAt",
+        "chainedCoalitionReconstruct",
         "chainedDominionCoalitionElement",
-        "chainedCoalitionAt"
+        "chainedCoalitionAt",
+        "chainedCoalitionForward",
+        "chainedCoalitionRoundTrip",
+        "chainedCoalitionInsertion"
       ]
     }
   ],

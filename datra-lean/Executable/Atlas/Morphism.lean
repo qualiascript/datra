@@ -1,5 +1,6 @@
 import Executable.Atlas.Elements
 import Executable.Atlas.Normalized
+import Executable.PageElementLookup
 
 namespace Datra.Executable
 open CategoryTheory CategoryTheory.Idempotents
@@ -93,6 +94,43 @@ structure PrimitiveAtlasMorphism (X Y : Atlas) where
 namespace PrimitiveAtlasMorphism
 variable {X Y : Atlas}
 
+-- ALIGN: ATLAS-PRIMITIVE-OBJECT-VALIDITY.
+theorem object_trace_valid (f : PrimitiveAtlasMorphism X Y) (source : X.Element) :
+    Y.pages.traceValid (f.object source).val = true :=
+  FolioData.ValidElement.traceValid Y.pagination.folio.valid _
+
+/-- Public observation retains the naturality law of the stored component. -/
+-- ALIGN: ATLAS-PRIMITIVE-STORED-NATURALITY.
+theorem stored_naturality (f : PrimitiveAtlasMorphism X Y)
+    {source target : X.Element} (arrow : source ⟶ target)
+    (datum : X.cellData source.val.cell) :
+    (f.component target.normalize).map ((X.data.action.normalizedMap arrow).map datum) =
+      (Y.data.action.normalizedMap (f.arrow arrow)).map
+        ((f.component source.normalize).map datum) :=
+  f.naturality arrow datum
+
+-- ALIGN: ATLAS-PRIMITIVE-STORED-PAGE-LAW.
+theorem stored_page_law (f : PrimitiveAtlasMorphism X Y)
+    {source target : X.Element} (arrow : source ⟶ target) :
+    Nonempty (normalizedObject f.object source ⟶ normalizedObject f.object target) :=
+  ⟨f.arrow arrow⟩
+
+/-- Assembly retains the supplied object operation and the entire dependent
+insertion, including its partial inverse. The owner Atlases are the parameters. -/
+-- ALIGN: ATLAS-PRIMITIVE-ASSEMBLY-RETENTION.
+theorem assembly_retains (object : X.Element → Y.Element)
+    (component : (source : X.Element) →
+      DomanialInsertion (X.cellData source.val.cell) (Y.cellData (object source).val.cell))
+    (arrow : ∀ {source target : X.Element}, (source ⟶ target) →
+      (normalizedObject object source ⟶ normalizedObject object target))
+    (naturality : ∀ {source target : X.Element} (edge : source ⟶ target)
+      (datum : X.cellData source.val.cell),
+      (component target.normalize).map ((X.data.action.normalizedMap edge).map datum) =
+        (Y.data.action.normalizedMap (arrow edge)).map ((component source.normalize).map datum)) :
+    let action : PrimitiveAtlasMorphism X Y := ⟨object, component, arrow, naturality⟩
+    action.object = object ∧ HEq action.component component :=
+  ⟨rfl, HEq.rfl⟩
+
 -- ALIGN: ATLAS-PRIMITIVE-PAGE-FUNCTOR.
 def pageFunctor (f : PrimitiveAtlasMorphism X Y) : X.Element ⥤ Y.Element where
   obj := normalizedObject f.object
@@ -133,6 +171,18 @@ def identity (X : Atlas) : PrimitiveAtlasMorphism X X where
         (FolioData.ValidElement.normalizeArrow arrow))).map datum
     rw [AtlasAction.normalizedMap_normalizeArrow, AtlasAction.normalizedMap_normalizeArrow]
 
+/-- The raw identity object callback preserves the complete occurrence. -/
+-- ALIGN: ATLAS-PRIMITIVE-IDENTITY-OBJECT.
+theorem identity_object (X : Atlas) (source : X.Element) :
+    (identity X).object source = source := rfl
+
+/-- The normalized identity callback preserves page arrows. -/
+-- ALIGN: ATLAS-PRIMITIVE-IDENTITY-PAGE.
+theorem identity_preserves_arrow (X : Atlas) {source target : X.Element}
+    (arrow : source ⟶ target) :
+    Nonempty ((identity X).pageFunctor.obj source ⟶ (identity X).pageFunctor.obj target) :=
+  ⟨(identity X).arrow arrow⟩
+
 /-- Evaluate every raw callback at the same normalized source used by public
 morphism application. This also gives restrictions valid callbacks on padding. -/
 def normalized (operation : PrimitiveAtlasMorphism X Y) : PrimitiveAtlasMorphism X Y where
@@ -151,6 +201,21 @@ def normalized (operation : PrimitiveAtlasMorphism X Y) : PrimitiveAtlasMorphism
           ((operation.component source.normalize.normalize).map datum)
     rw [AtlasAction.normalizedMap_normalizeArrow]
     exact law
+
+/-- Normalized assembly keeps the chosen insertion itself, so its inverse is
+unchanged on every target datum, including unsuccessful lookups. -/
+-- ALIGN: ATLAS-NORMALIZED-ACTION-RETENTION.
+theorem normalized_retains (operation : PrimitiveAtlasMorphism X Y) :
+    operation.normalized.object = normalizedObject operation.object ∧
+      ∀ source, HEq (operation.normalized.component source)
+        (operation.component source.normalize) :=
+  ⟨rfl, fun _ => HEq.rfl⟩
+
+-- ALIGN: ATLAS-NORMALIZED-OBJECT-VALIDITY.
+theorem normalized_object_trace_valid (operation : PrimitiveAtlasMorphism X Y)
+    (source : X.Element) :
+    Y.pages.traceValid (operation.normalized.object source).val = true :=
+  operation.normalized.object_trace_valid source
 
 /-- Collapse a composition only after retaining the complete, normalized
 object action and both partial inverses. No coverage condition is imposed on

@@ -292,6 +292,24 @@ testRankedDominionAtlas =
       && preimage composedMap targetElement == Just sourceElement)
   assert "composed coalition inverses reject values outside the image"
     (isNothing (preimage composedMap (rankedDominionCoalitionElement ranked 3)))
+  CoalitionElement.withMappedCoalitionAction included
+    (stableAtlasTransversalTransversal composed) $ \owner forward -> do
+      assert "the complete coalition operation retains the final owner's folio"
+        (atlasCardinality owner == 2)
+      mapM_ (\value -> do
+        let image = forward (dominionCoalitionElement sourceOwner value)
+        assert "one coalition operation certifies distinct inputs for the same target"
+          (CoalitionElement.coalitionElementValid owner image
+            && coalitionElementRank image == 2 * value)) selectedRanks
+  CoalitionElement.withMappedCoalitionAction included identityAtlasTransversal $ \owner forward ->
+    mapM_ (\value -> do
+      let source = dominionCoalitionElement sourceOwner value
+          image = forward source
+      assert "the identity coalition operation retains its source owner and canonical code"
+        (atlasCardinality owner == 1
+          && CoalitionElement.coalitionElementValid owner image
+          && CoalitionElement.coalitionElementCode image == CoalitionElement.coalitionElementCode source
+          && coalitionElementRank image == value)) selectedRanks
   let observePreimage :: Atlas a s d o f -> CoalitionElement.CoalitionData a s d
         -> (Bool, Natural, Bool)
       observePreimage owner recovered =
@@ -370,11 +388,22 @@ testChainedDominionAtlas = do
           && not (atlasAcceptsDatum valueAtlas origin (ChainedData.ChainedDominionRegionDatum 3)))
       mapM_ (\selected -> do
         let element = chainedDominionCoalitionElement owner selected
+            rebuilt = chainedDominionCoalitionElement owner (ChainedCoalition.chainedCoalitionValue element)
         assert "chained coalition construction retains its value and canonical origin"
           (ChainedCoalition.chainedCoalitionValue element == selected
             && CoalitionElement.coalitionElementValid valueAtlas element
             && withPageElement (CoalitionElement.coalitionElementSource element)
-              (\source -> pageElementPage source == 0 && cellTraceValid valueAtlas source))) [3, 4]
+              (\source -> pageElementPage source == 0 && cellTraceValid valueAtlas source))
+        assert "chained coalition reconstruction retains both canonical caches"
+          (CoalitionElement.coalitionElementCode rebuilt == CoalitionElement.coalitionElementCode element
+            && coalitionElementRank rebuilt == coalitionElementRank element)) [3, 4]
+      let selectedInsertion = domanialInsertion (const 3)
+            (\value -> if value == 3 then Just () else Nothing) (const ())
+          coalitionInsertion = ChainedCoalition.chainedCoalitionInsertion owner selectedInsertion
+      assert "chained coalition insertion preserves successful and failed inverse lookups"
+        (ChainedCoalition.chainedCoalitionValue (applyInsertion coalitionInsertion ()) == 3
+          && preimage coalitionInsertion (chainedDominionCoalitionElement owner 3) == Just ()
+          && isNothing (preimage coalitionInsertion (chainedDominionCoalitionElement owner 4)))
       mapM_ (\(page, position, selected, other) ->
         case pageElementIndex (atlasPageElements valueAtlas) page (finiteOrdinal position) of
           Nothing -> assert "the selected chained occurrence exists" False

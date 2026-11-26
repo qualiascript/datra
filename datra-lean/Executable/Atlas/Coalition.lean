@@ -87,6 +87,26 @@ def CoalitionElement.Valid {X : Atlas} (c : X.CoalitionElement) : Prop :=
 abbrev CertifiedCoalitionElement (X : Atlas) :=
   {c : X.CoalitionElement // CoalitionElement.Valid c}
 
+/-- Package an insertion into a carrier with both membership and exact-source
+certificates. The same constructor serves constant and chained Dominions. -/
+-- ALIGN: COALITION-UNIT-INSERTION.
+def coalitionUnitInsertion {Element Value Source : Type*}
+    (accepts : Element → Bool) (source : Element → Source) (origin : Source)
+    (forward : Value → {element : Element // accepts element = true ∧ source element = origin})
+    (backward : {element : Element // accepts element = true ∧ source element = origin} → Option Value)
+    (leftInverse : ∀ value, backward (forward value) = some value) :
+    DomanialInsertion Value {element : Element // accepts element = true ∧ source element = origin} :=
+  ⟨forward, backward, leftInverse⟩
+
+-- ALIGN: COALITION-COUNIT-INSERTION.
+def coalitionCounitInsertion {Element Value Source : Type*}
+    (accepts : Element → Bool) (source : Element → Source) (origin : Source)
+    (forward : {element : Element // accepts element = true ∧ source element = origin} → Value)
+    (backward : Value → Option {element : Element // accepts element = true ∧ source element = origin})
+    (leftInverse : ∀ element, backward (forward element) = some element) :
+    DomanialInsertion {element : Element // accepts element = true ∧ source element = origin} Value :=
+  ⟨forward, backward, leftInverse⟩
+
 /-- The public constructor uses the shared canonical cache and retains the
 exact owning origin and its image rank. -/
 -- ALIGN: COALITION-CHECKED-CONSTRUCTOR.
@@ -375,19 +395,29 @@ theorem coalitionFromCovered_roundtrip {X : Atlas} (c : X.Coalition) :
   apply Subtype.ext
   exact originImage_origin X (X.originImage c.val.source c.val.datum)
 
-/-- Retain the image's owner through canonicalization and pass its certified
-coalition to the caller. -/
+/-- The complete canonical mapping operation retains the same target owner
+for all accepted source records. -/
+-- ALIGN: COALITION-FORWARD-OWNED-ACTION.
+def withMappedCoalitionAction {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
+    (useAction : (X.CertifiedCoalitionElement → Y.CertifiedCoalitionElement) → Result) : Result :=
+  withAtlasTransversalCoveredAction f
+    (fun forward => useAction (fun source => coalitionFromCovered (forward source.coveredElement)))
+
+/-- Retain the image's owner through canonicalization. -/
 -- ALIGN: COALITION-FORWARD-OWNED-ELIMINATION.
 def withMappedCoalitionElement {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
     (c : X.CertifiedCoalitionElement) (useElement : Y.CertifiedCoalitionElement → Result) : Result :=
-  withAtlasTransversalCoveredImage f c.coveredElement
-    (fun image => useElement (coalitionFromCovered image))
+  withMappedCoalitionAction f (fun forward => useElement (forward c))
 
 /-- Erase the callback boundary while retaining the same certified action. -/
 -- ALIGN: COALITION-FORWARD-CARRIER.
 def mapCoalitionElement {X Y : Atlas} (f : Transversal X Y)
     (c : X.CertifiedCoalitionElement) : Y.CertifiedCoalitionElement :=
   withMappedCoalitionElement f c id
+
+theorem withMappedCoalitionAction_agrees {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
+    (useAction : (X.CertifiedCoalitionElement → Y.CertifiedCoalitionElement) → Result) :
+    withMappedCoalitionAction f useAction = useAction (mapCoalitionElement f) := rfl
 
 theorem withMappedCoalitionElement_agrees {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
     (c : X.CertifiedCoalitionElement) (useElement : Y.CertifiedCoalitionElement → Result) :

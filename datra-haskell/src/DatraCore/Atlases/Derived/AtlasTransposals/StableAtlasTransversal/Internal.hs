@@ -77,9 +77,9 @@ import AtlasTransversal
   )
 import Coalition.Element
   ( CoalitionElement, CoalitionData, mapCoalitionElement
-  , coalitionElementValid, coalitionElementSource )
+  , coalitionElementValid, coalitionElementSource, coalitionCounitInsertion )
 import DomanialInsertion.Core
-  ( DomanialInsertion (..), domanialInsertion, identityInsertion, composeInsertions
+  ( DomanialInsertion (..), identityInsertion, composeInsertions
   , composePartialInverses )
 import Control.Category (Category (..))
 import DatraOrdinal (Ordinal)
@@ -211,24 +211,6 @@ data StableTransversalAction sa ss sd so sf ta ts td to tf = StableTransversalAc
   , stableActionInsertion :: DomanialInsertion (CoalitionData sa ss sd) (CoalitionData ta ts td)
   }
 
--- | Keep the acceptance and canonical-source observations in scope while
--- specializing the generic insertion to the coalition's source domain.
--- ALIGN: ATLAS-STABLE-SOURCE-INSERTION.
-{-@ stableCoalitionInsertionOn
-      :: accepts:(source -> Bool) -> key:(source -> SomePageElement scope)
-      -> origin:SomePageElement scope
-      -> forward:({value:source | accepts value && key value == origin} -> target)
-      -> backward:(target -> Maybe ({value:source | accepts value && key value == origin}))
-      -> (value:{source | accepts value && key value == origin}
-            -> {backward (forward value) == Just value})
-      -> {insertion:DomanialInsertion ({value:source | accepts value && key value == origin}) target |
-           applyInsertion insertion == forward && preimage insertion == backward} @-}
-stableCoalitionInsertionOn :: (source -> Bool) -> (source -> SomePageElement scope)
-  -> SomePageElement scope -> (source -> target) -> (target -> Maybe source)
-  -> (source -> ()) -> DomanialInsertion source target
-stableCoalitionInsertionOn _ _ _ forward backward leftInverse =
-  domanialInsertion forward backward leftInverse
-
 -- | Restrict an Atlas transversal to arrows sending extent to extent, with
 -- an executable coalition inverse and its checked left-inverse law.
 {-@
@@ -273,7 +255,7 @@ stableAtlasTransversal sourceAtlas targetAtlas transversal proof backward leftIn
   PrimitiveStableAtlasTransversal
     (StableTransversalAction sourceAtlas targetAtlas transversal
       (checkedStableOrigin sourceAtlas targetAtlas transversal proof)
-      (stableCoalitionInsertionOn (coalitionElementValid sourceAtlas) coalitionElementSource
+      (coalitionCounitInsertion (coalitionElementValid sourceAtlas) coalitionElementSource
         (originPageElement (atlasPageElements sourceAtlas))
         (mapCoalitionElement sourceAtlas transversal) backward leftInverse))
 
