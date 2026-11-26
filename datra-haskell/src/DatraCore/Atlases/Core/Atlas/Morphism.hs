@@ -2,7 +2,8 @@
 #include "../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 
--- | Checked primitive morphism construction and observations.
+-- | Checked primitive morphisms between the owning accepted data carriers.
+-- Naturality observations require valid owning arrows and accepted source data.
 module Atlas.Morphism
   ( AtlasMorphismAction
   , AtlasObjectMap

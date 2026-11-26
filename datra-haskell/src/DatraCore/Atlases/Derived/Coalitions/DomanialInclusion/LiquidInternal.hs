@@ -11,7 +11,7 @@
 
 -- | Checked coalition-dependent assembly for Dominion inclusion.
 module DomanialInclusion.LiquidInternal
-  ( coalitionComponentInsertion, onePageCoverage, dominionCoverage, dominionAtlasMap
+  ( onePageCoverage, dominionCoverage, dominionAtlasMap
   , dominionCoalitionElement, coalitionValue, dominionCoalitionUnit
   , dominionCoalitionReconstruct, dominionCoalitionCounit
   , coaDomIncIso, coaDomIncIsoLeftInverse, coaDomIncIsoRightInverse ) where
@@ -24,12 +24,12 @@ import AtlasCoveredPageElement
 import AtlasExtent (cellTraceValid)
 import AtlasMap (AtlasMap, atlasMap)
 import Coalition.Element
-  ( CoalitionData, coalitionElementAt, coalitionElementReaches, coalitionElement
+  ( CoalitionData, coalitionElement
   , coalitionUnitInsertion, coalitionCounitInsertion
   , coalitionElementExtensionality, coalitionViewSource, coalitionElementViewSource
   , CoalitionView (..), viewCoalitionElement, coalitionElementView, coalitionElementValid, coalitionElementSource )
-import DomanialInsertion.Core (DomanialInsertion (..), domanialInsertion, composeInsertions)
-import DomanialInclusion.Data (DominionCellData, dominionCellProjection, dominionCellData, dominionCellDataValue, dominionCellDataReconstruct)
+import DomanialInsertion.Core (DomanialInsertion (..))
+import DomanialInclusion.Data (DominionCellData, dominionCellData, dominionCellDataValue, dominionCellDataReconstruct)
 import DomanialInclusion.Presentation
   ( DominionAtlas, DominionAtlasObject, DominionPaginationScope, dominionAtlas, dominionAcceptsDatum )
 import Folio (folioLength)
@@ -253,78 +253,3 @@ coaDomIncIsoLeftInverse owner element = case coaDomIncIso owner of
 coaDomIncIsoRightInverse :: DominionAtlas owner a -> a -> ()
 coaDomIncIsoRightInverse owner value = case coaDomIncIso owner of
   (_, unit) -> insertionLeftInverse unit value
-
--- | A coalition inverse is defined only on covered values. The component
--- inverse additionally handles arbitrary target data, including uncovered data.
-{-@
-coalitionComponentInsertion
-  :: targetAtlas:Atlas atlasScope scope cellData origin final
-  -> targetOccurrence:{PageElement scope object | cellTraceValid targetAtlas targetOccurrence}
-  -> forward:(a -> {element:CoalitionData atlasScope scope cellData |
-       coalitionElementValid targetAtlas element
-       && coalitionElementSource element == originPageElement (atlasPageElements targetAtlas)
-       && coalitionElementReaches element targetOccurrence})
-  -> backward:(cellData object -> Maybe a)
-  -> (value:a -> { backward (coalitionElementAt targetAtlas targetOccurrence
-                              (forward value)) == Just value })
-  -> DomanialInsertion (DominionCellData a sourceObject)
-       ({datum:cellData object | atlasAcceptsDatum targetAtlas targetOccurrence datum})
-@-}
--- ALIGN: DOMINC-COMPONENT-INVERSE.
-coalitionComponentInsertion
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> (a -> CoalitionData atlasScope scope cellData)
-  -> (cellData object -> Maybe a)
-  -> (a -> ())
-  -> DomanialInsertion (DominionCellData a sourceObject) (cellData object)
-coalitionComponentInsertion targetAtlas targetOccurrence forward backward leftInverse =
-  coalitionComponentInsertionOn (atlasAcceptsDatum targetAtlas targetOccurrence)
-    (coalitionComponentMap targetAtlas targetOccurrence forward) backward
-    (coalitionComponentRoundTrip targetAtlas targetOccurrence forward backward leftInverse)
-
--- | Keep target membership explicit while composing the constant-cell projection.
-{-@ coalitionComponentInsertionOn :: accepts:(b -> Bool)
-      -> forward:(a -> {datum:b | accepts datum})
-      -> backward:(b -> Maybe a)
-      -> (value:a -> {backward (forward value) == Just value})
-      -> DomanialInsertion (DominionCellData a object) ({datum:b | accepts datum}) @-}
-coalitionComponentInsertionOn :: (b -> Bool) -> (a -> b) -> (b -> Maybe a) -> (a -> ())
-  -> DomanialInsertion (DominionCellData a object) b
-coalitionComponentInsertionOn _ forward backward leftInverse =
-  composeInsertions (domanialInsertion forward backward leftInverse) dominionCellProjection
-
-{-@ reflect coalitionComponentMap @-}
-{-@ coalitionComponentMap :: targetAtlas:Atlas atlasScope scope cellData origin final
-      -> targetOccurrence:{PageElement scope object | cellTraceValid targetAtlas targetOccurrence}
-      -> forward:(a -> {element:CoalitionData atlasScope scope cellData |
-           coalitionElementValid targetAtlas element
-           && coalitionElementSource element == originPageElement (atlasPageElements targetAtlas)
-           && coalitionElementReaches element targetOccurrence})
-      -> a -> {datum:cellData object | atlasAcceptsDatum targetAtlas targetOccurrence datum} @-}
-coalitionComponentMap
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> (a -> CoalitionData atlasScope scope cellData)
-  -> a -> cellData object
-coalitionComponentMap targetAtlas targetOccurrence forward value =
-  coalitionElementAt targetAtlas targetOccurrence (forward value)
-
-{-@ coalitionComponentRoundTrip
-      :: targetAtlas:Atlas atlasScope scope cellData origin final
-      -> targetOccurrence:{PageElement scope object | cellTraceValid targetAtlas targetOccurrence}
-      -> forward:(a -> {element:CoalitionData atlasScope scope cellData |
-           coalitionElementValid targetAtlas element
-           && coalitionElementSource element == originPageElement (atlasPageElements targetAtlas)
-           && coalitionElementReaches element targetOccurrence})
-      -> backward:(cellData object -> Maybe a)
-      -> (value:a -> {backward (coalitionElementAt targetAtlas targetOccurrence (forward value)) == Just value})
-      -> value:a
-      -> {backward (coalitionComponentMap targetAtlas targetOccurrence forward value) == Just value} @-}
-coalitionComponentRoundTrip
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> (a -> CoalitionData atlasScope scope cellData)
-  -> (cellData object -> Maybe a)
-  -> (a -> ()) -> a -> ()
-coalitionComponentRoundTrip _ _ _ _ leftInverse value = leftInverse value

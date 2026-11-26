@@ -34,6 +34,7 @@ module Atlas.Internal
   , atlasPresentationAction
   , atlasDescription
   , atlasDescriptionMembership
+  , atlasDescriptionMap
   , withAtlasPresentation
   , atlasFromPresentationWithScope
   , atlasPagination
@@ -958,6 +959,15 @@ mapAtlasData value pageArrow =
   normalizeAtlasArrowTraceValid value pageArrow `seq` atlasActionMap
     (atlasActionData (storedAtlasData value))
     (normalizeAtlasArrow value pageArrow)
+
+-- | Observe the entire stored insertion through the retained presentation.
+{-@ atlasDescriptionMap :: value:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target | AtlasValidArrow value arrow}
+      -> {mapAtlasData value arrow ==
+           atlasActionMap (atlasPresentationAction (atlasDescription value))
+             (normalizeAtlasArrow value arrow)} @-}
+atlasDescriptionMap :: Atlas a s d o f -> PageElementArrow s source target -> ()
+atlasDescriptionMap value arrow = normalizeAtlasArrowTraceValid value arrow
 
 -- | Normalizing an arrow again preserves both directions of its data insertion.
 -- ALIGN: ATLAS-DATA-MAP-NORMALIZATION.

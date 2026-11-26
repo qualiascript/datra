@@ -113,12 +113,19 @@ def rankedValueInsertion {Source : Type} (owner : RetainedAtlas Owner A)
   (rankedCoalitionInsertion owner insertion).reindex (Equiv.refl Source)
     (Atlas.coalitionValueEquiv (rankedDominionAtlas owner).toAtlas)
 
+-- ALIGN: RANKED-COMPONENT-BACKWARD.
+def rankedRawComponentBackward {Source Object : Type}
+    (insertion : DomanialInsertion Source A)
+    (datum : RankedDominionCellData A Object) : Option Source :=
+  insertion.preimage (cellValue datum)
+
 def rankedComponentBackward {Source : Type} (owner : RetainedAtlas Owner A)
     (insertion : DomanialInsertion Source A)
     (datum : (rankedDominionAtlas owner).toAtlas.cellData
       (FolioData.ValidElement.originElement (rankedDominionAtlas owner).toAtlas.pages).val.cell) : Option Source :=
-  insertion.preimage (cellValue (rawDatum owner datum))
+  rankedRawComponentBackward insertion (rawDatum owner datum)
 
+-- ALIGN: RANKED-COMPONENT-LEFT-INVERSE.
 theorem rankedComponentLeftInverse {Source : Type} (owner : RetainedAtlas Owner A)
     (insertion : DomanialInsertion Source A) (value : Source) :
     rankedComponentBackward owner insertion ((rankedValueInsertion owner insertion).map value).val = some value := by

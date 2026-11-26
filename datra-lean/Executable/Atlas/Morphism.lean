@@ -1,5 +1,6 @@
 import Executable.Atlas.Elements
 import Executable.Atlas.Normalized
+import Executable.Atlas.Presentation
 import Executable.PageElementLookup
 
 namespace Datra.Executable
@@ -93,6 +94,38 @@ structure PrimitiveAtlasMorphism (X Y : Atlas) where
 
 namespace PrimitiveAtlasMorphism
 variable {X Y : Atlas}
+
+/-- Expose a component on the runtime membership subtypes of its actual owners.
+The reindexing preserves both directions of the stored insertion. -/
+-- ALIGN: ATLAS-PRIMITIVE-COMPONENT-MEMBERSHIP.
+def componentAccepted {SourceOwner TargetOwner : Type}
+    {source : AtlasAllocation SourceOwner} {target : AtlasAllocation TargetOwner}
+    (operation : PrimitiveAtlasMorphism source.toAtlas target.toAtlas)
+    (occurrence : source.toAtlas.Element) :
+    DomanialInsertion (source.AcceptedDatum occurrence.val)
+      (target.AcceptedDatum (operation.object occurrence).val) :=
+  (operation.component occurrence).reindex (source.acceptedCarrierEquiv occurrence)
+    (target.acceptedCarrierEquiv (operation.object occurrence))
+
+theorem componentAccepted_map {SourceOwner TargetOwner : Type}
+    {source : AtlasAllocation SourceOwner} {target : AtlasAllocation TargetOwner}
+    (operation : PrimitiveAtlasMorphism source.toAtlas target.toAtlas)
+    (occurrence : source.toAtlas.Element) (datum : source.AcceptedDatum occurrence.val) :
+    ((operation.componentAccepted occurrence).map datum).val =
+      ((operation.component occurrence).map
+        ((source.acceptedCarrierEquiv occurrence).symm datum)).val := rfl
+
+theorem componentAccepted_preimage {SourceOwner TargetOwner : Type}
+    {source : AtlasAllocation SourceOwner} {target : AtlasAllocation TargetOwner}
+    (operation : PrimitiveAtlasMorphism source.toAtlas target.toAtlas)
+    (occurrence : source.toAtlas.Element)
+    (datum : target.AcceptedDatum (operation.object occurrence).val) :
+    ((operation.componentAccepted occurrence).preimage datum).map Subtype.val =
+      ((operation.component occurrence).preimage
+        ((target.acceptedCarrierEquiv (operation.object occurrence)).symm datum)).map
+          Subtype.val := by
+  simp only [componentAccepted, DomanialInsertion.reindex, Option.map_map,
+    Function.comp_def, AtlasAllocation.acceptedCarrierEquiv_val]
 
 -- ALIGN: ATLAS-PRIMITIVE-OBJECT-VALIDITY.
 theorem object_trace_valid (f : PrimitiveAtlasMorphism X Y) (source : X.Element) :

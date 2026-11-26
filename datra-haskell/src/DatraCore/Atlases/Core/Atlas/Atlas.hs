@@ -8,7 +8,8 @@
 -- | Atlases and their morphisms, built over finite paginations with an
 -- explicitly stable infinite padded spine.
 --
--- Atlas object and primitive-morphism laws are checked by LiquidHaskell.
+-- Atlas object and primitive-morphism laws are checked by LiquidHaskell over
+-- valid owning arrows and the corresponding accepted data carriers.
 module Atlas
   ( Atlas
   , atlasPredicateDataAction
@@ -44,6 +45,7 @@ module Atlas
   , atlasPresentationAction
   , atlasDescription
   , atlasDescriptionMembership
+  , atlasDescriptionMap
   , withAtlasPresentation
   , atlasPagination
   , atlasFolio
@@ -148,7 +150,7 @@ import Atlas.Internal
   , normalizeAtlasElement
   , withAtlasPageChain
   )
-import qualified Atlas.Internal as Internal (atlasDataAt, atlasNormalizationAgrees, atlasArrowNormalizationAgrees, atlasPresentation, withAtlasPresentation, normalizeAtlasElementTraceValid, atlasAcceptsDatumNormalized, atlasNormalizationArrow, mapAtlasDataNormalized, normalizeAtlasArrowTraceValid)
+import qualified Atlas.Internal as Internal (atlasDataAt, atlasDescriptionMap, atlasNormalizationAgrees, atlasArrowNormalizationAgrees, atlasPresentation, withAtlasPresentation, normalizeAtlasElementTraceValid, atlasAcceptsDatumNormalized, atlasNormalizationArrow, mapAtlasDataNormalized, normalizeAtlasArrowTraceValid)
 import Atlas.Morphism
   ( AtlasMorphismAction
   , AtlasObjectMap
@@ -224,6 +226,17 @@ import Dominion (Dominion)
              (normalizeAtlasElement owner source)} @-}
 atlasDataAt :: Atlas a s d o f -> PageElement s object -> Dominion (d object)
 atlasDataAt owner source = Internal.atlasDataAt owner source
+
+-- ALIGN: ATLAS-DESCRIPTION-MAP.
+{-@ atlasDescriptionMap :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           Elements.pageElementTraceValid (atlasPageElements owner) (arrowSource arrow)
+           && Elements.pageElementTraceValid (atlasPageElements owner) (arrowTarget arrow)}
+      -> {mapAtlasData owner arrow ==
+           atlasActionMap (atlasPresentationAction (atlasDescription owner))
+             (normalizeAtlasArrow owner arrow)} @-}
+atlasDescriptionMap :: Atlas a s d o f -> PageElementArrow s source target -> ()
+atlasDescriptionMap = Internal.atlasDescriptionMap
 
 -- ALIGN: ATLAS-PREDICATE-CONSTRUCTION.
 -- | Assemble an Atlas from a predicate action whose laws use the public

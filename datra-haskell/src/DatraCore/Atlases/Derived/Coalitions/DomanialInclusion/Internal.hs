@@ -46,15 +46,12 @@ module DomanialInclusion.Internal
   ) where
 
 import Atlas
-  ( AtlasMappedObject
-  , AtlasObjectCellData
-  , AtlasObjectMap
+  ( AtlasObjectCellData
   , AtlasObjectPaginationScope
   , AtlasWitness
   , atlasHom
   , atlasMorphism
   , atlasMorphismAction
-  , atlasObjectMap
   , atlasOriginCell
   , atlasWitness
   , withAtlasWitness
@@ -77,8 +74,12 @@ import Coalition.Element
   )
 import Data.Void (Void, absurd)
 import DomanialInclusion.LiquidInternal
-  ( coalitionComponentInsertion, dominionAtlasMap, dominionCoalitionElement
+  ( dominionAtlasMap, dominionCoalitionElement
   , coalitionValue, coaDomIncIso, coaDomIncIsoLeftInverse, coaDomIncIsoRightInverse )
+import DomanialInclusion.Action
+  ( originObjectMap, constantObject, constantObjectPreservesArrow, constantComponentInsertion )
+import DomanialInclusion.Component
+  ( coalitionComponentMap, constantComponentNaturality )
 import DomanialInclusion.Presentation
   ( DominionPaginationScope, onePageFolio, onePagePagination
   , DominionAtlas, DominionAtlasObject, dominionAtlas, withDominionAtlas
@@ -110,15 +111,6 @@ import StableAtlasTransversal
   ( StableAtlasTransversal
   , stableAtlasTransversal
   )
-
--- | A constant object-map whose codomain is the hidden target-origin cell.
-data OriginObjectMap targetObject
-
-type instance
-  AtlasMappedObject (OriginObjectMap targetObject) sourceObject = targetObject
-
-originObjectMap :: AtlasObjectMap (OriginObjectMap targetObject)
-originObjectMap = atlasObjectMap
 
 -- | The initial dominion from the Lean construction.
 emptyDominion :: Dominion Void
@@ -162,25 +154,19 @@ coaToDomInc sourceDominion targetOwner insertion backward leftInverse =
         sourceWitness = atlasWitness sourceAtlas
         targetWitness = atlasWitness targetAtlas
 
-        component
-          :: forall sourceObject.
-             PageElement (DominionPaginationScope a) sourceObject
-          -> DomanialInsertion
-               (DominionCellData a sourceObject)
-               (AtlasObjectCellData target targetObject)
-        component _ =
-          coalitionComponentInsertion targetAtlas targetOrigin (applyInsertion insertion)
-            (backward targetOrigin) (leftInverse targetOrigin)
-
         action =
           atlasMorphismAction
             (originObjectMap @targetObject)
             sourceAtlas
             targetAtlas
-            (const targetOrigin)
-            component
-            (\_ _ -> ())
-            (\_ _ -> ())
+            (constantObject targetAtlas targetOrigin)
+            (constantComponentInsertion (originObjectMap @targetObject) sourceDominion
+              targetAtlas targetOrigin (constantObject targetAtlas targetOrigin)
+              (applyInsertion insertion) backward leftInverse)
+            (constantObjectPreservesArrow (originObjectMap @targetObject)
+              sourceAtlas targetAtlas targetOrigin)
+            (constantComponentNaturality sourceDominion targetAtlas targetOrigin
+              (coalitionComponentMap targetAtlas targetOrigin (applyInsertion insertion)))
 
         hom = atlasHom (atlasMorphism action)
 

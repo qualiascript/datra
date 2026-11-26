@@ -63,6 +63,38 @@ interpretation lifts to a stable-transversal isomorphism. It transports the
 written Dominion-inclusion hom equivalence, and both executable hom maps have
 full interpretation and inverse laws. The forward naturality laws also preserve
 the stored partial inverses. Haskell assembly certificates still need checking.
+The public Atlas interface exposes the exact normalized insertion from its
+retained presentation. The Dominion-inclusion owner uses this equation to prove
+that transport has the constant identity forward map and decoder on every valid
+owning arrow. Lean proves equality of the entire insertion after the carrier
+identification, including inverse lookups. These facts provide the source-action
+equations used by the inclusion assembler's checked constant-component
+naturality callback. That callback combines constant-cell reconstruction with
+the target Atlas identity law on accepted data at a valid normalized occurrence.
+The exposed `DomanialInclusion.Action` interface owns the constant object-map
+symbol and callback. The callback retains every target field, the complete untyped occurrence, and its owning
+trace validity. Its checked page-arrow certificate sends every source pair,
+including raw source occurrences, to the same normalized target identity.
+Both callbacks are used by the inclusion assembler, and Lean's constructor uses
+the corresponding constant object and identity-arrow operations. Public-client
+checks require the valid target, preserve its fields, and prevent switching its
+owner or contradicting the page law.
+The component helper constructs directly at the selected dependent target while
+keeping the object-map symbol abstract. It retains membership in both owning
+Atlases, the forward callback, and the original decoder's result on every raw
+target value. Source-membership evidence wraps successful decoded values without
+filtering or changing them. Lean models this through the retained owner's accepted
+constant carrier and proves that erasing the evidence recovers every original
+lookup. The inclusion assembler uses this shared helper, with rank-polymorphic
+inverse evidence at occurrences equal to the selected target. Public-client
+checks reject missing constant-target, reachability, or inverse premises and
+contradictions of the retained callbacks.
+The complete primitive assembly still needs to connect the specialized dependent
+component callbacks to its data-naturality certificate. The component-membership
+contracts and the constant-data naturality theorem are checked separately; their
+composition through the concrete object-map specialization is not yet checked.
+The transposal, coverage, and stable-owner construction contracts remain separate
+obligations.
 The Charter object has an executable
 coverage-enumeration Dominion, guarded data-arrow inverses, and an isomorphism
 to the written covered-subtype Atlas. The complete-action helper preserves
@@ -107,10 +139,21 @@ for the normalized callback. Lean proves the matching identity-object and
 page-arrow laws. Identity data-naturality assembly remains open: the Haskell
 type-family specialization must retain the dependent identity insertion's
 application equation across the mapped-object type.
-The module remains partial: owning trace validity checks page, position, and
-trace, while the full carrier interpretation must also retain dependent payload
-and component-membership invariants. Generic identity/composition assembly and
-matching intermediate owners remain separate obligations.
+Primitive components are insertions between their stored owners' accepted
+carriers. The forward map preserves target membership, and successful inverse
+lookups preserve source membership. The record, constructor, and public
+component observation retain these predicates. Normalization retains the same
+entire insertion and transports both membership predicates by Atlas coherence.
+Naturality requires valid owning source arrows and accepted source data, matching
+Lean's accepted-carrier action. Lean explicitly reindexes each primitive
+component through the actual allocations' accepted-carrier equivalences and
+proves preservation of both callbacks. Public-client checks enforce membership
+in both directions, the retained target owner, and naturality's domain premises.
+Constructor checks retain both morphism-law certificates while independently
+rejecting either missing component-membership guarantee. The module remains partial: the full
+carrier interpretation must also retain dependent payload invariants, and
+generic identity/composition assembly and matching intermediate owners remain
+separate obligations.
 
 Primitive transversal actions store their exact-image coverage law in a checked
 record. The image operation retains the dependent target cell and datum before
@@ -229,6 +272,19 @@ the coalition insertion's round trip; its public contract retains both callbacks
 Public-client rejection checks enforce the lookup's exact rank and decoder,
 the coalition's owning origin and cached rank, both raw decoder outcomes, and
 the insertion's left inverse.
+The traversal's component inverse applies the supplied partial inverse to the
+raw target datum's value, including uncovered data. Its checked left-inverse
+certificate uses the transported datum's origin rank, the coalition's cached
+rank, and Dominion coherence to recover the original source. The traversal
+supplies that certificate at its retained target origin. The shared checked
+component constructor is exposed through `DomanialInclusion.Component`.
+Its contract retains the complete forward and inverse callbacks: the forward
+map projects the constant source datum and transports its coalition image;
+the inverse invokes the supplied decoder and restores the constant-cell wrapper.
+The constant-cell projection exposes both stored functions, and its reconstruction
+law proves the component round trip. Lean uses the same decoder composition and
+proves both callback equations, including failed and off-image lookups.
+Public-client checks reject replacing either callback or dropping every image.
 Lean assembles the two-page presentation's identity, composition, normalization,
 and disjointness laws, retains the original Dominion with its exact allocation,
 and relates the resulting Atlas data functor to the accepted runtime action.
@@ -242,8 +298,8 @@ The coalition insertion's raw inverse decodes that stored rank before invoking
 the supplied partial inverse; it preserves that algorithm even on uncertified
 records. On certified records it agrees with transport through the coalition
 equivalence. The complete ranked traversal has a semantic interpretation through
-the shared Dominion-inclusion hom map. LiquidHaskell verification of traversal
-assembly remains unfinished; the public
+the shared Dominion-inclusion hom map. LiquidHaskell verification of the generic
+traversal assembler's owning domains and coherence laws remains unfinished; the public
 ranked module is partially aligned.
 
 The chained-Dominion Atlas distinguishes extent-tagged data from region-tagged

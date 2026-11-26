@@ -1032,7 +1032,7 @@
     },
     {
       "id": "DOMINC-COMPONENT-INVERSE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Component.hs",
       "haskell_declaration": "coalitionComponentInsertion",
       "lean_namespace": "Datra.Executable.DomanialInclusion",
       "lean_declaration": "coalitionComponentInsertion"
@@ -6993,6 +6993,104 @@
       "haskell_declaration": "atlasCellOriginRankAt",
       "lean_namespace": "Datra.Executable",
       "lean_declaration": "Atlas.cellOriginRankAt"
+    },
+    {
+      "id": "RANKED-COMPONENT-BACKWARD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "rankedComponentBackward",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedRawComponentBackward"
+    },
+    {
+      "id": "RANKED-COMPONENT-LEFT-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "rankedComponentLeftInverse",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedComponentLeftInverse"
+    },
+    {
+      "id": "DOMINC-CELL-PROJECTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Data.hs",
+      "haskell_declaration": "dominionCellProjection",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "dominionCellProjection"
+    },
+    {
+      "id": "DOMINC-COMPONENT-FUNCTIONS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Component.hs",
+      "haskell_declaration": "coalitionComponentInsertion",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "coalitionComponentInsertion_functions"
+    },
+    {
+      "id": "DOMINC-COMPONENT-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Component.hs",
+      "haskell_declaration": "coalitionComponentInsertion",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "coalitionComponentInsertion_preimage"
+    },
+    {
+      "id": "ATLAS-DESCRIPTION-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Atlas.hs",
+      "haskell_declaration": "atlasDescriptionMap",
+      "lean_namespace": "Datra.Executable.AtlasAllocation",
+      "lean_declaration": "descriptionMap"
+    },
+    {
+      "id": "DOMINC-OWNER-MAP-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
+      "haskell_declaration": "dominionMapDataIdentity",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "DominionAtlas.mapDataIdentity"
+    },
+    {
+      "id": "ATLAS-PRIMITIVE-COMPONENT-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/LiquidInternal.hs",
+      "haskell_declaration": "mapAtlasMorphismActionComponent",
+      "lean_namespace": "Datra.Executable.PrimitiveAtlasMorphism",
+      "lean_declaration": "componentAccepted"
+    },
+    {
+      "id": "DOMINC-COMPONENT-NATURALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Component.hs",
+      "haskell_declaration": "constantComponentNaturality",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantComponentNaturality"
+    },
+    {
+      "id": "DOMINC-CONSTANT-OBJECT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Action.hs",
+      "haskell_declaration": "constantObject",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantObject"
+    },
+    {
+      "id": "DOMINC-CONSTANT-PAGE-LAW",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Action.hs",
+      "haskell_declaration": "constantObjectPreservesArrow",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantObjectArrow"
+    },
+    {
+      "id": "DOMINC-ACCEPTED-COMPONENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Component.hs",
+      "haskell_declaration": "acceptDominionComponent",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "acceptDominionComponent"
+    },
+    {
+      "id": "DOMINC-ACCEPTED-PREIMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Component.hs",
+      "haskell_declaration": "acceptedDominionPreimage",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "acceptedDominionPreimage"
+    },
+    {
+      "id": "DOMINC-MAPPED-COMPONENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Action.hs",
+      "haskell_declaration": "constantComponentInsertion",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantComponentInsertion"
     }
   ],
   "modules": [
@@ -7042,6 +7140,7 @@
         "atlasAcceptsDatumNormalized",
         "atlasDataAt",
         "mapAtlasData",
+        "atlasDescriptionMap",
         "mapAtlasDataNormalized",
         "atlasDataCoherence",
         "atlasDataCoherenceAgrees",
@@ -7147,11 +7246,13 @@
       ],
       "refinements": [
         "mapAtlasMorphismActionObject",
+        "mapAtlasMorphismActionComponent",
         "atlasMorphismActionPreservesArrow",
         "atlasMorphismActionNaturality",
         "atlasMorphismAction",
         "normalizedActionObject",
         "retainObjectValidity",
+        "normalizedActionComponent",
         "normalizedActionElementAgrees",
         "normalizeAtlasMorphismAction",
         "normalizeAtlasMorphismActionRetains",
@@ -8324,9 +8425,7 @@
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Internal.hs",
       "module": "DomanialInclusion.Internal",
-      "types": [
-        "OriginObjectMap"
-      ],
+      "types": [],
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.DomanialInclusion",
@@ -8336,7 +8435,8 @@
       "predicates": [],
       "refinement_aliases": [],
       "opaque_reflected": [],
-      "refined_instances": []
+      "refined_instances": [],
+      "variances": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/LiquidInternal.hs",
@@ -8347,8 +8447,7 @@
         "dominionViewValue",
         "dominionViewFrom",
         "coalitionValuePreimage",
-        "coalitionElementPreimage",
-        "coalitionComponentMap"
+        "coalitionElementPreimage"
       ],
       "refinements": [
         "onePageCoverage",
@@ -8366,11 +8465,7 @@
         "dominionCoalitionCounit",
         "coaDomIncIso",
         "coaDomIncIsoLeftInverse",
-        "coaDomIncIsoRightInverse",
-        "coalitionComponentInsertion",
-        "coalitionComponentInsertionOn",
-        "coalitionComponentMap",
-        "coalitionComponentRoundTrip"
+        "coaDomIncIsoRightInverse"
       ],
       "lean_target": "Datra.Executable.DomanialInclusion",
       "coverage": "partial",
@@ -9439,6 +9534,7 @@
       "reflected": [],
       "refinements": [
         "atlasDataAt",
+        "atlasDescriptionMap",
         "atlasForPredicate",
         "atlasPresentationForPredicate",
         "withAtlasPresentation",
@@ -9875,6 +9971,7 @@
         "domIncHomRightInverseValue",
         "domIncHomNaturalityLeftValue",
         "domIncHomNaturalityRightValue",
+        "dominionCellProjection",
         "dominionCellProjectionRoundTrip"
       ],
       "predicates": [],
@@ -9905,6 +10002,7 @@
         "retainDominionAtlas",
         "dominionAtlas",
         "dominionAcceptsDatum",
+        "dominionMapDataIdentity",
         "withDominionAtlas",
         "canonicalDominionAtlas",
         "acceptsConstantDatum",
@@ -10477,7 +10575,8 @@
       "coverage": "aligned",
       "reflected": [
         "rankedCoalitionForward",
-        "rankedCoalitionBackward"
+        "rankedCoalitionBackward",
+        "rankedComponentBackward"
       ],
       "opaque_reflected": [
         "rankedDominionCoalitionElement"
@@ -10493,7 +10592,59 @@
         "rankedCoalitionForward",
         "rankedCoalitionBackward",
         "rankedCoalitionRoundTrip",
-        "rankedCoalitionInsertion"
+        "rankedCoalitionInsertion",
+        "rankedComponentLeftInverse",
+        "rankedCoalitionReachesOrigin"
+      ],
+      "variances": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Component.hs",
+      "module": "DomanialInclusion.Component",
+      "lean_target": "Datra.Executable.DomanialInclusion",
+      "coverage": "aligned",
+      "reflected": [
+        "coalitionComponentMap",
+        "acceptedDominionPreimage"
+      ],
+      "opaque_reflected": [],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "constantComponentNaturality",
+        "coalitionComponentInsertion",
+        "coalitionComponentInsertionOn",
+        "coalitionComponentMap",
+        "coalitionComponentRoundTrip",
+        "coalitionComponentValueRoundTrip",
+        "acceptDominionComponent",
+        "acceptedDominionPreimage"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Action.hs",
+      "module": "DomanialInclusion.Action",
+      "lean_target": "Datra.Executable.DomanialInclusion",
+      "coverage": "aligned",
+      "reflected": [
+        "constantObject",
+        "constantComponentInsertion"
+      ],
+      "opaque_reflected": [],
+      "types": [
+        "OriginObjectMap"
+      ],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "constantObject",
+        "constantComponentInsertion",
+        "constantObjectPreservesArrow"
       ],
       "variances": []
     }

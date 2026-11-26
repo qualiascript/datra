@@ -5,6 +5,7 @@ import Executable.Chain.Singleton
 
 namespace Datra.Executable.DomanialInclusion
 open CategoryTheory
+universe u
 
 /-- The constant cell family retains the Haskell wrapper and its phantom cell. -/
 structure CellData (A : Type) (_cell : PageElementCell) where
@@ -13,6 +14,17 @@ structure CellData (A : Type) (_cell : PageElementCell) where
 -- ALIGN: DOMINC-CELL-RECONSTRUCTION.
 theorem cellData_reconstruct {A : Type} {cell : PageElementCell} (datum : CellData A cell) :
     CellData.mk datum.value = datum := rfl
+
+-- ALIGN: DOMINC-CELL-PROJECTION.
+def dominionCellProjection {A : Type} {cell : PageElementCell} :
+    DomanialInsertion (CellData A cell) A where
+  map := CellData.value
+  preimage value := some ⟨value⟩
+  leftInverse _ := rfl
+
+def coalitionComponentPreimage {A B : Type} {cell : PageElementCell}
+    (backward : B → Option A) (datum : B) : Option (CellData A cell) :=
+  DomanialInsertion.composePartialInverses dominionCellProjection.preimage backward datum
 
 def mapCellData {A B : Type} {source target : PageElementCell} (f : A → B)
     (datum : CellData A source) : CellData B target := ⟨f datum.value⟩
@@ -38,9 +50,14 @@ def coalitionComponentInsertion {A : Type} {X : Atlas} {source : PageElementCell
       backward (Atlas.coalitionElementAt (forward value).val target (arrow value)) = some value) :
     DomanialInsertion (CellData A source) (X.cellData target.val.cell) where
   map datum := Atlas.coalitionElementAt (forward datum.value).val target (arrow datum.value)
-  preimage datum := (backward datum).map CellData.mk
-  leftInverse datum := by simp only [leftInverse, Option.map_some]
+  preimage := coalitionComponentPreimage backward
+  leftInverse datum := by
+    change (backward (Atlas.coalitionElementAt (forward datum.value).val target
+      (arrow datum.value))).bind (fun value => some (CellData.mk value)) = some datum
+    rw [leftInverse]
+    rfl
 
+-- ALIGN: DOMINC-COMPONENT-PREIMAGE.
 theorem coalitionComponentInsertion_preimage {A : Type} {X : Atlas} {source : PageElementCell}
     (target : X.Element) (forward : A → X.CertifiedCoalitionElement)
     (arrow : ∀ value, (forward value).val.source ⟶ target)
@@ -49,7 +66,22 @@ theorem coalitionComponentInsertion_preimage {A : Type} {X : Atlas} {source : Pa
       backward (Atlas.coalitionElementAt (forward value).val target (arrow value)) = some value)
     (datum : X.cellData target.val.cell) :
     (coalitionComponentInsertion (source := source) target forward arrow backward leftInverse).preimage datum =
-      (backward datum).map CellData.mk := rfl
+    (backward datum).map CellData.mk := by
+  cases decoded : backward datum <;>
+    simp [coalitionComponentInsertion, coalitionComponentPreimage,
+      DomanialInsertion.composePartialInverses, dominionCellProjection, decoded]
+
+-- ALIGN: DOMINC-COMPONENT-FUNCTIONS.
+theorem coalitionComponentInsertion_functions {A : Type} {X : Atlas} {source : PageElementCell}
+    (target : X.Element) (forward : A → X.CertifiedCoalitionElement)
+    (arrow : ∀ value, (forward value).val.source ⟶ target)
+    (backward : X.cellData target.val.cell → Option A)
+    (leftInverse : ∀ value,
+      backward (Atlas.coalitionElementAt (forward value).val target (arrow value)) = some value) :
+    (coalitionComponentInsertion (source := source) target forward arrow backward leftInverse).map =
+        (fun datum => Atlas.coalitionElementAt (forward datum.value).val target (arrow datum.value)) ∧
+      (coalitionComponentInsertion (source := source) target forward arrow backward leftInverse).preimage =
+        DomanialInsertion.composePartialInverses dominionCellProjection.preimage backward := ⟨rfl, rfl⟩
 
 def homToValue {A B : Type} {cell : PageElementCell} (f : CellData A cell → B) (value : A) : B :=
   f ⟨value⟩
@@ -309,6 +341,55 @@ theorem DominionAtlas.acceptsDatum {A : Type} (owner : DominionAtlas A)
     (occurrence.normalize (owner.allocation.atlasDescription.pagination.pages.depth - 1)
       owner.allocation.atlasDescription.pagination.pages.depth) datum
 
+/-- The constant datum together with membership in its actual retained owner. -/
+abbrev DominionAtlas.AcceptedConstantDatum {A : Type} (owner : DominionAtlas A)
+    (source : PageElement owner.allocation.atlasDescription.pagination.pages) :=
+  {datum : CellData A source.cell // owner.allocation.acceptsDatum source
+    (cast (congrFun owner.carrier source.cell).symm datum) = true}
+
+def DominionAtlas.acceptedConstantEquiv {A : Type} (owner : DominionAtlas A)
+    (source : PageElement owner.allocation.atlasDescription.pagination.pages) :
+    CellData A source.cell ≃ owner.AcceptedConstantDatum source where
+  toFun datum := ⟨datum, owner.acceptsDatum source _⟩
+  invFun := Subtype.val
+  left_inv _ := rfl
+  right_inv _ := rfl
+
+-- ALIGN: DOMINC-ACCEPTED-PREIMAGE.
+def acceptedDominionPreimage {A B : Type} (owner : DominionAtlas A)
+    (source : PageElement owner.allocation.atlasDescription.pagination.pages)
+    (backward : B → Option (CellData A source.cell)) (datum : B) :
+    Option (owner.AcceptedConstantDatum source) :=
+  (backward datum).map (owner.acceptedConstantEquiv source)
+
+theorem acceptedDominionPreimage_value {A B : Type} (owner : DominionAtlas A)
+    (source : PageElement owner.allocation.atlasDescription.pagination.pages)
+    (backward : B → Option (CellData A source.cell)) (datum : B) :
+    (acceptedDominionPreimage owner source backward datum).map Subtype.val = backward datum := by
+  unfold acceptedDominionPreimage
+  cases backward datum <;> rfl
+
+/-- Rechecking source membership preserves both executable directions. -/
+-- ALIGN: DOMINC-ACCEPTED-COMPONENT.
+def acceptDominionComponent {A B : Type} (owner : DominionAtlas A)
+    (source : PageElement owner.allocation.atlasDescription.pagination.pages)
+    (insertion : DomanialInsertion (CellData A source.cell) B) :
+    DomanialInsertion (owner.AcceptedConstantDatum source) B :=
+  insertion.reindex (owner.acceptedConstantEquiv source) (Equiv.refl B)
+
+theorem acceptDominionComponent_map {A B : Type} (owner : DominionAtlas A)
+    (source : PageElement owner.allocation.atlasDescription.pagination.pages)
+    (insertion : DomanialInsertion (CellData A source.cell) B)
+    (datum : owner.AcceptedConstantDatum source) :
+    (acceptDominionComponent owner source insertion).map datum = insertion.map datum.val := rfl
+
+theorem acceptDominionComponent_preimage {A B : Type} (owner : DominionAtlas A)
+    (source : PageElement owner.allocation.atlasDescription.pagination.pages)
+    (insertion : DomanialInsertion (CellData A source.cell) B) (datum : B) :
+    ((acceptDominionComponent owner source insertion).preimage datum).map Subtype.val =
+      insertion.preimage datum :=
+  acceptedDominionPreimage_value owner source insertion.preimage datum
+
 -- ALIGN: DOMINC-OWNER-CARDINALITY.
 theorem DominionAtlas.cardinality {A : Type} (owner : DominionAtlas A) :
     owner.atlas.pages.depth = 1 := owner.onePage
@@ -350,6 +431,58 @@ def retainedDominionAtlas_functorIso {A : Type} (D : Dominion A) :
     (retainedDominionAtlas D).atlas.data.toFunctor ≅ (dominionAtlas D).data.toFunctor :=
   dominionPresentation_functorIso D
 
+/-- The source occurrence does not change the selected owning target cell. -/
+-- ALIGN: DOMINC-CONSTANT-OBJECT.
+def constantObject {Source : Sort u} {Y : Atlas} (target : Y.Element) (_source : Source) : Y.Element := target
+
+theorem constantObject_trace_valid {Source : Sort u} {Y : Atlas} (target : Y.Element) (source : Source) :
+    Y.pages.traceValid (constantObject target source).val = true :=
+  FolioData.ValidElement.traceValid Y.pagination.folio.valid target
+
+/-- Both normalized images are the same occurrence, for every pair of sources. -/
+-- ALIGN: DOMINC-CONSTANT-PAGE-LAW.
+def constantObjectArrow {Source : Sort u} {Y : Atlas} (target : Y.Element) (source destination : Source) :
+    (constantObject target source).normalize ⟶
+      (constantObject target destination).normalize := 𝟙 target.normalize
+
+/-- Construct the component at the selected dependent target, retaining
+source membership and the decoder on all target values. -/
+-- ALIGN: DOMINC-MAPPED-COMPONENT.
+def constantComponentInsertion {A : Type} (owner : DominionAtlas A) {X : Atlas}
+    (target : X.Element)
+    (mapObject : PageElement owner.allocation.atlasDescription.pagination.pages → X.Element)
+    (constant : ∀ source, mapObject source = target)
+    (forward : A → X.CertifiedCoalitionElement)
+    (arrow : ∀ value, (forward value).val.source ⟶ target)
+    (backward : ∀ occurrence : X.Element, X.cellData occurrence.val.cell → Option A)
+    (leftInverse : ∀ (occurrence : X.Element) (same : occurrence = target) value,
+      backward occurrence (Atlas.coalitionElementAt (forward value).val occurrence
+        (arrow value ≫ eqToHom same.symm)) = some value)
+    (source : PageElement owner.allocation.atlasDescription.pagination.pages) :
+    DomanialInsertion (owner.AcceptedConstantDatum source) (X.cellData (mapObject source).val.cell) :=
+  acceptDominionComponent owner source
+    (coalitionComponentInsertion (mapObject source) forward
+      (fun value => arrow value ≫ eqToHom (constant source).symm)
+      (backward (mapObject source)) (leftInverse (mapObject source) (constant source)))
+
+theorem constantComponentInsertion_preimage {A : Type} (owner : DominionAtlas A) {X : Atlas}
+    (target : X.Element)
+    (mapObject : PageElement owner.allocation.atlasDescription.pagination.pages → X.Element)
+    (constant : ∀ source, mapObject source = target)
+    (forward : A → X.CertifiedCoalitionElement)
+    (arrow : ∀ value, (forward value).val.source ⟶ target)
+    (backward : ∀ occurrence : X.Element, X.cellData occurrence.val.cell → Option A)
+    (leftInverse : ∀ (occurrence : X.Element) (same : occurrence = target) value,
+      backward occurrence (Atlas.coalitionElementAt (forward value).val occurrence
+        (arrow value ≫ eqToHom same.symm)) = some value)
+    (source : PageElement owner.allocation.atlasDescription.pagination.pages)
+    (datum : X.cellData (mapObject source).val.cell) :
+    ((constantComponentInsertion owner target mapObject constant forward arrow backward leftInverse source).preimage datum).map
+      Subtype.val = (backward (mapObject source) datum).map CellData.mk := by
+  unfold constantComponentInsertion
+  rw [acceptDominionComponent_preimage]
+  exact coalitionComponentInsertion_preimage _ _ _ _ _ _
+
 /-- The primitive data action of the inclusion hom correspondence. The
 component inverse is defined on all origin data, including uncovered data. -/
 def coalitionMorphism {A : Type} (D : Dominion A) (X : Atlas)
@@ -357,14 +490,16 @@ def coalitionMorphism {A : Type} (D : Dominion A) (X : Atlas)
     (backward : X.cellData (FolioData.ValidElement.originElement X.pages).val.cell → Option A)
     (leftInverse : ∀ value, backward (forward value).value.val = some value) :
     PrimitiveAtlasMorphism (dominionAtlas D) X where
-  object _ := FolioData.ValidElement.originElement X.pages
+  object := constantObject (FolioData.ValidElement.originElement X.pages)
   component _ := coalitionComponentInsertion _ forward
     (fun value => (forward value).val.source.toOrigin) backward leftInverse
-  arrow _ := 𝟙 _
+  arrow := fun {source destination} _ =>
+    constantObjectArrow (FolioData.ValidElement.originElement X.pages) source destination
   naturality := by
     intro x y f datum
-    rw [X.data.identity]
-    rfl
+    dsimp only [constantObject, constantObjectArrow]
+    exact (X.data.identity (FolioData.ValidElement.originElement X.pages).normalize
+      (forward datum.value).value.val).symm
 
 /-- The cached coverage presentation does not change the forward origin datum. -/
 theorem coalitionMorphism_component {A : Type} (D : Dominion A) (X : Atlas)
@@ -463,6 +598,41 @@ theorem DominionAtlas.carrierEquiv_preimage {A : Type} (owner : DominionAtlas A)
           presentation.laws arrow datum)).trans
         (owner.preimageIdentity _ _ (FolioData.ValidElement.normalizeArrow arrow)
           (presentation.action.canonicalCarrierEquiv target datum))
+
+/-- Transport is the complete identity insertion under the constant-carrier
+identification, including every partial-inverse lookup. -/
+-- ALIGN: DOMINC-OWNER-MAP-IDENTITY.
+theorem DominionAtlas.mapDataIdentity {A : Type} (owner : DominionAtlas A)
+    {source target : owner.atlas.Element} (arrow : source ⟶ target) :
+    (owner.atlas.data.action.normalizedMap arrow).reindex
+      (owner.carrierEquiv source) (owner.carrierEquiv target) = identityCellInsertion := by
+  apply DomanialInsertion.ext
+  · funext datum
+    change owner.carrierEquiv target
+      ((owner.atlas.data.action.normalizedMap arrow).map
+        ((owner.carrierEquiv source).symm datum)) = _
+    rw [owner.carrierEquiv_map]
+    simp only [Equiv.apply_symm_apply]
+    rfl
+  · funext datum
+    change ((owner.atlas.data.action.normalizedMap arrow).preimage
+      ((owner.carrierEquiv target).symm datum)).map (owner.carrierEquiv source) = _
+    rw [owner.carrierEquiv_preimage]
+    simp only [Equiv.apply_symm_apply]
+
+/-- A fixed target component commutes with the retained source action and the
+normalized target identity. This is the inclusion assembler's data law. -/
+-- ALIGN: DOMINC-COMPONENT-NATURALITY.
+theorem constantComponentNaturality {A : Type} (owner : DominionAtlas A) {X : Atlas}
+    (target : X.Element) (forward : A → X.cellData target.val.cell)
+    {source destination : owner.atlas.Element} (arrow : source ⟶ destination)
+    (datum : owner.atlas.cellData source.val.cell) :
+    forward (owner.carrierEquiv destination
+      ((owner.atlas.data.action.normalizedMap arrow).map datum)).value =
+      (X.data.action.normalizedMap (𝟙 target.normalize)).map
+        (forward (owner.carrierEquiv source datum).value) := by
+  rw [owner.carrierEquiv_map, X.data.identity]
+  rfl
 
 -- ALIGN: DOMINC-OWNER-COALITION.
 def dominionCoalitionElement {A : Type} (owner : DominionAtlas A) (value : A) :

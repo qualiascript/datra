@@ -20,10 +20,12 @@ module RankedDominionAtlas
 import Atlas (atlasWitness)
 import DomanialInclusion
   ( DominionAtlas, DominionAtlasObject, coaToDomInc )
-import DomanialInsertion (DomanialInsertion, insertionLeftInverse, preimage)
+import DomanialInsertion (DomanialInsertion)
 import StableAtlasTransversal (StableAtlasTransversal)
-import RankedDominionAtlas.Data (RankedDominionCellData, cellValue)
-import RankedDominionAtlas.Coalition (rankedDominionCoalitionElement, rankedCoalitionInsertion)
+import RankedDominionAtlas.Data (RankedDominionCellData)
+import RankedDominionAtlas.Coalition
+  ( rankedDominionCoalitionElement, rankedCoalitionInsertion
+  , rankedComponentBackward, rankedComponentLeftInverse )
 import RankedDominionAtlas.Coverage (rankedDominionAtlasMap)
 import RankedDominionAtlas.Owner
   ( RankedDominionAtlas, RankedDominionAtlasObject, withRankedDominionAtlas, rankedDominionAtlas )
@@ -44,5 +46,5 @@ rankedDominionInsertionTraversal sourceOwner owner insertion =
     sourceOwner
     (atlasWitness (rankedDominionAtlas owner))
     (rankedCoalitionInsertion owner insertion)
-    (\_ datum -> preimage insertion (cellValue datum))
-    (\_ -> insertionLeftInverse insertion)
+    (\_ -> rankedComponentBackward insertion)
+    (rankedComponentLeftInverse owner insertion)

@@ -69,13 +69,16 @@ type role AtlasMorphismAction
       -> {target:PageElement targetScope (AtlasMappedObject objectMap sourceObject) |
            MorphismCellValid actionSource source => MorphismCellValid actionTarget target}
   , actionComponent :: forall sourceObject.
-      PageElement sourceScope sourceObject
+      source:PageElement sourceScope sourceObject
       -> DomanialInsertion
-           (sourceCellData sourceObject)
-           (targetCellData (AtlasMappedObject objectMap sourceObject))
+           ({datum:sourceCellData sourceObject | atlasAcceptsDatum actionSource source datum})
+           ({datum:targetCellData (AtlasMappedObject objectMap sourceObject) |
+                atlasAcceptsDatum actionTarget (actionObject source) datum})
   , actionNaturality :: forall sourceObject targetObject.
-      sourceArrow:PageElementArrow sourceScope sourceObject targetObject
-      -> datum:sourceCellData sourceObject
+      sourceArrow:{PageElementArrow sourceScope sourceObject targetObject |
+           MorphismCellValid actionSource (arrowSource sourceArrow)
+           && MorphismCellValid actionSource (arrowTarget sourceArrow)}
+      -> datum:{sourceCellData sourceObject | atlasAcceptsDatum actionSource (arrowSource sourceArrow) datum}
       -> {applyInsertion
           (actionComponent (normalizeAtlasElement actionSource (arrowTarget sourceArrow)))
           (applyInsertion (mapAtlasData actionSource sourceArrow) datum)
@@ -183,7 +186,15 @@ mapAtlasMorphismActionObject (AtlasMorphismAction _ _ _ mapObject _ _ _) =
   mapObject
 
 -- ALIGN: ATLAS-PRIMITIVE-DATA-INTERPRETATION.
+-- ALIGN: ATLAS-PRIMITIVE-COMPONENT-MEMBERSHIP.
 {-@ measure mapAtlasMorphismActionComponent @-}
+{-@ mapAtlasMorphismActionComponent :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> (forall object. source:PageElement ss object
+          -> DomanialInsertion
+               ({datum:sd object | atlasAcceptsDatum (atlasMorphismSource action) source datum})
+               ({datum:td (AtlasMappedObject m object) |
+                    atlasAcceptsDatum (atlasMorphismTarget action)
+                      (mapAtlasMorphismActionObject action source) datum})) @-}
 mapAtlasMorphismActionComponent
   :: AtlasMorphismAction
        objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
@@ -245,10 +256,13 @@ atlasMorphismActionPreservesArrow
 
 -- | Invoke the checked data-naturality equation retained by a primitive
 -- morphism action. Derived functors use this witness after applying a
--- proof-transparent carrier wrapper.
+-- proof-transparent carrier wrapper, on valid owning arrows and accepted data.
 -- ALIGN: ATLAS-PRIMITIVE-STORED-NATURALITY.
 {-@ atlasMorphismActionNaturality :: action:AtlasMorphismAction objectMap sa ta ss ts sd td so sf to tf
-      -> sourceArrow:PageElementArrow ss source target -> datum:sd source
+      -> sourceArrow:{PageElementArrow ss source target |
+           MorphismCellValid (atlasMorphismSource action) (arrowSource sourceArrow)
+           && MorphismCellValid (atlasMorphismSource action) (arrowTarget sourceArrow)}
+      -> datum:{sd source | atlasAcceptsDatum (atlasMorphismSource action) (arrowSource sourceArrow) datum}
       -> {applyInsertion
           ((mapAtlasMorphismActionComponent action) (normalizeAtlasElement (atlasMorphismSource action) (arrowTarget sourceArrow)))
           (applyInsertion (mapAtlasData (atlasMorphismSource action) sourceArrow) datum)
@@ -305,10 +319,11 @@ atlasMorphismAction
        -> {target:PageElement targetScope (AtlasMappedObject objectMap sourceObject) |
             MorphismCellValid sourceAtlas source => MorphismCellValid targetAtlas target})
   -> component:(forall sourceObject.
-       PageElement sourceScope sourceObject
+       source:PageElement sourceScope sourceObject
        -> DomanialInsertion
-            (sourceCellData sourceObject)
-            (targetCellData (AtlasMappedObject objectMap sourceObject)))
+            ({datum:sourceCellData sourceObject | atlasAcceptsDatum sourceAtlas source datum})
+            ({datum:targetCellData (AtlasMappedObject objectMap sourceObject) |
+                 atlasAcceptsDatum targetAtlas (mapObject source) datum}))
   -> pageLaw:(sourceValue:SomePageElement sourceScope
        -> targetValue:{SomePageElement sourceScope |
             somePageElementPrecedes sourceValue targetValue
@@ -321,9 +336,10 @@ atlasMorphismAction
               (mapPrimitiveElement objectMapWitness sourceAtlas targetAtlas mapObject sourceValue)
               (mapPrimitiveElement objectMapWitness sourceAtlas targetAtlas mapObject targetValue) })
   -> naturalityLaw:(forall sourceObject targetObject.
-       sourceArrow:PageElementArrow
-         sourceScope sourceObject targetObject
-       -> datum:sourceCellData sourceObject
+       sourceArrow:{PageElementArrow sourceScope sourceObject targetObject |
+            MorphismCellValid sourceAtlas (arrowSource sourceArrow)
+            && MorphismCellValid sourceAtlas (arrowTarget sourceArrow)}
+       -> datum:{sourceCellData sourceObject | atlasAcceptsDatum sourceAtlas (arrowSource sourceArrow) datum}
        -> { proof:() |
             applyInsertion
               (component
@@ -434,12 +450,22 @@ retainObjectValidity :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
 retainObjectValidity _ _ _ target _ = target
 
 {-@ reflect normalizedActionComponent @-}
+{-@ normalizedActionComponent :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
+      -> source:PageElement ss object
+      -> DomanialInsertion
+           ({datum:sd object | atlasAcceptsDatum (atlasMorphismSource action) source datum})
+           ({datum:td (AtlasMappedObject m object) |
+                atlasAcceptsDatum (atlasMorphismTarget action) (normalizedActionObject action source) datum}) @-}
 normalizedActionComponent
   :: AtlasMorphismAction m sa ta ss ts sd td so sf to tf
   -> PageElement ss object -> DomanialInsertion (sd object) (td (AtlasMappedObject m object))
 normalizedActionComponent action source =
-  mapAtlasMorphismActionComponent action
-    (normalizeAtlasElement (atlasMorphismSource action) source)
+  atlasCoherenceIdempotent (atlasMorphismSource action) source `seq`
+    atlasCoherenceIdempotent (atlasMorphismTarget action)
+      (mapAtlasMorphismActionObject action
+        (normalizeAtlasElement (atlasMorphismSource action) source)) `seq`
+      mapAtlasMorphismActionComponent action
+        (normalizeAtlasElement (atlasMorphismSource action) source)
 
 {-@ normalizedActionElementAgrees :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
       -> source:SomePageElement ss
@@ -501,7 +527,10 @@ normalizeAtlasMorphismActionRetains action source =
            normalizedActionComponent action source `seq` ()
 
 {-@ normalizedActionNaturality :: action:AtlasMorphismAction objectMap sa ta ss ts sd td so sf to tf
-      -> sourceArrow:PageElementArrow ss source target -> datum:sd source
+      -> sourceArrow:{PageElementArrow ss source target |
+           MorphismCellValid (atlasMorphismSource action) (arrowSource sourceArrow)
+           && MorphismCellValid (atlasMorphismSource action) (arrowTarget sourceArrow)}
+      -> datum:{sd source | atlasAcceptsDatum (atlasMorphismSource action) (arrowSource sourceArrow) datum}
       -> {applyInsertion
           ((normalizedActionComponent action) (normalizeAtlasElement (atlasMorphismSource action) (arrowTarget sourceArrow)))
           (applyInsertion (mapAtlasData (atlasMorphismSource action) sourceArrow) datum)

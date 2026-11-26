@@ -18,6 +18,7 @@ structure AtlasAllocation (_owner : Type) where
   storedPresentation : AtlasPresentation
 
 namespace AtlasAllocation
+open CategoryTheory
 
 -- ALIGN: ATLAS-OWNER-DESCRIPTION.
 def atlasDescription {Owner : Type} (value : AtlasAllocation Owner) : AtlasPresentation :=
@@ -44,6 +45,22 @@ theorem descriptionMembership {Owner : Type} (value : AtlasAllocation Owner)
       value.atlasDescription.action.membership.accepts
         (occurrence.normalize (value.atlasDescription.pagination.pages.depth - 1)
           value.atlasDescription.pagination.pages.depth) datum := rfl
+
+/-- Runtime transport reads the retained action after normalizing the arrow. -/
+def mapData {Owner : Type} (value : AtlasAllocation Owner)
+    {source target : value.atlasDescription.pagination.Element} (arrow : source ⟶ target) :
+    DomanialInsertion
+      (value.atlasDescription.action.membership.Carrier source.normalize.val)
+      (value.atlasDescription.action.membership.Carrier target.normalize.val) :=
+  letI := value.atlasDescription.ownership
+  value.atlasDescription.action.normalizedMap arrow
+
+-- ALIGN: ATLAS-DESCRIPTION-MAP.
+theorem descriptionMap {Owner : Type} (value : AtlasAllocation Owner)
+    {source target : value.atlasDescription.pagination.Element} (arrow : source ⟶ target) :
+    letI := value.atlasDescription.ownership
+    value.mapData arrow = value.atlasDescription.action.mapValid
+      (FolioData.ValidElement.normalizeArrow arrow) := rfl
 
 /-- Interpret the stored raw action through the canonical accepted carriers. -/
 def toAtlas {Owner : Type} (value : AtlasAllocation Owner) : Atlas :=
