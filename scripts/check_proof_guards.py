@@ -3605,6 +3605,85 @@ proofGuard = totalAtlasMap
 }
 
 
+RANKED_DATA_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
+module RankedDataPublicGuard where
+import RankedDominionAtlas.Data
+import Dominion (Dominion, dominionCoherence, unrank)
+import Numeric.Natural (Natural)
+
+{-@ observedRegionRoundTrip :: owner:Dominion value -> selected:Natural
+      -> datum:{RankedDominionCellData value object | regionAccepts owner selected datum}
+      -> {regionUnrank owner selected (regionRank datum) == Just datum} @-}
+observedRegionRoundTrip :: Dominion value -> Natural -> RankedDominionCellData value object -> ()
+observedRegionRoundTrip owner selected datum =
+  dominionCoherence (regionDominion owner selected) datum
+
+{-@ observedExtentRoundTrip :: owner:Dominion value
+      -> datum:{RankedDominionCellData value object | extentAccepts datum}
+      -> {extentUnrank owner (extentRank owner datum) == Just datum} @-}
+observedExtentRoundTrip :: Dominion value -> RankedDominionCellData value object -> ()
+observedExtentRoundTrip owner datum = dominionCoherence (extentDominion owner) datum
+
+{-@ regionDecoder :: owner:Dominion value -> selected:Natural -> index:Natural
+      -> {result:Maybe (RankedDominionCellData value object) | result == regionUnrank owner selected index} @-}
+regionDecoder :: Dominion value -> Natural -> Natural -> Maybe (RankedDominionCellData value object)
+regionDecoder owner selected index = unrank (regionDominion owner selected) index
+
+{-@ extentDecoder :: owner:Dominion value -> index:Natural
+      -> {result:Maybe (RankedDominionCellData value object) | result == extentUnrank owner index} @-}
+extentDecoder :: Dominion value -> Natural -> Maybe (RankedDominionCellData value object)
+extentDecoder owner index = unrank (extentDominion owner) index
+
+{-@ decodedAccepted :: owner:Dominion value -> selected:Natural -> Natural -> {result:Bool | result} @-}
+decodedAccepted :: Dominion value -> Natural -> Natural -> Bool
+decodedAccepted owner selected index =
+  case unrank (regionDominion owner selected) index of
+    Nothing -> True
+    Just datum -> regionAccepts owner selected datum
+"""
+RANKED_DATA_PUBLIC_GUARDS = {
+    "ranked region Dominion rejects extent-tagged data": r"""
+proofGuard :: Dominion value -> Natural -> value -> ()
+proofGuard owner selected value =
+  observedRegionRoundTrip owner selected (RankedDominionExtentDatum value)
+""",
+    "ranked region Dominion requires the selected rank": r"""
+proofGuard :: Dominion value -> Natural -> value -> ()
+proofGuard owner selected value =
+  observedRegionRoundTrip owner selected (RankedDominionRegionDatum value)
+""",
+    "ranked extent Dominion rejects region-tagged data": r"""
+proofGuard :: Dominion value -> value -> ()
+proofGuard owner value = observedExtentRoundTrip owner (RankedDominionRegionDatum value)
+""",
+    "ranked region decoding cannot return rejected data": r"""
+{-@ proofGuard :: owner:Dominion value -> selected:Natural -> Natural -> {result:Bool | result} @-}
+proofGuard :: Dominion value -> Natural -> Natural -> Bool
+proofGuard owner selected index =
+  case unrank (regionDominion owner selected) index of
+    Nothing -> True
+    Just datum -> not (regionAccepts owner selected datum)
+""",
+    "ranked region Dominion preserves its exact decoder": r"""
+{-@ proofGuard :: owner:Dominion value -> selected:Natural -> index:Natural
+      -> {result:Maybe (RankedDominionCellData value object) | result /= regionUnrank owner selected index} @-}
+proofGuard :: Dominion value -> Natural -> Natural -> Maybe (RankedDominionCellData value object)
+proofGuard owner selected index = regionDecoder owner selected index
+""",
+    "ranked extent Dominion preserves its raw off-image decoder": r"""
+{-@ proofGuard :: owner:Dominion value -> index:Natural
+      -> {result:Maybe (RankedDominionCellData value object) | result /= extentUnrank owner index} @-}
+proofGuard :: Dominion value -> Natural -> Maybe (RankedDominionCellData value object)
+proofGuard owner index = extentDecoder owner index
+""",
+}
+
+
 CHAINED_DATA_PUBLIC_SOURCE = r"""
 {-# LANGUAGE CPP #-}
 #include "LiquidPlugin.h"
@@ -4537,6 +4616,7 @@ def run(pattern=None):
         check_group(PRIMITIVE_MORPHISM_SOURCE.read_text(), PRIMITIVE_MORPHISM_STORAGE_GUARDS)
         check_group(PRIMITIVE_MORPHISM_PUBLIC_SOURCE, PRIMITIVE_MORPHISM_PUBLIC_GUARDS)
         check_group(TOTAL_MAP_PUBLIC_SOURCE, TOTAL_MAP_PUBLIC_GUARDS)
+        check_group(RANKED_DATA_PUBLIC_SOURCE, RANKED_DATA_PUBLIC_GUARDS)
         check_group(CHAINED_DATA_PUBLIC_SOURCE, CHAINED_DATA_PUBLIC_GUARDS)
         check_group(CHAINED_ACTION_PUBLIC_SOURCE, CHAINED_ACTION_PUBLIC_GUARDS)
         check_group(CHAINED_PRESENTATION_PUBLIC_SOURCE, CHAINED_PRESENTATION_PUBLIC_GUARDS)

@@ -181,6 +181,7 @@ library
         ChainedDominionAtlas.Coalition
         ChainedDominionAtlas.Canonical
         RankedDominionAtlas
+        RankedDominionAtlas.Data
         AtlasTransversal
         AtlasTransversalMap
         Charter

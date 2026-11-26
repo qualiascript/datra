@@ -57,6 +57,7 @@ import StableDataTransversal
 import TotalAtlasMap
 
 import Data.Maybe (isJust, isNothing)
+import Data.Coerce (coerce)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Void (Void, absurd)
 import Hedgehog qualified as H
@@ -269,6 +270,20 @@ testRankedDominionAtlas =
   assert "every natural rank selects one singleton final region"
     (map regionAt selectedRanks
       == map (const (Just True)) selectedRanks)
+  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
+    withPageElement (lastPageElement (atlasPageElements valueAtlas) (chainIndexOf spine 1)) $ \region ->
+      case (unrank (atlasDataAt valueAtlas origin) 1, unrank (atlasDataAt valueAtlas region) 0) of
+        (Just extentDatum, Just regionDatum) -> do
+          assert "ranked extent membership rejects region-tagged data"
+            (atlasAcceptsDatum valueAtlas origin extentDatum
+              && not (atlasAcceptsDatum valueAtlas origin (coerce regionDatum)))
+          assert "ranked region membership rejects extent-tagged data"
+            (atlasAcceptsDatum valueAtlas region regionDatum
+              && not (atlasAcceptsDatum valueAtlas region (coerce extentDatum)))
+          withPageElement (lastPageElement (atlasPageElements valueAtlas) (chainIndexOf spine 2)) $ \other ->
+            assert "ranked region membership rejects data at another rank"
+              (not (atlasAcceptsDatum valueAtlas other (coerce regionDatum)))
+        _ -> fail "Ranked Dominion lost a populated cell"
   assert "ranked dominion coalition elements retain target ranks"
     (coalitionElementRank
       (rankedDominionCoalitionElement ranked 37) == 37)

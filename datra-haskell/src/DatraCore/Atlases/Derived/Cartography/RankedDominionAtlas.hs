@@ -26,9 +26,9 @@ import qualified Pagination
 import Atlas
   ( Atlas
   , AtlasObject
-  , atlas
+  , atlasForPredicate
   , atlasOriginCell
-  , atlasDataAction
+  , atlasPredicateDataAction
   , atlasPageElements
   , atlasWitness
   )
@@ -55,7 +55,7 @@ import DomanialInsertion
   , insertionLeftInverse
   , preimage
   )
-import Dominion (Dominion, dominion, rank, unrank, lookupRank)
+import Dominion (Dominion, rank, unrank)
 import Folio (Folio, appendPage, singletonFolio)
 import Numeric.Natural (Natural)
 import PageElements
@@ -73,16 +73,8 @@ import Data.Proxy (Proxy (..))
 import PageElements.Construction
   ( PageElementsConstruction (..), ConstructedPageElementsScope, constructPageElements )
 import StableAtlasTransversal (StableAtlasTransversal)
-
--- | Data carried by the extent or by one rank-selected final region.
-data RankedDominionCellData value object
-  = RankedDominionExtentDatum value
-  | RankedDominionRegionDatum value
-  deriving (Eq, Show)
-
-cellValue :: RankedDominionCellData value object -> value
-cellValue (RankedDominionExtentDatum value) = value
-cellValue (RankedDominionRegionDatum value) = value
+import RankedDominionAtlas.Data (RankedDominionCellData (..), cellValue)
+import qualified RankedDominionAtlas.Data as Ranked
 
 data RankedDominionPaginationRecipe value
 type RankedDominionPaginationScope value =
@@ -97,6 +89,7 @@ type RankedDominionAtlasObject owner value =
     (RankedDominionPaginationScope value)
     (RankedDominionCellData value)
 
+-- ALIGN: RANKED-TWO-PAGE-FOLIO.
 rankedDominionFolio :: Folio () Natural
 rankedDominionFolio =
   appendPage
@@ -111,34 +104,33 @@ rankedDominionFolio =
         (\_ _ _ -> ())
         (const ())
 
+-- ALIGN: RANKED-PAGINATION.
 rankedDominionPagination
   :: forall value. Pagination (RankedDominionPaginationScope value) () Natural
 rankedDominionPagination = Pagination.paginationFromPageElements
   (constructPageElements (Proxy :: Proxy (RankedDominionPaginationRecipe value)))
 
+-- | The extent accepts extent-tagged data; a region accepts only its own rank.
+-- ALIGN: RANKED-PRESENTATION-MEMBERSHIP.
+rankedDominionAccepts :: Dominion value
+  -> PageElement (RankedDominionPaginationScope value) object
+  -> RankedDominionCellData value object -> Bool
+rankedDominionAccepts owner occurrence datum
+  | pageElementPage occurrence == 0 = Ranked.extentAccepts datum
+  | otherwise = Ranked.regionAccepts owner (spineRank (pageElementPosition occurrence)) datum
+
+-- ALIGN: RANKED-CELL-RANK.
+-- ALIGN: RANKED-CELL-DECODE.
 rankedDominionAt
   :: Dominion value
   -> PageElement (RankedDominionPaginationScope value) object
   -> Dominion (RankedDominionCellData value object)
 rankedDominionAt valueDominion occurrence
-  | pageElementPage occurrence == 0 =
-      dominion
-        (rank valueDominion . cellValue)
-        (fmap RankedDominionExtentDatum . unrank valueDominion)
-        (const ())
-  | otherwise =
-      dominion
-        (const 0)
-        (\valueRank ->
-          if valueRank == 0
-            then RankedDominionRegionDatum
-              <$> lookupRank valueDominion occurrenceRank
-            else Nothing)
-        (const ())
-  where
-    occurrenceRank =
-      spineRank (pageElementPosition occurrence)
+  | pageElementPage occurrence == 0 = Ranked.extentDominion valueDominion
+  | otherwise = Ranked.regionDominion valueDominion (spineRank (pageElementPosition occurrence))
 
+-- ALIGN: RANKED-CELL-FORWARD.
+-- ALIGN: RANKED-CELL-INVERSE.
 rankedDominionDataMap
   :: Dominion value
   -> PageElementArrow
@@ -179,6 +171,7 @@ rankedDominionDataMap valueDominion pageArrow
 -- | Read a position on the natural spine.  Public page-element constructors
 -- guarantee a finite ordinal here; the zero case totalizes the private Atlas
 -- callback even if that invariant is erased by ordinary GHC compilation.
+-- ALIGN: RANKED-SPINE-RANK.
 spineRank :: Ordinal -> Natural
 spineRank position =
   case naturalAtOrdinal position of
@@ -192,17 +185,21 @@ data RankedDominionAtlas owner value = RankedDominionAtlas
   (Dominion value)
   (Atlas owner (RankedDominionPaginationScope value) (RankedDominionCellData value) () Natural)
 
+-- ALIGN: RANKED-OWNER-ATLAS.
 rankedDominionAtlas :: RankedDominionAtlas owner value
   -> Atlas owner (RankedDominionPaginationScope value) (RankedDominionCellData value) () Natural
 rankedDominionAtlas (RankedDominionAtlas _ valueAtlas) = valueAtlas
 
 -- | Split a dominion into an extent and one final region per occupied rank.
+-- ALIGN: RANKED-OWNER-ALLOCATION.
 withRankedDominionAtlas :: Dominion value
   -> (forall owner. RankedDominionAtlas owner value -> result) -> result
 withRankedDominionAtlas valueDominion useAtlas =
-  atlas
+  atlasForPredicate
     rankedDominionPagination
-    (atlasDataAction (Pagination.paginationPageElements rankedDominionPagination)
+    (rankedDominionAccepts valueDominion)
+    (atlasPredicateDataAction (Pagination.paginationPageElements rankedDominionPagination)
+      (rankedDominionAccepts valueDominion)
       (rankedDominionAt valueDominion)
       (rankedDominionDataMap valueDominion))
     (\_ _ -> ())
@@ -211,6 +208,7 @@ withRankedDominionAtlas valueDominion useAtlas =
     (\_ _ _ _ _ _ _ -> ())
     (\valueAtlas -> useAtlas (RankedDominionAtlas valueDominion valueAtlas))
 
+-- ALIGN: RANKED-OWNER-COVERAGE.
 rankedDominionCoverage
   :: RankedDominionAtlas owner value
   -> PageElement (RankedDominionPaginationScope value) object
@@ -232,6 +230,7 @@ rankedDominionCoverage (RankedDominionAtlas valueDominion valueAtlas) source dat
 
 -- | Restrict the ranked Atlas to the map whose every extent datum is covered
 -- by the final region at its dominion rank.
+-- ALIGN: RANKED-OWNER-COVERAGE-MAP.
 rankedDominionAtlasMap
   :: RankedDominionAtlas owner value
   -> AtlasMap (RankedDominionAtlasObject owner value)
@@ -240,6 +239,7 @@ rankedDominionAtlasMap owner =
 
 -- | The canonical covered extent element corresponding to one dominion
 -- value.
+-- ALIGN: RANKED-OWNER-COALITION.
 rankedDominionCoalitionElement
   :: RankedDominionAtlas owner value
   -> value
@@ -255,9 +255,22 @@ rankedDominionCoalitionElement owner value =
   where
     valueAtlas = rankedDominionAtlas owner
 
+-- | Preserve the target coalition's cached-rank decoder in the partial inverse.
+-- ALIGN: RANKED-COALITION-INSERTION.
+rankedCoalitionInsertion
+  :: RankedDominionAtlas owner target
+  -> DomanialInsertion source target
+  -> DomanialInsertion source (CoalitionElement (RankedDominionAtlasObject owner target))
+rankedCoalitionInsertion owner@(RankedDominionAtlas targetDominion _) insertion =
+  domanialInsertion
+    (rankedDominionCoalitionElement owner . applyInsertion insertion)
+    (\element -> unrank targetDominion (coalitionElementRank element) >>= preimage insertion)
+    (insertionLeftInverse insertion)
+
 -- | Lift an insertion between dominions to the stable Atlas traversal into
 -- the target's ranked Atlas map.  This packages the standard passage through
 -- the target coalition, including recovery of a source from a selected rank.
+-- ALIGN: RANKED-INSERTION-TRAVERSAL.
 rankedDominionInsertionTraversal
   :: DominionAtlas sourceOwner source
   -> RankedDominionAtlas owner target
@@ -265,19 +278,10 @@ rankedDominionInsertionTraversal
   -> StableAtlasTransversal
        (DominionAtlasObject sourceOwner source)
        (RankedDominionAtlasObject owner target)
-rankedDominionInsertionTraversal sourceOwner owner@(RankedDominionAtlas targetDominion targetAtlas) insertion =
+rankedDominionInsertionTraversal sourceOwner owner insertion =
   coaToDomInc
     sourceOwner
-    (atlasWitness targetAtlas)
-    coalitionInsertion
+    (atlasWitness (rankedDominionAtlas owner))
+    (rankedCoalitionInsertion owner insertion)
     (\_ datum -> preimage insertion (cellValue datum))
     (\_ -> insertionLeftInverse insertion)
-  where
-    coalitionInsertion =
-      domanialInsertion
-        (rankedDominionCoalitionElement owner
-          . applyInsertion insertion)
-        (\element ->
-          unrank targetDominion (coalitionElementRank element)
-            >>= preimage insertion)
-        (insertionLeftInverse insertion)

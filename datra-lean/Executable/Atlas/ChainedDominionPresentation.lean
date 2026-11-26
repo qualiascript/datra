@@ -19,8 +19,22 @@ theorem twoPageRegionPosition (pages : FolioData origin final) (valid : pages.Va
   simp only [PageElement.normalize, depth]
   omega
 
-/-- Normalize both owning endpoints to the final region page. The same-page
-transport theorem then identifies their positions, hence their selected cells. -/
+/-- In a two-page presentation, an arrow between non-origin occurrences
+retains the selected final-page position, including through padding. -/
+theorem twoPageArrowPosition (pages : FolioData origin final) (valid : pages.Valid)
+    (twoPages : pages.length = 2)
+    {source target : PageElement scope} (arrow : PageElement.Arrow source target)
+    (sourceValid : pages.traceValid source = true)
+    (targetValid : pages.traceValid target = true)
+    (sourcePositive : 0 < source.page) (targetPositive : 0 < target.page) :
+    source.position = target.position := by
+  have sourcePage := twoPageRegionPosition pages valid twoPages source sourcePositive
+  have targetPage := twoPageRegionPosition pages valid twoPages target targetPositive
+  exact (PageElement.normalizeArrow (pages.depth - 1) pages.depth arrow).samePagePosition
+    (pages.traceValid_shape valid _ (pages.traceValid_normalize valid source sourceValid))
+    (pages.traceValid_shape valid _ (pages.traceValid_normalize valid target targetValid))
+    (sourcePage.trans targetPage.symm)
+
 -- ALIGN: CHAINED-ARROW-COMPATIBLE.
 theorem chainedArrowCompatible (pages : FolioData origin final) (valid : pages.Valid)
     (twoPages : pages.length = 2) (first : A) (owner : Chain A)
@@ -37,13 +51,7 @@ theorem chainedArrowCompatible (pages : FolioData origin final) (valid : pages.V
     simp [chainedDominionCell, sourceOrigin, targetOrigin, cellPrecedes]
   by_cases targetOrigin : target.page = 0
   · simp [chainedDominionCell, sourceOrigin, targetOrigin, cellPrecedes]
-  have sourcePage := twoPageRegionPosition pages valid twoPages source (by omega)
-  have targetPage := twoPageRegionPosition pages valid twoPages target (by omega)
-  have samePosition := (PageElement.normalizeArrow (pages.depth - 1) pages.depth arrow).samePagePosition
-    (pages.traceValid_shape valid _ (pages.traceValid_normalize valid source sourceValid))
-    (pages.traceValid_shape valid _ (pages.traceValid_normalize valid target targetValid))
-    (sourcePage.trans targetPage.symm)
-  change source.position = target.position at samePosition
+  have samePosition := twoPageArrowPosition pages valid twoPages arrow sourceValid targetValid (by omega) (by omega)
   simp [chainedDominionCell, sourceOrigin, targetOrigin, cellPrecedes,
     chainValueAt, samePosition]
 

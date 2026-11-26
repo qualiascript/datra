@@ -18,6 +18,7 @@ def cellValue : ChainedDominionCellData A Object → A
   | .region value => value
 
 -- ALIGN: CHAINED-EXTENT-MEMBERSHIP.
+-- ALIGN: RANKED-EXTENT-MEMBERSHIP.
 def extentAccepts : ChainedDominionCellData A Object → Bool
   | .extent _ => true
   | .region _ => false
@@ -54,14 +55,17 @@ def extentEquiv : Extent A Object ≃ A where
   right_inv _ := rfl
 
 -- ALIGN: CHAINED-EXTENT-RANK.
+-- ALIGN: RANKED-EXTENT-RANK.
 def extentRank (owner : Dominion A) (datum : ChainedDominionCellData A Object) : Nat :=
   owner.rank (cellValue datum)
 
 -- ALIGN: CHAINED-EXTENT-DECODE.
+-- ALIGN: RANKED-EXTENT-DECODE.
 def extentUnrank (owner : Dominion A) (index : Nat) : Option (ChainedDominionCellData A Object) :=
   (owner.unrank index).map ChainedDominionCellData.extent
 
 -- ALIGN: CHAINED-EXTENT-ROUNDTRIP.
+-- ALIGN: RANKED-EXTENT-ROUNDTRIP.
 theorem extentRoundTrip (owner : Dominion A) (datum : Extent A Object) :
     extentUnrank owner (extentRank owner datum.val) = some datum.val := by
   obtain ⟨datum, accepted⟩ := datum
@@ -70,16 +74,19 @@ theorem extentRoundTrip (owner : Dominion A) (datum : Extent A Object) :
   | region value => simp [extentAccepts] at accepted
 
 -- ALIGN: CHAINED-EXTENT-DOMINION.
+-- ALIGN: RANKED-EXTENT-DOMINION.
 def extentDominion (owner : Dominion A) : Dominion (Extent A Object) :=
   owner.reindex extentEquiv.symm
 
 -- ALIGN: CHAINED-EXTENT-DOMINION-DECODE.
+-- ALIGN: RANKED-EXTENT-DOMINION-DECODE.
 theorem extentDominion_unrank (owner : Dominion A) (index : Nat) :
     ((extentDominion owner).unrank index).map (fun datum : Extent A Object => datum.val) =
       extentUnrank owner index := by
   simp [extentDominion, Dominion.reindex, extentUnrank, extentEquiv, Function.comp_def]
 
 -- ALIGN: CHAINED-REGION-RANK.
+-- ALIGN: RANKED-REGION-RANK.
 def regionRank (_datum : ChainedDominionCellData A Object) : Nat := 0
 
 -- ALIGN: CHAINED-REGION-DECODE.

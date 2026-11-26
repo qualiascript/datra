@@ -2,6 +2,7 @@ import Executable.DataTransformation
 import Executable.Atlas.TotalMap
 import Executable.Atlas.ChainedDominionCanonical
 import Executable.Atlas.ChainedDominionCoalition
+import Executable.Atlas.RankedDominionCoalition
 import Executable.Atlas.DomanialInclusion
 import Executable.Atlas.Charter
 import Executable.Atlas.Empty

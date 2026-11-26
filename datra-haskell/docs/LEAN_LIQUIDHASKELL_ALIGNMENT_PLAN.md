@@ -162,6 +162,39 @@ selected values, and uniqueness claims about unaccepted candidates. The runtime
 regression uses a singleton accepted subset of a larger datum type and excludes
 padded occurrences from the genuine final regions.
 
+The ranked-Dominion cell model retains its raw ranking, decoding, forward maps,
+and partial inverses. The extent is equivalent to the original Dominion and
+preserves its rank. A final region is the fiber of that rank embedding at the
+selected natural position, so absent ranks give empty regions and occupied
+ranks give singleton regions. Region decoding checks the forward rank of the
+candidate, even when the original decoder returns a value outside its image.
+Lean proves cell round trips, membership preservation, padding normalization,
+and forward/inverse composition; inverse composition covers arbitrary raw
+target data. The shared extent/region datum representation and retagging
+operation reuse the chained cell model. The exposed Haskell
+`RankedDominionAtlas.Data` component checks both cell Dominions, their restricted
+round trips, and their exact rank and decoder functions. The runtime factory
+uses these checked Dominions and the explicit tag-and-rank membership predicate
+for both allocation and its stored action. Public contract checks exercise both
+round trips and decoder equations; rejection checks rule out wrong tags, wrong
+region ranks, rejected decoder results, and changes to either stored decoder.
+Lean assembles the two-page presentation's identity, composition, normalization,
+and disjointness laws, retains the original Dominion with its exact allocation,
+and relates the resulting Atlas data functor to the accepted runtime action.
+The normalized action preserves both raw insertion directions. The two-page
+arrow-position argument is shared with the chained presentation. Coverage
+selects the final region at the original datum's Dominion rank and proves that
+its image at the origin equals the source datum's image. The resulting Atlas
+map covers every accepted extent datum. Its certified coalition carrier is
+equivalent to the original Dominion, retaining the exact cached origin rank.
+The coalition insertion's raw inverse decodes that stored rank before invoking
+the supplied partial inverse; it preserves that algorithm even on uncertified
+records. On certified records it agrees with transport through the coalition
+equivalence. The complete ranked traversal has a semantic interpretation through
+the shared Dominion-inclusion hom map. LiquidHaskell verification of the ranked
+factory, coverage, coalition, and traversal assembly remains unfinished; this
+module is partially aligned.
+
 The chained-Dominion Atlas distinguishes extent-tagged data from region-tagged
 data in its membership predicate. A region accepts only the value at its selected
 chain position, including on padded occurrences. Its exposed
@@ -795,9 +828,10 @@ Ranked Dominion construction allocates an Atlas through the public generative
 constructor. A retained handle ties the supplied Dominion to that exact Atlas;
 coverage, maps, and insertion traversals reuse it. Its region decoder uses the
 checked `Dominion.lookupRank`, which accepts a candidate only at its forward rank
-and preserves decoding at every inhabited rank. Lean proves both properties.
-The ranked construction's complete normalized action contracts and Atlas
-interpretation remain a separate coverage gap.
+and preserves decoding at every inhabited rank. Both cell Dominions have checked
+Haskell contracts through `RankedDominionAtlas.Data`. Lean proves the complete
+normalized action and its Atlas interpretation, coverage, coalition equivalence,
+and insertion traversal. The Haskell action and assembly contracts remain partial.
 The public Dominion constructor and insertion core retain both supplied
 executable functions in their checked result contracts. `DomanialInclusion.Data`
 checks the constant carrier's rank, raw decoder, round trip, and identity
