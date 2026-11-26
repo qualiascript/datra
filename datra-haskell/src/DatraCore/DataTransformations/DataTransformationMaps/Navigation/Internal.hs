@@ -21,7 +21,7 @@ module Navigation.Internal
 
 import Atlas (AtlasWitness)
 import Data.Kind (Type)
-import DataTransformation.Internal
+import DataTransformation
   ( DataTransformationHom
   , DataTransformationValue
   , Yoneda
@@ -36,7 +36,7 @@ import DataTransformation.Internal
 type role NavigationPreimage nominal nominal
 data NavigationPreimage
   (atlas :: Type)
-  (values :: Type) = NavigationPreimage
+  (values :: Type -> Type) = NavigationPreimage
   (forall object.
     DataTransformationValue values object
     -> Maybe (Yoneda atlas object))
@@ -49,7 +49,7 @@ applyNavigationPreimage
 applyNavigationPreimage (NavigationPreimage preimage) = preimage
 
 -- | Specialize a natural transformation component to a Yoneda source. This
--- named specialization exposes the @DataTransformationValue@ type-family
+-- named specialization exposes the indexed @DataTransformationValue@ family
 -- reduction to LiquidHaskell's logic.
 {-@ reflect mapNavigationHom @-}
 mapNavigationHom
@@ -81,7 +81,7 @@ data Navigation atlas values = Navigation
 @-}
 data Navigation
   (atlas :: Type)
-  (values :: Type) = Navigation
+  (values :: Type -> Type) = Navigation
   (AtlasWitness atlas)
   (DataTransformationHom (YonedaPresheaf atlas) values)
   (NavigationPreimage atlas values)

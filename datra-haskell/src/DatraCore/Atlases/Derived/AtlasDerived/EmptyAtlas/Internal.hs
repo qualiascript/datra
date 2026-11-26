@@ -1,5 +1,8 @@
-{-# LANGUAGE EmptyCase #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RankNTypes #-}
+#include "../../../../LiquidPlugin.h"
+{-@ LIQUID "--higherorder" @-}
 
 -- | Hidden implementation of the canonical empty Atlas.
 module EmptyAtlas.Internal
@@ -8,39 +11,34 @@ module EmptyAtlas.Internal
   ) where
 
 import Atlas (Atlas, atlas, atlasDataAction)
-import Chain (Chain, chain)
-import DatraOrdinal (finiteOrdinal)
+import Chain.Singleton (singletonChain)
+import Data.Kind (Type)
+import Data.Void (Void, absurd)
 import DomanialInsertion (DomanialInsertion, domanialInsertion)
 import Dominion (Dominion, dominion)
 import Folio (singletonFolio)
 import PageElements (PageElement, PageElementArrow)
 import qualified Pagination
 
-unitChain :: Chain ()
-unitChain =
-  chain
-    (finiteOrdinal 1)
-    (const (finiteOrdinal 0))
-    (\position ->
-      if position == finiteOrdinal 0 then Just () else Nothing)
-    (const ())
-    (\_ _ -> ())
-    (const ())
-
--- | The uninhabited data family of the empty Atlas.
-data EmptyAtlasDatum object
+-- | The empty Atlas's cell-indexed carrier contains an impossible Void witness.
+data EmptyAtlasDatum (object :: Type) = EmptyAtlasDatum Void
 
 -- | Introduce the canonical Atlas whose only page has no data.
+-- ALIGN: EMPTY-ATLAS-CONSTRUCTOR.
+-- ALIGN: EMPTY-ATLAS-UNRANK.
+-- ALIGN: EMPTY-ATLAS-PREIMAGE.
+-- ALIGN: EMPTY-ATLAS-INTERPRETATION.
+-- ALIGN: EMPTY-ATLAS-STABLE-INTERPRETATION.
 emptyAtlas
   :: (forall atlasScope paginationScope.
        Atlas atlasScope paginationScope EmptyAtlasDatum () ()
        -> result)
   -> result
 emptyAtlas useAtlas =
-  Pagination.pagination (singletonFolio unitChain) $ \valuePagination ->
+  Pagination.pagination (singletonFolio singletonChain) $ \valuePagination ->
     atlas
       valuePagination
-      (atlasDataAction emptyDominionAt emptyDataMap)
+      (atlasDataAction (Pagination.paginationPageElements valuePagination) emptyDominionAt emptyDataMap)
       (\_ impossible -> absurdEmptyDatum impossible)
       (\_ _ _ impossible -> absurdEmptyDatum impossible)
       (\_ _ _ impossible -> absurdEmptyDatum impossible)
@@ -64,5 +62,6 @@ emptyAtlas useAtlas =
         (const Nothing)
         absurdEmptyDatum
 
+-- ALIGN: EMPTY-ATLAS-NO-DATA.
 absurdEmptyDatum :: EmptyAtlasDatum object -> result
-absurdEmptyDatum impossible = case impossible of {}
+absurdEmptyDatum (EmptyAtlasDatum impossible) = absurd impossible

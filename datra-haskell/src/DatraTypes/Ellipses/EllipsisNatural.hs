@@ -27,7 +27,7 @@ import SuperEllipsisValue
 
 type EllipsisNatural = SuperEllipsisValue Ellipsis
 
-type EllipsisNaturalElement = SuperEllipsisValueElement Ellipsis
+type EllipsisNaturalElement scope = SuperEllipsisValueElement Ellipsis scope
 
 ellipsisNatural
   :: Natural

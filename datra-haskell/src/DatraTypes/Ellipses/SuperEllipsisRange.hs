@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | Ordered ordinal ranges inside a finite-rank 'SuperEllipsis'.
 module SuperEllipsisRange
@@ -14,6 +15,7 @@ module SuperEllipsisRange
   , SuperEllipsisRangeConcatAnalysis (..)
   , SuperEllipsisRangeConcatError (..)
   , SuperEllipsisRangeElement
+  , SuperEllipsisRangeMember
   , SuperEllipsisRangeMap
   , SuperEllipsisRangeConcatValues
   , SuperEllipsisRangeConcatValue
@@ -60,7 +62,9 @@ import AtlasConfederation
   )
 import Chain (Chain, chain, sumChains)
 import ChainedDominionAtlas
-  ( ChainedDominionAtlasObject
+  ( ChainedDominionAtlas
+  , ChainedDominionAtlasObject
+  , withChainedDominionAtlas
   , chainedDominionAtlas
   , chainedDominionAtlasMap
   )
@@ -133,14 +137,49 @@ data SuperEllipsisRangeError
   | SuperEllipsisRangeInvalidDescendingBounds Ordinal Ordinal
   deriving (Eq, Show)
 
--- | Scope-free range information suitable for diagnostics and canonical
--- result presentation.
+-- | Bounds are independent of the retained Atlas allocated from them.
+data RangeDefinition target = RangeDefinition
+  { definitionRank :: SuperEllipsisRank target
+  , definitionStart :: Ordinal
+  , definitionTarget :: SuperEllipsisRangeTarget
+  }
+
+data RangeScope owner pages membership
+
+type family RangeOwner scope where
+  RangeOwner (RangeScope owner pages membership) = owner
+type family RangePages scope where
+  RangePages (RangeScope owner pages membership) = pages
+type family RangeMembership scope where
+  RangeMembership (RangeScope owner pages membership) = membership
+
 type role SuperEllipsisRange nominal nominal
 data SuperEllipsisRange (target :: Type) (scope :: Type) = SuperEllipsisRange
-  { superEllipsisRangeRank :: SuperEllipsisRank target
-  , superEllipsisRangeStart :: Ordinal
-  , superEllipsisRangeTarget :: SuperEllipsisRangeTarget
+  { rangeDefinition :: RangeDefinition target
+  , rangeOwner :: ChainedDominionAtlas (RangeOwner scope) (RangePages scope)
+      (SuperEllipsisRangeElement target (RangeMembership scope))
   }
+
+superEllipsisRangeRank :: SuperEllipsisRange target scope -> SuperEllipsisRank target
+superEllipsisRangeRank = definitionRank . rangeDefinition
+
+superEllipsisRangeStart :: SuperEllipsisRange target scope -> Ordinal
+superEllipsisRangeStart = definitionStart . rangeDefinition
+
+superEllipsisRangeTarget :: SuperEllipsisRange target scope -> SuperEllipsisRangeTarget
+superEllipsisRangeTarget = definitionTarget . rangeDefinition
+
+-- | The callback hides both allocation scopes and the element membership tag.
+withRangeDefinition :: RangeDefinition target
+  -> (forall scope. SuperEllipsisRange target scope -> result) -> result
+withRangeDefinition definition useRange =
+  withChainedDominionAtlas (definitionSeed definition) (definitionChain definition)
+    (definitionDominion definition) $ \owner ->
+      useRange (retainRange definition owner)
+
+retainRange :: RangeDefinition target -> ChainedDominionAtlas owner pages (SuperEllipsisRangeElement target membership)
+  -> SuperEllipsisRange target (RangeScope owner pages membership)
+retainRange = SuperEllipsisRange
 
 superEllipsisRangeLowerBound
   :: SuperEllipsisRange target scope
@@ -156,6 +195,9 @@ superEllipsisRangeUpperBound valueRange =
     MinusSign -> Nothing
     PlusSign -> Nothing
 
+-- | The element carrier associated with a particular retained range.
+type SuperEllipsisRangeMember target scope = SuperEllipsisRangeElement target (RangeMembership scope)
+
 type role SuperEllipsisRangeElement nominal nominal
 newtype SuperEllipsisRangeElement target (scope :: Type) =
   SuperEllipsisRangeElement
@@ -165,11 +207,11 @@ newtype SuperEllipsisRangeElement target (scope :: Type) =
 
 type SuperEllipsisRangeMap target scope =
   EmbeddedAtlasMap
-    (ChainedDominionAtlasObject (SuperEllipsisRangeElement target scope))
+    (ChainedDominionAtlasObject (RangeOwner scope) (RangePages scope) (SuperEllipsisRangeMember target scope))
 
 type SuperEllipsisRangeConfederationScope target scope =
   SingletonAtlasConfederationScope
-    (ChainedDominionAtlasObject (SuperEllipsisRangeElement target scope))
+    (ChainedDominionAtlasObject (RangeOwner scope) (RangePages scope) (SuperEllipsisRangeMember target scope))
 
 type SuperEllipsisRangeConcatValues target leftScope rightScope =
   ConcatOperatorValues
@@ -192,8 +234,8 @@ type SuperEllipsisRangeConcatValue target leftScope rightScope =
 type SuperEllipsisRangeConcatOrderedMap target leftScope rightScope =
   OrderedAtlasMap
     (Either
-      (SuperEllipsisRangeElement target leftScope)
-      (SuperEllipsisRangeElement target rightScope))
+      (SuperEllipsisRangeMember target leftScope)
+      (SuperEllipsisRangeMember target rightScope))
 
 data SuperEllipsisRangeConcat
     (target :: Type) leftScope rightScope = SuperEllipsisRangeConcat
@@ -210,8 +252,8 @@ data SuperEllipsisRangeConcat
            (SuperEllipsisInsertion
              target
              (Either
-               (SuperEllipsisRangeElement target leftScope)
-               (SuperEllipsisRangeElement target rightScope)))
+               (SuperEllipsisRangeMember target leftScope)
+               (SuperEllipsisRangeMember target rightScope)))
   }
 
 instance HasOrderedAtlasMap
@@ -219,8 +261,8 @@ instance HasOrderedAtlasMap
   type OrderedAtlasElement
       (SuperEllipsisRangeConcat target leftScope rightScope) =
     Either
-      (SuperEllipsisRangeElement target leftScope)
-      (SuperEllipsisRangeElement target rightScope)
+      (SuperEllipsisRangeMember target leftScope)
+      (SuperEllipsisRangeMember target rightScope)
   orderedAtlasMap = superEllipsisRangeConcatOrderedMap
 
 -- | Compatibility projection for callers that do not need a diagnostic.
@@ -230,8 +272,8 @@ superEllipsisRangeConcatInsertion
        (SuperEllipsisInsertion
          target
          (Either
-           (SuperEllipsisRangeElement target leftScope)
-           (SuperEllipsisRangeElement target rightScope)))
+           (SuperEllipsisRangeMember target leftScope)
+           (SuperEllipsisRangeMember target rightScope)))
 superEllipsisRangeConcatInsertion value =
   case superEllipsisRangeConcatInsertionResult value of
     Left _ -> Nothing
@@ -264,7 +306,7 @@ superEllipsisRangeEither valueRank start target useRange = do
   validateStart
   validateTarget
   validateDirection
-  pure (useRange (SuperEllipsisRange valueRank start target))
+  pure (withRangeDefinition (RangeDefinition valueRank start target) useRange)
   where
     rankLimit = superEllipsisRankOrderType valueRank
 
@@ -303,11 +345,11 @@ superEllipsisSingletonRange
   -> (forall scope. SuperEllipsisRange target scope -> result)
   -> result
 superEllipsisSingletonRange minimalValue useRange =
-  useRange
-    (SuperEllipsisRange
+  withRangeDefinition
+    (RangeDefinition
       (minimalSuperEllipsisOrdinalRank minimalValue)
       value
-      (GivenTarget (addOrdinals value (finiteOrdinal 1))))
+      (GivenTarget (addOrdinals value (finiteOrdinal 1)))) useRange
   where
     value = minimalSuperEllipsisOrdinalValue minimalValue
 
@@ -319,46 +361,65 @@ finiteSuperEllipsisSingletonRange
        -> result)
   -> result
 finiteSuperEllipsisSingletonRange value useRange =
-  useRange
-    (SuperEllipsisRange
+  withRangeDefinition
+    (RangeDefinition
       (nextSuperEllipsisRank dotSuperEllipsisRank)
       (finiteOrdinal value)
-      (GivenTarget (finiteOrdinal (value + 1))))
+      (GivenTarget (finiteOrdinal (value + 1)))) useRange
 
-superEllipsisRangeElement
-  :: SuperEllipsisRange target scope
+superEllipsisRangeElement :: SuperEllipsisRange target scope -> Ordinal
+  -> Maybe (SuperEllipsisRangeMember target scope)
+superEllipsisRangeElement = definitionElement . rangeDefinition
+
+rangeDominion :: SuperEllipsisRange target scope -> Dominion (SuperEllipsisRangeMember target scope)
+rangeDominion = definitionDominion . rangeDefinition
+
+rangeSeedElement :: SuperEllipsisRange target scope -> SuperEllipsisRangeMember target scope
+rangeSeedElement = definitionSeed . rangeDefinition
+
+rangeChain :: SuperEllipsisRange target scope -> Chain (SuperEllipsisRangeMember target scope)
+rangeChain = definitionChain . rangeDefinition
+
+superEllipsisRangeOrderType :: SuperEllipsisRange target scope -> Ordinal
+superEllipsisRangeOrderType = definitionOrderType . rangeDefinition
+
+describeSuperEllipsisRange :: SuperEllipsisRange target scope -> SuperEllipsisRangeDescription
+describeSuperEllipsisRange = describeDefinition . rangeDefinition
+
+definitionElement
+  :: RangeDefinition target
   -> Ordinal
   -> Maybe (SuperEllipsisRangeElement target scope)
-superEllipsisRangeElement valueRange position
-  | positionInRange valueRange position =
+definitionElement valueRange position
+  | definitionContains valueRange position =
       Just (SuperEllipsisRangeElement position)
   | otherwise = Nothing
 
-rangeDominion
-  :: SuperEllipsisRange target scope
+definitionDominion
+  :: RangeDefinition target
   -> Dominion (SuperEllipsisRangeElement target scope)
-rangeDominion valueRange = dominion elementRank elementAt (const ())
+definitionDominion valueRange = dominion elementRank elementAt (const ())
   where
     targetDominion =
-      superEllipsisDominion (superEllipsisRangeRank valueRange)
+      superEllipsisDominion (definitionRank valueRange)
 
     elementRank element =
       case superEllipsisTerminal
-        (superEllipsisRangeRank valueRange)
+        (definitionRank valueRange)
         (superEllipsisRangeElementPosition element) of
           Just terminal -> rank targetDominion terminal
           Nothing -> 0
 
     elementAt valueRank = do
       terminal <- unrank targetDominion valueRank
-      superEllipsisRangeElement
+      definitionElement
         valueRange
         (superEllipsisTerminalPosition terminal)
 
 superEllipsisRangeInsertion
   :: SuperEllipsisRange target scope
   -> SuperEllipsisInsertion
-       target (SuperEllipsisRangeElement target scope)
+       target (SuperEllipsisRangeMember target scope)
 superEllipsisRangeInsertion valueRange =
   superEllipsisInsertion
     (superEllipsisRangeRank valueRange)
@@ -384,61 +445,61 @@ superEllipsisRangeInsertion valueRange =
 superEllipsisRangeOrderedMap
   :: SuperEllipsisRange target scope
   -> OrderedAtlasMap
-       (SuperEllipsisRangeElement target scope)
+       (SuperEllipsisRangeMember target scope)
 superEllipsisRangeOrderedMap =
   superEllipsisInsertionOrderedMap . superEllipsisRangeInsertion
 
 instance HasSuperEllipsisInsertion (SuperEllipsisRange target scope) where
   type InsertionTarget (SuperEllipsisRange target scope) = target
   type InsertionSource (SuperEllipsisRange target scope) =
-    SuperEllipsisRangeElement target scope
+    SuperEllipsisRangeMember target scope
   superEllipsisInsertionOf = superEllipsisRangeInsertion
 
 instance HasOrderedAtlasMap (SuperEllipsisRange target scope) where
   type OrderedAtlasElement (SuperEllipsisRange target scope) =
-    SuperEllipsisRangeElement target scope
+    SuperEllipsisRangeMember target scope
   orderedAtlasMap = superEllipsisRangeOrderedMap
 
 rangeFirstElement
   :: SuperEllipsisRange target scope
-  -> Maybe (SuperEllipsisRangeElement target scope)
+  -> Maybe (SuperEllipsisRangeMember target scope)
 rangeFirstElement valueRange
   | superEllipsisRangeOrderType valueRange == finiteOrdinal 0 = Nothing
   | otherwise = Just (rangeSeedElement valueRange)
 
-rangeSeedElement
-  :: SuperEllipsisRange target scope
+definitionSeed
+  :: RangeDefinition target
   -> SuperEllipsisRangeElement target scope
-rangeSeedElement =
-  SuperEllipsisRangeElement . superEllipsisRangeStart
+definitionSeed =
+  SuperEllipsisRangeElement . definitionStart
 
-rangeChain
-  :: SuperEllipsisRange target scope
+definitionChain
+  :: RangeDefinition target
   -> Chain (SuperEllipsisRangeElement target scope)
-rangeChain valueRange =
+definitionChain valueRange =
   chain
-    (superEllipsisRangeOrderType valueRange)
-    (relativePosition valueRange . superEllipsisRangeElementPosition)
-    (elementAtRelativePosition valueRange)
+    (definitionOrderType valueRange)
+    (definitionRelativePosition valueRange . superEllipsisRangeElementPosition)
+    (definitionElementAt valueRange)
     (const ())
     (\_ _ -> ())
     (const ())
 
-elementAtRelativePosition
-  :: SuperEllipsisRange target scope
+definitionElementAt
+  :: RangeDefinition target
   -> Ordinal
   -> Maybe (SuperEllipsisRangeElement target scope)
-elementAtRelativePosition valueRange offset = do
+definitionElementAt valueRange offset = do
   absolute <-
-    case superEllipsisRangeTarget valueRange of
+    case definitionTarget valueRange of
       GivenTarget target
         | ordinalLT target start -> descendingAt
         | otherwise -> Just (addOrdinals start offset)
       MinusSign -> descendingAt
       PlusSign -> Just (addOrdinals start offset)
-  superEllipsisRangeElement valueRange absolute
+  definitionElement valueRange absolute
   where
-    start = superEllipsisRangeStart valueRange
+    start = definitionStart valueRange
     descendingAt = do
       let (base, startTail) = splitFiniteTail start
           (offsetBase, offsetTail) = splitFiniteTail offset
@@ -447,30 +508,30 @@ elementAtRelativePosition valueRange offset = do
           (addOrdinals base (finiteOrdinal (startTail - offsetTail)))
         else Nothing
 
-relativePosition
-  :: SuperEllipsisRange target scope
+definitionRelativePosition
+  :: RangeDefinition target
   -> Ordinal
   -> Ordinal
-relativePosition valueRange position =
-  case superEllipsisRangeTarget valueRange of
+definitionRelativePosition valueRange position =
+  case definitionTarget valueRange of
     GivenTarget target
       | ordinalLT target start -> descendingDifference
       | otherwise -> ascendingDifference
     MinusSign -> descendingDifference
     PlusSign -> ascendingDifference
   where
-    start = superEllipsisRangeStart valueRange
+    start = definitionStart valueRange
     ascendingDifference =
       fromMaybe (finiteOrdinal 0) (subtractOrdinal start position)
 
     descendingDifference =
       fromMaybe (finiteOrdinal 0) (finiteTailDifference start position)
 
-superEllipsisRangeOrderType
-  :: SuperEllipsisRange target scope
+definitionOrderType
+  :: RangeDefinition target
   -> Ordinal
-superEllipsisRangeOrderType valueRange =
-  rangeDescriptionOrderType (describeSuperEllipsisRange valueRange)
+definitionOrderType valueRange =
+  rangeDescriptionOrderType (describeDefinition valueRange)
 
 rangeAtlas
   :: SuperEllipsisRange target scope
@@ -478,20 +539,14 @@ rangeAtlas
        (SuperEllipsisRangeConfederationScope target scope) ()
 rangeAtlas valueRange =
   singletonAtlasConfederation
-    (chainedDominionAtlas
-      (rangeSeedElement valueRange)
-      (rangeChain valueRange)
-      (rangeDominion valueRange))
+    (chainedDominionAtlas (rangeOwner valueRange))
 
 superEllipsisRangeMap
   :: SuperEllipsisRange target scope
   -> StableConfederalData (SuperEllipsisRangeMap target scope)
 superEllipsisRangeMap valueRange =
   embedAtlasMap
-    (chainedDominionAtlasMap
-      (rangeSeedElement valueRange)
-      (rangeChain valueRange)
-      (rangeDominion valueRange))
+    (chainedDominionAtlasMap (rangeOwner valueRange))
 
 rangeConcatValue
   :: SuperEllipsisRange target leftScope
@@ -565,8 +620,8 @@ concatSuperEllipsisRangeInsertion
        (SuperEllipsisInsertion
          target
          (Either
-           (SuperEllipsisRangeElement target leftScope)
-           (SuperEllipsisRangeElement target rightScope)))
+           (SuperEllipsisRangeMember target leftScope)
+           (SuperEllipsisRangeMember target rightScope)))
 concatSuperEllipsisRangeInsertion first second =
   case concatSuperEllipsisRangeInsertionEither first second of
     Left _ -> Nothing
@@ -583,8 +638,8 @@ concatSuperEllipsisRangeInsertionEither
        (SuperEllipsisInsertion
          target
          (Either
-           (SuperEllipsisRangeElement target leftScope)
-           (SuperEllipsisRangeElement target rightScope)))
+           (SuperEllipsisRangeMember target leftScope)
+           (SuperEllipsisRangeMember target rightScope)))
 concatSuperEllipsisRangeInsertionEither first second =
   case analyzeSuperEllipsisRangeConcat first second of
     RangeConcatOverlapping
@@ -598,15 +653,15 @@ concatSuperEllipsisRangeInsertionEither first second =
           (superEllipsisRangeInsertion first)
           (superEllipsisRangeInsertion second))
 
-describeSuperEllipsisRange
-  :: SuperEllipsisRange target scope
+describeDefinition
+  :: RangeDefinition target
   -> SuperEllipsisRangeDescription
-describeSuperEllipsisRange valueRange =
+describeDefinition valueRange =
   SuperEllipsisRangeDescription
     { describedRangeRankLimit =
-        superEllipsisRankOrderType (superEllipsisRangeRank valueRange)
-    , describedRangeStart = superEllipsisRangeStart valueRange
-    , describedRangeTarget = superEllipsisRangeTarget valueRange
+        superEllipsisRankOrderType (definitionRank valueRange)
+    , describedRangeStart = definitionStart valueRange
+    , describedRangeTarget = definitionTarget valueRange
     }
 
 -- | Analyze an ordered pair without discarding ordering or duplicate-image
@@ -621,12 +676,12 @@ analyzeSuperEllipsisRangeConcat first second =
     (describeSuperEllipsisRange first)
     (describeSuperEllipsisRange second)
 
-positionInRange
-  :: SuperEllipsisRange target scope
+definitionContains
+  :: RangeDefinition target
   -> Ordinal
   -> Bool
-positionInRange valueRange position =
-  case superEllipsisRangeTarget valueRange of
+definitionContains valueRange position =
+  case definitionTarget valueRange of
     GivenTarget target
       | ordinalLT start target ->
           not (ordinalLT position start) && ordinalLT position target
@@ -641,9 +696,9 @@ positionInRange valueRange position =
       not (ordinalLT position start)
         && ordinalLT position
              (superEllipsisRankOrderType
-               (superEllipsisRangeRank valueRange))
+               (definitionRank valueRange))
   where
-    start = superEllipsisRangeStart valueRange
+    start = definitionStart valueRange
 
 instance
     Concat

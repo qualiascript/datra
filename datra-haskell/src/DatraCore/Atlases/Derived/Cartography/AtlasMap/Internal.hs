@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 -- GHC does not count names referenced only by LiquidHaskell specifications.
 {-# OPTIONS_GHC -Wno-unused-imports #-}
@@ -17,6 +18,10 @@ module AtlasMap.Internal
   , atlasMapAtlas
   , withAtlasMapExtent
   , atlasMapCoversDatum
+  , atlasMapAcceptsDatum
+  , atlasMapCellValid
+  , atlasMapRegionValid
+  , atlasMapWitnessCovers
   , AtlasMapHom
   , atlasMapHom
   , identityAtlasMapHom
@@ -43,8 +48,10 @@ import Atlas
   , AtlasObjectPaginationScope
   , AtlasWitness
   , atlasDataAt
+  , atlasFolio
+  , atlasAcceptsDatum
+  , atlasPageElements
   , atlasHomPagination
-  , atlasOriginCell
   , atlasWitness
   , composeAtlasHoms
   , identityAtlasHom
@@ -54,21 +61,24 @@ import Atlas
   , mapAtlasData
   , materializeAtlasHom
   )
-import AtlasCoveredPageElement.Internal
-  ( AtlasCoveredPageElement (..)
-  , AtlasCoverageWitness
-  , coverageNormalize
+import AtlasCoveredPageElement
+  ( CoverageWitness
+  , AtlasCoveredPageElement
+  , atlasCoveredByWitness
   , coverageWitnessCovers
+  , coverageWitnessAlongArrow
   )
+import AtlasExtent (cellTraceValid, cellTraceHasOrigin)
+import PageElements.Structure (SomePageElement (..), pageElementPage)
+import Folio (folioLength)
 import Control.Category (Category (..))
 import DomanialInsertion (applyInsertion)
 import Dominion (Dominion)
 import PageElements
   ( PageElement
   , PageElementArrow
-  , SomePageElement
+  , originPageElement
   , pageElementArrow
-  , withPageElement
   )
 import Pagination (PaginationMorphism, SomePageElementArrow)
 import Prelude hiding ((.), id)
@@ -82,13 +92,51 @@ import Prelude hiding ((.), id)
 -- cell while leaving the Atlas's ordinary type-level object name unchanged.
 type role AtlasMap nominal
 data AtlasMap atlasObject where
-  AtlasMap
-    :: Atlas atlasScope scope cellData origin final
-    -> PageElement scope extentObject
-    -> (cellData extentObject
-        -> AtlasCoverageWitness
-             (AtlasObject atlasScope scope cellData))
-    -> AtlasMap (AtlasObject atlasScope scope cellData)
+  AtlasMap :: AtlasMapData a s d o f extent -> AtlasMap (AtlasObject a s d)
+
+-- | Store the origin, its owning trace, and the coverage law together.
+type role AtlasMapData nominal nominal nominal nominal nominal nominal
+{-@ data AtlasMapData a s d o f extent = AtlasMapData
+      { mapOwner :: Atlas a s d o f
+      , mapExtent :: {source:PageElement s extent | cellTraceValid mapOwner source
+           && SomePageElement source == originPageElement (atlasPageElements mapOwner)}
+      , mapExtentCoverage :: datum:{d extent | atlasAcceptsDatum mapOwner mapExtent datum}
+          -> {witness:CoverageWitness a s d |
+               coverageWitnessCovers mapOwner mapExtent datum witness}
+      } @-}
+data AtlasMapData a s d o f extent = AtlasMapData
+  { mapOwner :: Atlas a s d o f
+  , mapExtent :: PageElement s extent
+  , mapExtentCoverage :: d extent -> CoverageWitness a s d
+  }
+
+{-@ reflect atlasMapCellValid @-}
+atlasMapCellValid
+  :: forall a s d cell. AtlasMap (AtlasObject a s d) -> PageElement s cell -> Bool
+atlasMapCellValid (AtlasMap (value :: AtlasMapData a s d o f extent)) source =
+  cellTraceValid (mapOwner value) source
+
+-- | An owning occurrence on the final genuine page, excluding padded copies.
+-- ALIGN: ATLAS-MAP-FINAL-REGION.
+{-@ reflect atlasMapRegionValid @-}
+atlasMapRegionValid
+  :: forall a s d cell. AtlasMap (AtlasObject a s d) -> PageElement s cell -> Bool
+atlasMapRegionValid (AtlasMap (value :: AtlasMapData a s d o f extent)) source =
+  cellTraceValid (mapOwner value) source
+    && pageElementPage source == folioLength (atlasFolio (mapOwner value)) - 1
+
+{-@ reflect atlasMapAcceptsDatum @-}
+atlasMapAcceptsDatum
+  :: forall a s d cell. AtlasMap (AtlasObject a s d) -> PageElement s cell -> d cell -> Bool
+atlasMapAcceptsDatum (AtlasMap (value :: AtlasMapData a s d o f extent)) source datum =
+  atlasAcceptsDatum (mapOwner value) source datum
+
+{-@ reflect atlasMapWitnessCovers @-}
+atlasMapWitnessCovers
+  :: forall a s d cell. AtlasMap (AtlasObject a s d) -> PageElement s cell -> d cell
+  -> CoverageWitness a s d -> Bool
+atlasMapWitnessCovers (AtlasMap (value :: AtlasMapData a s d o f extent)) source datum witness =
+  coverageWitnessCovers (mapOwner value) source datum witness
 
 -- | Restrict an Atlas to an Atlas map by supplying coverage for every datum
 -- in its extent. The callback is invoked only at the Atlas's canonical origin
@@ -97,74 +145,102 @@ data AtlasMap atlasObject where
 atlasMap
   :: valueAtlas:Atlas atlasScope scope cellData origin final
   -> coversExtent:(forall extentObject.
-       extent:PageElement scope extentObject
-       -> datum:cellData extentObject
-       -> { witness:AtlasCoverageWitness
-              (AtlasObject atlasScope scope cellData) |
+       extent:{PageElement scope extentObject | cellTraceValid valueAtlas extent
+            && SomePageElement extent == originPageElement (atlasPageElements valueAtlas)}
+       -> datum:{cellData extentObject | atlasAcceptsDatum valueAtlas extent datum}
+       -> { witness:CoverageWitness atlasScope scope cellData |
             coverageWitnessCovers
               valueAtlas
-              (coverageNormalize valueAtlas extent)
+              extent
               datum
               witness })
   -> AtlasMap (AtlasObject atlasScope scope cellData)
 @-}
+-- ALIGN: ATLAS-MAP-OBJECT-INTERPRETATION.
 atlasMap
   :: Atlas atlasScope scope cellData origin final
   -> (forall extentObject.
        PageElement scope extentObject
        -> cellData extentObject
-       -> AtlasCoverageWitness
-            (AtlasObject atlasScope scope cellData))
+       -> CoverageWitness atlasScope scope cellData)
   -> AtlasMap (AtlasObject atlasScope scope cellData)
 atlasMap valueAtlas coversExtent =
-  withPageElement (atlasOriginCell valueAtlas) $ \extent ->
-    AtlasMap valueAtlas extent (coversExtent extent)
+  case originPageElement (atlasPageElements valueAtlas) of
+    SomePageElement extent -> AtlasMap (AtlasMapData valueAtlas extent (coversExtent extent))
 
 -- | Forget the Atlas-map object restriction. This is the object action of
 -- the canonical inclusion functor.
 atlasMapAtlas :: AtlasMap atlasObject -> AtlasWitness atlasObject
-atlasMapAtlas (AtlasMap valueAtlas _ _) = atlasWitness valueAtlas
+atlasMapAtlas (AtlasMap value) = atlasWitness (mapOwner value)
 
--- | Consume the extent of an Atlas map. Besides the dependent dominion, the
--- callback receives the total operation witnessing that each of its data is
--- covered by a final region.
+-- | Consume the extent together with its owning Atlas and dependent dominion.
+-- The callback receives coverage for each datum accepted by that exact owner
+-- and origin cell.
+{-@ withAtlasMapExtent :: value:AtlasMap (AtlasObject a s d)
+      -> (forall o f extent.
+           owner:Atlas a s d o f
+           -> source:{PageElement s extent | cellTraceValid owner source
+                && SomePageElement source == originPageElement (atlasPageElements owner)}
+           -> Dominion ({datum:d extent | atlasAcceptsDatum owner source datum})
+           -> ({datum:d extent | atlasAcceptsDatum owner source datum}
+                 -> AtlasCoveredPageElement (AtlasObject a s d))
+           -> result)
+      -> result @-}
 withAtlasMapExtent
-  :: AtlasMap atlasObject
-  -> (forall extentObject.
-       PageElement
-         (AtlasObjectPaginationScope atlasObject)
-         extentObject
-       -> Dominion (AtlasObjectCellData atlasObject extentObject)
-       -> (AtlasObjectCellData atlasObject extentObject
-           -> AtlasCoveredPageElement atlasObject)
+  :: forall a s d result. AtlasMap (AtlasObject a s d)
+  -> (forall o f extent.
+       Atlas a s d o f
+       -> PageElement s extent
+       -> Dominion (d extent)
+       -> (d extent -> AtlasCoveredPageElement (AtlasObject a s d))
        -> result)
   -> result
-withAtlasMapExtent
-  (AtlasMap valueAtlas extent coversExtent)
-  useExtent =
-    useExtent
-      extent
-      (atlasDataAt valueAtlas extent)
-      (\datum -> AtlasCoveredPageElement extent datum (coversExtent datum))
+withAtlasMapExtent (AtlasMap (value :: AtlasMapData a s d o f extent)) useExtent =
+  useExtent (mapOwner value) (mapExtent value)
+    (atlasDataAt (mapOwner value) (mapExtent value))
+    (mapExtentCovered value)
+
+{-@ mapExtentCovered :: value:AtlasMapData a s d o f extent
+      -> datum:{d extent | atlasAcceptsDatum (mapOwner value) (mapExtent value) datum}
+      -> AtlasCoveredPageElement (AtlasObject a s d) @-}
+mapExtentCovered
+  :: AtlasMapData a s d o f extent -> d extent -> AtlasCoveredPageElement (AtlasObject a s d)
+mapExtentCovered value datum =
+  atlasCoveredByWitness (mapOwner value) (mapExtent value) datum (mapExtentCoverage value datum)
 
 -- | Extend the defining extent-coverage witness to any Atlas cell. The datum
 -- is first transported to the origin, exactly as in Lean's
 -- @atlasMap_all_covered@ proof.
+-- ALIGN: ATLAS-MAP-COVERAGE.
+{-@ atlasMapCoversDatum :: value:AtlasMap (AtlasObject a s d)
+      -> source:{PageElement s cell | atlasMapCellValid value source}
+      -> datum:{d cell | atlasMapAcceptsDatum value source datum}
+      -> {witness:CoverageWitness a s d |
+           atlasMapWitnessCovers value source datum witness} @-}
 atlasMapCoversDatum
-  :: AtlasMap atlasObject
-  -> PageElement
-       (AtlasObjectPaginationScope atlasObject)
-       object
-  -> AtlasObjectCellData atlasObject object
-  -> AtlasCoverageWitness atlasObject
-atlasMapCoversDatum
-  (AtlasMap valueAtlas extent coversExtent)
-  occurrence
-  datum =
-    coversExtent
-      (applyInsertion
-        (mapAtlasData valueAtlas (pageElementArrow occurrence extent))
-        datum)
+  :: forall a s d object. AtlasMap (AtlasObject a s d)
+  -> PageElement s object
+  -> d object
+  -> CoverageWitness a s d
+atlasMapCoversDatum (AtlasMap (value :: AtlasMapData a s d o f extent)) occurrence datum =
+  mapCoveredDatum value occurrence datum
+
+{-@ mapCoveredDatum :: value:AtlasMapData a s d o f extent
+      -> source:{PageElement s cell | cellTraceValid (mapOwner value) source}
+      -> datum:{d cell | atlasAcceptsDatum (mapOwner value) source datum}
+      -> {witness:CoverageWitness a s d |
+           coverageWitnessCovers (mapOwner value) source datum witness} @-}
+mapCoveredDatum
+  :: AtlasMapData a s d o f extent
+  -> PageElement s cell
+  -> d cell
+  -> CoverageWitness a s d
+mapCoveredDatum value occurrence datum =
+  cellTraceHasOrigin (mapOwner value) occurrence `seq`
+    let arrow = pageElementArrow occurrence (mapExtent value)
+        witness = mapExtentCoverage value
+          (applyInsertion (mapAtlasData (mapOwner value) arrow) datum)
+    in coverageWitnessAlongArrow (mapOwner value) arrow datum witness `seq` witness
 
 -- | A morphism in the full subcategory of Atlas maps. There are no extra
 -- arrow restrictions: between two Atlas-map objects the hom-set is exactly
@@ -180,10 +256,12 @@ atlasMapHom :: AtlasHom source target -> AtlasMapHom source target
 atlasMapHom = AtlasMapHom
 
 -- | Identity in the category of Atlas maps.
+-- ALIGN: ATLAS-MAP-HOM-IDENTITY.
 identityAtlasMapHom :: AtlasMapHom object object
 identityAtlasMapHom = AtlasMapHom identityAtlasHom
 
 -- | Compose Atlas-map morphisms in categorical order.
+-- ALIGN: ATLAS-MAP-HOM-COMPOSITION.
 composeAtlasMapHoms
   :: AtlasMapHom middle target
   -> AtlasMapHom source middle
@@ -240,6 +318,7 @@ mapAtlasMapHomArrow sourceMap (AtlasMapHom hom) =
 
 -- | Apply an Atlas-map arrow to a cell and its dependent datum through the
 -- inclusion.
+-- ALIGN: ATLAS-MAP-HOM-DATA.
 mapAtlasMapHomData
   :: AtlasMap source
   -> AtlasMapHom source target
@@ -264,6 +343,7 @@ data AtlasMapInclusionFunctor = AtlasMapInclusionFunctor
   }
 
 -- | The Atlas Map Inclusion Functor from the Lean definition.
+-- ALIGN: ATLAS-MAP-INCLUSION.
 atlasMapInclusionFunctor :: AtlasMapInclusionFunctor
 atlasMapInclusionFunctor =
   AtlasMapInclusionFunctor

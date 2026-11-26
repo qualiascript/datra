@@ -32,7 +32,6 @@ import Data.Kind (Type)
 import DataTransformation
   ( DataTransformation
   , DataTransformationHom
-  , DataTransformationValue
   , dataTransformation
   , dataTransformationHom
   )
@@ -162,7 +161,7 @@ instance Category StableDataTransversalHom where
 
 -- | Defunctionalized carrier of the left Kan extension from stable Atlas
 -- transversals to all Atlas morphisms.
-data ExtendedStableDataTransversal stableValues
+type ExtendedStableDataTransversal stableValues = LeftKanExtensionValue stableValues
 
 -- | One coend presentation @[A -> i(B), value in F(B)]@.  Haskell retains a
 -- representative of the mathematical quotient; the coend relation is
@@ -175,12 +174,6 @@ data LeftKanExtensionValue stableValues source where
     -> AtlasHom source target
     -> StableDataTransversalValue stableValues target
     -> LeftKanExtensionValue stableValues source
-
-type instance
-  DataTransformationValue
-    (ExtendedStableDataTransversal stableValues)
-    source =
-      LeftKanExtensionValue stableValues source
 
 leftKanExtensionValue
   :: AtlasWitness target

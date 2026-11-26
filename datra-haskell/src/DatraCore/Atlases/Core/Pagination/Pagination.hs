@@ -1,3 +1,9 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE RankNTypes #-}
+#include "../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+
 -- | Paginations and their morphisms.
 --
 -- A pagination packages a folio with the category of page elements generated
@@ -8,6 +14,7 @@ module Pagination
   , PaginationMorphism
   , SomePageElementArrow
   , pagination
+  , paginationFromPageElements
   , paginationFolio
   , paginationPageElements
   , paginationCardinality
@@ -32,7 +39,6 @@ import Pagination.Internal
   , mapPaginationArrow
   , mapPaginationElement
   , paginationMorphism
-  , pagination
   , paginationFolio
   , paginationPageElements
   , paginationCardinality
@@ -42,3 +48,26 @@ import Pagination.Internal
   , paginationCoherenceIdempotent
   , withPageElementArrow
   )
+
+import Folio (Folio)
+import PageElements (PageElements, pageElements, pageElementsFolio)
+import qualified Pagination.Internal as Internal (paginationFromPageElements)
+
+-- | Build a pagination from its already owned category of occurrences.
+-- ALIGN: PAGINATION-FROM-PAGE-ELEMENTS.
+{-@ paginationFromPageElements :: elements:PageElements scope origin final
+      -> {value:Pagination scope origin final | paginationPageElements value == elements} @-}
+paginationFromPageElements :: PageElements scope origin final -> Pagination scope origin final
+paginationFromPageElements = Internal.paginationFromPageElements
+
+-- | Introduce a pagination with a fresh page-element scope.
+{-@ pagination :: pages:Folio origin final
+      -> (forall scope. value:{Pagination scope origin final |
+           pageElementsFolio (paginationPageElements value) == pages} -> result)
+      -> result @-}
+pagination
+  :: Folio origin final
+  -> (forall scope. Pagination scope origin final -> result)
+  -> result
+pagination pages usePagination =
+  pageElements pages (\elements -> usePagination (paginationFromPageElements elements))

@@ -5,17 +5,30 @@
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--max-case-expand=8" @-}
 
--- | Liquid-only ordinal arithmetic lemmas used by proof-bearing clients.
-module DatraOrdinal.LiquidInternal
+-- | Ordinal arithmetic laws for proof-bearing clients.
+module DatraOrdinal.Laws
   ( ordinalAddLeftBelow
   , ordinalAddRightBelow
   , ordinalAddRightInjective
   , ordinalAddSeparatesLeft
   , ordinalSubtractBetween
   , ordinalLongNotBelowOmega
+  , ordinalLTIrreflexive
+  , ordinalLTAsymmetric
+  , ordinalAddRightComparison
+  , ordinalBelowOne
+  , ordinalNotBelowZero
+  , ordinalZeroLeast
+  , finiteOrdinalBelowOmega
+  , finiteOrdinalLookup
+  , finiteOrdinalInjective
+  , naturalOrdinalMatches
+  , naturalAtOrdinalComplete
+  , ordinalDecodeEncode
   ) where
 
 import Numeric.Natural (Natural)
+import NaturalEncoding (encodeNaturalList, decodeNaturalList, decodeEncode)
 import DatraOrdinal.Internal
   ( Ordinal(..)
   , addCoefficients
@@ -26,12 +39,46 @@ import DatraOrdinal.Internal
   , listLength
   , omega
   , ordinalLT
+  , finiteOrdinal
+  , naturalAtOrdinal
+  , ordinal
   )
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
 
 {-@ type CanonicalCoefficients = { values:[Natural] | canonicalCoefficients values } @-}
+
+-- ALIGN: COVERAGE-ORDINAL-ENUMERATION.
+{-@ ordinalDecodeEncode :: value:Ordinal
+      -> {ordinal (decodeNaturalList (encodeNaturalList (coefficients value))) == value} @-}
+ordinalDecodeEncode :: Ordinal -> ()
+ordinalDecodeEncode (Ordinal []) = decodeEncode []
+ordinalDecodeEncode (Ordinal values@(_ : _)) = decodeEncode values
+
+-- ALIGN: ORDINAL-NOT-BELOW-ZERO.
+{-@ ordinalNotBelowZero :: value:Ordinal -> {not (ordinalLT value (finiteOrdinal 0))} @-}
+ordinalNotBelowZero :: Ordinal -> ()
+ordinalNotBelowZero (Ordinal []) = ()
+ordinalNotBelowZero (Ordinal values@(_ : _)) = coefficientsLT values [] `seq` ()
+
+-- | Zero lies below every nonzero ordinal.
+-- ALIGN: ORDINAL-ZERO-LEAST.
+{-@ ordinalZeroLeast :: value:Ordinal
+      -> {value /= finiteOrdinal 0 => ordinalLT (finiteOrdinal 0) value} @-}
+ordinalZeroLeast :: Ordinal -> ()
+ordinalZeroLeast (Ordinal []) = ()
+ordinalZeroLeast (Ordinal values@(_ : _)) = coefficientsLT [] values `seq` ()
+
+-- ALIGN: ORDINAL-BELOW-ONE.
+{-@ ordinalBelowOne :: value:Ordinal
+      -> {ordinalLT value (finiteOrdinal 1) => value == finiteOrdinal 0} @-}
+ordinalBelowOne :: Ordinal -> ()
+ordinalBelowOne (Ordinal []) = ()
+ordinalBelowOne (Ordinal values@[leading])
+  | leading == 1 = coefficientsLT values [1] `seq` ()
+  | otherwise = coefficientsLT values [1] `seq` ()
+ordinalBelowOne (Ordinal values@(_ : _ : _)) = coefficientsLT values [1] `seq` ()
 
 -- | The left summand embeds as an initial segment of an ordinal sum.
 {-@
@@ -41,6 +88,7 @@ ordinalAddLeftBelow
   -> value:{Ordinal | ordinalLT value prefix}
   -> { proof:() | ordinalLT value (addOrdinals prefix suffix) }
 @-}
+-- ALIGN: ORDINAL-ADD-LEFT-BELOW.
 ordinalAddLeftBelow :: Ordinal -> Ordinal -> Ordinal -> ()
 ordinalAddLeftBelow (Ordinal prefix) (Ordinal suffix) (Ordinal value) =
   addCoefficientsLeftBelow prefix suffix value
@@ -102,6 +150,7 @@ ordinalAddRightBelow
   -> { proof:() |
        ordinalLT (addOrdinals prefix left) (addOrdinals prefix right) }
 @-}
+-- ALIGN: ORDINAL-ADD-RIGHT-BELOW.
 ordinalAddRightBelow :: Ordinal -> Ordinal -> Ordinal -> ()
 ordinalAddRightBelow (Ordinal prefix) (Ordinal left) (Ordinal right) =
   addCoefficientsRightBelow prefix left right
@@ -248,6 +297,7 @@ ordinalAddRightInjective
        addOrdinals prefix left == addOrdinals prefix right
          => left == right }
 @-}
+-- ALIGN: ORDINAL-ADD-RIGHT-INJECTIVE.
 ordinalAddRightInjective :: Ordinal -> Ordinal -> Ordinal -> ()
 ordinalAddRightInjective (Ordinal prefix) (Ordinal left) (Ordinal right) =
   addCoefficientsRightInjective prefix left right
@@ -311,6 +361,7 @@ ordinalAddSeparatesLeft
   -> { proof:() |
        leftValue /= addOrdinals prefix rightValue }
 @-}
+-- ALIGN: ORDINAL-ADD-SEPARATES-LEFT.
 ordinalAddSeparatesLeft :: Ordinal -> Ordinal -> Ordinal -> ()
 ordinalAddSeparatesLeft prefix leftValue rightValue =
   case ordinalAddLeftBelow prefix rightValue leftValue of
@@ -334,6 +385,23 @@ coefficientsLTIrreflexive :: [Natural] -> ()
 coefficientsLTIrreflexive [] = ()
 coefficientsLTIrreflexive (_ : values) = coefficientsLTIrreflexive values
 
+{-@ ordinalLTAsymmetric :: left:Ordinal -> right:Ordinal
+      -> {ordinalLT left right => not (ordinalLT right left)} @-}
+ordinalLTAsymmetric :: Ordinal -> Ordinal -> ()
+ordinalLTAsymmetric (Ordinal left) (Ordinal right)
+  | coefficientsLT left right = coefficientsLTAsymmetric left right
+  | otherwise = ()
+
+-- | A fixed left ordinal summand preserves and reflects strict comparison.
+-- ALIGN: ORDINAL-ADD-RIGHT-COMPARISON.
+{-@ ordinalAddRightComparison :: prefix:Ordinal -> left:Ordinal -> right:Ordinal
+      -> {ordinalLT (addOrdinals prefix left) (addOrdinals prefix right)
+           == ordinalLT left right} @-}
+ordinalAddRightComparison :: Ordinal -> Ordinal -> Ordinal -> ()
+ordinalAddRightComparison (Ordinal prefix) (Ordinal left) (Ordinal right)
+  | coefficientsLT left right = addCoefficientsRightBelow prefix left right
+  | otherwise = addCoefficientsRightReflectsBelow prefix left right
+
 -- | Subtraction decomposes every point in the right interval of a sum.
 {-@
 ordinalSubtractBetween
@@ -346,6 +414,7 @@ ordinalSubtractBetween
        ordinalLT difference suffix
        && addOrdinals prefix difference == value }
 @-}
+-- ALIGN: ORDINAL-SUBTRACT-BETWEEN.
 ordinalSubtractBetween :: Ordinal -> Ordinal -> Ordinal -> Ordinal
 ordinalSubtractBetween
   (Ordinal prefix)
@@ -371,6 +440,7 @@ subtractEqualCoefficients
        canonicalCoefficients difference
        && addCoefficients prefix difference == value }
 @-}
+-- ALIGN: ORDINAL-SUBTRACT-EQUAL.
 subtractEqualCoefficients :: [Natural] -> [Natural] -> [Natural]
 subtractEqualCoefficients [] [] = []
 subtractEqualCoefficients [] (_ : _) = []
@@ -484,3 +554,41 @@ ordinalLongNotBelowOmega values@(_ : _ : _ : _) =
   coefficientsLT values [1, 0] `seq`
     ordinalLT (Ordinal values) omega `seq` ()
 ordinalLongNotBelowOmega _ = ()
+
+-- | The natural spine is the finite initial segment below omega.
+-- ALIGN: ORDINAL-FINITE-BELOW-OMEGA.
+{-@ finiteOrdinalBelowOmega :: value:Natural -> {ordinalLT (finiteOrdinal value) omega} @-}
+finiteOrdinalBelowOmega :: Natural -> ()
+finiteOrdinalBelowOmega value
+  | value > 0 = ()
+  | otherwise = ()
+
+-- ALIGN: ORDINAL-FINITE-LOOKUP.
+{-@ finiteOrdinalLookup :: value:Natural -> {naturalAtOrdinal (finiteOrdinal value) == Just value} @-}
+finiteOrdinalLookup :: Natural -> ()
+finiteOrdinalLookup value
+  | value > 0 = ()
+  | otherwise = ()
+
+-- ALIGN: ORDINAL-FINITE-INJECTIVE.
+{-@ finiteOrdinalInjective :: first:Natural -> second:Natural
+      -> {finiteOrdinal first == finiteOrdinal second => first == second} @-}
+finiteOrdinalInjective :: Natural -> Natural -> ()
+finiteOrdinalInjective first second =
+  finiteOrdinalLookup first `seq` finiteOrdinalLookup second
+
+{-@ reflect naturalOrdinalMatches @-}
+naturalOrdinalMatches :: Ordinal -> Maybe Natural -> Bool
+naturalOrdinalMatches _ Nothing = False
+naturalOrdinalMatches position (Just value) = finiteOrdinal value == position
+
+-- ALIGN: ORDINAL-NATURAL-INVERSE.
+{-@ naturalAtOrdinalComplete :: position:Ordinal
+      -> {ordinalLT position omega => naturalOrdinalMatches position (naturalAtOrdinal position)} @-}
+naturalAtOrdinalComplete :: Ordinal -> ()
+naturalAtOrdinalComplete (Ordinal []) = ()
+naturalAtOrdinalComplete (Ordinal [value])
+  | value > 0 = ()
+  | otherwise = ()
+naturalAtOrdinalComplete (Ordinal values@(_ : _ : _)) =
+  ordinalLongNotBelowOmega values

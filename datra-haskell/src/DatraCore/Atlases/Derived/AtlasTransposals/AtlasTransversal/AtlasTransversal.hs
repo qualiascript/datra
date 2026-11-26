@@ -1,3 +1,7 @@
+{-# LANGUAGE CPP #-}
+#include "../../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+
 -- | Atlas transversals: ordered transposals that preserve covered page elements.
 --
 -- This completes the two restrictions in Lean's @IsTransversal@: injectivity
@@ -6,11 +10,13 @@
 module AtlasTransversal
   ( AtlasTransversal
   , atlasTransversal
+  , withTransversalImage
   , atlasTransversalOrderedTransposal
   , atlasTransversalTransposal
   , atlasTransversalHom
   , atlasTransversalPreservesCoverage
   , mapAtlasTransversalCoveredPageElement
+  , withAtlasTransversalCoveredImage
   , identityAtlasTransversal
   , composeAtlasTransversals
   , mapAtlasTransversalObject
@@ -26,6 +32,7 @@ module AtlasTransversal
 import AtlasTransversal.Internal
   ( AtlasTransversal
   , atlasTransversal
+  , withTransversalImage
   , atlasTransversalHom
   , atlasTransversalLeftInverse
   , atlasTransversalOrderedTransposal
@@ -38,6 +45,7 @@ import AtlasTransversal.Internal
   , identityAtlasTransversal
   , mapAtlasTransversalArrow
   , mapAtlasTransversalCoveredPageElement
+  , withAtlasTransversalCoveredImage
   , mapAtlasTransversalData
   , mapAtlasTransversalElement
   , mapAtlasTransversalObject

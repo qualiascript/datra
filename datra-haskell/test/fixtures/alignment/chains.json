@@ -1,0 +1,8 @@
+[
+  {"position": [], "side": "left", "value": 0},
+  {"position": [7], "side": "left", "value": 7},
+  {"position": [1, 0], "side": "right", "value": 0},
+  {"position": [1, 4], "side": "right", "value": 4},
+  {"position": [2, 0], "side": null, "value": null},
+  {"position": [1, 0, 0], "side": null, "value": null}
+]

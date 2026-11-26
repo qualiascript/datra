@@ -1,6 +1,40 @@
+{-# LANGUAGE CPP #-}
+#include "../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple-local" @-}
+
 -- | The category of cell occurrences of a folio.
 module PageElements
   ( PageElements
+  , pageElementsFolio
+  , originPageElement
+  , lastPageElement
+  , finalPageElementIndex
+  , somePageElementTraceValid
+  , PageElementDomain
+  , pageElementDomain
+  , pageElementDomainContains
+  , pageElementDomainFinalPage
+  , pageElementDomainTraceLimit
+  , pageElementTraceValid
+  , pageElementTraceValidNormalize
+  , pageElementTraceValidShape
+  , pageElementTraceValidOrigin
+  , pageElementValidArrowPosition
+  , pageElementSamePagePosition
+  , traceLookupPresent
+  , folioPageOrderType
+  , genuinePageElementTrace
+  , appendedEarlierLookup
+  , appendedPageTrace
+  , snocElementTrace
+  , folioOriginTrace
+  , folioTraceLookup
+  , folioFinalPrefixLookup
+  , prefixTraceLookup
+  , prefixTraceLookupObject
+  , finalPageTraceLookup
+  , prependCopies
   , PageElementIndex
   , PageElement
   , SomePageElement
@@ -8,6 +42,8 @@ module PageElements
   , pageElements
   , pageElementIndex
   , pageElementIndexPage
+  , pageElementIndexOrigin
+  , pageElementIndexTrace
   , pageElementIndexPosition
   , pageElement
   , pageElementPage
@@ -36,6 +72,30 @@ module PageElements
 
 import PageElements.Internal
   ( PageElement
+  , pageElementsFolio
+  , originPageElement
+  , somePageElementTraceValid
+  , PageElementDomain
+  , pageElementDomain
+  , pageElementDomainContains
+  , pageElementDomainFinalPage
+  , pageElementDomainTraceLimit
+  , pageElementTraceValid
+  , pageElementTraceValidNormalize
+  , pageElementTraceValidShape
+  , pageElementValidArrowPosition
+  , traceLookupPresent
+  , folioPageOrderType
+  , genuinePageElementTrace
+  , appendedEarlierLookup
+  , appendedPageTrace
+  , snocElementTrace
+  , folioOriginTrace
+  , folioTraceLookup
+  , folioFinalPrefixLookup
+  , prefixTraceLookup
+  , finalPageTraceLookup
+  , prependCopies
   , PageElementIndex
   , PageElementArrow
   , PageElements
@@ -45,9 +105,10 @@ import PageElements.Internal
   , pageElement
   , pageElementIndex
   , pageElementIndexPage
+  , pageElementIndexOrigin
+  , pageElementIndexTrace
   , pageElementIndexPosition
   , pageElementArrow
-  , pageElements
   , composePageElementArrows
   , identityPageElementArrow
   , pageElementArrowAssociativity
@@ -56,7 +117,6 @@ import PageElements.Internal
   , pageElementArrowRightIdentity
   , pageElementArrowThin
   , pageElementTransported
-  , normalizePageElement
   , normalizeSomePageElement
   , normalizePageElementArrow
   , normalizePageElementIdempotent
@@ -68,3 +128,94 @@ import PageElements.Internal
   , somePageElementTransported
   , somePageElementTransportedReflexive
   )
+
+import qualified PageElements.Internal as Internal (pageElements, normalizePageElement, prefixTraceLookupObject, pageElementTraceValidOrigin, lastPageElement, finalPageElementIndex)
+import PageElements.Structure (SomePageElement (..))
+import Chain (ChainIndex, chainIndex, chainPosition, chainObjectAt, chainIndexPosition, chainIndexOrderType, chainOrderType)
+import DatraOrdinal (Ordinal)
+import Folio (Folio, lastChain, folioLength)
+import qualified PageElements.Structure as Trace
+import Numeric.Natural (Natural)
+
+{-@ embed Natural as int @-}
+{-@ invariant {value:Natural | value >= 0} @-}
+
+-- | Retain the owning folio through the public generative boundary.
+-- ALIGN: PE-GENERATIVE-FOLIO.
+{-@ pageElements :: pages:Folio origin final
+      -> (forall scope. category:{PageElements scope origin final |
+           pageElementsFolio category == pages} -> result) -> result @-}
+pageElements :: Folio origin final
+  -> (forall scope. PageElements scope origin final -> result) -> result
+pageElements = Internal.pageElements
+
+-- | Decode a prefix position while retaining the checked object and success
+-- contracts across the exposed interface.
+{-@ prefixTraceLookupObject :: prefix:Folio origin current -> position:Ordinal
+      -> {result:Maybe {value:current | chainPosition (lastChain prefix) value == position} |
+           traceLookupPresent result == traceLookupPresent (prefixTraceLookup prefix 0 position)} @-}
+prefixTraceLookupObject :: Folio origin current -> Ordinal -> Maybe current
+prefixTraceLookupObject = Internal.prefixTraceLookupObject
+
+-- | The owning lookup certifies the scalar arrow back to the origin.
+-- ALIGN: PE-TRACE-VALID-ORIGIN.
+{-@ pageElementTraceValidOrigin :: category:PageElements scope origin final
+      -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence}
+      -> {somePageElementPrecedes (SomePageElement occurrence) (originPageElement category)
+           && somePageElementTransported (SomePageElement occurrence) (originPageElement category)} @-}
+{-@ ple pageElementTraceValidOrigin @-}
+pageElementTraceValidOrigin :: PageElements scope origin final -> PageElement scope object -> ()
+pageElementTraceValidOrigin = Internal.pageElementTraceValidOrigin
+
+-- | A shaped transport within one page retains its position. The lookup
+-- theorem supplies the target position; offset zero reads the source head.
+-- ALIGN: DOMINC-SAME-PAGE-POSITION.
+{-@ pageElementSamePagePosition :: category:PageElements scope origin final
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)
+           && pageElementPage (arrowSource arrow) == pageElementPage (arrowTarget arrow)}
+      -> {pageElementPosition (arrowSource arrow) == pageElementPosition (arrowTarget arrow)} @-}
+{-@ ple pageElementSamePagePosition @-}
+pageElementSamePagePosition :: PageElements scope origin final -> PageElementArrow scope source target -> ()
+pageElementSamePagePosition category arrow =
+  pageElementValidArrowPosition category arrow `seq`
+  pageElementTraceValidShape category (arrowSource arrow) `seq`
+  case Trace.pageElementTrace (arrowSource arrow) of
+    [] -> ()
+    _ : _ -> ()
+
+-- | Select a final-page cell and retain its owning-trace certificate.
+{-@ lastPageElement :: category:PageElements scope origin final
+      -> index:{ChainIndex final | chainPosition (lastChain (pageElementsFolio category)) (chainObjectAt index)
+           == chainIndexPosition index}
+      -> {result:SomePageElement scope | somePageElementTraceValid category result
+           && Trace.somePageElementPage result == folioLength (pageElementsFolio category) - 1
+           && Trace.somePageElementPosition result == chainIndexPosition index} @-}
+lastPageElement :: PageElements scope origin final -> ChainIndex final -> SomePageElement scope
+lastPageElement = Internal.lastPageElement
+
+-- | Resolve a certified final occurrence through the owning final chain.
+{-@ finalPageElementIndex :: category:PageElements scope origin final
+      -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence
+           && pageElementPage occurrence == folioLength (pageElementsFolio category) - 1}
+      -> {result:Maybe ({index:ChainIndex final |
+           chainIndexPosition index == pageElementPosition occurrence
+           && chainIndexOrderType index == chainOrderType (lastChain (pageElementsFolio category))
+           && chainPosition (lastChain (pageElementsFolio category)) (chainObjectAt index)
+                == pageElementPosition occurrence}) | traceLookupPresent result
+           && result == chainIndex (lastChain (pageElementsFolio category)) (pageElementPosition occurrence)} @-}
+finalPageElementIndex
+  :: PageElements scope origin final -> PageElement scope object -> Maybe (ChainIndex final)
+finalPageElementIndex = Internal.finalPageElementIndex
+
+-- | Retain the normalization bound and unchanged cell position at the public interface.
+{-@ reflect normalizePageElement @-}
+{-@ normalizePageElement :: category:PageElements scope origin final
+      -> occurrence:PageElement scope object
+      -> {result:PageElement scope object |
+           pageElementPage result <= folioLength (pageElementsFolio category) - 1
+           && pageElementPage result == Trace.clampPage (pageElementPage occurrence) (folioLength (pageElementsFolio category) - 1)
+           && pageElementPosition result == pageElementPosition occurrence} @-}
+normalizePageElement :: PageElements scope origin final -> PageElement scope object -> PageElement scope object
+normalizePageElement = Internal.normalizePageElement

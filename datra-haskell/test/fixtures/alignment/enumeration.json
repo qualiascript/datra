@@ -1,0 +1,159 @@
+{
+  "decode": [
+    {
+      "width": 0,
+      "code": 0,
+      "coefficients": []
+    },
+    {
+      "width": 0,
+      "code": 1,
+      "coefficients": null
+    },
+    {
+      "width": 1,
+      "code": 0,
+      "coefficients": []
+    },
+    {
+      "width": 1,
+      "code": 1,
+      "coefficients": [
+        1
+      ]
+    },
+    {
+      "width": 1,
+      "code": 7,
+      "coefficients": [
+        7
+      ]
+    },
+    {
+      "width": 2,
+      "code": 0,
+      "coefficients": []
+    },
+    {
+      "width": 2,
+      "code": 1,
+      "coefficients": [
+        1
+      ]
+    },
+    {
+      "width": 2,
+      "code": 2,
+      "coefficients": [
+        1,
+        0
+      ]
+    },
+    {
+      "width": 2,
+      "code": 3,
+      "coefficients": [
+        2
+      ]
+    },
+    {
+      "width": 2,
+      "code": 4,
+      "coefficients": [
+        1,
+        1
+      ]
+    },
+    {
+      "width": 2,
+      "code": 5,
+      "coefficients": [
+        2,
+        0
+      ]
+    },
+    {
+      "width": 2,
+      "code": 6,
+      "coefficients": [
+        3
+      ]
+    },
+    {
+      "width": 2,
+      "code": 10,
+      "coefficients": [
+        4
+      ]
+    },
+    {
+      "width": 2,
+      "code": 20,
+      "coefficients": [
+        5,
+        0
+      ]
+    },
+    {
+      "width": 3,
+      "code": 0,
+      "coefficients": []
+    },
+    {
+      "width": 3,
+      "code": 1,
+      "coefficients": [
+        1
+      ]
+    },
+    {
+      "width": 3,
+      "code": 5,
+      "coefficients": [
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "width": 3,
+      "code": 15,
+      "coefficients": [
+        2,
+        0
+      ]
+    },
+    {
+      "width": 3,
+      "code": 100,
+      "coefficients": [
+        9,
+        1,
+        1
+      ]
+    }
+  ],
+  "rejections": [
+    {
+      "width": 0,
+      "coefficients": [
+        1
+      ]
+    },
+    {
+      "width": 1,
+      "coefficients": [
+        1,
+        0
+      ]
+    },
+    {
+      "width": 2,
+      "coefficients": [
+        1,
+        0,
+        0
+      ]
+    }
+  ]
+}

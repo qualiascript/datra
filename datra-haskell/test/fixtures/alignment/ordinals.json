@@ -1,0 +1,13 @@
+[
+  {"left": [], "right": [], "canonical_left": [], "canonical_right": [], "sum": [], "lt": false},
+  {"left": [0, 0], "right": [1], "canonical_left": [], "canonical_right": [1], "sum": [1], "lt": true},
+  {"left": [3], "right": [4], "canonical_left": [3], "canonical_right": [4], "sum": [7], "lt": true},
+  {"left": [9], "right": [1, 0], "canonical_left": [9], "canonical_right": [1, 0], "sum": [1, 0], "lt": true},
+  {"left": [1, 0], "right": [9], "canonical_left": [1, 0], "canonical_right": [9], "sum": [1, 9], "lt": false},
+  {"left": [1, 5], "right": [1, 2], "canonical_left": [1, 5], "canonical_right": [1, 2], "sum": [2, 2], "lt": false},
+  {"left": [0, 2, 0], "right": [0, 0, 3], "canonical_left": [2, 0], "canonical_right": [3], "sum": [2, 3], "lt": false},
+  {"left": [2, 3, 4], "right": [5, 6], "canonical_left": [2, 3, 4], "canonical_right": [5, 6], "sum": [2, 8, 6], "lt": false},
+  {"left": [2, 3], "right": [1, 0, 0], "canonical_left": [2, 3], "canonical_right": [1, 0, 0], "sum": [1, 0, 0], "lt": true},
+  {"left": [2, 3, 4], "right": [], "canonical_left": [2, 3, 4], "canonical_right": [], "sum": [2, 3, 4], "lt": false},
+  {"left": [1, 0, 3], "right": [1, 0, 4], "canonical_left": [1, 0, 3], "canonical_right": [1, 0, 4], "sum": [2, 0, 4], "lt": true}
+]

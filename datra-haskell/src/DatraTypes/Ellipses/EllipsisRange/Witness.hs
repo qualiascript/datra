@@ -8,7 +8,8 @@ module EllipsisRange.Witness
 import Atlas (AtlasWitness, atlasWitness)
 import EllipsisRange (EllipsisRange)
 import EmptyAtlas (emptyAtlas)
-import MapOperators.IndexedAtlasMap (indexedAtlasAtlas)
+import MapOperators.IndexedAtlasMap (withIndexedAtlas)
+import ChainedDominionAtlas (chainedDominionAtlas)
 import MapOperators.OrderedAtlasMap
   ( OrderedAtlasMap (EmptyOrderedAtlasMap, NonEmptyOrderedAtlasMap)
   )
@@ -23,4 +24,4 @@ withRangeAtlasWitness valueRange useWitness =
     EmptyOrderedAtlasMap ->
       emptyAtlas (useWitness . atlasWitness)
     NonEmptyOrderedAtlasMap valueMap ->
-      useWitness (atlasWitness (indexedAtlasAtlas valueMap))
+      withIndexedAtlas valueMap (useWitness . atlasWitness . chainedDominionAtlas)

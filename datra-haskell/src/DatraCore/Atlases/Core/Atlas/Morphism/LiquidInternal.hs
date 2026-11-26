@@ -28,8 +28,19 @@ module Atlas.Morphism.LiquidInternal
 
 import Atlas.Internal
 import Data.Kind (Type)
-import DomanialInsertion.LiquidInternal
-import PageElements.LiquidInternal
+import DomanialInsertion.Core
+  ( DomanialInsertion (..)
+  )
+import PageElements.Structure
+  ( PageElementCell (..)
+  , PageElement (..)
+  , SomePageElement (..)
+  , PageElementArrow (..)
+  , SomePageElementArrow (..)
+  , somePageElementPrecedes
+  , somePageElementTransported
+  , pageElementArrow
+  )
 
 -- | A canonical page functor and the components of its data natural
 -- transformation, checked relative to particular source and target Atlases.
@@ -111,6 +122,7 @@ mapAtlasMorphismActionObject
 mapAtlasMorphismActionObject (AtlasMorphismAction _ _ mapObject _ _ _) =
   mapObject
 
+-- ALIGN: ATLAS-PRIMITIVE-DATA-INTERPRETATION.
 mapAtlasMorphismActionComponent
   :: AtlasMorphismAction
        objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
@@ -123,6 +135,7 @@ mapAtlasMorphismActionComponent
 mapAtlasMorphismActionComponent
   (AtlasMorphismAction _ _ _ component _ _) = component
 
+-- ALIGN: ATLAS-PRIMITIVE-PAGE-INTERPRETATION.
 mapAtlasMorphismActionElement
   :: AtlasMorphismAction
        objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
@@ -247,6 +260,9 @@ atlasMorphismAction
        sourceCellData targetCellData
        sourceOrigin sourceFinal targetOrigin targetFinal
 @-}
+-- ALIGN: ATLAS-PRIMITIVE-PAGE-FUNCTOR.
+-- ALIGN: ATLAS-PRIMITIVE-NATURALITY.
+-- ALIGN: ATLAS-PRIMITIVE-INTERPRETATION.
 atlasMorphismAction
   :: AtlasObjectMap objectMap
   -> Atlas sourceAtlasScope sourceScope sourceCellData sourceOrigin sourceFinal

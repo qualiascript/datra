@@ -53,8 +53,8 @@ import Prelude hiding ((.), id)
 -- derived from their components rather than requested again from callers.
 type role DataTransformationHom nominal nominal
 data DataTransformationHom
-  (source :: Type)
-  (target :: Type) where
+  (source :: Type -> Type)
+  (target :: Type -> Type) where
   PrimitiveDataTransformationHom
     :: DataTransformationNatural source target
     -> DataTransformationHom source target

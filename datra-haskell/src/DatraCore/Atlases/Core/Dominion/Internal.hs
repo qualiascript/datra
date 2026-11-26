@@ -6,6 +6,7 @@
 -- | Hidden dominion representation and proof-bearing operations.
 module Dominion.Internal
   ( Dominion (..)
+  , MembershipDominion (..)
   , dominion
   , CountableSet (..)
   , embed
@@ -39,14 +40,26 @@ dominion
   -> (x:a ->
        { proof:() |
            unrankFunction (rankFunction x) == Just x })
-  -> Dominion a
+  -> {value:Dominion a | rank value == rankFunction && unrank value == unrankFunction}
 @-}
+-- ALIGN: DOMINION-RANK-INJECTIVE.
 dominion
   :: (a -> Natural)
   -> (Natural -> Maybe a)
   -> (a -> ())
   -> Dominion a
 dominion = Dominion
+
+-- | A value-dependent carrier, packaged without widening its Dominion to
+-- every value of the ambient Haskell type.
+{-@ data MembershipDominion a = MembershipDominion
+      { dominionMembership :: a -> Bool
+      , memberDominion :: Dominion ({datum:a | dominionMembership datum})
+      } @-}
+data MembershipDominion a = MembershipDominion
+  { dominionMembership :: a -> Bool
+  , memberDominion :: Dominion a
+  }
 
 newtype CountableSet a = CountableSet
   { elementAt :: Natural -> Maybe a

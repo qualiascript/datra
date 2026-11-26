@@ -12,8 +12,7 @@ module MapOperators.AccessOperator
   ( IndexedAtlasMap
   , indexedAtlasMap
   , indexedAtlasMapFromChain
-  , indexedAtlasAtlas
-  , indexedAtlasAtlasMap
+  , withIndexedAtlas
   , indexedAtlasChain
   , indexedAtlasDominion
   , indexedAtlasCardinality
@@ -53,8 +52,7 @@ import DatraOrdinal
 import Dominion (dominion, rank, unrank)
 import MapOperators.IndexedAtlasMap
   ( IndexedAtlasMap
-  , indexedAtlasAtlas
-  , indexedAtlasAtlasMap
+  , withIndexedAtlas
   , indexedAtlasCardinality
   , indexedAtlasChain
   , indexedAtlasDominion

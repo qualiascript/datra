@@ -3,13 +3,30 @@ FROM haskell:9.14.1-bookworm AS build
 ARG CABAL_VERSION=3.18.1.0
 ARG TARGETARCH
 
-# Liquid Haskell delegates refinement checking to an external SMT solver.
-# Keep Z3 in the image so both image builds and interactive development can
-# use the liquid plugin.
-RUN apt-get update && \
-    apt-get install --yes --no-install-recommends z3 && \
-    rm -rf /var/lib/apt/lists/* && \
-    z3 --version
+# LiquidHaskell needs Z3's nested polymorphic datatype selector support.
+# Extract the standalone executable from the pinned official binary wheel;
+# these manylinux builds also run on the builder's Debian glibc.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install --yes --no-install-recommends unzip; \
+    rm -rf /var/lib/apt/lists/*; \
+    case "$TARGETARCH" in \
+      amd64) \
+        z3_url="https://files.pythonhosted.org/packages/21/c9/bb51a96af0091324c81b803f16c49f719f9f6ea0b0bb52200f5c97ec4892/z3_solver-4.15.4.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"; \
+        z3_sha256="7e103a6f203f505b8b8b8e5c931cc407c95b61556512d4921c1ddc0b3f41b08e" \
+        ;; \
+      arm64) \
+        z3_url="https://files.pythonhosted.org/packages/bf/2e/0b49f7e4e53817cfb09a0f6585012b782dfe0b666e8abefcb4fac0570606/z3_solver-4.15.4.0-py3-none-manylinux_2_34_aarch64.whl"; \
+        z3_sha256="62c7e9cbdd711932301f29919ad9158de9b2f58b4d281dd259bbcd0a2f408ba1" \
+        ;; \
+      *) echo "unsupported Docker architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    curl --fail --location --silent --show-error "$z3_url" --output /tmp/z3.whl; \
+    echo "${z3_sha256}  /tmp/z3.whl" | sha256sum --check --strict; \
+    unzip -p /tmp/z3.whl '*/data/bin/z3' > /usr/local/bin/z3; \
+    chmod 0755 /usr/local/bin/z3; \
+    rm /tmp/z3.whl; \
+    z3 --version | grep -F 'Z3 version 4.15.4'
 
 # The GHC 9.14.1 official image currently contains an older cabal-install.
 # Install the exact Cabal version used by this project and verify the GHCup

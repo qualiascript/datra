@@ -30,6 +30,7 @@ extra-source-files:
     test/fixtures/cli/*.out
     test/fixtures/integration/*.datra
     test/fixtures/modules/*.datra
+    test/fixtures/alignment/*.json
     src/DatraCore/LiquidPlugin.h
 
 common warnings
@@ -50,6 +51,33 @@ flag liquid
 library
     import:           warnings
     exposed-modules:
+        NaturalEncoding
+        NaturalSearch
+        DatraOrdinal.Laws
+        Chain.Sum
+        Chain.Order
+        Chain.Position
+        Chain.Singleton
+        Consolidation.Core
+        Consolidation.Ordered
+        Consolidation.Sum
+        Consolidation.Reindex
+        Consolidation.Endpoints
+        DomanialInsertion.Core
+        Folio.Presentation
+        Folio.Assembly
+        PageElements.Structure
+        PageElements.Construction
+        PageElements.TraceChain
+        Atlas.Construction
+        DataTransformation.Core
+        Charter.Data
+        AtlasMerge.Data
+        AtlasMerge.Assembly
+        AtlasSequence.Data
+        AtlasSequence.Member
+        AtlasSequence.Page
+        AtlasSequence.Assembly
         DatraLanguage.AST
         DatraLanguage.Application
         DatraLanguage.ConcreteSyntax
@@ -130,6 +158,7 @@ library
         PageElements
         Pagination
         Atlas
+        Atlas.Presheaf
         AtlasExtent
         AtlasTerritory
         EmptyAtlas
@@ -143,12 +172,17 @@ library
         AtlasTransposal
         OrderedAtlasTransposal
         ChainedDominionAtlas
+        ChainedDominionAtlas.Data
+        ChainedDominionAtlas.Action
         RankedDominionAtlas
         AtlasTransversal
         AtlasTransversalMap
         Charter
         Coalition
+        Coalition.Element
         DomanialInclusion
+        DomanialInclusion.Data
+        DomanialInclusion.Presentation
         StableAtlasTransversal
         DataTransformation
         DataTransversal
@@ -164,15 +198,19 @@ library
         DataTransformationMap
     other-modules:
         PageElements.Internal
-        PageElements.LiquidInternal
         Pagination.Internal
         Pagination.LiquidInternal
         Atlas.Internal
         Atlas.LiquidInternal
         AtlasExtent.Internal
-        AtlasTerritory.Internal
         EmptyAtlas.Internal
         AtlasMerge.Internal
+        AtlasMerge.Action
+        AtlasMerge.Page
+        AtlasMerge.Resolution
+        AtlasMerge.Source
+        AtlasMerge.Transport
+        AtlasSequence.Resolution
         AtlasConfederation.Internal
         AtlasFederation.Internal
         AtlasMapFederation.Internal
@@ -189,6 +227,10 @@ library
         Charter.Internal
         Charter.LiquidInternal
         Coalition.Internal
+        Coalition.Element.Internal
+        Coalition.Element.Data
+        Coalition.Action
+        Coalition.Action.Internal
         DomanialInclusion.Internal
         DomanialInclusion.LiquidInternal
         StableAtlasTransversal.Internal
@@ -204,16 +246,11 @@ library
         Expedition.Internal
         DataTransformationMap.Internal
         Chain.Internal
-        Chain.LiquidInternal
         Consolidation.Internal
-        Consolidation.LiquidInternal
         DatraOrdinal.Internal
-        DatraOrdinal.LiquidInternal
         DomanialInsertion.Internal
-        DomanialInsertion.LiquidInternal
         Dominion.Internal
         Folio.Internal
-        Folio.LiquidInternal
         NumericalOperators.Internal
         NumericalOperators.Semantics
         MapOperators.Internal
