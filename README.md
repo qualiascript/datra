@@ -46,6 +46,15 @@ assert ((arg2 := 10, 4) of ArgsIntMap) = false # missing argument: `arg1`
 See the [Haskell implementation README](datra-haskell/README.md) for Docker
 installation and invocation.
 
+## Implementation footprint
+
+Run `python3 tools/loc-dashboard/serve.py` from this checkout, then open
+[the local dashboard](http://127.0.0.1:8765). It follows the current branch and
+charts daily implementation LOC and seven-day net growth, excluding `docs/`,
+`src/DatraCore/`, and `test/` under `datra-haskell/`.
+See the [dashboard instructions](tools/loc-dashboard/README.txt) for options
+and squash-PR history reconstruction.
+
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE). Datra is authored by
