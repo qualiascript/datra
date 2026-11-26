@@ -236,7 +236,6 @@ library
         Coalition.Element.Internal
         Coalition.Element.Data
         Coalition.Action
-        Coalition.Action.Internal
         DomanialInclusion.Internal
         DomanialInclusion.LiquidInternal
         StableAtlasTransversal.Internal

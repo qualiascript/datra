@@ -290,13 +290,25 @@ Atlas together with a function mapping every accepted source to that Atlas's
 valid covered or canonical coalition carrier. Identity carries the caller's
 source domain through the callback package; composition retains the final
 mapped owner and composes the stored functions. Pointwise observations use
-this same operation. Lean models the complete operation and proves that its
-application and composition agree with the covered and coalition maps.
+this same operation. Coalition actions store their source owner, target owner,
+and canonical function together; raw mapping and both owned observations
+select that function. The public callbacks retain pointwise equality to the
+raw coalition mapper, allowing its supplied inverse law to certify the owned
+function without changing either executable direction. Lean models the
+complete operation and proves that its application and composition agree
+with the covered and coalition maps.
 A primitive stable action stores its source
 Atlas together with an insertion restricted to that Atlas's valid canonical
 coalitions. The stored forward function is exactly the coalition mapper, and
 every successful inverse result satisfies the same source-domain condition,
-including on inputs outside the forward image. The generic insertion eliminator
+including on inputs outside the forward image. Primitive assembly also retains
+the canonical mapper's actual target Atlas and a checked certificate that every
+accepted source maps to a valid canonical coalition for that owner. The inverse
+continues to accept all raw target records; its off-image behavior is unchanged.
+Lean derives the matching target-validity certificate from the retained forward
+equation. The declared extent target and the mapper's retained target remain
+separate ownership obligations until their value-level correspondence is proved.
+The generic insertion eliminator
 and its identity/composition cases still need contracts retaining those domains.
 The exposed `DomanialInsertion.Core` interface checks the composed forward
 equation and both partial-inverse cases: failure of the second inverse is
@@ -1410,9 +1422,15 @@ The final workflow should provide one top-level target, for example
 
 ```sh
 lake build
-cd datra-haskell && make verify-liquid
-cd datra-haskell && make check
+make -C datra-haskell verify-liquid
+make -C datra-haskell check-alignment
 ```
+
+For this alignment goal, runtime validation is limited to the core-library
+suite. Do not run parsing, interpreting, or CLI tests, or the mixed
+`datra-types-test` suite's evaluation tests. The general `make check` target
+remains available for other development work. Report these exclusions in the
+final validation results; do not repair `ModuleRequiresBlock` for this goal.
 
 Add an assumption gate equivalent to:
 
@@ -1470,7 +1488,7 @@ The alignment is complete when all of the following hold:
   `yonedaNatural` are checked rather than assumed.
 - No `assume`, relevant `ignore`, `unsafeCoerce`, or equivalent trust escape is
   present in `DatraCore`.
-- `lake build`, `make verify-liquid`, and `make check` pass in the pinned toolchain.
+- `lake build`, `make verify-liquid`, and `make check-alignment` pass in the pinned toolchain.
 - Derived constructions use the aligned core or have explicit, documented
   bridge theorems showing why the old semantic definition is equivalent.
 - `make preprint-full` succeeds with the split Lean modules, includes only

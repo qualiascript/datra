@@ -20,7 +20,7 @@ verify-formal:
 	$(LAKE) build
 	$(MAKE) -C datra-haskell verify-liquid
 	$(MAKE) verify-proof-guards
-	$(MAKE) -C datra-haskell check
+	$(MAKE) -C datra-haskell check-alignment
 	$(MAKE) verify-fixtures
 
 verify-fixtures:

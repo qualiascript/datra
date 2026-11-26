@@ -77,7 +77,8 @@ import AtlasTransversal
   )
 import Coalition.Element
   ( CoalitionElement, CoalitionData, mapCoalitionElement
-  , coalitionElementValid, coalitionElementSource, coalitionCounitInsertion )
+  , coalitionElementValid, coalitionElementSource, coalitionCounitInsertion
+  , withMappedCoalitionAction )
 import DomanialInsertion.Core
   ( DomanialInsertion (..), identityInsertion, composeInsertions
   , composePartialInverses )
@@ -179,7 +180,7 @@ checkedStableOrigin _ _ _ proof = proof
 type role StableAtlasTransversal nominal nominal
 data StableAtlasTransversal source target where
   PrimitiveStableAtlasTransversal
-    :: StableTransversalAction sa ss sd so sf ta ts td to tf
+    :: StableTransversalAction sa ss sd so sf ta ts td to tf mo mf
     -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
   IdentityStableAtlasTransversal
     :: StableAtlasTransversal object object
@@ -191,24 +192,29 @@ data StableAtlasTransversal source target where
 {-@ predicate StableCoalitionValid A E = coalitionElementValid A E
       && coalitionElementSource E == originPageElement (atlasPageElements A) @-}
 
-type role StableTransversalAction nominal nominal nominal nominal nominal nominal nominal nominal nominal nominal
-{-@ data StableTransversalAction sa ss sd so sf ta ts td to tf = StableTransversalAction
+type role StableTransversalAction nominal nominal nominal nominal nominal nominal nominal nominal nominal nominal nominal nominal
+{-@ data StableTransversalAction sa ss sd so sf ta ts td to tf mo mf = StableTransversalAction
       { stableActionSource :: Atlas sa ss sd so sf
       , stableActionTarget :: Atlas ta ts td to tf
       , stableActionTransversal :: AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
       , stableActionOrigin :: {proof:() |
            stableOriginPreserved stableActionSource stableActionTarget stableActionTransversal}
+      , stableActionMappedTarget :: Atlas ta ts td mo mf
       , stableActionInsertion :: {insertion:DomanialInsertion
            ({value:CoalitionData sa ss sd | StableCoalitionValid stableActionSource value})
            (CoalitionData ta ts td) |
            applyInsertion insertion == mapCoalitionElement stableActionSource stableActionTransversal}
+      , stableActionForwardValid :: value:{CoalitionData sa ss sd | StableCoalitionValid stableActionSource value}
+          -> {StableCoalitionValid stableActionMappedTarget (applyInsertion stableActionInsertion value)}
       } @-}
-data StableTransversalAction sa ss sd so sf ta ts td to tf = StableTransversalAction
+data StableTransversalAction sa ss sd so sf ta ts td to tf mo mf = StableTransversalAction
   { stableActionSource :: Atlas sa ss sd so sf
   , stableActionTarget :: Atlas ta ts td to tf
   , stableActionTransversal :: AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
   , stableActionOrigin :: ()
+  , stableActionMappedTarget :: Atlas ta ts td mo mf
   , stableActionInsertion :: DomanialInsertion (CoalitionData sa ss sd) (CoalitionData ta ts td)
+  , stableActionForwardValid :: CoalitionData sa ss sd -> ()
   }
 
 -- | Restrict an Atlas transversal to arrows sending extent to extent, with
@@ -252,12 +258,42 @@ stableAtlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
 stableAtlasTransversal sourceAtlas targetAtlas transversal proof backward leftInverse =
+  withMappedCoalitionAction sourceAtlas transversal
+    (retainStableCoalitionTarget sourceAtlas targetAtlas transversal proof backward leftInverse)
+
+-- | Retain the canonical mapper's actual target owner while leaving the supplied
+-- inverse defined on every raw target, including inputs outside the image.
+-- ALIGN: ATLAS-STABLE-TARGET-PACKAGE.
+{-@ retainStableCoalitionTarget
+      :: sourceOwner:Atlas sa ss sd so sf
+      -> targetOwner:Atlas ta ts td to tf
+      -> transversal:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> {proof:() | stableOriginPreserved sourceOwner targetOwner transversal}
+      -> backward:(CoalitionData ta ts td
+           -> Maybe ({value:CoalitionData sa ss sd | StableCoalitionValid sourceOwner value}))
+      -> (value:{CoalitionData sa ss sd | StableCoalitionValid sourceOwner value}
+           -> {backward (mapCoalitionElement sourceOwner transversal value) == Just value})
+      -> mappedOwner:Atlas ta ts td mo mf
+      -> ({value:CoalitionData sa ss sd | StableCoalitionValid sourceOwner value}
+           -> {image:CoalitionData ta ts td | StableCoalitionValid mappedOwner image
+                && image == mapCoalitionElement sourceOwner transversal value})
+      -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td) @-}
+retainStableCoalitionTarget
+  :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> () -> (CoalitionData ta ts td -> Maybe (CoalitionData sa ss sd))
+  -> (CoalitionData sa ss sd -> ())
+  -> Atlas ta ts td mo mf -> (CoalitionData sa ss sd -> CoalitionData ta ts td)
+  -> StableAtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+retainStableCoalitionTarget sourceOwner targetOwner transversal proof backward leftInverse mappedOwner forward =
   PrimitiveStableAtlasTransversal
-    (StableTransversalAction sourceAtlas targetAtlas transversal
-      (checkedStableOrigin sourceAtlas targetAtlas transversal proof)
-      (coalitionCounitInsertion (coalitionElementValid sourceAtlas) coalitionElementSource
-        (originPageElement (atlasPageElements sourceAtlas))
-        (mapCoalitionElement sourceAtlas transversal) backward leftInverse))
+    (StableTransversalAction sourceOwner targetOwner transversal
+      (checkedStableOrigin sourceOwner targetOwner transversal proof)
+      mappedOwner
+      (coalitionCounitInsertion (coalitionElementValid sourceOwner) coalitionElementSource
+        (originPageElement (atlasPageElements sourceOwner))
+        (mapCoalitionElement sourceOwner transversal) backward leftInverse)
+      (\source -> forward source `seq` ()))
 
 -- | Primitive inverses are supplied with their exact-image law; identities and
 -- composites use the ordinary checked insertion operations.

@@ -39,6 +39,15 @@ structure StableTransversalAction (X Y : Atlas) where
   insertion : DomanialInsertion X.Coalition Y.CoalitionElement
   forward : ∀ value, insertion.map value = (mapCoalitionElement transversal value).val
 
+/-- The stored raw-target insertion maps every canonical source into the
+canonical carrier of the mapper's retained target Atlas. -/
+-- ALIGN: ATLAS-STABLE-TARGET-PACKAGE.
+theorem StableTransversalAction.forward_valid {X Y : Atlas}
+    (action : StableTransversalAction X Y) (value : X.Coalition) :
+    CoalitionElement.Valid (action.insertion.map value) := by
+  rw [action.forward value]
+  exact (mapCoalitionElement action.transversal value).property
+
 -- ALIGN: ATLAS-STABLE-SOURCE-PACKAGE.
 def StableTransversalAction.ofInverse {X Y : Atlas} (transversal : Transversal X Y)
     (preserves : stableOriginPreserved transversal = true)

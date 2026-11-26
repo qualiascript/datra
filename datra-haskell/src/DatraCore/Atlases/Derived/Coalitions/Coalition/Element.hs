@@ -39,5 +39,4 @@ module Coalition.Element
   ) where
 
 import Coalition.Element.Data
-import Coalition.Action (withMappedCoalitionAction, withMappedCoalitionElement)
-import Coalition.Action.Internal (mapCoalitionElement)
+import Coalition.Action (mapCoalitionElement, withMappedCoalitionAction, withMappedCoalitionElement)

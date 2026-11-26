@@ -927,14 +927,14 @@
     },
     {
       "id": "COALITION-FORWARD-CARRIER",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Action/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Action.hs",
       "haskell_declaration": "mapCoalitionElement",
       "lean_namespace": "Datra.Executable.Atlas",
       "lean_declaration": "mapCoalitionElement"
     },
     {
       "id": "COALITION-FORWARD-INTERPRETATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Action/Internal.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Action.hs",
       "haskell_declaration": "mapCoalitionElement",
       "lean_namespace": "Datra.Executable.Atlas",
       "lean_declaration": "mapCoalitionElement_interpretation"
@@ -6384,6 +6384,27 @@
       "haskell_declaration": "withMappedCoalitionAction",
       "lean_namespace": "Datra.Executable.Atlas",
       "lean_declaration": "withMappedCoalitionAction"
+    },
+    {
+      "id": "COALITION-FORWARD-ACTION-RETENTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Action.hs",
+      "haskell_declaration": "withMappedCoalitionAction",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "withMappedCoalitionAction_agrees"
+    },
+    {
+      "id": "COALITION-FORWARD-IMAGE-RETENTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Action.hs",
+      "haskell_declaration": "withMappedCoalitionElement",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "withMappedCoalitionElement_agrees"
+    },
+    {
+      "id": "ATLAS-STABLE-TARGET-PACKAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs",
+      "haskell_declaration": "retainStableCoalitionTarget",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "StableTransversalAction.forward_valid"
     }
   ],
   "modules": [
@@ -7492,6 +7513,7 @@
       "refinements": [
         "checkedStableOrigin",
         "stableAtlasTransversal",
+        "retainStableCoalitionTarget",
         "composeCoalitionInverseData",
         "withCoalitionPreimageData",
         "stableAtlasTransversalSize",
@@ -9333,10 +9355,20 @@
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Action.hs",
       "module": "Coalition.Action",
-      "types": [],
-      "reflected": [],
+      "types": [
+        "CoalitionActionData",
+        "CoalitionAction"
+      ],
+      "reflected": [
+        "coalitionActionMap",
+        "mapCoalitionElement"
+      ],
       "refinements": [
         "mapCanonicalCoalition",
+        "coalitionActionMap",
+        "coalitionAction",
+        "withCoalitionAction",
+        "mapCoalitionElement",
         "withMappedCoalitionAction",
         "withMappedCoalitionElement"
       ],
@@ -9348,25 +9380,9 @@
         "MappedCoalitionValid"
       ],
       "refinement_aliases": [],
-      "opaque_reflected": []
-    },
-    {
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Action/Internal.hs",
-      "module": "Coalition.Action.Internal",
-      "lean_target": "Datra.Executable.Atlas",
-      "coverage": "partial",
-      "types": [],
-      "reflected": [
-        "mapCoalitionElement"
-      ],
-      "opaque_reflected": [],
-      "refinements": [
-        "mapCoalitionElement"
-      ],
-      "aliases": [],
-      "embeddings": [],
-      "predicates": [],
-      "refinement_aliases": []
+      "opaque_reflected": [
+        "coalitionAction"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",

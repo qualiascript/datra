@@ -820,6 +820,26 @@ proofGuard = atlasMergePageChain
 
 STABLE_SOURCE = HASKELL / "src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal/Internal.hs"
 STABLE_GUARDS = {
+    "stored stable mapped images retain target validity": """
+{-@ proofGuard :: action:StableTransversalAction sa ss sd so sf ta ts td to tf mo mf
+      -> value:{CoalitionData sa ss sd | StableCoalitionValid (stableActionSource action) value}
+      -> {image:CoalitionData ta ts td |
+           not (coalitionElementValid (stableActionMappedTarget action) image)} @-}
+proofGuard :: StableTransversalAction sa ss sd so sf ta ts td to tf mo mf
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+proofGuard action value =
+  stableActionForwardValid action value `seq` applyInsertion (stableActionInsertion action) value
+""",
+    "stored stable mapped images retain the canonical target origin": """
+{-@ proofGuard :: action:StableTransversalAction sa ss sd so sf ta ts td to tf mo mf
+      -> value:{CoalitionData sa ss sd | StableCoalitionValid (stableActionSource action) value}
+      -> {image:CoalitionData ta ts td |
+           coalitionElementSource image /= originPageElement (atlasPageElements (stableActionMappedTarget action))} @-}
+proofGuard :: StableTransversalAction sa ss sd so sf ta ts td to tf mo mf
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+proofGuard action value =
+  stableActionForwardValid action value `seq` applyInsertion (stableActionInsertion action) value
+""",
     "composed inverse packages retain source validity on arbitrary raw targets": """
 {-@ proofGuard :: first:CoalitionInverseData a s d o f ma ms md
       -> (CoalitionData ta ts td -> Maybe (CoalitionData ma ms md))
@@ -833,7 +853,7 @@ proofGuard first second target =
   coalitionInverseFunction (composeCoalitionInverseData first second) target
 """,
     "stored stable insertions require canonical source inputs": """
-proofGuard :: StableTransversalAction sa ss sd so sf ta ts td to tf
+proofGuard :: StableTransversalAction sa ss sd so sf ta ts td to tf mo mf
   -> CoalitionData sa ss sd -> CoalitionData ta ts td
 proofGuard action value = applyInsertion (stableActionInsertion action) value
 """,
@@ -841,13 +861,18 @@ proofGuard action value = applyInsertion (stableActionInsertion action) value
 {-@ proofGuard :: source:Atlas sa ss sd so sf -> target:Atlas ta ts td to tf
       -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
       -> {proof:() | stableOriginPreserved source target arrow}
-      -> DomanialInsertion ({value:CoalitionData sa ss sd | StableCoalitionValid source value})
+      -> mapped:Atlas ta ts td mo mf
+      -> insertion:DomanialInsertion ({value:CoalitionData sa ss sd | StableCoalitionValid source value})
            (CoalitionData ta ts td)
-      -> StableTransversalAction sa ss sd so sf ta ts td to tf @-}
+      -> (value:{CoalitionData sa ss sd | StableCoalitionValid source value}
+           -> {StableCoalitionValid mapped (applyInsertion insertion value)})
+      -> StableTransversalAction sa ss sd so sf ta ts td to tf mo mf @-}
 proofGuard :: Atlas sa ss sd so sf -> Atlas ta ts td to tf
   -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td) -> ()
+  -> Atlas ta ts td mo mf
   -> DomanialInsertion (CoalitionData sa ss sd) (CoalitionData ta ts td)
-  -> StableTransversalAction sa ss sd so sf ta ts td to tf
+  -> (CoalitionData sa ss sd -> ())
+  -> StableTransversalAction sa ss sd so sf ta ts td to tf mo mf
 proofGuard = StableTransversalAction
 """,
     "stable inverses must retain source validity outside the forward image": """
@@ -1179,6 +1204,7 @@ import Atlas (Atlas, AtlasObject, atlasPageElements)
 import AtlasTransversal (AtlasTransversal)
 import Coalition.Element
 import AtlasCoveredPageElement (CoveredPageElement)
+import DomanialInsertion.Core (DomanialInsertion, applyInsertion, preimage)
 import PageElements (SomePageElement, originPageElement)
 {-@ predicate PublicCoalitionValid A E = coalitionElementValid A E
       && coalitionElementSource E == originPageElement (atlasPageElements A) @-}
@@ -1215,9 +1241,113 @@ coalitionPairValid _ first second target forward =
       -> {source:SomePageElement s | source == originPageElement (atlasPageElements owner)} @-}
 canonicalOperationSource :: Atlas a s d o f -> CoalitionData a s d -> SomePageElement s
 canonicalOperationSource _ element = coalitionElementSource element
+
+{-@ observedExactCoalitionImage :: owner:Atlas sa ss sd so sf
+      -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoalitionData sa ss sd | PublicCoalitionValid owner source}
+      -> {image:CoalitionData ta ts td | image == mapCoalitionElement owner arrow source} @-}
+observedExactCoalitionImage :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+observedExactCoalitionImage owner arrow source =
+  withMappedCoalitionElement owner arrow source (\_ image -> image)
+
+{-@ observedExactCoalitionOperation :: owner:Atlas sa ss sd so sf
+      -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoalitionData sa ss sd | PublicCoalitionValid owner source}
+      -> {image:CoalitionData ta ts td | image == mapCoalitionElement owner arrow source} @-}
+observedExactCoalitionOperation :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+observedExactCoalitionOperation owner arrow source =
+  withMappedCoalitionAction owner arrow (readCoalitionOperation owner arrow source)
+
+{-@ readCoalitionOperation :: owner:Atlas sa ss sd so sf
+      -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoalitionData sa ss sd | PublicCoalitionValid owner source}
+      -> target:Atlas ta ts td to tf
+      -> ({value:CoalitionData sa ss sd | PublicCoalitionValid owner value}
+           -> {image:CoalitionData ta ts td | PublicCoalitionValid target image
+                && image == mapCoalitionElement owner arrow value})
+      -> {image:CoalitionData ta ts td | image == mapCoalitionElement owner arrow source} @-}
+readCoalitionOperation :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> Atlas ta ts td to tf
+  -> (CoalitionData sa ss sd -> CoalitionData ta ts td) -> CoalitionData ta ts td
+readCoalitionOperation _ _ source _ forward = forward source
+
+{-@ observedOwnedInsertion :: owner:Atlas sa ss sd so sf
+      -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> backward:(CoalitionData ta ts td -> Maybe ({value:CoalitionData sa ss sd | PublicCoalitionValid owner value}))
+      -> (value:{CoalitionData sa ss sd | PublicCoalitionValid owner value}
+           -> {backward (mapCoalitionElement owner arrow value) == Just value})
+      -> {insertion:DomanialInsertion ({value:CoalitionData sa ss sd | PublicCoalitionValid owner value}) (CoalitionData ta ts td) |
+           preimage insertion == backward} @-}
+observedOwnedInsertion :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> (CoalitionData ta ts td -> Maybe (CoalitionData sa ss sd))
+  -> (CoalitionData sa ss sd -> ())
+  -> DomanialInsertion (CoalitionData sa ss sd) (CoalitionData ta ts td)
+observedOwnedInsertion owner arrow backward leftInverse =
+  withMappedCoalitionAction owner arrow (assembleOwnedInsertion owner arrow backward leftInverse)
+
+{-@ assembleOwnedInsertion :: owner:Atlas sa ss sd so sf
+      -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> backward:(CoalitionData ta ts td -> Maybe ({value:CoalitionData sa ss sd | PublicCoalitionValid owner value}))
+      -> (value:{CoalitionData sa ss sd | PublicCoalitionValid owner value}
+           -> {backward (mapCoalitionElement owner arrow value) == Just value})
+      -> target:Atlas ta ts td to tf
+      -> forward:({value:CoalitionData sa ss sd | PublicCoalitionValid owner value}
+           -> {image:CoalitionData ta ts td | PublicCoalitionValid target image
+                && image == mapCoalitionElement owner arrow value})
+      -> {insertion:DomanialInsertion ({value:CoalitionData sa ss sd | PublicCoalitionValid owner value}) (CoalitionData ta ts td) |
+           preimage insertion == backward} @-}
+assembleOwnedInsertion :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> (CoalitionData ta ts td -> Maybe (CoalitionData sa ss sd)) -> (CoalitionData sa ss sd -> ())
+  -> Atlas ta ts td to tf -> (CoalitionData sa ss sd -> CoalitionData ta ts td)
+  -> DomanialInsertion (CoalitionData sa ss sd) (CoalitionData ta ts td)
+assembleOwnedInsertion owner _ backward leftInverse _ forward =
+  coalitionCounitInsertion (coalitionElementValid owner) coalitionElementSource
+    (originPageElement (atlasPageElements owner)) forward backward
+    (\source -> forward source `seq` leftInverse source)
 """
 
 COALITION_ACTION_PUBLIC_GUARDS = {
+    "owned coalition image retains the raw mapper result": r"""
+{-@ proofGuard :: owner:Atlas sa ss sd so sf
+      -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoalitionData sa ss sd | PublicCoalitionValid owner source}
+      -> {image:CoalitionData ta ts td | image /= mapCoalitionElement owner arrow source} @-}
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+proofGuard = observedExactCoalitionImage
+""",
+    "owned coalition operation retains the raw mapper result": r"""
+{-@ proofGuard :: owner:Atlas sa ss sd so sf
+      -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> source:{CoalitionData sa ss sd | PublicCoalitionValid owner source}
+      -> {image:CoalitionData ta ts td | image /= mapCoalitionElement owner arrow source} @-}
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> CoalitionData sa ss sd -> CoalitionData ta ts td
+proofGuard = observedExactCoalitionOperation
+""",
+    "owned coalition insertion retains the supplied partial inverse": r"""
+{-@ proofGuard :: owner:Atlas sa ss sd so sf
+      -> arrow:AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> backward:(CoalitionData ta ts td -> Maybe ({value:CoalitionData sa ss sd | PublicCoalitionValid owner value}))
+      -> (value:{CoalitionData sa ss sd | PublicCoalitionValid owner value}
+           -> {backward (mapCoalitionElement owner arrow value) == Just value})
+      -> {insertion:DomanialInsertion ({value:CoalitionData sa ss sd | PublicCoalitionValid owner value}) (CoalitionData ta ts td) |
+           preimage insertion /= backward} @-}
+proofGuard :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> (CoalitionData ta ts td -> Maybe (CoalitionData sa ss sd)) -> (CoalitionData sa ss sd -> ())
+  -> DomanialInsertion (CoalitionData sa ss sd) (CoalitionData ta ts td)
+proofGuard = observedOwnedInsertion
+""",
     "owned coalition operation certifies all canonical outputs for one owner": r"""
 {-@ proofGuard :: owner:Atlas sa ss sd so sf
       -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)

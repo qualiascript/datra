@@ -292,6 +292,15 @@ testRankedDominionAtlas =
       && preimage composedMap targetElement == Just sourceElement)
   assert "composed coalition inverses reject values outside the image"
     (isNothing (preimage composedMap (rankedDominionCoalitionElement ranked 3)))
+  let roundingDouble = domanialInsertion (* 2) (Just . (`div` 2)) (const ())
+      roundingComposed = composeStableAtlasTransversals traversal
+        (dominionMap sourceOwner sourceOwner roundingDouble)
+      roundingMap = stableCoalitionMap
+        (atlasWitness included) (atlasWitness valueAtlas) roundingComposed
+  assert "composed coalition inverses retain supplied successful off-image lookups"
+    (preimage roundingMap (rankedDominionCoalitionElement ranked 3)
+      == Just (dominionCoalitionElement sourceOwner 1))
+  let coalitionSamples = [0, 1, 3]
   CoalitionElement.withMappedCoalitionAction included
     (stableAtlasTransversalTransversal composed) $ \owner forward -> do
       assert "the complete coalition operation retains the final owner's folio"
@@ -300,7 +309,7 @@ testRankedDominionAtlas =
         let image = forward (dominionCoalitionElement sourceOwner value)
         assert "one coalition operation certifies distinct inputs for the same target"
           (CoalitionElement.coalitionElementValid owner image
-            && coalitionElementRank image == 2 * value)) selectedRanks
+            && coalitionElementRank image == 2 * value)) coalitionSamples
   CoalitionElement.withMappedCoalitionAction included identityAtlasTransversal $ \owner forward ->
     mapM_ (\value -> do
       let source = dominionCoalitionElement sourceOwner value
@@ -309,7 +318,7 @@ testRankedDominionAtlas =
         (atlasCardinality owner == 1
           && CoalitionElement.coalitionElementValid owner image
           && CoalitionElement.coalitionElementCode image == CoalitionElement.coalitionElementCode source
-          && coalitionElementRank image == value)) selectedRanks
+          && coalitionElementRank image == value)) coalitionSamples
   let observePreimage :: Atlas a s d o f -> CoalitionElement.CoalitionData a s d
         -> (Bool, Natural, Bool)
       observePreimage owner recovered =

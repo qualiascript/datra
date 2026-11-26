@@ -395,30 +395,40 @@ theorem coalitionFromCovered_roundtrip {X : Atlas} (c : X.Coalition) :
   apply Subtype.ext
   exact originImage_origin X (X.originImage c.val.source c.val.datum)
 
+/-- A canonical coalition action stores its owners in the indices and keeps
+one certified function for both raw mapping and owned observation. -/
+structure CoalitionAction (X Y : Atlas) where
+  map : X.CertifiedCoalitionElement → Y.CertifiedCoalitionElement
+
+def coalitionAction {X Y : Atlas} (f : Transversal X Y) : CoalitionAction X Y :=
+  withAtlasTransversalCoveredAction f
+    (fun forward => ⟨fun source => coalitionFromCovered (forward source.coveredElement)⟩)
+
+/-- Erase the target-owner observation while retaining the same function. -/
+-- ALIGN: COALITION-FORWARD-CARRIER.
+def mapCoalitionElement {X Y : Atlas} (f : Transversal X Y)
+    (c : X.CertifiedCoalitionElement) : Y.CertifiedCoalitionElement :=
+  (coalitionAction f).map c
+
 /-- The complete canonical mapping operation retains the same target owner
 for all accepted source records. -/
 -- ALIGN: COALITION-FORWARD-OWNED-ACTION.
 def withMappedCoalitionAction {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
     (useAction : (X.CertifiedCoalitionElement → Y.CertifiedCoalitionElement) → Result) : Result :=
-  withAtlasTransversalCoveredAction f
-    (fun forward => useAction (fun source => coalitionFromCovered (forward source.coveredElement)))
+  useAction (coalitionAction f).map
 
-/-- Retain the image's owner through canonicalization. -/
+/-- Retain the image's owner and the raw mapper's exact result. -/
 -- ALIGN: COALITION-FORWARD-OWNED-ELIMINATION.
 def withMappedCoalitionElement {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
     (c : X.CertifiedCoalitionElement) (useElement : Y.CertifiedCoalitionElement → Result) : Result :=
   withMappedCoalitionAction f (fun forward => useElement (forward c))
 
-/-- Erase the callback boundary while retaining the same certified action. -/
--- ALIGN: COALITION-FORWARD-CARRIER.
-def mapCoalitionElement {X Y : Atlas} (f : Transversal X Y)
-    (c : X.CertifiedCoalitionElement) : Y.CertifiedCoalitionElement :=
-  withMappedCoalitionElement f c id
-
+-- ALIGN: COALITION-FORWARD-ACTION-RETENTION.
 theorem withMappedCoalitionAction_agrees {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
     (useAction : (X.CertifiedCoalitionElement → Y.CertifiedCoalitionElement) → Result) :
     withMappedCoalitionAction f useAction = useAction (mapCoalitionElement f) := rfl
 
+-- ALIGN: COALITION-FORWARD-IMAGE-RETENTION.
 theorem withMappedCoalitionElement_agrees {X Y : Atlas} {Result : Sort*} (f : Transversal X Y)
     (c : X.CertifiedCoalitionElement) (useElement : Y.CertifiedCoalitionElement → Result) :
     withMappedCoalitionElement f c useElement = useElement (mapCoalitionElement f c) := rfl
