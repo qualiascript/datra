@@ -5626,21 +5626,21 @@
       "id": "ATLAS-MAP-FINAL-REGION",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs",
       "haskell_declaration": "atlasMapRegionValid",
-      "lean_namespace": "Datra.Executable",
-      "lean_declaration": "AtlasMap.regionValid"
+      "lean_namespace": "Datra.Executable.AtlasAllocation",
+      "lean_declaration": "finalRegionValid"
     },
     {
       "id": "TOTAL-ATLAS-MAP-CONSTRUCTION",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap/Internal.hs",
       "haskell_declaration": "totalAtlasMap",
-      "lean_namespace": "Datra.Executable.TotalAtlasMap",
-      "lean_declaration": "totalAtlasMap"
+      "lean_namespace": "Datra.Executable.TotalAtlasMapData",
+      "lean_declaration": "package"
     },
     {
       "id": "TOTAL-ATLAS-MAP-ELIMINATION",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap/Internal.hs",
       "haskell_declaration": "withTotalAtlasMap",
-      "lean_namespace": "Datra.Executable.TotalAtlasMap",
+      "lean_namespace": "Datra.Executable.TotalAtlasMapData",
       "lean_declaration": "withTotalAtlasMap"
     },
     {
@@ -5656,6 +5656,251 @@
       "haskell_declaration": "totalAtlasMap",
       "lean_namespace": "Datra.Executable.TotalAtlasMap",
       "lean_declaration": "isTotalAtlasMap"
+    },
+    {
+      "id": "TOTAL-ATLAS-MAP-RAW-INTERPRETATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap/Internal.hs",
+      "haskell_declaration": "totalAtlasMap",
+      "lean_namespace": "Datra.Executable.TotalAtlasMapData",
+      "lean_declaration": "isTotalAtlasMap"
+    },
+    {
+      "id": "CHAINED-DATUM-VALUE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "cellValue",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellValue"
+    },
+    {
+      "id": "CHAINED-EXTENT-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "extentAccepts",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "extentAccepts"
+    },
+    {
+      "id": "CHAINED-REGION-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "regionAccepts",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "regionAccepts"
+    },
+    {
+      "id": "CHAINED-EXTENT-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "extentRank",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "extentRank"
+    },
+    {
+      "id": "CHAINED-EXTENT-DECODE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "extentUnrank",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "extentUnrank"
+    },
+    {
+      "id": "CHAINED-EXTENT-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "extentRoundTrip",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "extentRoundTrip"
+    },
+    {
+      "id": "CHAINED-EXTENT-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "extentDominion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "extentDominion"
+    },
+    {
+      "id": "CHAINED-EXTENT-DOMINION-DECODE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "extentDominion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "extentDominion_unrank"
+    },
+    {
+      "id": "CHAINED-REGION-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "regionRank",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "regionRank"
+    },
+    {
+      "id": "CHAINED-REGION-DECODE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "regionUnrank",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "regionUnrank"
+    },
+    {
+      "id": "CHAINED-REGION-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "regionRoundTrip",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "regionRoundTrip"
+    },
+    {
+      "id": "CHAINED-REGION-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "regionDominion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "regionDominion"
+    },
+    {
+      "id": "CHAINED-REGION-DOMINION-DECODE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "regionDominion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "regionDominion_unrank"
+    },
+    {
+      "id": "CHAINED-REGION-TO-EXTENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "regionToExtent",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "regionToExtent"
+    },
+    {
+      "id": "CHAINED-EXTENT-TO-REGION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "haskell_declaration": "extentToRegion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "extentToRegion"
+    },
+    {
+      "id": "INSERTION-ACCEPTED-CONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/DomanialInsertion/Core.hs",
+      "haskell_declaration": "insertionOn",
+      "lean_namespace": "Datra.Executable.DomanialInsertion",
+      "lean_declaration": "mk_functions"
+    },
+    {
+      "id": "CHAINED-PAGE-SELECTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "chainValueAt",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainValueAt"
+    },
+    {
+      "id": "CHAINED-PAGE-CELL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "chainedDominionCell",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionCell"
+    },
+    {
+      "id": "CHAINED-PAGE-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellNormalization",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellNormalization"
+    },
+    {
+      "id": "CHAINED-CELL-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellAccepts",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellAccepts"
+    },
+    {
+      "id": "CHAINED-CELL-ORDER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellPrecedes",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellPrecedes"
+    },
+    {
+      "id": "CHAINED-CELL-RETAG",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "retagCell",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "retagCell"
+    },
+    {
+      "id": "CHAINED-CELL-RETAG-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "retagAccepts",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "retagAccepts"
+    },
+    {
+      "id": "CHAINED-CELL-FORWARD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellMap",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellMap"
+    },
+    {
+      "id": "CHAINED-CELL-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellPreimage",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellPreimage"
+    },
+    {
+      "id": "CHAINED-CELL-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellRoundTrip",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellRoundTrip"
+    },
+    {
+      "id": "CHAINED-CELL-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellInsertion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellInsertion"
+    },
+    {
+      "id": "CHAINED-CELL-INSERTION-FORWARD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellInsertion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellInsertion_map"
+    },
+    {
+      "id": "CHAINED-CELL-INSERTION-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellInsertion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellInsertion_preimage"
+    },
+    {
+      "id": "CHAINED-CELL-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellIdentity",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellIdentity"
+    },
+    {
+      "id": "CHAINED-CELL-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellComposition",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellComposition"
+    },
+    {
+      "id": "CHAINED-CELL-COMPOSE-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "composedCellPreimage",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "composedCellPreimage"
+    },
+    {
+      "id": "CHAINED-CELL-INVERSE-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellInverseComposition",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellInverseComposition"
+    },
+    {
+      "id": "CHAINED-CELL-DISJOINT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellDisjoint",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "cellDisjoint"
     }
   ],
   "modules": [
@@ -6060,6 +6305,7 @@
       ],
       "refinements": [
         "domanialInsertion",
+        "insertionOn",
         "composeInsertionRoundTrip",
         "composeInsertions",
         "composeInsertionsApply",
@@ -6077,7 +6323,8 @@
       "aliases": [],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Dominion/Internal.hs",
@@ -6370,7 +6617,6 @@
       ],
       "reflected": [
         "paginationFromPageElements",
-        "paginationPageElements",
         "paginationCardinality",
         "normalizePaginationElement",
         "normalizePaginationArrow"
@@ -6802,7 +7048,6 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas.hs",
       "module": "ChainedDominionAtlas",
       "types": [
-        "ChainedDominionCellData",
         "ChainedDominionAtlas",
         "CanonicalChainedDominion",
         "CanonicalChainedRecipe"
@@ -6810,7 +7055,7 @@
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.ChainedDominionAtlas",
-      "coverage": "pending",
+      "coverage": "partial",
       "aliases": [
         "ChainedDominionAtlasObject",
         "CanonicalChainedPaginationScope",
@@ -6818,7 +7063,8 @@
       ],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
@@ -6850,7 +7096,6 @@
         "chartedRankRoundTrip",
         "dominionOn",
         "chartedDominion",
-        "insertionOn",
         "chartedAcceptedValue",
         "chartCounitInsertion",
         "chartMapInsertion",
@@ -6933,7 +7178,7 @@
         "totalAtlasMap",
         "withTotalAtlasMap"
       ],
-      "lean_target": "Datra.Executable.TotalAtlasMap",
+      "lean_target": "Datra.Executable.TotalAtlasMapData",
       "coverage": "partial",
       "aliases": [],
       "embeddings": [],
@@ -8615,6 +8860,81 @@
       "embeddings": [],
       "predicates": [],
       "refinement_aliases": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Data.hs",
+      "module": "ChainedDominionAtlas.Data",
+      "lean_target": "Datra.Executable.ChainedDominionAtlas",
+      "coverage": "aligned",
+      "reflected": [
+        "cellValue",
+        "extentAccepts",
+        "regionAccepts",
+        "extentRank",
+        "extentUnrank",
+        "regionRank",
+        "regionUnrank",
+        "regionToExtent",
+        "extentToRegion"
+      ],
+      "opaque_reflected": [
+        "rank",
+        "unrank"
+      ],
+      "types": [
+        "ChainedDominionCellData"
+      ],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "extentUnrank",
+        "extentRoundTrip",
+        "extentDominion",
+        "regionUnrank",
+        "regionRoundTrip",
+        "regionDominion",
+        "regionToExtent",
+        "extentToRegion"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Action.hs",
+      "module": "ChainedDominionAtlas.Action",
+      "lean_target": "Datra.Executable.ChainedDominionAtlas",
+      "coverage": "aligned",
+      "reflected": [
+        "chainValueAt",
+        "chainedDominionCell",
+        "cellAccepts",
+        "cellPrecedes",
+        "retagCell",
+        "cellMap",
+        "cellPreimage",
+        "composedCellPreimage"
+      ],
+      "opaque_reflected": [],
+      "types": [
+        "ChainedDominionCell"
+      ],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "cellNormalization",
+        "retagAccepts",
+        "cellMap",
+        "cellPreimage",
+        "cellRoundTrip",
+        "cellInsertion",
+        "cellIdentity",
+        "cellComposition",
+        "composedCellPreimage",
+        "cellInverseComposition",
+        "cellDisjoint"
+      ]
     }
   ],
   "trust_boundary": []

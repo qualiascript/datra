@@ -33,7 +33,7 @@ import Atlas
   , atlasPresentationForPredicate
   , withAtlasPresentation
   , atlasOriginCell
-  , atlasDataAction
+  , atlasPredicateDataAction
   , atlasPageElements
   , atlasWitness
   )
@@ -48,10 +48,7 @@ import AtlasCoveredPageElement
 import AtlasMap (AtlasMap, atlasMap)
 import Chain
   ( Chain
-  , chainIndex
   , chainIndexOf
-  , chainObjectAt
-  , chainPosition
   )
 import Consolidation (consolidation, op)
 import Coalition (CoalitionElement, coalitionElementRank)
@@ -69,30 +66,24 @@ import DomanialInsertion
   , insertionLeftInverse
   , preimage
   )
-import Dominion (Dominion, dominion, rank, unrank)
+import Dominion (Dominion, unrank)
+import ChainedDominionAtlas.Data
+  ( ChainedDominionCellData (..)
+  , cellValue, extentDominion, regionDominion
+  )
+import ChainedDominionAtlas.Action
+  ( ChainedDominionCell (..), chainedDominionCell, cellAccepts, cellInsertion )
 import Folio (Folio, appendPage, singletonFolio)
 import PageElements
   ( PageElement
   , PageElementArrow
   , arrowSource
   , arrowTarget
-  , pageElementPage
-  , pageElementPosition
   , withPageElement
   , lastPageElement
   )
 import Pagination (Pagination)
 import StableAtlasTransversal (StableAtlasTransversal)
-
--- | Data carried by the extent or by one selected final-chain region.
-data ChainedDominionCellData value object
-  = ChainedDominionExtentDatum value
-  | ChainedDominionRegionDatum value
-  deriving (Eq, Show)
-
-cellValue :: ChainedDominionCellData value object -> value
-cellValue (ChainedDominionExtentDatum value) = value
-cellValue (ChainedDominionRegionDatum value) = value
 
 type ChainedDominionAtlasObject owner scope value =
   AtlasObject owner scope (ChainedDominionCellData value)
@@ -162,89 +153,39 @@ chainedDominionFolio firstValue valueChain =
         (\_ _ _ -> ())
         (const ())
 
-chainValueAt
-  :: value
-  -> Chain value
-  -> PageElement scope object
-  -> value
-chainValueAt firstValue valueChain occurrence =
-  maybe
-    firstValue
-    chainObjectAt
-    (chainIndex valueChain (pageElementPosition occurrence))
-
 chainedDominionAt
   :: value
   -> Chain value
   -> Dominion value
   -> PageElement scope object
   -> Dominion (ChainedDominionCellData value object)
-chainedDominionAt firstValue valueChain valueDominion occurrence
-  | pageElementPage occurrence == 0 =
-      dominion
-        (rank valueDominion . cellValue)
-        (fmap ChainedDominionExtentDatum . unrank valueDominion)
-        (const ())
-  | otherwise =
-      dominion
-        (const 0)
-        (\valueRank ->
-          if valueRank == 0
-            then Just (ChainedDominionRegionDatum selectedValue)
-            else Nothing)
-        (const ())
-  where
-    selectedValue = chainValueAt firstValue valueChain occurrence
+chainedDominionAt firstValue valueChain valueDominion occurrence =
+  case chainedDominionCell firstValue valueChain occurrence of
+    ExtentCell -> extentDominion valueDominion
+    RegionCell selected -> regionDominion valueChain selected
 
+chainedDominionAccepts
+  :: value -> Chain value -> PageElement scope object
+  -> ChainedDominionCellData value object -> Bool
+chainedDominionAccepts firstValue valueChain occurrence =
+  cellAccepts valueChain (chainedDominionCell firstValue valueChain occurrence)
 
 chainedDominionDataMap
-  :: value
-  -> Chain value
-  -> PageElementArrow
-       scope source target
-  -> DomanialInsertion
-       (ChainedDominionCellData value source)
-       (ChainedDominionCellData value target)
-chainedDominionDataMap firstValue valueChain pageArrow
-  | pageElementPage (arrowSource pageArrow) == 0 =
-      domanialInsertion coerceCell (Just . coerceCell) (const ())
-  | pageElementPage (arrowTarget pageArrow) == 0 =
-      domanialInsertion regionToExtent extentToRegion (const ())
-  | otherwise =
-      domanialInsertion coerceCell (Just . coerceCell) (const ())
-  where
-    selectedValue =
-      chainValueAt firstValue valueChain (arrowSource pageArrow)
-
-    coerceCell (ChainedDominionExtentDatum value) =
-      ChainedDominionExtentDatum value
-    coerceCell (ChainedDominionRegionDatum value) =
-      ChainedDominionRegionDatum value
-
-    regionToExtent (ChainedDominionRegionDatum value) =
-      ChainedDominionExtentDatum value
-    regionToExtent (ChainedDominionExtentDatum value) =
-      ChainedDominionExtentDatum value
-
-    extentToRegion (ChainedDominionExtentDatum value)
-      | sameChainPosition value selectedValue =
-          Just (ChainedDominionRegionDatum value)
-      | otherwise = Nothing
-    extentToRegion (ChainedDominionRegionDatum value)
-      | sameChainPosition value selectedValue =
-          Just (ChainedDominionRegionDatum value)
-      | otherwise = Nothing
-
-    sameChainPosition left right =
-      chainPosition valueChain left == chainPosition valueChain right
+  :: value -> Chain value -> PageElementArrow scope source target
+  -> DomanialInsertion (ChainedDominionCellData value source) (ChainedDominionCellData value target)
+chainedDominionDataMap firstValue valueChain pageArrow =
+  cellInsertion valueChain
+    (chainedDominionCell firstValue valueChain (arrowSource pageArrow))
+    (chainedDominionCell firstValue valueChain (arrowTarget pageArrow))
 
 -- | Certify the data action on an already owned two-page pagination.
 chainedDominionPresentation
   :: Pagination scope () value -> value -> Chain value -> Dominion value
   -> AtlasPresentation scope (ChainedDominionCellData value) () value
 chainedDominionPresentation pages firstValue valueChain valueDominion =
-  atlasPresentationForPredicate pages (\_ _ -> True)
-    (atlasDataAction (Pagination.paginationPageElements pages)
+  atlasPresentationForPredicate pages (chainedDominionAccepts firstValue valueChain)
+    (atlasPredicateDataAction (Pagination.paginationPageElements pages)
+      (chainedDominionAccepts firstValue valueChain)
       (chainedDominionAt firstValue valueChain valueDominion)
       (chainedDominionDataMap firstValue valueChain))
     (\_ _ -> ())

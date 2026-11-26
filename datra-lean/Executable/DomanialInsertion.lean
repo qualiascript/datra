@@ -15,6 +15,8 @@ namespace DomanialInsertion
 variable {A : Type u} {B : Type v} {C : Type w} {D : Type z}
 
 -- ALIGN: INSERTION-CONSTRUCTOR-FUNCTIONS.
+-- Specializing A and B to accepted subtypes also models insertionOn.
+-- ALIGN: INSERTION-ACCEPTED-CONSTRUCTION.
 theorem mk_functions (forward : A → B) (backward : B → Option A)
     (leftInverse : ∀ value, backward (forward value) = some value) :
     (DomanialInsertion.mk forward backward leftInverse).map = forward ∧

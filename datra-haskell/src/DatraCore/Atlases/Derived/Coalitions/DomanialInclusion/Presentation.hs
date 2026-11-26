@@ -41,7 +41,7 @@ import Folio.Presentation (folioData, folioLengthData)
 import PageElements
   ( PageElements, pageElementsFolio, pageElementTraceValidShape
   , pageElementDomain, normalizePageElementArrow
-  , pageElementTraceValid, pageElementValidArrowPosition )
+  , pageElementTraceValid, pageElementSamePagePosition )
 import PageElements.Structure
   ( PageElement, PageElementArrow (..), pageElementPage, pageElementPosition
   , identityPageElementArrow, composePageElementArrows
@@ -229,23 +229,6 @@ constantAction :: PageElements scope origin final -> Dominion a -> AtlasDataActi
 constantAction category owner =
   atlasPredicateDataAction category acceptsConstantDatum (constantDataAt owner) constantDataMap
 
--- | A shaped transport within one page retains its position. The lookup
--- theorem supplies the target position; offset zero reads the source head.
--- ALIGN: DOMINC-SAME-PAGE-POSITION.
-{-@ samePagePosition :: category:PageElements scope origin final
-      -> arrow:{PageElementArrow scope source target |
-           pageElementTraceValid category (arrowSource arrow)
-           && pageElementTraceValid category (arrowTarget arrow)
-           && pageElementPage (arrowSource arrow) == pageElementPage (arrowTarget arrow)}
-      -> {pageElementPosition (arrowSource arrow) == pageElementPosition (arrowTarget arrow)} @-}
-samePagePosition :: PageElements scope origin final -> PageElementArrow scope source target -> ()
-samePagePosition category arrow =
-  pageElementValidArrowPosition category arrow `seq`
-  pageElementTraceValidShape category (arrowSource arrow) `seq`
-  case pageElementTrace (arrowSource arrow) of
-    [] -> ()
-    _ : _ -> ()
-
 -- | The cardinality premise is required: constant data on distinct cells of
 -- a larger finite page would violate disjointness.
 -- ALIGN: DOMINC-CONSTANT-LAWS.
@@ -278,4 +261,4 @@ constantPresentation pages owner =
        (\_ _ leftArrow rightArrow conditions _ _ ->
           conditions `seq`
           pageElementPage (arrowSource leftArrow) `seq`
-          samePagePosition category leftArrow `seq` samePagePosition category rightArrow)
+          pageElementSamePagePosition category leftArrow `seq` pageElementSamePagePosition category rightArrow)

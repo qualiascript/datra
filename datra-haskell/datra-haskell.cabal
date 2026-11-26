@@ -172,6 +172,8 @@ library
         AtlasTransposal
         OrderedAtlasTransposal
         ChainedDominionAtlas
+        ChainedDominionAtlas.Data
+        ChainedDominionAtlas.Action
         RankedDominionAtlas
         AtlasTransversal
         AtlasTransversalMap

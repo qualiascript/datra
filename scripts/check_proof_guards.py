@@ -3002,6 +3002,184 @@ proofGuard = totalAtlasMap
 }
 
 
+CHAINED_DATA_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module ChainedDataPublicGuard where
+import Chain (Chain)
+import ChainedDominionAtlas.Data
+import Dominion (Dominion, dominionCoherence, unrank)
+import Numeric.Natural (Natural)
+
+{-@ observedRegionRoundTrip :: owner:Chain value -> selected:value
+      -> datum:{ChainedDominionCellData value object | regionAccepts owner selected datum} -> () @-}
+observedRegionRoundTrip :: Chain value -> value -> ChainedDominionCellData value object -> ()
+observedRegionRoundTrip owner selected datum =
+  dominionCoherence (regionDominion owner selected) datum
+
+{-@ observedExtentRoundTrip :: owner:Dominion value
+      -> datum:{ChainedDominionCellData value object | extentAccepts datum} -> () @-}
+observedExtentRoundTrip :: Dominion value -> ChainedDominionCellData value object -> ()
+observedExtentRoundTrip owner datum = dominionCoherence (extentDominion owner) datum
+
+{-@ regionDecoder :: owner:Chain value -> selected:value -> index:Natural
+      -> {result:Maybe (ChainedDominionCellData value object) | result == regionUnrank owner selected index} @-}
+regionDecoder :: Chain value -> value -> Natural -> Maybe (ChainedDominionCellData value object)
+regionDecoder owner selected index = unrank (regionDominion owner selected) index
+
+{-@ extentDecoder :: owner:Dominion value -> index:Natural
+      -> {result:Maybe (ChainedDominionCellData value object) | result == extentUnrank owner index} @-}
+extentDecoder :: Dominion value -> Natural -> Maybe (ChainedDominionCellData value object)
+extentDecoder owner index = unrank (extentDominion owner) index
+
+{-@ decodedAccepted :: owner:Chain value -> selected:value -> Natural -> {result:Bool | result} @-}
+decodedAccepted :: Chain value -> value -> Natural -> Bool
+decodedAccepted owner selected index =
+  case unrank (regionDominion owner selected) index of
+    Nothing -> True
+    Just datum -> regionAccepts owner selected datum
+
+{-@ inverseAccepted :: owner:Chain value -> selected:value
+      -> ChainedDominionCellData value target -> {result:Bool | result} @-}
+inverseAccepted :: Chain value -> value -> ChainedDominionCellData value target -> Bool
+inverseAccepted owner selected target =
+  case extentToRegion owner selected target of
+    Nothing -> True
+    Just source -> regionAccepts owner selected source
+"""
+CHAINED_DATA_PUBLIC_GUARDS = {
+    "chained region Dominion rejects extent-tagged data": r"""
+proofGuard :: Chain value -> value -> ()
+proofGuard owner selected =
+  observedRegionRoundTrip owner selected (ChainedDominionExtentDatum selected)
+""",
+    "chained region Dominion requires the selected chain value": r"""
+proofGuard :: Chain value -> value -> value -> ()
+proofGuard owner selected other =
+  observedRegionRoundTrip owner selected (ChainedDominionRegionDatum other)
+""",
+    "chained extent Dominion rejects region-tagged data": r"""
+proofGuard :: Dominion value -> value -> ()
+proofGuard owner value =
+  observedExtentRoundTrip owner (ChainedDominionRegionDatum value)
+""",
+    "chained region inverse cannot return rejected data": r"""
+{-@ proofGuard :: owner:Chain value -> selected:value
+      -> ChainedDominionCellData value target -> {result:Bool | result} @-}
+proofGuard :: Chain value -> value -> ChainedDominionCellData value target -> Bool
+proofGuard owner selected target =
+  case extentToRegion owner selected target of
+    Nothing -> True
+    Just source -> not (regionAccepts owner selected source)
+""",
+}
+
+
+CHAINED_ACTION_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module ChainedActionPublicGuard where
+import Chain (Chain, chainPosition)
+import ChainedDominionAtlas.Data (ChainedDominionCellData)
+import ChainedDominionAtlas.Action
+import DomanialInsertion (applyInsertion, preimage)
+import PageElements.Structure (PageElement, normalizePageElementAt)
+
+{-@ observedCellForward :: owner:Chain value -> source:ChainedDominionCell value
+      -> target:{ChainedDominionCell value | cellPrecedes owner source target}
+      -> datum:{ChainedDominionCellData value s | cellAccepts owner source datum}
+      -> {result:ChainedDominionCellData value t |
+           cellAccepts owner target result && result == cellMap owner source target datum} @-}
+observedCellForward :: Chain value -> ChainedDominionCell value -> ChainedDominionCell value
+  -> ChainedDominionCellData value source -> ChainedDominionCellData value target
+observedCellForward owner source target datum =
+  applyInsertion (cellInsertion owner source target) datum
+
+{-@ observedCellInverse :: owner:Chain value -> source:ChainedDominionCell value
+      -> target:{ChainedDominionCell value | cellPrecedes owner source target}
+      -> datum:{ChainedDominionCellData value t | cellAccepts owner target datum}
+      -> {result:Maybe ({candidate:ChainedDominionCellData value s | cellAccepts owner source candidate}) |
+           result == cellPreimage owner source target datum} @-}
+observedCellInverse :: Chain value -> ChainedDominionCell value -> ChainedDominionCell value
+  -> ChainedDominionCellData value target -> Maybe (ChainedDominionCellData value source)
+observedCellInverse owner source target datum =
+  preimage (cellInsertion owner source target) datum
+"""
+CHAINED_ACTION_PUBLIC_GUARDS = {
+    "chained action cannot map the extent into a region": r"""
+{-@ proofGuard :: owner:Chain value -> selected:value
+      -> datum:{ChainedDominionCellData value s | cellAccepts owner ExtentCell datum}
+      -> ChainedDominionCellData value t @-}
+proofGuard :: Chain value -> value -> ChainedDominionCellData value source -> ChainedDominionCellData value target
+proofGuard owner selected = observedCellForward owner ExtentCell (RegionCell selected)
+""",
+    "chained action cannot connect unrelated regions": r"""
+{-@ proofGuard :: owner:Chain value -> first:value -> second:value
+      -> datum:{ChainedDominionCellData value s | cellAccepts owner (RegionCell first) datum}
+      -> ChainedDominionCellData value t @-}
+proofGuard :: Chain value -> value -> value -> ChainedDominionCellData value source -> ChainedDominionCellData value target
+proofGuard owner first second = observedCellForward owner (RegionCell first) (RegionCell second)
+""",
+    "chained action requires an accepted source datum": r"""
+{-@ proofGuard :: owner:Chain value -> source:ChainedDominionCell value
+      -> target:{ChainedDominionCell value | cellPrecedes owner source target}
+      -> ChainedDominionCellData value s -> ChainedDominionCellData value t @-}
+proofGuard :: Chain value -> ChainedDominionCell value -> ChainedDominionCell value
+  -> ChainedDominionCellData value source -> ChainedDominionCellData value target
+proofGuard = observedCellForward
+""",
+    "chained action inverse cannot return rejected source data": r"""
+{-@ proofGuard :: owner:Chain value -> source:ChainedDominionCell value
+      -> target:{ChainedDominionCell value | cellPrecedes owner source target}
+      -> datum:{ChainedDominionCellData value t | cellAccepts owner target datum}
+      -> {result:Bool | result} @-}
+proofGuard :: Chain value -> ChainedDominionCell value -> ChainedDominionCell value
+  -> ChainedDominionCellData value target -> Bool
+proofGuard owner source target datum =
+  case observedCellInverse owner source target datum of
+    Nothing -> True
+    Just result -> not (cellAccepts owner source result)
+""",
+    "chained action identity retains the exact datum": r"""
+{-@ proofGuard :: owner:Chain value -> cell:ChainedDominionCell value
+      -> datum:{ChainedDominionCellData value object | cellAccepts owner cell datum}
+      -> {cellMap owner cell cell datum /= datum} @-}
+proofGuard :: Chain value -> ChainedDominionCell value -> ChainedDominionCellData value object -> ()
+proofGuard = cellIdentity
+""",
+    "chained action composition retains the exact forward map": r"""
+{-@ proofGuard :: owner:Chain value -> source:ChainedDominionCell value
+      -> middle:{ChainedDominionCell value | cellPrecedes owner source middle}
+      -> target:{ChainedDominionCell value | cellPrecedes owner middle target}
+      -> datum:{ChainedDominionCellData value object | cellAccepts owner source datum}
+      -> {cellMap owner middle target (cellMap owner source middle datum) /= cellMap owner source target datum} @-}
+proofGuard :: Chain value -> ChainedDominionCell value -> ChainedDominionCell value
+  -> ChainedDominionCell value -> ChainedDominionCellData value object -> ()
+proofGuard = cellComposition
+""",
+    "chained action composition retains failed and successful inverses": r"""
+{-@ proofGuard :: owner:Chain value -> source:ChainedDominionCell value
+      -> middle:{ChainedDominionCell value | cellPrecedes owner source middle}
+      -> target:{ChainedDominionCell value | cellPrecedes owner middle target}
+      -> datum:{ChainedDominionCellData value object | cellAccepts owner target datum}
+      -> {composedCellPreimage owner source middle target datum /= cellPreimage owner source target datum} @-}
+proofGuard :: Chain value -> ChainedDominionCell value -> ChainedDominionCell value
+  -> ChainedDominionCell value -> ChainedDominionCellData value object -> ()
+proofGuard = cellInverseComposition
+""",
+    "chained action normalization retains the selected cell": r"""
+{-@ proofGuard :: first:value -> owner:Chain value -> occurrence:PageElement scope object
+      -> {chainedDominionCell first owner (normalizePageElementAt 1 2 occurrence)
+           /= chainedDominionCell first owner occurrence} @-}
+proofGuard :: value -> Chain value -> PageElement scope object -> ()
+proofGuard = cellNormalization
+""",
+}
+
 def run(pattern=None):
     plan = json.loads((HASKELL / "dist-newstyle/cache/plan.json").read_text())
     library = next(unit for unit in plan["install-plan"]
@@ -3032,8 +3210,10 @@ def run(pattern=None):
                                         text=True, capture_output=True)
                 output = result.stdout + result.stderr
                 error_lines = re.findall(re.escape(str(target)) + r":(\d+):\d+: error:", output)
+                guard_start_line = source.count("\n") + 2
                 if (result.returncode == 0 or "Liquid Type Mismatch" not in output
-                        or not any(int(line) > source.count("\n") for line in error_lines)):
+                        or not error_lines
+                        or any(int(line) < guard_start_line for line in error_lines)):
                     raise SystemExit(f"Proof guard did not produce the required rejection: {description}\n{output}")
                 print(f"Rejected false law: {description}")
 
@@ -3098,6 +3278,8 @@ def run(pattern=None):
         check_group(INSERTION_COMPOSITION_PUBLIC_SOURCE, INSERTION_COMPOSITION_PUBLIC_GUARDS)
         check_group(STABLE_PREIMAGE_PUBLIC_SOURCE, STABLE_PREIMAGE_PUBLIC_GUARDS)
         check_group(TOTAL_MAP_PUBLIC_SOURCE, TOTAL_MAP_PUBLIC_GUARDS)
+        check_group(CHAINED_DATA_PUBLIC_SOURCE, CHAINED_DATA_PUBLIC_GUARDS)
+        check_group(CHAINED_ACTION_PUBLIC_SOURCE, CHAINED_ACTION_PUBLIC_GUARDS)
 
         typing_guards = [
             ("module PublicCoveredGuard where\nimport AtlasCoveredPageElement (CoveredPageElement)\n",

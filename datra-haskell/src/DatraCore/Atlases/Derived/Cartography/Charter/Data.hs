@@ -61,7 +61,7 @@ import AtlasCoveredPageElement
 import Numeric.Natural (Natural)
 import Dominion (Dominion, dominion, rank, dominionCoherence)
 import DomanialInsertion.Core
-  ( DomanialInsertion (..), domanialInsertion )
+  ( DomanialInsertion (..), domanialInsertion, insertionOn )
 import PageElements.Structure (PageElement, PageElementArrow, arrowSource, arrowTarget
   , identityPageElementArrow, composePageElementArrows, pageElementPage, pageElementPosition)
 import qualified PageElements as Elements
@@ -205,17 +205,6 @@ chartedDominion :: Atlas a s d o f -> PageElement s object -> Dominion (ChartedD
 chartedDominion owner occurrence =
   dominionOn (chartedDatumValid owner occurrence) chartedCellDataRank
     (chartedUnrank owner occurrence) (chartedRankRoundTrip owner occurrence)
-
--- | Retain carrier predicates while packaging higher-kinded callbacks.
-{-@ insertionOn :: acceptsSource:(a -> Bool) -> acceptsTarget:(b -> Bool)
-      -> forward:({x:a | acceptsSource x} -> {y:b | acceptsTarget y})
-      -> backward:({y:b | acceptsTarget y} -> Maybe ({x:a | acceptsSource x}))
-      -> (x:{a | acceptsSource x} -> {backward (forward x) == Just x})
-      -> {mapping:DomanialInsertion ({x:a | acceptsSource x}) ({y:b | acceptsTarget y}) |
-           applyInsertion mapping == forward && preimage mapping == backward} @-}
-insertionOn :: (a -> Bool) -> (b -> Bool) -> (a -> b) -> (b -> Maybe a) -> (a -> ())
-  -> DomanialInsertion a b
-insertionOn _ _ forward backward leftInverse = DomanialInsertion forward backward leftInverse
 
 {-@ reflect chartedAcceptedValue @-}
 {-@ chartedAcceptedValue :: owner:Atlas a s d o f -> occurrence:PageElement s object

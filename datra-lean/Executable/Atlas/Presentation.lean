@@ -31,6 +31,11 @@ def acceptsDatum {Owner : Type} (value : AtlasAllocation Owner)
     (value.storedPresentation.pagination.pages.depth - 1)
     value.storedPresentation.pagination.pages.depth occurrence datum
 
+abbrev AcceptedDatum {Owner : Type} (value : AtlasAllocation Owner)
+    (occurrence : PageElement value.atlasDescription.pagination.pages) :=
+  {datum : value.atlasDescription.cellData occurrence.cell //
+    value.acceptsDatum occurrence datum = true}
+
 -- ALIGN: ATLAS-DESCRIPTION-MEMBERSHIP.
 theorem descriptionMembership {Owner : Type} (value : AtlasAllocation Owner)
     (occurrence : PageElement value.atlasDescription.pagination.pages)
@@ -45,6 +50,23 @@ def toAtlas {Owner : Type} (value : AtlasAllocation Owner) : Atlas :=
   let presentation := value.atlasDescription
   letI := presentation.ownership
   AtlasMembershipAction.toCanonicalAtlas presentation.pagination presentation.action presentation.laws
+
+/-- The categorical carrier and the runtime membership subtype contain the
+same raw data. Only the proof of membership changes. -/
+def acceptedCarrierEquiv {Owner : Type} (value : AtlasAllocation Owner)
+    (occurrence : value.toAtlas.Element) :
+    value.toAtlas.cellData occurrence.val.cell ≃ value.AcceptedDatum occurrence.val :=
+  letI := value.atlasDescription.ownership
+  value.atlasDescription.action.canonicalCarrierEquiv occurrence
+
+@[simp] theorem acceptedCarrierEquiv_val {Owner : Type} (value : AtlasAllocation Owner)
+    (occurrence : value.toAtlas.Element) (datum : value.toAtlas.cellData occurrence.val.cell) :
+    (value.acceptedCarrierEquiv occurrence datum).val = datum.val := rfl
+
+@[simp] theorem acceptedCarrierEquiv_symm_val {Owner : Type} (value : AtlasAllocation Owner)
+    (occurrence : value.toAtlas.Element)
+    (datum : value.AcceptedDatum occurrence.val) :
+    ((value.acceptedCarrierEquiv occurrence).symm datum).val = datum.val := rfl
 
 end AtlasAllocation
 

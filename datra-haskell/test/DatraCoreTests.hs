@@ -20,6 +20,7 @@ import AtlasTransversalMap
 import AtlasTerritory
 import Chain
 import ChainedDominionAtlas
+import qualified ChainedDominionAtlas.Data as ChainedData
 import Charter
 import Coalition
 import qualified Coalition.Element as CoalitionElement
@@ -361,6 +362,45 @@ testChainedDominionAtlas = do
         && finalContains 1
         && not (finalContains 2)
       )
+    withPageElement (atlasOriginCell valueAtlas) $ \origin -> do
+      assert "the chained extent rejects region-tagged data"
+        (atlasAcceptsDatum valueAtlas origin (ChainedData.ChainedDominionExtentDatum 3)
+          && not (atlasAcceptsDatum valueAtlas origin (ChainedData.ChainedDominionRegionDatum 3)))
+      mapM_ (\(page, position, selected, other) ->
+        case pageElementIndex (atlasPageElements valueAtlas) page (finiteOrdinal position) of
+          Nothing -> assert "the selected chained occurrence exists" False
+          Just index -> withPageElement (pageElement index) $ \region -> do
+            let accepted = ChainedData.ChainedDominionRegionDatum selected
+                wrongValue = ChainedData.ChainedDominionRegionDatum other
+                wrongTag = ChainedData.ChainedDominionExtentDatum selected
+                regionData = atlasDataAt valueAtlas region
+                toOrigin = mapAtlasData valueAtlas (pageElementArrow region origin)
+            assert "a chained region accepts exactly its selected tagged value"
+              (atlasAcceptsDatum valueAtlas region accepted
+                && not (atlasAcceptsDatum valueAtlas region wrongValue)
+                && not (atlasAcceptsDatum valueAtlas region wrongTag))
+            assert "accepted chained region data round-trip through their Dominion"
+              (unrank regionData (rank regionData accepted) == Just accepted)
+            assert "the chained region insertion retains its accepted carrier"
+              (preimage toOrigin (applyInsertion toOrigin accepted) == Just accepted
+                && isNothing (preimage toOrigin (ChainedData.ChainedDominionExtentDatum other))
+                && isNothing (preimage toOrigin (ChainedData.ChainedDominionRegionDatum selected)))
+            let identityAction = mapAtlasData valueAtlas (identityPageElementArrow region)
+            assert "the chained action preserves identity in both directions"
+              (applyInsertion identityAction accepted == accepted
+                && preimage identityAction accepted == Just accepted)
+            case pageElementIndex (atlasPageElements valueAtlas) 1 (finiteOrdinal position) of
+              Nothing -> assert "the final representative exists" False
+              Just finalIndex -> withPageElement (pageElement finalIndex) $ \finalRegion -> do
+                let toFinal = mapAtlasData valueAtlas (pageElementArrow region finalRegion)
+                    finalToOrigin = mapAtlasData valueAtlas (pageElementArrow finalRegion origin)
+                    composed = composeInsertions finalToOrigin toFinal
+                assert "chained normalization and composition retain forward and inverse actions"
+                  (applyInsertion composed accepted == applyInsertion toOrigin accepted
+                    && all (\candidate -> preimage composed candidate == preimage toOrigin candidate)
+                      [ChainedData.ChainedDominionExtentDatum selected,
+                       ChainedData.ChainedDominionExtentDatum other]))
+        [(1, 0, 3, 4), (1, 1, 4, 3), (7, 0, 3, 4), (7, 1, 4, 3)]
     withAtlasMapExtent
       (chainedDominionAtlasMap owner) $
         \_ _ extent coversExtent ->

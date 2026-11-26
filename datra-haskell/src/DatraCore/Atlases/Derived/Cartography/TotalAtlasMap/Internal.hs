@@ -95,6 +95,7 @@ totalAtlasMap
 @-}
 -- ALIGN: TOTAL-ATLAS-MAP-CONSTRUCTION.
 -- ALIGN: TOTAL-ATLAS-MAP-INTERPRETATION.
+-- ALIGN: TOTAL-ATLAS-MAP-RAW-INTERPRETATION.
 totalAtlasMap
   :: AtlasMap (AtlasObject a s d)
   -> (forall object. PageElement s object -> SingletonDominion (d object))

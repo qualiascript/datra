@@ -863,6 +863,7 @@ withPageElementValue
       -> occurrence:PageElement scope object
       -> {result:PageElement scope object |
            pageElementPage result <= folioLength (pageElementsFolio category) - 1
+           && pageElementPage result == Trace.clampPage (pageElementPage occurrence) (folioLength (pageElementsFolio category) - 1)
            && pageElementPosition result == pageElementPosition occurrence} @-}
 normalizePageElement
   :: PageElements scope origin final
@@ -886,6 +887,11 @@ normalizeSomePageElement (PageElements pages) =
 
 -- | Normalize both endpoints of a page-element arrow.
 {-@ reflect normalizePageElementArrow @-}
+{-@ normalizePageElementArrow :: category:PageElements scope origin final
+      -> arrow:PageElementArrow scope source target
+      -> {result:PageElementArrow scope source target |
+           arrowSource result == normalizePageElement category (arrowSource arrow)
+           && arrowTarget result == normalizePageElement category (arrowTarget arrow)} @-}
 normalizePageElementArrow
   :: PageElements scope origin final
   -> PageElementArrow scope source target

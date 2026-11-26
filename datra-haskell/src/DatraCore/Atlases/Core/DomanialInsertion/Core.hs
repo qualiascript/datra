@@ -3,11 +3,13 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
+{-@ qualif InsertionAccepted(v:@(0), p:func(0, [@(0); bool])) { p v } @-}
 
 -- | Checked domanial insertions and their rank-image operations.
 module DomanialInsertion.Core
   ( DomanialInsertion (..)
   , domanialInsertion
+  , insertionOn
   , identityInsertion
   , identityInsertionApply
   , composeInsertions
@@ -59,6 +61,18 @@ domanialInsertion
   -> (a -> ())
   -> DomanialInsertion a b
 domanialInsertion = DomanialInsertion
+
+-- | Retain carrier predicates while packaging higher-kinded callbacks.
+-- ALIGN: INSERTION-ACCEPTED-CONSTRUCTION.
+{-@ insertionOn :: acceptsSource:(a -> Bool) -> acceptsTarget:(b -> Bool)
+      -> forward:({x:a | acceptsSource x} -> {y:b | acceptsTarget y})
+      -> backward:({y:b | acceptsTarget y} -> Maybe ({x:a | acceptsSource x}))
+      -> (x:{a | acceptsSource x} -> {backward (forward x) == Just x})
+      -> {mapping:DomanialInsertion ({x:a | acceptsSource x}) ({y:b | acceptsTarget y}) |
+           applyInsertion mapping == forward && preimage mapping == backward} @-}
+insertionOn :: (a -> Bool) -> (b -> Bool) -> (a -> b) -> (b -> Maybe a) -> (a -> ())
+  -> DomanialInsertion a b
+insertionOn _ _ forward backward leftInverse = DomanialInsertion forward backward leftInverse
 
 {-@ reflect composeInsertionMap @-}
 composeInsertionMap :: DomanialInsertion b c -> DomanialInsertion a b -> a -> c

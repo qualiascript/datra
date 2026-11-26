@@ -7,7 +7,7 @@
 
 -- | Hidden representation of paginations and pagination morphisms.
 module Pagination.Internal
-  ( Pagination
+  ( Pagination (..)
   , PaginationMorphism
   , SomePageElementArrow
   , paginationFromPageElements
@@ -65,8 +65,10 @@ import Prelude hiding ((.), id)
 -- different pagination cannot be substituted, even when both folios have the
 -- same Haskell carrier types.
 type role Pagination nominal nominal nominal
+{-@ data Pagination scope origin final = Pagination
+      { storedPageElements :: PageElements scope origin final } @-}
 data Pagination (scope :: Type) origin final = Pagination
-  (PageElements scope origin final)
+  { storedPageElements :: PageElements scope origin final }
 
 -- | Public pagination morphisms wrap the LiquidHaskell-verified
 -- representation. Defining the wrapper here keeps its 'Category' instance
@@ -84,13 +86,11 @@ paginationFromPageElements = Pagination
 
 -- | Recover the folio from a pagination.
 paginationFolio :: Pagination scope origin final -> Folio origin final
-paginationFolio (Pagination elements) = pageElementsFolio elements
+paginationFolio value = pageElementsFolio (paginationPageElements value)
 
--- | Recover the folio's corresponding category of page elements.
-{-@ reflect paginationPageElements @-}
-paginationPageElements
-  :: Pagination scope origin final
-  -> PageElements scope origin final
+-- | The public logical projection of the retained occurrence category.
+{-@ measure paginationPageElements @-}
+paginationPageElements :: Pagination scope origin final -> PageElements scope origin final
 paginationPageElements (Pagination elements) = elements
 
 -- | The number of genuine pages in the pagination's finite presentation.
@@ -101,7 +101,7 @@ paginationCardinality
   :: Pagination scope origin final
   -> Natural
 {-@ reflect paginationCardinality @-}
-paginationCardinality (Pagination elements) = folioLengthData (pageElementsFolio elements)
+paginationCardinality value = folioLengthData (pageElementsFolio (paginationPageElements value))
 
 -- | Collapse a tall occurrence to its representative at or before the final
 -- genuine page.

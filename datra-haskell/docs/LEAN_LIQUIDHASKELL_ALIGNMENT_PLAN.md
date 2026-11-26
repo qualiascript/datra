@@ -106,16 +106,47 @@ Total Atlas maps store singleton certificates for accepted data at each valid
 final-page occurrence of their retained Atlas map. The checked constructor and
 public eliminator keep the owner, final-region predicate, and membership
 restriction together. The singleton constructor retains its selected value;
-uniqueness applies only to the certified carrier. Lean models this package and
-proves that every semantic territory is inhabited and subsingleton, establishing
-the written totality predicate. The module remains partial while its complete
-raw-presentation interpretation and exact public construction/observation laws
-are audited. Public positive checks exercise accepted selection, restricted
+uniqueness applies only to the certified carrier. Lean models the raw package
+against its retained `AtlasAllocation`, including the scalar trace test, final
+page test, and membership subtype. Its interpretation uses the allocation's
+accepted-carrier equivalence and preserves the owner and selected raw datum.
+Transporting a singleton certificate to the categorical carrier and back
+recovers the complete certificate. Every semantic territory is then inhabited
+and subsingleton, establishing the written totality predicate. The raw
+constructor/eliminator equation is proved in Lean. Conversely, written totality
+supplies singleton certificates on genuine occurrences, and reconstruction with
+the retained Atlas map recovers the categorical package exactly. This reverse
+interpretation is noncomputable; Haskell construction still requires explicit
+singleton evidence. The module remains partial:
+the public Haskell contracts retain the owning domain, but do not yet expose
+that exact construction/observation equation. Public positive checks exercise accepted selection, restricted
 uniqueness, and reconstruction through the eliminator. Rejection checks prevent
 dummy uniqueness proofs, owner substitution, unchecked region lookup, rejected
 selected values, and uniqueness claims about unaccepted candidates. The runtime
 regression uses a singleton accepted subset of a larger datum type and excludes
 padded occurrences from the genuine final regions.
+
+The chained-Dominion Atlas distinguishes extent-tagged data from region-tagged
+data in its membership predicate. A region accepts only the value at its selected
+chain position, including on padded occurrences. Its exposed
+`ChainedDominionAtlas.Data` component checks the restricted cell Dominions.
+`ChainedDominionAtlas.Action` supplies the shared cell classifier, membership,
+and insertion used by the runtime presentation. Compatible endpoints are either
+the extent or occurrences of the same selected region. The action checks both
+directions of identity and composition, source/target membership, and separation
+of distinct region images. Inverse composition retains failed lookups as well
+as successful ones. The classifier is unchanged by the two-page normalization,
+including on malformed raw traces. Lean models these same operations and proves
+their laws, with a certified insertion preserving the raw forward and inverse
+functions. Its extent carrier is
+equivalent to the original Dominion, and each accepted region carrier has an
+explicit singleton certificate. The complete two-page Atlas assembly, coverage
+construction, traversal, and interpretation into the written Atlas model remain
+open. In particular, the owning folio must establish the classifier's endpoint
+compatibility and connect equal selected regions to equal page positions;
+the cell-action proofs do not discharge those obligations. Charter and the
+chained construction share `DomanialInsertion.Core.insertionOn` to retain source
+and target predicates while packaging their callbacks.
 
 Coverage validation checks the retained region's owning trace, datum membership,
 final page, and both cache equalities. Matching the source's origin rank is only
@@ -862,8 +893,10 @@ The current `DatraCore` representation is executable and intensional:
 - Pages beyond the finite presentation are real full-spine occurrences. They
   normalize to their last genuine representatives by clamping the page and
   trimming repeated trace entries.
-- `Pagination` gives a folio a generative phantom scope. Its morphisms are
-  object maps plus an arrow-preservation witness.
+- `Pagination` gives a folio a generative phantom scope and retains its owning
+  page-element category in a named private field. A public measure exposes that
+  exact category to checked contracts. Its morphisms are object maps plus an
+  arrow-preservation witness.
 - `Atlas` has a second generative identity and a dependent `cellData` family.
   `AtlasData` stores the object/action operations plus identity, composition,
   full-spine coherence, and pagewise-disjointness witnesses.
@@ -1297,6 +1330,10 @@ Maintain three kinds of tests:
 - **Cross-language computation fixtures:** shared inputs and expected outputs
   for ordinal, chain, trace, normalization, and composition functions. These
   catch definition drift but do not replace proofs.
+
+Rejection checks must locate every reported type error in the injected negative
+case. An error in its supporting implementation or positive examples invalidates
+the check instead of counting as a successful rejection.
 
 Pin Lean/Mathlib, GHC, LiquidHaskell, and Z3 versions in CI. Yoneda packaging is
 compiler/elaborator-sensitive, so version changes must rerun the assumption-free
