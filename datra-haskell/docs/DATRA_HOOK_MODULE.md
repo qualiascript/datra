@@ -1,24 +1,29 @@
-# `datra` Bootstrap Module
+# `datra` Bootstrap and Native Capability Design
 
 ## Status
 
-This document is the implementation handoff for replacing the remaining
-`DatraHost`/runtime-singleton bootstrap with an ordinary built-in module. It
-also records the native `datra.*` declarations which the current branch lost.
+This document defines the boundary between work whose direction is settled and
+work that still requires architectural design.
 
-The intended result is:
+The settled direction is:
 
-- `datra` is a `def val` declaration backed by a built-in `PreparedModule`;
-- its members are ordinary dependent declarations with native bodies;
-- the module is visible only while the canonical bundled standard library is
-  prepared;
-- `Std` exports its own ordinary `datra` declaration through
-  `def val datra := datra`; and
-- all later source obtains `datra` through the normal standard-library import.
+- public `datra.*` members are ordinary dependent declarations;
+- Haskell supplies only narrow, typed capabilities required by those
+  declarations;
+- syntax representations remain private to the language subsystem that owns
+  them;
+- bootstrap authority belongs to canonical bundled sources rather than a file
+  basename; and
+- prepared modules are installed through ordinary retained declaration layers.
 
-## Current failure
+A bundled `libs/datra.datra` module is the leading proposal for the declaration
+layer between Haskell capabilities and `libs/std.datra`. Its bootstrap grammar,
+capability reference mechanism, and exact public declarations remain open
+design work.
 
-`libs/std.datra` currently begins with:
+## The `begin` bootstrap constraint
+
+`libs/std.datra` currently begins by calling `datra.begin` twice:
 
 ```datra
 (datra.begin (()
@@ -29,54 +34,70 @@ The intended result is:
 )
 ```
 
-The current `DatraHost.datraHostValue` still supplies constants, types,
-runtime functions, `parse_natural`, and range bodies, but it no longer supplies
-`datra.begin`. The hook refactor renames these two body declarations to
-`datra.parse_natural_body` and `datra.begin_body`. Until the opening reference
-is renamed and `begin_body` is restored, the application cannot rewrite to a
-resource block. Module preparation reaches `resourceBlock` with an application
-and reports:
+Both calls require a callable operation before `_Block`, `_Expr`, and the
+surface `begin` declaration exist.
 
-```text
-ModuleEvaluationFailed ModuleRequiresBlock
-```
+A value of `functionBodyType` is not a callable function. It has no domain or
+codomain until a signature is applied. Consequently, a `begin_body` value
+cannot occupy these call sites by itself. The bootstrap design must provide a
+callable block operation and must establish its signature before either call is
+rewritten.
 
-This is the first blocker exposed by the current cleanup.
+This constraint is part of the broader design. The final design may expose
+`begin`, `begin_body`, both, or a different bootstrap form, but the name and
+classification must follow from the chosen staging model.
 
-## Current split-brain bootstrap
+## Settled architecture
 
-The implementation currently has three partially overlapping entry points:
+### Ordinary dependent declarations
 
-1. `installDatraHost` in `Evaluation/Expression.hs` constructs a host atlas map
-   and installs it as a `RuntimeSingletonPayload` named `datra`.
-2. `parsedDefaultModule` installs that singleton while rewriting the bundled
-   `std.datra` source.
-3. `moduleBaseScope` installs it for every module whose basename is
-   `std.datra`.
+Native-backed and source-backed members use the same dependent declaration
+representation and the same:
 
-`standardModuleScope` also prepares and installs `Std` on top of the same base
-scope containing the host singleton. This couples the private bootstrap value
-to the resulting standard-library environment.
+- head and capture matching;
+- overlap handling;
+- type checking;
+- optional-name behavior;
+- specification and subfederation behavior;
+- protection and presentation;
+- import precedence; and
+- public-scope retention.
 
-The current representation has two kinds of declarations inside the same
-scope layers:
+The declaration owns its head, modifiers, captures, implementation, public
+scope, and evaluated cache. A Haskell capability supplies implementation
+behavior without defining a second declaration model.
 
-- `ScopedDatraDependentDeclaration`, representing source dependent
-  declarations and optionally carrying a runtime payload; and
-- `ScopedRuntimeSingletonDeclaration`, representing a runtime-created name
-  through `RuntimeSingletonPayload`.
+### Typed capability boundary
 
-Although scope lookup now uses common declaration layers, runtime singletons
-still carry a parallel declaration model: name, `def` flag, value,
-presentation, origin, definition, public scope, and reevaluation policy.
-`DatraHost` builds a host map on top of that model instead of producing a
-module of ordinary declarations.
+Each Haskell capability accepts and returns typed semantic values owned by the
+relevant subsystem. Dependent declaration, block, function-body, conditional,
+function, and scoped-evaluation representations remain opaque across this
+boundary.
 
-## Target module identity
+The boundary preserves:
 
-`PreparedModule.preparedModuleIdentity` is currently a `FilePath`. Replace it
-with an explicit identity type so built-in and source modules cannot be
-confused:
+- lexical scope and capture state;
+- declaration order and visibility;
+- optional names;
+- specification and subfederation evidence;
+- insertion and preimage capability where semantically required; and
+- structured failures for the phase that invokes the capability.
+
+Raw parser and rewriter nodes do not cross the capability boundary. Syntax
+category labels such as `FunctionBodyAST` classify Datra values; they do not
+expose their Haskell representation.
+
+### Prepared module installation
+
+`installPreparedModule` remains the installation boundary. Every prepared
+bootstrap or standard module retains an ordinary declaration layer.
+Installation pushes that retained layer without rebuilding a namespace value,
+rematerializing declarations, or reevaluating unrelated members.
+
+### Explicit module identity
+
+Module identity distinguishes canonical source modules from private built-in
+capability providers, for example:
 
 ```haskell
 data ModuleIdentity
@@ -84,289 +105,244 @@ data ModuleIdentity
   | BuiltinModuleIdentity BuiltinModuleName
 ```
 
-The exact constructors may vary, but the built-in `datra` identity must be
-stable, distinct from every file path, and used by the normal prepared-module
-deduplication and diagnostics.
+The exact representation may vary. It must provide stable identity, ordinary
+prepared-module deduplication, and unambiguous diagnostics.
 
-Module identity does not define lookup semantics. Lookup continues through the
-dependent declaration layer retained by the prepared module. Qualified access
-such as `datra.begin_body` is the ordinary application/access of the `datra`
-declaration followed by the `begin_body` declaration in its public scope.
+If `libs/datra.datra` is adopted, it has a canonical bundled source identity
+distinct from the private capability provider used while preparing it.
 
-## The built-in `datra` module
+### Bootstrap authority and visibility
 
-Construct `datra` directly as a `PreparedModule` whose namespace layer contains
-an ordinary scoped declaration equivalent to:
+The trusted bundled-source loader is the only authority that exposes private
+Haskell capabilities. Authority is determined by canonical source identity.
 
-```datra
-def val datra := <native namespace value>
-```
+The private provider exists only while the canonical declaration layer is
+prepared. The resulting `datra` declaration is then available while
+`libs/std.datra` is prepared. `Std` retains its own ordinary `datra`
+declaration, and caller scopes obtain it through normal qualified or open
+standard-library imports.
 
-The `datra` declaration retains a public declaration scope containing its
-members. Those members use the same dependent declaration representation,
-matching, overlap handling, captures, type checking, protection, presentation,
-and import behavior as source declarations. There is no host-map member lookup
-and no special handling for simple identifiers.
+Source evaluated with `NoStandardLibrary` has no `datra` binding unless an
+explicit module supplies one. Private capability identities and bootstrap
+scopes are absent from the final prepared `Std` module and caller scope.
 
-Native and source modules are two producers of the same prepared module form:
+## Proposed `datra.datra` layer
+
+The leading bootstrap structure is:
 
 ```text
-source declarations ─┐
-                     ├─> PreparedModule ─> installPreparedModule
-native declarations ─┘
+private typed Haskell capabilities
+               │
+               ▼
+prepare canonical libs/datra.datra
+               │
+               ▼
+PreparedModule containing ordinary datra declarations
+               │
+               ▼
+prepare canonical libs/std.datra
+               │
+               ▼
+Std exports its ordinary datra declaration
 ```
 
-The existing `installPreparedModule` remains the installation boundary.
+Under this proposal, `libs/datra.datra` owns:
 
-## Native declaration bodies
+- dependent declaration heads and function signatures;
+- public `datra.*` names;
+- `def`, `val`, and other declaration modifiers;
+- the distinction between a function body and a callable function;
+- composition of smaller capabilities into public operations; and
+- the public namespace made available to `Std`.
 
-A native member is a normal dependent declaration whose implementation is
-supplied by Haskell rather than an `Expression`. Refactor the scoped
-declaration representation around a function-body capability, for example:
+Haskell owns:
 
-```haskell
-data ScopedDeclarationBody
-  = SourceDeclarationBody Scope Expression
-  | NativeDeclarationBody NativeBody
-  | EvaluatedDeclarationBody InterpretedValue
-```
+- capabilities that cannot be expressed in Datra;
+- typed implementation state and evaluator access;
+- representation invariants of opaque semantic values; and
+- bidirectional insertion behavior intrinsic to a capability.
 
-This sketch describes the ownership boundary, not a required constructor
-layout. The important properties are:
+This proposal becomes an implementation plan only after the open design
+questions below have precise answers.
 
-- the declaration itself owns its head, modifiers, capture schema, and body;
-- `def` and `val` are declaration modifiers rather than booleans in a runtime
-  payload;
-- every native function-body value uses the existing `functionBodyType`, whose
-  Datra category is `FunctionBodyAST`;
-- `functionBodyType` classifies the body value and is distinct from a function
-  signature;
-- a function body owns behavior and closure state, with no function domain or
-  codomain;
-- applying a function signature to a body constructs the typed function;
-- native invocation uses the ordinary dependent-declaration application path;
-- a body may retain bidirectional implementation capability which becomes a
-  typed federation insertion when a compatible signature is applied;
-- the declaration's public scope and evaluated cache remain attached to the
-  declaration/module rather than forming a second node kind; and
-- after signature application, native syntax-valued bodies return typed syntax
-  values through ordinary function evaluation.
+## Open design questions
 
-The current `DatraHost.runtimeBody` embeds an `EvaluatedFunction` with
-`anyTypeValue` as both domain and codomain. Replace those placeholder function
-types with a body value classified by `functionBodyType`. Reuse the existing
-type value rather than introducing a second native-body category. This applies
-to every `datra` hook member implemented as a function body, regardless of
-whether its exported name ends in `_body`.
+### Bootstrap grammar for `datra.datra`
 
-Once source and native declarations share this representation, remove
-`ScopedRuntimeSingletonDeclaration` and `RuntimeSingletonPayload`. Runtime
-caches and contextual evaluation capabilities can remain internal fields of a
-prepared declaration; they no longer define another declaration language.
+`datra.datra` cannot depend on the complete declaration and syntax surface it
+defines. Its preparation needs a cycle-free minimal grammar or staging layer.
+That layer must be sufficient to declare the `datra` namespace, attach typed
+capabilities, and produce the resource consumed by `PreparedModule`.
 
-## Required `datra.*` declarations
+### Source reference to Haskell capabilities
 
-The hook module requires these eight native bodies:
+Selected declarations need a structural, typed, and unforgeable reference to a
+Haskell capability. The design must specify:
 
-1. `datra.let_body`
-2. `datra.def_body`
-3. `datra.val_body`
-4. `datra.begin_body`
-5. `datra.do_body`
-6. `datra.fun_body`
-7. `datra.if_body`
-8. `datra.with_body`
+- the representation of capability identity;
+- how a declaration receives that identity;
+- which phase resolves it;
+- how its input and output types are checked;
+- how bidirectional behavior is retained; and
+- why ordinary source cannot access or forge it.
 
-Update every standard-library reference from `datra.begin` to
-`datra.begin_body`, including the two bootstrap applications and the surface
-`begin` declaration implementation.
+### Callable bootstrap block operation
 
-The current `DatraHost` member `datra.parse_natural` is renamed to
-`datra.parse_natural_body`. Its value has `functionBodyType`, while its domain
-and codomain belong to the function signature which consumes it.
+The staging model must establish how the initial block applications are
+rewritten. The possibilities include a block form in the minimal grammar, an
+early callable dependent declaration, or another core resource representation.
 
-The standard declaration:
+The choice determines the final classification and name of the block
+capability. It also determines where `_Block` and `_Expr` first become
+available for signature checking.
 
-```datra
-def val $"%(_NaturalLiteral)" :=
-  (_NaturalLiteral -> Nat) datra.parse_natural_body
-```
+### Semantic values at the native boundary
 
-applies the signature to the body, producing the typed function used by the
-declaration implementation.
+Each syntax-facing behavior needs an opaque typed interface. The design must
+decide whether that interface is:
 
-The eight restored bodies are also ordinary native declaration bodies. Their
-implementations may manipulate typed syntax values, but their discovery and
-invocation come from the declaration stored in the `datra` module. Reintroduce
-the transformations themselves without restoring the removed
-`DatraHost.Syntax`, `DatraHostSyntaxDefinition`, syntax-definition registry, or
-a parallel syntax-context lookup.
+- an operation over existing `InterpretedValue` forms;
+- a new semantic value owned by the relevant subsystem; or
+- a phase-owned evaluator capability used during declaration invocation.
 
-The body behavior to preserve is:
+The answer may differ by behavior. A single universal syntax capability is not
+required.
 
-| Declaration | Result |
-| --- | --- |
-| `let_body` | adds the `let` declaration modifier |
-| `def_body` | adds the `def` declaration modifier |
-| `val_body` | adds the `val` declaration modifier |
-| `begin_body` | constructs a block expression from entries and a result |
-| `do_body` | constructs a function body from entries and a result |
-| `fun_body` | constructs `Fun` from its expression |
-| `if_body` | constructs a conditional, with an optional else branch |
-| `with_body` | constructs scoped evaluation from module operands and a body |
+### Classification of each public operation
 
-`parse_natural_body`, once paired with the signature above, converts the
-supplied natural-literal value to `Nat`.
+Each public operation must be classified independently as a value, function
+body, callable function, dependent declaration, or phase-owned capability.
+Names ending in `_body` are appropriate only for values that actually require
+a signature to become callable.
 
-That conversion is total over the applied `_NaturalLiteral -> Nat` signature.
-The typed function validates membership before invoking the body, and the body
-recovers the unique retained `Nat` witness. It does not reparse an arbitrary
-string or report `NoApplicableFunctionAlternative` for a valid
-`_NaturalLiteral`. Canonical string decoding remains at the construction and
-membership boundary of `_NaturalLiteral`.
+`parse_natural`, `from`, and range behavior have meaningful bidirectional body
+capabilities. Their classification does not determine the classification of
+block, conditional, function, or scoped-evaluation behavior.
 
-All currently retained `datra` constants, types, boolean/ordinal operations,
-range bodies, and other native functions must migrate into this module as
-ordinary declarations before the host map is deleted.
+### Phase ownership
 
-## Standard-library bootstrap lifecycle
+For each capability, the design must identify one owning phase among parsing,
+syntax rewriting, declaration preparation, and evaluation. Its contract must
+state which typed values, scope, and capture evidence are available in that
+phase and how failures are reported.
 
-The built-in hook has one authority boundary: preparation of the canonical
-bundled `libs/std.datra`.
+## Required behavior contracts
 
-The lifecycle is:
+These observable semantics are fixed even though their exported names and
+native interfaces are not.
 
-1. Create a clean root scope for the canonical bundled standard-library
-   source.
-2. Install the built-in `datra` prepared module into a private bootstrap scope.
-3. Rewrite and prepare `libs/std.datra` using that scope.
-4. Evaluate the standard-library declaration:
+| Behavior | Required semantics | Open design work |
+| --- | --- | --- |
+| `let` modifier | Normalize an assigned dependent declaration, apply only `let`, and preserve its optional name, head, captures, implementation, specification, and subfederation behavior. | Define the opaque declaration operation and its owning phase. |
+| `def` modifier | Normalize an assigned dependent declaration, apply only `def`, and preserve all unrelated declaration semantics, including recursive definition behavior. | Define the opaque declaration operation and definition-scope ownership. |
+| `val` modifier | Normalize an assigned dependent declaration, apply only `val`, and retain the required injectivity evidence. | Define the declaration and injectivity operation. |
+| block expression | Execute declarations in source order and block scope, then yield the result; preserve empty and singleton-entry behavior. | Define the bootstrap form, callable declaration, and semantic block interface. |
+| function body | Retain declarations, result, lexical scope, and deferred invocation behavior. | Define construction and closure capture. |
+| function expression | Produce ordinary function behavior from its body expression and preserve lexical capture. | Define whether source composition or a Haskell capability owns construction. |
+| conditional | Evaluate only the selected branch and use the ordinary empty result when the else branch is absent. | Define lazy branch values and phase ownership. |
+| scoped evaluation | Open module operands in order, evaluate a body with ordinary import precedence, and end the opened scope afterward. | Define the prepared-module/body interface and scope-lifetime capability. |
 
-   ```datra
-   def val datra := datra
-   ```
+Natural-literal conversion is total for values admitted by the
+`_NaturalLiteral -> Nat` signature. It recovers the retained `Nat` witness and
+does not parse an arbitrary string. Its final declaration name and whether it
+is exposed as a body are determined with the rest of the declaration layer.
 
-   The right-hand side resolves the private built-in declaration. The
-   left-hand side creates the normal `Std.datra` declaration retained by the
-   prepared standard module.
-5. Discard the bootstrap scope.
-6. Install the prepared `Std` module into the caller's clean scope with the
-   requested qualified or open visibility.
+Boolean, ordinal, length, subfederation, range, and other native operations
+receive the same declaration-layer audit. Stable value-level operations retain
+their semantics while their declaration ownership and namespace move.
 
-As a result, ordinary source sees `datra` only through `Std`. Source evaluated
-with `NoStandardLibrary` has no `datra` binding unless a module explicitly
-provides one.
+## Certain cleanup work
 
-The bootstrap decision belongs to the trusted standard-library loading entry
-point. The current trusted-source check in `Interpreting/Source.hs` already
-compares the source with `requiredBundledLibrarySource`; consolidate this into
-one canonical loader/identity boundary. Remove the basename check from
-`moduleBaseScope`, so an unrelated file named `std.datra` receives no built-in
-authority.
+The following outcomes are required independently of the open design choices:
 
-## Parsing, rewriting, and evaluation modes
+1. `PreparedModule` uses explicit source and built-in identities.
+2. Trusted bootstrap loading uses canonical source identities in one loader
+   boundary.
+3. `moduleBaseScope` no longer grants capability access by basename.
+4. Bootstrap and standard modules install retained dependent declaration
+   layers through `installPreparedModule`.
+5. Public `datra.*` names, signatures, modifiers, and scopes belong to ordinary
+   dependent declarations.
+6. Stable constants, types, Boolean and ordinal operations, range behavior,
+   and other value-level capabilities move out of the current host namespace
+   without semantic changes.
+7. The current host namespace, runtime-singleton declaration path, and parallel
+   runtime payload representation are removed after the replacement module
+   supplies all required members.
+8. Private capability values and bootstrap scopes are absent from the prepared
+   `Std` module and caller scopes.
 
-The bootstrap crosses three ordinary execution phases:
+Items 6 and 7 depend on a working replacement declaration layer. The other
+items may be developed independently when they do not change bootstrap
+behavior.
 
-1. **Raw parsing** produces an unresolved AST and does not consult declarations.
-2. **Syntax rewriting** derives visible rules from the declaration layers in
-   `Scope`. During standard-library bootstrap, this is where native bodies such
-   as `datra.begin_body` and `datra.val_body` become available through their
-   ordinary declarations and receive their signatures from `std.datra`.
-3. **Evaluation/module preparation** evaluates declaration bodies, retains
-   public scopes, and produces the `PreparedModule` installed by later scopes.
+## Design-dependent work
 
-The same declaration identity must survive all three phases. The bootstrap
-module supplies declarations to `Scope`; it does not populate a separate
-syntax context or evaluator-only host map.
+The following work begins only after the corresponding open questions are
+resolved:
 
-## Relationship to injective `val`
+- creating `libs/datra.datra`;
+- changing the initial `std.datra` block form;
+- choosing `begin` or `begin_body` as a public declaration;
+- defining the source syntax or preparation API for capability references;
+- classifying each syntax-facing operation;
+- implementing opaque semantic interfaces for those operations; and
+- moving syntax-facing behavior into the new declaration layer.
 
-The built-in namespace declaration and the bridge
-`def val datra := datra` are zero-capture values, so their injectivity proof is
-the singleton case described in `DEPENDENT_DECLARATION_INJECTIVITY.md`.
+The design is implementation-ready when it provides:
 
-Native bodies are `functionBodyType` values without intrinsic function
-signatures. When `std.datra` applies a compatible signature to a bidirectional
-body such as `parse_natural_body`, `from_body`, or `range_body`, the resulting
-typed function receives the shared
-forward/preimage insertion capability. The hook module must not retain the
-current forward-only `RuntimeFunctionInsertion` as a private exception.
+1. a cycle-free preparation sequence for `datra.datra` and `std.datra`;
+2. typed, unforgeable capability references;
+3. an explicit classification and owning phase for every operation;
+4. representation-hiding semantic interfaces;
+5. scope, capture, optional-name, specification, and subfederation behavior for
+   every syntax-facing operation; and
+6. exact failure and diagnostic behavior at each boundary.
 
-For `parse_natural_body`, applying `_NaturalLiteral -> Nat` yields an
-isomorphism. The inverse maps each `Nat` to its canonical natural-literal value.
-The body itself is neither a typed function nor an isomorphism until that
-signature is applied. Its forward operation is total for every member admitted
-by that signature.
+## Verification
 
-The internal `$val` modifier remains present on `val` declarations. The
-injectivity proof is separate evidence retained by their prepared value.
+### Cleanup verification
 
-## Implementation sequence
+- unrelated files named `datra.datra` or `std.datra` receive no bootstrap
+  authority;
+- `NoStandardLibrary` source cannot resolve private capabilities or the
+  standard `datra` declaration;
+- qualified and open modes expose `Std.datra` and `datra` through ordinary
+  declaration imports;
+- native-backed and source-backed declarations share lookup, capture,
+  overlap, protection, and import behavior;
+- private capability identities and scopes are absent from the prepared
+  standard module and caller scopes;
+- prepared modules install by retained layer reuse; and
+- standard-library preparation does not reevaluate unrelated native
+  declarations.
 
-1. Add explicit module identity and construct a minimal built-in `datra`
-   `PreparedModule` containing `datra.begin_body`; update the standard-library
-   bootstrap and declaration references to that name.
-2. Move standard-library parsing/preparation to the private bootstrap lifecycle
-   and remove the basename-triggered installation.
-3. Restore the remaining seven missing syntax-valued bodies and rename the
-   retained natural-literal body to `parse_natural_body`; construct every
-   body-valued member with the existing `functionBodyType`.
-4. Migrate every remaining `DatraHost` constant and function into native
-   declarations within the same module.
-5. Replace runtime singleton declarations with the unified scoped declaration
-   body representation; migrate contextual and cached runtime declarations.
-6. Delete `DatraHost`, `datraHostValue`, `installDatraHost`,
-   `ScopedRuntimeSingletonDeclaration`, and `RuntimeSingletonPayload` after
-   their call sites use prepared declarations.
-7. Audit syntax rewriting, module imports, and evaluation for host-map,
-   filename, and runtime-singleton branches.
+### Behavior verification
 
-Prepare the built-in module once and retain its declaration layer. Installation
-must push that retained layer without rebuilding the module, re-evaluating
-members, or rematerializing a host map.
+- bootstrap preparation never treats a function body as a callable function;
+- modifier behavior preserves optional names, specification, and
+  subfederation;
+- block and function-body behavior preserves entry order, lexical scope,
+  declaration visibility, empty entries, and result behavior;
+- function construction preserves lexical capture;
+- conditional behavior evaluates only the selected branch;
+- scoped evaluation preserves module order, import precedence, and scope
+  lifetime;
+- natural-literal conversion is total for `_NaturalLiteral` and retains its
+  inverse; and
+- native capability implementations operate only through their typed semantic
+  interfaces.
 
-## Required tests
+Exact test locations and declaration names depend on the completed design.
 
-### Bootstrap visibility
+## Completion criteria
 
-- the canonical bundled standard library rewrites and prepares with the
-  private built-in module;
-- an unrelated file named `std.datra` receives no bootstrap binding;
-- `NoStandardLibrary` source cannot resolve `datra`;
-- qualified standard-library mode exposes the ordinary declaration as
-  `Std.datra`, while open standard-library mode imports it as `datra`;
-- the private built-in module is absent from the final caller scope.
+The design phase is complete when the open questions have one coherent,
+cycle-free answer and the `datra.datra` proposal is either specified precisely
+or replaced by an equally explicit declaration layer.
 
-### Native declarations
-
-- all eight restored bodies resolve through dependent declaration lookup;
-- every body-valued hook member has `functionBodyType` and no intrinsic
-  function signature;
-- applying `_NaturalLiteral -> Nat` to `parse_natural_body` produces a total
-  typed function and a true isomorphism with canonical natural literals;
-- valid natural literals never take a partial body-failure path;
-- `from_body` and `range_body` retain their true insertion capability;
-- aliases and complex dependent heads follow the same lookup path as simple
-  identifiers;
-- declaration overlap and import-layer behavior is identical for native and
-  source modules.
-
-### Cleanup and performance
-
-- source search finds no `DatraHostSyntaxDefinition`, syntax-definition
-  registry, host atlas-map bootstrap, basename authority check, runtime
-  singleton node, or separate host syntax context;
-- the built-in module is prepared once and installed by layer reuse;
-- lookup does not enumerate or reevaluate unrelated native declarations;
-- standard-library preparation does not externally normalize or rematerialize
-  declaration values.
-
-## Completion criterion
-
-The refactor is complete when the canonical standard library can bootstrap
-from a private built-in `datra` `PreparedModule`, export `datra` through its own
-ordinary `def val`, and leave no hidden hook in later scopes. Every `datra.*`
-member must be an ordinary dependent declaration, including all nine native
-bodies used by `libs/std.datra`, and the runtime-singleton/host-map declaration
-model must be gone.
+The implementation is complete when canonical bootstrap preparation produces
+an ordinary `datra` module, `Std` exports it through ordinary dependent
+declarations, every native capability uses a typed representation-hiding
+boundary, and the current host namespace and runtime-singleton declaration
+path are no longer needed.
