@@ -134,7 +134,6 @@ import Atlas.Internal
   , atlasCoherenceWitness
   , atlasCompositionWitness
   , atlasDisjointWitness
-  , atlasDataAt
   , atlasAcceptsDatum
   , atlasDataCoherence
   , atlasFolio
@@ -149,7 +148,7 @@ import Atlas.Internal
   , normalizeAtlasElement
   , withAtlasPageChain
   )
-import qualified Atlas.Internal as Internal (atlasNormalizationAgrees, atlasArrowNormalizationAgrees, atlasPresentation, withAtlasPresentation, normalizeAtlasElementTraceValid, atlasAcceptsDatumNormalized, atlasNormalizationArrow, mapAtlasDataNormalized, normalizeAtlasArrowTraceValid)
+import qualified Atlas.Internal as Internal (atlasDataAt, atlasNormalizationAgrees, atlasArrowNormalizationAgrees, atlasPresentation, withAtlasPresentation, normalizeAtlasElementTraceValid, atlasAcceptsDatumNormalized, atlasNormalizationArrow, mapAtlasDataNormalized, normalizeAtlasArrowTraceValid)
 import Atlas.Morphism
   ( AtlasMorphismAction
   , AtlasObjectMap
@@ -208,11 +207,23 @@ import PageElements.Structure (PageElement, PageElementArrow, pageElementPage, p
 import Pagination (Pagination, paginationPageElements)
 import Folio (folioLength)
 import DomanialInsertion.Core (applyInsertion)
+import Dominion (Dominion)
 
 {-@ opaque-reflect atlasMembership @-}
 {-@ opaque-reflect atlasActionDomain @-}
 {-@ opaque-reflect atlasActionMembership @-}
+{-@ opaque-reflect atlasActionDataAt @-}
 {-@ opaque-reflect atlasActionMap @-}
+
+-- | Retain the exact normalized lookup through the public Atlas interface.
+{-@ opaque-reflect atlasDataAt @-}
+{-@ atlasDataAt :: owner:Atlas a s d o f
+      -> source:{PageElement s object | Elements.pageElementTraceValid (atlasPageElements owner) source}
+      -> {result:Dominion ({datum:d object | atlasAcceptsDatum owner source datum}) |
+           result == atlasActionDataAt (atlasPresentationAction (atlasDescription owner))
+             (normalizeAtlasElement owner source)} @-}
+atlasDataAt :: Atlas a s d o f -> PageElement s object -> Dominion (d object)
+atlasDataAt owner source = Internal.atlasDataAt owner source
 
 -- ALIGN: ATLAS-PREDICATE-CONSTRUCTION.
 -- | Assemble an Atlas from a predicate action whose laws use the public

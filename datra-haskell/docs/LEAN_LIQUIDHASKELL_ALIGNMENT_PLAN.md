@@ -178,6 +178,57 @@ uses these checked Dominions and the explicit tag-and-rank membership predicate
 for both allocation and its stored action. Public contract checks exercise both
 round trips and decoder equations; rejection checks rule out wrong tags, wrong
 region ranks, rejected decoder results, and changes to either stored decoder.
+`RankedDominionAtlas.Action` checks the classifier, normalization, admissible
+cell endpoints, membership preservation in both directions, and the insertion's
+left inverse. The runtime uses that checked insertion. Identity and composition
+preserve the exact forward map and partial inverse, including inverse lookups
+on arbitrary raw target data. The cell shape is shared with the chained
+construction; region positions are natural ranks. Disjointness follows from
+the rank associated with each accepted region datum. Public checks retain the
+raw identity and composition laws and reject incompatible endpoints, unchecked
+source data, rejected inverse results, and false action equations.
+`RankedDominionAtlas.Presentation` checks that owning two-page arrows supply
+compatible cell endpoints, preserving the exact forward and inverse callbacks.
+Its identity, composition, normalization, and disjointness certificates assemble
+the accepted data action into an Atlas presentation. Disjointness uses the
+actual natural spine and its checked finite-position law through the public
+`Chain` interface. `TwoPagePresentation` supplies shared occurrence normalization,
+arrow normalization, and final-position agreement for both ranked and chained
+presentations. `RankedDominionAtlas.Pagination` checks the fixed recipe's exact
+folio, two-page length, and natural final chain. The runtime factory allocates
+this checked presentation through `withAtlasPresentation`. Public checks retain
+the supplied pagination, exact data action, and fixed final chain. Rejection
+checks enforce owning trace validity, accepted source and target data, the
+two-page condition, and the natural spine required by region selection.
+`RankedDominionAtlas.Owner` retains the exact presentation and supplied Dominion
+through generative allocation. Its checked selectors expose the two-page folio,
+natural spine, membership predicate, cell Dominions, and stored insertion action.
+Membership agrees on every raw occurrence; forward and inverse observations
+agree with the cell action on valid arrows and accepted data. The public data
+lookup retains the original cell's rank and complete decoder after normalization,
+including failed lookups. A checked Atlas-extent observation expresses the origin
+rank as the retained origin Dominion's rank of the transported datum. Construction
+checks the concrete presentation before passing the retained owner to the
+generative callback. Coverage, maps, and traversals use this public owner interface.
+Public checks preserve presentation identity, the supplied Dominion, membership,
+and both insertion directions. Rejection checks prevent uncertified retention,
+Dominion substitution, and false presentation, membership, or inverse equations.
+`RankedDominionAtlas.Coverage` checks the region selected by the datum's Dominion
+rank, its accepted region datum, and equality of the source and region images at
+the origin. Coverage transport proves that the resulting witness covers the
+original accepted datum, including its owning occurrence. The Atlas-map factory
+uses this checked coverage callback. `TwoPageCoverage` supplies final-region
+self-coverage to both ranked and chained constructions; both Lean models reuse
+the corresponding shared proof. The origin-rank observation identifies the
+coverage witness's cache with the original Dominion rank.
+`RankedDominionAtlas.Coalition` checks the constructor's validity, canonical
+origin, and exact cached rank. Its raw inverse decodes that cache with the stored
+Dominion before applying the supplied partial inverse, including on uncertified
+records. Dominion coherence and the supplied insertion's left-inverse law prove
+the coalition insertion's round trip; its public contract retains both callbacks.
+Public-client rejection checks enforce the lookup's exact rank and decoder,
+the coalition's owning origin and cached rank, both raw decoder outcomes, and
+the insertion's left inverse.
 Lean assembles the two-page presentation's identity, composition, normalization,
 and disjointness laws, retains the original Dominion with its exact allocation,
 and relates the resulting Atlas data functor to the accepted runtime action.
@@ -191,9 +242,9 @@ The coalition insertion's raw inverse decodes that stored rank before invoking
 the supplied partial inverse; it preserves that algorithm even on uncertified
 records. On certified records it agrees with transport through the coalition
 equivalence. The complete ranked traversal has a semantic interpretation through
-the shared Dominion-inclusion hom map. LiquidHaskell verification of the ranked
-factory, coverage, coalition, and traversal assembly remains unfinished; this
-module is partially aligned.
+the shared Dominion-inclusion hom map. LiquidHaskell verification of traversal
+assembly remains unfinished; the public
+ranked module is partially aligned.
 
 The chained-Dominion Atlas distinguishes extent-tagged data from region-tagged
 data in its membership predicate. A region accepts only the value at its selected
@@ -831,7 +882,12 @@ checked `Dominion.lookupRank`, which accepts a candidate only at its forward ran
 and preserves decoding at every inhabited rank. Both cell Dominions have checked
 Haskell contracts through `RankedDominionAtlas.Data`. Lean proves the complete
 normalized action and its Atlas interpretation, coverage, coalition equivalence,
-and insertion traversal. The Haskell action and assembly contracts remain partial.
+and insertion traversal. Haskell checks the cell action and its connection to
+owning page arrows, including all four presentation laws. The retained owner
+preserves the exact presentation and both normalized insertion directions.
+Coverage selects the region at the original Dominion rank and certifies the
+source datum through the common origin. Coalition and traversal contracts are
+still partial.
 The public Dominion constructor and insertion core retain both supplied
 executable functions in their checked result contracts. `DomanialInclusion.Data`
 checks the constant carrier's rank, raw decoder, round trip, and identity

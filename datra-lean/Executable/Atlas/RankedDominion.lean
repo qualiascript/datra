@@ -17,12 +17,15 @@ def cellValue : RankedDominionCellData A Object → A := ChainedDominionAtlas.ce
 def spineRank (position : Ordinal) : Nat :=
   (Ordinal.naturalAtOrdinal position).getD 0
 
+-- ALIGN: RANKED-SPINE-RANK-FINITE.
 theorem spineRank_finite (index : Nat) : spineRank (Ordinal.finiteOrdinal index) = index := by
   simp [spineRank]
 
+-- ALIGN: RANKED-PAGE-CELL.
 def cellAt {Scope : Type*} {scope : Scope} (occurrence : PageElement scope) : RankedDominionCell :=
   if occurrence.page = 0 then .extent else .region (spineRank occurrence.position)
 
+-- ALIGN: RANKED-PAGE-NORMALIZATION.
 theorem cellAt_normalize {Scope : Type*} {scope : Scope} (occurrence : PageElement scope) :
     cellAt (PageElement.normalize 1 2 occurrence) = cellAt occurrence := by
   by_cases origin : occurrence.page = 0
@@ -30,6 +33,7 @@ theorem cellAt_normalize {Scope : Type*} {scope : Scope} (occurrence : PageEleme
   · have positive : min occurrence.page 1 ≠ 0 := by omega
     simp [cellAt, PageElement.normalize, origin, positive]
 
+-- ALIGN: RANKED-CELL-MEMBERSHIP.
 def cellAccepts (owner : Dominion A) : RankedDominionCell → RankedDominionCellData A Object → Bool
   | .extent, datum => ChainedDominionAtlas.extentAccepts datum
   | .region _, .extent _ => false
@@ -79,6 +83,7 @@ theorem cellRoundTrip (owner : Dominion A) (cell : RankedDominionCell)
   rw [← accepted]
   exact owner.lookupRank_roundTrip _
 
+-- ALIGN: RANKED-CELL-DOMINION.
 def cellDominion (owner : Dominion A) (cell : RankedDominionCell) :
     Dominion (CellCarrier owner cell Object) where
   rank datum := cellRank owner cell datum.val
@@ -167,11 +172,25 @@ theorem region_inhabited_iff (owner : Dominion A) (index : Nat) :
   · rintro ⟨value, same⟩
     exact ⟨⟨.region value, by simp [cellAccepts, same]⟩⟩
 
+-- ALIGN: RANKED-CELL-ORDER.
 def cellPrecedes : RankedDominionCell → RankedDominionCell → Bool
   | .extent, .extent => true
   | .extent, .region _ => false
   | .region _, .extent => true
   | .region source, .region target => decide (source = target)
+
+-- ALIGN: RANKED-CELL-ORDER-TRANS.
+theorem cellPrecedes_trans (source middle target : RankedDominionCell)
+    (first : cellPrecedes source middle = true) (second : cellPrecedes middle target = true) :
+    cellPrecedes source target = true := by
+  cases source <;> cases middle <;> cases target <;> simp_all [cellPrecedes]
+
+-- ALIGN: RANKED-CELL-RETAG-MEMBERSHIP.
+theorem retagAccepts (owner : Dominion A) (cell : RankedDominionCell)
+    (datum : RankedDominionCellData A Source) :
+    cellAccepts owner cell (ChainedDominionAtlas.retagCell datum : RankedDominionCellData A Target) =
+      cellAccepts owner cell datum := by
+  cases cell <;> cases datum <;> rfl
 
 -- ALIGN: RANKED-CELL-FORWARD.
 def cellMap : RankedDominionCell → RankedDominionCell →
@@ -190,6 +209,7 @@ def cellPreimage (owner : Dominion A) : RankedDominionCell → RankedDominionCel
       if owner.rank (cellValue datum) = index then some (.region (cellValue datum)) else none
   | .region _, .region _, datum => some (ChainedDominionAtlas.retagCell datum)
 
+-- ALIGN: RANKED-CELL-FORWARD-MEMBERSHIP.
 theorem cellMap_accepted (owner : Dominion A) (source target : RankedDominionCell)
     (arrow : cellPrecedes source target = true) (datum : CellCarrier owner source Source) :
     cellAccepts owner target (cellMap source target datum.val : RankedDominionCellData A Target) = true := by
@@ -199,6 +219,7 @@ theorem cellMap_accepted (owner : Dominion A) (source target : RankedDominionCel
     simp_all [cellPrecedes, cellAccepts, ChainedDominionAtlas.extentAccepts, cellMap, cellValue, ChainedDominionAtlas.cellValue,
       ChainedDominionAtlas.retagCell]
 
+-- ALIGN: RANKED-CELL-ROUNDTRIP.
 theorem cellLeftInverse (owner : Dominion A) (source target : RankedDominionCell)
     (arrow : cellPrecedes source target = true) (datum : CellCarrier owner source Source) :
     cellPreimage owner source target (cellMap source target datum.val : RankedDominionCellData A Target) =
@@ -210,6 +231,7 @@ theorem cellLeftInverse (owner : Dominion A) (source target : RankedDominionCell
     simp_all [cellPrecedes, cellAccepts, ChainedDominionAtlas.extentAccepts, cellMap, cellPreimage, cellValue,
       ChainedDominionAtlas.cellValue, ChainedDominionAtlas.retagCell]
 
+-- ALIGN: RANKED-CELL-INVERSE-MEMBERSHIP.
 theorem cellPreimage_accepted (owner : Dominion A) (source target : RankedDominionCell)
     (arrow : cellPrecedes source target = true) (datum : RankedDominionCellData A Target)
     (accepted : cellAccepts owner target datum = true) (result : RankedDominionCellData A Source)
@@ -229,6 +251,7 @@ def certifiedCellPreimage (owner : Dominion A) (source target : RankedDominionCe
   | some value => some ⟨value, cellPreimage_accepted owner source target arrow
       datum.val datum.property value found⟩
 
+-- ALIGN: RANKED-CELL-INSERTION.
 def cellInsertion (owner : Dominion A) (source target : RankedDominionCell)
     (arrow : cellPrecedes source target = true) :
     DomanialInsertion (CellCarrier owner source Source) (CellCarrier owner target Target) where
@@ -244,11 +267,13 @@ def cellInsertion (owner : Dominion A) (source target : RankedDominionCell)
     · rename_i value found
       exact congrArg some (Subtype.ext (Option.some.inj (found.symm.trans roundTrip)))
 
+-- ALIGN: RANKED-CELL-INSERTION-FORWARD.
 theorem cellInsertion_map (owner : Dominion A) (source target : RankedDominionCell)
     (arrow : cellPrecedes source target = true) (datum : CellCarrier owner source Source) :
     ((cellInsertion owner source target arrow).map datum : CellCarrier owner target Target).val =
       cellMap source target datum.val := rfl
 
+-- ALIGN: RANKED-CELL-INSERTION-INVERSE.
 theorem cellInsertion_preimage (owner : Dominion A) (source target : RankedDominionCell)
     (arrow : cellPrecedes source target = true) (datum : CellCarrier owner target Target) :
     ((cellInsertion owner source target arrow).preimage datum).map
@@ -257,6 +282,7 @@ theorem cellInsertion_preimage (owner : Dominion A) (source target : RankedDomin
   unfold certifiedCellPreimage
   split <;> simp_all
 
+-- ALIGN: RANKED-CELL-COMPOSITION.
 theorem cellComposition (source middle target : RankedDominionCell)
     (first : cellPrecedes source middle = true) (second : cellPrecedes middle target = true)
     (datum : RankedDominionCellData A Source) :
@@ -266,10 +292,17 @@ theorem cellComposition (source middle target : RankedDominionCell)
     simp_all [cellPrecedes, cellMap, cellValue, ChainedDominionAtlas.cellValue,
       ChainedDominionAtlas.retagCell]
 
+-- ALIGN: RANKED-CELL-IDENTITY.
 theorem cellIdentity (cell : RankedDominionCell) (datum : RankedDominionCellData A Object) :
     cellMap cell cell datum = datum := by
   cases cell <;> cases datum <;> rfl
 
+-- ALIGN: RANKED-CELL-INVERSE-IDENTITY.
+theorem cellInverseIdentity (owner : Dominion A) (cell : RankedDominionCell)
+    (datum : RankedDominionCellData A Object) : cellPreimage owner cell cell datum = some datum := by
+  cases cell <;> cases datum <;> rfl
+
+-- ALIGN: RANKED-CELL-DISJOINT.
 theorem cellDisjoint (owner : Dominion A) (left right : Nat)
     (leftDatum : RankedDominionCellData A Source) (rightDatum : RankedDominionCellData A Target)
     (leftAccepted : cellAccepts owner (.region left) leftDatum = true)
@@ -279,6 +312,13 @@ theorem cellDisjoint (owner : Dominion A) (left right : Nat)
   cases leftDatum <;> cases rightDatum <;>
     simp_all [cellAccepts, cellMap, cellValue, ChainedDominionAtlas.cellValue]
 
+-- ALIGN: RANKED-CELL-COMPOSE-INVERSE.
+def composedCellPreimage (owner : Dominion A) (source middle target : RankedDominionCell)
+    (datum : RankedDominionCellData A Target) : Option (RankedDominionCellData A Source) :=
+  (cellPreimage owner middle target datum : Option (RankedDominionCellData A Middle)).bind
+    (cellPreimage owner source middle)
+
+-- ALIGN: RANKED-CELL-INVERSE-COMPOSITION.
 theorem cellInverseComposition (owner : Dominion A) (source middle target : RankedDominionCell)
     (first : cellPrecedes source middle = true) (second : cellPrecedes middle target = true)
     (datum : RankedDominionCellData A Target) :

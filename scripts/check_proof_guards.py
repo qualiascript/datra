@@ -3759,6 +3759,134 @@ proofGuard owner selected target =
 }
 
 
+RANKED_ACTION_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module RankedActionPublicGuard where
+import Dominion (Dominion)
+import Numeric.Natural (Natural)
+import RankedDominionAtlas.Data (RankedDominionCellData)
+import RankedDominionAtlas.Action
+import DomanialInsertion (applyInsertion, preimage)
+import PageElements.Structure (PageElement, normalizePageElementAt)
+
+{-@ observedCellForward :: owner:Dominion value -> source:RankedDominionCell
+      -> target:{RankedDominionCell | cellPrecedes source target}
+      -> datum:{RankedDominionCellData value s | cellAccepts owner source datum}
+      -> {result:RankedDominionCellData value t |
+           cellAccepts owner target result && result == cellMap owner source target datum} @-}
+observedCellForward :: Dominion value -> RankedDominionCell -> RankedDominionCell
+  -> RankedDominionCellData value source -> RankedDominionCellData value target
+observedCellForward owner source target datum =
+  applyInsertion (cellInsertion owner source target) datum
+
+{-@ observedCellInverse :: owner:Dominion value -> source:RankedDominionCell
+      -> target:{RankedDominionCell | cellPrecedes source target}
+      -> datum:{RankedDominionCellData value t | cellAccepts owner target datum}
+      -> {result:Maybe ({candidate:RankedDominionCellData value s | cellAccepts owner source candidate}) |
+           result == cellPreimage owner source target datum} @-}
+observedCellInverse :: Dominion value -> RankedDominionCell -> RankedDominionCell
+  -> RankedDominionCellData value target -> Maybe (RankedDominionCellData value source)
+observedCellInverse owner source target datum =
+  preimage (cellInsertion owner source target) datum
+
+{-@ observedRawIdentity :: owner:Dominion value -> cell:RankedDominionCell
+      -> datum:RankedDominionCellData value object
+      -> {cellMap owner cell cell datum == datum && cellPreimage owner cell cell datum == Just datum} @-}
+observedRawIdentity :: Dominion value -> RankedDominionCell -> RankedDominionCellData value object -> ()
+observedRawIdentity = cellIdentity
+
+{-@ observedRawComposition :: owner:Dominion value -> source:RankedDominionCell
+      -> middle:{RankedDominionCell | cellPrecedes source middle}
+      -> target:{RankedDominionCell | cellPrecedes middle target}
+      -> datum:RankedDominionCellData value object
+      -> {cellMap owner middle target (cellMap owner source middle datum) == cellMap owner source target datum} @-}
+observedRawComposition :: Dominion value -> RankedDominionCell -> RankedDominionCell
+  -> RankedDominionCell -> RankedDominionCellData value object -> ()
+observedRawComposition = cellComposition
+
+{-@ observedRawInverseComposition :: owner:Dominion value -> source:RankedDominionCell
+      -> middle:{RankedDominionCell | cellPrecedes source middle}
+      -> target:{RankedDominionCell | cellPrecedes middle target}
+      -> datum:RankedDominionCellData value object
+      -> {composedCellPreimage owner source middle target datum == cellPreimage owner source target datum} @-}
+observedRawInverseComposition :: Dominion value -> RankedDominionCell -> RankedDominionCell
+  -> RankedDominionCell -> RankedDominionCellData value object -> ()
+observedRawInverseComposition = cellInverseComposition
+"""
+RANKED_ACTION_PUBLIC_GUARDS = {
+    "ranked action cannot map the extent into a region": r"""
+{-@ proofGuard :: owner:Dominion value -> selected:Natural
+      -> datum:{RankedDominionCellData value s | cellAccepts owner ExtentCell datum}
+      -> RankedDominionCellData value t @-}
+proofGuard :: Dominion value -> Natural -> RankedDominionCellData value source -> RankedDominionCellData value target
+proofGuard owner selected = observedCellForward owner ExtentCell (RegionCell selected)
+""",
+    "ranked action cannot connect unrelated regions": r"""
+{-@ proofGuard :: owner:Dominion value -> first:Natural -> second:Natural
+      -> datum:{RankedDominionCellData value s | cellAccepts owner (RegionCell first) datum}
+      -> RankedDominionCellData value t @-}
+proofGuard :: Dominion value -> Natural -> Natural -> RankedDominionCellData value source -> RankedDominionCellData value target
+proofGuard owner first second = observedCellForward owner (RegionCell first) (RegionCell second)
+""",
+    "ranked action requires an accepted source datum": r"""
+{-@ proofGuard :: owner:Dominion value -> source:RankedDominionCell
+      -> target:{RankedDominionCell | cellPrecedes source target}
+      -> RankedDominionCellData value s -> RankedDominionCellData value t @-}
+proofGuard :: Dominion value -> RankedDominionCell -> RankedDominionCell
+  -> RankedDominionCellData value source -> RankedDominionCellData value target
+proofGuard = observedCellForward
+""",
+    "ranked action inverse cannot return rejected source data": r"""
+{-@ proofGuard :: owner:Dominion value -> source:RankedDominionCell
+      -> target:{RankedDominionCell | cellPrecedes source target}
+      -> datum:{RankedDominionCellData value t | cellAccepts owner target datum}
+      -> {result:Bool | result} @-}
+proofGuard :: Dominion value -> RankedDominionCell -> RankedDominionCell
+  -> RankedDominionCellData value target -> Bool
+proofGuard owner source target datum =
+  case observedCellInverse owner source target datum of
+    Nothing -> True
+    Just result -> not (cellAccepts owner source result)
+""",
+    "ranked action identity retains the exact datum": r"""
+{-@ proofGuard :: owner:Dominion value -> cell:RankedDominionCell
+      -> datum:RankedDominionCellData value object
+      -> {cellMap owner cell cell datum /= datum} @-}
+proofGuard :: Dominion value -> RankedDominionCell -> RankedDominionCellData value object -> ()
+proofGuard = cellIdentity
+""",
+    "ranked action composition retains the exact forward map": r"""
+{-@ proofGuard :: owner:Dominion value -> source:RankedDominionCell
+      -> middle:{RankedDominionCell | cellPrecedes source middle}
+      -> target:{RankedDominionCell | cellPrecedes middle target}
+      -> datum:RankedDominionCellData value object
+      -> {cellMap owner middle target (cellMap owner source middle datum) /= cellMap owner source target datum} @-}
+proofGuard :: Dominion value -> RankedDominionCell -> RankedDominionCell
+  -> RankedDominionCell -> RankedDominionCellData value object -> ()
+proofGuard = cellComposition
+""",
+    "ranked action composition retains failed and successful inverses": r"""
+{-@ proofGuard :: owner:Dominion value -> source:RankedDominionCell
+      -> middle:{RankedDominionCell | cellPrecedes source middle}
+      -> target:{RankedDominionCell | cellPrecedes middle target}
+      -> datum:RankedDominionCellData value object
+      -> {composedCellPreimage owner source middle target datum /= cellPreimage owner source target datum} @-}
+proofGuard :: Dominion value -> RankedDominionCell -> RankedDominionCell
+  -> RankedDominionCell -> RankedDominionCellData value object -> ()
+proofGuard = cellInverseComposition
+""",
+    "ranked action normalization retains the selected cell": r"""
+{-@ proofGuard :: occurrence:PageElement scope object
+      -> {cellAt (normalizePageElementAt 1 2 occurrence) /= cellAt occurrence} @-}
+proofGuard :: PageElement scope object -> ()
+proofGuard = cellNormalization
+""",
+}
+
+
 CHAINED_ACTION_PUBLIC_SOURCE = r"""
 {-# LANGUAGE CPP #-}
 #include "LiquidPlugin.h"
@@ -3861,6 +3989,201 @@ proofGuard :: value -> Chain value -> PageElement scope object -> ()
 proofGuard = cellNormalization
 """,
 }
+
+RANKED_PRESENTATION_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module RankedPresentationPublicGuard where
+import Chain (spine, spinePosition, chainPosition)
+import Dominion (Dominion)
+import Numeric.Natural (Natural)
+import DatraOrdinal (finiteOrdinal)
+import RankedDominionAtlas.Action (cellAt, spineRank, cellPrecedes, cellMap, cellPreimage)
+import RankedDominionAtlas.Data (RankedDominionCellData)
+import RankedDominionAtlas.Presentation
+import DomanialInsertion (applyInsertion, preimage)
+import Atlas (AtlasPresentation, atlasPresentationPagination, atlasPresentationAction, atlasActionDataAt)
+import RankedDominionAtlas.Pagination (RankedDominionPaginationScope, rankedDominionPagination)
+import Data.Proxy (Proxy)
+import Pagination (Pagination, paginationPageElements)
+
+{-@ opaque-reflect spine @-}
+import Folio (folioLength, lastChain)
+import PageElements (PageElements, pageElementsFolio, pageElementTraceValid)
+import PageElements.Structure (PageElement, PageElementArrow, pageElementPage, pageElementPosition, arrowSource, arrowTarget)
+
+{-@ observedPageForward :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2}
+      -> owner:Dominion value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> datum:{RankedDominionCellData value source |
+           rankedDominionAccepts owner (arrowSource arrow) datum}
+      -> {result:RankedDominionCellData value target |
+           rankedDominionAccepts owner (arrowTarget arrow) result
+           && result == cellMap owner (cellAt (arrowSource arrow))
+                (cellAt (arrowTarget arrow)) datum} @-}
+observedPageForward :: PageElements scope origin final -> Dominion value
+  -> PageElementArrow scope source target -> RankedDominionCellData value source
+  -> RankedDominionCellData value target
+observedPageForward category owner arrow datum =
+  applyInsertion (rankedDominionDataMap category owner arrow) datum
+
+{-@ observedPageInverse :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2}
+      -> owner:Dominion value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> datum:{RankedDominionCellData value target |
+           rankedDominionAccepts owner (arrowTarget arrow) datum}
+      -> {result:Maybe ({candidate:RankedDominionCellData value source |
+           rankedDominionAccepts owner (arrowSource arrow) candidate}) |
+           result == cellPreimage owner (cellAt (arrowSource arrow))
+                (cellAt (arrowTarget arrow)) datum} @-}
+observedPageInverse :: PageElements scope origin final -> Dominion value
+  -> PageElementArrow scope source target -> RankedDominionCellData value target
+  -> Maybe (RankedDominionCellData value source)
+observedPageInverse category owner arrow datum =
+  preimage (rankedDominionDataMap category owner arrow) datum
+
+{-@ observedPresentation :: pages:{Pagination scope origin Natural |
+           folioLength (pageElementsFolio (paginationPageElements pages)) == 2
+           && lastChain (pageElementsFolio (paginationPageElements pages)) == spine}
+      -> owner:Dominion value
+      -> {result:AtlasPresentation scope (RankedDominionCellData value) origin Natural |
+           atlasPresentationPagination result == pages
+           && atlasPresentationAction result == rankedDominionAction (paginationPageElements pages) owner
+           && atlasActionDataAt (atlasPresentationAction result) == rankedDominionAt owner} @-}
+observedPresentation :: Pagination scope origin Natural -> Dominion value
+  -> AtlasPresentation scope (RankedDominionCellData value) origin Natural
+observedPresentation = rankedDominionPresentation
+
+{-@ observedPagination :: Proxy value
+      -> {pages:Pagination (RankedDominionPaginationScope value) () Natural |
+           folioLength (pageElementsFolio (paginationPageElements pages)) == 2
+           && lastChain (pageElementsFolio (paginationPageElements pages)) == spine} @-}
+observedPagination :: Proxy value -> Pagination (RankedDominionPaginationScope value) () Natural
+observedPagination = rankedDominionPagination
+
+{-@ observedSpinePosition :: value:Natural -> {chainPosition spine value == finiteOrdinal value} @-}
+observedSpinePosition :: Natural -> ()
+observedSpinePosition = spinePosition
+"""
+RANKED_PRESENTATION_PUBLIC_GUARDS = {
+    "ranked presentation requires a two-page owning folio": r"""
+{-@ proofGuard :: category:PageElements scope origin final
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> {cellPrecedes (cellAt (arrowSource arrow))
+           (cellAt (arrowTarget arrow))} @-}
+proofGuard :: PageElements scope origin final
+  -> PageElementArrow scope source target -> ()
+proofGuard = rankedArrowCompatible
+""",
+    "ranked presentation requires source owning validity": r"""
+{-@ proofGuard :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2}
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowTarget arrow)}
+      -> {cellPrecedes (cellAt (arrowSource arrow))
+           (cellAt (arrowTarget arrow))} @-}
+proofGuard :: PageElements scope origin final
+  -> PageElementArrow scope source target -> ()
+proofGuard = rankedArrowCompatible
+""",
+    "ranked presentation requires target owning validity": r"""
+{-@ proofGuard :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2}
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)}
+      -> {cellPrecedes (cellAt (arrowSource arrow))
+           (cellAt (arrowTarget arrow))} @-}
+proofGuard :: PageElements scope origin final
+  -> PageElementArrow scope source target -> ()
+proofGuard = rankedArrowCompatible
+""",
+    "ranked presentation forward requires accepted source data": r"""
+{-@ proofGuard :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2} -> owner:Dominion value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> RankedDominionCellData value source -> RankedDominionCellData value target @-}
+proofGuard :: PageElements scope origin final -> Dominion value
+  -> PageElementArrow scope source target -> RankedDominionCellData value source
+  -> RankedDominionCellData value target
+proofGuard = observedPageForward
+""",
+    "ranked presentation inverse requires accepted target data": r"""
+{-@ proofGuard :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2} -> owner:Dominion value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> RankedDominionCellData value target -> Maybe (RankedDominionCellData value source) @-}
+proofGuard :: PageElements scope origin final -> Dominion value
+  -> PageElementArrow scope source target -> RankedDominionCellData value target
+  -> Maybe (RankedDominionCellData value source)
+proofGuard = observedPageInverse
+""",
+    "ranked presentation region selection requires the natural spine": r"""
+{-@ proofGuard :: category:{PageElements scope origin Natural | folioLength (pageElementsFolio category) == 2}
+      -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence && pageElementPage occurrence > 0}
+      -> {finiteOrdinal (spineRank (pageElementPosition occurrence)) == pageElementPosition occurrence} @-}
+proofGuard :: PageElements scope origin Natural -> PageElement scope object -> ()
+proofGuard = rankedRegionPosition
+""",
+    "ranked presentation region selection requires owning validity": r"""
+{-@ proofGuard :: category:{PageElements scope origin Natural | folioLength (pageElementsFolio category) == 2 && lastChain (pageElementsFolio category) == spine}
+      -> occurrence:{PageElement scope object | pageElementPage occurrence > 0}
+      -> {finiteOrdinal (spineRank (pageElementPosition occurrence)) == pageElementPosition occurrence} @-}
+proofGuard :: PageElements scope origin Natural -> PageElement scope object -> ()
+proofGuard = rankedRegionPosition
+""",
+    "ranked presentation assembly requires two pages": r"""
+{-@ proofGuard :: pages:{Pagination scope origin Natural | lastChain (pageElementsFolio (paginationPageElements pages)) == spine}
+      -> Dominion value -> AtlasPresentation scope (RankedDominionCellData value) origin Natural @-}
+proofGuard :: Pagination scope origin Natural -> Dominion value
+  -> AtlasPresentation scope (RankedDominionCellData value) origin Natural
+proofGuard = observedPresentation
+""",
+    "ranked presentation assembly requires the natural spine": r"""
+{-@ proofGuard :: pages:{Pagination scope origin Natural | folioLength (pageElementsFolio (paginationPageElements pages)) == 2}
+      -> Dominion value -> AtlasPresentation scope (RankedDominionCellData value) origin Natural @-}
+proofGuard :: Pagination scope origin Natural -> Dominion value
+  -> AtlasPresentation scope (RankedDominionCellData value) origin Natural
+proofGuard = observedPresentation
+""",
+    "ranked presentation retains its exact action": r"""
+{-@ proofGuard :: pages:{Pagination scope origin Natural |
+           folioLength (pageElementsFolio (paginationPageElements pages)) == 2
+           && lastChain (pageElementsFolio (paginationPageElements pages)) == spine}
+      -> owner:Dominion value
+      -> {result:AtlasPresentation scope (RankedDominionCellData value) origin Natural |
+           atlasPresentationAction result /= rankedDominionAction (paginationPageElements pages) owner} @-}
+proofGuard :: Pagination scope origin Natural -> Dominion value
+  -> AtlasPresentation scope (RankedDominionCellData value) origin Natural
+proofGuard = observedPresentation
+""",
+    "ranked presentation fixed pagination retains the natural spine": r"""
+{-@ proofGuard :: Proxy value
+      -> {pages:Pagination (RankedDominionPaginationScope value) () Natural |
+           lastChain (pageElementsFolio (paginationPageElements pages)) /= spine} @-}
+proofGuard :: Proxy value -> Pagination (RankedDominionPaginationScope value) () Natural
+proofGuard = observedPagination
+""",
+    "ranked presentation spine positions are finite ordinals": r"""
+{-@ proofGuard :: value:Natural -> {chainPosition spine value /= finiteOrdinal value} @-}
+proofGuard :: Natural -> ()
+proofGuard = observedSpinePosition
+""",
+}
+
 
 CHAINED_PRESENTATION_PUBLIC_SOURCE = r"""
 {-# LANGUAGE CPP #-}
@@ -4081,6 +4404,157 @@ proofGuard = observedPresentation
 """,
 }
 
+RANKED_OWNER_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module RankedOwnerPublicGuard where
+import Atlas (Atlas, atlasDescription, atlasPageElements, atlasAcceptsDatum, atlasDataAt, mapAtlasData)
+import Dominion (Dominion, rank, unrank)
+import DomanialInsertion.Core (DomanialInsertion (..))
+import Numeric.Natural (Natural)
+import PageElements (PageElement, pageElementTraceValid)
+import PageElements.Structure (PageElementArrow, arrowSource, arrowTarget)
+import RankedDominionAtlas.Action (cellAt, cellMap, cellPreimage, cellRank, cellUnrank)
+import RankedDominionAtlas.Data (RankedDominionCellData)
+import RankedDominionAtlas.Owner
+import RankedDominionAtlas.Pagination (RankedDominionPaginationScope, rankedPresentation)
+import RankedDominionAtlas.Presentation (rankedDominionAccepts)
+
+{-@ observedPresentation :: owner:RankedDominionAtlas ownerScope value
+      -> {atlasDescription (rankedDominionAtlas owner) == rankedPresentation (rankedDominionValueDominion owner)} @-}
+observedPresentation :: RankedDominionAtlas ownerScope value -> ()
+observedPresentation owner = rankedDominionAtlas owner `seq` ()
+
+{-@ observedDominion :: dominion:Dominion value -> {result:Dominion value | result == dominion} @-}
+observedDominion :: Dominion value -> Dominion value
+observedDominion dominion = withRankedDominionAtlas dominion rankedDominionValueDominion
+
+{-@ observedAcceptance :: owner:RankedDominionAtlas ownerScope value
+      -> occurrence:PageElement (RankedDominionPaginationScope value) object -> datum:RankedDominionCellData value object
+      -> {result:Bool | result == rankedDominionAccepts (rankedDominionValueDominion owner) occurrence datum} @-}
+observedAcceptance :: RankedDominionAtlas ownerScope value
+  -> PageElement (RankedDominionPaginationScope value) object -> RankedDominionCellData value object -> Bool
+observedAcceptance owner occurrence datum =
+  rankedDominionMembership owner occurrence datum `seq`
+    atlasAcceptsDatum (rankedDominionAtlas owner) occurrence datum
+
+{-@ observedForward :: owner:RankedDominionAtlas ownerScope value
+      -> arrow:{PageElementArrow (RankedDominionPaginationScope value) source target |
+           pageElementTraceValid (atlasPageElements (rankedDominionAtlas owner)) (arrowSource arrow)
+           && pageElementTraceValid (atlasPageElements (rankedDominionAtlas owner)) (arrowTarget arrow)}
+      -> datum:{RankedDominionCellData value source | atlasAcceptsDatum (rankedDominionAtlas owner) (arrowSource arrow) datum}
+      -> {result:RankedDominionCellData value target |
+           result == cellMap (rankedDominionValueDominion owner) (cellAt (arrowSource arrow)) (cellAt (arrowTarget arrow)) datum} @-}
+observedForward :: RankedDominionAtlas ownerScope value
+  -> PageElementArrow (RankedDominionPaginationScope value) source target
+  -> RankedDominionCellData value source -> RankedDominionCellData value target
+observedForward owner arrow datum = rankedDominionTransport owner arrow datum `seq`
+  case mapAtlasData (rankedDominionAtlas owner) arrow of
+    DomanialInsertion forward _ _ -> forward datum
+
+{-@ observedInverse :: owner:RankedDominionAtlas ownerScope value
+      -> arrow:{PageElementArrow (RankedDominionPaginationScope value) source target |
+           pageElementTraceValid (atlasPageElements (rankedDominionAtlas owner)) (arrowSource arrow)
+           && pageElementTraceValid (atlasPageElements (rankedDominionAtlas owner)) (arrowTarget arrow)}
+      -> datum:{RankedDominionCellData value target | atlasAcceptsDatum (rankedDominionAtlas owner) (arrowTarget arrow) datum}
+      -> {result:Maybe (RankedDominionCellData value source) |
+           result == cellPreimage (rankedDominionValueDominion owner) (cellAt (arrowSource arrow)) (cellAt (arrowTarget arrow)) datum} @-}
+observedInverse :: RankedDominionAtlas ownerScope value
+  -> PageElementArrow (RankedDominionPaginationScope value) source target
+  -> RankedDominionCellData value target -> Maybe (RankedDominionCellData value source)
+observedInverse owner arrow datum = rankedDominionInverseTransport owner arrow datum `seq`
+  case mapAtlasData (rankedDominionAtlas owner) arrow of
+    DomanialInsertion _ backward _ -> backward datum
+
+{-@ observedRank :: owner:RankedDominionAtlas ownerScope value
+      -> occurrence:{PageElement (RankedDominionPaginationScope value) object |
+           pageElementTraceValid (atlasPageElements (rankedDominionAtlas owner)) occurrence}
+      -> datum:{RankedDominionCellData value object | atlasAcceptsDatum (rankedDominionAtlas owner) occurrence datum}
+      -> {result:Natural | result == cellRank (rankedDominionValueDominion owner) (cellAt occurrence) datum} @-}
+observedRank :: RankedDominionAtlas ownerScope value
+  -> PageElement (RankedDominionPaginationScope value) object -> RankedDominionCellData value object -> Natural
+observedRank owner occurrence datum = rankedDominionDataAt owner occurrence `seq`
+  rank (atlasDataAt (rankedDominionAtlas owner) occurrence) datum
+
+{-@ observedUnrank :: owner:RankedDominionAtlas ownerScope value
+      -> occurrence:{PageElement (RankedDominionPaginationScope value) object |
+           pageElementTraceValid (atlasPageElements (rankedDominionAtlas owner)) occurrence}
+      -> index:Natural
+      -> {result:Maybe (RankedDominionCellData value object) |
+           result == cellUnrank (rankedDominionValueDominion owner) (cellAt occurrence) index} @-}
+observedUnrank :: RankedDominionAtlas ownerScope value
+  -> PageElement (RankedDominionPaginationScope value) object -> Natural -> Maybe (RankedDominionCellData value object)
+observedUnrank owner occurrence index = rankedDominionDataAt owner occurrence `seq`
+  unrank (atlasDataAt (rankedDominionAtlas owner) occurrence) index
+"""
+RANKED_OWNER_PUBLIC_GUARDS = {
+    "ranked owner retains its exact presentation": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value
+      -> {atlasDescription (rankedDominionAtlas owner) /= rankedPresentation (rankedDominionValueDominion owner)} @-}
+proofGuard :: RankedDominionAtlas ownerScope value -> ()
+proofGuard = observedPresentation
+""",
+    "ranked owner allocation retains the supplied Dominion": r"""
+{-@ proofGuard :: dominion:Dominion value -> {result:Dominion value | result /= dominion} @-}
+proofGuard :: Dominion value -> Dominion value
+proofGuard = observedDominion
+""",
+    "ranked owner cannot retain an uncertified Atlas": r"""
+proofGuard :: Dominion value
+  -> Atlas owner (RankedDominionPaginationScope value) (RankedDominionCellData value) () Natural
+  -> RankedDominionAtlas owner value
+proofGuard = retainRankedDominionAtlas
+""",
+    "ranked owner cannot substitute its value Dominion": r"""
+proofGuard :: RankedDominionAtlas owner value -> Dominion value -> RankedDominionAtlas owner value
+proofGuard owner replacement = retainRankedDominionAtlas replacement (rankedDominionAtlas owner)
+""",
+    "ranked owner membership retains the restricted cell predicate": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value
+      -> occurrence:PageElement (RankedDominionPaginationScope value) object -> datum:RankedDominionCellData value object
+      -> {result:Bool | result /= rankedDominionAccepts (rankedDominionValueDominion owner) occurrence datum} @-}
+proofGuard :: RankedDominionAtlas ownerScope value
+  -> PageElement (RankedDominionPaginationScope value) object -> RankedDominionCellData value object -> Bool
+proofGuard = observedAcceptance
+""",
+    "ranked owner inverse agrees with its checked cell inverse": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value
+      -> arrow:{PageElementArrow (RankedDominionPaginationScope value) source target |
+           pageElementTraceValid (atlasPageElements (rankedDominionAtlas owner)) (arrowSource arrow)
+           && pageElementTraceValid (atlasPageElements (rankedDominionAtlas owner)) (arrowTarget arrow)}
+      -> datum:{RankedDominionCellData value target | atlasAcceptsDatum (rankedDominionAtlas owner) (arrowTarget arrow) datum}
+      -> {result:Maybe (RankedDominionCellData value source) |
+           result /= cellPreimage (rankedDominionValueDominion owner) (cellAt (arrowSource arrow)) (cellAt (arrowTarget arrow)) datum} @-}
+proofGuard :: RankedDominionAtlas ownerScope value
+  -> PageElementArrow (RankedDominionPaginationScope value) source target
+  -> RankedDominionCellData value target -> Maybe (RankedDominionCellData value source)
+proofGuard = observedInverse
+""",
+    "ranked owner lookup retains its exact rank": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value
+      -> occurrence:{PageElement (RankedDominionPaginationScope value) object |
+           pageElementTraceValid (atlasPageElements (rankedDominionAtlas owner)) occurrence}
+      -> datum:{RankedDominionCellData value object | atlasAcceptsDatum (rankedDominionAtlas owner) occurrence datum}
+      -> {result:Natural | result /= cellRank (rankedDominionValueDominion owner) (cellAt occurrence) datum} @-}
+proofGuard :: RankedDominionAtlas ownerScope value
+  -> PageElement (RankedDominionPaginationScope value) object -> RankedDominionCellData value object -> Natural
+proofGuard = observedRank
+""",
+    "ranked owner lookup retains its exact decoder": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value
+      -> occurrence:{PageElement (RankedDominionPaginationScope value) object |
+           pageElementTraceValid (atlasPageElements (rankedDominionAtlas owner)) occurrence}
+      -> index:Natural
+      -> {result:Maybe (RankedDominionCellData value object) |
+           result /= cellUnrank (rankedDominionValueDominion owner) (cellAt occurrence) index} @-}
+proofGuard :: RankedDominionAtlas ownerScope value
+  -> PageElement (RankedDominionPaginationScope value) object -> Natural -> Maybe (RankedDominionCellData value object)
+proofGuard = observedUnrank
+""",
+}
+
 CHAINED_OWNER_PUBLIC_SOURCE = r"""
 {-# LANGUAGE CPP #-}
 #include "LiquidPlugin.h"
@@ -4229,6 +4703,66 @@ proofGuard owner replacement =
 """,
 }
 
+TWO_PAGE_COVERAGE_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module TwoPageCoveragePublicGuard where
+import Atlas (Atlas, atlasFolio, atlasAcceptsDatum)
+import AtlasExtent (cellTraceValid)
+import AtlasCoveredPageElement (CoverageWitness, coverageWitnessCovers)
+import Folio (folioLength)
+import PageElements (PageElement)
+import PageElements.Structure (pageElementPage)
+import TwoPageCoverage (twoPageRegionCoverage)
+
+{-@ observedCoverage :: owner:{Atlas ownerScope scope cellData origin final | folioLength (atlasFolio owner) == 2}
+      -> region:{PageElement scope object | cellTraceValid owner region && pageElementPage region == 1}
+      -> datum:{cellData object | atlasAcceptsDatum owner region datum}
+      -> {witness:CoverageWitness ownerScope scope cellData | coverageWitnessCovers owner region datum witness} @-}
+observedCoverage :: Atlas ownerScope scope cellData origin final
+  -> PageElement scope object -> cellData object -> CoverageWitness ownerScope scope cellData
+observedCoverage = twoPageRegionCoverage
+"""
+TWO_PAGE_COVERAGE_PUBLIC_GUARDS = {
+    "two-page coverage requires a two-page owning folio": r"""
+{-@ proofGuard :: owner:Atlas ownerScope scope cellData origin final
+      -> region:{PageElement scope object | cellTraceValid owner region && pageElementPage region == 1}
+      -> datum:{cellData object | atlasAcceptsDatum owner region datum}
+      -> CoverageWitness ownerScope scope cellData @-}
+proofGuard :: Atlas ownerScope scope cellData origin final
+  -> PageElement scope object -> cellData object -> CoverageWitness ownerScope scope cellData
+proofGuard = observedCoverage
+""",
+    "two-page coverage requires the final region": r"""
+{-@ proofGuard :: owner:{Atlas ownerScope scope cellData origin final | folioLength (atlasFolio owner) == 2}
+      -> region:{PageElement scope object | cellTraceValid owner region}
+      -> datum:{cellData object | atlasAcceptsDatum owner region datum}
+      -> CoverageWitness ownerScope scope cellData @-}
+proofGuard :: Atlas ownerScope scope cellData origin final
+  -> PageElement scope object -> cellData object -> CoverageWitness ownerScope scope cellData
+proofGuard = observedCoverage
+""",
+    "two-page coverage requires the owning trace": r"""
+{-@ proofGuard :: owner:{Atlas ownerScope scope cellData origin final | folioLength (atlasFolio owner) == 2}
+      -> region:{PageElement scope object | pageElementPage region == 1}
+      -> datum:{cellData object | atlasAcceptsDatum owner region datum}
+      -> CoverageWitness ownerScope scope cellData @-}
+proofGuard :: Atlas ownerScope scope cellData origin final
+  -> PageElement scope object -> cellData object -> CoverageWitness ownerScope scope cellData
+proofGuard = observedCoverage
+""",
+    "two-page coverage requires accepted data": r"""
+{-@ proofGuard :: owner:{Atlas ownerScope scope cellData origin final | folioLength (atlasFolio owner) == 2}
+      -> region:{PageElement scope object | cellTraceValid owner region && pageElementPage region == 1}
+      -> cellData object -> CoverageWitness ownerScope scope cellData @-}
+proofGuard :: Atlas ownerScope scope cellData origin final
+  -> PageElement scope object -> cellData object -> CoverageWitness ownerScope scope cellData
+proofGuard = observedCoverage
+""",
+}
+
 CHAINED_COVERAGE_PUBLIC_SOURCE = r"""
 {-# LANGUAGE CPP #-}
 #include "LiquidPlugin.h"
@@ -4290,6 +4824,173 @@ proofGuard :: ChainedDominionAtlas ownerScope scope value
   -> PageElement scope object -> ChainedDominionCellData value object
   -> CoverageWitness ownerScope scope (ChainedDominionCellData value)
 proofGuard = observedCoverage
+""",
+}
+
+RANKED_COVERAGE_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module RankedCoveragePublicGuard where
+import Atlas (atlasAcceptsDatum)
+import AtlasExtent (cellTraceValid)
+import AtlasCoveredPageElement (CoverageWitness, coverageWitnessCovers)
+import AtlasMap (AtlasMap)
+import RankedDominionAtlas (rankedDominionAtlasMap)
+import RankedDominionAtlas.Coverage (rankedDominionCoverage)
+import RankedDominionAtlas.Owner (RankedDominionAtlas, RankedDominionAtlasObject, rankedDominionAtlas)
+import RankedDominionAtlas.Data (RankedDominionCellData)
+import RankedDominionAtlas.Pagination (RankedDominionPaginationScope)
+import PageElements (PageElement)
+
+{-@ observedCoverage :: owner:RankedDominionAtlas ownerScope value
+      -> source:{PageElement (RankedDominionPaginationScope value) object | cellTraceValid (rankedDominionAtlas owner) source}
+      -> datum:{RankedDominionCellData value object | atlasAcceptsDatum (rankedDominionAtlas owner) source datum}
+      -> {witness:CoverageWitness ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) |
+           coverageWitnessCovers (rankedDominionAtlas owner) source datum witness} @-}
+observedCoverage :: RankedDominionAtlas ownerScope value
+  -> PageElement (RankedDominionPaginationScope value) object -> RankedDominionCellData value object
+  -> CoverageWitness ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+observedCoverage = rankedDominionCoverage
+
+{-@ observedMap :: RankedDominionAtlas owner value -> AtlasMap (RankedDominionAtlasObject owner value) @-}
+observedMap :: RankedDominionAtlas owner value -> AtlasMap (RankedDominionAtlasObject owner value)
+observedMap = rankedDominionAtlasMap
+"""
+RANKED_COVERAGE_PUBLIC_GUARDS = {
+    "ranked coverage certifies its exact source datum": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value
+      -> source:{PageElement (RankedDominionPaginationScope value) object | cellTraceValid (rankedDominionAtlas owner) source}
+      -> datum:{RankedDominionCellData value object | atlasAcceptsDatum (rankedDominionAtlas owner) source datum}
+      -> {witness:CoverageWitness ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) |
+           not (coverageWitnessCovers (rankedDominionAtlas owner) source datum witness)} @-}
+proofGuard :: RankedDominionAtlas ownerScope value
+  -> PageElement (RankedDominionPaginationScope value) object -> RankedDominionCellData value object
+  -> CoverageWitness ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+proofGuard = observedCoverage
+""",
+    "ranked coverage requires the owning source trace": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value
+      -> source:PageElement (RankedDominionPaginationScope value) object
+      -> datum:{RankedDominionCellData value object | atlasAcceptsDatum (rankedDominionAtlas owner) source datum}
+      -> CoverageWitness ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) @-}
+proofGuard :: RankedDominionAtlas ownerScope value
+  -> PageElement (RankedDominionPaginationScope value) object -> RankedDominionCellData value object
+  -> CoverageWitness ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+proofGuard = observedCoverage
+""",
+    "ranked coverage requires accepted data": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value
+      -> source:{PageElement (RankedDominionPaginationScope value) object | cellTraceValid (rankedDominionAtlas owner) source}
+      -> RankedDominionCellData value object
+      -> CoverageWitness ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) @-}
+proofGuard :: RankedDominionAtlas ownerScope value
+  -> PageElement (RankedDominionPaginationScope value) object -> RankedDominionCellData value object
+  -> CoverageWitness ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+proofGuard = observedCoverage
+""",
+}
+
+RANKED_COALITION_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
+module RankedCoalitionPublicGuard where
+import Atlas (atlasPageElements)
+import Coalition.Element (CoalitionData, coalitionElementValid, coalitionElementSource, coalitionElementRank)
+import Dominion (rank, unrank)
+import DomanialInsertion.Core (DomanialInsertion (..))
+import PageElements (originPageElement)
+import RankedDominionAtlas.Coalition
+import RankedDominionAtlas.Owner
+import RankedDominionAtlas.Data (RankedDominionCellData)
+import RankedDominionAtlas.Pagination (RankedDominionPaginationScope)
+
+{-@ observedElement :: owner:RankedDominionAtlas ownerScope value -> value:value
+      -> {element:CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) |
+           coalitionElementValid (rankedDominionAtlas owner) element
+           && coalitionElementSource element == originPageElement (atlasPageElements (rankedDominionAtlas owner))
+           && coalitionElementRank element == rank (rankedDominionValueDominion owner) value} @-}
+observedElement :: RankedDominionAtlas ownerScope value -> value
+  -> CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+observedElement = rankedDominionCoalitionElement
+
+{-@ observedDecoded :: owner:RankedDominionAtlas ownerScope value -> insertion:DomanialInsertion source value
+      -> element:CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+      -> decoded:{value | unrank (rankedDominionValueDominion owner) (coalitionElementRank element) == Just decoded}
+      -> {result:Maybe source | result == preimage insertion decoded} @-}
+observedDecoded :: RankedDominionAtlas ownerScope value -> DomanialInsertion source value
+  -> CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+  -> value -> Maybe source
+observedDecoded owner insertion element _ = rankedCoalitionBackward owner insertion element
+
+{-@ observedMissing :: owner:RankedDominionAtlas ownerScope value -> DomanialInsertion source value
+      -> element:{CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) |
+           unrank (rankedDominionValueDominion owner) (coalitionElementRank element) == Nothing}
+      -> {result:Maybe source | result == Nothing} @-}
+observedMissing :: RankedDominionAtlas ownerScope value -> DomanialInsertion source value
+  -> CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) -> Maybe source
+observedMissing = rankedCoalitionBackward
+
+{-@ observedRoundTrip :: owner:RankedDominionAtlas ownerScope value
+      -> insertion:DomanialInsertion source value -> value:source
+      -> {rankedCoalitionBackward owner insertion (rankedCoalitionForward owner insertion value) == Just value} @-}
+observedRoundTrip :: RankedDominionAtlas ownerScope value -> DomanialInsertion source value -> source -> ()
+observedRoundTrip owner insertion value = insertionLeftInverse (rankedCoalitionInsertion owner insertion) value
+"""
+RANKED_COALITION_PUBLIC_GUARDS = {
+    "ranked coalition caches the original Dominion rank": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value -> value:value
+      -> {element:CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) |
+           coalitionElementRank element /= rank (rankedDominionValueDominion owner) value} @-}
+proofGuard :: RankedDominionAtlas ownerScope value -> value
+  -> CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+proofGuard = observedElement
+""",
+    "ranked coalition constructor retains validity": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value -> value
+      -> {element:CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) |
+           not (coalitionElementValid (rankedDominionAtlas owner) element)} @-}
+proofGuard :: RankedDominionAtlas ownerScope value -> value
+  -> CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+proofGuard = observedElement
+""",
+    "ranked coalition constructor retains the owning origin": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value -> value
+      -> {element:CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) |
+           coalitionElementSource element /= originPageElement (atlasPageElements (rankedDominionAtlas owner))} @-}
+proofGuard :: RankedDominionAtlas ownerScope value -> value
+  -> CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+proofGuard = observedElement
+""",
+    "ranked coalition raw inverse uses the cached-rank decoder": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value -> insertion:DomanialInsertion source value
+      -> element:CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+      -> decoded:{value | unrank (rankedDominionValueDominion owner) (coalitionElementRank element) == Just decoded}
+      -> {result:Maybe source | result /= preimage insertion decoded} @-}
+proofGuard :: RankedDominionAtlas ownerScope value -> DomanialInsertion source value
+  -> CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value)
+  -> value -> Maybe source
+proofGuard = observedDecoded
+""",
+    "ranked coalition raw inverse preserves failed decoding": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value -> DomanialInsertion source value
+      -> element:{CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) |
+           unrank (rankedDominionValueDominion owner) (coalitionElementRank element) == Nothing}
+      -> {result:Maybe source | result /= Nothing} @-}
+proofGuard :: RankedDominionAtlas ownerScope value -> DomanialInsertion source value
+  -> CoalitionData ownerScope (RankedDominionPaginationScope value) (RankedDominionCellData value) -> Maybe source
+proofGuard = observedMissing
+""",
+    "ranked coalition insertion retains its left inverse": r"""
+{-@ proofGuard :: owner:RankedDominionAtlas ownerScope value
+      -> insertion:DomanialInsertion source value -> value:source
+      -> {rankedCoalitionBackward owner insertion (rankedCoalitionForward owner insertion value) /= Just value} @-}
+proofGuard :: RankedDominionAtlas ownerScope value -> DomanialInsertion source value -> source -> ()
+proofGuard = observedRoundTrip
 """,
 }
 
@@ -4618,12 +5319,18 @@ def run(pattern=None):
         check_group(TOTAL_MAP_PUBLIC_SOURCE, TOTAL_MAP_PUBLIC_GUARDS)
         check_group(RANKED_DATA_PUBLIC_SOURCE, RANKED_DATA_PUBLIC_GUARDS)
         check_group(CHAINED_DATA_PUBLIC_SOURCE, CHAINED_DATA_PUBLIC_GUARDS)
+        check_group(RANKED_ACTION_PUBLIC_SOURCE, RANKED_ACTION_PUBLIC_GUARDS)
         check_group(CHAINED_ACTION_PUBLIC_SOURCE, CHAINED_ACTION_PUBLIC_GUARDS)
+        check_group(RANKED_PRESENTATION_PUBLIC_SOURCE, RANKED_PRESENTATION_PUBLIC_GUARDS)
         check_group(CHAINED_PRESENTATION_PUBLIC_SOURCE, CHAINED_PRESENTATION_PUBLIC_GUARDS)
         check_group(CHAINED_ASSEMBLY_PUBLIC_SOURCE, CHAINED_ASSEMBLY_PUBLIC_GUARDS)
         check_group(CHAINED_OWNER_PUBLIC_SOURCE, CHAINED_OWNER_PUBLIC_GUARDS)
+        check_group(RANKED_OWNER_PUBLIC_SOURCE, RANKED_OWNER_PUBLIC_GUARDS)
         check_group(CHAINED_COVERAGE_PUBLIC_SOURCE, CHAINED_COVERAGE_PUBLIC_GUARDS)
+        check_group(RANKED_COVERAGE_PUBLIC_SOURCE, RANKED_COVERAGE_PUBLIC_GUARDS)
+        check_group(TWO_PAGE_COVERAGE_PUBLIC_SOURCE, TWO_PAGE_COVERAGE_PUBLIC_GUARDS)
         check_group(CHAINED_COALITION_PUBLIC_SOURCE, CHAINED_COALITION_PUBLIC_GUARDS)
+        check_group(RANKED_COALITION_PUBLIC_SOURCE, RANKED_COALITION_PUBLIC_GUARDS)
         check_group(CHAINED_CANONICAL_PUBLIC_SOURCE, CHAINED_CANONICAL_PUBLIC_GUARDS)
 
         typing_guards = [

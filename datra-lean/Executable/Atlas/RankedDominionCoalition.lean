@@ -35,6 +35,7 @@ theorem rankedCoalitionRank (owner : RetainedAtlas Owner A)
     element.val.originRank = owner.storedDominion.rank (rankedCoalitionValue owner element.val) :=
   element.property.2.1.trans (rankedOriginImageRank owner element.val.source element.val.datum)
 
+-- ALIGN: RANKED-COALITION-RANK.
 theorem rankedDominionCoalitionElement_rank (owner : RetainedAtlas Owner A) (value : A) :
     (rankedDominionCoalitionElement owner value).val.originRank = owner.storedDominion.rank value := by
   rw [rankedCoalitionRank, rankedDominionCoalitionElement_value]
@@ -62,6 +63,7 @@ def rankedCoalitionEquiv (owner : RetainedAtlas Owner A) :
 
 /-- Decode the stored origin rank before invoking the supplied partial inverse.
 This definition also retains the runtime behavior on uncertified raw records. -/
+-- ALIGN: RANKED-COALITION-BACKWARD.
 def rankedCoalitionBackward {Source : Type} (owner : RetainedAtlas Owner A)
     (insertion : DomanialInsertion Source A)
     (element : (rankedDominionAtlas owner).toAtlas.CoalitionElement) : Option Source :=
@@ -73,14 +75,27 @@ theorem rankedCoalitionBackward_valid {Source : Type} (owner : RetainedAtlas Own
     rankedCoalitionBackward owner insertion element.val = insertion.preimage (rankedCoalitionValue owner element.val) := by
   simp [rankedCoalitionBackward, rankedCoalitionRank owner element, owner.storedDominion.coherence]
 
+-- ALIGN: RANKED-COALITION-FORWARD.
+def rankedCoalitionForward {Source : Type} (owner : RetainedAtlas Owner A)
+    (insertion : DomanialInsertion Source A) (value : Source) :
+    (rankedDominionAtlas owner).toAtlas.CertifiedCoalitionElement :=
+  rankedDominionCoalitionElement owner (insertion.map value)
+
+-- ALIGN: RANKED-COALITION-ROUNDTRIP.
+theorem rankedCoalitionRoundTrip {Source : Type} (owner : RetainedAtlas Owner A)
+    (insertion : DomanialInsertion Source A) (value : Source) :
+    rankedCoalitionBackward owner insertion (rankedCoalitionForward owner insertion value).val = some value := by
+  rw [rankedCoalitionBackward_valid]
+  exact (congrArg insertion.preimage (rankedDominionCoalitionElement_value owner (insertion.map value))).trans
+    (insertion.leftInverse value)
+
 -- ALIGN: RANKED-COALITION-INSERTION.
 def rankedCoalitionInsertion {Source : Type} (owner : RetainedAtlas Owner A)
     (insertion : DomanialInsertion Source A) :
     DomanialInsertion Source (rankedDominionAtlas owner).toAtlas.CertifiedCoalitionElement where
-  map value := rankedDominionCoalitionElement owner (insertion.map value)
+  map := rankedCoalitionForward owner insertion
   preimage element := rankedCoalitionBackward owner insertion element.val
-  leftInverse value := by
-    rw [rankedCoalitionBackward_valid, rankedDominionCoalitionElement_value, insertion.leftInverse]
+  leftInverse := rankedCoalitionRoundTrip owner insertion
 
 theorem rankedCoalitionInsertion_reindex {Source : Type} (owner : RetainedAtlas Owner A)
     (insertion : DomanialInsertion Source A) :

@@ -227,6 +227,9 @@ def spine : Chain Nat where
   positionInjective := Ordinal.finiteOrdinal_injective
   positionSurjective p hp := Ordinal.naturalAtOrdinal_complete p hp
 
+-- ALIGN: CHAIN-SPINE-POSITION.
+theorem spinePosition (value : Nat) : spine.position value = Ordinal.finiteOrdinal value := rfl
+
 
 end Datra.Executable.Chain
 

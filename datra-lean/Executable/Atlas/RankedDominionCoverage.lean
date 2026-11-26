@@ -1,5 +1,6 @@
 import Executable.Atlas.RankedDominionPresentation
 import Executable.Atlas.Map
+import Executable.Atlas.TwoPageCoverage
 
 namespace Datra.Executable.RankedDominionAtlas
 open CategoryTheory
@@ -75,19 +76,12 @@ theorem rawDatum_rank (owner : RetainedAtlas Owner A)
     (datum : (rankedDominionAtlas owner).toAtlas.cellData source.val.cell) :
     ((rankedDominionAtlas owner).toAtlas.dataAt source).rank datum =
       cellRank owner.storedDominion (cellAt source.val) (rawDatum owner datum) := by
-  rcases owner with ⟨dominion, ⟨presentation⟩, same⟩
-  change presentation = _ at same
-  subst presentation
-  letI := (rankedDominionPresentation dominion).ownership
-  have preserved := AtlasMembershipAction.canonical_rank
-    (rankedDominionPresentation dominion).pagination
-    (rankedDominionPresentation dominion).action
-    (rankedDominionPresentation dominion).laws source datum
-  change _ = cellRank dominion (cellAt source.val) datum.val
-  refine preserved.trans ?_
-  change cellRank dominion (cellAt source.normalize.val) datum.val = _
-  exact congrArg (fun cell => cellRank dominion cell datum.val)
-    (ownedCellNormalization rankedDominionFolio.data rankedDominionFolio.valid rankedDominionFolio_length source.val)
+  let allocation := rankedDominionAtlas owner
+  letI := allocation.atlasDescription.ownership
+  have preserved := AtlasMembershipAction.canonical_rank allocation.atlasDescription.pagination
+    allocation.atlasDescription.action allocation.atlasDescription.laws source datum
+  exact preserved.trans (rankedDominionDataAt_rank owner source
+    (allocation.atlasDescription.action.canonicalCarrierEquiv source datum))
 
 theorem rawDatum_map (owner : RetainedAtlas Owner A)
     {source target : (rankedDominionAtlas owner).toAtlas.Element} (arrow : source ⟶ target)
@@ -102,6 +96,7 @@ theorem rawDatum_map (owner : RetainedAtlas Owner A)
   exact (congrArg (cast (congrFun (rankedDominionAtlas_cellData owner) target.val.cell)) mapped).trans
     (rankedDominionTransport owner arrow (allocation.atlasDescription.action.canonicalCarrierEquiv source datum))
 
+-- ALIGN: RANKED-ORIGIN-IMAGE.
 theorem rankedOriginImage (owner : RetainedAtlas Owner A)
     {source target : (rankedDominionAtlas owner).toAtlas.Element} (arrow : source ⟶ target)
     (atOrigin : target.val.page = 0)
@@ -117,6 +112,7 @@ theorem rankedOriginImage (owner : RetainedAtlas Owner A)
     cases value : rawDatum owner datum <;>
     simp_all [cellMap, cellAccepts, ChainedDominionAtlas.extentAccepts, ChainedDominionAtlas.retagCell, cellValue, ChainedDominionAtlas.cellValue]
 
+-- ALIGN: RANKED-ORIGIN-IMAGE-RANK.
 theorem rankedOriginImageRank (owner : RetainedAtlas Owner A)
     (source : (rankedDominionAtlas owner).toAtlas.Element)
     (datum : (rankedDominionAtlas owner).toAtlas.cellData source.val.cell) :
@@ -128,32 +124,20 @@ theorem rankedOriginImageRank (owner : RetainedAtlas Owner A)
   rw [Atlas.originImage, rankedOriginImage owner source.toOrigin rfl]
   rfl
 
-theorem finalRegion_normalized (owner : RetainedAtlas Owner A)
-    (region : (rankedDominionAtlas owner).toAtlas.Element) (atFinal : region.val.page = 1) :
-    region.normalize.val.page = (rankedDominionAtlas owner).toAtlas.coverageFinalPage := by
-  have length := rankedDominionAtlas_length owner
-  have depth := (rankedDominionAtlas owner).atlasDescription.pagination.pages.length_eq_depth
-    (rankedDominionAtlas owner).atlasDescription.pagination.folio.valid
-  change min region.val.page ((rankedDominionAtlas owner).atlasDescription.pagination.pages.depth - 1) =
-    (rankedDominionAtlas owner).atlasDescription.pagination.pages.depth - 1
-  omega
-
 def rankedRegionCoverage (owner : RetainedAtlas Owner A)
     (region : (rankedDominionAtlas owner).toAtlas.Element) (atFinal : region.val.page = 1)
     (datum : (rankedDominionAtlas owner).toAtlas.cellData region.val.cell) :
     (rankedDominionAtlas owner).toAtlas.CoverageWitness :=
-  (rankedDominionAtlas owner).toAtlas.atlasCoverageWitness region region datum datum
-    ⟨finalRegion_normalized owner region atFinal, rfl⟩
+  (rankedDominionAtlas owner).toAtlas.twoPageRegionCoverage (rankedDominionAtlas_length owner) region atFinal datum
 
+-- ALIGN: RANKED-REGION-COVERAGE.
 theorem rankedRegionCoverage_spec (owner : RetainedAtlas Owner A)
     (region : (rankedDominionAtlas owner).toAtlas.Element) (atFinal : region.val.page = 1)
     (datum : (rankedDominionAtlas owner).toAtlas.cellData region.val.cell) :
     (rankedDominionAtlas owner).toAtlas.coverageWitnessCovers region datum
       (rankedRegionCoverage owner region atFinal datum) = true := by
-  have normalized := ((rankedDominionAtlas owner).toAtlas.atlasCoverageWitness_spec region region datum datum
-    ⟨finalRegion_normalized owner region atFinal, rfl⟩).2
-  apply Atlas.coverageWitnessAlongArrow region.toNormalized datum
-  simpa only [(rankedDominionAtlas owner).toAtlas.data.coherence] using normalized
+  exact Atlas.twoPageRegionCoverage_spec (rankedDominionAtlas owner).toAtlas
+    (rankedDominionAtlas_length owner) region atFinal datum
 
 theorem regionAt_accepts (owner : RetainedAtlas Owner A)
     (region : (rankedDominionAtlas owner).toAtlas.Element) (value : A)
@@ -172,6 +156,7 @@ def rankedCoverageAt (owner : RetainedAtlas Owner A)
     (acceptedDatum owner region (.region (cellValue (rawDatum owner datum)))
       (regionAt_accepts owner region _ atFinal position))
 
+-- ALIGN: RANKED-COVERAGE-AT.
 theorem rankedCoverageAt_spec (owner : RetainedAtlas Owner A)
     (source : (rankedDominionAtlas owner).toAtlas.Element)
     (datum : (rankedDominionAtlas owner).toAtlas.cellData source.val.cell)

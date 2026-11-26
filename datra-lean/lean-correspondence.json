@@ -5897,7 +5897,7 @@
     },
     {
       "id": "CHAINED-TWO-PAGE-REGION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TwoPagePresentation.hs",
       "haskell_declaration": "twoPageRegionPosition",
       "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
       "lean_declaration": "twoPageRegionPosition"
@@ -5967,7 +5967,7 @@
     },
     {
       "id": "CHAINED-ARROW-NORMALIZATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TwoPagePresentation.hs",
       "haskell_declaration": "normalizedArrow",
       "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
       "lean_declaration": "normalizedArrow"
@@ -6415,98 +6415,98 @@
     },
     {
       "id": "RANKED-SPINE-RANK",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
       "haskell_declaration": "spineRank",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "spineRank"
     },
     {
       "id": "RANKED-CELL-RANK",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
-      "haskell_declaration": "rankedDominionAt",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellRank",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "cellRank"
     },
     {
       "id": "RANKED-CELL-DECODE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
-      "haskell_declaration": "rankedDominionAt",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellUnrank",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "cellUnrank"
     },
     {
       "id": "RANKED-CELL-FORWARD",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
-      "haskell_declaration": "rankedDominionDataMap",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellMap",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "cellMap"
     },
     {
       "id": "RANKED-CELL-INVERSE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
-      "haskell_declaration": "rankedDominionDataMap",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellPreimage",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "cellPreimage"
     },
     {
       "id": "RANKED-PRESENTATION-MEMBERSHIP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
       "haskell_declaration": "rankedDominionAccepts",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "rankedDominionAccepts"
     },
     {
       "id": "RANKED-TWO-PAGE-FOLIO",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
       "haskell_declaration": "rankedDominionFolio",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "rankedDominionFolio"
     },
     {
       "id": "RANKED-PAGINATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Pagination.hs",
       "haskell_declaration": "rankedDominionPagination",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "rankedDominionPagination"
     },
     {
       "id": "RANKED-OWNER-ATLAS",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
       "haskell_declaration": "rankedDominionAtlas",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "rankedDominionAtlas"
     },
     {
       "id": "RANKED-OWNER-ALLOCATION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
       "haskell_declaration": "withRankedDominionAtlas",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "withRankedDominionAtlas"
     },
     {
       "id": "RANKED-OWNER-COVERAGE",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coverage.hs",
       "haskell_declaration": "rankedDominionCoverage",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "rankedDominionCoverage"
     },
     {
       "id": "RANKED-OWNER-COVERAGE-MAP",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coverage.hs",
       "haskell_declaration": "rankedDominionAtlasMap",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "rankedDominionAtlasMap"
     },
     {
       "id": "RANKED-OWNER-COALITION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coalition.hs",
       "haskell_declaration": "rankedDominionCoalitionElement",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "rankedDominionCoalitionElement"
     },
     {
       "id": "RANKED-COALITION-INSERTION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coalition.hs",
       "haskell_declaration": "rankedCoalitionInsertion",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "rankedCoalitionInsertion"
@@ -6601,6 +6601,398 @@
       "haskell_declaration": "regionDominion",
       "lean_namespace": "Datra.Executable.RankedDominionAtlas",
       "lean_declaration": "regionDominion_unrank"
+    },
+    {
+      "id": "RANKED-PAGE-CELL",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellAt",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellAt"
+    },
+    {
+      "id": "RANKED-PAGE-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellNormalization",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellAt_normalize"
+    },
+    {
+      "id": "RANKED-CELL-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellAccepts",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellAccepts"
+    },
+    {
+      "id": "RANKED-CELL-ORDER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellPrecedes",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellPrecedes"
+    },
+    {
+      "id": "RANKED-CELL-ORDER-TRANS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellComposition",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellPrecedes_trans"
+    },
+    {
+      "id": "RANKED-CELL-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellDominion",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellDominion"
+    },
+    {
+      "id": "RANKED-CELL-RETAG",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "retagCell",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "retagCell"
+    },
+    {
+      "id": "RANKED-CELL-RETAG-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "retagAccepts",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "retagAccepts"
+    },
+    {
+      "id": "RANKED-CELL-FORWARD-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellMap",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellMap_accepted"
+    },
+    {
+      "id": "RANKED-CELL-INVERSE-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellPreimage",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellPreimage_accepted"
+    },
+    {
+      "id": "RANKED-CELL-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellRoundTrip",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellLeftInverse"
+    },
+    {
+      "id": "RANKED-CELL-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellInsertion",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellInsertion"
+    },
+    {
+      "id": "RANKED-CELL-INSERTION-FORWARD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellInsertion",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellInsertion_map"
+    },
+    {
+      "id": "RANKED-CELL-INSERTION-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellInsertion",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellInsertion_preimage"
+    },
+    {
+      "id": "RANKED-CELL-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellIdentity",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellIdentity"
+    },
+    {
+      "id": "RANKED-CELL-INVERSE-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellIdentity",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellInverseIdentity"
+    },
+    {
+      "id": "RANKED-CELL-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellComposition",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellComposition"
+    },
+    {
+      "id": "RANKED-CELL-COMPOSE-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "composedCellPreimage",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "composedCellPreimage"
+    },
+    {
+      "id": "RANKED-CELL-INVERSE-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellInverseComposition",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellInverseComposition"
+    },
+    {
+      "id": "RANKED-CELL-DISJOINT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "cellDisjoint",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "cellDisjoint"
+    },
+    {
+      "id": "RANKED-ARROW-COMPATIBLE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedArrowCompatible",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "arrowCompatible"
+    },
+    {
+      "id": "RANKED-REGION-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedRegionPosition",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "regionPosition"
+    },
+    {
+      "id": "RANKED-OWNED-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "ownedCellNormalization",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "ownedCellNormalization"
+    },
+    {
+      "id": "RANKED-PRESENTATION-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedDominionAt",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionAt"
+    },
+    {
+      "id": "RANKED-PRESENTATION-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedDominionDataMap",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionDataMap"
+    },
+    {
+      "id": "RANKED-PRESENTATION-FORWARD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedDominionDataMap",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionDataMap_map"
+    },
+    {
+      "id": "RANKED-PRESENTATION-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedDominionDataMap",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionDataMap_preimage"
+    },
+    {
+      "id": "RANKED-PRESENTATION-ACTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedDominionAction",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionAction"
+    },
+    {
+      "id": "RANKED-OWNED-PRESENTATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedDominionPresentation",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedPresentationForPages"
+    },
+    {
+      "id": "RANKED-PRESENTATION-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedIdentity",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedIdentity"
+    },
+    {
+      "id": "RANKED-PRESENTATION-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedComposition",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedComposition"
+    },
+    {
+      "id": "RANKED-PRESENTATION-COHERENCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedCoherence",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedCoherence"
+    },
+    {
+      "id": "RANKED-PRESENTATION-DISJOINT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "rankedDisjoint",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDisjoint"
+    },
+    {
+      "id": "RANKED-FIXED-PRESENTATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Pagination.hs",
+      "haskell_declaration": "rankedPresentation",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionPresentation"
+    },
+    {
+      "id": "TWO-PAGE-ARROW-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TwoPagePresentation.hs",
+      "haskell_declaration": "twoPageArrowPosition",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "twoPageArrowPosition"
+    },
+    {
+      "id": "CHAIN-SPINE-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Chain.hs",
+      "haskell_declaration": "spinePosition",
+      "lean_namespace": "Datra.Executable.Chain",
+      "lean_declaration": "spinePosition"
+    },
+    {
+      "id": "RANKED-OWNER-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
+      "haskell_declaration": "rankedDominionValueDominion",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionValueDominion"
+    },
+    {
+      "id": "RANKED-OWNER-CONTRACT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
+      "haskell_declaration": "rankedDominionAtlas",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionAtlas_description"
+    },
+    {
+      "id": "RANKED-OWNER-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
+      "haskell_declaration": "rankedDominionMembership",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionMembership"
+    },
+    {
+      "id": "RANKED-OWNER-TRANSPORT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
+      "haskell_declaration": "rankedDominionTransport",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionTransport"
+    },
+    {
+      "id": "RANKED-OWNER-INVERSE-TRANSPORT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
+      "haskell_declaration": "rankedDominionInverseTransport",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionInverseTransport"
+    },
+    {
+      "id": "RANKED-OWNER-RETAIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
+      "haskell_declaration": "retainRankedDominionAtlas",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "retainRankedDominionAtlas"
+    },
+    {
+      "id": "RANKED-OWNER-RETAIN-PRESENTATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
+      "haskell_declaration": "retainRankedPresentation",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "retainRankedPresentation"
+    },
+    {
+      "id": "RANKED-SPINE-RANK-FINITE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "haskell_declaration": "spineRankFinite",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "spineRank_finite"
+    },
+    {
+      "id": "TWO-PAGE-REGION-COVERAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TwoPageCoverage.hs",
+      "haskell_declaration": "twoPageRegionCoverage",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "twoPageRegionCoverage_spec"
+    },
+    {
+      "id": "RANKED-REGION-COVERAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coverage.hs",
+      "haskell_declaration": "rankedRegionCoverage",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedRegionCoverage_spec"
+    },
+    {
+      "id": "RANKED-ORIGIN-IMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coverage.hs",
+      "haskell_declaration": "rankedOriginImage",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedOriginImage"
+    },
+    {
+      "id": "RANKED-COVERAGE-AT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coverage.hs",
+      "haskell_declaration": "rankedCoverageAt",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedCoverageAt_spec"
+    },
+    {
+      "id": "RANKED-OWNER-LOOKUP-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
+      "haskell_declaration": "rankedDominionDataAt",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionDataAt_rank"
+    },
+    {
+      "id": "RANKED-OWNER-LOOKUP-DECODE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
+      "haskell_declaration": "rankedDominionDataAt",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionDataAt_unrank"
+    },
+    {
+      "id": "RANKED-ORIGIN-IMAGE-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coverage.hs",
+      "haskell_declaration": "rankedOriginImageRank",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedOriginImageRank"
+    },
+    {
+      "id": "RANKED-COALITION-FORWARD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "rankedCoalitionForward",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedCoalitionForward"
+    },
+    {
+      "id": "RANKED-COALITION-BACKWARD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "rankedCoalitionBackward",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedCoalitionBackward"
+    },
+    {
+      "id": "RANKED-COALITION-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "rankedCoalitionRoundTrip",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedCoalitionRoundTrip"
+    },
+    {
+      "id": "RANKED-COALITION-RANK",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "rankedDominionCoalitionElement",
+      "lean_namespace": "Datra.Executable.RankedDominionAtlas",
+      "lean_declaration": "rankedDominionCoalitionElement_rank"
+    },
+    {
+      "id": "ATLAS-CELL-ORIGIN-RANK-AT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent/Internal.hs",
+      "haskell_declaration": "atlasCellOriginRankAt",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "Atlas.cellOriginRankAt"
     }
   ],
   "modules": [
@@ -6674,8 +7066,10 @@
       ],
       "refinement_aliases": [],
       "opaque_reflected": [
-        "atlasMembership"
-      ]
+        "atlasMembership",
+        "atlasDataAt"
+      ],
+      "variances": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/LiquidInternal.hs",
@@ -6805,6 +7199,8 @@
         "reindexedSurjective",
         "chainIndex",
         "chainIndexOf",
+        "spine",
+        "spinePosition",
         "spinePositionSurjective"
       ],
       "lean_target": "Datra.Executable.Chain",
@@ -6814,7 +7210,10 @@
         "Natural as int"
       ],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": [
+        "spine"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Chain/Sum.hs",
@@ -7578,6 +7977,7 @@
         "withAtlasCellAt",
         "withAtlasCellTrace",
         "atlasCellOriginRankInsertion",
+        "atlasCellOriginRankAt",
         "cellContainsRank",
         "cellContainsRankImage",
         "cellOriginRankPreimageSound",
@@ -7595,6 +7995,7 @@
       "predicates": [],
       "refinement_aliases": [],
       "opaque_reflected": [
+        "rank",
         "atlasCellAt"
       ]
     },
@@ -7866,22 +8267,17 @@
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas.hs",
       "module": "RankedDominionAtlas",
-      "types": [
-        "RankedDominionPaginationRecipe",
-        "RankedDominionAtlas"
-      ],
+      "types": [],
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.RankedDominionAtlas",
       "coverage": "partial",
-      "aliases": [
-        "RankedDominionPaginationScope",
-        "RankedDominionAtlasObject"
-      ],
+      "aliases": [],
       "embeddings": [],
       "predicates": [],
       "refinement_aliases": [],
-      "opaque_reflected": []
+      "opaque_reflected": [],
+      "variances": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap/Internal.hs",
@@ -9042,6 +9438,7 @@
       "types": [],
       "reflected": [],
       "refinements": [
+        "atlasDataAt",
         "atlasForPredicate",
         "atlasPresentationForPredicate",
         "withAtlasPresentation",
@@ -9063,8 +9460,11 @@
         "atlasMembership",
         "atlasActionDomain",
         "atlasActionMembership",
-        "atlasActionMap"
-      ]
+        "atlasActionDataAt",
+        "atlasActionMap",
+        "atlasDataAt"
+      ],
+      "variances": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Pagination/Pagination.hs",
@@ -9094,14 +9494,17 @@
         "chainOrderType",
         "chainLookup",
         "chainIndexPosition",
-        "chainIndexOrderType"
+        "chainIndexOrderType",
+        "spine"
       ],
       "types": [],
       "aliases": [],
       "predicates": [],
       "refinement_aliases": [],
       "embeddings": [],
-      "refinements": []
+      "refinements": [
+        "spinePosition"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Dominion/Dominion.hs",
@@ -9132,14 +9535,19 @@
       "reflected": [],
       "refinements": [
         "atlasCellDominion",
-        "cellTraceHasOrigin"
+        "cellTraceHasOrigin",
+        "atlasCellOriginRankAt"
       ],
       "lean_target": "Datra.Executable.Atlas.CellDominion",
       "coverage": "partial",
       "aliases": [],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "opaque_reflected": [
+        "rank",
+        "atlasDataAt"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Presheaf.hs",
@@ -9680,12 +10088,10 @@
       "refinements": [
         "chainedDominionFolio",
         "acceptsValue",
-        "twoPageRegionPosition",
         "chainedArrowCompatible",
         "chainedRegionPosition",
         "chainedDominionAt",
         "chainedDominionDataMap",
-        "normalizedArrow",
         "ownedCellNormalization",
         "chainedDominionAction",
         "chainedDominionPresentation",
@@ -9859,6 +10265,237 @@
         "regionRoundTrip",
         "regionDominion"
       ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Action.hs",
+      "module": "RankedDominionAtlas.Action",
+      "lean_target": "Datra.Executable.RankedDominionAtlas",
+      "coverage": "aligned",
+      "reflected": [
+        "spineRank",
+        "cellAt",
+        "cellAccepts",
+        "cellPrecedes",
+        "cellRank",
+        "cellUnrank",
+        "retagCell",
+        "cellMap",
+        "cellPreimage",
+        "composedCellPreimage"
+      ],
+      "opaque_reflected": [
+        "rank"
+      ],
+      "types": [],
+      "aliases": [
+        "RankedDominionCell"
+      ],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "spineRankFinite",
+        "cellNormalization",
+        "cellDominion",
+        "retagAccepts",
+        "cellMap",
+        "cellPreimage",
+        "cellRoundTrip",
+        "cellInsertion",
+        "cellIdentity",
+        "cellComposition",
+        "cellInverseComposition",
+        "cellDisjoint"
+      ],
+      "variances": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Presentation.hs",
+      "module": "RankedDominionAtlas.Presentation",
+      "lean_target": "Datra.Executable.RankedDominionAtlas",
+      "coverage": "aligned",
+      "reflected": [
+        "rankedDominionAccepts"
+      ],
+      "opaque_reflected": [
+        "spine",
+        "rankedDominionAt",
+        "rankedDominionDataMap",
+        "atlasActionDataAt",
+        "rankedDominionAction",
+        "atlasPresentationAction"
+      ],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "rankedDominionFolio",
+        "rankedArrowCompatible",
+        "rankedRegionPosition",
+        "ownedCellNormalization",
+        "rankedDominionAt",
+        "rankedDominionDataMap",
+        "rankedDominionAction",
+        "rankedDominionPresentation",
+        "rankedIdentity",
+        "rankedComposition",
+        "rankedCoherence",
+        "rankedDisjoint"
+      ],
+      "variances": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Pagination.hs",
+      "module": "RankedDominionAtlas.Pagination",
+      "lean_target": "Datra.Executable.RankedDominionAtlas",
+      "coverage": "aligned",
+      "reflected": [],
+      "opaque_reflected": [
+        "spine",
+        "rankedDominionFolio",
+        "rankedPresentation"
+      ],
+      "types": [
+        "RankedDominionPaginationRecipe"
+      ],
+      "aliases": [
+        "RankedDominionPaginationScope"
+      ],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "rankedDominionPagination",
+        "rankedPresentation"
+      ],
+      "refined_instances": [
+        "PageElementsConstruction (RankedDominionPaginationRecipe value) (()) (Natural)"
+      ],
+      "variances": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TwoPagePresentation.hs",
+      "module": "TwoPagePresentation",
+      "lean_target": "Datra.Executable.ChainedDominionAtlas",
+      "coverage": "aligned",
+      "reflected": [],
+      "opaque_reflected": [],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "twoPageRegionPosition",
+        "twoPageArrowPosition",
+        "normalizedArrow"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Owner.hs",
+      "module": "RankedDominionAtlas.Owner",
+      "lean_target": "Datra.Executable.RankedDominionAtlas",
+      "coverage": "aligned",
+      "reflected": [],
+      "opaque_reflected": [
+        "spine",
+        "atlasDataAt"
+      ],
+      "types": [
+        "RankedDominionAtlasData"
+      ],
+      "aliases": [
+        "RankedDominionAtlasObject",
+        "RankedDominionAtlas"
+      ],
+      "predicates": [],
+      "refinement_aliases": [
+        "RankedDominionAtlas"
+      ],
+      "embeddings": [],
+      "refinements": [
+        "rankedDominionValueDominion",
+        "rankedDominionAtlas",
+        "rankedDominionMembership",
+        "rankedDominionDataAt",
+        "rankedActionAt",
+        "rankedDominionTransport",
+        "rankedDominionInverseTransport",
+        "retainRankedDominionAtlas",
+        "retainRankedPresentation",
+        "withRankedDominionAtlas"
+      ],
+      "variances": [
+        "RankedDominionAtlasData invariant invariant invariant"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coverage.hs",
+      "module": "RankedDominionAtlas.Coverage",
+      "lean_target": "Datra.Executable.RankedDominionAtlas",
+      "coverage": "aligned",
+      "reflected": [],
+      "opaque_reflected": [],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "rankedDominionCoverage",
+        "rankedDominionAtlasMap",
+        "rankedRegionCoverage",
+        "rankedOriginImage",
+        "rankedOriginImageRank",
+        "rankedCoverageAt"
+      ],
+      "variances": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/TwoPageCoverage.hs",
+      "module": "TwoPageCoverage",
+      "lean_target": "Datra.Executable.Atlas",
+      "coverage": "aligned",
+      "reflected": [],
+      "opaque_reflected": [],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "twoPageRegionCoverage"
+      ],
+      "variances": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/RankedDominionAtlas/Coalition.hs",
+      "module": "RankedDominionAtlas.Coalition",
+      "lean_target": "Datra.Executable.RankedDominionAtlas",
+      "coverage": "aligned",
+      "reflected": [
+        "rankedCoalitionForward",
+        "rankedCoalitionBackward"
+      ],
+      "opaque_reflected": [
+        "rankedDominionCoalitionElement"
+      ],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "rankedDominionCoalitionElement",
+        "rankedCoalitionAt",
+        "rankedCoalitionForward",
+        "rankedCoalitionBackward",
+        "rankedCoalitionRoundTrip",
+        "rankedCoalitionInsertion"
+      ],
+      "variances": []
     }
   ],
   "trust_boundary": []

@@ -21,6 +21,7 @@ theorem twoPageRegionPosition (pages : FolioData origin final) (valid : pages.Va
 
 /-- In a two-page presentation, an arrow between non-origin occurrences
 retains the selected final-page position, including through padding. -/
+-- ALIGN: TWO-PAGE-ARROW-POSITION.
 theorem twoPageArrowPosition (pages : FolioData origin final) (valid : pages.Valid)
     (twoPages : pages.length = 2)
     {source target : PageElement scope} (arrow : PageElement.Arrow source target)

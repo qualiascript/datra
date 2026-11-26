@@ -18,6 +18,7 @@ module AtlasExtent.Internal
   , atlasCellDominionElement
   , withAtlasCellDominion
   , atlasCellOriginRankInsertion
+  , atlasCellOriginRankAt
   , cellHasOrigin
   , cellTraceHasOrigin
   , cellTraceValid
@@ -48,10 +49,11 @@ import Atlas
 import qualified Atlas as Atlas
 import Data.Kind (Type)
 import DatraOrdinal (Ordinal)
-import Dominion (MembershipDominion, membershipDominion, dominionCoherence)
+import Dominion (MembershipDominion, membershipDominion, dominionCoherence, rank)
 import DomanialInsertion.Core
   ( DomanialInsertion (..)
   , rankImageInsertion
+  , rankImage
   , rankImagePreimageSound
   )
 import Numeric.Natural (Natural)
@@ -71,6 +73,8 @@ import PageElements.Structure
 import PageElements.TraceChain (pageTraceContains, traceHead, traceHeadMatches)
 import qualified PageElements as Elements
 import qualified PageElements.Structure as Trace
+
+{-@ opaque-reflect rank @-}
 
 -- | A dependent Atlas dominion whose page-element identity is hidden. This
 -- is the Haskell presentation of Lean values such as @extent A@ and
@@ -292,6 +296,24 @@ atlasCellOriginRankInsertion valueAtlas source =
     SomePageElement origin ->
       rankImageInsertion (atlasDataAt valueAtlas origin)
         (mapAtlasData valueAtlas (pageElementArrow source origin))
+
+-- | Observe the origin encoding without exposing its existential implementation.
+-- ALIGN: ATLAS-CELL-ORIGIN-RANK-AT.
+{-@ ple atlasCellOriginRankAt @-}
+{-@ atlasCellOriginRankAt :: owner:Atlas a s d o f
+      -> source:{PageElement s object | cellHasOrigin owner source && cellTraceValid owner source}
+      -> origin:{PageElement s originObject | cellTraceValid owner origin
+           && SomePageElement origin == Elements.originPageElement (atlasPageElements owner)}
+      -> datum:{d object | atlasAcceptsDatum owner source datum}
+      -> {applyInsertion (atlasCellOriginRankInsertion owner source) datum
+           == rank (atlasDataAt owner origin)
+                (applyInsertion (mapAtlasData owner (pageElementArrow source origin)) datum)} @-}
+atlasCellOriginRankAt :: Atlas a s d o f -> PageElement s object
+  -> PageElement s originObject -> d object -> ()
+atlasCellOriginRankAt owner source origin datum =
+  rank (atlasDataAt owner origin)
+    (applyInsertion (mapAtlasData owner (pageElementArrow source origin)) datum) `seq`
+  atlasCellOriginRankInsertion owner source `seq` ()
 
 -- ALIGN: ATLAS-CELL-CONTAINS-RANK.
 {-@ reflect cellContainsRank @-}

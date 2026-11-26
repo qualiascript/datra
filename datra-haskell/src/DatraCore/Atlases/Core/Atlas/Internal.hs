@@ -919,9 +919,12 @@ atlasAcceptsDatumNormalized value occurrence _ =
 -- @
 --
 -- holds by construction, up to extensional equality of 'Dominion' values.
+{-@ opaque-reflect atlasDataAt @-}
 {-@ atlasDataAt :: value:Atlas atlasScope scope cellData origin final
       -> occurrence:{PageElement scope object | AtlasValidCell value occurrence}
-      -> Dominion ({datum:cellData object | atlasAcceptsDatum value occurrence datum}) @-}
+      -> {result:Dominion ({datum:cellData object | atlasAcceptsDatum value occurrence datum}) |
+           result == atlasActionDataAt (atlasPresentationAction (atlasDescription value))
+             (normalizeAtlasElement value occurrence)} @-}
 -- ALIGN: ATLAS-MEMBERSHIP-RANK-INTERPRETATION.
 -- ALIGN: ATLAS-MEMBERSHIP-UNRANK-INTERPRETATION.
 atlasDataAt

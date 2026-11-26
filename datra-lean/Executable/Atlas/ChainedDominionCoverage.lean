@@ -1,5 +1,6 @@
 import Executable.Atlas.ChainedDominionOwner
 import Executable.Atlas.Map
+import Executable.Atlas.TwoPageCoverage
 
 namespace Datra.Executable.ChainedDominionAtlas
 open CategoryTheory
@@ -102,22 +103,11 @@ theorem chainedOriginImage (owner : RetainedAtlas Owner A)
     cases value : rawDatum owner datum <;>
     simp_all [cellMap, cellAccepts, extentAccepts, retagCell, regionToExtent, cellValue]
 
-theorem finalRegion_normalized (owner : RetainedAtlas Owner A)
-    (region : (chainedDominionAtlas owner).toAtlas.Element) (atFinal : region.val.page = 1) :
-    region.normalize.val.page = (chainedDominionAtlas owner).toAtlas.coverageFinalPage := by
-  have length := chainedDominionAtlas_length owner
-  have depth := (chainedDominionAtlas owner).atlasDescription.pagination.pages.length_eq_depth
-    (chainedDominionAtlas owner).atlasDescription.pagination.folio.valid
-  change min region.val.page ((chainedDominionAtlas owner).atlasDescription.pagination.pages.depth - 1) =
-    (chainedDominionAtlas owner).atlasDescription.pagination.pages.depth - 1
-  omega
-
 def chainedRegionCoverage (owner : RetainedAtlas Owner A)
     (region : (chainedDominionAtlas owner).toAtlas.Element) (atFinal : region.val.page = 1)
     (datum : (chainedDominionAtlas owner).toAtlas.cellData region.val.cell) :
     (chainedDominionAtlas owner).toAtlas.CoverageWitness :=
-  (chainedDominionAtlas owner).toAtlas.atlasCoverageWitness region region datum datum
-    ⟨finalRegion_normalized owner region atFinal, rfl⟩
+  (chainedDominionAtlas owner).toAtlas.twoPageRegionCoverage (chainedDominionAtlas_length owner) region atFinal datum
 
 -- ALIGN: CHAINED-REGION-COVERAGE.
 theorem chainedRegionCoverage_spec (owner : RetainedAtlas Owner A)
@@ -125,10 +115,8 @@ theorem chainedRegionCoverage_spec (owner : RetainedAtlas Owner A)
     (datum : (chainedDominionAtlas owner).toAtlas.cellData region.val.cell) :
     (chainedDominionAtlas owner).toAtlas.coverageWitnessCovers region datum
       (chainedRegionCoverage owner region atFinal datum) = true := by
-  have normalized := ((chainedDominionAtlas owner).toAtlas.atlasCoverageWitness_spec region region datum datum
-    ⟨finalRegion_normalized owner region atFinal, rfl⟩).2
-  apply Atlas.coverageWitnessAlongArrow region.toNormalized datum
-  simpa only [(chainedDominionAtlas owner).toAtlas.data.coherence] using normalized
+  exact Atlas.twoPageRegionCoverage_spec (chainedDominionAtlas owner).toAtlas
+    (chainedDominionAtlas_length owner) region atFinal datum
 
 theorem regionAt_accepts (owner : RetainedAtlas Owner A)
     (region : (chainedDominionAtlas owner).toAtlas.Element) (value : A)

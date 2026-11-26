@@ -176,12 +176,20 @@ library
         ChainedDominionAtlas.Data
         ChainedDominionAtlas.Action
         ChainedDominionAtlas.Presentation
+        TwoPagePresentation
+        TwoPageCoverage
         ChainedDominionAtlas.Owner
         ChainedDominionAtlas.Coverage
         ChainedDominionAtlas.Coalition
         ChainedDominionAtlas.Canonical
         RankedDominionAtlas
         RankedDominionAtlas.Data
+        RankedDominionAtlas.Action
+        RankedDominionAtlas.Presentation
+        RankedDominionAtlas.Pagination
+        RankedDominionAtlas.Owner
+        RankedDominionAtlas.Coverage
+        RankedDominionAtlas.Coalition
         AtlasTransversal
         AtlasTransversalMap
         Charter

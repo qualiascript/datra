@@ -27,6 +27,7 @@ module Chain.Internal
   , compareInChain
   , hasArrow
   , spine
+  , spinePosition
   ) where
 
 import Numeric.Natural (Natural)
@@ -245,10 +246,17 @@ hasArrow valueChain source target =
   compareInChain valueChain source target /= GT
 
 -- ALIGN: CHAIN-SPINE.
+{-@ spine :: {result:Chain Natural | chainOrderType result == omega
+      && chainPosition result == finiteOrdinal && chainLookup result == naturalAtOrdinal} @-}
 spine :: Chain Natural
 spine =
   Chain omega finiteOrdinal naturalAtOrdinal
     finiteOrdinalBelowOmega finiteOrdinalInjective spinePositionSurjective
+
+{-@ opaque-reflect spine @-}
+{-@ spinePosition :: value:Natural -> {chainPosition spine value == finiteOrdinal value} @-}
+spinePosition :: Natural -> ()
+spinePosition value = chainPosition spine value `seq` ()
 
 {-@ spinePositionSurjective :: position:Ordinal
       -> {chainOrdinalLT position omega

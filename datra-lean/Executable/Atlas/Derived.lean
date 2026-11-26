@@ -391,6 +391,17 @@ theorem Atlas.cellOriginRankInsertion_map (X : Atlas) (source : X.Element)
     (datum : X.cellData source.val.cell) :
     (X.cellOriginRankInsertion source).map datum = X.originImageRank source datum := rfl
 
+-- ALIGN: ATLAS-CELL-ORIGIN-RANK-AT.
+theorem Atlas.cellOriginRankAt (X : Atlas) (source origin : X.Element)
+    (same : origin = FolioData.ValidElement.originElement X.pages)
+    (arrow : source ⟶ origin) (datum : X.cellData source.val.cell) :
+    (X.cellOriginRankInsertion source).map datum =
+      (X.dataAt origin).rank ((X.data.action.normalizedMap arrow).map datum) := by
+  subst origin
+  have arrow_eq : arrow = source.toOrigin := Subsingleton.elim _ _
+  subst arrow
+  rfl
+
 -- ALIGN: ATLAS-CELL-RANK-MAP.
 theorem Atlas.cellOriginRankInsertion_map_arrow (X : Atlas) {source target : X.Element}
     (arrow : source ⟶ target) (datum : X.cellData source.val.cell) :

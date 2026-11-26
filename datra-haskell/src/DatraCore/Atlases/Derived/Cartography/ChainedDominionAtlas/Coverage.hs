@@ -8,11 +8,11 @@
 module ChainedDominionAtlas.Coverage (chainedDominionCoverage, chainedDominionAtlasMap) where
 
 import Atlas
-  ( atlasFolio, atlasPageElements, atlasAcceptsDatum, mapAtlasData
-  , atlasNormalizationAgrees, atlasNormalizationArrow, atlasCoherenceWitness )
+  ( atlasFolio, atlasPageElements, atlasAcceptsDatum, mapAtlasData )
 import AtlasCoveredPageElement
-  ( CoverageWitness, atlasCoverageWitness, coverageWitnessCovers, coverageWitnessTransport )
+  ( CoverageWitness, coverageWitnessCovers, coverageWitnessTransport )
 import AtlasExtent (cellTraceValid)
+import TwoPageCoverage (twoPageRegionCoverage)
 import AtlasMap (AtlasMap, atlasMap)
 import Chain (chainIndexOf, chainPosition)
 import ChainedDominionAtlas.Action (chainedDominionCell, cellMap)
@@ -24,7 +24,7 @@ import ChainedDominionAtlas.Presentation (chainedRegionPosition, chainedDominion
 import DomanialInsertion.Core (applyInsertion)
 import PageElements
   ( PageElement, lastPageElement, withPageElement, originPageElement
-  , pageElementTraceValidOrigin, normalizePageElement )
+  , pageElementTraceValidOrigin )
 import PageElements.Structure
   ( SomePageElement (..), PageElementArrow, arrowSource, arrowTarget, pageElementArrow
   , pageElementPage, pageElementPosition )
@@ -64,16 +64,7 @@ chainedDominionAtlasMap owner =
 chainedRegionCoverage :: ChainedDominionAtlas ownerScope scope value
   -> PageElement scope object -> ChainedDominionCellData value object
   -> CoverageWitness ownerScope scope (ChainedDominionCellData value)
-chainedRegionCoverage owner region datum =
-  let valueAtlas = chainedDominionAtlas owner
-      arrow = atlasNormalizationArrow valueAtlas region
-  in atlasFolio valueAtlas `seq`
-     atlasNormalizationAgrees valueAtlas region `seq`
-     pageElementPage (normalizePageElement (atlasPageElements valueAtlas) region) `seq`
-     let witness = atlasCoverageWitness valueAtlas region datum region datum ()
-     in
-     atlasCoherenceWitness valueAtlas region arrow datum `seq`
-     coverageWitnessTransport valueAtlas arrow datum witness `seq` witness
+chainedRegionCoverage owner = twoPageRegionCoverage (chainedDominionAtlas owner)
 
 -- ALIGN: CHAINED-ORIGIN-IMAGE.
 {-@ chainedOriginImage :: owner:ChainedDominionAtlas ownerScope scope value

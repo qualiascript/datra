@@ -38,6 +38,7 @@ import PageElements.Structure
   , pageElementPrecedes, identityPageElementArrow, composePageElementArrows )
 import Pagination (Pagination, paginationPageElements)
 import Numeric.Natural (Natural)
+import TwoPagePresentation (twoPageRegionPosition, twoPageArrowPosition, normalizedArrow)
 
 {-@ embed Natural as int @-}
 {-@ invariant {value:Natural | value >= 0} @-}
@@ -53,16 +54,6 @@ chainedDominionFolio first owner = originExtensionPages (extendOrigin (acceptsVa
 {-@ acceptsValue :: Chain value -> value -> {accepted:Bool | accepted} @-}
 acceptsValue :: Chain value -> value -> Bool
 acceptsValue _ _ = True
-
--- ALIGN: CHAINED-TWO-PAGE-REGION.
-{-@ twoPageRegionPosition :: category:{PageElements scope origin final |
-           folioLength (pageElementsFolio category) == 2}
-      -> occurrence:{PageElement scope object | pageElementPage occurrence > 0}
-      -> {pageElementPage (normalizePageElement category occurrence) == 1} @-}
-twoPageRegionPosition :: PageElements scope origin final -> PageElement scope object -> ()
-twoPageRegionPosition category occurrence =
-  normalizePageElement category occurrence `seq`
-    if pageElementPage occurrence <= 1 then () else ()
 
 -- ALIGN: CHAINED-ARROW-COMPATIBLE.
 {-@ chainedArrowCompatible :: category:{PageElements scope origin final |
@@ -81,11 +72,7 @@ chainedArrowCompatible category _ _ arrow@(PageElementArrow _ _)
       if pageElementPage (arrowTarget arrow) == 0 then () else ()
   | pageElementPage (arrowTarget arrow) == 0 = ()
   | otherwise =
-      twoPageRegionPosition category (arrowSource arrow) `seq`
-      twoPageRegionPosition category (arrowTarget arrow) `seq`
-      pageElementTraceValidNormalize category (arrowSource arrow) `seq`
-      pageElementTraceValidNormalize category (arrowTarget arrow) `seq`
-      pageElementSamePagePosition category (normalizePageElementArrow category arrow)
+      twoPageArrowPosition category arrow
 
 -- | A valid region selects the value at its own position in the actual final
 -- chain. The fallback used by the raw classifier cannot occur on this domain.
@@ -152,24 +139,6 @@ chainedDominionDataMap category first owner arrow =
     cellInsertion owner
       (chainedDominionCell first owner (arrowSource arrow))
       (chainedDominionCell first owner (arrowTarget arrow))
-
--- ALIGN: CHAINED-ARROW-NORMALIZATION.
-{-@ normalizedArrow :: category:PageElements scope origin final
-      -> arrow:{PageElementArrow scope source target |
-           pageElementTraceValid category (arrowSource arrow)
-           && pageElementTraceValid category (arrowTarget arrow)}
-      -> {result:PageElementArrow scope source target |
-           result == normalizePageElementArrow category arrow
-           && pageElementTraceValid category (arrowSource result)
-           && pageElementTraceValid category (arrowTarget result)
-           && arrowSource result == normalizePageElement category (arrowSource arrow)
-           && arrowTarget result == normalizePageElement category (arrowTarget arrow)} @-}
-normalizedArrow :: PageElements scope origin final -> PageElementArrow scope source target
-  -> PageElementArrow scope source target
-normalizedArrow category arrow =
-  pageElementTraceValidNormalize category (arrowSource arrow) `seq`
-  pageElementTraceValidNormalize category (arrowTarget arrow) `seq`
-  normalizePageElementArrow category arrow
 
 -- ALIGN: CHAINED-OWNED-NORMALIZATION.
 {-@ ownedCellNormalization :: category:{PageElements scope origin final |

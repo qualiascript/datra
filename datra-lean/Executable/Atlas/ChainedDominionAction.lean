@@ -44,6 +44,7 @@ def cellPrecedes (owner : Chain A) : ChainedDominionCell A → ChainedDominionCe
   | .region source, .region target => decide (owner.position source = owner.position target)
 
 -- ALIGN: CHAINED-CELL-RETAG.
+-- ALIGN: RANKED-CELL-RETAG.
 def retagCell : ChainedDominionCellData A Source → ChainedDominionCellData A Target
   | .extent value => .extent value
   | .region value => .region value

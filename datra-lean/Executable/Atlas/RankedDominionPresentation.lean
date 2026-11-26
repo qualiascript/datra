@@ -6,6 +6,7 @@ open CategoryTheory
 universe u
 variable {A : Type} {Scope : Type*} {scope : Scope} {origin final : Page}
 
+-- ALIGN: RANKED-ARROW-COMPATIBLE.
 theorem arrowCompatible (pages : FolioData origin final) (valid : pages.Valid)
     (twoPages : pages.length = 2) {source target : PageElement scope}
     (arrow : source.Arrow target) (sourceValid : pages.traceValid source = true)
@@ -22,6 +23,7 @@ theorem arrowCompatible (pages : FolioData origin final) (valid : pages.Valid)
     sourceValid targetValid (by omega) (by omega)
   simp [cellAt, sourceOrigin, targetOrigin, cellPrecedes, same]
 
+-- ALIGN: RANKED-REGION-POSITION.
 theorem regionPosition (pages : FolioData origin ⟨Nat, Chain.spine⟩) (valid : pages.Valid)
     (twoPages : pages.length = 2) (occurrence : PageElement scope)
     (accepted : pages.traceValid occurrence = true) (positive : 0 < occurrence.page) :
@@ -34,20 +36,54 @@ theorem regionPosition (pages : FolioData origin ⟨Nat, Chain.spine⟩) (valid 
   rw [← index]
   exact finite
 
+-- ALIGN: RANKED-OWNED-NORMALIZATION.
 theorem ownedCellNormalization (pages : FolioData origin final) (valid : pages.Valid)
     (twoPages : pages.length = 2) (occurrence : PageElement scope) :
     cellAt (occurrence.normalize (pages.depth - 1) pages.depth) = cellAt occurrence := by
   have depth : pages.depth = 2 := (pages.length_eq_depth valid).symm.trans twoPages
   simpa only [depth, Nat.reduceSub] using cellAt_normalize occurrence
 
+-- ALIGN: RANKED-PRESENTATION-DOMINION.
+def rankedDominionAt (owner : Dominion A) (occurrence : PageElement scope) :
+    Dominion (CellCarrier owner (cellAt occurrence) occurrence.cell.Carrier) :=
+  cellDominion owner (cellAt occurrence)
+
+-- ALIGN: RANKED-PRESENTATION-INSERTION.
+def rankedDominionDataMap {Source Target : Type}
+    (pages : FolioData origin final) (valid : pages.Valid) (twoPages : pages.length = 2)
+    (owner : Dominion A) {source target : PageElement scope} (arrow : source.Arrow target)
+    (sourceValid : pages.traceValid source = true) (targetValid : pages.traceValid target = true) :
+    DomanialInsertion (CellCarrier owner (cellAt source) Source) (CellCarrier owner (cellAt target) Target) :=
+  cellInsertion owner _ _ (arrowCompatible pages valid twoPages arrow sourceValid targetValid)
+
+-- ALIGN: RANKED-PRESENTATION-FORWARD.
+theorem rankedDominionDataMap_map {Source Target : Type}
+    (pages : FolioData origin final) (valid : pages.Valid) (twoPages : pages.length = 2)
+    (owner : Dominion A) {source target : PageElement scope} (arrow : source.Arrow target)
+    (sourceValid : pages.traceValid source = true) (targetValid : pages.traceValid target = true)
+    (datum : CellCarrier owner (cellAt source) Source) :
+    ((rankedDominionDataMap (Target := Target) pages valid twoPages owner arrow sourceValid targetValid).map datum).val =
+      cellMap (cellAt source) (cellAt target) datum.val := rfl
+
+-- ALIGN: RANKED-PRESENTATION-INVERSE.
+theorem rankedDominionDataMap_preimage {Source Target : Type}
+    (pages : FolioData origin final) (valid : pages.Valid) (twoPages : pages.length = 2)
+    (owner : Dominion A) {source target : PageElement scope} (arrow : source.Arrow target)
+    (sourceValid : pages.traceValid source = true) (targetValid : pages.traceValid target = true)
+    (datum : CellCarrier owner (cellAt target) Target) :
+    ((rankedDominionDataMap (Source := Source) pages valid twoPages owner arrow sourceValid targetValid).preimage datum).map
+      (fun value => value.val) = cellPreimage owner (cellAt source) (cellAt target) datum.val :=
+  cellInsertion_preimage owner _ _ _ datum
+
+-- ALIGN: RANKED-PRESENTATION-ACTION.
 def rankedDominionAction (pages : FolioData origin final) (valid : pages.Valid)
     (twoPages : pages.length = 2) (owner : Dominion A) :
     AtlasMembershipAction pages (fun cell => RankedDominionCellData A cell.Carrier) :=
   AtlasMembershipAction.packagePredicate (PageElementDomain.ofFolio pages ⟨pages, valid⟩)
     (fun occurrence datum => rankedDominionAccepts owner occurrence datum)
-    (fun occurrence _ => cellDominion owner (cellAt occurrence))
-    (fun sourceValid targetValid arrow => cellInsertion owner _ _
-      (arrowCompatible pages valid twoPages arrow sourceValid targetValid))
+    (fun occurrence _ => rankedDominionAt owner occurrence)
+    (fun sourceValid targetValid arrow =>
+      rankedDominionDataMap pages valid twoPages owner arrow sourceValid targetValid)
 
 instance rankedDominionAction_owner (pages : FolioData origin final) (valid : pages.Valid)
     (twoPages : pages.length = 2) (owner : Dominion A) :
@@ -74,12 +110,14 @@ theorem rankedAction_preimage (pages : FolioData origin final) (valid : pages.Va
       (source.normalize.traceValid valid) (target.normalize.traceValid valid)) datum
   simpa only [FolioData.ValidElement.normalize, ownedCellNormalization pages valid twoPages] using exactInverse
 
+-- ALIGN: RANKED-PRESENTATION-IDENTITY.
 theorem rankedIdentity (pages : FolioData origin final) (valid : pages.Valid)
     (twoPages : pages.length = 2) (owner : Dominion A) (source : pages.ValidElement)
     (datum : (rankedDominionAction pages valid twoPages owner).membership.Carrier source.normalize.val) :
     (((rankedDominionAction pages valid twoPages owner).normalizedMap (𝟙 source)).map datum).val = datum.val :=
   cellIdentity _ datum.val
 
+-- ALIGN: RANKED-PRESENTATION-COMPOSITION.
 theorem rankedComposition (pages : FolioData origin final) (valid : pages.Valid)
     (twoPages : pages.length = 2) (owner : Dominion A)
     {source middle target : pages.ValidElement} (before : source ⟶ middle) (after : middle ⟶ target)
@@ -93,6 +131,7 @@ theorem rankedComposition (pages : FolioData origin final) (valid : pages.Valid)
     (arrowCompatible pages valid twoPages (FolioData.ValidElement.normalizeArrow after)
       (middle.normalize.traceValid valid) (target.normalize.traceValid valid)) datum.val).symm
 
+-- ALIGN: RANKED-PRESENTATION-COHERENCE.
 theorem rankedCoherence (pages : FolioData origin final) (valid : pages.Valid)
     (twoPages : pages.length = 2) (owner : Dominion A) (source : pages.ValidElement)
     (datum : (rankedDominionAction pages valid twoPages owner).membership.Carrier source.normalize.val) :
@@ -101,6 +140,7 @@ theorem rankedCoherence (pages : FolioData origin final) (valid : pages.Valid)
   rw [FolioData.ValidElement.normalize_idempotent]
   exact cellIdentity _ datum.val
 
+-- ALIGN: RANKED-PRESENTATION-DISJOINT.
 theorem rankedDisjoint (pages : FolioData origin ⟨Nat, Chain.spine⟩) (valid : pages.Valid)
     (twoPages : pages.length = 2) (owner : Dominion A)
     {left right root : pages.ValidElement} (samePage : left.val.page = right.val.page)
@@ -153,11 +193,20 @@ theorem rankedDominionFolio_length : rankedDominionFolio.data.length = 2 :=
 -- ALIGN: RANKED-PAGINATION.
 def rankedDominionPagination : Pagination := Pagination.fromPageElements rankedDominionFolio
 
+-- ALIGN: RANKED-OWNED-PRESENTATION.
+def rankedPresentationForPages (pagination : Pagination) (twoPages : pagination.pages.length = 2)
+    (finalSpine : pagination.final = ⟨Nat, Chain.spine⟩) (owner : Dominion A) : AtlasPresentation := by
+  rcases pagination with ⟨origin, final, folio⟩
+  dsimp at finalSpine twoPages
+  subst final
+  exact AtlasPresentation.ofAction ⟨origin, ⟨Nat, Chain.spine⟩, folio⟩
+    (rankedDominionAction folio.data folio.valid twoPages owner)
+    (owner := rankedDominionAction_owner folio.data folio.valid twoPages owner)
+    (rankedDominionLaws folio.data folio.valid twoPages owner)
+
+-- ALIGN: RANKED-FIXED-PRESENTATION.
 def rankedDominionPresentation (owner : Dominion A) : AtlasPresentation :=
-  AtlasPresentation.ofAction rankedDominionPagination
-    (rankedDominionAction rankedDominionFolio.data rankedDominionFolio.valid rankedDominionFolio_length owner)
-    (owner := rankedDominionAction_owner rankedDominionFolio.data rankedDominionFolio.valid rankedDominionFolio_length owner)
-    (rankedDominionLaws rankedDominionFolio.data rankedDominionFolio.valid rankedDominionFolio_length owner)
+  rankedPresentationForPages rankedDominionPagination rankedDominionFolio_length rfl owner
 
 /-- The allocated executable Atlas uses exactly the accepted cell action of
 the ranked presentation. The general Atlas bridge interprets it into the
@@ -173,10 +222,20 @@ structure RetainedAtlas (Owner A : Type) where
   storedAtlas : AtlasAllocation Owner
   owned : storedAtlas.atlasDescription = rankedDominionPresentation storedDominion
 
+-- ALIGN: RANKED-OWNER-DOMINION.
+def rankedDominionValueDominion {Owner : Type} (owner : RetainedAtlas Owner A) : Dominion A :=
+  owner.storedDominion
+
+-- ALIGN: RANKED-OWNER-RETAIN.
+def retainRankedDominionAtlas {Owner : Type} (dominion : Dominion A) (allocation : AtlasAllocation Owner)
+    (owned : allocation.atlasDescription = rankedDominionPresentation dominion) : RetainedAtlas Owner A :=
+  ⟨dominion, allocation, owned⟩
+
 -- ALIGN: RANKED-OWNER-ATLAS.
 def rankedDominionAtlas {Owner : Type} (owner : RetainedAtlas Owner A) : AtlasAllocation Owner :=
   owner.storedAtlas
 
+-- ALIGN: RANKED-OWNER-CONTRACT.
 theorem rankedDominionAtlas_description {Owner : Type} (owner : RetainedAtlas Owner A) :
     (rankedDominionAtlas owner).atlasDescription = rankedDominionPresentation owner.storedDominion :=
   owner.owned
@@ -197,6 +256,7 @@ theorem rankedDominionAtlas_cellData {Owner : Type} (owner : RetainedAtlas Owner
   rw [rankedDominionAtlas_description]
   rfl
 
+-- ALIGN: RANKED-OWNER-MEMBERSHIP.
 theorem rankedDominionMembership {Owner : Type} (owner : RetainedAtlas Owner A)
     (occurrence : PageElement (rankedDominionAtlas owner).atlasDescription.pagination.pages)
     (datum : (rankedDominionAtlas owner).atlasDescription.cellData occurrence.cell) :
@@ -211,6 +271,44 @@ theorem rankedDominionMembership {Owner : Type} (owner : RetainedAtlas Owner A)
       cellAccepts dominion (cellAt occurrence) datum
   rw [ownedCellNormalization rankedDominionFolio.data rankedDominionFolio.valid rankedDominionFolio_length]
 
+-- ALIGN: RANKED-OWNER-LOOKUP-RANK.
+theorem rankedDominionDataAt_rank {Owner : Type} (owner : RetainedAtlas Owner A) :
+    let allocation := rankedDominionAtlas owner
+    letI := allocation.atlasDescription.ownership
+    ∀ (occurrence : allocation.atlasDescription.pagination.pages.ValidElement)
+      (datum : allocation.atlasDescription.action.membership.Carrier occurrence.normalize.val),
+      (allocation.atlasDescription.action.dataAtValid occurrence.normalize).rank datum =
+        cellRank owner.storedDominion (cellAt occurrence.val)
+          (cast (congrFun (rankedDominionAtlas_cellData owner) occurrence.val.cell) datum.val) := by
+  rcases owner with ⟨dominion, ⟨presentation⟩, same⟩
+  change presentation = _ at same
+  subst presentation
+  dsimp only
+  intro occurrence datum
+  change cellRank dominion (cellAt occurrence.normalize.val) datum.val = _
+  exact congrArg (fun cell => cellRank dominion cell datum.val)
+    (ownedCellNormalization rankedDominionFolio.data rankedDominionFolio.valid rankedDominionFolio_length occurrence.val)
+
+-- ALIGN: RANKED-OWNER-LOOKUP-DECODE.
+theorem rankedDominionDataAt_unrank {Owner : Type} (owner : RetainedAtlas Owner A) :
+    let allocation := rankedDominionAtlas owner
+    letI := allocation.atlasDescription.ownership
+    ∀ (occurrence : allocation.atlasDescription.pagination.pages.ValidElement) (index : Nat),
+      ((allocation.atlasDescription.action.dataAtValid occurrence.normalize).unrank index).map
+          (fun datum => cast (congrFun (rankedDominionAtlas_cellData owner) occurrence.val.cell) datum.val) =
+        cellUnrank owner.storedDominion (cellAt occurrence.val) index := by
+  rcases owner with ⟨dominion, ⟨presentation⟩, same⟩
+  change presentation = _ at same
+  subst presentation
+  dsimp only
+  intro occurrence index
+  change ((cellDominion dominion (cellAt occurrence.normalize.val)).unrank index).map Subtype.val =
+    (cellUnrank dominion (cellAt occurrence.val) index : Option (RankedDominionCellData A occurrence.val.cell.Carrier))
+  rw [cellDominion_unrank]
+  exact congrArg (fun cell => cellUnrank dominion cell index)
+    (ownedCellNormalization rankedDominionFolio.data rankedDominionFolio.valid rankedDominionFolio_length occurrence.val)
+
+-- ALIGN: RANKED-OWNER-TRANSPORT.
 theorem rankedDominionTransport {Owner : Type} (owner : RetainedAtlas Owner A) :
     let allocation := rankedDominionAtlas owner
     letI := allocation.atlasDescription.ownership
@@ -229,10 +327,36 @@ theorem rankedDominionTransport {Owner : Type} (owner : RetainedAtlas Owner A) :
   exact rankedAction_map rankedDominionFolio.data rankedDominionFolio.valid rankedDominionFolio_length
     dominion arrow datum
 
+-- ALIGN: RANKED-OWNER-INVERSE-TRANSPORT.
+theorem rankedDominionInverseTransport {Owner : Type} (owner : RetainedAtlas Owner A) :
+    let allocation := rankedDominionAtlas owner
+    letI := allocation.atlasDescription.ownership
+    ∀ {source target : allocation.atlasDescription.pagination.pages.ValidElement}
+      (arrow : source ⟶ target)
+      (datum : allocation.atlasDescription.action.membership.Carrier target.normalize.val),
+      ((allocation.atlasDescription.action.normalizedMap arrow).preimage datum).map
+          (fun result => cast (congrFun (rankedDominionAtlas_cellData owner) source.val.cell) result.val) =
+        cellPreimage owner.storedDominion (cellAt source.val) (cellAt target.val)
+          (cast (congrFun (rankedDominionAtlas_cellData owner) target.val.cell) datum.val) := by
+  rcases owner with ⟨dominion, ⟨presentation⟩, same⟩
+  change presentation = _ at same
+  subst presentation
+  dsimp only
+  intro source target arrow datum
+  exact rankedAction_preimage rankedDominionFolio.data rankedDominionFolio.valid rankedDominionFolio_length
+    dominion arrow datum
+
+-- ALIGN: RANKED-OWNER-RETAIN-PRESENTATION.
+def retainRankedPresentation {Owner : Type} (dominion : Dominion A) (presentation : AtlasPresentation)
+    (canonical : presentation = rankedDominionPresentation dominion) (allocation : AtlasAllocation Owner)
+    (owned : allocation.atlasDescription = presentation) : RetainedAtlas Owner A :=
+  retainRankedDominionAtlas dominion allocation (owned.trans canonical)
+
 -- ALIGN: RANKED-OWNER-ALLOCATION.
 def withRankedDominionAtlas {Result : Type u} (owner : Dominion A)
     (useOwner : ∀ Owner : Type, RetainedAtlas Owner A → Result) : Result :=
-  useOwner Unit ⟨owner, (rankedDominionPresentation owner).allocateStored, rfl⟩
+  useOwner Unit (retainRankedPresentation owner (rankedDominionPresentation owner) rfl
+    (rankedDominionPresentation owner).allocateStored rfl)
 
 theorem withRankedDominionAtlas_dominion (owner : Dominion A) :
     withRankedDominionAtlas owner (fun _ retained => retained.storedDominion) = owner := rfl
