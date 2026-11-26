@@ -3180,6 +3180,581 @@ proofGuard = cellNormalization
 """,
 }
 
+CHAINED_PRESENTATION_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module ChainedPresentationPublicGuard where
+import Chain (Chain, chainPosition)
+import ChainedDominionAtlas.Action (chainedDominionCell, chainValueAt, cellPrecedes, cellMap, cellPreimage)
+import ChainedDominionAtlas.Data (ChainedDominionCellData)
+import ChainedDominionAtlas.Presentation
+import DomanialInsertion (applyInsertion, preimage)
+import Folio (folioLength, lastChain)
+import PageElements (PageElements, pageElementsFolio, pageElementTraceValid)
+import PageElements.Structure (PageElement, PageElementArrow, pageElementPage, pageElementPosition, arrowSource, arrowTarget)
+
+{-@ observedPageForward :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2}
+      -> first:value -> owner:Chain value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> datum:{ChainedDominionCellData value source |
+           chainedDominionAccepts first owner (arrowSource arrow) datum}
+      -> {result:ChainedDominionCellData value target |
+           chainedDominionAccepts first owner (arrowTarget arrow) result
+           && result == cellMap owner (chainedDominionCell first owner (arrowSource arrow))
+                (chainedDominionCell first owner (arrowTarget arrow)) datum} @-}
+observedPageForward :: PageElements scope origin final -> value -> Chain value
+  -> PageElementArrow scope source target -> ChainedDominionCellData value source
+  -> ChainedDominionCellData value target
+observedPageForward category first owner arrow datum =
+  applyInsertion (chainedDominionDataMap category first owner arrow) datum
+
+{-@ observedPageInverse :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2}
+      -> first:value -> owner:Chain value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> datum:{ChainedDominionCellData value target |
+           chainedDominionAccepts first owner (arrowTarget arrow) datum}
+      -> {result:Maybe ({candidate:ChainedDominionCellData value source |
+           chainedDominionAccepts first owner (arrowSource arrow) candidate}) |
+           result == cellPreimage owner (chainedDominionCell first owner (arrowSource arrow))
+                (chainedDominionCell first owner (arrowTarget arrow)) datum} @-}
+observedPageInverse :: PageElements scope origin final -> value -> Chain value
+  -> PageElementArrow scope source target -> ChainedDominionCellData value target
+  -> Maybe (ChainedDominionCellData value source)
+observedPageInverse category first owner arrow datum =
+  preimage (chainedDominionDataMap category first owner arrow) datum
+"""
+CHAINED_PRESENTATION_PUBLIC_GUARDS = {
+    "chained region selection requires the owning final chain": r"""
+{-@ proofGuard :: category:{PageElements scope origin value |
+           folioLength (pageElementsFolio category) == 2} -> first:value -> owner:Chain value
+      -> occurrence:{PageElement scope object | pageElementTraceValid category occurrence
+           && pageElementPage occurrence > 0}
+      -> {chainPosition owner (chainValueAt first owner occurrence) == pageElementPosition occurrence} @-}
+proofGuard :: PageElements scope origin value -> value -> Chain value -> PageElement scope object -> ()
+proofGuard = chainedRegionPosition
+""",
+    "chained region selection requires owning validity": r"""
+{-@ proofGuard :: category:{PageElements scope origin value |
+           folioLength (pageElementsFolio category) == 2} -> first:value
+      -> owner:{Chain value | owner == lastChain (pageElementsFolio category)}
+      -> occurrence:{PageElement scope object | pageElementPage occurrence > 0}
+      -> {chainPosition owner (chainValueAt first owner occurrence) == pageElementPosition occurrence} @-}
+proofGuard :: PageElements scope origin value -> value -> Chain value -> PageElement scope object -> ()
+proofGuard = chainedRegionPosition
+""",
+    "chained presentation requires a two-page owning folio": r"""
+{-@ proofGuard :: category:PageElements scope origin final -> first:value -> owner:Chain value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> {cellPrecedes owner (chainedDominionCell first owner (arrowSource arrow))
+           (chainedDominionCell first owner (arrowTarget arrow))} @-}
+proofGuard :: PageElements scope origin final -> value -> Chain value
+  -> PageElementArrow scope source target -> ()
+proofGuard = chainedArrowCompatible
+""",
+    "chained presentation requires source owning validity": r"""
+{-@ proofGuard :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2} -> first:value -> owner:Chain value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowTarget arrow)}
+      -> {cellPrecedes owner (chainedDominionCell first owner (arrowSource arrow))
+           (chainedDominionCell first owner (arrowTarget arrow))} @-}
+proofGuard :: PageElements scope origin final -> value -> Chain value
+  -> PageElementArrow scope source target -> ()
+proofGuard = chainedArrowCompatible
+""",
+    "chained presentation requires target owning validity": r"""
+{-@ proofGuard :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2} -> first:value -> owner:Chain value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)}
+      -> {cellPrecedes owner (chainedDominionCell first owner (arrowSource arrow))
+           (chainedDominionCell first owner (arrowTarget arrow))} @-}
+proofGuard :: PageElements scope origin final -> value -> Chain value
+  -> PageElementArrow scope source target -> ()
+proofGuard = chainedArrowCompatible
+""",
+    "chained presentation forward requires accepted source data": r"""
+{-@ proofGuard :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2} -> first:value -> owner:Chain value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> ChainedDominionCellData value source -> ChainedDominionCellData value target @-}
+proofGuard :: PageElements scope origin final -> value -> Chain value
+  -> PageElementArrow scope source target -> ChainedDominionCellData value source
+  -> ChainedDominionCellData value target
+proofGuard = observedPageForward
+""",
+    "chained presentation inverse requires accepted target data": r"""
+{-@ proofGuard :: category:{PageElements scope origin final |
+           folioLength (pageElementsFolio category) == 2} -> first:value -> owner:Chain value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid category (arrowSource arrow)
+           && pageElementTraceValid category (arrowTarget arrow)}
+      -> ChainedDominionCellData value target -> Maybe (ChainedDominionCellData value source) @-}
+proofGuard :: PageElements scope origin final -> value -> Chain value
+  -> PageElementArrow scope source target -> ChainedDominionCellData value target
+  -> Maybe (ChainedDominionCellData value source)
+proofGuard = observedPageInverse
+""",
+}
+
+CHAINED_ASSEMBLY_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module ChainedAssemblyPublicGuard where
+import Atlas (AtlasPresentation, atlasPresentationPagination, atlasPresentationAction, atlasActionDataAt)
+import Chain (Chain)
+import ChainedDominionAtlas.Data (ChainedDominionCellData)
+import ChainedDominionAtlas.Presentation
+import Dominion (Dominion)
+import Folio (Folio, folioLength, lastChain)
+import PageElements (pageElementsFolio)
+import Pagination (Pagination, paginationPageElements)
+
+{-@ observedPresentation :: pages:{Pagination scope origin value |
+           folioLength (pageElementsFolio (paginationPageElements pages)) == 2}
+      -> first:value -> owner:{Chain value | owner == lastChain (pageElementsFolio (paginationPageElements pages))}
+      -> valueDominion:Dominion value
+      -> {result:AtlasPresentation scope (ChainedDominionCellData value) origin value |
+           atlasPresentationPagination result == pages
+           && atlasPresentationAction result == chainedDominionAction (paginationPageElements pages) first owner valueDominion
+           && atlasActionDataAt (atlasPresentationAction result) == chainedDominionAt first owner valueDominion} @-}
+observedPresentation :: Pagination scope origin value -> value -> Chain value -> Dominion value
+  -> AtlasPresentation scope (ChainedDominionCellData value) origin value
+observedPresentation = chainedDominionPresentation
+
+{-@ observedFolio :: first:value -> owner:Chain value
+      -> {pages:Folio () value | folioLength pages == 2 && lastChain pages == owner} @-}
+observedFolio :: value -> Chain value -> Folio () value
+observedFolio = chainedDominionFolio
+"""
+CHAINED_ASSEMBLY_PUBLIC_GUARDS = {
+    "chained assembly requires a two-page folio": r"""
+{-@ proofGuard :: pages:Pagination scope origin value -> first:value
+      -> owner:{Chain value | owner == lastChain (pageElementsFolio (paginationPageElements pages))}
+      -> Dominion value -> AtlasPresentation scope (ChainedDominionCellData value) origin value @-}
+proofGuard :: Pagination scope origin value -> value -> Chain value -> Dominion value
+  -> AtlasPresentation scope (ChainedDominionCellData value) origin value
+proofGuard = observedPresentation
+""",
+    "chained assembly requires the owning final chain": r"""
+{-@ proofGuard :: pages:{Pagination scope origin value |
+           folioLength (pageElementsFolio (paginationPageElements pages)) == 2}
+      -> value -> Chain value -> Dominion value
+      -> AtlasPresentation scope (ChainedDominionCellData value) origin value @-}
+proofGuard :: Pagination scope origin value -> value -> Chain value -> Dominion value
+  -> AtlasPresentation scope (ChainedDominionCellData value) origin value
+proofGuard = observedPresentation
+""",
+    "chained assembly retains the supplied pagination": r"""
+{-@ proofGuard :: pages:{Pagination scope origin value |
+           folioLength (pageElementsFolio (paginationPageElements pages)) == 2}
+      -> first:value -> owner:{Chain value | owner == lastChain (pageElementsFolio (paginationPageElements pages))}
+      -> Dominion value
+      -> {result:AtlasPresentation scope (ChainedDominionCellData value) origin value |
+           atlasPresentationPagination result /= pages} @-}
+proofGuard :: Pagination scope origin value -> value -> Chain value -> Dominion value
+  -> AtlasPresentation scope (ChainedDominionCellData value) origin value
+proofGuard = observedPresentation
+""",
+    "chained assembly retains the supplied data action": r"""
+{-@ proofGuard :: pages:{Pagination scope origin value |
+           folioLength (pageElementsFolio (paginationPageElements pages)) == 2}
+      -> first:value -> owner:{Chain value | owner == lastChain (pageElementsFolio (paginationPageElements pages))}
+      -> valueDominion:Dominion value
+      -> {result:AtlasPresentation scope (ChainedDominionCellData value) origin value |
+           atlasPresentationAction result /= chainedDominionAction (paginationPageElements pages) first owner valueDominion} @-}
+proofGuard :: Pagination scope origin value -> value -> Chain value -> Dominion value
+  -> AtlasPresentation scope (ChainedDominionCellData value) origin value
+proofGuard = observedPresentation
+""",
+    "chained assembly folio has exactly two pages": r"""
+{-@ proofGuard :: value -> Chain value -> {pages:Folio () value | folioLength pages == 1} @-}
+proofGuard :: value -> Chain value -> Folio () value
+proofGuard = observedFolio
+""",
+    "chained assembly retains the supplied cell Dominions": r"""
+{-@ proofGuard :: pages:{Pagination scope origin value |
+           folioLength (pageElementsFolio (paginationPageElements pages)) == 2}
+      -> first:value -> owner:{Chain value | owner == lastChain (pageElementsFolio (paginationPageElements pages))}
+      -> valueDominion:Dominion value
+      -> {result:AtlasPresentation scope (ChainedDominionCellData value) origin value |
+           atlasActionDataAt (atlasPresentationAction result) /= chainedDominionAt first owner valueDominion} @-}
+proofGuard :: Pagination scope origin value -> value -> Chain value -> Dominion value
+  -> AtlasPresentation scope (ChainedDominionCellData value) origin value
+proofGuard = observedPresentation
+""",
+}
+
+CHAINED_OWNER_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module ChainedOwnerPublicGuard where
+import Atlas
+  ( Atlas, AtlasDataAction, atlasFolio, atlasPageElements, atlasDescription, atlasPresentationAction, atlasAcceptsDatum, mapAtlasData )
+import Chain (Chain)
+import ChainedDominionAtlas.Action (chainedDominionCell, cellMap)
+import ChainedDominionAtlas.Data (ChainedDominionCellData)
+import ChainedDominionAtlas.Owner
+import ChainedDominionAtlas.Presentation (chainedDominionAction, chainedDominionAccepts)
+import Dominion (Dominion)
+import DomanialInsertion.Core (DomanialInsertion (..))
+import Folio (folioLength, lastChain)
+import PageElements (PageElement, pageElementTraceValid)
+import PageElements.Structure (PageElementArrow, arrowSource, arrowTarget)
+
+{-@ observedTransport :: owner:ChainedDominionAtlas ownerScope scope value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid (atlasPageElements (chainedDominionAtlas owner)) (arrowSource arrow)
+           && pageElementTraceValid (atlasPageElements (chainedDominionAtlas owner)) (arrowTarget arrow)}
+      -> datum:{ChainedDominionCellData value source |
+           atlasAcceptsDatum (chainedDominionAtlas owner) (arrowSource arrow) datum}
+      -> {result:ChainedDominionCellData value target |
+           atlasAcceptsDatum (chainedDominionAtlas owner) (arrowTarget arrow) result
+           && result == cellMap (chainedDominionChain owner)
+             (chainedDominionCell (chainedDominionFirst owner) (chainedDominionChain owner) (arrowSource arrow))
+             (chainedDominionCell (chainedDominionFirst owner) (chainedDominionChain owner) (arrowTarget arrow)) datum} @-}
+observedTransport :: ChainedDominionAtlas ownerScope scope value
+  -> PageElementArrow scope source target -> ChainedDominionCellData value source -> ChainedDominionCellData value target
+observedTransport owner arrow datum =
+  chainedDominionTransport owner arrow datum `seq`
+    case mapAtlasData (chainedDominionAtlas owner) arrow of
+      DomanialInsertion forward _ _ -> forward datum
+
+{-@ observedFinalChain :: owner:ChainedDominionAtlas ownerScope scope value
+      -> {result:Chain value | result == chainedDominionChain owner} @-}
+observedFinalChain :: ChainedDominionAtlas ownerScope scope value -> Chain value
+observedFinalChain owner = lastChain (atlasFolio (chainedDominionAtlas owner))
+
+{-@ observedStoredAction :: owner:ChainedDominionAtlas ownerScope scope value
+      -> {action:AtlasDataAction scope (ChainedDominionCellData value) |
+           action == chainedDominionAction (atlasPageElements (chainedDominionAtlas owner))
+             (chainedDominionFirst owner) (chainedDominionChain owner) (chainedDominionValueDominion owner)} @-}
+observedStoredAction :: ChainedDominionAtlas ownerScope scope value
+  -> AtlasDataAction scope (ChainedDominionCellData value)
+observedStoredAction owner = atlasPresentationAction (atlasDescription (chainedDominionAtlas owner))
+
+{-@ observedAcceptance :: owner:ChainedDominionAtlas ownerScope scope value
+      -> occurrence:PageElement scope object -> datum:ChainedDominionCellData value object
+      -> {result:Bool | result == chainedDominionAccepts (chainedDominionFirst owner)
+           (chainedDominionChain owner) occurrence datum} @-}
+observedAcceptance :: ChainedDominionAtlas ownerScope scope value
+  -> PageElement scope object -> ChainedDominionCellData value object -> Bool
+observedAcceptance owner occurrence datum =
+  chainedDominionMembership owner occurrence datum `seq`
+    atlasAcceptsDatum (chainedDominionAtlas owner) occurrence datum
+
+{-@ measure observedFirst @-}
+{-@ measure observedChain @-}
+{-@ measure observedDominion @-}
+data OwnerObservation value = OwnerObservation
+  { observedFirst :: value
+  , observedChain :: Chain value
+  , observedDominion :: Dominion value
+  }
+
+{-@ observedInputs :: first:value -> chain:Chain value -> dominion:Dominion value
+      -> {result:OwnerObservation value | observedFirst result == first
+           && observedChain result == chain && observedDominion result == dominion} @-}
+observedInputs :: value -> Chain value -> Dominion value -> OwnerObservation value
+observedInputs first chain dominion =
+  withChainedDominionAtlas first chain dominion (\owner ->
+    OwnerObservation (chainedDominionFirst owner) (observedFinalChain owner) (chainedDominionValueDominion owner))
+"""
+CHAINED_OWNER_PUBLIC_GUARDS = {
+    "chained owner transport agrees with its checked cell map": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> arrow:{PageElementArrow scope source target |
+           pageElementTraceValid (atlasPageElements (chainedDominionAtlas owner)) (arrowSource arrow)
+           && pageElementTraceValid (atlasPageElements (chainedDominionAtlas owner)) (arrowTarget arrow)}
+      -> datum:{ChainedDominionCellData value source |
+           atlasAcceptsDatum (chainedDominionAtlas owner) (arrowSource arrow) datum}
+      -> {result:ChainedDominionCellData value target |
+           result /= cellMap (chainedDominionChain owner)
+             (chainedDominionCell (chainedDominionFirst owner) (chainedDominionChain owner) (arrowSource arrow))
+             (chainedDominionCell (chainedDominionFirst owner) (chainedDominionChain owner) (arrowTarget arrow)) datum} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value
+  -> PageElementArrow scope source target -> ChainedDominionCellData value source -> ChainedDominionCellData value target
+proofGuard = observedTransport
+""",
+    "chained owner membership retains the restricted cell predicate": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> occurrence:PageElement scope object -> datum:ChainedDominionCellData value object
+      -> {result:Bool | result /= chainedDominionAccepts (chainedDominionFirst owner)
+           (chainedDominionChain owner) occurrence datum} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value
+  -> PageElement scope object -> ChainedDominionCellData value object -> Bool
+proofGuard = observedAcceptance
+""",
+    "chained owner cannot retain an uncertified Atlas": r"""
+proofGuard :: value -> Chain value -> Dominion value
+  -> Atlas owner scope (ChainedDominionCellData value) () value -> ChainedDominionAtlas owner scope value
+proofGuard = retainChainedDominionAtlas
+""",
+    "chained owner allocation retains the supplied first value": r"""
+{-@ proofGuard :: first:value -> Chain value -> Dominion value
+      -> {result:OwnerObservation value | observedFirst result /= first} @-}
+proofGuard :: value -> Chain value -> Dominion value -> OwnerObservation value
+proofGuard = observedInputs
+""",
+    "chained owner allocation retains the supplied chain": r"""
+{-@ proofGuard :: value -> chain:Chain value -> Dominion value
+      -> {result:OwnerObservation value | observedChain result /= chain} @-}
+proofGuard :: value -> Chain value -> Dominion value -> OwnerObservation value
+proofGuard = observedInputs
+""",
+    "chained owner allocation retains the supplied Dominion": r"""
+{-@ proofGuard :: value -> Chain value -> dominion:Dominion value
+      -> {result:OwnerObservation value | observedDominion result /= dominion} @-}
+proofGuard :: value -> Chain value -> Dominion value -> OwnerObservation value
+proofGuard = observedInputs
+""",
+    "chained owner final chain matches the stored chain": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> {result:Chain value | result /= chainedDominionChain owner} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value -> Chain value
+proofGuard = observedFinalChain
+""",
+    "chained owner retains the complete stored action": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> {action:AtlasDataAction scope (ChainedDominionCellData value) |
+           action /= chainedDominionAction (atlasPageElements (chainedDominionAtlas owner))
+             (chainedDominionFirst owner) (chainedDominionChain owner) (chainedDominionValueDominion owner)} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value
+  -> AtlasDataAction scope (ChainedDominionCellData value)
+proofGuard = observedStoredAction
+""",
+    "chained owner cannot substitute its value Dominion": r"""
+proofGuard :: ChainedDominionAtlas owner scope value -> Dominion value -> ChainedDominionAtlas owner scope value
+proofGuard owner replacement =
+  retainChainedDominionAtlas (chainedDominionFirst owner) (chainedDominionChain owner)
+    replacement (chainedDominionAtlas owner)
+""",
+}
+
+CHAINED_COVERAGE_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module ChainedCoveragePublicGuard where
+import Atlas (atlasAcceptsDatum)
+import AtlasExtent (cellTraceValid)
+import AtlasCoveredPageElement (CoverageWitness, coverageWitnessCovers)
+import AtlasMap (AtlasMap)
+import ChainedDominionAtlas (chainedDominionAtlasMap)
+import ChainedDominionAtlas.Coverage (chainedDominionCoverage)
+import ChainedDominionAtlas.Owner (ChainedDominionAtlas, ChainedDominionAtlasObject, chainedDominionAtlas)
+import ChainedDominionAtlas.Data (ChainedDominionCellData)
+import PageElements (PageElement)
+
+{-@ observedCoverage :: owner:ChainedDominionAtlas ownerScope scope value
+      -> source:{PageElement scope object | cellTraceValid (chainedDominionAtlas owner) source}
+      -> datum:{ChainedDominionCellData value object | atlasAcceptsDatum (chainedDominionAtlas owner) source datum}
+      -> {witness:CoverageWitness ownerScope scope (ChainedDominionCellData value) |
+           coverageWitnessCovers (chainedDominionAtlas owner) source datum witness} @-}
+observedCoverage :: ChainedDominionAtlas ownerScope scope value
+  -> PageElement scope object -> ChainedDominionCellData value object
+  -> CoverageWitness ownerScope scope (ChainedDominionCellData value)
+observedCoverage = chainedDominionCoverage
+
+{-@ observedMap :: ChainedDominionAtlas owner scope value -> AtlasMap (ChainedDominionAtlasObject owner scope value) @-}
+observedMap :: ChainedDominionAtlas owner scope value -> AtlasMap (ChainedDominionAtlasObject owner scope value)
+observedMap = chainedDominionAtlasMap
+"""
+CHAINED_COVERAGE_PUBLIC_GUARDS = {
+    "chained coverage certifies its exact source datum": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> source:{PageElement scope object | cellTraceValid (chainedDominionAtlas owner) source}
+      -> datum:{ChainedDominionCellData value object | atlasAcceptsDatum (chainedDominionAtlas owner) source datum}
+      -> {witness:CoverageWitness ownerScope scope (ChainedDominionCellData value) |
+           not (coverageWitnessCovers (chainedDominionAtlas owner) source datum witness)} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value
+  -> PageElement scope object -> ChainedDominionCellData value object
+  -> CoverageWitness ownerScope scope (ChainedDominionCellData value)
+proofGuard = observedCoverage
+""",
+    "chained coverage requires the owning source trace": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> source:PageElement scope object
+      -> datum:{ChainedDominionCellData value object | atlasAcceptsDatum (chainedDominionAtlas owner) source datum}
+      -> CoverageWitness ownerScope scope (ChainedDominionCellData value) @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value
+  -> PageElement scope object -> ChainedDominionCellData value object
+  -> CoverageWitness ownerScope scope (ChainedDominionCellData value)
+proofGuard = observedCoverage
+""",
+    "chained coverage requires accepted data": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value
+      -> source:{PageElement scope object | cellTraceValid (chainedDominionAtlas owner) source}
+      -> ChainedDominionCellData value object
+      -> CoverageWitness ownerScope scope (ChainedDominionCellData value) @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value
+  -> PageElement scope object -> ChainedDominionCellData value object
+  -> CoverageWitness ownerScope scope (ChainedDominionCellData value)
+proofGuard = observedCoverage
+""",
+}
+
+CHAINED_COALITION_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module ChainedCoalitionPublicGuard where
+import Atlas (atlasPageElements)
+import ChainedDominionAtlas (ChainedDominionAtlas, chainedDominionAtlas, chainedDominionCoalitionElement)
+import ChainedDominionAtlas.Coalition (chainedCoalitionValue)
+import ChainedDominionAtlas.Data (ChainedDominionCellData)
+import Coalition.Element (CoalitionData, coalitionElementValid, coalitionElementSource)
+import PageElements (originPageElement)
+
+{-@ observedCoalition :: owner:ChainedDominionAtlas ownerScope scope value -> value:value
+      -> {element:CoalitionData ownerScope scope (ChainedDominionCellData value) |
+           chainedCoalitionValue element == value
+           && coalitionElementValid (chainedDominionAtlas owner) element
+           && coalitionElementSource element == originPageElement (atlasPageElements (chainedDominionAtlas owner))} @-}
+observedCoalition :: ChainedDominionAtlas ownerScope scope value -> value
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value)
+observedCoalition = chainedDominionCoalitionElement
+"""
+CHAINED_COALITION_PUBLIC_GUARDS = {
+    "chained coalition retains its input value": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value -> value:value
+      -> {element:CoalitionData ownerScope scope (ChainedDominionCellData value) | chainedCoalitionValue element /= value} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value -> value
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value)
+proofGuard = observedCoalition
+""",
+    "chained coalition retains checked validity": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value -> value
+      -> {element:CoalitionData ownerScope scope (ChainedDominionCellData value) |
+           not (coalitionElementValid (chainedDominionAtlas owner) element)} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value -> value
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value)
+proofGuard = observedCoalition
+""",
+    "chained coalition retains the actual origin": r"""
+{-@ proofGuard :: owner:ChainedDominionAtlas ownerScope scope value -> value
+      -> {element:CoalitionData ownerScope scope (ChainedDominionCellData value) |
+           coalitionElementSource element /= originPageElement (atlasPageElements (chainedDominionAtlas owner))} @-}
+proofGuard :: ChainedDominionAtlas ownerScope scope value -> value
+  -> CoalitionData ownerScope scope (ChainedDominionCellData value)
+proofGuard = observedCoalition
+""",
+}
+
+CHAINED_CANONICAL_PUBLIC_SOURCE = r"""
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+#include "LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+module ChainedCanonicalPublicGuard where
+import Atlas (Atlas, AtlasPresentation, atlasDescription, atlasPagination, atlasFolio)
+import Chain (Chain)
+import ChainedDominionAtlas
+  ( ChainedDominionAtlas, CanonicalChainedDominion, CanonicalChainedAtlasScope
+  , CanonicalChainedPaginationScope, canonicalChainedDominionAtlas, chainedDominionAtlas )
+import ChainedDominionAtlas.Canonical
+  ( canonicalChainedFirst, canonicalChainedChain, canonicalChainedValueDominion
+  , canonicalPresentation, canonicalPagination )
+import ChainedDominionAtlas.Data (ChainedDominionCellData)
+import ChainedDominionAtlas.Owner (chainedDominionFirst, chainedDominionChain, chainedDominionValueDominion)
+import Data.Proxy (Proxy (..))
+import Folio (lastChain)
+import Pagination (Pagination)
+
+{-@ observedOwner :: CanonicalChainedDominion value => proxy:Proxy value
+      -> {owner:ChainedDominionAtlas (CanonicalChainedAtlasScope value) (CanonicalChainedPaginationScope value) value |
+           chainedDominionFirst owner == canonicalChainedFirst proxy
+           && chainedDominionChain owner == canonicalChainedChain proxy
+           && chainedDominionValueDominion owner == canonicalChainedValueDominion proxy
+           && atlasDescription (chainedDominionAtlas owner) == canonicalPresentation proxy
+           && atlasPagination (chainedDominionAtlas owner) == canonicalPagination proxy} @-}
+observedOwner :: forall value. CanonicalChainedDominion value => Proxy value
+  -> ChainedDominionAtlas (CanonicalChainedAtlasScope value) (CanonicalChainedPaginationScope value) value
+observedOwner Proxy = canonicalChainedDominionAtlas
+
+{-@ observedChain :: CanonicalChainedDominion value => proxy:Proxy value
+      -> {chain:Chain value | chain == canonicalChainedChain proxy} @-}
+observedChain :: CanonicalChainedDominion value => Proxy value -> Chain value
+observedChain proxy = lastChain (atlasFolio (chainedDominionAtlas (observedOwner proxy)))
+
+{-@ observedPresentation :: CanonicalChainedDominion value => proxy:Proxy value
+      -> {presentation:AtlasPresentation (CanonicalChainedPaginationScope value) (ChainedDominionCellData value) () value |
+           presentation == canonicalPresentation proxy} @-}
+observedPresentation :: CanonicalChainedDominion value => Proxy value
+  -> AtlasPresentation (CanonicalChainedPaginationScope value) (ChainedDominionCellData value) () value
+observedPresentation proxy = readDescription (chainedDominionAtlas (observedOwner proxy))
+
+-- Keep the newtype observation polymorphic before specializing the fixed scope.
+{-@ readDescription :: value:Atlas owner scope datum origin final
+      -> {presentation:AtlasPresentation scope datum origin final | presentation == atlasDescription value} @-}
+readDescription :: Atlas owner scope datum origin final -> AtlasPresentation scope datum origin final
+readDescription = atlasDescription
+
+{-@ observedPagination :: CanonicalChainedDominion value => proxy:Proxy value
+      -> {pages:Pagination (CanonicalChainedPaginationScope value) () value | pages == canonicalPagination proxy} @-}
+observedPagination :: CanonicalChainedDominion value => Proxy value
+  -> Pagination (CanonicalChainedPaginationScope value) () value
+observedPagination proxy = atlasPagination (chainedDominionAtlas (observedOwner proxy))
+"""
+CHAINED_CANONICAL_PUBLIC_GUARDS = {
+    "chained canonical allocation retains its first value": r"""
+{-@ proofGuard :: CanonicalChainedDominion value => proxy:Proxy value
+      -> {owner:ChainedDominionAtlas (CanonicalChainedAtlasScope value) (CanonicalChainedPaginationScope value) value |
+           chainedDominionFirst owner /= canonicalChainedFirst proxy} @-}
+proofGuard :: CanonicalChainedDominion value => Proxy value
+  -> ChainedDominionAtlas (CanonicalChainedAtlasScope value) (CanonicalChainedPaginationScope value) value
+proofGuard = observedOwner
+""",
+    "chained canonical allocation retains its final chain": r"""
+{-@ proofGuard :: CanonicalChainedDominion value => proxy:Proxy value
+      -> {chain:Chain value | chain /= canonicalChainedChain proxy} @-}
+proofGuard :: CanonicalChainedDominion value => Proxy value -> Chain value
+proofGuard = observedChain
+""",
+    "chained canonical allocation retains its Dominion": r"""
+{-@ proofGuard :: CanonicalChainedDominion value => proxy:Proxy value
+      -> {owner:ChainedDominionAtlas (CanonicalChainedAtlasScope value) (CanonicalChainedPaginationScope value) value |
+           chainedDominionValueDominion owner /= canonicalChainedValueDominion proxy} @-}
+proofGuard :: CanonicalChainedDominion value => Proxy value
+  -> ChainedDominionAtlas (CanonicalChainedAtlasScope value) (CanonicalChainedPaginationScope value) value
+proofGuard = observedOwner
+""",
+    "chained canonical allocation retains its exact presentation": r"""
+{-@ proofGuard :: CanonicalChainedDominion value => proxy:Proxy value
+      -> {presentation:AtlasPresentation (CanonicalChainedPaginationScope value) (ChainedDominionCellData value) () value |
+           presentation /= canonicalPresentation proxy} @-}
+proofGuard :: CanonicalChainedDominion value => Proxy value
+  -> AtlasPresentation (CanonicalChainedPaginationScope value) (ChainedDominionCellData value) () value
+proofGuard = observedPresentation
+""",
+    "chained canonical allocation retains its exact pagination": r"""
+{-@ proofGuard :: CanonicalChainedDominion value => proxy:Proxy value
+      -> {pages:Pagination (CanonicalChainedPaginationScope value) () value | pages /= canonicalPagination proxy} @-}
+proofGuard :: CanonicalChainedDominion value => Proxy value
+  -> Pagination (CanonicalChainedPaginationScope value) () value
+proofGuard = observedPagination
+""",
+}
+
 def run(pattern=None):
     plan = json.loads((HASKELL / "dist-newstyle/cache/plan.json").read_text())
     library = next(unit for unit in plan["install-plan"]
@@ -3280,6 +3855,12 @@ def run(pattern=None):
         check_group(TOTAL_MAP_PUBLIC_SOURCE, TOTAL_MAP_PUBLIC_GUARDS)
         check_group(CHAINED_DATA_PUBLIC_SOURCE, CHAINED_DATA_PUBLIC_GUARDS)
         check_group(CHAINED_ACTION_PUBLIC_SOURCE, CHAINED_ACTION_PUBLIC_GUARDS)
+        check_group(CHAINED_PRESENTATION_PUBLIC_SOURCE, CHAINED_PRESENTATION_PUBLIC_GUARDS)
+        check_group(CHAINED_ASSEMBLY_PUBLIC_SOURCE, CHAINED_ASSEMBLY_PUBLIC_GUARDS)
+        check_group(CHAINED_OWNER_PUBLIC_SOURCE, CHAINED_OWNER_PUBLIC_GUARDS)
+        check_group(CHAINED_COVERAGE_PUBLIC_SOURCE, CHAINED_COVERAGE_PUBLIC_GUARDS)
+        check_group(CHAINED_COALITION_PUBLIC_SOURCE, CHAINED_COALITION_PUBLIC_GUARDS)
+        check_group(CHAINED_CANONICAL_PUBLIC_SOURCE, CHAINED_CANONICAL_PUBLIC_GUARDS)
 
         typing_guards = [
             ("module PublicCoveredGuard where\nimport AtlasCoveredPageElement (CoveredPageElement)\n",
@@ -3313,6 +3894,11 @@ def run(pattern=None):
              "proofGuard :: ChainedDominionAtlas owner first value -> ChainedDominionAtlas owner second value\n"
              "proofGuard = coerce\n",
              ("Couldn't match type", "coerce")),
+            ("module PublicChainedCanonicalGuard where\nimport ChainedDominionAtlas\nimport Data.Proxy (Proxy)\n",
+             "chained canonical construction cannot choose its owner scopes",
+             "proofGuard :: CanonicalChainedDominion value => Proxy value -> ChainedDominionAtlas chosen pages value\n"
+             "proofGuard _ = canonicalChainedDominionAtlas\n",
+             ("Couldn't match type", "canonicalChainedDominionAtlas")),
             ("module PublicIndexedGuard where\nimport MapOperators.IndexedAtlasMap\nimport ChainedDominionAtlas (ChainedDominionAtlas)\n",
              "indexed Atlas elimination cannot escape its owners",
              "proofGuard :: IndexedAtlasMap value -> ChainedDominionAtlas chosen pages value\n"

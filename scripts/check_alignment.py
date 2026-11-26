@@ -113,7 +113,8 @@ def check(require_complete=False):
         refinements = re.findall(r"\{-@\s*(?:assume\s+)?([a-z]\w*)\s*::", text)
         refined_instances = [" ".join(value.split()) for value in
                              re.findall(r"\{-@\s*instance\s+(.*?)\s+where\b", text, re.S)]
-        if reflected or opaque_reflected or types or aliases or predicates or refinement_aliases or refinements or variances or refined_instances:
+        # Function-only modules can still have inventoried assembly obligations.
+        if path in expected_modules or reflected or opaque_reflected or types or aliases or predicates or refinement_aliases or refinements or variances or refined_instances:
             expected = expected_modules.pop(path, None)
             if (expected is None or expected["reflected"] != reflected
                     or expected.get("opaque_reflected", []) != opaque_reflected

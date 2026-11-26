@@ -140,11 +140,60 @@ including on malformed raw traces. Lean models these same operations and proves
 their laws, with a certified insertion preserving the raw forward and inverse
 functions. Its extent carrier is
 equivalent to the original Dominion, and each accepted region carrier has an
-explicit singleton certificate. The complete two-page Atlas assembly, coverage
-construction, traversal, and interpretation into the written Atlas model remain
-open. In particular, the owning folio must establish the classifier's endpoint
-compatibility and connect equal selected regions to equal page positions;
-the cell-action proofs do not discharge those obligations. Charter and the
+explicit singleton certificate. `ChainedDominionAtlas.Presentation` derives
+endpoint compatibility from owning-trace validity in a two-page folio: both
+non-origin endpoints normalize to page one, where transport preserves position.
+The public PageElements interface supplies that same-page theorem. The runtime
+mapper uses the resulting checked insertion, retaining accepted source and target
+carriers and its exact forward and inverse callbacks. Lean proves the same
+normalization argument and callback equations. A checked selection theorem
+connects each valid non-origin occurrence to the selected value at its actual
+page position, requiring the supplied chain to equal the owning final chain.
+The two-page presentation combines these theorems into checked identity,
+composition, coherence, and pagewise-disjointness witnesses. Named law functions
+retain their refinements through polymorphic assembly, and the public constructor
+retains the supplied pagination, membership predicate, and exact data action.
+Lean packages the same laws in `AtlasMembershipAction.Laws` and retains them in
+its `AtlasPresentation`. The runtime folio builder uses the shared checked origin
+extension and retains its two-page length and exact final chain. Public rejection
+checks require both assembly premises and reject changed pagination or action.
+The runtime generative allocator retains the supplied first value, chain, and
+Dominion with the actual allocated Atlas. Its public handle exposes the exact
+final chain, two-page length, stored action, membership predicate, cell Dominions,
+and insertion callbacks. The raw handle constructor is private; retention requires
+these certificates, and coverage and traversal consume public observations. Lean
+retains the same four runtime fields with an owning-presentation certificate and
+proves that allocation preserves the supplied inputs. The public field observers
+keep the owning refinement explicit and eliminate the record directly. Public
+allocation callbacks retain all three inputs while reading the final chain from
+the actual Atlas. Public rejection checks prevent uncertified retention, changed
+inputs or action, Dominion substitution, and owner-scope escape or coercion.
+The public membership observation agrees with the checked extent/region
+predicate after the allocated Atlas's own normalization. Lean recovers the
+stored datum family and proves the same observation equation, including on
+padded occurrences. The allocated transport also agrees with the checked cell
+map at both original endpoints, including the padded tail.
+`ChainedDominionAtlas.Canonical` checks both fixed-recipe
+instances and retains the class's first value, chain, and Dominion through the
+shared checked owner constructor. Its public result exposes the exact canonical
+pagination and complete presentation, and the underlying Atlas's final chain
+is the recipe's chain. The main interface reexports this constructor. Lean
+models the fixed dictionary tuple, shared page and Atlas recipe allocators, and
+retained owner. It proves the input and observation equations and equality of
+the canonical and runtime allocations' stored presentations. Coverage selects
+the actual final region at the datum's chain position and proves that both
+accepted data have the same origin image. Its public constructor requires the
+owning trace and accepted datum and returns coverage for that exact source and
+datum. The Atlas-map wrapper uses this checked coverage callback. Lean retains
+the actual allocation, recovers its tagged carrier, and proves the same
+coverage construction through the shared accepted-carrier interpretation.
+The public coalition constructor uses that coverage to retain a valid canonical
+coalition at the actual origin. Its value observer recovers the supplied value;
+Lean proves the same observation through the retained tagged carrier.
+Public rejection checks enforce coverage's trace and datum premises and reject
+changed coalition values, invalid coalitions, and a different origin.
+Coalition reconstruction, traversal, and identification with the written Atlas
+construction still need their complete checked contracts. Charter and the
 chained construction share `DomanialInsertion.Core.insertionOn` to retain source
 and target predicates while packaging their callbacks.
 
@@ -1410,6 +1459,10 @@ The alignment is complete when all of the following hold:
    statuses until their complete obligations are checked.
 5. Remove superseded code and perform the final validation and preprint audit
    required by the definition of done.
+
+The module-loading failure (`ModuleRequiresBlock`) is outside this alignment
+task; its repair belongs to the bootstrap work in `DATRA_HOOK_MODULE.md`.
+Report its effect on final runtime validation without attempting that repair.
 
 Use focused positive and rejection checks while completing each construction.
 The absence of trust directives is an invariant throughout this work, not a

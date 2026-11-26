@@ -20,6 +20,8 @@ import AtlasTransversalMap
 import AtlasTerritory
 import Chain
 import ChainedDominionAtlas
+import qualified ChainedDominionAtlas.Coverage as ChainedCoverage
+import qualified ChainedDominionAtlas.Coalition as ChainedCoalition
 import qualified ChainedDominionAtlas.Data as ChainedData
 import Charter
 import Coalition
@@ -366,6 +368,13 @@ testChainedDominionAtlas = do
       assert "the chained extent rejects region-tagged data"
         (atlasAcceptsDatum valueAtlas origin (ChainedData.ChainedDominionExtentDatum 3)
           && not (atlasAcceptsDatum valueAtlas origin (ChainedData.ChainedDominionRegionDatum 3)))
+      mapM_ (\selected -> do
+        let element = chainedDominionCoalitionElement owner selected
+        assert "chained coalition construction retains its value and canonical origin"
+          (ChainedCoalition.chainedCoalitionValue element == selected
+            && CoalitionElement.coalitionElementValid valueAtlas element
+            && withPageElement (CoalitionElement.coalitionElementSource element)
+              (\source -> pageElementPage source == 0 && cellTraceValid valueAtlas source))) [3, 4]
       mapM_ (\(page, position, selected, other) ->
         case pageElementIndex (atlasPageElements valueAtlas) page (finiteOrdinal position) of
           Nothing -> assert "the selected chained occurrence exists" False
@@ -379,6 +388,11 @@ testChainedDominionAtlas = do
               (atlasAcceptsDatum valueAtlas region accepted
                 && not (atlasAcceptsDatum valueAtlas region wrongValue)
                 && not (atlasAcceptsDatum valueAtlas region wrongTag))
+            let coverage = ChainedCoverage.chainedDominionCoverage owner region accepted
+            assert "chained coverage retains its exact datum on genuine and padded regions"
+              (coverageWitnessCovers valueAtlas region accepted coverage
+                && not (coverageWitnessCovers valueAtlas region wrongValue coverage)
+                && not (coverageWitnessCovers valueAtlas region wrongTag coverage))
             assert "accepted chained region data round-trip through their Dominion"
               (unrank regionData (rank regionData accepted) == Just accepted)
             assert "the chained region insertion retains its accepted carrier"

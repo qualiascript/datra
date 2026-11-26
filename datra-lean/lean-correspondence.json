@@ -5190,8 +5190,8 @@
     },
     {
       "id": "DOMINC-SAME-PAGE-POSITION",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Presentation.hs",
-      "haskell_declaration": "samePagePosition",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/PageElements/PageElements.hs",
+      "haskell_declaration": "pageElementSamePagePosition",
       "lean_namespace": "Datra.Executable.PageElement",
       "lean_declaration": "Arrow.samePagePosition"
     },
@@ -5901,6 +5901,349 @@
       "haskell_declaration": "cellDisjoint",
       "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
       "lean_declaration": "cellDisjoint"
+    },
+    {
+      "id": "CHAINED-TWO-PAGE-REGION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "twoPageRegionPosition",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "twoPageRegionPosition"
+    },
+    {
+      "id": "CHAINED-ARROW-COMPATIBLE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedArrowCompatible",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedArrowCompatible"
+    },
+    {
+      "id": "CHAINED-PRESENTATION-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedDominionAccepts",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionAccepts"
+    },
+    {
+      "id": "CHAINED-PRESENTATION-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedDominionAt",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionAt"
+    },
+    {
+      "id": "CHAINED-PRESENTATION-INSERTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedDominionDataMap",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionDataMap"
+    },
+    {
+      "id": "CHAINED-PRESENTATION-FORWARD",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedDominionDataMap",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionDataMap_map"
+    },
+    {
+      "id": "CHAINED-PRESENTATION-INVERSE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedDominionDataMap",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionDataMap_preimage"
+    },
+    {
+      "id": "CHAINED-REGION-POSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedRegionPosition",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedRegionPosition"
+    },
+    {
+      "id": "CHAINED-TWO-PAGE-FOLIO",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedDominionFolio",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionFolio"
+    },
+    {
+      "id": "CHAINED-FOLIO-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "acceptsValue",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "acceptsValue"
+    },
+    {
+      "id": "CHAINED-ARROW-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "normalizedArrow",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "normalizedArrow"
+    },
+    {
+      "id": "CHAINED-OWNED-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "ownedCellNormalization",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "ownedCellNormalization"
+    },
+    {
+      "id": "CHAINED-PRESENTATION-ACTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedDominionAction",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionAction"
+    },
+    {
+      "id": "CHAINED-OWNED-PRESENTATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedDominionPresentation",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionPresentation"
+    },
+    {
+      "id": "CHAINED-PRESENTATION-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedIdentity",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedIdentity"
+    },
+    {
+      "id": "CHAINED-PRESENTATION-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedComposition",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedComposition"
+    },
+    {
+      "id": "CHAINED-PRESENTATION-COHERENCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedCoherence",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedCoherence"
+    },
+    {
+      "id": "CHAINED-PRESENTATION-DISJOINT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "haskell_declaration": "chainedDisjoint",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDisjoint"
+    },
+    {
+      "id": "CHAINED-OWNER-FIRST",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "chainedDominionFirst",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionFirst"
+    },
+    {
+      "id": "CHAINED-OWNER-CHAIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "chainedDominionChain",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionChain"
+    },
+    {
+      "id": "CHAINED-OWNER-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "chainedDominionValueDominion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionValueDominion"
+    },
+    {
+      "id": "CHAINED-OWNER-ATLAS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "chainedDominionAtlas",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionAtlas"
+    },
+    {
+      "id": "CHAINED-OWNER-CONTRACT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "chainedDominionAtlas",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionAtlas_contract"
+    },
+    {
+      "id": "CHAINED-OWNER-RETAIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "retainChainedDominionAtlas",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "retainChainedDominionAtlas"
+    },
+    {
+      "id": "CHAINED-OWNER-ALLOCATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "withChainedDominionAtlas",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "withChainedDominionAtlas"
+    },
+    {
+      "id": "CHAINED-OWNER-PAGINATION-ALLOCATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "withChainedPagination",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "withChainedPagination"
+    },
+    {
+      "id": "CHAINED-OWNER-RETAIN-PRESENTATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "retainChainedPresentation",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "retainChainedPresentation"
+    },
+    {
+      "id": "CHAINED-OWNER-MEMBERSHIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "chainedDominionMembership",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionMembership"
+    },
+    {
+      "id": "CHAINED-OWNER-TRANSPORT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "haskell_declaration": "chainedDominionTransport",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionTransport"
+    },
+    {
+      "id": "CHAINED-CANONICAL-FIRST",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "haskell_declaration": "canonicalChainedFirst",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "canonicalChainedFirst"
+    },
+    {
+      "id": "CHAINED-CANONICAL-CHAIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "haskell_declaration": "canonicalChainedChain",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "canonicalChainedChain"
+    },
+    {
+      "id": "CHAINED-CANONICAL-DOMINION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "haskell_declaration": "canonicalChainedValueDominion",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "canonicalChainedValueDominion"
+    },
+    {
+      "id": "CHAINED-CANONICAL-PAGINATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "haskell_declaration": "canonicalPagination",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "canonicalPagination"
+    },
+    {
+      "id": "CHAINED-CANONICAL-PRESENTATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "haskell_declaration": "canonicalPresentation",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "canonicalPresentation"
+    },
+    {
+      "id": "CHAINED-CANONICAL-OWNER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "haskell_declaration": "canonicalOwner",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "canonicalOwner"
+    },
+    {
+      "id": "CHAINED-CANONICAL-ALLOCATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "haskell_declaration": "canonicalChainedDominionAtlas",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "canonicalChainedDominionAtlas"
+    },
+    {
+      "id": "CHAINED-CANONICAL-INPUTS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "haskell_declaration": "canonicalChainedDominionAtlas",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "canonicalChainedDominionAtlas_inputs"
+    },
+    {
+      "id": "CHAINED-CANONICAL-DESCRIPTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "haskell_declaration": "canonicalChainedDominionAtlas",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "canonicalChainedDominionAtlas_presentation"
+    },
+    {
+      "id": "CHAINED-CANONICAL-PAGINATION-OBSERVATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "haskell_declaration": "canonicalChainedDominionAtlas",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "canonicalChainedDominionAtlas_pagination"
+    },
+    {
+      "id": "CHAINED-OWNER-COVERAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coverage.hs",
+      "haskell_declaration": "chainedDominionCoverage",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionCoverage_spec"
+    },
+    {
+      "id": "CHAINED-OWNER-COVERAGE-MAP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coverage.hs",
+      "haskell_declaration": "chainedDominionAtlasMap",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionAtlasMap"
+    },
+    {
+      "id": "CHAINED-REGION-COVERAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coverage.hs",
+      "haskell_declaration": "chainedRegionCoverage",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedRegionCoverage_spec"
+    },
+    {
+      "id": "CHAINED-ORIGIN-IMAGE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coverage.hs",
+      "haskell_declaration": "chainedOriginImage",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedOriginImage"
+    },
+    {
+      "id": "CHAINED-COVERAGE-AT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coverage.hs",
+      "haskell_declaration": "chainedCoverageAt",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedCoverageAt_spec"
+    },
+    {
+      "id": "CHAINED-COALITION-VIEW-VALUE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedViewValue",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedViewValue"
+    },
+    {
+      "id": "CHAINED-COALITION-VALUE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedCoalitionValue",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedCoalitionValue"
+    },
+    {
+      "id": "CHAINED-OWNER-COALITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedDominionCoalitionElement",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionCoalitionElement"
+    },
+    {
+      "id": "CHAINED-COALITION-VALUE-ROUNDTRIP",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedDominionCoalitionElement",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedDominionCoalitionElement_value"
+    },
+    {
+      "id": "CHAINED-COALITION-AT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "haskell_declaration": "chainedCoalitionAt",
+      "lean_namespace": "Datra.Executable.ChainedDominionAtlas",
+      "lean_declaration": "chainedCoalitionAt"
     }
   ],
   "modules": [
@@ -6503,7 +6846,8 @@
         "folioTraceLengthPositive",
         "prependCopies",
         "withPageElement",
-        "normalizePageElement"
+        "normalizePageElement",
+        "normalizePageElementArrow"
       ],
       "lean_target": "Datra.Executable.PageElement",
       "coverage": "partial",
@@ -7047,24 +7391,18 @@
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas.hs",
       "module": "ChainedDominionAtlas",
-      "types": [
-        "ChainedDominionAtlas",
-        "CanonicalChainedDominion",
-        "CanonicalChainedRecipe"
-      ],
+      "types": [],
       "reflected": [],
       "refinements": [],
       "lean_target": "Datra.Executable.ChainedDominionAtlas",
       "coverage": "partial",
-      "aliases": [
-        "ChainedDominionAtlasObject",
-        "CanonicalChainedPaginationScope",
-        "CanonicalChainedAtlasScope"
-      ],
+      "aliases": [],
       "embeddings": [],
       "predicates": [],
       "refinement_aliases": [],
-      "opaque_reflected": []
+      "opaque_reflected": [],
+      "variances": [],
+      "refined_instances": []
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/Charter/Data.hs",
@@ -8302,6 +8640,7 @@
         "pageElements",
         "prefixTraceLookupObject",
         "pageElementTraceValidOrigin",
+        "pageElementSamePagePosition",
         "lastPageElement",
         "finalPageElementIndex",
         "normalizePageElement"
@@ -8309,7 +8648,9 @@
       "lean_target": "Datra.Executable.FolioData",
       "coverage": "partial",
       "aliases": [],
-      "embeddings": [],
+      "embeddings": [
+        "Natural as int"
+      ],
       "predicates": [],
       "refinement_aliases": [],
       "opaque_reflected": []
@@ -8779,7 +9120,6 @@
         "constantDataAt",
         "constantDataMap",
         "constantAction",
-        "samePagePosition",
         "constantPresentation"
       ],
       "types": [
@@ -8934,6 +9274,169 @@
         "composedCellPreimage",
         "cellInverseComposition",
         "cellDisjoint"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Presentation.hs",
+      "module": "ChainedDominionAtlas.Presentation",
+      "lean_target": "Datra.Executable.ChainedDominionAtlas",
+      "coverage": "partial",
+      "reflected": [
+        "acceptsValue",
+        "chainedDominionAccepts"
+      ],
+      "opaque_reflected": [
+        "chainedDominionAt",
+        "chainedDominionDataMap",
+        "atlasActionDataAt",
+        "chainedDominionAction",
+        "atlasPresentationAction"
+      ],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [
+        "Natural as int"
+      ],
+      "refinements": [
+        "chainedDominionFolio",
+        "acceptsValue",
+        "twoPageRegionPosition",
+        "chainedArrowCompatible",
+        "chainedRegionPosition",
+        "chainedDominionAt",
+        "chainedDominionDataMap",
+        "normalizedArrow",
+        "ownedCellNormalization",
+        "chainedDominionAction",
+        "chainedDominionPresentation",
+        "chainedIdentity",
+        "chainedComposition",
+        "chainedCoherence",
+        "chainedDisjoint"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Owner.hs",
+      "module": "ChainedDominionAtlas.Owner",
+      "lean_target": "Datra.Executable.ChainedDominionAtlas",
+      "coverage": "partial",
+      "reflected": [
+        "chainedDominionFirst",
+        "chainedDominionChain",
+        "chainedDominionValueDominion",
+        "chainedDominionAtlas"
+      ],
+      "opaque_reflected": [],
+      "types": [
+        "ChainedDominionAtlasData"
+      ],
+      "aliases": [
+        "ChainedDominionAtlasObject",
+        "ChainedDominionAtlas"
+      ],
+      "predicates": [],
+      "refinement_aliases": [
+        "ChainedDominionAtlas"
+      ],
+      "embeddings": [],
+      "refinements": [
+        "chainedDominionFirst",
+        "chainedDominionChain",
+        "chainedDominionValueDominion",
+        "chainedDominionAtlas",
+        "chainedDominionMembership",
+        "chainedDominionTransport",
+        "retainChainedDominionAtlas",
+        "withChainedDominionAtlas",
+        "withChainedPagination",
+        "retainChainedPresentation"
+      ],
+      "variances": [
+        "ChainedDominionAtlasData invariant invariant invariant"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Canonical.hs",
+      "module": "ChainedDominionAtlas.Canonical",
+      "lean_target": "Datra.Executable.ChainedDominionAtlas",
+      "coverage": "partial",
+      "reflected": [
+        "canonicalChainedFirst",
+        "canonicalChainedChain",
+        "canonicalChainedValueDominion",
+        "recipeProxy",
+        "valueProxy"
+      ],
+      "opaque_reflected": [
+        "canonicalChainedDominion",
+        "canonicalPagination",
+        "canonicalPresentation"
+      ],
+      "types": [
+        "CanonicalChainedDominion",
+        "CanonicalChainedRecipe"
+      ],
+      "aliases": [
+        "CanonicalChainedPaginationScope",
+        "CanonicalChainedAtlasScope"
+      ],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "canonicalPagination",
+        "canonicalPresentation",
+        "canonicalOwner",
+        "canonicalChainedDominionAtlas"
+      ],
+      "variances": [],
+      "refined_instances": [
+        "CanonicalChainedDominion value => PageElementsConstruction (CanonicalChainedRecipe value) (()) value",
+        "CanonicalChainedDominion value => AtlasConstruction (CanonicalChainedRecipe value) (CanonicalChainedPaginationScope value) (ChainedDominionCellData value) (()) value"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coverage.hs",
+      "module": "ChainedDominionAtlas.Coverage",
+      "lean_target": "Datra.Executable.ChainedDominionAtlas",
+      "coverage": "partial",
+      "reflected": [],
+      "opaque_reflected": [],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "chainedDominionCoverage",
+        "chainedDominionAtlasMap",
+        "chainedRegionCoverage",
+        "chainedOriginImage",
+        "chainedCoverageAt"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/ChainedDominionAtlas/Coalition.hs",
+      "module": "ChainedDominionAtlas.Coalition",
+      "lean_target": "Datra.Executable.ChainedDominionAtlas",
+      "coverage": "partial",
+      "reflected": [
+        "chainedCoalitionValue",
+        "chainedViewValue"
+      ],
+      "opaque_reflected": [
+        "chainedDominionCoalitionElement"
+      ],
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "refinements": [
+        "chainedDominionCoalitionElement",
+        "chainedCoalitionAt"
       ]
     }
   ],
