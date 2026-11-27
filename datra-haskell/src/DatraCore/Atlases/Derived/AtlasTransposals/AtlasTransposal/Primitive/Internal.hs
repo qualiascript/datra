@@ -23,7 +23,8 @@ import AtlasTransposal.Syntax.Internal
            (AtlasObjectAtlasScope source) (AtlasObjectPaginationScope source) (AtlasObjectCellData source) so sf
            (AtlasObjectAtlasScope target) (AtlasObjectPaginationScope target) (AtlasObjectCellData target) to tf
       -> {result:AtlasTransposal source target |
-           atlasTransposalSourceOwner result == Just (atlasOwner (transposalActionSource action))
+           atlasTransposalOwnersCompatible result
+           && atlasTransposalSourceOwner result == Just (atlasOwner (transposalActionSource action))
            && atlasTransposalTargetOwner result == Just (atlasOwner (transposalActionTarget action))
            && atlasTransposalSourceValid result == transposalElementValid (transposalActionSource action)
            && atlasTransposalPathValid result == transposalElementValid (transposalActionSource action)

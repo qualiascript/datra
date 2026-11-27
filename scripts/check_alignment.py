@@ -104,6 +104,7 @@ def check(require_complete=False):
         opaque_reflected = re.findall(r"\{-@\s*opaque-reflect\s+([\w.]+)", text)
         types = re.findall(r"^(?:data|newtype|class)\s+(\w+)", text, re.M)
         aliases = re.findall(r"^type\s+(?!role\b|family\b|instance\b)(\w+)", text, re.M)
+        measures = re.findall(r"\{-@\s*measure\s+([\w.]+)", text)
         predicates = re.findall(r"\{-@\s*predicate\s+(\w+)", text)
         refinement_aliases = re.findall(r"\{-@\s*type\s+(\w+)", text)
         embeddings = re.findall(r"\{-@\s*embed\s+([^\n]*?)\s*@-\}", text)
@@ -114,11 +115,12 @@ def check(require_complete=False):
         refined_instances = [" ".join(value.split()) for value in
                              re.findall(r"\{-@\s*instance\s+(.*?)\s+where\b", text, re.S)]
         # Function-only modules can still have inventoried assembly obligations.
-        if path in expected_modules or reflected or opaque_reflected or types or aliases or predicates or refinement_aliases or refinements or variances or refined_instances:
+        if path in expected_modules or reflected or opaque_reflected or types or aliases or measures or predicates or refinement_aliases or refinements or variances or refined_instances:
             expected = expected_modules.pop(path, None)
             if (expected is None or expected["reflected"] != reflected
                     or expected.get("opaque_reflected", []) != opaque_reflected
                     or expected["types"] != types or expected["aliases"] != aliases
+                    or expected.get("measures", []) != measures
                     or expected["predicates"] != predicates
                     or expected["refinement_aliases"] != refinement_aliases
                     or expected["embeddings"] != embeddings

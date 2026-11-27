@@ -28,12 +28,13 @@ module AtlasTransposal
   , atlasTransposal
   , atlasTransposalHom
   , atlasTransposalSourceValid
-  , atlasTransposalPathValid
+  , atlasTransposalPathValid, atlasTransposalPathSource
   , atlasTransposalSourceOwner, atlasTransposalTargetOwner
   , atlasHomSourceOwner, atlasHomTargetOwner
   , atlasHomSourceAgrees, atlasHomTargetAgrees, atlasHomMiddleValid, atlasHomNextSourceValid
   , atlasHomTargetWitness
   , atlasTransposalTargetWitness, atlasTransposalMapValid
+  , atlasTransposalOwnedPath, atlasTransposalComposeOwned
   , atlasHomSourceValid
   , atlasHomTargetValid
   , mapAtlasHomObject
@@ -77,7 +78,8 @@ import AtlasTransposal.Internal
   )
 
 import qualified AtlasTransposal.Internal as Internal
-  (atlasTransposalTargetWitness, atlasTransposalMapValid, atlasTransposalLeftIdentity, atlasTransposalRightIdentity, atlasTransposalAssociativity, atlasTransposal, atlasTransposalElement, identityAtlasTransposalRetains, composeAtlasTransposalsRetains, atlasHomSourceAgrees, atlasHomTargetAgrees, atlasHomMiddleValid, atlasHomNextSourceValid)
+  (atlasTransposalOwnedPath, atlasTransposalComposeOwned, atlasTransposalTargetWitness, atlasTransposalMapValid, atlasTransposalLeftIdentity, atlasTransposalRightIdentity, atlasTransposalAssociativity, atlasTransposal, atlasTransposalElement, identityAtlasTransposalRetains, composeAtlasTransposalsRetains, atlasHomSourceAgrees, atlasHomTargetAgrees, atlasHomMiddleValid, atlasHomNextSourceValid)
+import qualified AtlasTransposal.Syntax.Internal as Syntax (atlasTransposalPathSource)
 import qualified AtlasTransposal.Objects as Objects (atlasHomTargetWitness)
 import DomanialInsertion.Core (composePartialInverses)
 
@@ -155,7 +157,8 @@ atlasTransposal
   -> (sourceElement:{AtlasTransposalElement source | atlasHomSourceValid sourceWitness hom sourceElement}
        -> {objectPreimage (mapAtlasHomObject sourceWitness hom sourceElement) == Just sourceElement})
   -> {result:AtlasTransposal source target |
-       atlasTransposalSourceOwner result == Just (atlasWitnessOwner sourceWitness)
+       atlasTransposalOwnersCompatible result
+       && atlasTransposalSourceOwner result == Just (atlasWitnessOwner sourceWitness)
        && atlasTransposalTargetOwner result == Just (atlasHomTargetOwner sourceWitness hom)
        && atlasTransposalSourceValid result == atlasHomSourceValid sourceWitness hom
        && atlasTransposalPathValid result == atlasHomSourceValid sourceWitness hom
@@ -246,3 +249,30 @@ atlasTransposalTargetWitness witness arrow = Internal.atlasTransposalTargetWitne
 atlasTransposalMapValid :: AtlasWitness source -> AtlasTransposal source target -> AtlasTransposalElement source -> ()
 atlasTransposalMapValid witness arrow source =
   atlasTransposalTargetWitness witness arrow `seq` Internal.atlasTransposalMapValid witness arrow source
+
+-- | Public proof vocabulary for complete-owner compatibility. This is a
+-- logical predicate; Atlas owners contain functions and are not compared at runtime.
+{-@ predicate TransposalCompatible A = atlasTransposalOwnersCompatible A @-}
+{-@ predicate TransposalOwnedBy W A = TransposalCompatible A
+      && (atlasTransposalSourceOwner A == Nothing
+           || atlasTransposalSourceOwner A == Just (atlasWitnessOwner W)) @-}
+
+{-@ atlasTransposalOwnedPath :: witness:AtlasWitness source
+      -> arrow:{AtlasTransposal source target | TransposalOwnedBy witness arrow}
+      -> source:{AtlasTransposalElement source | atlasTransposalElementValid witness source}
+      -> {atlasTransposalPathValid arrow source} @-}
+atlasTransposalOwnedPath :: AtlasWitness source -> AtlasTransposal source target -> AtlasTransposalElement source -> ()
+atlasTransposalOwnedPath witness arrow source = Internal.atlasTransposalOwnedPath witness arrow source
+
+{-@ atlasTransposalComposeOwned :: witness:AtlasWitness source
+      -> first:{AtlasTransposal source middle | TransposalOwnedBy witness first}
+      -> second:{AtlasTransposal middle target | TransposalOwnedBy (atlasTransposalTargetWitness witness first) second}
+      -> {TransposalOwnedBy witness (composeAtlasTransposals second first)} @-}
+atlasTransposalComposeOwned :: AtlasWitness source -> AtlasTransposal source middle -> AtlasTransposal middle target -> ()
+atlasTransposalComposeOwned witness first second =
+  atlasTransposalTargetWitness witness first `seq` Internal.atlasTransposalComposeOwned witness first second
+
+{-@ atlasTransposalPathSource :: arrow:AtlasTransposal source target -> source:AtlasTransposalElement source
+      -> {atlasTransposalPathValid arrow source => atlasTransposalSourceValid arrow source} @-}
+atlasTransposalPathSource :: AtlasTransposal source target -> AtlasTransposalElement source -> ()
+atlasTransposalPathSource arrow source = Syntax.atlasTransposalPathSource arrow source

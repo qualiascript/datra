@@ -79,6 +79,17 @@ def pathValid (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
       pathValid @domain @forward first source ∧
         pathValid @domain @forward second (mapObject @forward first source)
 
+-- ALIGN: ATLAS-TRANSPOSAL-PATH-SOURCE.
+theorem pathValid_sourceValid
+    (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
+    (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
+    {X Y} (arrow : AtlasHom Primitive X Y) (source : Raw X)
+    (valid : pathValid @domain @forward arrow source) : sourceValid @domain arrow source := by
+  induction arrow with
+  | primitive => exact valid
+  | identity => trivial
+  | composite _ _ _ ih => exact ih source valid.1
+
 /-- Path acceptance supplies the primitive domains; witnessed membership is
 also necessary for a tree containing only symbolic identities. -/
 -- ALIGN: ATLAS-TRANSPOSAL-NATIVE-TARGET-VALID.
@@ -189,43 +200,93 @@ theorem leftInverse
       rw [ih₂ _ valid.2]
       exact ih₁ _ valid.1
 
-/-- The separate obligation needed to derive path acceptance from the declared
-source domain. It includes both subtrees and the middle-domain implication. -/
-def Compatible (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
-    (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
+/-- Complete-owner equality is required at every materialized join. Symbolic
+identities have no stored endpoints and preserve the supplied owning witness. -/
+def OwnersCompatible {Owner : Type*}
+    (sourceOf targetOf : ∀ {X Y}, Primitive X Y → Owner)
     {X Y} : AtlasHom Primitive X Y → Prop
   | .primitive _ => True
   | .identity => True
   | .composite second first =>
-      Compatible @domain @forward first ∧ Compatible @domain @forward second ∧
-        ∀ source, sourceValid @domain first source →
-          sourceValid @domain second (mapObject @forward first source)
+      OwnersCompatible @sourceOf @targetOf first ∧ OwnersCompatible @sourceOf @targetOf second ∧
+        (targetOwner @targetOf first = none ∨ sourceOwner @sourceOf second = none ∨
+          targetOwner @targetOf first = sourceOwner @sourceOf second)
 
-theorem sourceValid_pathValid
-    (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
-    (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
-    {X Y} (transposal : AtlasHom Primitive X Y)
-    (compatible : Compatible @domain @forward transposal)
-    (source : Raw X) (valid : sourceValid @domain transposal source) :
-    pathValid @domain @forward transposal source := by
-  induction transposal with
-  | primitive => exact valid
-  | identity => trivial
+theorem owners_empty {Owner : Type*}
+    (sourceOf targetOf : ∀ {X Y}, Primitive X Y → Owner)
+    {X Y} (arrow : AtlasHom Primitive X Y) :
+    sourceOwner @sourceOf arrow = none ↔ targetOwner @targetOf arrow = none := by
+  induction arrow with
+  | primitive => simp [sourceOwner, targetOwner]
+  | identity => simp [sourceOwner, targetOwner]
   | composite second first ih₂ ih₁ =>
-      exact ⟨ih₁ compatible.1 _ valid, ih₂ compatible.2.1 _ (compatible.2.2 source valid)⟩
+      cases hs : sourceOwner @sourceOf first <;>
+        cases ht : targetOwner @targetOf second <;> simp_all [sourceOwner, targetOwner]
 
-theorem leftInverse_of_compatible
+/-- The existing syntax composition preserves owner evidence when its second
+subtree is owned by the first subtree's recovered target witness. -/
+-- ALIGN: ATLAS-TRANSPOSAL-OWNER-COMPATIBLE-COMPOSITION.
+theorem ownerCompatible_comp {Evidence : Object → Type*} {Owner : Type*}
+    (primitiveEvidence : ∀ {X Y}, Primitive X Y → Evidence Y)
+    (owner : ∀ {X}, Evidence X → Owner)
+    (sourceOf : ∀ {X Y}, Primitive X Y → Owner)
+    {X M Y} (first : AtlasHom Primitive X M) (second : AtlasHom Primitive M Y) (witness : Evidence X)
+    (firstCompatible : OwnersCompatible @sourceOf (fun operation => owner (primitiveEvidence operation)) first)
+    (secondCompatible : OwnersCompatible @sourceOf (fun operation => owner (primitiveEvidence operation)) second)
+    (firstOwner : sourceOwner @sourceOf first = none ∨ sourceOwner @sourceOf first = some (owner witness))
+    (secondOwner : sourceOwner @sourceOf second = none ∨ sourceOwner @sourceOf second =
+      some (owner (first.targetEvidence @primitiveEvidence witness))) :
+    OwnersCompatible @sourceOf (fun operation => owner (primitiveEvidence operation)) (.composite second first) ∧
+      (sourceOwner @sourceOf (.composite second first) = none ∨
+        sourceOwner @sourceOf (.composite second first) = some (owner witness)) := by
+  have firstEmpty := owners_empty @sourceOf (fun operation => owner (primitiveEvidence operation)) first
+  have recovered := targetEvidence_owner @primitiveEvidence @owner first witness
+  cases hs : sourceOwner @sourceOf first <;>
+    cases ht : targetOwner (fun operation => owner (primitiveEvidence operation)) first <;>
+    cases hn : sourceOwner @sourceOf second <;> simp_all [OwnersCompatible, sourceOwner]
+
+/-- Owner compatibility discharges every path-domain premise from membership
+in the supplied source witness, without treating a symbolic identity's total
+raw source predicate as owning membership. -/
+-- ALIGN: ATLAS-TRANSPOSAL-OWNER-COMPATIBLE-PATH.
+theorem ownerCompatible_pathValid {Evidence : Object → Type*} {Owner : Type*}
+    (primitiveEvidence : ∀ {X Y}, Primitive X Y → Evidence Y)
+    (owner : ∀ {X}, Evidence X → Owner)
+    (sourceOf : ∀ {X Y}, Primitive X Y → Owner)
+    (accepted : ∀ {X}, Evidence X → Raw X → Prop)
     (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
     (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
-    (backward : ∀ {X Y}, Primitive X Y → Raw Y → Option (Raw X))
-    (primitiveLaw : ∀ {X Y} (operation : Primitive X Y) source,
-      domain operation source → backward operation (forward operation source) = some source)
-    {X Y} (transposal : AtlasHom Primitive X Y)
-    (compatible : Compatible @domain @forward transposal)
-    (source : Raw X) (valid : sourceValid @domain transposal source) :
-    preimage @backward transposal (mapObject @forward transposal source) = some source :=
-  leftInverse @domain @forward @backward @primitiveLaw transposal source
-    (sourceValid_pathValid @domain @forward transposal compatible source valid)
+    (primitiveDomain : ∀ {X Y} (operation : Primitive X Y) (witness : Evidence X) (source : Raw X),
+      sourceOf operation = owner witness → accepted witness source → domain operation source)
+    (primitiveValid : ∀ {X Y} (operation : Primitive X Y) (source : Raw X),
+      domain operation source → accepted (primitiveEvidence operation) (forward operation source))
+    {X Y} (arrow : AtlasHom Primitive X Y) :
+    ∀ (witness : Evidence X) (source : Raw X),
+      OwnersCompatible @sourceOf (fun operation => owner (primitiveEvidence operation)) arrow →
+      (sourceOwner @sourceOf arrow = none ∨ sourceOwner @sourceOf arrow = some (owner witness)) →
+      accepted witness source → pathValid @domain @forward arrow source := by
+  induction arrow with
+  | primitive operation =>
+      intro witness source _ ownerMatches valid
+      apply primitiveDomain operation witness source _ valid
+      simpa [sourceOwner] using ownerMatches
+  | identity => intro _ _ _ _ _; trivial
+  | composite second first ih₂ ih₁ =>
+      intro witness source compatible ownerMatches valid
+      have firstEmpty := owners_empty @sourceOf (fun operation => owner (primitiveEvidence operation)) first
+      have recovered := targetEvidence_owner @primitiveEvidence @owner first witness
+      have joins := compatible.2.2
+      have stages :
+          (sourceOwner @sourceOf first = none ∨ sourceOwner @sourceOf first = some (owner witness)) ∧
+          (sourceOwner @sourceOf second = none ∨ sourceOwner @sourceOf second =
+            some (owner (first.targetEvidence @primitiveEvidence witness))) := by
+        cases hs : sourceOwner @sourceOf first <;>
+          cases ht : targetOwner (fun operation => owner (primitiveEvidence operation)) first <;>
+          cases hn : sourceOwner @sourceOf second <;> simp_all [sourceOwner]
+      have firstPath := ih₁ witness source compatible.1 stages.1 valid
+      have middleValid := targetEvidence_map_valid @primitiveEvidence @accepted @domain @forward
+        @primitiveValid first witness source valid firstPath
+      exact ⟨firstPath, ih₂ _ _ compatible.2.1 stages.2 middleValid⟩
 
 end Datra.Executable.TransposalPath
 

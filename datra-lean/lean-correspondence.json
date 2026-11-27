@@ -7378,6 +7378,41 @@
       "haskell_declaration": "atlasTransposalMapValid",
       "lean_namespace": "Datra.Executable.TransposalPath",
       "lean_declaration": "targetEvidence_map_valid"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-OWNER-COMPATIBLE-PATH",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Syntax/Internal.hs",
+      "haskell_declaration": "atlasTransposalOwnedPath",
+      "lean_namespace": "Datra.Executable.TransposalPath",
+      "lean_declaration": "ownerCompatible_pathValid"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-OWNER-COMPATIBLE-COMPOSITION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Syntax/Internal.hs",
+      "haskell_declaration": "atlasTransposalComposeOwned",
+      "lean_namespace": "Datra.Executable.TransposalPath",
+      "lean_declaration": "ownerCompatible_comp"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-PATH-SOURCE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Syntax/Internal.hs",
+      "haskell_declaration": "atlasTransposalPathSource",
+      "lean_namespace": "Datra.Executable.TransposalPath",
+      "lean_declaration": "pathValid_sourceValid"
+    },
+    {
+      "id": "ATLAS-ORDERED-PATH-PRESERVATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/OrderedAtlasTransposal/Internal.hs",
+      "haskell_declaration": "orderedAtlasTransposalPreservesOrder",
+      "lean_namespace": "Datra.Executable.TransposalPath",
+      "lean_declaration": "preservesRelation"
+    },
+    {
+      "id": "ATLAS-ORDERED-OWNED-PRESERVATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/OrderedAtlasTransposal/Internal.hs",
+      "haskell_declaration": "orderedAtlasTransposalOwnedOrder",
+      "lean_namespace": "Datra.Executable.TransposalPath",
+      "lean_declaration": "relation_of_owned_domain"
     }
   ],
   "modules": [
@@ -7555,6 +7590,10 @@
       "refinement_aliases": [],
       "opaque_reflected": [
         "normalizeAtlasMorphismAction"
+      ],
+      "measures": [
+        "mapAtlasMorphismActionObject",
+        "mapAtlasMorphismActionComponent"
       ]
     },
     {
@@ -8143,7 +8182,10 @@
       "embeddings": [],
       "predicates": [],
       "refinement_aliases": [],
-      "opaque_reflected": []
+      "opaque_reflected": [],
+      "measures": [
+        "paginationPageElements"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Pagination/LiquidInternal.hs",
@@ -8412,6 +8454,7 @@
       "refinements": [
         "atlasTransposalElement",
         "atlasTransposalMapValid",
+        "atlasTransposalOwnedPath",
         "atlasHomSourceAgrees",
         "atlasHomTargetAgrees",
         "atlasHomMiddleValid",
@@ -8458,21 +8501,36 @@
       "refinement_aliases": [],
       "opaque_reflected": [
         "transversalImage"
+      ],
+      "measures": [
+        "atlasTransversalSize"
       ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/OrderedAtlasTransposal/Internal.hs",
       "module": "OrderedAtlasTransposal.Internal",
       "types": [
-        "OrderedAtlasTransposal"
+        "OrderedAtlasTransposal",
+        "OrderedIdentityEquality",
+        "OrderedTransposalAction"
       ],
       "reflected": [
         "orderedElementLT",
         "orderedSourceValid",
-        "orderedMapObject"
+        "orderedMapObject",
+        "orderedAtlasTransposalTransposal",
+        "mapOrderedAtlasTransposalObject",
+        "orderedAtlasTransposalPreimage"
       ],
       "refinements": [
-        "orderedAtlasTransposal"
+        "orderedAtlasTransposal",
+        "orderedAtlasTransposalPreservesOrder",
+        "orderedActionPreservesOrder",
+        "orderedAtlasTransposalOwnedOrder",
+        "identityOrderedAtlasTransposal",
+        "identityOrderedFrom",
+        "identityOrderProof",
+        "orderedAtlasTransposalLeftInverse"
       ],
       "lean_target": "Datra.Executable.Atlas.OrderedTransposal",
       "coverage": "partial",
@@ -8517,7 +8575,10 @@
         "StableCoalitionValid"
       ],
       "refinement_aliases": [],
-      "opaque_reflected": []
+      "opaque_reflected": [],
+      "measures": [
+        "stableAtlasTransversalSize"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Cartography/AtlasMap/Internal.hs",
@@ -8691,7 +8752,10 @@
       "aliases": [],
       "embeddings": [],
       "predicates": [],
-      "refinement_aliases": []
+      "refinement_aliases": [],
+      "measures": [
+        "singletonDominionValue"
+      ]
     },
     {
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Internal.hs",
@@ -10375,6 +10439,9 @@
       "refinement_aliases": [],
       "opaque_reflected": [
         "coalitionAction"
+      ],
+      "measures": [
+        "coalitionActionSource"
       ]
     },
     {
@@ -10819,6 +10886,10 @@
       ],
       "variances": [
         "RankedDominionAtlasData invariant invariant invariant"
+      ],
+      "measures": [
+        "rankedDominionValueDominion",
+        "rankedDominionAtlas"
       ]
     },
     {
@@ -11117,13 +11188,19 @@
         "atlasHomNextSourceValid",
         "atlasHomTargetWitness",
         "atlasTransposalTargetWitness",
-        "atlasTransposalMapValid"
+        "atlasTransposalMapValid",
+        "atlasTransposalOwnedPath",
+        "atlasTransposalComposeOwned",
+        "atlasTransposalPathSource"
       ],
       "lean_target": "Datra.Executable.TransposalPath",
       "coverage": "partial",
       "aliases": [],
       "embeddings": [],
-      "predicates": [],
+      "predicates": [
+        "TransposalCompatible",
+        "TransposalOwnedBy"
+      ],
       "refinement_aliases": [],
       "opaque_reflected": [
         "identityAtlasTransposal",
@@ -11234,14 +11311,22 @@
       "refinements": [
         "atlasTransposalTargetWitness",
         "atlasTransposalMapValid",
+        "atlasTransposalOwnersEmpty",
+        "atlasTransposalOwnedPath",
+        "atlasTransposalPathSource",
         "atlasTransposalLeftInverse",
+        "identityAtlasTransposal",
         "preserveIdentityMembership",
         "identityAtlasTransposalRetains",
+        "atlasTransposalComposeOwned",
         "composeAtlasTransposalsRetains",
         "atlasTransposalLeftIdentity",
         "atlasTransposalRightIdentity",
         "atlasTransposalAssociativity",
         "atlasTransposalPreimageAssociativity"
+      ],
+      "measures": [
+        "atlasTransposalOwnersCompatible"
       ]
     },
     {
@@ -11259,6 +11344,24 @@
       "refinements": [
         "primitiveAtlasTransposal"
       ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/OrderedAtlasTransposal/OrderedAtlasTransposal.hs",
+      "module": "OrderedAtlasTransposal",
+      "lean_target": "Datra.Executable.Atlas.OrderedTransposal",
+      "coverage": "partial",
+      "types": [],
+      "reflected": [],
+      "refinements": [
+        "orderedAtlasTransposal",
+        "orderedAtlasTransposalPreservesOrder",
+        "orderedAtlasTransposalOwnedOrder"
+      ],
+      "aliases": [],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "opaque_reflected": []
     }
   ],
   "trust_boundary": []

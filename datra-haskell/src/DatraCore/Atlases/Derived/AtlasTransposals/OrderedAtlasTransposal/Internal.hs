@@ -1,9 +1,12 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilies #-}
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
 
 -- | Hidden implementation of order-preserving Atlas transposals.
 module OrderedAtlasTransposal.Internal
@@ -12,6 +15,7 @@ module OrderedAtlasTransposal.Internal
   , orderedAtlasTransposalTransposal
   , orderedAtlasTransposalHom
   , orderedAtlasTransposalPreservesOrder
+  , orderedAtlasTransposalOwnedOrder
   , identityOrderedAtlasTransposal
   , composeOrderedAtlasTransposals
   , mapOrderedAtlasTransposalObject
@@ -37,6 +41,9 @@ import AtlasTransposal
   , atlasTransposalElementLT
   , atlasTransposalHom
   , atlasTransposalSourceValid
+  , atlasTransposalPathValid, atlasTransposalPathSource
+  , atlasTransposalOwnedPath, atlasTransposalElementValid
+  , identityAtlasTransposalRetains, composeAtlasTransposalsRetains
   , atlasTransposalLeftInverse
   , atlasTransposalPagination
   , atlasTransposalPreimage
@@ -48,6 +55,7 @@ import AtlasTransposal
   , mapAtlasTransposalObject
   )
 import Control.Category (Category (..))
+import Data.Type.Equality ((:~:) (Refl))
 import PageElements
   ( PageElement
   , PageElementArrow
@@ -62,17 +70,35 @@ import Prelude hiding ((.), id)
 type role OrderedAtlasTransposal nominal nominal
 data OrderedAtlasTransposal source target where
   PrimitiveOrderedAtlasTransposal
-    :: AtlasTransposal source target
-    -> (AtlasTransposalElement source
-        -> AtlasTransposalElement source
-        -> ())
+    :: OrderedTransposalAction source target
     -> OrderedAtlasTransposal source target
   IdentityOrderedAtlasTransposal
-    :: OrderedAtlasTransposal object object
+    :: OrderedIdentityEquality source target
+    -> OrderedTransposalAction source target
+    -> OrderedAtlasTransposal source target
   CompositeOrderedAtlasTransposal
     :: OrderedAtlasTransposal middle target
     -> OrderedAtlasTransposal source middle
     -> OrderedAtlasTransposal source target
+
+-- | Preserve the type equality for identity simplification without casting
+-- the raw carriers when the order certificate is eliminated.
+type role OrderedIdentityEquality nominal nominal
+data OrderedIdentityEquality source target = OrderedIdentityEquality (source :~: target)
+
+-- | Retain the primitive's checked law when hiding it in the syntax tree.
+type role OrderedTransposalAction nominal nominal
+{-@ data OrderedTransposalAction source target = OrderedTransposalAction
+      { storedOrderedTransposal :: AtlasTransposal source target
+      , storedOrderProof :: left:AtlasTransposalElement source -> right:AtlasTransposalElement source
+          -> {orderedSourceValid storedOrderedTransposal left && orderedSourceValid storedOrderedTransposal right
+               && orderedElementLT left right
+               => orderedElementLT (orderedMapObject storedOrderedTransposal left) (orderedMapObject storedOrderedTransposal right)}
+      } @-}
+data OrderedTransposalAction source target = OrderedTransposalAction
+  { storedOrderedTransposal :: AtlasTransposal source target
+  , storedOrderProof :: AtlasTransposalElement source -> AtlasTransposalElement source -> ()
+  }
 
 {-@ reflect orderedElementLT @-}
 orderedElementLT
@@ -108,7 +134,7 @@ orderedAtlasTransposal
             orderedElementLT
               (orderedMapObject transposal left)
               (orderedMapObject transposal right) })
-  -> OrderedAtlasTransposal source target
+  -> {result:OrderedAtlasTransposal source target | orderedAtlasTransposalTransposal result == transposal}
 @-}
 -- ALIGN: ATLAS-ORDERED-INTERPRETATION.
 orderedAtlasTransposal
@@ -118,7 +144,7 @@ orderedAtlasTransposal
       -> ())
   -> OrderedAtlasTransposal source target
 orderedAtlasTransposal transposal preservesOrder =
-  PrimitiveOrderedAtlasTransposal transposal checkedPreservesOrder
+  PrimitiveOrderedAtlasTransposal (OrderedTransposalAction transposal checkedPreservesOrder)
   where
     checkedPreservesOrder left right
       | orderedSourceValid transposal left
@@ -127,13 +153,14 @@ orderedAtlasTransposal transposal preservesOrder =
       | otherwise = ()
 
 -- | Forget only the ordering restriction, retaining the injectivity evidence.
+{-@ reflect orderedAtlasTransposalTransposal @-}
 orderedAtlasTransposalTransposal
   :: OrderedAtlasTransposal source target
   -> AtlasTransposal source target
 orderedAtlasTransposalTransposal
-  (PrimitiveOrderedAtlasTransposal transposal _) = transposal
-orderedAtlasTransposalTransposal IdentityOrderedAtlasTransposal =
-  identityAtlasTransposal
+  (PrimitiveOrderedAtlasTransposal action) = storedOrderedTransposal action
+orderedAtlasTransposalTransposal (IdentityOrderedAtlasTransposal _ action) =
+  storedOrderedTransposal action
 orderedAtlasTransposalTransposal
   (CompositeOrderedAtlasTransposal second first) =
     composeAtlasTransposals
@@ -149,31 +176,82 @@ orderedAtlasTransposalHom =
 
 -- | Invoke the primitive or derived strict-order preservation proof.
 -- ALIGN: ATLAS-ORDERED-PRESERVATION.
+-- ALIGN: ATLAS-ORDERED-PATH-PRESERVATION.
+{-@ orderedAtlasTransposalPreservesOrder :: ordered:OrderedAtlasTransposal source target
+      -> left:AtlasTransposalElement source -> right:AtlasTransposalElement source
+      -> {atlasTransposalPathValid (orderedAtlasTransposalTransposal ordered) left
+           && atlasTransposalPathValid (orderedAtlasTransposalTransposal ordered) right && orderedElementLT left right
+           => orderedElementLT (mapOrderedAtlasTransposalObject ordered left) (mapOrderedAtlasTransposalObject ordered right)} @-}
+
 orderedAtlasTransposalPreservesOrder
   :: OrderedAtlasTransposal source target
   -> AtlasTransposalElement source
   -> AtlasTransposalElement source
   -> ()
-orderedAtlasTransposalPreservesOrder
-  (PrimitiveOrderedAtlasTransposal _ preservesOrder)
-  left
-  right = preservesOrder left right
-orderedAtlasTransposalPreservesOrder IdentityOrderedAtlasTransposal _ _ = ()
+orderedAtlasTransposalPreservesOrder (PrimitiveOrderedAtlasTransposal action) left right =
+  orderedActionPreservesOrder action left right
+orderedAtlasTransposalPreservesOrder (IdentityOrderedAtlasTransposal _ action) left right =
+  orderedActionPreservesOrder action left right
 orderedAtlasTransposalPreservesOrder
   (CompositeOrderedAtlasTransposal second first)
   left
   right =
+    composeAtlasTransposalsRetains (orderedAtlasTransposalTransposal second) (orderedAtlasTransposalTransposal first)
+      left (mapOrderedAtlasTransposalObject second (mapOrderedAtlasTransposalObject first left)) `seq`
+    composeAtlasTransposalsRetains (orderedAtlasTransposalTransposal second) (orderedAtlasTransposalTransposal first)
+      right (mapOrderedAtlasTransposalObject second (mapOrderedAtlasTransposalObject first right)) `seq`
     orderedAtlasTransposalPreservesOrder first left right `seq`
       orderedAtlasTransposalPreservesOrder
         second
         (mapOrderedAtlasTransposalObject first left)
         (mapOrderedAtlasTransposalObject first right)
 
+{-@ orderedActionPreservesOrder :: action:OrderedTransposalAction source target
+      -> left:AtlasTransposalElement source -> right:AtlasTransposalElement source
+      -> {atlasTransposalPathValid (storedOrderedTransposal action) left
+           && atlasTransposalPathValid (storedOrderedTransposal action) right && orderedElementLT left right
+           => orderedElementLT (orderedMapObject (storedOrderedTransposal action) left)
+                (orderedMapObject (storedOrderedTransposal action) right)} @-}
+orderedActionPreservesOrder :: OrderedTransposalAction source target
+  -> AtlasTransposalElement source -> AtlasTransposalElement source -> ()
+orderedActionPreservesOrder action left right =
+  atlasTransposalPathSource (storedOrderedTransposal action) left `seq`
+  atlasTransposalPathSource (storedOrderedTransposal action) right `seq` storedOrderProof action left right
+
+-- | Owner evidence discharges every intermediate domain in the order proof.
+-- ALIGN: ATLAS-ORDERED-OWNED-PRESERVATION.
+{-@ orderedAtlasTransposalOwnedOrder :: witness:AtlasWitness source
+      -> ordered:{OrderedAtlasTransposal source target | TransposalOwnedBy witness (orderedAtlasTransposalTransposal ordered)}
+      -> left:{AtlasTransposalElement source | atlasTransposalElementValid witness left}
+      -> right:{AtlasTransposalElement source | atlasTransposalElementValid witness right && orderedElementLT left right}
+      -> {orderedElementLT (mapOrderedAtlasTransposalObject ordered left) (mapOrderedAtlasTransposalObject ordered right)} @-}
+orderedAtlasTransposalOwnedOrder :: AtlasWitness source -> OrderedAtlasTransposal source target
+  -> AtlasTransposalElement source -> AtlasTransposalElement source -> ()
+orderedAtlasTransposalOwnedOrder witness ordered left right =
+  atlasTransposalOwnedPath witness (orderedAtlasTransposalTransposal ordered) left `seq`
+  atlasTransposalOwnedPath witness (orderedAtlasTransposalTransposal ordered) right `seq`
+    orderedAtlasTransposalPreservesOrder ordered left right
+
 -- | The identity transposal preserves strict order unchanged.
 -- ALIGN: ATLAS-ORDERED-IDENTITY.
+{-@ identityOrderedAtlasTransposal :: {result:OrderedAtlasTransposal object object |
+      orderedAtlasTransposalTransposal result == identityAtlasTransposal} @-}
 identityOrderedAtlasTransposal
   :: OrderedAtlasTransposal object object
-identityOrderedAtlasTransposal = IdentityOrderedAtlasTransposal
+identityOrderedAtlasTransposal = identityOrderedFrom identityAtlasTransposal
+
+{-@ identityOrderedFrom :: identity:{AtlasTransposal object object | identity == identityAtlasTransposal}
+      -> {result:OrderedAtlasTransposal object object | orderedAtlasTransposalTransposal result == identity} @-}
+identityOrderedFrom :: AtlasTransposal object object -> OrderedAtlasTransposal object object
+identityOrderedFrom identity = IdentityOrderedAtlasTransposal (OrderedIdentityEquality Refl)
+  (OrderedTransposalAction identity (identityOrderProof identity))
+
+{-@ identityOrderProof :: identity:{AtlasTransposal object object | identity == identityAtlasTransposal}
+      -> left:AtlasTransposalElement object -> right:AtlasTransposalElement object
+      -> {orderedElementLT left right => orderedElementLT (orderedMapObject identity left) (orderedMapObject identity right)} @-}
+identityOrderProof :: AtlasTransposal object object -> AtlasTransposalElement object -> AtlasTransposalElement object -> ()
+identityOrderProof identity left right =
+  identityAtlasTransposalRetains identity left `seq` identityAtlasTransposalRetains identity right
 
 -- | Compose ordered transposals in categorical order.
 -- ALIGN: ATLAS-ORDERED-COMPOSITION.
@@ -181,8 +259,8 @@ composeOrderedAtlasTransposals
   :: OrderedAtlasTransposal middle target
   -> OrderedAtlasTransposal source middle
   -> OrderedAtlasTransposal source target
-composeOrderedAtlasTransposals IdentityOrderedAtlasTransposal first = first
-composeOrderedAtlasTransposals second IdentityOrderedAtlasTransposal = second
+composeOrderedAtlasTransposals (IdentityOrderedAtlasTransposal (OrderedIdentityEquality Refl) _) first = first
+composeOrderedAtlasTransposals second (IdentityOrderedAtlasTransposal (OrderedIdentityEquality Refl) _) = second
 composeOrderedAtlasTransposals
   second
   (CompositeOrderedAtlasTransposal middle first) =
@@ -199,31 +277,34 @@ instance Category OrderedAtlasTransposal where
   (.) = composeOrderedAtlasTransposals
 
 -- | Apply the order-preserving injective object map.
+{-@ reflect mapOrderedAtlasTransposalObject @-}
 mapOrderedAtlasTransposalObject
   :: OrderedAtlasTransposal source target
   -> AtlasTransposalElement source
   -> AtlasTransposalElement target
-mapOrderedAtlasTransposalObject ordered =
-  orderedMapObject
-    (orderedAtlasTransposalTransposal ordered)
+mapOrderedAtlasTransposalObject ordered source =
+  orderedMapObject (orderedAtlasTransposalTransposal ordered) source
 
 -- | Try to recover an element under the underlying injective object map.
+{-@ reflect orderedAtlasTransposalPreimage @-}
 orderedAtlasTransposalPreimage
   :: OrderedAtlasTransposal source target
   -> AtlasTransposalElement target
   -> Maybe (AtlasTransposalElement source)
-orderedAtlasTransposalPreimage ordered =
-  atlasTransposalPreimage
-    (orderedAtlasTransposalTransposal ordered)
+orderedAtlasTransposalPreimage ordered target =
+  atlasTransposalPreimage (orderedAtlasTransposalTransposal ordered) target
 
 -- | Invoke the inherited left-inverse certificate.
+{-@ orderedAtlasTransposalLeftInverse :: ordered:OrderedAtlasTransposal source target
+      -> source:AtlasTransposalElement source
+      -> {atlasTransposalPathValid (orderedAtlasTransposalTransposal ordered) source
+           => orderedAtlasTransposalPreimage ordered (mapOrderedAtlasTransposalObject ordered source) == Just source} @-}
 orderedAtlasTransposalLeftInverse
   :: OrderedAtlasTransposal source target
   -> AtlasTransposalElement source
   -> ()
-orderedAtlasTransposalLeftInverse ordered =
-  atlasTransposalLeftInverse
-    (orderedAtlasTransposalTransposal ordered)
+orderedAtlasTransposalLeftInverse ordered source =
+  atlasTransposalLeftInverse (orderedAtlasTransposalTransposal ordered) source
 
 -- | Recover the underlying pagination morphism.
 orderedAtlasTransposalPagination

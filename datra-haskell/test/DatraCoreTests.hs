@@ -3288,7 +3288,9 @@ testTransposalTargetWitness =
       mapM_ (\arrow -> do
         let target = atlasTransposalTargetWitness witness arrow
             image = mapAtlasTransposalObject arrow source
-        assert "the source follows the complete native path" (atlasTransposalPathValid arrow source)
+        atlasTransposalOwnedPath witness arrow source `seq` pure ()
+        assert "compatible owners propagate source membership through the complete path"
+          (atlasTransposalPathValid arrow source)
         atlasTransposalMapValid witness arrow source `seq` pure ()
         assert "the recovered target owns the mapped source" (atlasTransposalElementValid target image)
         assert "the recovered target does not acquire out-of-domain values"
@@ -3342,6 +3344,8 @@ testOrderedAtlasTransposal =
                 assert "ordered transposal test source is strictly ordered"
                   (atlasTransposalElementLT leftElement rightElement)
                 orderedAtlasTransposalPreservesOrder
+                  includedIdentity leftElement rightElement `seq` pure ()
+                orderedAtlasTransposalOwnedOrder witness
                   includedIdentity leftElement rightElement `seq` pure ()
                 assert "ordered transposals preserve strict Atlas order"
                   (atlasTransposalElementLT mappedLeft mappedRight)

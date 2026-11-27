@@ -206,14 +206,28 @@ replacement of a stored target owner, and substitution of the source witness in
 an identity-only tree. A focused runtime regression exercises nested identities
 and primitives, verifies the recovered target domain, and checks that
 identity-only raw callbacks still preserve out-of-domain inputs.
-Deriving path acceptance from owner compatibility is a separate obligation;
-this target-membership theorem retains that premise.
+`atlasTransposalOwnedPath` derives path acceptance from witnessed source
+membership and a recursive complete-owner compatibility certificate. Each
+materialized join equates the first subtree's retained target owner with the
+second subtree's retained source owner; identity-only subtrees preserve the
+supplied witness. The source owner, when present, must also equal that witness's
+owner. Compatibility is a logical measure, so no runtime equality operation on
+function-valued Atlas owners is introduced.
+`atlasTransposalComposeOwned` propagates this certificate through the existing
+syntax composition when the second subtree is owned by the first's recovered
+target witness. Primitive construction and symbolic identity retain their
+compatibility certificates. Public clients use the `TransposalCompatible` and
+`TransposalOwnedBy` predicates through the exposed interface. The native inverse
+law consequently follows from owning source membership and owner evidence,
+without a separately supplied path-acceptance premise. Rejection checks require
+both subtree certificates, the complete middle owner, the actual source owner,
+and witnessed source membership.
 The native recursive inverse law is checked under `atlasTransposalPathValid`, which requires
 acceptance by every primitive reached during the forward calculation. This
 execution premise is distinct from `atlasTransposalSourceValid`; it does not
 redefine the declared source domain. Lean proves the same raw syntax calculation
-and isolates the middle-domain compatibility implication needed to derive path
-acceptance from source acceptance. With actual owners as the syntax indices,
+and the same recursive owner-compatibility implication, with indexed witnesses
+that retain actual owner values. With actual owners as the syntax indices,
 Lean proves that owning membership propagates through every stage, including
 symbolic identities. Public observation laws retain raw identity and both
 composed callbacks, including every inverse lookup and the exact path-acceptance
@@ -224,18 +238,34 @@ premise and do not identify the total source predicate of a leading identity
 with the actual owning domain. Associativity preserves both raw callbacks, the
 declared source domain, path acceptance, and endpoint owners under regrouping,
 without introducing a middle-membership premise. The ordered-transposal
-constructor restricts its supplied certificate to accepted source elements.
+constructor restricts its supplied certificate to accepted source elements and
+stores the transposal and checked callback in one private action record. Its
+public result retains the exact underlying transposal, including any native
+owner-compatibility evidence. Identity stores the canonical native identity and
+its checked order law; a separate type-equality witness supports the existing
+identity simplification without casting raw elements during order elimination.
+The recursive order theorem retains a conditional guarantee: both raw inputs
+must follow the complete underlying path and be ordered at the source.
+Path acceptance implies the primitive's declared source predicate, so its stored
+callback applies; the native composition equations propagate both domains and
+the intermediate order to the next subtree. The inherited inverse has the same
+path-dependent contract. The owning-domain wrapper uses native owner evidence
+to establish both path premises from witnessed source membership. Lean proves
+the raw relation-preservation induction and its owning-domain specialization
+alongside the certified-cell semantic interpretation.
 Scalar trace validity alone does not identify an arbitrary stored dependent
-payload with the owning cell. That payload bridge, discharging the constructor's
-witness-to-materialized-source equality at its callers, and propagation of the
-accepted domain through arbitrary native composition trees remain explicit
-obligations. The recursive target-membership proof supplies each accepted
-subtree's middle witness, but does not establish acceptance by the following
-subtree from its endpoint owner alone. The owner-compatibility certificate must
-connect all intermediate allocations before the checked action composition
-theorem can justify the complete inverse and order laws. A leading symbolic identity has a total raw
-source predicate and no stored owner, so the witness bridge must supply actual
-source membership rather than use that predicate as an owning certificate.
+payload with the owning cell. That payload bridge, agreement with the included
+Atlas morphism, and discharging source and join owner equations at materialization
+callers remain explicit obligations. The recursive native proof propagates the
+accepted domain through arbitrary trees once those owner equations are supplied;
+matching nominal scopes alone does not discharge them. Ordered composition's
+identity simplification and reassociation must retain owner evidence through
+their normalized underlying syntax. Stable-transversal assembly must likewise
+retain this evidence so its certificates apply to every accepted intermediate
+value. A leading symbolic
+identity has a total raw source predicate and no stored owner, so the witness
+bridge supplies actual source membership rather than using that predicate as an
+owning certificate.
 Derived inclusion and Charter callbacks
 must still discharge their accepted-domain certificates.
 The Charter object has an executable
@@ -1806,17 +1836,20 @@ The alignment is complete when all of the following hold:
 
 ## Current implementation priorities
 
-1. Retain the stored canonical source domain through the generic stable-insertion
+1. Retain native owner-compatibility evidence through ordered composition's
+   identity simplification and reassociation, and discharge source and join owner
+   equations at materialization callers.
+2. Retain the stored canonical source domain through the generic stable-insertion
    eliminator and its identity/composition cases. Primitive construction and
    the raw coalition mapper already check that domain.
-2. Connect each mapped target's validity to the next insertion's source domain
+3. Connect each mapped target's validity to the next insertion's source domain
    when composing stable insertions, preserving the exact forward/inverse laws.
-3. Complete the Charter and Dominion-inclusion assembly contracts, preserving
+4. Complete the Charter and Dominion-inclusion assembly contracts, preserving
    their existing Lean interpretation and inverse laws.
-4. Finish the remaining core representation bridges and derived constructions
+5. Finish the remaining core representation bridges and derived constructions
    in Phase 7's dependency order. Keep the manifest's partial and pending
    statuses until their complete obligations are checked.
-5. Remove superseded code and perform the final validation and preprint audit
+6. Remove superseded code and perform the final validation and preprint audit
    required by the definition of done.
 
 The module-loading failure (`ModuleRequiresBlock`) is outside this alignment

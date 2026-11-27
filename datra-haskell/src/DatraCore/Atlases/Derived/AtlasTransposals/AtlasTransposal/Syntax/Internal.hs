@@ -12,7 +12,8 @@ module AtlasTransposal.Syntax.Internal
   ( AtlasTransposal (..)
   , atlasTransposalSourceOwner, atlasTransposalTargetOwner
   , atlasTransposalTargetWitness, atlasTransposalMapValid
-  , atlasTransposalSourceValid, atlasTransposalPathValid
+  , atlasTransposalOwnedPath, atlasTransposalComposeOwned
+  , atlasTransposalSourceValid, atlasTransposalPathValid, atlasTransposalPathSource
   , mapAtlasTransposalObject, atlasTransposalPreimage
   , atlasTransposalLeftInverse, identityAtlasTransposal, identityAtlasTransposalRetains
   , composeAtlasTransposals, composeAtlasTransposalsRetains
@@ -128,6 +129,54 @@ atlasTransposalTargetOwner (CompositeAtlasTransposal second first) =
     owner -> owner
 
 
+-- | A logical compatibility condition, not an executable owner comparison.
+-- Identity-only subtrees have no fixed endpoints; materialized joins must
+-- equate the complete owners, independently of their nominal object indices.
+{-@ measure atlasTransposalOwnersCompatible :: AtlasTransposal source target -> Bool
+      atlasTransposalOwnersCompatible (PrimitiveAtlasTransposal hom action) = true
+      atlasTransposalOwnersCompatible (IdentityAtlasTransposal hom identity) = true
+      atlasTransposalOwnersCompatible (CompositeAtlasTransposal second first) =
+        atlasTransposalOwnersCompatible first && atlasTransposalOwnersCompatible second
+        && (atlasTransposalTargetOwner first == Nothing
+             || atlasTransposalSourceOwner second == Nothing
+             || atlasTransposalTargetOwner first == atlasTransposalSourceOwner second)
+  @-}
+
+-- | A subtree has no stored source precisely when it has no stored target.
+{-@ atlasTransposalOwnersEmpty :: arrow:AtlasTransposal source target
+      -> {(atlasTransposalSourceOwner arrow == Nothing) <=> (atlasTransposalTargetOwner arrow == Nothing)} @-}
+atlasTransposalOwnersEmpty :: AtlasTransposal source target -> ()
+atlasTransposalOwnersEmpty (PrimitiveAtlasTransposal _ _) = ()
+atlasTransposalOwnersEmpty (IdentityAtlasTransposal _ _) = ()
+atlasTransposalOwnersEmpty (CompositeAtlasTransposal second first) =
+  atlasTransposalOwnersEmpty first `seq` atlasTransposalOwnersEmpty second `seq`
+    case atlasTransposalSourceOwner first of
+      Nothing -> case atlasTransposalTargetOwner second of
+        Nothing -> ()
+        Just _ -> ()
+      Just _ -> case atlasTransposalTargetOwner second of
+        Nothing -> ()
+        Just _ -> ()
+
+-- | Compatible complete owners propagate witnessed membership through every
+-- stage, even when the first subtree is a symbolic identity.
+-- ALIGN: ATLAS-TRANSPOSAL-OWNER-COMPATIBLE-PATH.
+{-@ atlasTransposalOwnedPath :: witness:AtlasWitness source
+      -> arrow:{AtlasTransposal source target | atlasTransposalOwnersCompatible arrow
+           && (atlasTransposalSourceOwner arrow == Nothing
+                || atlasTransposalSourceOwner arrow == Just (atlasWitnessOwner witness))}
+      -> source:{AtlasTransposalElement source | transposalWitnessElementValid witness source}
+      -> {atlasTransposalPathValid arrow source} @-}
+atlasTransposalOwnedPath :: AtlasWitness source -> AtlasTransposal source target -> AtlasTransposalElement source -> ()
+atlasTransposalOwnedPath witness (PrimitiveAtlasTransposal _ action) source =
+  transposalWitnessOwnerAgrees witness (transposalActionSource action) source
+atlasTransposalOwnedPath _ (IdentityAtlasTransposal _ _) _ = ()
+atlasTransposalOwnedPath witness (CompositeAtlasTransposal second first) source =
+  atlasTransposalOwnersEmpty first `seq`
+  atlasTransposalOwnedPath witness first source `seq`
+  atlasTransposalMapValid witness first source `seq`
+  atlasTransposalOwnedPath (atlasTransposalTargetWitness witness first) second (mapAtlasTransposalObject first source)
+
 -- | The source domain retained by a primitive, or inherited from the first
 -- arrow of a composite. Symbolic identity has a total raw identity action.
 {-@ reflect atlasTransposalSourceValid @-}
@@ -149,6 +198,16 @@ atlasTransposalPathValid (CompositeAtlasTransposal second first) element =
   atlasTransposalPathValid first element
     && atlasTransposalPathValid second (mapAtlasTransposalObject first element)
 
+
+-- | Complete path acceptance includes the declared first source domain.
+-- ALIGN: ATLAS-TRANSPOSAL-PATH-SOURCE.
+{-@ atlasTransposalPathSource :: arrow:AtlasTransposal source target
+      -> source:AtlasTransposalElement source
+      -> {atlasTransposalPathValid arrow source => atlasTransposalSourceValid arrow source} @-}
+atlasTransposalPathSource :: AtlasTransposal source target -> AtlasTransposalElement source -> ()
+atlasTransposalPathSource (PrimitiveAtlasTransposal _ _) _ = ()
+atlasTransposalPathSource (IdentityAtlasTransposal _ _) _ = ()
+atlasTransposalPathSource (CompositeAtlasTransposal _ first) source = atlasTransposalPathSource first source
 
 -- | Apply the injective object map on genuine Atlas elements.
 {-@ reflect mapAtlasTransposalObject @-}
@@ -200,6 +259,9 @@ atlasTransposalLeftInverse (CompositeAtlasTransposal second first) source =
 -- ALIGN: ATLAS-TRANSPOSAL-IDENTITY.
 {-@ opaque-reflect identityAtlasHom @-}
 {-@ reflect identityAtlasTransposal @-}
+{-@ identityAtlasTransposal :: {result:AtlasTransposal object object |
+      atlasTransposalOwnersCompatible result && atlasTransposalSourceOwner result == Nothing
+        && atlasTransposalTargetOwner result == Nothing} @-}
 identityAtlasTransposal :: AtlasTransposal object object
 identityAtlasTransposal = IdentityAtlasTransposal identityAtlasHom
   (TransposalIdentity identityInsertion preserveIdentityWitness preserveIdentityMembership)
@@ -237,6 +299,23 @@ composeAtlasTransposals
   -> AtlasTransposal source middle
   -> AtlasTransposal source target
 composeAtlasTransposals = CompositeAtlasTransposal
+
+-- | Compose owner evidence for the existing syntax operation. The second
+-- subtree starts at the actual target witness recovered from the first.
+-- ALIGN: ATLAS-TRANSPOSAL-OWNER-COMPATIBLE-COMPOSITION.
+{-@ atlasTransposalComposeOwned :: witness:AtlasWitness source
+      -> first:{AtlasTransposal source middle | atlasTransposalOwnersCompatible first
+           && (atlasTransposalSourceOwner first == Nothing
+                || atlasTransposalSourceOwner first == Just (atlasWitnessOwner witness))}
+      -> second:{AtlasTransposal middle target | atlasTransposalOwnersCompatible second
+           && (atlasTransposalSourceOwner second == Nothing
+                || atlasTransposalSourceOwner second == Just (atlasWitnessOwner (atlasTransposalTargetWitness witness first)))}
+      -> {atlasTransposalOwnersCompatible (composeAtlasTransposals second first)
+           && (atlasTransposalSourceOwner (composeAtlasTransposals second first) == Nothing
+                || atlasTransposalSourceOwner (composeAtlasTransposals second first) == Just (atlasWitnessOwner witness))} @-}
+atlasTransposalComposeOwned :: AtlasWitness source -> AtlasTransposal source middle -> AtlasTransposal middle target -> ()
+atlasTransposalComposeOwned witness first _ =
+  atlasTransposalOwnersEmpty first `seq` atlasTransposalTargetWitness witness first `seq` ()
 
 -- | Preserve both raw callbacks and the exact stage-acceptance condition.
 -- ALIGN: ATLAS-TRANSPOSAL-NATIVE-COMPOSITION-CALLBACKS.

@@ -1,5 +1,48 @@
 import Executable.Atlas.Transposal
 
+namespace Datra.Executable.TransposalPath
+
+/-- Raw ordering certificates compose on the domain accepted by every stage. -/
+-- ALIGN: ATLAS-ORDERED-PATH-PRESERVATION.
+theorem preservesRelation {Object : Type*} {Primitive : Object → Object → Type*}
+    {Raw : Object → Type*}
+    (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
+    (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
+    (relation : ∀ {X}, Raw X → Raw X → Prop)
+    (primitiveLaw : ∀ {X Y} (operation : Primitive X Y) (left right : Raw X),
+      domain operation left → domain operation right → relation left right →
+      relation (forward operation left) (forward operation right))
+    {X Y} (arrow : AtlasHom Primitive X Y) (left right : Raw X)
+    (leftValid : pathValid @domain @forward arrow left)
+    (rightValid : pathValid @domain @forward arrow right)
+    (related : relation left right) :
+    relation (mapObject @forward arrow left) (mapObject @forward arrow right) := by
+  induction arrow with
+  | primitive operation => exact primitiveLaw operation left right leftValid rightValid related
+  | identity => exact related
+  | composite second first ih₂ ih₁ =>
+      exact ih₂ _ _ leftValid.2 rightValid.2 (ih₁ left right leftValid.1 rightValid.1 related)
+
+/-- The checked owning-domain implication supplies both path premises of an
+order certificate for the same underlying native arrow. -/
+-- ALIGN: ATLAS-ORDERED-OWNED-PRESERVATION.
+theorem relation_of_owned_domain {Object : Type*} {Primitive : Object → Object → Type*}
+    {Raw : Object → Type*}
+    (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
+    (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
+    (relation : ∀ {X}, Raw X → Raw X → Prop)
+    {X Y} (arrow : AtlasHom Primitive X Y) (owned : Raw X → Prop)
+    (ownerPath : ∀ source, owned source → pathValid @domain @forward arrow source)
+    (orderLaw : ∀ left right, pathValid @domain @forward arrow left →
+      pathValid @domain @forward arrow right → relation left right →
+      relation (mapObject @forward arrow left) (mapObject @forward arrow right))
+    (left right : Raw X) (leftValid : owned left) (rightValid : owned right)
+    (related : relation left right) :
+    relation (mapObject @forward arrow left) (mapObject @forward arrow right) :=
+  orderLaw left right (ownerPath left leftValid) (ownerPath right rightValid) related
+
+end Datra.Executable.TransposalPath
+
 namespace Datra.Executable.Atlas
 open CategoryTheory
 

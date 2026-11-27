@@ -23,12 +23,13 @@ module AtlasTransposal.Internal
   , atlasTransposal
   , atlasTransposalHom
   , atlasTransposalSourceValid
-  , atlasTransposalPathValid
+  , atlasTransposalPathValid, atlasTransposalPathSource
   , atlasTransposalSourceOwner, atlasTransposalTargetOwner
   , atlasHomSourceOwner, atlasHomTargetOwner
   , atlasHomSourceAgrees, atlasHomTargetAgrees, atlasHomMiddleValid, atlasHomNextSourceValid
   , atlasHomTargetWitness
   , atlasTransposalTargetWitness, atlasTransposalMapValid
+  , atlasTransposalOwnedPath, atlasTransposalComposeOwned
   , atlasHomSourceValid, atlasHomTargetValid, mapAtlasHomObject
   , mapAtlasTransposalObject
   , atlasTransposalPreimage
@@ -59,13 +60,13 @@ import AtlasTransposal.Primitive.Internal (primitiveAtlasTransposal)
 import AtlasTransposal.Syntax.Internal
   ( AtlasTransposal (..)
   , atlasTransposalSourceOwner, atlasTransposalTargetOwner
-  , atlasTransposalTargetWitness
-  , atlasTransposalSourceValid, atlasTransposalPathValid
+  , atlasTransposalTargetWitness, atlasTransposalComposeOwned
+  , atlasTransposalSourceValid, atlasTransposalPathValid, atlasTransposalPathSource
   , mapAtlasTransposalObject, atlasTransposalPreimage
   , atlasTransposalLeftInverse, identityAtlasTransposal, identityAtlasTransposalRetains
   , composeAtlasTransposals, composeAtlasTransposalsRetains
   , atlasTransposalLeftIdentity, atlasTransposalRightIdentity, atlasTransposalAssociativity )
-import qualified AtlasTransposal.Syntax.Internal as Syntax (atlasTransposalMapValid)
+import qualified AtlasTransposal.Syntax.Internal as Syntax (atlasTransposalMapValid, atlasTransposalOwnedPath)
 import AtlasTransposal.Element.Internal
   (AtlasTransposalElement, TransposalElementData (..))
 import AtlasTransposal.Element (transposalElementSource, transposalWitnessElementValid)
@@ -116,6 +117,15 @@ atlasTransposalElementValid witness element = transposalWitnessElementValid witn
            (mapAtlasTransposalObject arrow element)} @-}
 atlasTransposalMapValid :: AtlasWitness source -> AtlasTransposal source target -> AtlasTransposalElement source -> ()
 atlasTransposalMapValid witness arrow source = Syntax.atlasTransposalMapValid witness arrow source
+
+{-@ atlasTransposalOwnedPath :: witness:AtlasWitness source
+      -> arrow:{AtlasTransposal source target | atlasTransposalOwnersCompatible arrow
+           && (atlasTransposalSourceOwner arrow == Nothing
+                || atlasTransposalSourceOwner arrow == Just (atlasWitnessOwner witness))}
+      -> source:{AtlasTransposalElement source | atlasTransposalElementValid witness source}
+      -> {atlasTransposalPathValid arrow source} @-}
+atlasTransposalOwnedPath :: AtlasWitness source -> AtlasTransposal source target -> AtlasTransposalElement source -> ()
+atlasTransposalOwnedPath witness arrow source = Syntax.atlasTransposalOwnedPath witness arrow source
 
 -- | Eliminate the existential cell identity of an Atlas element.
 withAtlasTransposalElement
@@ -219,7 +229,8 @@ atlasTransposal
   -> (sourceElement:{AtlasTransposalElement source | atlasHomSourceValid sourceWitness hom sourceElement}
        -> {objectPreimage (mapAtlasHomObject sourceWitness hom sourceElement) == Just sourceElement})
   -> {result:AtlasTransposal source target |
-       atlasTransposalSourceOwner result == Just (atlasWitnessOwner sourceWitness)
+       atlasTransposalOwnersCompatible result
+       && atlasTransposalSourceOwner result == Just (atlasWitnessOwner sourceWitness)
        && atlasTransposalTargetOwner result == Just (atlasHomTargetOwner sourceWitness hom)
        && atlasTransposalSourceValid result == atlasHomSourceValid sourceWitness hom
        && atlasTransposalPathValid result == atlasHomSourceValid sourceWitness hom
