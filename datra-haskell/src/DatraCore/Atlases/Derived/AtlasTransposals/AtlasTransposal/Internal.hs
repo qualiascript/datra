@@ -1,9 +1,12 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
 
 -- | Hidden implementation of the category of Atlas transposals.
 --
@@ -14,15 +17,24 @@ module AtlasTransposal.Internal
   ( AtlasTransposal
   , AtlasTransposalElement
   , atlasTransposalElement
+  , atlasTransposalElementValid
   , withAtlasTransposalElement
   , atlasTransposalElementLT
   , atlasTransposal
   , atlasTransposalHom
+  , atlasTransposalSourceValid
+  , atlasTransposalPathValid
+  , atlasTransposalSourceOwner, atlasTransposalTargetOwner
+  , atlasHomSourceOwner, atlasHomTargetOwner
+  , atlasHomSourceAgrees
+  , atlasHomSourceValid, atlasHomTargetValid, mapAtlasHomObject
   , mapAtlasTransposalObject
   , atlasTransposalPreimage
   , atlasTransposalLeftInverse
   , identityAtlasTransposal
+  , identityAtlasTransposalRetains
   , composeAtlasTransposals
+  , composeAtlasTransposalsRetains
   , atlasTransposalPagination
   , mapAtlasTransposalElement
   , mapAtlasTransposalArrow
@@ -36,47 +48,59 @@ import Atlas
   , AtlasObjectPaginationScope
   , AtlasWitness
   , atlasHomPagination
-  , identityAtlasHom
   , mapAtlasHomArrow
   , mapAtlasHomData
   , mapAtlasHomElement
   )
+import AtlasTransposal.Primitive.Internal (primitiveAtlasTransposal)
+import AtlasTransposal.Syntax.Internal
+  ( AtlasTransposal (..)
+  , atlasTransposalSourceOwner, atlasTransposalTargetOwner
+  , atlasTransposalSourceValid, atlasTransposalPathValid
+  , mapAtlasTransposalObject, atlasTransposalPreimage
+  , atlasTransposalLeftInverse, identityAtlasTransposal, identityAtlasTransposalRetains
+  , composeAtlasTransposals, composeAtlasTransposalsRetains )
 import AtlasTransposal.Element.Internal
   (AtlasTransposalElement, TransposalElementData (..))
+import AtlasTransposal.Element (transposalElementSource, transposalWitnessElementValid)
+import Atlas.Witness (atlasWitnessOwner,
+  atlasWitnessElementValid, normalizeAtlasWitnessElement, atlasWitnessNormalizeValid)
+import AtlasTransposal.Action (transposalAction)
+import AtlasTransposal.Objects
+  ( transposalObjectsMap, transposalObjectsWitnessAgrees, withTransposalObjects
+  , homTransposalObjects, homTransposalObjectsRetains
+  , atlasHomSourceOwner, atlasHomTargetOwner, atlasHomSourceValid, atlasHomTargetValid, mapAtlasHomObject )
 import Control.Category (Category (..))
-import DomanialInsertion
-  ( DomanialInsertion
-  , applyInsertion
-  , composeInsertions
-  , domanialInsertion
-  , identityInsertion
-  , insertionLeftInverse
-  , preimage
-  )
 import DatraOrdinal (ordinalLT)
 import PageElements
   ( PageElement
   , PageElementArrow
-  , SomePageElement
   , pageElementPage
-  , pageElementPosition
-  , withPageElement
   )
 import Pagination (PaginationMorphism, SomePageElementArrow)
-import PageElements.Structure (positionAtPage)
+import PageElements.Structure (positionAtPage, SomePageElement (..))
 import Prelude hiding ((.), id)
 
--- | Turn an occurrence on the padded spine into the corresponding genuine
--- Atlas element.
+-- | Normalize a raw occurrence against the actual witnessed Atlas. The raw
+-- result is retained even when the source lies outside that owner's domain.
 -- ALIGN: ATLAS-TRANSPOSE-ELEMENT-EQUIVALENCE.
+-- ALIGN: ATLAS-TRANSPOSAL-WITNESSED-ELEMENT.
+{-@ atlasTransposalElement :: witness:AtlasWitness atlasObject
+      -> source:PageElement (AtlasObjectPaginationScope atlasObject) object
+      -> {result:AtlasTransposalElement atlasObject |
+           transposalElementSource result == SomePageElement (normalizeAtlasWitnessElement witness source)
+           && (atlasWitnessElementValid witness source => atlasTransposalElementValid witness result)} @-}
 atlasTransposalElement
   :: AtlasWitness atlasObject
   -> PageElement (AtlasObjectPaginationScope atlasObject) object
   -> AtlasTransposalElement atlasObject
-atlasTransposalElement witness element =
-  withPageElement
-    (mapAtlasHomElement witness identityAtlasHom element)
-    AtlasTransposalElement
+atlasTransposalElement witness source =
+  atlasWitnessNormalizeValid witness source `seq`
+    AtlasTransposalElement (normalizeAtlasWitnessElement witness source)
+
+{-@ reflect atlasTransposalElementValid @-}
+atlasTransposalElementValid :: AtlasWitness atlasObject -> AtlasTransposalElement atlasObject -> Bool
+atlasTransposalElementValid witness element = transposalWitnessElementValid witness element
 
 -- | Eliminate the existential cell identity of an Atlas element.
 withAtlasTransposalElement
@@ -109,35 +133,19 @@ atlasTransposalElementLT
           ordinalLT leftPosition rightPosition
         _ -> False
 
--- | An arrow in the wide subcategory of Atlas transposals.
---
--- Besides the included Atlas arrow, an arrow stores a partial inverse to its
--- object action and a certificate that this inverse succeeds on every image.
--- The certificate is the constructive form of @Function.Injective F.Pa.obj@.
--- Keeping the constructor private ensures identities and composites cannot
--- enter the subcategory without their derived certificates.
-type role AtlasTransposal nominal nominal
-data AtlasTransposal source target = AtlasTransposal
-  (AtlasHom source target)
-  (DomanialInsertion
-    (AtlasTransposalElement source)
-    (AtlasTransposalElement target))
-
-{-@ reflect mapAtlasHomObject @-}
-mapAtlasHomObject
-  :: AtlasWitness source
-  -> AtlasHom source target
-  -> AtlasTransposalElement source
-  -> AtlasTransposalElement target
-mapAtlasHomObject sourceWitness hom
-    (AtlasTransposalElement sourceElement) =
-  withPageElement
-    (mapAtlasHomElement sourceWitness hom sourceElement)
-    AtlasTransposalElement
+-- | Transfer owning membership only after identifying the complete owners.
+-- ALIGN: ATLAS-TRANSPOSAL-WITNESSED-SOURCE.
+{-@ atlasHomSourceAgrees :: witness:AtlasWitness source
+      -> hom:{AtlasHom source target | atlasHomSourceOwner witness hom == atlasWitnessOwner witness}
+      -> element:AtlasTransposalElement source
+      -> {atlasTransposalElementValid witness element <=> atlasHomSourceValid witness hom element} @-}
+atlasHomSourceAgrees :: AtlasWitness source -> AtlasHom source target -> AtlasTransposalElement source -> ()
+atlasHomSourceAgrees witness hom element =
+  transposalObjectsWitnessAgrees witness (homTransposalObjects witness hom) element
 
 -- | Restrict an Atlas arrow to a transposal.
 --
--- The final argument must certify, for every @sourceElement@, that
+-- The final argument certifies, for every accepted @sourceElement@, that
 --
 -- @
 -- preimage (mapAtlasTransposalObject result sourceElement)
@@ -149,91 +157,43 @@ mapAtlasHomObject sourceWitness hom
 {-@
 atlasTransposal
   :: sourceWitness:AtlasWitness source
-  -> hom:AtlasHom source target
-  -> objectPreimage:(AtlasTransposalElement target
-       -> Maybe (AtlasTransposalElement source))
-  -> (sourceElement:AtlasTransposalElement source
-       -> { proof:() |
-            objectPreimage
-              (mapAtlasHomObject sourceWitness hom sourceElement)
-              == Just sourceElement })
-  -> AtlasTransposal source target
+  -> hom:{AtlasHom source target | atlasHomSourceOwner sourceWitness hom == atlasWitnessOwner sourceWitness}
+  -> objectPreimage:(targetElement:AtlasTransposalElement target
+       -> Maybe ({sourceElement:AtlasTransposalElement source |
+            atlasHomTargetValid sourceWitness hom targetElement => atlasHomSourceValid sourceWitness hom sourceElement}))
+  -> (sourceElement:{AtlasTransposalElement source | atlasHomSourceValid sourceWitness hom sourceElement}
+       -> {objectPreimage (mapAtlasHomObject sourceWitness hom sourceElement) == Just sourceElement})
+  -> {result:AtlasTransposal source target |
+       atlasTransposalSourceOwner result == Just (atlasWitnessOwner sourceWitness)
+       && atlasTransposalTargetOwner result == Just (atlasHomTargetOwner sourceWitness hom)
+       && atlasTransposalSourceValid result == atlasHomSourceValid sourceWitness hom
+       && mapAtlasTransposalObject result == mapAtlasHomObject sourceWitness hom
+       && atlasTransposalPreimage result == objectPreimage}
 @-}
 -- ALIGN: ATLAS-TRANSPOSAL-INJECTIVITY.
+-- ALIGN: ATLAS-TRANSPOSAL-NATIVE-OWNERS.
 atlasTransposal
   :: AtlasWitness source
   -> AtlasHom source target
-  -> (AtlasTransposalElement target
-       -> Maybe (AtlasTransposalElement source))
+  -> (AtlasTransposalElement target -> Maybe (AtlasTransposalElement source))
   -> (AtlasTransposalElement source -> ())
   -> AtlasTransposal source target
 atlasTransposal sourceWitness hom objectPreimage leftInverse =
-  AtlasTransposal hom
-    (domanialInsertion
-      (mapAtlasHomObject sourceWitness hom)
-      objectPreimage
-      leftInverse)
+  let objects = homTransposalObjects sourceWitness hom
+  in homTransposalObjectsRetains sourceWitness hom `seq` withTransposalObjects objects $ \sourceOwner targetOwner _ ->
+    primitiveAtlasTransposal hom
+      (transposalAction sourceOwner targetOwner
+        (transposalObjectsMap objects) objectPreimage leftInverse)
 
 -- | Forget the injectivity evidence. This is the inclusion
 -- @AtlTrap ⟶ Atl@ from the Lean definition.
 atlasTransposalHom
   :: AtlasTransposal source target
   -> AtlasHom source target
-atlasTransposalHom (AtlasTransposal hom _) = hom
-
--- | Apply the injective object map on genuine Atlas elements.
-{-@ reflect mapAtlasTransposalObject @-}
-mapAtlasTransposalObject
-  :: AtlasTransposal source target
-  -> AtlasTransposalElement source
-  -> AtlasTransposalElement target
-mapAtlasTransposalObject (AtlasTransposal _ objectInsertion) =
-  applyInsertion objectInsertion
-
--- | Try to recover the source of an element under a transposal's object map.
-atlasTransposalPreimage
-  :: AtlasTransposal source target
-  -> AtlasTransposalElement target
-  -> Maybe (AtlasTransposalElement source)
-atlasTransposalPreimage (AtlasTransposal _ objectInsertion) =
-  preimage objectInsertion
-
--- | Invoke the stored or mechanically derived left-inverse certificate.
--- ALIGN: ATLAS-TRANSPOSAL-LEFT-INVERSE.
-atlasTransposalLeftInverse
-  :: AtlasTransposal source target
-  -> AtlasTransposalElement source
-  -> ()
-atlasTransposalLeftInverse (AtlasTransposal _ objectInsertion) =
-  insertionLeftInverse objectInsertion
-
--- | The identity Atlas arrow with its identity object preimage.
--- ALIGN: ATLAS-TRANSPOSAL-IDENTITY.
-identityAtlasTransposal :: AtlasTransposal object object
-identityAtlasTransposal =
-  AtlasTransposal identityAtlasHom identityInsertion
-
--- | Compose transposals in categorical order. Their partial preimages compose
--- in the reverse order, and the two left-inverse certificates establish the
--- certificate of the composite.
--- ALIGN: ATLAS-TRANSPOSAL-COMPOSITION.
-composeAtlasTransposals
-  :: AtlasTransposal middle target
-  -> AtlasTransposal source middle
-  -> AtlasTransposal source target
-composeAtlasTransposals second first =
-  AtlasTransposal
-    (atlasTransposalHom second . atlasTransposalHom first)
-    (composeInsertions secondInsertion firstInsertion)
-  where
-    AtlasTransposal _ secondInsertion = second
-    AtlasTransposal _ firstInsertion = first
-
--- | Atlas transposals form a category with all Atlas objects and only the
--- point-injective Atlas arrows.
-instance Category AtlasTransposal where
-  id = identityAtlasTransposal
-  (.) = composeAtlasTransposals
+atlasTransposalHom (PrimitiveAtlasTransposal hom _) = hom
+atlasTransposalHom (IdentityAtlasTransposal hom _) = hom
+atlasTransposalHom (CompositeAtlasTransposal second first) =
+  atlasTransposalHom second . atlasTransposalHom first
 
 -- | Recover the underlying pagination morphism through the inclusion.
 atlasTransposalPagination

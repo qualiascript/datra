@@ -25,10 +25,13 @@ module Atlas
   , IdentityAtlasObjectMap
   , AtlasMorphismImage
   , AtlasObject
+  , AtlasObjectEquality (..)
   , AtlasObjectAtlasScope
   , AtlasObjectPaginationScope
   , AtlasObjectCellData
   , AtlasWitness
+  , AtlasWitnessData
+  , AtlasOwner, atlasOwner, atlasWitnessOwner
   , AtlasHom
   , identityAtlasHom
   , composeAtlasHoms
@@ -93,6 +96,9 @@ module Atlas
   , composeAtlasMorphisms
   , atlasWitness
   , withAtlasWitness
+  , atlasWitnessElementValid
+  , normalizeAtlasWitnessElement
+  , atlasWitnessNormalizeValid
   , atlasHom
   , materializeAtlasHom
   , atlasHomPagination
@@ -173,22 +179,18 @@ import Atlas.Morphism
   , normalizeAtlasMorphismAction
   , normalizeAtlasMorphismActionRetains
   )
+import Atlas.Witness
+  ( AtlasObjectEquality (..), AtlasObject, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData
+  , AtlasOwner, atlasOwner, atlasWitnessOwner, AtlasWitness, AtlasWitnessData, atlasWitness, withAtlasWitness, atlasWitnessElementValid, normalizeAtlasWitnessElement, atlasWitnessNormalizeValid )
 import Atlas.Morphism.Internal
   ( AtlasMorphism
   , AtlasMorphismImage
-  , AtlasObject
-  , AtlasObjectAtlasScope
-  , AtlasObjectPaginationScope
-  , AtlasObjectCellData
-  , AtlasWitness
   , AtlasHom
   , identityAtlasHom
   , composeAtlasHoms
   , atlasMorphism
   , withAtlasMorphismAction
   , atlasMorphismPagination
-  , atlasWitness
-  , withAtlasWitness
   , atlasHom
   , materializeAtlasHom
   , atlasHomPagination

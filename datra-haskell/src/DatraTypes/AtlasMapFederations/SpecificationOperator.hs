@@ -58,7 +58,7 @@ import TotalAtlasMap
   ( TotalAtlasMap
   , totalAtlasMapUnderlying
   )
-import Atlas (AtlasWitness, withAtlasWitness)
+import Atlas (AtlasObjectEquality (..), AtlasWitness, withAtlasWitness)
 
 -- | A stable Atlas transversal whose pagination action is certified to be
 -- the identity after identifying the structurally equal source and target
@@ -163,7 +163,7 @@ specificationOperator source target targetIndex buildTransversal =
     targetComponent =
       atlasConfederationComponent targetConfederation targetIndex
     sourceConfederation =
-      withAtlasWitness sourceWitness singletonAtlasConfederation
+      withAtlasWitness sourceWitness (\AtlasObjectEquality owner -> singletonAtlasConfederation owner)
 
 specificationSource
   :: Specification federationScope index source

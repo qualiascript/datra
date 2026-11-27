@@ -106,6 +106,22 @@ The outer `coaToDomInc` contract still needs to connect canonical-origin
 elimination and its supplied callbacks to this constructor. Transposal inverse
 and order, coverage, and stable-owner construction contracts remain separate
 obligations.
+Atlas object names and witnesses live in the exposed `Atlas.Witness` interface.
+`AtlasWitnessData` retains the actual Atlas and explicit GHC type-equality
+evidence; `AtlasWitness` is its object-indexed alias. The constructor's checked
+contract uses the explicit carrier parameters and preserves the complete owner
+package. Transporting that contract through the type-family alias at a concrete
+object index remains a proof-boundary obligation: LiquidHaskell does not retain
+the owner equation across that coercion. Dependent elimination gives the same package
+equation to the callback alongside its type-equality evidence. Equality of the
+complete owner packages gives checked agreement of trace validity and raw
+normalization, even when the hidden origin and final carrier types differ. Normalization
+preserves the witnessed trace domain and is idempotent on every raw occurrence.
+The native transposal-element constructor uses that normalization directly,
+retains its exact raw output, and certifies membership when the input belongs to
+the witnessed owner. Lean models the owner package and witness operations and
+identifies this constructor with the certified constructor on genuine owning
+cells.
 Transposal elements use one private raw carrier with explicit Atlas scope,
 page scope, and datum-family parameters. The exposed `AtlasTransposal.Element`
 interface checks normalization and trace validity against the actual supplied
@@ -113,11 +129,54 @@ Atlas, retains the exact normalized occurrence, and gives both certificates to
 its rank-polymorphic eliminator. The native transposal, ordered-transposal, and
 stable-transversal wrappers share this carrier. Lean models the raw package and
 its checked operations, and proves that constructing it from an owning indexed
-cell agrees with the certified transposal-element constructor. Scalar trace
-validity alone does not identify an arbitrary stored dependent payload with the
-owning cell. That payload bridge, the native witness constructor's owning
-contract, and restriction of transposal inverse/order laws to the accepted source
-domain remain explicit obligations; normalization alone cannot justify them.
+cell agrees with the certified transposal-element constructor.
+`AtlasTransposal.Action` retains both actual Atlas owners and the raw forward
+and inverse callbacks. Their owning-validity guarantees are conditional on
+accepted inputs; the left-inverse law is required on the accepted source domain.
+The accepted insertion view retains both callbacks without filtering lookup
+results. Lean derives that view from the raw action and proves that erasing
+successful inverse evidence recovers the original lookup. Identity preserves raw
+values. Public observation laws expose identity and composed forward/inverse
+equations without requiring access to private helpers. Composition retains both
+raw callbacks and requires equality of the actual middle owners, so matching nominal scopes cannot silently replace that
+premise. Lean interprets the raw action as a written transposal when its forward
+map agrees with the Hom on genuine owning cells; this agreement is preserved by
+identity and composition, and the resulting interpretation preserves both
+categorical operations. The materialized object package retains the exact
+normalized map, both complete owner packages, and both owning predicates across
+construction and dependent elimination. The native primitive constructor requires
+its materialized source owner to equal the supplied witness's owner, and retains
+that owner and the materialized target owner in its result. Native primitive
+construction also retains the exact source predicate, forward function, and
+supplied inverse. The checked witness bridge identifies its source predicate
+with witnessed normalized membership when the complete source owners agree.
+The materialized map carries that membership into its target domain. Raw syntax
+and recursive laws live in the private syntax module; the private primitive
+builder checks the stored action's observations, and the public construction
+layer connects those observations to materialization and the witness.
+Native primitive transposals store this checked action; native identity and composition retain
+symbolic structure. Identity retains its total raw identity insertion. The native
+recursive inverse law is checked under `atlasTransposalPathValid`, which requires
+acceptance by every primitive reached during the forward calculation. This
+execution premise is distinct from `atlasTransposalSourceValid`; it does not
+redefine the declared source domain. Lean proves the same raw syntax calculation
+and isolates the middle-domain compatibility implication needed to derive path
+acceptance from source acceptance. With actual owners as the syntax indices,
+Lean proves that owning membership propagates through every stage, including
+symbolic identities. Public observation laws retain raw identity and both
+composed callbacks, including every inverse lookup and the exact path-acceptance
+condition. The ordered-transposal constructor restricts its supplied
+certificate to accepted source elements.
+Scalar trace validity alone does not identify an arbitrary stored dependent
+payload with the owning cell. That payload bridge, discharging the constructor's
+witness-to-materialized-source equality at its callers, and propagation of the
+accepted domain through native composition remain explicit obligations. Native composition must connect
+its middle allocations before the checked action composition theorem can justify
+its complete inverse and order laws. A leading symbolic identity has a total raw
+source predicate and no stored owner, so the witness bridge must supply actual
+source membership rather than use that predicate as an owning certificate.
+Derived inclusion and Charter callbacks
+must still discharge their accepted-domain certificates.
 The Charter object has an executable
 coverage-enumeration Dominion, guarded data-arrow inverses, and an isomorphism
 to the written covered-subtype Atlas. The complete-action helper preserves
@@ -1701,7 +1760,11 @@ The alignment is complete when all of the following hold:
 
 The module-loading failure (`ModuleRequiresBlock`) is outside this alignment
 task; its repair belongs to the bootstrap work in `DATRA_HOOK_MODULE.md`.
-Report its effect on final runtime validation without attempting that repair.
+For this alignment goal, exclude parsing and interpreting tests, including from
+final validation. Use focused core-library runtime tests that do not invoke
+those paths, alongside Lean builds and LiquidHaskell proof checks. Report the
+excluded validation without retrying it or attempting the module-loading repair.
+This restriction does not apply to unrelated work.
 
 Use focused positive and rejection checks while completing each construction.
 Rebuild the affected public interfaces before testing refinement-only changes:

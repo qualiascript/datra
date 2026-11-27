@@ -46,7 +46,7 @@ module DomanialInclusion.Internal
   ) where
 
 import Atlas
-  ( AtlasObjectCellData
+  (AtlasObjectEquality (..),  AtlasObjectCellData
   , AtlasObjectPaginationScope
   , AtlasWitness
   , atlasHom
@@ -145,7 +145,7 @@ coaToDomInc
         -> a -> ())
   -> StableAtlasTransversal (DominionAtlasObject owner a) target
 coaToDomInc sourceDominion targetOwner insertion backward leftInverse =
-  withAtlasWitness targetOwner $ \targetAtlas ->
+  withAtlasWitness targetOwner $ \AtlasObjectEquality targetAtlas ->
   withPageElement (atlasOriginCell targetAtlas) $
     \(targetOrigin :: PageElement targetScope targetObject) ->
     let sourceAtlas = dominionAtlas sourceDominion

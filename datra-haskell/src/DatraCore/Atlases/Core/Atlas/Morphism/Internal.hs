@@ -33,13 +33,6 @@ module Atlas.Morphism.Internal
   , mapAtlasMorphismData
   , identityAtlasMorphism
   , composeAtlasMorphisms
-  , AtlasObject
-  , AtlasObjectAtlasScope
-  , AtlasObjectPaginationScope
-  , AtlasObjectCellData
-  , AtlasWitness (..)
-  , atlasWitness
-  , withAtlasWitness
   , AtlasHom (..)
   , AtlasEquality (..)
   , identityAtlasHom
@@ -52,6 +45,8 @@ module Atlas.Morphism.Internal
   , mapAtlasHomData
   ) where
 
+import Atlas.Witness.Internal
+  (AtlasObject, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData, AtlasWitness, AtlasWitnessData (..), atlasWitness)
 import Atlas.Internal
   ( Atlas
   , atlasCoherence
@@ -337,51 +332,6 @@ composeAtlasMorphisms
        sourceScope targetScope sourceCellData targetCellData
 composeAtlasMorphisms = CompositeAtlasMorphism
 
--- | A type-level name for one Atlas object. The generative Atlas token is the
--- decisive identity; the pagination scope and data family are retained so an
--- arrow's executable source and target types can be recovered.
-type role AtlasObject nominal nominal nominal
-data AtlasObject
-  (atlasScope :: Type)
-  (paginationScope :: Type)
-  (cellData :: Type -> Type)
-
-type family AtlasObjectAtlasScope object :: Type where
-  AtlasObjectAtlasScope (AtlasObject atlasScope paginationScope cellData) =
-    atlasScope
-
-type family AtlasObjectPaginationScope object :: Type where
-  AtlasObjectPaginationScope
-    (AtlasObject atlasScope paginationScope cellData) = paginationScope
-
-type family AtlasObjectCellData object :: Type -> Type where
-  AtlasObjectCellData
-    (AtlasObject atlasScope paginationScope cellData) = cellData
-
--- | Runtime evidence for a type-level 'AtlasObject'. Origin and final-page
--- carrier types remain existential because morphism operations do not expose
--- them.
-type role AtlasWitness nominal
-data AtlasWitness object where
-  AtlasWitness
-    :: Atlas atlasScope paginationScope cellData origin final
-    -> AtlasWitness (AtlasObject atlasScope paginationScope cellData)
-
--- | Name an Atlas value as a category object witness.
-atlasWitness
-  :: Atlas atlasScope paginationScope cellData origin final
-  -> AtlasWitness (AtlasObject atlasScope paginationScope cellData)
-atlasWitness = AtlasWitness
-
--- | Eliminate a witness while retaining its type-level Atlas identity.
-withAtlasWitness
-  :: AtlasWitness object
-  -> (forall atlasScope paginationScope cellData origin final.
-       object ~ AtlasObject atlasScope paginationScope cellData
-       => Atlas atlasScope paginationScope cellData origin final -> result)
-  -> result
-withAtlasWitness (AtlasWitness valueAtlas) useAtlas = useAtlas valueAtlas
-
 -- | A genuine 'Control.Category' arrow over type-level Atlas objects.
 --
 -- Identity is symbolic because 'Category.id' has no value argument. It is
@@ -444,9 +394,9 @@ atlasMorphismTargetWitness
   -> AtlasWitness
        (AtlasObject targetAtlasScope targetScope targetCellData)
 atlasMorphismTargetWitness (PrimitiveAtlasMorphism action) =
-  AtlasWitness (atlasMorphismTarget action)
+  atlasWitness (atlasMorphismTarget action)
 atlasMorphismTargetWitness (IdentityAtlasMorphism valueAtlas) =
-  AtlasWitness valueAtlas
+  atlasWitness valueAtlas
 atlasMorphismTargetWitness (CompositeAtlasMorphism second _) =
   atlasMorphismTargetWitness second
 
@@ -485,7 +435,7 @@ materializeAtlasHom
        (AtlasObjectPaginationScope target)
        (AtlasObjectCellData source)
        (AtlasObjectCellData target)
-materializeAtlasHom (AtlasWitness valueAtlas) (IdentityAtlasHom (AtlasEquality Refl)) =
+materializeAtlasHom (AtlasWitness _ valueAtlas) (IdentityAtlasHom (AtlasEquality Refl)) =
   identityAtlasMorphism valueAtlas
 materializeAtlasHom _ (PrimitiveAtlasHom Refl Refl morphism) = morphism
 materializeAtlasHom sourceWitness (CompositeAtlasHom second first) =

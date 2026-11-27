@@ -36,6 +36,7 @@ import AtlasTransposal
   , AtlasTransposalElement
   , atlasTransposalElementLT
   , atlasTransposalHom
+  , atlasTransposalSourceValid
   , atlasTransposalLeftInverse
   , atlasTransposalPagination
   , atlasTransposalPreimage
@@ -80,6 +81,11 @@ orderedElementLT
   -> Bool
 orderedElementLT = atlasTransposalElementLT
 
+{-@ reflect orderedSourceValid @-}
+orderedSourceValid :: AtlasTransposal source target
+  -> AtlasTransposalElement source -> Bool
+orderedSourceValid transposal element = atlasTransposalSourceValid transposal element
+
 {-@ reflect orderedMapObject @-}
 orderedMapObject
   :: AtlasTransposal source target
@@ -95,9 +101,9 @@ orderedMapObject = mapAtlasTransposalObject
 {-@
 orderedAtlasTransposal
   :: transposal:AtlasTransposal source target
-  -> (left:AtlasTransposalElement source
+  -> (left:{AtlasTransposalElement source | orderedSourceValid transposal left}
        -> right:{AtlasTransposalElement source |
-            orderedElementLT left right}
+            orderedSourceValid transposal right && orderedElementLT left right}
        -> { proof:() |
             orderedElementLT
               (orderedMapObject transposal left)
@@ -115,7 +121,9 @@ orderedAtlasTransposal transposal preservesOrder =
   PrimitiveOrderedAtlasTransposal transposal checkedPreservesOrder
   where
     checkedPreservesOrder left right
-      | orderedElementLT left right = preservesOrder left right
+      | orderedSourceValid transposal left
+          && orderedSourceValid transposal right
+          && orderedElementLT left right = preservesOrder left right
       | otherwise = ()
 
 -- | Forget only the ordering restriction, retaining the injectivity evidence.

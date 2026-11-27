@@ -48,7 +48,8 @@ module AtlasConfederation.Internal
   ) where
 
 import Atlas
-  ( Atlas
+  ( AtlasObjectEquality (..)
+  , Atlas
   , AtlasObject
   , AtlasWitness
   , atlasWitness
@@ -101,7 +102,7 @@ withAtlasMergePresentationAtlas EmptyAtlasMergePresentation useAtlas =
   emptyAtlas useAtlas
 withAtlasMergePresentationAtlas
   (AtlasMergeAtom witness) useAtlas =
-    withAtlasWitness witness useAtlas
+    withAtlasWitness witness (\AtlasObjectEquality owner -> useAtlas owner)
 withAtlasMergePresentationAtlas (AtlasMergeNode left right) useAtlas =
   withAtlasMergePresentationAtlas left $ \leftAtlas ->
     withAtlasMergePresentationAtlas right $ \rightAtlas ->

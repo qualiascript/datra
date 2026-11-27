@@ -35,7 +35,8 @@ module Charter.Internal
   ) where
 
 import Atlas
-  ( Atlas
+  ( AtlasObjectEquality (..)
+  , Atlas
   , AtlasHom
   , AtlasMorphism
   , AtlasObject
@@ -222,8 +223,8 @@ chartHom
         -> ChartedCellData source object -> ())
   -> AtlasHom (ChartedAtlasObject source) (ChartedAtlasObject target)
 chartHom sourceWitness targetWitness transversal backward leftInverse =
-  withAtlasWitness sourceWitness $ \_ ->
-  withAtlasWitness targetWitness $ \_ ->
+  withAtlasWitness sourceWitness $ \AtlasObjectEquality _ ->
+  withAtlasWitness targetWitness $ \AtlasObjectEquality _ ->
   atlasHom (chartMorphism (materializeAtlasHom sourceWitness (atlasTransversalHom transversal)) transversal backward leftInverse)
 
 relabelElement
@@ -248,8 +249,8 @@ chartMap
        (ChartedAtlasObject source)
        (ChartedAtlasObject target)
 chartMap sourceWitness targetWitness transversal backward leftInverse =
-  withAtlasWitness sourceWitness $ \sourceAtlas ->
-  withAtlasWitness targetWitness $ \targetAtlas ->
+  withAtlasWitness sourceWitness $ \AtlasObjectEquality sourceAtlas ->
+  withAtlasWitness targetWitness $ \AtlasObjectEquality targetAtlas ->
   let sourceChartWitness = atlasWitness (chartAtlas sourceAtlas)
       hom = chartHom sourceWitness targetWitness transversal backward leftInverse
 
@@ -372,7 +373,7 @@ chartUnit
   :: AtlasMap source
   -> AtlasTransversal source (ChartedAtlasObject source)
 chartUnit sourceMap =
-  withAtlasWitness (atlasMapAtlas sourceMap) $ \valueAtlas ->
+  withAtlasWitness (atlasMapAtlas sourceMap) $ \AtlasObjectEquality valueAtlas ->
   let ordered = orderedAtlasTransposal transposal (\_ _ -> ())
       sourceWitness = atlasWitness valueAtlas
       action =
@@ -417,7 +418,7 @@ chartLift
   -> AtlasTransversalMap source (ChartedAtlasObject target)
 chartLift sourceMap targetWitness arrow =
   let sourceWitness = atlasMapAtlas sourceMap
-  in withAtlasWitness sourceWitness $ \sourceAtlas ->
+  in withAtlasWitness sourceWitness $ \AtlasObjectEquality sourceAtlas ->
       composeAtlasTransversalMaps
         (chartMap sourceWitness targetWitness arrow
           (\occurrence datum -> Just (chartCellData sourceAtlas occurrence datum

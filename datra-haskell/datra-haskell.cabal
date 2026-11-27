@@ -159,6 +159,7 @@ library
         Pagination
         Atlas
         Atlas.Morphism
+        Atlas.Witness
         Atlas.Presheaf
         AtlasExtent
         AtlasTerritory
@@ -172,6 +173,8 @@ library
         AtlasMap
         AtlasTransposal
         AtlasTransposal.Element
+        AtlasTransposal.Action
+        AtlasTransposal.Objects
         OrderedAtlasTransposal
         ChainedDominionAtlas
         ChainedDominionAtlas.Data
@@ -235,11 +238,14 @@ library
         AtlasMapFederation.Internal
         AtlasHorizontalSum.Internal
         Atlas.Morphism.Internal
+        Atlas.Witness.Internal
         Atlas.Morphism.LiquidInternal
         AtlasCoveredPageElement.Internal
         AtlasMap.Internal
         TotalAtlasMap.Internal
         AtlasTransposal.Internal
+        AtlasTransposal.Syntax.Internal
+        AtlasTransposal.Primitive.Internal
         AtlasTransposal.Element.Internal
         OrderedAtlasTransposal.Internal
         AtlasTransversal.Internal

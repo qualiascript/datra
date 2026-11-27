@@ -1,4 +1,4 @@
-import Executable.Atlas.Data
+import Executable.Atlas.Witness
 import Executable.PageElementLookup
 
 namespace Datra.Executable.Atlas
@@ -25,8 +25,28 @@ def valid (X : Atlas) (element : TransposalElementData X) : Prop :=
   X.pages.traceValid element.source = true ∧
     element.source.normalize (X.pages.depth - 1) X.pages.depth = element.source
 
+-- ALIGN: ATLAS-TRANSPOSAL-WITNESSED-SOURCE.
+theorem witnessedSource_agrees (witness : AtlasWitness) (owner : Atlas)
+    (ownerMatches : atlasOwner owner = atlasWitnessOwner witness)
+    (element : TransposalElementData witness.owner) :
+    let sameOwner : witness.owner = owner := (congrArg AtlasOwner.value ownerMatches).symm
+    valid witness.owner element ↔ valid owner (sameOwner ▸ element) := by
+  dsimp only
+  generalize_proofs sameOwner
+  cases sameOwner
+  rfl
+
 def ofSource (X : Atlas) (source : PageElement X.pages) : TransposalElementData X :=
   ⟨source.normalize (X.pages.depth - 1) X.pages.depth⟩
+
+def fromWitness (witness : AtlasWitness) (source : PageElement witness.owner.pages) :
+    TransposalElementData witness.owner := ofSource witness.owner source
+
+-- ALIGN: ATLAS-TRANSPOSAL-WITNESSED-ELEMENT.
+theorem fromWitness_retains (witness : AtlasWitness) (source : PageElement witness.owner.pages) :
+    (fromWitness witness source).source = witness.normalizeElement source ∧
+      (witness.elementValid source = true → valid witness.owner (fromWitness witness source)) :=
+  ⟨rfl, fun accepted => witness.normalizeElement_valid source accepted⟩
 
 -- ALIGN: ATLAS-TRANSPOSAL-OWNED-ELEMENT.
 theorem at_valid (X : Atlas) (source : PageElement X.pages)
@@ -54,6 +74,10 @@ theorem ofElement_valid {X : Atlas} (element : X.TransposalElement) :
 
 theorem at_ofElement (X : Atlas) (source : X.Element) :
     ofSource X source.val = ofElement (transposalElement X source) := rfl
+
+theorem fromWitness_ofElement (X : Atlas) (source : X.Element) :
+    fromWitness (atlasWitness X) source.val = ofElement (transposalElement X source) :=
+  at_ofElement X source
 
 end TransposalElementData
 

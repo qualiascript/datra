@@ -3,6 +3,11 @@
 -- This is the first restriction used to build Atlas transversals: it adds the
 -- ordering clause from Lean's @IsTransversal@, but intentionally does not add
 -- the covered-page-element clause.
+{-# LANGUAGE CPP #-}
+#include "../../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
+
 module OrderedAtlasTransposal
   ( OrderedAtlasTransposal
   , orderedAtlasTransposal
