@@ -8,7 +8,6 @@
 module Evaluation.DatraType
   ( SyntaxCategory (..)
   , PrimitiveType (..)
-  , CanonicalStringImplementation (..)
   , DatraType
   , DatraTypeFamily (..)
   , structuralDatraType
@@ -17,7 +16,6 @@ module Evaluation.DatraType
   , totalBlockDatraType
   , composedStructuralDatraType
   , datraTypeFamily
-  , canonicalStringImplementation
   ) where
 
 -- | Host-provided primitive families exposed through declarations in
@@ -56,22 +54,11 @@ newtype TypeImplementations = TypeImplementations
   { implementationFamily :: DatraTypeFamily }
   deriving (Eq, Show)
 
--- | The canonical-string implementation carried by every Datra type.
-data CanonicalStringImplementation
-  = StructuralCanonicalString
-  | FunctionCanonicalString
-  | PrimitiveCanonicalString PrimitiveType
-  | TotalBlockCanonicalString
-  deriving (Eq, Show)
-
-data DatraType = DatraType
-  TypeImplementations
-  CanonicalStringImplementation
+newtype DatraType = DatraType TypeImplementations
   deriving (Eq, Show)
 
 structuralDatraType :: DatraType
-structuralDatraType = makeDatraType
-  StructuralTypeFamily StructuralCanonicalString
+structuralDatraType = makeDatraType StructuralTypeFamily
 
 composedStructuralDatraType
   :: [DatraType]
@@ -79,30 +66,20 @@ composedStructuralDatraType
 composedStructuralDatraType _ = structuralDatraType
 
 functionDatraType :: DatraType
-functionDatraType = makeDatraType
-  FunctionTypeFamily FunctionCanonicalString
+functionDatraType = makeDatraType FunctionTypeFamily
 
 primitiveDatraType :: PrimitiveType -> DatraType
 primitiveDatraType kind =
-  makeDatraType
-    (PrimitiveTypeFamily kind) (PrimitiveCanonicalString kind)
+  makeDatraType (PrimitiveTypeFamily kind)
 
 -- | An evaluated begin/yield block is a total singleton type.  Its sole
 -- member is the yielded value; block source is retained separately as
 -- canonical presentation provenance rather than becoming nominal identity.
 totalBlockDatraType :: DatraType
-totalBlockDatraType = makeDatraType
-  TotalBlockTypeFamily TotalBlockCanonicalString
+totalBlockDatraType = makeDatraType TotalBlockTypeFamily
 
--- | There is no constructor for a Datra type without its canonical-string
--- implementation. Keeping this constructor private makes injectivity part of
--- the type witness rather than a second, fallible lookup table.
-makeDatraType
-  :: DatraTypeFamily
-  -> CanonicalStringImplementation
-  -> DatraType
-makeDatraType family stringImplementation =
-  DatraType (TypeImplementations family) stringImplementation
+makeDatraType :: DatraTypeFamily -> DatraType
+makeDatraType = DatraType . TypeImplementations
 
 datraTypeFamily
   :: DatraType
@@ -110,10 +87,5 @@ datraTypeFamily
 datraTypeFamily =
   implementationFamily . datraTypeImplementations
 
-canonicalStringImplementation
-  :: DatraType
-  -> CanonicalStringImplementation
-canonicalStringImplementation (DatraType _ implementation) = implementation
-
 datraTypeImplementations :: DatraType -> TypeImplementations
-datraTypeImplementations (DatraType implementations _) = implementations
+datraTypeImplementations (DatraType implementations) = implementations

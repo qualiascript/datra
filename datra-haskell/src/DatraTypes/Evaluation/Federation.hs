@@ -18,9 +18,6 @@ import AtlasMapFederationExpression
   )
 import Evaluation.Error
 import Evaluation.Coalization (federationIsCoalized)
-import Evaluation.ToString
-  ( stringFederationConcatenationIsInjective )
-import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.Value
 import NaturalRange qualified
 import IntegerRange qualified
@@ -28,9 +25,6 @@ import Numeric.Natural (Natural)
 import ValuedNaturalRange qualified
 import ValuedIntegerRange qualified
 
--- | String languages need a stricter concatenation decision than arbitrary
--- coalized values: two unknown string splits are ambiguous even though each
--- operand is a valid one-position coalition.
 decideValueConcatenation
   :: InterpretedValue
   -> InterpretedValue
@@ -38,17 +32,8 @@ decideValueConcatenation
        AtlasMapFederationRefutation
        AtlasMapFederationUncertainty
        ()
-decideValueConcatenation leftValue rightValue
-  | valueProducesStrings leftValue
-  , valueProducesStrings rightValue
-  , not (interpretedValueHasTotalMap leftValue)
-  , not (interpretedValueHasTotalMap rightValue) =
-      if stringFederationConcatenationIsInjective left right
-        then AtlasMapFederationProved ()
-        else AtlasMapFederationUndecidable
-          (NoAtlasMapFederationDecisionProcedure
-            AtlasMapFederationConcatenation)
-  | otherwise = decideFederationConcatenation left right
+decideValueConcatenation leftValue rightValue =
+  decideFederationConcatenation left right
   where
     left = interpretedAtlasMapFederation leftValue
     right = interpretedAtlasMapFederation rightValue
@@ -66,8 +51,6 @@ decideFederationConcatenation left right
   | atlasMapFederationExpressionIsSingleton right =
       AtlasMapFederationProved ()
   | federationIsCoalized left && federationIsCoalized right =
-      AtlasMapFederationProved ()
-  | stringFederationConcatenationIsInjective left right =
       AtlasMapFederationProved ()
 decideFederationConcatenation
     (PrimitiveAtlasMapFederation (EitherAtlasMapFederation _)) _ =

@@ -157,8 +157,9 @@ data InterpretingError
       }
   | AtlasMapFederationOperationRefuted AtlasMapFederationRefutation
   | AtlasMapFederationOperationUndecidable AtlasMapFederationUncertainty
-  | NonInjectiveStringInterpolation
-  | NoCanonicalStringConversion
+  -- TODO: replace this boundary with the structural insertion decision
+  -- described in docs/DEPENDENT_DECLARATION_INJECTIVITY.md.
+  | InjectiveValueConstructionNotImplemented
   | EitherAlternativesNotDistinct
   | AmbiguousStringTemplate
   | LookupRequiresString InterpretedValueKind

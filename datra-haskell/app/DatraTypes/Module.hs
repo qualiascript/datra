@@ -4,7 +4,6 @@ module DatraTypes.Module
   , emptyPreparedModules
   , preparedModuleContains
   , StandardLibraryVisibility (..)
-  , ModuleMemberPresentation (..)
   , ModuleExport (..)
   , moduleExportName
   ) where
@@ -33,12 +32,8 @@ data StandardLibraryVisibility
   | AllStandardLibrary
   deriving (Eq, Show)
 
-data ModuleMemberPresentation
-  = TransparentModuleMemberPresentation
-  | CanonicalModuleMemberPresentation
-
 data ModuleExport = ModuleExport
-  String ModuleMemberPresentation Bool InterpretedValue
+  String Bool InterpretedValue
 
 moduleExportName :: ModuleExport -> String
-moduleExportName (ModuleExport name _ _ _) = name
+moduleExportName (ModuleExport name _ _) = name

@@ -138,13 +138,7 @@ decideNonEitherSubfederation decideSubfederation source target =
         ( PrimitiveAtlasMapFederation sourcePrimitive
           , PrimitiveAtlasMapFederation targetPrimitive
           ) ->
-            case (sourcePrimitive, targetPrimitive) of
-              ( ToStringAtlasMapFederation sourceValue _
-                , ToStringAtlasMapFederation targetValue _
-                ) -> decideSubfederation sourceValue targetValue
-              _ ->
-                primitiveSubfederationDecision
-                  sourcePrimitive targetPrimitive
+            primitiveSubfederationDecision sourcePrimitive targetPrimitive
         (SequentialAtlasMapFederation _, SequentialAtlasMapFederation _) ->
           decidePointwiseSubfederation
             decideSubfederation

@@ -73,7 +73,6 @@ data RuntimeDeclarationValue
 
 data RuntimeDeclarationPresentation
   = DirectRuntimePresentation
-  | ReferencedRuntimePresentation [PresentationOwner]
   | TransparentRuntimePresentation
 
 data DeclarationLayerOrigin

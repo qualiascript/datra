@@ -14,7 +14,6 @@ module Evaluation.Identifier
   , integerComplementValue
   , inferredIdentifierAssignmentValue
   , identifierStringProjectionValue
-  , canonicalValueMarker
   , definitionMarker
   , withTrailingIdentifierMarker
   , hasTrailingIdentifierMarker
@@ -31,11 +30,6 @@ import Evaluation.Error (InterpretingError)
 import Evaluation.Value
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Identifier (isPrivateIdentifier)
-
--- | Compiler-owned metadata identifying an identifier whose declared name is
--- its canonical presentation.
-canonicalValueMarker :: String
-canonicalValueMarker = "val"
 
 -- | Compiler-owned metadata identifying a declaration whose binding cannot
 -- be replaced inconsistently by an overlapping declaration.

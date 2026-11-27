@@ -5,6 +5,7 @@ module Evaluation.Optional
   , optionalPresentType
   , justUnderlying
   , optionalUnderlying
+  , isNothingValue
   ) where
 
 import Evaluation.Either (makeEitherValue)
@@ -56,3 +57,8 @@ optionalUnderlying value = case interpretedForm value of
         let present = evaluatedEitherRight alternatives
         in Just (maybe present id (justUnderlying present))
   _ -> Nothing
+
+isNothingValue :: InterpretedValue -> Bool
+isNothingValue value = case interpretedForm value of
+  NothingForm -> True
+  _ -> False

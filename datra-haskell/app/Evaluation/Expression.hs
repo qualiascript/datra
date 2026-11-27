@@ -32,7 +32,6 @@ module Evaluation.Expression
   , interpretedMapCardinality
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
-  , canonicalStringCodec
   -- Stateless evaluation capabilities used while source rewriting derives
   -- syntax visibility directly from Scope.
   , standardLibraryEnvironment
@@ -58,10 +57,6 @@ import DatraTypes.Scope
 import Evaluation.Closure
 import Evaluation.Identifier
 import Evaluation.Scope
-import DatraHost
-  ( datraHostIdentifier
-  , datraHostValue
-  )
 import DatraLanguage.Identifier
   ( isIdentifierValue
   )
@@ -95,7 +90,6 @@ import DatraLanguage.AST
   , optionalIdentifierExpression
   , mapExpressionChildren
   , mapDependentDeclaration
-  , normalizeExpression
   )
 import DatraLanguage.ContextualDeclaration
 import StringExpression
@@ -112,12 +106,10 @@ import DatraTypes.FunctionType
   , resolveGenericFunctionTypes
   )
 import Parsing
-  ( parseSourceExpression
-  , parseDatraRawLocatedWithSourceName
+  ( parseDatraRawLocatedWithSourceName
   )
 import SyntaxRewriting
   ( rewriteResourceSyntaxLocated
-  , rewriteStandaloneSyntax
   )
 import Rendering (renderCanonicalResult, renderInterpretedValue)
 import Evaluation.Scope.GenericProtection
@@ -244,17 +236,9 @@ standardModuleScope
   -> Either InterpretingError Scope
 standardModuleScope allNames = do
   source <- standardLibraryModuleSource
-  base <- installDatraHost (rootScope source)
+  let base = rootScope source
   prepared <- prepareModuleWithBase base source
   installPreparedModule base allNames prepared
-
-installDatraHost :: Scope -> Either InterpretingError Scope
-installDatraHost base = do
-  host <- datraHostValue
-  let declaration = (evaluatedRuntimeDeclaration datraHostIdentifier
-        (withCanonicalReference [] datraHostIdentifier host))
-        { runtimeDeclarationIsDefinition = True }
-  pure (extendRuntimeDeclarations [declaration] base)
 
 syntaxExpressionType :: Scope -> Expression -> Maybe InterpretedValue
 syntaxExpressionType scope expressionValue = either (const Nothing) Just
@@ -274,7 +258,7 @@ parsedDefaultModule = do
   locatedRaw@(Located _ raw) <- either parseFailure Right
     (parseDatraRawLocatedWithSourceName standardLibraryFileName
       (requiredBundledLibrarySource standardLibraryFileName))
-  base <- installDatraHost (rootScope raw)
+  let base = rootScope raw
   let rewritten = rewriteResourceSyntaxLocated
         syntaxExpressionType base locatedRaw
   rewrittenValue <- locatedValue <$> either
@@ -293,27 +277,9 @@ standardLibraryModuleSource =
   ModuleSource standardLibraryFileName <$> parsedDefaultModule
 {-# NOINLINE standardLibraryModuleSource #-}
 
-canonicalStringCodec :: CanonicalStringCodec
-canonicalStringCodec =
-  CanonicalStringCodec
-    { renderCanonicalString =
-        renderInterpretedValue . withoutCanonicalPresentation
-    , decodeCanonicalString = decodeCanonicalExpression
-    }
-
--- Canonical text is Datra source, not a parallel scalar encoding. Parsing it
--- through the ordinary source grammar makes forms such as @-123@ use the
--- prefix operator and lets dependent declarations assign meanings to
--- otherwise ordinary identifiers such as @123@.
-decodeCanonicalExpression :: String -> [InterpretedValue]
-decodeCanonicalExpression characters =
-  case do
-      scope <- defaultModuleScope
-      expressionValue <- obsoleteClosedSourceExpressionIn scope characters
-      evalInScope scope [] expressionValue
-    of
-      Right value -> [value]
-      Left _ -> []
+renderCanonicalValue :: InterpretedValue -> String
+renderCanonicalValue =
+  renderInterpretedValue . withoutCanonicalPresentation
 
 scopeNameIsDefinition :: Scope -> String -> Bool
 scopeNameIsDefinition scope name =
@@ -421,8 +387,7 @@ contextualFunction role levels@(_ : _) = do
     signatureSource
     (Just (prepare schema))
     (Just invoke)
-    False
-    Nothing))
+    False))
   where
     maximumDepth = fromIntegral (length levels - 1)
     domainExpression = ValuedNaturalRange 0 maximumDepth
@@ -648,12 +613,9 @@ scopedLiteralMemberName expressionValue = case expressionValue of
   SyntaxBoundary inner -> scopedLiteralMemberName inner
   _ -> Nothing
 
--- OBSOLETE normalization seam: evaluation must consume the AST selected by
--- parsing and syntax rewriting without reshaping it here.
 evalInScopeWith :: ReductionContext -> Scope -> ResolutionStack -> Interpreter
 evalInScopeWith reduction scope resolving =
-  interpretNormalizedExpressionWith reduction scope resolving
-    . normalizeExpression
+  interpretExpressionWith reduction scope resolving
 
 -- A source resource is an implicit block even though it shares the 'Begin'
 -- AST node with explicit nested blocks. The resource boundary supplies the
@@ -666,12 +628,12 @@ evalResourceInScopeWith
   -> ResolutionStack
   -> Interpreter
 evalResourceInScopeWith reduction scope resolving expressionValue =
-  case normalizeExpression expressionValue of
+  case expressionValue of
     Begin bindings result ->
       evaluateBlockInScope False Nothing reduction scope resolving
         bindings result
-    normalized ->
-      interpretNormalizedExpressionWith reduction scope resolving normalized
+    expression ->
+      interpretExpressionWith reduction scope resolving expression
 
 evalInContextualContinuationScopeWith
   :: salt
@@ -708,17 +670,12 @@ evaluateBlockInScope introducesThis source reduction scope resolving
     (withoutCanonicalOwners
       (scopePresentationOwners innerScope) handed))
 
--- PARTIALLY OBSOLETE: this is the central recursive constructor dispatcher,
--- which remains necessary. Its embedded identifier/string interpretation,
--- standard-library spelling checks, scope-opening machinery, and checked
--- operation helpers are mixed responsibilities and should move to focused
--- Evaluation modules that receive 'interpret' explicitly.
-interpretNormalizedExpressionWith
+interpretExpressionWith
   :: ReductionContext
   -> Scope
   -> ResolutionStack
   -> Interpreter
-interpretNormalizedExpressionWith reduction scope resolving expressionValue =
+interpretExpressionWith reduction scope resolving expressionValue =
   case expressionValue of
     EllipsisNatural value -> Right (naturalValue value)
     EllipsisLiteral -> Right (formulationValue 1)
@@ -775,30 +732,23 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     BooleanLiteral value -> Right (booleanValue value)
     BooleanType -> booleanTypeValue
     EitherType left right -> binary eitherValue left right
-    OptionalType operand ->
-      case optionalIdentifierExpression expressionValue of
-        Just (present, missing) -> binary eitherValue present missing
-        Nothing -> interpret
-          (FunctionApplication
-            (IdentifierReference (SimpleIdentifierString "Maybe"))
-            operand)
+    OptionalType operand -> interpret operand >>= optionalValue
     MaybeThen optional branch -> do
       optionalResult <- interpret optional >>= unconsList
       runProtectedOperation protection [optionalResult] $ \actuals ->
         case actuals of
           [actualOptional] ->
-            case interpretedSemanticResult actualOptional of
-              CanonicalAssignment "Just" _ _ -> do
+            case justUnderlying actualOptional of
+              Just _ -> do
                 result <- evalInContextualContinuationScopeWith branch reduction
                   (constantContextualDeclarations ContextualIt actualOptional)
                   scope resolving branch
                 liftMaybeResult result
-              _ -> do
-                absent <- isStandardNothing actualOptional
-                if absent
-                  then standardNothingValue
+              Nothing ->
+                if isNothingValue actualOptional
+                  then Right nothingValue
                   else Left (FunctionEvaluationFailed
-                    NoApplicableFunctionAlternative)
+                  NoApplicableFunctionAlternative)
           _ -> Right neverValue
     Conditional condition consequent alternative -> do
       conditionValue <- interpret condition
@@ -977,17 +927,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           [actual] -> do
             selected <- namedAccessValue actual name
             validateOpenedBinding actual (name, selected)
-            payload <- accessValues selected (naturalValue 1)
-            if hasTrailingIdentifierMarker canonicalValueMarker selected
-              then do
-                let dependencies = maybe [] fst
-                      (interpretedCanonicalPresentation actual)
-                pure (withCanonicalNamedAccess
-                  dependencies
-                  (interpretedCanonicalResult actual)
-                  name
-                  payload)
-              else pure payload
+            accessValues selected (naturalValue 1)
           _ -> Right neverValue
     ScopedExpression operand body -> do
       source <- interpret operand
@@ -1058,7 +998,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                   (constantContextualDeclarations ContextualIt supplied)
                   scope resolving body
           identifier <- nameFamily typeAnnotation
-          requireDependentNameSubfederation True interpret identifier
           case asciiStringFromInterpretedMap (interpretedMap identifier) of
             Just identifierString
               | interpretedValueHasTotalMap identifier
@@ -1175,42 +1114,23 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               ordering <- compareIntegerLimitValues actualLeft actualRight
               pure (booleanValue (predicate ordering))
             _ -> Right (neverValue, Nothing)
-    liftMaybeResult result = case interpretedSemanticResult result of
-      CanonicalAssignment "Just" _ _ -> pure result
-      _ -> do
-        absent <- isStandardNothing result
-        if absent
-          then standardNothingValue
-          else standardOptionalValue result >>= contextuallySpecify result
+    liftMaybeResult result = case justUnderlying result of
+      Just _ -> pure result
+      Nothing ->
+        if isNothingValue result
+          then Right nothingValue
+          else optionalValue result >>= contextuallySpecify result
     unconsList value = do
       let orderType = interpretedMapFinalOrderType (interpretedMap value)
       if orderType == finiteOrdinal 0
-        then standardNothingValue
+        then Right nothingValue
         else do
           headValue <- accessValues value (naturalValue 0)
           tailRange <- naturalRangeUpwardsValue 1
           tailValue <- accessValues value tailRange
           let pair = makeAtlasMap 2
                 (map (coalizeMapMemberAt 2) [headValue, tailValue])
-          standardOptionalValue pair >>= contextuallySpecify pair
-    standardNothingValue =
-      interpret (IdentifierReference (SimpleIdentifierString "nothing"))
-    isStandardNothing value = do
-      target <- standardNothingValue
-      subfederationValues value target >>= booleanCondition
-    standardOptionalValue value = do
-      constructor <- interpret (IdentifierReference (SimpleIdentifierString "Maybe"))
-      runProtectedOperationWithContract
-        protection
-        genericOperationResultDecision
-        contextuallySpecify
-        [constructor, value] $ \actuals ->
-          case actuals of
-            [actualConstructor, actualValue] -> do
-              input <- functionArgumentValue actualValue
-              applyFunction
-                (scopeActivation scope) reduction actualConstructor input
-            _ -> Right (neverValue, Nothing)
+          optionalValue pair >>= contextuallySpecify pair
     interpretContainer ordinary _ _ = ordinary
     evaluateFunctionType generics written preparedDomain preparedCodomain = do
       let (staticDomain, substitutions) =
@@ -1228,7 +1148,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         case actuals of
           [actualInput, actualOutput] -> pure (makeFunctionValue
             (EvaluatedFunction actualInput actualOutput Nothing Nothing Nothing
-              signatureSource (Just prepare) Nothing True Nothing))
+              signatureSource (Just prepare) Nothing True))
           _ -> Right neverValue
 
 
@@ -1641,7 +1561,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
   let functionValue = makeFunctionValue
         (EvaluatedFunction input output Nothing
           (Just (FunctionSource closed)) Nothing signatureSource
-          (Just prepare) (Just invoke) False Nothing)
+          (Just prepare) (Just invoke) False)
       validateExistentialPackage source = do
         rows <- argumentRows source
         tryPackageRows source Nothing rows
@@ -2232,7 +2152,7 @@ prepareModuleWithBase base
     , preparedModuleNamespaces = dependentDeclarationLayer declarations
     }
   where
-    preparedDeclarations outer declarations exported@(ModuleExport name _ _ _) =
+    preparedDeclarations outer declarations exported@(ModuleExport name _ _) =
       traverse (attachRuntime outer exported)
         [ scoped
         | layer <- scopeDependentDeclarationLayers outer
@@ -2243,20 +2163,15 @@ prepareModuleWithBase base
             (dependentDeclarationContainsName
               UnrestrictedReduction [] scoped name)
         ]
-    attachRuntime outer (ModuleExport name presentation isDefinition value)
+    attachRuntime outer (ModuleExport name isDefinition value)
         scoped = do
       public <- declarationPublicScope outer scoped
-      let dependency = ModulePresentationOwner path
-          runtime = RuntimeSingletonPayload
+      let runtime = RuntimeSingletonPayload
             { runtimeDeclarationName = name
             , runtimeDeclarationIsDefinition = isDefinition
             , runtimeDeclarationValue = EvaluatedRuntimeValue
                 (handoffScopeValue outer value)
-            , runtimeDeclarationPresentation = case presentation of
-                CanonicalModuleMemberPresentation ->
-                  ReferencedRuntimePresentation [dependency]
-                TransparentModuleMemberPresentation ->
-                  TransparentRuntimePresentation
+            , runtimeDeclarationPresentation = TransparentRuntimePresentation
             , runtimeDeclarationOrigin = Just
                 (DependencyAddress [SimpleIdentifierString name])
             , runtimeDeclarationDefinition = scopedDeclarationDefinition scoped
@@ -2301,7 +2216,7 @@ moduleBaseScope base
         (ModulePresentationOwner path)
         base
   if takeFileName path == standardLibraryFileName
-    then installDatraHost seeded
+    then Right seeded
     else standardLibraryModuleSource >>= installModuleSource seeded False
 
 -- Resource-level scope access and import wrap the declarations which produce
@@ -2457,9 +2372,6 @@ namedMemberPayload (name, selected) = do
   payload <- moduleMemberPayload selected
   pure (ModuleExport
     name
-    (if hasTrailingIdentifierMarker canonicalValueMarker selected
-      then CanonicalModuleMemberPresentation
-      else TransparentModuleMemberPresentation)
     (hasTrailingIdentifierMarker definitionMarker selected)
     payload)
 
@@ -2478,11 +2390,6 @@ resourceBlock
       ([DependentDeclaration Expression], Expression)
 resourceBlock (Begin bindings result) = Right (bindings, result)
 resourceBlock _ = Left (ModuleEvaluationFailed ModuleRequiresBlock)
-
--- PARTIALLY OBSOLETE: dependency traversal is valid, but selected runtime
--- values are still converted back into ASTs through
--- 'obsoleteValueExpressionIn'. Removing that conversion should leave only the
--- source-definition traversal in this resolver.
 
 evaluateLookup
   :: ReductionContext
@@ -2663,7 +2570,7 @@ captureWitnesses count witness =
 canonicalCaptureText :: InterpretedValue -> Maybe String
 canonicalCaptureText value = do
   rendered <- either (const Nothing) Just
-    (toStringValue canonicalStringCodec value)
+    (toStringValue renderCanonicalValue value)
   case interpretedSemanticResult rendered of
     CanonicalAsciiString text -> Just text
     _ -> case asciiStringFromInterpretedMap (interpretedMap rendered) of
@@ -2707,7 +2614,7 @@ preparedCaptureCandidates
   -> Either InterpretingError [InterpretedValue]
 preparedCaptureCandidates schema captured = do
   source <- asciiStringValue captured
-  pure $ case evalValues canonicalStringCodec source schema of
+  pure $ case evalValues renderCanonicalValue source schema of
     Left _ -> []
     Right selected ->
       [ prepared
@@ -2831,10 +2738,7 @@ resolveIdentifierAccess reduction scope resolving name =
 resolvedNamedMemberValue :: NamedMember -> InterpretedValue
 resolvedNamedMemberValue member =
   case identifierUnderlyingValue selected of
-    Just underlying
-      | hasTrailingIdentifierMarker canonicalValueMarker selected ->
-          withCanonicalReference [] (namedMemberName member) underlying
-      | otherwise -> underlying
+    Just underlying -> underlying
     Nothing -> selected
   where
     selected = namedMemberValue member
@@ -2948,7 +2852,7 @@ evaluateDeclarationScope
   -> [DependentDeclaration Expression]
   -> Either InterpretingError Scope
 evaluateDeclarationScope = evaluateDeclarationScopeUsing
-  (obsoleteScopeRebuilderWithContextualThisAndValidation False True)
+  (scopeRebuilderWithContextualThisAndValidation False True)
 
 evaluateDeclarationScopeWithoutContextualThis
   :: Scope
@@ -2957,14 +2861,14 @@ evaluateDeclarationScopeWithoutContextualThis
   -> Either InterpretingError Scope
 evaluateDeclarationScopeWithoutContextualThis =
   evaluateDeclarationScopeUsing
-    (obsoleteScopeRebuilderWithContextualThisAndValidation False False)
+    (scopeRebuilderWithContextualThisAndValidation False False)
 
 evaluateDeclarationScopeWithin
   :: Scope
   -> ResolutionStack
   -> [DependentDeclaration Expression]
   -> Either InterpretingError Scope
-evaluateDeclarationScopeWithin = evaluateDeclarationScopeUsing obsoleteScopeRebuilderWithin
+evaluateDeclarationScopeWithin = evaluateDeclarationScopeUsing scopeRebuilderWithin
 
 evaluateDeclarationScopeUsing
   :: (Scope -> [DependentDeclaration Expression] -> Either InterpretingError
@@ -3025,13 +2929,12 @@ childPresentationOwner
 childPresentationOwner enclosing =
   LexicalPresentationOwner (scopePresentationOwner enclosing)
 
--- OBSOLETE: rebuild a declaration scope from its finite source declarations
--- whenever an
+-- Rebuild a declaration scope from its finite source declarations whenever an
 -- eager let becomes available.  Recursive lets make their captured scopes
 -- cyclic; recursively walking those scopes to replace a binding can therefore
 -- black-hole. Rebuilding ties one fresh, shared knot and places retained
 -- values into every lexical snapshot without traversing it.
-obsoleteScopeRebuilderWithContextualThisAndValidation
+scopeRebuilderWithContextualThisAndValidation
   :: Bool
   -> Bool
   -> Scope
@@ -3041,14 +2944,14 @@ obsoleteScopeRebuilderWithContextualThisAndValidation
       , [ScopedDependentDeclaration]
       , ResolutionStack -> Scope -> Either InterpretingError ()
       )
-obsoleteScopeRebuilderWithContextualThisAndValidation
+scopeRebuilderWithContextualThisAndValidation
     validateFamilies introducesThis enclosing entries = do
   let owner = childPresentationOwner enclosing entries
       scopedEnclosing = withPresentationOwner owner
         (enterScope entries genericContinuationHandoff enclosing)
-  obsoleteScopeRebuilderActivated validateFamilies introducesThis scopedEnclosing entries
+  scopeRebuilderActivated validateFamilies introducesThis scopedEnclosing entries
 
-obsoleteScopeRebuilderWithin
+scopeRebuilderWithin
   :: Scope
   -> [DependentDeclaration Expression]
   -> Either InterpretingError
@@ -3056,12 +2959,12 @@ obsoleteScopeRebuilderWithin
       , [ScopedDependentDeclaration]
       , ResolutionStack -> Scope -> Either InterpretingError ()
       )
-obsoleteScopeRebuilderWithin enclosing entries =
+scopeRebuilderWithin enclosing entries =
   let owner = childPresentationOwner enclosing entries
       scopedEnclosing = withPresentationOwner owner enclosing
-  in obsoleteScopeRebuilderActivated True True scopedEnclosing entries
+  in scopeRebuilderActivated True True scopedEnclosing entries
 
-obsoleteScopeRebuilderActivated
+scopeRebuilderActivated
   :: Bool
   -> Bool
   -> Scope
@@ -3071,7 +2974,7 @@ obsoleteScopeRebuilderActivated
       , [ScopedDependentDeclaration]
       , ResolutionStack -> Scope -> Either InterpretingError ()
       )
-obsoleteScopeRebuilderActivated validateFamilies introducesThis scopedEnclosing entries = do
+scopeRebuilderActivated validateFamilies introducesThis scopedEnclosing entries = do
   let positionedMembers = zip [0 :: Int ..] entries
       finalPosition = length entries
       scopedMembersLayer = dependentDeclarationLayer scopedMembers
@@ -3220,13 +3123,10 @@ validateDeclarationFamilies = go []
           validate scoped earlier remaining declaration
 
     validate scoped earlier remaining declaration = do
+      requireImplementedDeclaration declaration
       family <- evalInScope
         (scopedDependentDeclarationFamilyScope scoped) []
         (dependentDeclarationNameFamilyExpression declaration)
-      requireDependentNameSubfederation False
-        (evalInScope
-          (scopedDependentDeclarationFamilyScope scoped) [])
-        family
       mapM_ (requireDistinct declaration family) earlier
       go ((declaration, family) : earlier) remaining
 
@@ -3278,7 +3178,7 @@ interpretStringTemplateWith protection interpret parts = do
         [value] $ \actuals ->
           case actuals of
             [actual] -> checkedString
-              (toStringValue canonicalStringCodec actual)
+              (toStringValue renderCanonicalValue actual)
             _ -> Right (neverValue, Nothing)
       pure (converted, Just (captureSchema expressionValue value))
 
@@ -3549,8 +3449,8 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
       let template = preparedDeclarationTemplate branch
       let name = renderDeclarationDescriptorKey template
       payload <- declarationFamilyValue name branch
-      pure (namedDeclarationDescriptorMember declaration name
-        (attachDeclarationSyntax template payload))
+      attached <- attachDeclarationSyntax template payload
+      pure (namedDeclarationDescriptorMember declaration name attached)
 
     -- A declaration family with no name captures is the declaration value
     -- itself. Introducing a synthetic unit-domain callable here would replace
@@ -3588,10 +3488,6 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
           invoke _ activeReduction prepared = do
             payload <- evaluatePrepared activeReduction prepared
             pure (EvaluatedFunctionInvocation payload Nothing)
-          insertion = RuntimeFunctionInsertion
-            { applyRuntimeFunction = \argument ->
-                prepare argument >>= evaluatePrepared UnrestrictedReduction
-            }
       domain <- argumentSchemaDomain schema
       pure (makeFunctionValue
             (EvaluatedFunction
@@ -3604,8 +3500,7 @@ dynamicDependentDeclarationNamedView reduction familyCaptured captured resolving
                 (IdentifierReference (SimpleIdentifierString name)))
               (Just prepare)
               (Just invoke)
-              False
-              (Just insertion)))
+              False))
 
     captureSlot capture =
       maybe
@@ -3682,9 +3577,6 @@ runtimeDeclarationResolvedValue resolving scoped runtime = do
           (scopedDependentDeclarationScope scoped))
   pure (case runtimeDeclarationPresentation runtime of
     DirectRuntimePresentation -> value
-    ReferencedRuntimePresentation dependencies ->
-      withCanonicalReference dependencies
-        (runtimeDeclarationName runtime) value
     TransparentRuntimePresentation -> withoutCanonicalPresentation value)
 
 dependentDeclarationMemberByName
@@ -3734,8 +3626,8 @@ dependentDeclarationMemberByName reduction resolving scoped name = do
             reduction captured active Nothing
             (dependentDeclarationImplementation declaration)
           let template = preparedDeclarationTemplate branch
-          pure (namedDeclarationDescriptorMember declaration name
-            (attachDeclarationSyntax template payload))
+          attached <- attachDeclarationSyntax template payload
+          pure (namedDeclarationDescriptorMember declaration name attached)
         PreparedDeclarationConcrete branch decoded ->
           materializeDependentDeclarationActive
             reduction captured active declaration
@@ -3752,8 +3644,9 @@ prepareDependentDeclaration
   -> Either InterpretingError
       [PreparedDependentDeclaration]
 prepareDependentDeclaration reduction captured resolving declaration =
-  prepareDependentDeclarationBranches reduction captured resolving
-    (identifierExpressionBranches (dependentDeclarationHead declaration))
+  requireImplementedDeclaration declaration >>
+    prepareDependentDeclarationBranches reduction captured resolving
+      (identifierExpressionBranches (dependentDeclarationHead declaration))
 
 prepareDependentDeclarationForName
   :: ReductionContext
@@ -3763,27 +3656,22 @@ prepareDependentDeclarationForName
   -> DependentDeclaration Expression
   -> Either InterpretingError [PreparedDependentDeclaration]
 prepareDependentDeclarationForName reduction captured resolving requested
-    declaration =
+    declaration = do
+  requireImplementedDeclaration declaration
   prepareDependentDeclarationBranches reduction captured resolving
     (identifierExpressionMatchingBranches
       (dependentDeclarationHead declaration) requested)
 
--- Parenthesized dependent names are evaluated expressions rather than
--- literal-expression syntax. Their result therefore has the same ordinary
--- inclusion obligation as an explicit @source of Str@ check. Arguments may
--- use an optional string family; declarations must themselves be strings.
-requireDependentNameSubfederation
-  :: Bool
-  -> Interpreter
-  -> InterpretedValue
+-- TODO: rebuild val using retained structural insertion evidence. Until that
+-- exists, rejecting the modifier is safer than assigning canonical identity
+-- from a rendered name or declaration marker.
+requireImplementedDeclaration
+  :: DependentDeclaration Expression
   -> Either InterpretingError ()
-requireDependentNameSubfederation allowOptional interpret value = do
-  stringType <- interpret
-    (IdentifierReference (SimpleIdentifierString "Str"))
-  let checked
-        | allowOptional = maybe value id (optionalUnderlying value)
-        | otherwise = value
-  requireValueSubfederation checked stringType
+requireImplementedDeclaration declaration
+  | dependentDeclarationIsCanonicalValue declaration =
+      Left InjectiveValueConstructionNotImplemented
+  | otherwise = Right ()
 
 prepareDependentDeclarationBranches
   :: ReductionContext
@@ -3935,7 +3823,7 @@ evaluateMaterializedDeclaration reduction captured resolving implementation
       input
       supplied
       implementationValue
-  pure (attachDeclarationSyntax template payload)
+  attachDeclarationSyntax template payload
   where
     contextualCapture (capture, value) =
       case captureName of
@@ -3970,40 +3858,35 @@ applyDependentDeclarationImplementation
   -> InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-applyDependentDeclarationImplementation activation reduction input supplied payload =
-  case interpretedRuntimeFunctionInsertion payload of
-    -- A runtime insertion is the already-selected forward operation, so it
-    -- receives the capture schema's resolved positional argument.  An ordinary
-    -- function still receives the argumentative source below and performs its
-    -- own overload selection.
-    Just insertion ->
-      applyRuntimeFunction insertion (functionPreparedArgument input)
-    Nothing
-      | isFunctionFamily payload ->
-          fst <$> applyFunction activation reduction payload supplied
-      | otherwise -> Right payload
+applyDependentDeclarationImplementation activation reduction _ supplied payload =
+  if isFunctionFamily payload
+    then fst <$> applyFunction activation reduction payload supplied
+    else Right payload
 
 attachDeclarationSyntax
   :: EvaluatedStringTemplate
   -> InterpretedValue
-  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
 attachDeclarationSyntax template payload =
   case interpretedFunction payload of
-    Nothing -> payload
-    Just _ ->
-      let evaluatedTemplate = concatMap evaluatedPiece
-            (evaluatedStringTemplateSegments template)
-      in withFunctionSyntax
+    Nothing -> Right payload
+    Just _ -> do
+      pieces <- traverse evaluatedPiece
+        (evaluatedStringTemplateSegments template)
+      let evaluatedTemplate = concat pieces
+      pure (withFunctionSyntax
         (FunctionSyntax [evaluatedTemplate])
-        payload
+        payload)
   where
     evaluatedPiece segment = case segment of
       EvaluatedStringTemplateLiteral literal ->
-        map (StringTemplateInterpolation . LiteralString) (words literal)
-      EvaluatedStringTemplateCapture _ schema _ ->
-        let stringFederation = templateValue
-              (stringFederationValue canonicalStringCodec schema)
-        in [StringTemplateInterpolation
+        Right (map
+          (StringTemplateInterpolation . LiteralString)
+          (words literal))
+      EvaluatedStringTemplateCapture _ schema _ -> do
+        stringFederation <- templateValue <$>
+          toStringValue renderCanonicalValue schema
+        pure [StringTemplateInterpolation
           (specializeStringExpression schema (ValueString stringFederation))]
 
 namedDeclarationMember
@@ -4016,9 +3899,8 @@ namedDeclarationMember declaration name payload =
   where
     named = simpleIdentifierTypeValue name payload
     -- Definition protection belongs on the concrete member used by lookup.
-    -- Canonical-value metadata intentionally remains descriptor-only: putting
-    -- $val here would replace the member's payload presentation with its
-    -- canonical declaration name.
+    -- Declaration descriptors retain only definition metadata. Canonical
+    -- identity awaits the structural val implementation.
     marked = markDefinitionEntry declaration named
 
 namedDeclarationDescriptorMember
@@ -4036,12 +3918,7 @@ markDeclarationEntry
   -> InterpretedValue
   -> InterpretedValue
 markDeclarationEntry declaration =
-  markDefinitionEntry declaration . markCanonical
-  where
-    markCanonical value
-      | dependentDeclarationIsCanonicalValue declaration =
-          withTrailingIdentifierMarker canonicalValueMarker value
-      | otherwise = value
+  markDefinitionEntry declaration
 
 markDefinitionEntry
   :: DependentDeclaration Expression
@@ -4346,21 +4223,8 @@ closureResolver scope = resolver
       member <- either (const Nothing) id
         (namedMapOrdinalMemberAt view position)
       pure (namedMemberName member)
-    contextualDepth role depth = do
-      let selected = contextualAccessAt role depth
-      value <- either (const Nothing) Just (evalInScope scope [] selected)
-      expressionValue <- either (const Nothing) Just
-        (obsoleteValueExpressionIn scope value)
-      let dependencyName =
-            contextualSurfaceName role <> "_" <> show depth
-      pure Dependency
-        { dependencyKey = ContextualDependency role depth expressionValue
-        , dependencyAddress = DependencyAddress
-            [SimpleIdentifierString dependencyName]
-        , dependencyDeclaration = singletonDependencyDeclaration
-            dependencyName expressionValue
-        , dependencyResolver = emptyResolver
-        }
+    -- Evaluated contextual values are not reconstructed as source syntax.
+    contextualDepth _ _ = Nothing
     resolve path
       | dependencyPathRoot path == ContextualRoot ContextualThis =
           case dependencyPathSegments path of
@@ -4381,17 +4245,11 @@ closureResolver scope = resolver
             { dependencyAddress = prependDependencyAddress
                 (originAddress name)
                 (dependencyAddress dependency)
-            -- OBSOLETE normalization seam: captured dependencies must retain
-            -- their selected syntax instead of being reshaped externally.
-            , dependencyDeclaration = dependentDeclarationWithImplementation
-                (normalizeExpression
-                  (dependentDeclarationImplementation
-                    (dependencyDeclaration dependency)))
-                (dependencyDeclaration dependency)
+            , dependencyDeclaration = dependencyDeclaration dependency
             }
-    resolveAmbient (name : fields) = do
-      case (fields, declarationDefinitionByName scope name) of
-        ([], Just (lexical, _, expressionValue)) ->
+    resolveAmbient [name]
+      | Just (lexical, _, expressionValue) <-
+          declarationDefinitionByName scope name =
           Just Dependency
             { dependencyKey = BindingDependency name expressionValue
             , dependencyAddress = originAddress name
@@ -4399,26 +4257,7 @@ closureResolver scope = resolver
                 name expressionValue
             , dependencyResolver = closureResolver lexical
             }
-        _ -> do
-          value <- either (const Nothing) Just
-            (resolveIdentifier scope [] name)
-          selected <- either (const Nothing) Just
-            (foldM namedAccessValue value fields)
-          if hasTrailingIdentifierMarker canonicalValueMarker selected
-            then Nothing
-            else do
-              expressionValue <- either (const Nothing) Just
-                (obsoleteValueExpressionIn scope selected)
-              pure Dependency
-                { dependencyKey = SelectedDependency
-                    (map SimpleIdentifierString (name : fields)) expressionValue
-                , dependencyAddress = appendDependencyAddress
-                    (originAddress name)
-                    (map SimpleIdentifierString fields)
-                , dependencyDeclaration = singletonDependencyDeclaration
-                    (last (name : fields)) expressionValue
-                , dependencyResolver = emptyResolver
-                }
+    resolveAmbient _ = Nothing
     originAddress name
       | Just runtime <- runtimeDeclarationByName name scope
       , Just origin <- runtimeDeclarationOrigin runtime = origin
@@ -4427,8 +4266,6 @@ closureResolver scope = resolver
     prependDependencyAddress
         (DependencyAddress prefix)
         (DependencyAddress suffix) = DependencyAddress (prefix <> suffix)
-    appendDependencyAddress
-        (DependencyAddress prefix) suffix = DependencyAddress (prefix <> suffix)
 
 singletonDependencyDeclaration
   :: String
@@ -4437,35 +4274,3 @@ singletonDependencyDeclaration
 singletonDependencyDeclaration name implementation = DependentDeclaration
   (literalIdentifierExpression (SimpleIdentifierString name))
   [DeclarationLet] implementation
-
-emptyResolver :: Resolver
-emptyResolver = Resolver
-  (const Nothing)
-  (const Nothing)
-  (\_ _ -> Nothing)
-  (const False)
-
--- OBSOLETE: render/parse/rewrite rematerialization from an evaluated value back
--- into an AST. Runtime values must retain the evidence needed by closures
--- without reconstructing source.
-obsoleteValueExpressionIn
-  :: Scope
-  -> InterpretedValue
-  -> Either InterpretingError Expression
-obsoleteValueExpressionIn definitions = obsoleteClosedSourceExpressionIn definitions
-  . renderCanonicalResult . interpretedSemanticResult
-
-obsoleteClosedSourceExpressionIn
-  :: Scope
-  -> String
-  -> Either InterpretingError Expression
-obsoleteClosedSourceExpressionIn definitions text = do
-  expressionValue <- either
-    (const (Left NoCanonicalStringConversion))
-    (Right . normalizeExpression)
-    (parseSourceExpression text)
-  rewritten <- Bifunctor.first
-    (const NoCanonicalStringConversion)
-    (rewriteStandaloneSyntax
-      syntaxExpressionType definitions expressionValue)
-  pure (inlineDependencies (closureResolver definitions) rewritten)

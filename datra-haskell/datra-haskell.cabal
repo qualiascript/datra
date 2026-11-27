@@ -287,7 +287,6 @@ library
         Evaluation.Overload
         Evaluation.DatraType
         Evaluation.Range
-        Evaluation.RangeInsertion
         Evaluation.ResultContract
         Evaluation.Specification
         Evaluation.Specification.ArgumentativeMap
@@ -298,7 +297,6 @@ library
         Evaluation.SyntaxCapture
         Evaluation.Specification.Subfederation
         Evaluation.ToString
-        Evaluation.ToString.Injectivity
         Evaluation.TypeFamily.Primitive
         Evaluation.TypeFamily
         Evaluation.TypeFamily.Function
