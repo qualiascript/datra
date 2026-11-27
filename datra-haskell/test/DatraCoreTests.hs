@@ -4,6 +4,7 @@
 
 module Main (main) where
 
+import Atlas.Witness (atlasWitnessData, withAtlasWitnessData)
 import Atlas
 import AtlasExtent
 import AtlasConfederation
@@ -15,6 +16,8 @@ import AtlasMap
 import AtlasMerge
 import AtlasSequence
 import AtlasTransposal
+import qualified AtlasTransposal.Action as TransposalAction
+import qualified AtlasTransposal.Element as TransposalElement
 import AtlasTransversal
 import AtlasTransversalMap
 import AtlasTerritory
@@ -43,6 +46,7 @@ import HorizontalSum
 import HorizontalSum.Syntax
 import Navigation
 import PageElements
+import qualified PageElements.Structure as RawPageElement
 import qualified PageElements.TraceChain as TraceChain
 import Pagination
 import Numeric.Natural (Natural)
@@ -116,6 +120,8 @@ testTree =
         , testCase "charter counit rejects uncovered inverse" testCharterCounitUncoveredInverse
         , testCase "charter map rejects uncovered source inverse" testCharterMapUncoveredInverse
         , testCase "ordered atlas transposal" testOrderedAtlasTransposal
+        , testCase "transposal action composition across witness eliminations" testTransposalActionWitnessComposition
+        , testCase "transposal target witness through nested syntax" testTransposalTargetWitness
         , testCase "atlas transversal" testAtlasTransversal
         , testCase "stable atlas transversal" testStableAtlasTransversal
         , testCase "coalition" testCoalition
@@ -3229,6 +3235,72 @@ testDomanialInclusionUncoveredInverse =
                     rejected <- timeout 200000 (Exception.evaluate (isNothing (preimage component uncovered)))
                     assert "the adjunction inverse terminates outside the covered image"
                       (rejected == Just True)
+
+-- Each elimination hides fresh origin/final carrier types, even though both
+-- callbacks recover the same actual owner. Composition must use that owner.
+testTransposalActionWitnessComposition :: IO ()
+testTransposalActionWitnessComposition =
+  emptyAtlas $ \owner ->
+    let witness = atlasWitnessData owner
+    in withPageElement (atlasOriginCell owner) $ \origin ->
+      withAtlasWitnessData witness $ \_ firstOwner ->
+        withAtlasWitnessData witness $ \_ secondOwner -> do
+          let first = TransposalAction.identityTransposalAction firstOwner
+              second = TransposalAction.identityTransposalAction secondOwner
+              composed = TransposalAction.composeTransposalActions second first
+              valid = atlasTransposalElement witness origin
+              outside = atlasTransposalElement witness
+                (RawPageElement.PageElement 0 (finiteOrdinal 100) [finiteOrdinal 100]
+                  (RawPageElement.pageElementCell origin))
+              rawTrace element =
+                let source = TransposalElement.transposalElementSource element
+                in (RawPageElement.somePageElementPage source,
+                    RawPageElement.somePageElementPosition source,
+                    RawPageElement.somePageElementTrace source)
+          assert "the origin belongs to the witnessed owner" (atlasTransposalElementValid witness valid)
+          assert "the raw regression input is outside the witnessed domain"
+            (not (atlasTransposalElementValid witness outside))
+          mapM_ (\element -> do
+            let image = TransposalAction.mapTransposalAction composed element
+            assert "composition retains the raw page, position, and trace"
+              (rawTrace image == rawTrace element)
+            assert "composition retains successful inverse results outside the domain"
+              (fmap rawTrace (TransposalAction.transposalActionPreimage composed element) == Just (rawTrace element)))
+            [valid, outside]
+
+-- The recovered target must retain the real domain, even though a symbolic
+-- identity's raw path predicate accepts values outside that domain.
+testTransposalTargetWitness :: IO ()
+testTransposalTargetWitness =
+  emptyAtlas $ \owner ->
+    withPageElement (atlasOriginCell owner) $ \origin -> do
+      let witness = atlasWitness owner
+          source = atlasTransposalElement witness origin
+          outside = atlasTransposalElement witness
+            (RawPageElement.PageElement 0 (finiteOrdinal 100) [finiteOrdinal 100]
+              (RawPageElement.pageElementCell origin))
+          primitive = atlasTransposal witness identityAtlasHom Just (const ())
+          identity = identityAtlasTransposal `asTypeOf` primitive
+          identityTree = composeAtlasTransposals identity (composeAtlasTransposals identity identity)
+          nested = composeAtlasTransposals
+            (composeAtlasTransposals identity primitive)
+            (composeAtlasTransposals primitive identityTree)
+      mapM_ (\arrow -> do
+        let target = atlasTransposalTargetWitness witness arrow
+            image = mapAtlasTransposalObject arrow source
+        assert "the source follows the complete native path" (atlasTransposalPathValid arrow source)
+        atlasTransposalMapValid witness arrow source `seq` pure ()
+        assert "the recovered target owns the mapped source" (atlasTransposalElementValid target image)
+        assert "the recovered target does not acquire out-of-domain values"
+          (not (atlasTransposalElementValid target outside))
+        assert "nested syntax retains the source inverse"
+          (atlasTransposalPreimage arrow image == Just source))
+        [identity, identityTree, primitive, nested]
+      assert "identity-only path acceptance is not owning membership"
+        (atlasTransposalPathValid identityTree outside)
+      assert "identity witness transport leaves the raw callbacks unchanged"
+        (mapAtlasTransposalObject identityTree outside == outside
+          && atlasTransposalPreimage identityTree outside == Just outside)
 
 testOrderedAtlasTransposal :: IO ()
 testOrderedAtlasTransposal =

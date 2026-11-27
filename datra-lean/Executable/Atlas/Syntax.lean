@@ -42,6 +42,16 @@ namespace AtlasHom
 variable {Object : Type v} {Primitive : Object → Object → Type w}
 variable {W X Y Z : Object}
 
+/-- Recover type-index evidence structurally, without interpreting owner data. -/
+-- ALIGN: ATLASHOM-TARGET-OBJECT-EQUALITY.
+def targetEvidence {Evidence : Object → Type*}
+    (primitiveEvidence : ∀ {X Y}, Primitive X Y → Evidence Y)
+    {X Y} (source : Evidence X) : AtlasHom Primitive X Y → Evidence Y
+  | .primitive operation => primitiveEvidence operation
+  | .identity => source
+  | .composite second first =>
+      targetEvidence @primitiveEvidence (targetEvidence @primitiveEvidence source first) second
+
 def presheafIdentity : AtlasHom Primitive X X := .identity
 
 /-- Eliminate the explicit Haskell equality wrapper into Lean's indexed

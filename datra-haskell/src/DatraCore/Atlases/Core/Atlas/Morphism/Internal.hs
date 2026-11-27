@@ -38,6 +38,7 @@ module Atlas.Morphism.Internal
   , identityAtlasHom
   , composeAtlasHoms
   , atlasHom
+  , atlasHomTargetObjectEquality
   , materializeAtlasHom
   , atlasHomPagination
   , mapAtlasHomElement
@@ -46,7 +47,7 @@ module Atlas.Morphism.Internal
   ) where
 
 import Atlas.Witness.Internal
-  (AtlasObject, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData, AtlasWitness, AtlasWitnessData (..), atlasWitness)
+  (AtlasObjectEquality (..), withAtlasWitness, AtlasObject, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData, AtlasWitness, AtlasWitnessData (..), atlasWitness)
 import Atlas.Internal
   ( Atlas
   , atlasCoherence
@@ -385,6 +386,20 @@ atlasHom
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
 atlasHom = PrimitiveAtlasHom Refl Refl
+
+-- | Recover the target's type indexing without materializing either owner.
+atlasHomTargetObjectEquality :: AtlasWitness source -> AtlasHom source target
+  -> AtlasObjectEquality target (AtlasObjectAtlasScope target) (AtlasObjectPaginationScope target) (AtlasObjectCellData target)
+atlasHomTargetObjectEquality witness hom =
+  withAtlasWitness witness $ \equality _ -> targetAtlasObjectEquality equality hom
+
+-- ALIGN: ATLASHOM-TARGET-OBJECT-EQUALITY.
+targetAtlasObjectEquality :: AtlasObjectEquality source a s d -> AtlasHom source target
+  -> AtlasObjectEquality target (AtlasObjectAtlasScope target) (AtlasObjectPaginationScope target) (AtlasObjectCellData target)
+targetAtlasObjectEquality AtlasObjectEquality (IdentityAtlasHom (AtlasEquality Refl)) = AtlasObjectEquality
+targetAtlasObjectEquality _ (PrimitiveAtlasHom _ Refl _) = AtlasObjectEquality
+targetAtlasObjectEquality equality (CompositeAtlasHom second first) =
+  targetAtlasObjectEquality (targetAtlasObjectEquality equality first) second
 
 -- | The target object carried by an already materialized morphism.
 atlasMorphismTargetWitness

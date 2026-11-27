@@ -108,12 +108,18 @@ and order, coverage, and stable-owner construction contracts remain separate
 obligations.
 Atlas object names and witnesses live in the exposed `Atlas.Witness` interface.
 `AtlasWitnessData` retains the actual Atlas and explicit GHC type-equality
-evidence; `AtlasWitness` is its object-indexed alias. The constructor's checked
-contract uses the explicit carrier parameters and preserves the complete owner
-package. Transporting that contract through the type-family alias at a concrete
-object index remains a proof-boundary obligation: LiquidHaskell does not retain
-the owner equation across that coercion. Dependent elimination gives the same package
-equation to the callback alongside its type-equality evidence. Equality of the
+evidence; `AtlasWitness` is its object-indexed alias. The checked `atlasWitness`
+constructor returns that alias directly while preserving the complete owner
+package. `withAtlasWitness` keeps all recovered carrier parameters abstract in
+its rank-polymorphic callback and supplies the package equation alongside its
+type-equality evidence. The explicit-carrier helpers `atlasWitnessData` and
+`withAtlasWitnessData` support raw-owner proofs without crossing the alias
+boundary. Public-client checks construct a concrete indexed witness through
+`Atlas`, eliminate it, and recover exactly the original owner. They reject
+owner substitution even when the nominal scopes agree. Lean proves the same
+construction/elimination round trip. Consuming the type-equality evidence to
+specialize a callback's carrier parameters still needs care: LiquidHaskell
+can lose the owner equation across the resulting type-family coercion. Equality of the
 complete owner packages gives checked agreement of trace validity and raw
 normalization, even when the hidden origin and final carrier types differ. Normalization
 preserves the witnessed trace domain and is idempotent on every raw occurrence.
@@ -138,8 +144,18 @@ results. Lean derives that view from the raw action and proves that erasing
 successful inverse evidence recovers the original lookup. Identity preserves raw
 values. Public observation laws expose identity and composed forward/inverse
 equations without requiring access to private helpers. Composition retains both
-raw callbacks and requires equality of the actual middle owners, so matching nominal scopes cannot silently replace that
-premise. Lean interprets the raw action as a written transposal when its forward
+raw callbacks and requires equality of the complete middle-owner packages.
+The hidden origin and final carrier types may differ. A checked domain-transfer
+lemma uses the owner equality to carry normalized trace membership through
+the forward middle value and every successful intermediate inverse lookup.
+Matching nominal scopes cannot replace that premise. Lean transports the
+middle carrier along the same complete-owner equality and retains both raw
+callback equations, including off-image inverse results.
+Public-client verification composes identity actions recovered by two independent
+witness eliminations, whose hidden carrier types are unrelated to the type
+checker. A runtime regression exercises that same construction on both an
+accepted origin and a raw element outside the owner's domain.
+Lean interprets the raw action as a written transposal when its forward
 map agrees with the Hom on genuine owning cells; this agreement is preserved by
 identity and composition, and the resulting interpretation preserves both
 categorical operations. The materialized object package retains the exact
@@ -147,16 +163,52 @@ normalized map, both complete owner packages, and both owning predicates across
 construction and dependent elimination. The native primitive constructor requires
 its materialized source owner to equal the supplied witness's owner, and retains
 that owner and the materialized target owner in its result. Native primitive
-construction also retains the exact source predicate, forward function, and
-supplied inverse. The checked witness bridge identifies its source predicate
+construction also retains the exact source and path predicates, forward function,
+and supplied inverse. The checked witness bridge identifies its source predicate
 with witnessed normalized membership when the complete source owners agree.
-The materialized map carries that membership into its target domain. Raw syntax
+The target-witness bridge identifies the materialized target domain in the same
+way. `atlasWitnessFor` preserves an existing object index alongside the actual
+owner, without specializing the carrier parameters. Target type evidence is
+recovered structurally from the Hom; it does not assert equality of owner
+values. `atlasHomTargetWitness` combines this evidence with the target stored in
+the actual materialized object package and retains that package's owner equation.
+The public wrapper also retains the exact witness value, so later materialization
+uses the same witness as the checked composition helper.
+The middle-domain lemma carries a witnessed source through the first map
+into the second map's source domain using equality of the complete middle
+owners. The derived version obtains its middle witness from the first package,
+so the public two-stage inverse proof needs no separately supplied middle
+witness or equality premise for that witness. It still requires the second
+materialization's source owner to agree with this recovered target owner.
+Combined with the retained primitive path predicates and raw map, this supplies
+the stage-acceptance premises of the native composite inverse law. Public-client
+checks also establish membership in the recovered target witness and reject
+owner substitution or missing source ownership and membership premises. Raw syntax
 and recursive laws live in the private syntax module; the private primitive
 builder checks the stored action's observations, and the public construction
 layer connects those observations to materialization and the witness.
 Native primitive transposals store this checked action; native identity and composition retain
-symbolic structure. Identity retains its total raw identity insertion. The native
-recursive inverse law is checked under `atlasTransposalPathValid`, which requires
+symbolic structure. Identity retains its total raw identity insertion together
+with a checked witness transport and owning-membership law. The native recursive
+`atlasTransposalTargetWitness` follows the stored actions: a primitive recovers
+its actual target, an identity preserves the supplied owner, and a composite
+threads the first recovered witness into the second subtree. Its contract
+identifies the result with the last retained target owner, or with the supplied
+owner for an identity-only tree. It does not rematerialize the included Hom or
+compare function-valued owners at runtime.
+The recursive map-validity proof establishes owning membership in this recovered
+target from witnessed source membership and acceptance by the complete path.
+The matching Lean theorem is generic over indexed witnesses and raw carriers;
+it does not require that nominal indices determine owner values. Public-client
+checks use the result to compose an arbitrary accepted first subtree with a
+second materialized transposal. They reject loss of either membership premise,
+replacement of a stored target owner, and substitution of the source witness in
+an identity-only tree. A focused runtime regression exercises nested identities
+and primitives, verifies the recovered target domain, and checks that
+identity-only raw callbacks still preserve out-of-domain inputs.
+Deriving path acceptance from owner compatibility is a separate obligation;
+this target-membership theorem retains that premise.
+The native recursive inverse law is checked under `atlasTransposalPathValid`, which requires
 acceptance by every primitive reached during the forward calculation. This
 execution premise is distinct from `atlasTransposalSourceValid`; it does not
 redefine the declared source domain. Lean proves the same raw syntax calculation
@@ -165,14 +217,23 @@ acceptance from source acceptance. With actual owners as the syntax indices,
 Lean proves that owning membership propagates through every stage, including
 symbolic identities. Public observation laws retain raw identity and both
 composed callbacks, including every inverse lookup and the exact path-acceptance
-condition. The ordered-transposal constructor restricts its supplied
-certificate to accepted source elements.
+condition. Separate identity laws preserve the raw forward map, every inverse
+lookup, path acceptance, and both retained endpoint owners when composing any
+subtree with a symbolic identity on either side. They require no input membership
+premise and do not identify the total source predicate of a leading identity
+with the actual owning domain. Associativity preserves both raw callbacks, the
+declared source domain, path acceptance, and endpoint owners under regrouping,
+without introducing a middle-membership premise. The ordered-transposal
+constructor restricts its supplied certificate to accepted source elements.
 Scalar trace validity alone does not identify an arbitrary stored dependent
 payload with the owning cell. That payload bridge, discharging the constructor's
 witness-to-materialized-source equality at its callers, and propagation of the
-accepted domain through native composition remain explicit obligations. Native composition must connect
-its middle allocations before the checked action composition theorem can justify
-its complete inverse and order laws. A leading symbolic identity has a total raw
+accepted domain through arbitrary native composition trees remain explicit
+obligations. The recursive target-membership proof supplies each accepted
+subtree's middle witness, but does not establish acceptance by the following
+subtree from its endpoint owner alone. The owner-compatibility certificate must
+connect all intermediate allocations before the checked action composition
+theorem can justify the complete inverse and order laws. A leading symbolic identity has a total raw
 source predicate and no stored owner, so the witness bridge must supply actual
 source membership rather than use that predicate as an owning certificate.
 Derived inclusion and Charter callbacks

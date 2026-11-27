@@ -19,14 +19,21 @@ def atlasWitness (owner : Atlas) : AtlasWitness := ⟨owner⟩
 
 def atlasWitnessOwner (witness : AtlasWitness) : AtlasOwner := atlasOwner witness.owner
 
+-- ALIGN: ATLAS-WITNESS-INDEXED-OWNER.
 -- ALIGN: ATLAS-WITNESS-CONSTRUCTION.
+-- ALIGN: ATLAS-WITNESS-RAW-CONSTRUCTION.
 theorem atlasWitness_owner (owner : Atlas) :
     atlasWitnessOwner (atlasWitness owner) = atlasOwner owner := rfl
 
 -- ALIGN: ATLAS-WITNESS-ELIMINATION.
+-- ALIGN: ATLAS-WITNESS-RAW-ELIMINATION.
 def withAtlasWitness {Result : Sort*} (witness : AtlasWitness)
     (useOwner : Unit → (owner : Atlas) → atlasOwner owner = atlasWitnessOwner witness → Result) : Result :=
   useOwner (AtlasEquality.erase (⟨rfl⟩ : AtlasEquality witness.owner witness.owner)) witness.owner rfl
+
+/-- Construction and dependent elimination recover the same complete owner. -/
+theorem withAtlasWitness_construct (owner : Atlas) :
+    withAtlasWitness (atlasWitness owner) (fun _ recovered _ => atlasOwner recovered) = atlasOwner owner := rfl
 
 namespace AtlasWitness
 

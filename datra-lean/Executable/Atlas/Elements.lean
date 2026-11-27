@@ -36,6 +36,17 @@ theorem witnessedSource_agrees (witness : AtlasWitness) (owner : Atlas)
   cases sameOwner
   rfl
 
+-- ALIGN: ATLAS-TRANSPOSAL-OWNER-DOMAIN-AGREEMENT.
+theorem owners_agree (first second : Atlas)
+    (owners : atlasOwner first = atlasOwner second)
+    (element : TransposalElementData first) :
+    let sameOwner : first = second := congrArg AtlasOwner.value owners
+    valid first element ↔ valid second (sameOwner ▸ element) := by
+  dsimp only
+  generalize_proofs sameOwner
+  cases sameOwner
+  rfl
+
 def ofSource (X : Atlas) (source : PageElement X.pages) : TransposalElementData X :=
   ⟨source.normalize (X.pages.depth - 1) X.pages.depth⟩
 

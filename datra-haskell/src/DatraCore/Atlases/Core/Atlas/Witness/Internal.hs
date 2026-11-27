@@ -13,7 +13,7 @@
 module Atlas.Witness.Internal
   ( AtlasObjectEquality (..), AtlasObject, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData
   , AtlasOwner, atlasOwner, atlasWitnessOwner
-  , AtlasWitness, AtlasWitnessData (..), atlasWitness, withAtlasWitness
+  , AtlasWitness, AtlasWitnessData (..), atlasWitnessFor, atlasWitnessData, atlasWitness, withAtlasWitnessData, withAtlasWitness
   , atlasWitnessElementValid, normalizeAtlasWitnessElement, atlasWitnessNormalizeValid
   , atlasWitnessOwnerAgrees
   ) where
@@ -75,28 +75,57 @@ atlasOwner = AtlasOwner
 atlasWitnessOwner :: AtlasWitnessData object a s d -> AtlasOwner
 atlasWitnessOwner (AtlasWitness _ owner) = atlasOwner owner
 
--- | Name an Atlas value as a category object witness.
+-- | Retain an existing object index without specializing its carrier types.
+-- ALIGN: ATLAS-WITNESS-INDEXED-OWNER.
+{-@ reflect atlasWitnessFor @-}
+{-@ atlasWitnessFor :: equality:AtlasObjectEquality object a s d -> owner:Atlas a s d o f
+      -> {witness:AtlasWitnessData object a s d | atlasWitnessOwner witness == atlasOwner owner} @-}
+atlasWitnessFor :: AtlasObjectEquality object a s d -> Atlas a s d o f -> AtlasWitnessData object a s d
+atlasWitnessFor = AtlasWitness
+
+-- | Retain explicit carrier parameters for proofs over raw owners.
+-- ALIGN: ATLAS-WITNESS-RAW-CONSTRUCTION.
+{-@ reflect atlasWitnessData @-}
+{-@ atlasWitnessData :: owner:Atlas a s d o f
+      -> {witness:AtlasWitnessData (AtlasObject a s d) a s d | atlasWitnessOwner witness == atlasOwner owner} @-}
+atlasWitnessData
+  :: Atlas atlasScope paginationScope cellData origin final
+  -> AtlasWitnessData (AtlasObject atlasScope paginationScope cellData) atlasScope paginationScope cellData
+atlasWitnessData owner = atlasWitnessFor AtlasObjectEquality owner
+
+-- | Construct at the object-indexed boundary, retaining the actual owner.
 -- ALIGN: ATLAS-WITNESS-CONSTRUCTION.
 {-@ reflect atlasWitness @-}
 {-@ atlasWitness :: owner:Atlas a s d o f
-      -> {witness:AtlasWitnessData (AtlasObject a s d) a s d | atlasWitnessOwner witness == atlasOwner owner} @-}
-atlasWitness
-  :: Atlas atlasScope paginationScope cellData origin final
-  -> AtlasWitnessData (AtlasObject atlasScope paginationScope cellData) atlasScope paginationScope cellData
+      -> {witness:AtlasWitness (AtlasObject a s d) | atlasWitnessOwner witness == atlasOwner owner} @-}
+atlasWitness :: Atlas a s d o f -> AtlasWitness (AtlasObject a s d)
 atlasWitness owner = AtlasWitness AtlasObjectEquality owner
 
--- | Eliminate a witness while retaining the actual stored Atlas.
--- ALIGN: ATLAS-WITNESS-ELIMINATION.
-{-@ withAtlasWitness :: forall object a s d result. witness:AtlasWitnessData object a s d
+-- | Eliminate a raw witness with its carrier parameters fixed.
+-- ALIGN: ATLAS-WITNESS-RAW-ELIMINATION.
+{-@ withAtlasWitnessData :: forall object a s d result. witness:AtlasWitnessData object a s d
       -> (forall origin final. AtlasObjectEquality object a s d
            -> owner:{Atlas a s d origin final | atlasOwner owner == atlasWitnessOwner witness} -> result)
       -> result @-}
-withAtlasWitness
+withAtlasWitnessData
   :: forall object a s d result. AtlasWitnessData object a s d
   -> (forall origin final. AtlasObjectEquality object a s d
        -> Atlas a s d origin final -> result)
   -> result
-withAtlasWitness (AtlasWitness equality valueAtlas) useAtlas = useAtlas equality valueAtlas
+withAtlasWitnessData (AtlasWitness equality valueAtlas) useAtlas = useAtlas equality valueAtlas
+
+-- | Keep carrier parameters abstract until the callback consumes its explicit
+-- equality evidence, preserving ownership across object-indexed construction.
+-- ALIGN: ATLAS-WITNESS-ELIMINATION.
+{-@ withAtlasWitness :: forall object result. witness:AtlasWitness object
+      -> (forall a s d origin final. AtlasObjectEquality object a s d
+           -> owner:{Atlas a s d origin final | atlasOwner owner == atlasWitnessOwner witness} -> result)
+      -> result @-}
+withAtlasWitness :: forall object result. AtlasWitness object
+  -> (forall a s d origin final. AtlasObjectEquality object a s d
+       -> Atlas a s d origin final -> result)
+  -> result
+withAtlasWitness (AtlasWitness equality owner) useOwner = useOwner equality owner
 
 {-@ reflect atlasWitnessElementValid @-}
 atlasWitnessElementValid :: AtlasWitnessData object a s d

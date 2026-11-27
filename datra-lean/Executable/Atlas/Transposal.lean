@@ -25,6 +25,23 @@ def targetOwner {Owner : Type*} (owner : ∀ {X Y}, Primitive X Y → Owner)
       | none => targetOwner @owner first
       | some value => some value
 
+/-- Recover the actual target evidence stored in each primitive, carrying the
+supplied evidence unchanged through symbolic identities. -/
+-- ALIGN: ATLAS-TRANSPOSAL-NATIVE-TARGET-WITNESS.
+theorem targetEvidence_owner {Evidence : Object → Type*} {Owner : Type*}
+    (primitiveEvidence : ∀ {X Y}, Primitive X Y → Evidence Y)
+    (owner : ∀ {X}, Evidence X → Owner) {X Y} (arrow : AtlasHom Primitive X Y) :
+    ∀ source : Evidence X,
+      owner (arrow.targetEvidence @primitiveEvidence source) =
+        (targetOwner (fun operation => owner (primitiveEvidence operation)) arrow).getD (owner source) := by
+  induction arrow with
+  | primitive => intro source; rfl
+  | identity => intro source; rfl
+  | composite second first ih₂ ih₁ =>
+      intro source
+      simp only [AtlasHom.targetEvidence, ih₂, ih₁, targetOwner]
+      cases targetOwner (fun operation => owner (primitiveEvidence operation)) second <;> rfl
+
 /-- The native constructors use the shared primitive/identity/composite syntax.
 These operations retain raw callbacks, independently of owner compatibility. -/
 def mapObject (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
@@ -62,6 +79,27 @@ def pathValid (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
       pathValid @domain @forward first source ∧
         pathValid @domain @forward second (mapObject @forward first source)
 
+/-- Path acceptance supplies the primitive domains; witnessed membership is
+also necessary for a tree containing only symbolic identities. -/
+-- ALIGN: ATLAS-TRANSPOSAL-NATIVE-TARGET-VALID.
+theorem targetEvidence_map_valid {Evidence : Object → Type*}
+    (primitiveEvidence : ∀ {X Y}, Primitive X Y → Evidence Y)
+    (accepted : ∀ {X}, Evidence X → Raw X → Prop)
+    (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
+    (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
+    (primitiveValid : ∀ {X Y} (operation : Primitive X Y) (source : Raw X),
+      domain operation source → accepted (primitiveEvidence operation) (forward operation source))
+    {X Y} (arrow : AtlasHom Primitive X Y) :
+    ∀ (witness : Evidence X) (source : Raw X), accepted witness source →
+      pathValid @domain @forward arrow source →
+      accepted (arrow.targetEvidence @primitiveEvidence witness) (mapObject @forward arrow source) := by
+  induction arrow with
+  | primitive operation => exact fun _ source _ valid => primitiveValid operation source valid
+  | identity => exact fun _ _ valid _ => valid
+  | composite second first ih₂ ih₁ =>
+      intro witness source valid path
+      exact ih₂ _ _ (ih₁ witness source valid path.1) path.2
+
 -- ALIGN: ATLAS-TRANSPOSAL-NATIVE-COMPOSITION-CALLBACKS.
 theorem composite_callbacks
     (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
@@ -76,6 +114,57 @@ theorem composite_callbacks
     (pathValid @domain @forward (.composite second first) source ↔
       pathValid @domain @forward first source ∧
         pathValid @domain @forward second (mapObject @forward first source)) := ⟨rfl, rfl, Iff.rfl⟩
+
+-- ALIGN: ATLAS-TRANSPOSAL-LEFT-IDENTITY.
+theorem left_identity {Owner : Type*}
+    (sourceOf targetOf : ∀ {X Y}, Primitive X Y → Owner)
+    (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
+    (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
+    (backward : ∀ {X Y}, Primitive X Y → Raw Y → Option (Raw X))
+    {X Y} (arrow : AtlasHom Primitive X Y) (source : Raw X) (target : Raw Y) :
+    mapObject @forward (.composite .identity arrow) source = mapObject @forward arrow source ∧
+      preimage @backward (.composite .identity arrow) target = preimage @backward arrow target ∧
+      (pathValid @domain @forward (.composite .identity arrow) source ↔ pathValid @domain @forward arrow source) ∧
+      sourceOwner @sourceOf (.composite .identity arrow) = sourceOwner @sourceOf arrow ∧
+      targetOwner @targetOf (.composite .identity arrow) = targetOwner @targetOf arrow := by
+  simp [mapObject, preimage, pathValid, sourceOwner, targetOwner]
+  cases sourceOwner @sourceOf arrow <;> rfl
+
+-- ALIGN: ATLAS-TRANSPOSAL-RIGHT-IDENTITY.
+theorem right_identity {Owner : Type*}
+    (sourceOf targetOf : ∀ {X Y}, Primitive X Y → Owner)
+    (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
+    (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
+    (backward : ∀ {X Y}, Primitive X Y → Raw Y → Option (Raw X))
+    {X Y} (arrow : AtlasHom Primitive X Y) (source : Raw X) (target : Raw Y) :
+    mapObject @forward (.composite arrow .identity) source = mapObject @forward arrow source ∧
+      preimage @backward (.composite arrow .identity) target = preimage @backward arrow target ∧
+      (pathValid @domain @forward (.composite arrow .identity) source ↔ pathValid @domain @forward arrow source) ∧
+      sourceOwner @sourceOf (.composite arrow .identity) = sourceOwner @sourceOf arrow ∧
+      targetOwner @targetOf (.composite arrow .identity) = targetOwner @targetOf arrow := by
+  simp [mapObject, preimage, pathValid, sourceOwner, targetOwner]
+  cases targetOwner @targetOf arrow <;> rfl
+
+-- ALIGN: ATLAS-TRANSPOSAL-ASSOCIATIVITY.
+theorem associativity {Owner : Type*}
+    (sourceOf targetOf : ∀ {X Y}, Primitive X Y → Owner)
+    (domain : ∀ {X Y}, Primitive X Y → Raw X → Prop)
+    (forward : ∀ {X Y}, Primitive X Y → Raw X → Raw Y)
+    (backward : ∀ {X Y}, Primitive X Y → Raw Y → Option (Raw X))
+    {W X Y Z} (third : AtlasHom Primitive Y Z) (second : AtlasHom Primitive X Y)
+    (first : AtlasHom Primitive W X) (source : Raw W) (target : Raw Z) :
+    let left := AtlasHom.composite third (.composite second first)
+    let right := AtlasHom.composite (.composite third second) first
+    mapObject @forward left source = mapObject @forward right source ∧
+      preimage @backward left target = preimage @backward right target ∧
+      (sourceValid @domain left source ↔ sourceValid @domain right source) ∧
+      (pathValid @domain @forward left source ↔ pathValid @domain @forward right source) ∧
+      sourceOwner @sourceOf left = sourceOwner @sourceOf right ∧
+      targetOwner @targetOf left = targetOwner @targetOf right := by
+  simp [mapObject, preimage, sourceValid, pathValid, sourceOwner, targetOwner, Option.bind_assoc, and_assoc]
+  constructor
+  · cases sourceOwner @sourceOf first <;> rfl
+  · cases targetOwner @targetOf third <;> rfl
 
 /-- This proves the native recursive inverse calculation. It does not replace
 the source domain with an intersection or assert matching nominal indices imply
@@ -205,7 +294,6 @@ def identity (X : Atlas) : TransposalAction X X where
 theorem identity_callbacks (X : Atlas) (source : TransposalElementData X) :
     (identity X).map source = source ∧ (identity X).preimage source = some source := ⟨rfl, rfl⟩
 
--- ALIGN: ATLAS-TRANSPOSAL-OWNED-COMPOSITION.
 def comp {X Y Z : Atlas} (second : TransposalAction Y Z) (first : TransposalAction X Y) :
     TransposalAction X Z where
   map source := second.map (first.map source)
@@ -221,15 +309,44 @@ def comp {X Y Z : Atlas} (second : TransposalAction Y Z) (first : TransposalActi
     simp [DomanialInsertion.composePartialInverses,
       second.leftInverse _ (first.map_valid source valid), first.leftInverse source valid]
 
--- ALIGN: ATLAS-TRANSPOSAL-OWNED-COMPOSITION-MAP.
 theorem comp_map {X Y Z : Atlas} (second : TransposalAction Y Z) (first : TransposalAction X Y)
     (source : TransposalElementData X) :
     (comp second first).map source = second.map (first.map source) := rfl
 
--- ALIGN: ATLAS-TRANSPOSAL-OWNED-COMPOSITION-PREIMAGE.
 theorem comp_preimage {X Y Z : Atlas} (second : TransposalAction Y Z) (first : TransposalAction X Y)
     (target : TransposalElementData Z) :
     (comp second first).preimage target = (second.preimage target).bind first.preimage := rfl
+
+/-- Equality of the complete middle owners suffices, independently of how the
+hidden endpoint carriers were packaged. Both raw callbacks are transported. -/
+-- ALIGN: ATLAS-TRANSPOSAL-OWNED-COMPOSITION.
+def compAlongOwner {X Y₁ Y₂ Z : Atlas} (second : TransposalAction Y₂ Z)
+    (first : TransposalAction X Y₁) (owners : atlasOwner Y₁ = atlasOwner Y₂) : TransposalAction X Z :=
+  let sameOwner : Y₂ = Y₁ := (congrArg AtlasOwner.value owners).symm
+  comp (sameOwner ▸ second) first
+
+-- ALIGN: ATLAS-TRANSPOSAL-OWNED-COMPOSITION-MAP.
+theorem compAlongOwner_map {X Y₁ Y₂ Z : Atlas} (second : TransposalAction Y₂ Z)
+    (first : TransposalAction X Y₁) (owners : atlasOwner Y₁ = atlasOwner Y₂)
+    (source : TransposalElementData X) :
+    let sameOwner : Y₁ = Y₂ := congrArg AtlasOwner.value owners
+    (compAlongOwner second first owners).map source =
+      second.map (sameOwner ▸ first.map source) := by
+  have sameOwner : Y₁ = Y₂ := congrArg AtlasOwner.value owners
+  cases sameOwner
+  rfl
+
+-- ALIGN: ATLAS-TRANSPOSAL-OWNED-COMPOSITION-PREIMAGE.
+theorem compAlongOwner_preimage {X Y₁ Y₂ Z : Atlas} (second : TransposalAction Y₂ Z)
+    (first : TransposalAction X Y₁) (owners : atlasOwner Y₁ = atlasOwner Y₂)
+    (target : TransposalElementData Z) :
+    let sameOwner : Y₂ = Y₁ := (congrArg AtlasOwner.value owners).symm
+    (compAlongOwner second first owners).preimage target =
+      (second.preimage target).bind (fun middle =>
+        first.preimage (sameOwner ▸ middle)) := by
+  have sameOwner : Y₁ = Y₂ := congrArg AtlasOwner.value owners
+  cases sameOwner
+  rfl
 
 end TransposalAction
 
@@ -253,9 +370,12 @@ theorem primitive_retains {X Y : Atlas} (witness : AtlasWitness)
       targetOwner (.primitive action) = some (atlasOwner Y) ∧
       TransposalPath.sourceValid (Primitive := TransposalAction) (fun {X _} _ source =>
         TransposalElementData.valid X source) (.primitive action) = TransposalElementData.valid X ∧
+      TransposalPath.pathValid (Primitive := TransposalAction) (fun {X _} _ source =>
+        TransposalElementData.valid X source) (fun operation => operation.map)
+          (.primitive action) = TransposalElementData.valid X ∧
       TransposalPath.mapObject (Primitive := TransposalAction) (fun operation => operation.map) (.primitive action) = action.map ∧
       TransposalPath.preimage (Primitive := TransposalAction) (fun operation => operation.preimage) (.primitive action) = action.preimage :=
-  ⟨congrArg some ownerMatches, rfl, rfl, rfl, rfl⟩
+  ⟨congrArg some ownerMatches, rfl, rfl, rfl, rfl, rfl⟩
 
 def mapObject {X Y : Atlas} (arrow : Syntax X Y) : TransposalElementData X → TransposalElementData Y :=
   TransposalPath.mapObject (fun action => action.map) arrow
@@ -323,11 +443,43 @@ structure TransposalObjects (X Y : Atlas) where
   map : TransposalElementData X → TransposalElementData Y
   map_valid : ∀ source, TransposalElementData.valid X source → TransposalElementData.valid Y (map source)
 
+-- ALIGN: ATLAS-TRANSPOSAL-MIDDLE-DOMAIN.
+theorem transposalObjects_middle_valid {X M N Y : Atlas}
+    (first : TransposalObjects X M) (_second : TransposalObjects N Y)
+    (owners : atlasOwner M = atlasOwner N)
+    (source : TransposalElementData X) (valid : TransposalElementData.valid X source) :
+    let sameOwner : M = N := congrArg AtlasOwner.value owners
+    TransposalElementData.valid N (sameOwner ▸ first.map source) :=
+  (TransposalElementData.owners_agree M N owners (first.map source)).mp (first.map_valid source valid)
+
 def transposalObjectsSourceOwner {X Y : Atlas} (_ : TransposalObjects X Y) : AtlasOwner :=
   atlasOwner X
 
 def transposalObjectsTargetOwner {X Y : Atlas} (_ : TransposalObjects X Y) : AtlasOwner :=
   atlasOwner Y
+
+def transposalObjectsTargetWitness {X Y : Atlas} (_ : TransposalObjects X Y) : AtlasWitness :=
+  atlasWitness Y
+
+-- ALIGN: ATLAS-TRANSPOSAL-OBJECTS-TARGET-WITNESS.
+theorem transposalObjectsTargetWitness_owner {X Y : Atlas} (objects : TransposalObjects X Y) :
+    atlasWitnessOwner (transposalObjectsTargetWitness objects) = transposalObjectsTargetOwner objects := rfl
+
+/-- In the owner-indexed model, materialization retains the Hom's target Atlas. -/
+def atlasHomTargetWitness {X Y : Atlas} (_ : Hom X Y) : AtlasWitness := atlasWitness Y
+
+-- ALIGN: ATLAS-TRANSPOSAL-HOM-TARGET-WITNESS.
+theorem atlasHomTargetWitness_owner {X Y : Atlas} (hom : Hom X Y) (objects : TransposalObjects X Y) :
+    atlasWitnessOwner (atlasHomTargetWitness hom) = transposalObjectsTargetOwner objects := rfl
+
+-- ALIGN: ATLAS-TRANSPOSAL-DERIVED-MIDDLE-DOMAIN.
+theorem transposalObjects_next_source_valid {X M N Y : Atlas}
+    (first : TransposalObjects X M) (second : TransposalObjects N Y)
+    (owners : atlasOwner N = atlasWitnessOwner (transposalObjectsTargetWitness first))
+    (source : TransposalElementData X) (valid : TransposalElementData.valid X source) :
+    let sameOwner : M = N := congrArg AtlasOwner.value owners.symm
+    TransposalElementData.valid N (sameOwner ▸ first.map source) :=
+  transposalObjects_middle_valid first second owners.symm source valid
 
 def transposalObjects {X Y : Atlas}
     (object : PageElement X.pages → PageElement Y.pages)

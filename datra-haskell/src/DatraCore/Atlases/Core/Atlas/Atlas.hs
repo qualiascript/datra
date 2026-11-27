@@ -100,6 +100,7 @@ module Atlas
   , normalizeAtlasWitnessElement
   , atlasWitnessNormalizeValid
   , atlasHom
+  , atlasHomTargetObjectEquality
   , materializeAtlasHom
   , atlasHomPagination
   , mapAtlasHomElement
@@ -192,6 +193,7 @@ import Atlas.Morphism.Internal
   , withAtlasMorphismAction
   , atlasMorphismPagination
   , atlasHom
+  , atlasHomTargetObjectEquality
   , materializeAtlasHom
   , atlasHomPagination
   , mapAtlasHomElement

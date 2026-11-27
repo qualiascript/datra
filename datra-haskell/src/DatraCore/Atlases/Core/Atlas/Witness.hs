@@ -13,7 +13,7 @@
 module Atlas.Witness
   ( AtlasObjectEquality (..), AtlasObject, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData
   , AtlasOwner, atlasOwner, atlasWitnessOwner
-  , AtlasWitness, AtlasWitnessData, atlasWitness, withAtlasWitness
+  , AtlasWitness, AtlasWitnessData, atlasWitnessFor, atlasWitnessData, atlasWitness, withAtlasWitnessData, withAtlasWitness
   , atlasWitnessElementValid, normalizeAtlasWitnessElement, atlasWitnessNormalizeValid
   , atlasWitnessOwnerAgrees
   ) where
@@ -26,24 +26,44 @@ import Atlas.Witness.Internal
   )
 
 import qualified Atlas.Witness.Internal as Internal
-  (atlasWitness, withAtlasWitness, atlasWitnessNormalizeValid, atlasWitnessOwnerAgrees)
+  (atlasWitnessFor, atlasWitnessData, atlasWitness, withAtlasWitnessData, withAtlasWitness, atlasWitnessNormalizeValid, atlasWitnessOwnerAgrees)
 import Atlas.Internal (Atlas, atlasPageElements, normalizeAtlasElement)
 import PageElements (PageElement, pageElementTraceValid)
 
-{-@ atlasWitness :: owner:Atlas a s d o f
+{-@ atlasWitnessFor :: equality:AtlasObjectEquality object a s d -> owner:Atlas a s d o f
+      -> {witness:AtlasWitnessData object a s d | atlasWitnessOwner witness == atlasOwner owner} @-}
+atlasWitnessFor :: AtlasObjectEquality object a s d -> Atlas a s d o f -> AtlasWitnessData object a s d
+atlasWitnessFor equality owner = Internal.atlasWitnessFor equality owner
+
+{-@ atlasWitnessData :: owner:Atlas a s d o f
       -> {witness:AtlasWitnessData (AtlasObject a s d) a s d | atlasWitnessOwner witness == atlasOwner owner} @-}
-atlasWitness
+atlasWitnessData
   :: Atlas atlasScope paginationScope cellData origin final
   -> AtlasWitnessData (AtlasObject atlasScope paginationScope cellData) atlasScope paginationScope cellData
+atlasWitnessData owner = Internal.atlasWitnessData owner
+
+{-@ atlasWitness :: owner:Atlas a s d o f
+      -> {witness:AtlasWitness (AtlasObject a s d) | atlasWitnessOwner witness == atlasOwner owner} @-}
+atlasWitness :: Atlas a s d o f -> AtlasWitness (AtlasObject a s d)
 atlasWitness owner = Internal.atlasWitness owner
 
-{-@ withAtlasWitness :: forall object a s d result. witness:AtlasWitnessData object a s d
+{-@ withAtlasWitnessData :: forall object a s d result. witness:AtlasWitnessData object a s d
       -> (forall origin final. AtlasObjectEquality object a s d
            -> owner:{Atlas a s d origin final | atlasOwner owner == atlasWitnessOwner witness} -> result)
       -> result @-}
-withAtlasWitness
+withAtlasWitnessData
   :: forall object a s d result. AtlasWitnessData object a s d
   -> (forall origin final. AtlasObjectEquality object a s d
+       -> Atlas a s d origin final -> result)
+  -> result
+withAtlasWitnessData witness useOwner = Internal.withAtlasWitnessData witness useOwner
+
+{-@ withAtlasWitness :: forall object result. witness:AtlasWitness object
+      -> (forall a s d origin final. AtlasObjectEquality object a s d
+           -> owner:{Atlas a s d origin final | atlasOwner owner == atlasWitnessOwner witness} -> result)
+      -> result @-}
+withAtlasWitness :: forall object result. AtlasWitness object
+  -> (forall a s d origin final. AtlasObjectEquality object a s d
        -> Atlas a s d origin final -> result)
   -> result
 withAtlasWitness witness useOwner = Internal.withAtlasWitness witness useOwner

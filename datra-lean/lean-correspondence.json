@@ -7160,7 +7160,7 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Action.hs",
       "haskell_declaration": "composeTransposalActions",
       "lean_namespace": "Datra.Executable.Atlas.TransposalAction",
-      "lean_declaration": "comp"
+      "lean_declaration": "compAlongOwner"
     },
     {
       "id": "ATLAS-TRANSPOSAL-OWNED-INSERTION",
@@ -7195,14 +7195,14 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Action.hs",
       "haskell_declaration": "composeTransposalActionsMap",
       "lean_namespace": "Datra.Executable.Atlas.TransposalAction",
-      "lean_declaration": "comp_map"
+      "lean_declaration": "compAlongOwner_map"
     },
     {
       "id": "ATLAS-TRANSPOSAL-OWNED-COMPOSITION-PREIMAGE",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Action.hs",
       "haskell_declaration": "composeTransposalActionsPreimage",
       "lean_namespace": "Datra.Executable.Atlas.TransposalAction",
-      "lean_declaration": "comp_preimage"
+      "lean_declaration": "compAlongOwner_preimage"
     },
     {
       "id": "ATLAS-TRANSPOSAL-PATH-LEFT-INVERSE",
@@ -7280,6 +7280,104 @@
       "haskell_declaration": "atlasHomSourceAgrees",
       "lean_namespace": "Datra.Executable.Atlas.TransposalElementData",
       "lean_declaration": "witnessedSource_agrees"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-OWNER-DOMAIN-AGREEMENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Element.hs",
+      "haskell_declaration": "transposalOwnersAgree",
+      "lean_namespace": "Datra.Executable.Atlas.TransposalElementData",
+      "lean_declaration": "owners_agree"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-MIDDLE-DOMAIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Internal.hs",
+      "haskell_declaration": "atlasHomMiddleValid",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "transposalObjects_middle_valid"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-LEFT-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Syntax/Internal.hs",
+      "haskell_declaration": "atlasTransposalLeftIdentity",
+      "lean_namespace": "Datra.Executable.TransposalPath",
+      "lean_declaration": "left_identity"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-RIGHT-IDENTITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Syntax/Internal.hs",
+      "haskell_declaration": "atlasTransposalRightIdentity",
+      "lean_namespace": "Datra.Executable.TransposalPath",
+      "lean_declaration": "right_identity"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-ASSOCIATIVITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Syntax/Internal.hs",
+      "haskell_declaration": "atlasTransposalAssociativity",
+      "lean_namespace": "Datra.Executable.TransposalPath",
+      "lean_declaration": "associativity"
+    },
+    {
+      "id": "ATLAS-WITNESS-RAW-CONSTRUCTION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Witness/Internal.hs",
+      "haskell_declaration": "atlasWitnessData",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "atlasWitness_owner"
+    },
+    {
+      "id": "ATLAS-WITNESS-RAW-ELIMINATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Witness/Internal.hs",
+      "haskell_declaration": "withAtlasWitnessData",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "withAtlasWitness"
+    },
+    {
+      "id": "ATLAS-WITNESS-INDEXED-OWNER",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Witness/Internal.hs",
+      "haskell_declaration": "atlasWitnessFor",
+      "lean_namespace": "Datra.Executable",
+      "lean_declaration": "atlasWitness_owner"
+    },
+    {
+      "id": "ATLASHOM-TARGET-OBJECT-EQUALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Core/Atlas/Morphism/Internal.hs",
+      "haskell_declaration": "targetAtlasObjectEquality",
+      "lean_namespace": "Datra.Executable.AtlasHom",
+      "lean_declaration": "targetEvidence"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-OBJECTS-TARGET-WITNESS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Objects.hs",
+      "haskell_declaration": "transposalObjectsTargetWitness",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "transposalObjectsTargetWitness_owner"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-HOM-TARGET-WITNESS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Objects.hs",
+      "haskell_declaration": "atlasHomTargetWitness",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "atlasHomTargetWitness_owner"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-DERIVED-MIDDLE-DOMAIN",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Internal.hs",
+      "haskell_declaration": "atlasHomNextSourceValid",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "transposalObjects_next_source_valid"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-NATIVE-TARGET-WITNESS",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Syntax/Internal.hs",
+      "haskell_declaration": "atlasTransposalTargetWitness",
+      "lean_namespace": "Datra.Executable.TransposalPath",
+      "lean_declaration": "targetEvidence_owner"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-NATIVE-TARGET-VALID",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Syntax/Internal.hs",
+      "haskell_declaration": "atlasTransposalMapValid",
+      "lean_namespace": "Datra.Executable.TransposalPath",
+      "lean_declaration": "targetEvidence_map_valid"
     }
   ],
   "modules": [
@@ -8313,7 +8411,11 @@
       ],
       "refinements": [
         "atlasTransposalElement",
+        "atlasTransposalMapValid",
         "atlasHomSourceAgrees",
+        "atlasHomTargetAgrees",
+        "atlasHomMiddleValid",
+        "atlasHomNextSourceValid",
         "atlasTransposal"
       ],
       "lean_target": "Datra.Executable.Atlas.Transposal",
@@ -10904,6 +11006,7 @@
       ],
       "refinements": [
         "transposalWitnessOwnerAgrees",
+        "transposalOwnersAgree",
         "transposalElementAt",
         "withTransposalElementOf"
       ],
@@ -10976,13 +11079,17 @@
         "mapAtlasHomObject"
       ],
       "opaque_reflected": [
-        "homTransposalObjects"
+        "homTransposalObjects",
+        "atlasHomTargetWitness"
       ],
       "refinements": [
         "transposalObjects",
+        "transposalObjectsTargetWitness",
         "transposalObjectsWitnessAgrees",
+        "transposalObjectsTargetWitnessAgrees",
         "transposalObjectsMap",
         "withTransposalObjects",
+        "atlasHomTargetWitness",
         "mapAtlasHomObject",
         "homTransposalObjectsRetains"
       ],
@@ -11000,7 +11107,17 @@
         "identityAtlasTransposalRetains",
         "composeAtlasTransposalsRetains",
         "atlasTransposalElement",
-        "atlasHomSourceAgrees"
+        "atlasHomSourceAgrees",
+        "atlasHomTargetAgrees",
+        "atlasHomMiddleValid",
+        "atlasTransposal",
+        "atlasTransposalLeftIdentity",
+        "atlasTransposalRightIdentity",
+        "atlasTransposalAssociativity",
+        "atlasHomNextSourceValid",
+        "atlasHomTargetWitness",
+        "atlasTransposalTargetWitness",
+        "atlasTransposalMapValid"
       ],
       "lean_target": "Datra.Executable.TransposalPath",
       "coverage": "partial",
@@ -11013,8 +11130,12 @@
         "composeAtlasTransposals",
         "atlasHomSourceOwner",
         "atlasHomTargetOwner",
+        "atlasHomTargetWitness",
+        "Objects.atlasHomTargetWitness",
         "atlasTransposalSourceOwner",
-        "atlasTransposalTargetOwner"
+        "atlasTransposalTargetOwner",
+        "atlasTransposalTargetWitness",
+        "Internal.atlasTransposalTargetWitness"
       ]
     },
     {
@@ -11032,13 +11153,18 @@
       "reflected": [
         "atlasOwner",
         "atlasWitnessOwner",
+        "atlasWitnessFor",
+        "atlasWitnessData",
         "atlasWitness",
         "atlasWitnessElementValid",
         "normalizeAtlasWitnessElement"
       ],
       "opaque_reflected": [],
       "refinements": [
+        "atlasWitnessFor",
+        "atlasWitnessData",
         "atlasWitness",
+        "withAtlasWitnessData",
         "withAtlasWitness",
         "atlasWitnessOwnerAgrees",
         "atlasWitnessNormalizeValid"
@@ -11062,7 +11188,10 @@
         "normalizeAtlasWitnessElement"
       ],
       "refinements": [
+        "atlasWitnessFor",
+        "atlasWitnessData",
         "atlasWitness",
+        "withAtlasWitnessData",
         "withAtlasWitness",
         "atlasWitnessNormalizeValid",
         "atlasWitnessOwnerAgrees"
@@ -11083,9 +11212,11 @@
       "predicates": [],
       "refinement_aliases": [],
       "types": [
-        "AtlasTransposal"
+        "AtlasTransposal",
+        "TransposalIdentity"
       ],
       "reflected": [
+        "atlasTransposalTargetWitness",
         "atlasTransposalSourceOwner",
         "atlasTransposalTargetOwner",
         "atlasTransposalSourceValid",
@@ -11093,15 +11224,24 @@
         "mapAtlasTransposalObject",
         "atlasTransposalPreimage",
         "identityAtlasTransposal",
+        "preserveIdentityWitness",
         "composeAtlasTransposals"
       ],
       "opaque_reflected": [
+        "atlasHomTargetObjectEquality",
         "identityAtlasHom"
       ],
       "refinements": [
+        "atlasTransposalTargetWitness",
+        "atlasTransposalMapValid",
         "atlasTransposalLeftInverse",
+        "preserveIdentityMembership",
         "identityAtlasTransposalRetains",
-        "composeAtlasTransposalsRetains"
+        "composeAtlasTransposalsRetains",
+        "atlasTransposalLeftIdentity",
+        "atlasTransposalRightIdentity",
+        "atlasTransposalAssociativity",
+        "atlasTransposalPreimageAssociativity"
       ]
     },
     {

@@ -14,13 +14,15 @@ module AtlasTransposal.Objects
   ( TransposalObjects, transposalObjects, transposalObjectsSource, transposalObjectsTarget
   , transposalObjectsSourceOwner, transposalObjectsTargetOwner
   , transposalObjectsWitnessAgrees
+  , transposalObjectsTargetWitness, atlasHomTargetWitness
+  , transposalObjectsTargetWitnessAgrees
   , homTransposalObjects, homTransposalObjectsRetains
   , atlasHomSourceOwner, atlasHomTargetOwner, atlasHomSourceValid, atlasHomTargetValid, mapAtlasHomObject
   , transposalObjectsMap, withTransposalObjects ) where
 
 import Atlas (Atlas, AtlasMorphismAction, atlasMorphismSource, atlasMorphismTarget,
-  AtlasHom, materializeAtlasHom, withAtlasMorphismAction)
-import Atlas.Witness (AtlasOwner, atlasOwner, AtlasWitnessData, atlasWitnessOwner,
+  AtlasHom, atlasHomTargetObjectEquality, materializeAtlasHom, withAtlasMorphismAction)
+import Atlas.Witness (AtlasObjectEquality, atlasWitnessFor, AtlasOwner, atlasOwner, AtlasWitnessData, atlasWitnessOwner,
   AtlasWitness, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData)
 import AtlasTransposal.Element
   (AtlasTransposalElement, TransposalElementData, transposalElementValid, transposalWitnessElementValid, transposalWitnessOwnerAgrees)
@@ -49,6 +51,15 @@ transposalObjectsSourceOwner (TransposalObjects action) = atlasOwner (atlasMorph
 transposalObjectsTargetOwner :: TransposalObjects sa ss sd ta ts td -> AtlasOwner
 transposalObjectsTargetOwner (TransposalObjects action) = atlasOwner (atlasMorphismTarget action)
 
+-- | Use the target stored in this materialization, not an independently recovered owner.
+-- ALIGN: ATLAS-TRANSPOSAL-OBJECTS-TARGET-WITNESS.
+{-@ transposalObjectsTargetWitness :: AtlasObjectEquality target ta ts td
+      -> objects:TransposalObjects sa ss sd ta ts td
+      -> {witness:AtlasWitnessData target ta ts td | atlasWitnessOwner witness == transposalObjectsTargetOwner objects} @-}
+transposalObjectsTargetWitness :: AtlasObjectEquality target ta ts td -> TransposalObjects sa ss sd ta ts td
+  -> AtlasWitnessData target ta ts td
+transposalObjectsTargetWitness equality (TransposalObjects action) = atlasWitnessFor equality (atlasMorphismTarget action)
+
 {-@ transposalObjectsWitnessAgrees :: witness:AtlasWitnessData object sa ss sd
       -> objects:{TransposalObjects sa ss sd ta ts td |
            transposalObjectsSourceOwner objects == atlasWitnessOwner witness}
@@ -58,6 +69,16 @@ transposalObjectsWitnessAgrees :: AtlasWitnessData object sa ss sd -> Transposal
   -> TransposalElementData sa ss sd -> ()
 transposalObjectsWitnessAgrees witness (TransposalObjects action) element =
   transposalWitnessOwnerAgrees witness (atlasMorphismSource action) element
+
+{-@ transposalObjectsTargetWitnessAgrees :: witness:AtlasWitnessData object ta ts td
+      -> objects:{TransposalObjects sa ss sd ta ts td |
+           transposalObjectsTargetOwner objects == atlasWitnessOwner witness}
+      -> element:TransposalElementData ta ts td
+      -> {transposalWitnessElementValid witness element <=> transposalObjectsTarget objects element} @-}
+transposalObjectsTargetWitnessAgrees :: AtlasWitnessData object ta ts td -> TransposalObjects sa ss sd ta ts td
+  -> TransposalElementData ta ts td -> ()
+transposalObjectsTargetWitnessAgrees witness (TransposalObjects action) element =
+  transposalWitnessOwnerAgrees witness (atlasMorphismTarget action) element
 
 {-@ reflect transposalObjectsSource @-}
 transposalObjectsSource :: TransposalObjects sa ss sd ta ts td
@@ -107,6 +128,15 @@ homTransposalObjects :: AtlasWitness source -> AtlasHom source target
   -> TransposalObjects (AtlasObjectAtlasScope source) (AtlasObjectPaginationScope source) (AtlasObjectCellData source)
        (AtlasObjectAtlasScope target) (AtlasObjectPaginationScope target) (AtlasObjectCellData target)
 homTransposalObjects witness hom = withAtlasMorphismAction (materializeAtlasHom witness hom) transposalObjects
+
+-- | The Hom's index evidence names the owner retained by its object package.
+-- ALIGN: ATLAS-TRANSPOSAL-HOM-TARGET-WITNESS.
+{-@ opaque-reflect atlasHomTargetWitness @-}
+{-@ atlasHomTargetWitness :: sourceWitness:AtlasWitness source -> hom:AtlasHom source target
+      -> {witness:AtlasWitness target | atlasWitnessOwner witness == atlasHomTargetOwner sourceWitness hom} @-}
+atlasHomTargetWitness :: AtlasWitness source -> AtlasHom source target -> AtlasWitness target
+atlasHomTargetWitness sourceWitness hom =
+  transposalObjectsTargetWitness (atlasHomTargetObjectEquality sourceWitness hom) (homTransposalObjects sourceWitness hom)
 
 {-@ reflect atlasHomSourceOwner @-}
 atlasHomSourceOwner :: AtlasWitness source -> AtlasHom source target -> AtlasOwner

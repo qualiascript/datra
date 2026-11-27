@@ -16,7 +16,7 @@ import AtlasTransposal.Action
   (TransposalAction, transposalActionSource, transposalActionTarget, mapTransposalAction, transposalActionPreimage)
 import AtlasTransposal.Syntax.Internal
   (AtlasTransposal (..), atlasTransposalSourceOwner, atlasTransposalTargetOwner,
-   atlasTransposalSourceValid, mapAtlasTransposalObject, atlasTransposalPreimage)
+   atlasTransposalSourceValid, atlasTransposalPathValid, mapAtlasTransposalObject, atlasTransposalPreimage)
 
 {-@ primitiveAtlasTransposal :: hom:AtlasHom source target
       -> action:TransposalAction
@@ -26,6 +26,7 @@ import AtlasTransposal.Syntax.Internal
            atlasTransposalSourceOwner result == Just (atlasOwner (transposalActionSource action))
            && atlasTransposalTargetOwner result == Just (atlasOwner (transposalActionTarget action))
            && atlasTransposalSourceValid result == transposalElementValid (transposalActionSource action)
+           && atlasTransposalPathValid result == transposalElementValid (transposalActionSource action)
            && mapAtlasTransposalObject result == mapTransposalAction action
            && atlasTransposalPreimage result == transposalActionPreimage action} @-}
 primitiveAtlasTransposal :: AtlasHom source target

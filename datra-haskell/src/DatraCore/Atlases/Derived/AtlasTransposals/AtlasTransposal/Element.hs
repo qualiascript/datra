@@ -12,6 +12,7 @@ module AtlasTransposal.Element
   , transposalElementSource, transposalElementValid
   , transposalElementAt, withTransposalElementOf
   , transposalWitnessElementValid, transposalWitnessOwnerAgrees
+  , transposalOwnersAgree
   ) where
 
 import Atlas (Atlas, atlasPageElements, normalizeAtlasElement,
@@ -19,7 +20,7 @@ import Atlas (Atlas, atlasPageElements, normalizeAtlasElement,
 import AtlasTransposal.Element.Internal
   (AtlasTransposalElement, TransposalElementData (..))
 import Atlas.Witness
-  (AtlasWitnessData, atlasOwner, atlasWitnessOwner, atlasWitnessElementValid,
+  (AtlasWitnessData, atlasWitnessData, atlasOwner, atlasWitnessOwner, atlasWitnessElementValid,
    normalizeAtlasWitnessElement, atlasWitnessOwnerAgrees)
 import PageElements (pageElementTraceValid)
 import PageElements.Structure (PageElement, SomePageElement (..))
@@ -48,6 +49,19 @@ transposalWitnessOwnerAgrees :: AtlasWitnessData object a s d -> Atlas a s d o f
   -> TransposalElementData a s d -> ()
 transposalWitnessOwnerAgrees witness owner (AtlasTransposalElement source) =
   atlasWitnessOwnerAgrees witness owner source
+
+-- | Hidden endpoint carriers may differ; equality of complete owners is the
+-- evidence needed to transfer the normalized trace domain.
+-- ALIGN: ATLAS-TRANSPOSAL-OWNER-DOMAIN-AGREEMENT.
+{-@ transposalOwnersAgree :: first:Atlas a s d o f
+      -> second:{Atlas a s d o2 f2 | atlasOwner second == atlasOwner first}
+      -> element:TransposalElementData a s d
+      -> {transposalElementValid first element <=> transposalElementValid second element} @-}
+transposalOwnersAgree :: Atlas a s d o f -> Atlas a s d o2 f2 -> TransposalElementData a s d -> ()
+transposalOwnersAgree first second element =
+  let witness = atlasWitnessData first
+  in transposalWitnessOwnerAgrees witness first element `seq`
+    transposalWitnessOwnerAgrees witness second element
 
 -- ALIGN: ATLAS-TRANSPOSAL-OWNED-ELEMENT.
 {-@ transposalElementAt :: owner:Atlas a s d o f

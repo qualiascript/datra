@@ -1312,6 +1312,7 @@ ATLAS_WITNESS_PUBLIC_SOURCE = r"""
 {-@ LIQUID "--higherorder" @-}
 module AtlasWitnessPublicGuard where
 import Atlas (Atlas, atlasPageElements, normalizeAtlasElement)
+import qualified Atlas as PublicAtlas (atlasWitness, withAtlasWitness)
 import Atlas.Witness
 import PageElements (PageElement, pageElementTraceValid)
 
@@ -1331,7 +1332,18 @@ observedOwner witness = withAtlasWitness witness (\AtlasObjectEquality owner -> 
 {-@ observedWitness :: owner:Atlas a s d o f
       -> {witness:AtlasWitnessData (AtlasObject a s d) a s d | atlasWitnessOwner witness == atlasOwner owner} @-}
 observedWitness :: Atlas a s d o f -> AtlasWitnessData (AtlasObject a s d) a s d
-observedWitness owner = atlasWitness owner
+observedWitness owner = atlasWitnessData owner
+
+{-@ observedIndexedWitness :: owner:Atlas a s d o f
+      -> {witness:AtlasWitness (AtlasObject a s d) | atlasWitnessOwner witness == atlasOwner owner} @-}
+observedIndexedWitness :: Atlas a s d o f -> AtlasWitness (AtlasObject a s d)
+observedIndexedWitness owner = PublicAtlas.atlasWitness owner
+
+{-@ observedIndexedOwner :: owner:Atlas a s d o f
+      -> {result:AtlasOwner | result == atlasOwner owner} @-}
+observedIndexedOwner :: Atlas a s d o f -> AtlasOwner
+observedIndexedOwner owner =
+  PublicAtlas.withAtlasWitness (observedIndexedWitness owner) (\_ recovered -> atlasOwner recovered)
 
 {-@ observedNormalized :: witness:AtlasWitness object
       -> source:{PageElement (AtlasObjectPaginationScope object) cell | atlasWitnessElementValid witness source}
@@ -1345,6 +1357,32 @@ observedNormalized witness source =
   atlasWitnessNormalizeValid witness source `seq` normalizeAtlasWitnessElement witness source
 """
 ATLAS_WITNESS_PUBLIC_GUARDS = {
+    "atlas witness indexed construction does not substitute owners": r"""
+{-@ proofGuard :: first:Atlas a s d o f -> second:Atlas a s d o f
+      -> {witness:AtlasWitness (AtlasObject a s d) | atlasWitnessOwner witness == atlasOwner first} @-}
+proofGuard :: Atlas a s d o f -> Atlas a s d o f -> AtlasWitness (AtlasObject a s d)
+proofGuard _ second = observedIndexedWitness second
+""",
+
+    "atlas witness indexed elimination retains its owner": r"""
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> {result:AtlasOwner | result /= atlasOwner owner} @-}
+proofGuard :: Atlas a s d o f -> AtlasOwner
+proofGuard = observedIndexedOwner
+""",
+    "atlas witness indexed construction cannot prove false": r"""
+{-@ proofGuard :: owner:Atlas a s d o f -> {proof:() | False} @-}
+proofGuard :: Atlas a s d o f -> ()
+proofGuard owner = observedIndexedWitness owner `seq` ()
+""",
+
+    "atlas witness indexed construction retains its owner": r"""
+{-@ proofGuard :: owner:Atlas a s d o f
+      -> {witness:AtlasWitness (AtlasObject a s d) | atlasWitnessOwner witness /= atlasOwner owner} @-}
+proofGuard :: Atlas a s d o f -> AtlasWitness (AtlasObject a s d)
+proofGuard = observedIndexedWitness
+""",
+
     "atlas witness agreement requires the same complete owner": r"""
 {-@ proofGuard :: witness:AtlasWitnessData object a s d -> owner:Atlas a s d o f -> source:PageElement s cell
       -> {(atlasWitnessElementValid witness source <=> pageElementTraceValid (atlasPageElements owner) source)
@@ -1439,6 +1477,7 @@ observedNativeElement = atlasTransposalElement
            atlasTransposalSourceOwner result == Just (atlasWitnessOwner witness)
            && atlasTransposalTargetOwner result == Just (atlasHomTargetOwner witness hom)
            && atlasTransposalSourceValid result == atlasHomSourceValid witness hom
+           && atlasTransposalPathValid result == atlasHomSourceValid witness hom
            && mapAtlasTransposalObject result == mapAtlasHomObject witness hom
            && atlasTransposalPreimage result == backward} @-}
 observedNative :: AtlasWitness source -> AtlasHom source target
@@ -1454,6 +1493,77 @@ observedWitnessedMap :: AtlasWitness source -> AtlasHom source target -> AtlasTr
   -> AtlasTransposalElement target
 observedWitnessedMap witness hom source =
   atlasHomSourceAgrees witness hom source `seq` mapAtlasHomObject witness hom source
+
+{-@ observedOwnedComposite :: sourceWitness:AtlasWitness source
+      -> firstHom:{AtlasHom source middle | atlasHomSourceOwner sourceWitness firstHom == atlasWitnessOwner sourceWitness}
+      -> secondHom:{AtlasHom middle target |
+           atlasHomSourceOwner (atlasHomTargetWitness sourceWitness firstHom) secondHom == atlasHomTargetOwner sourceWitness firstHom}
+      -> first:{AtlasTransposal source middle |
+           atlasTransposalPathValid first == atlasHomSourceValid sourceWitness firstHom
+           && mapAtlasTransposalObject first == mapAtlasHomObject sourceWitness firstHom}
+      -> second:{AtlasTransposal middle target |
+           atlasTransposalPathValid second == atlasHomSourceValid (atlasHomTargetWitness sourceWitness firstHom) secondHom}
+      -> sourceElement:{AtlasTransposalElement source | atlasTransposalElementValid sourceWitness sourceElement}
+      -> {atlasTransposalPreimage (composeAtlasTransposals second first)
+           (mapAtlasTransposalObject (composeAtlasTransposals second first) sourceElement) == Just sourceElement} @-}
+observedOwnedComposite :: AtlasWitness source -> AtlasHom source middle -> AtlasHom middle target
+  -> AtlasTransposal source middle -> AtlasTransposal middle target -> AtlasTransposalElement source -> ()
+observedOwnedComposite sourceWitness firstHom secondHom first second source =
+  atlasHomSourceAgrees sourceWitness firstHom source `seq`
+  atlasHomNextSourceValid sourceWitness firstHom secondHom source `seq`
+  observedNativeComposite second first source
+
+{-@ observedNativeTargetWitness :: witness:AtlasWitness source -> arrow:AtlasTransposal source target
+      -> {result:AtlasWitness target |
+           atlasTransposalTargetOwner arrow == Just (atlasWitnessOwner result)
+           || (atlasTransposalTargetOwner arrow == Nothing
+                && atlasWitnessOwner result == atlasWitnessOwner witness)} @-}
+observedNativeTargetWitness :: AtlasWitness source -> AtlasTransposal source target -> AtlasWitness target
+observedNativeTargetWitness = atlasTransposalTargetWitness
+
+{-@ observedNativeTargetMap :: witness:AtlasWitness source -> arrow:AtlasTransposal source target
+      -> element:{AtlasTransposalElement source |
+           atlasTransposalElementValid witness element && atlasTransposalPathValid arrow element}
+      -> {result:AtlasTransposalElement target |
+           atlasTransposalElementValid (atlasTransposalTargetWitness witness arrow) result} @-}
+observedNativeTargetMap :: AtlasWitness source -> AtlasTransposal source target
+  -> AtlasTransposalElement source -> AtlasTransposalElement target
+observedNativeTargetMap witness arrow source =
+  atlasTransposalMapValid witness arrow source `seq` mapAtlasTransposalObject arrow source
+
+{-@ observedTreeComposite :: witness:AtlasWitness source -> first:AtlasTransposal source middle
+      -> secondHom:{AtlasHom middle target |
+           atlasHomSourceOwner (atlasTransposalTargetWitness witness first) secondHom
+             == atlasWitnessOwner (atlasTransposalTargetWitness witness first)}
+      -> second:{AtlasTransposal middle target |
+           atlasTransposalPathValid second == atlasHomSourceValid (atlasTransposalTargetWitness witness first) secondHom}
+      -> source:{AtlasTransposalElement source |
+           atlasTransposalElementValid witness source && atlasTransposalPathValid first source}
+      -> {atlasTransposalPreimage (composeAtlasTransposals second first)
+           (mapAtlasTransposalObject (composeAtlasTransposals second first) source) == Just source} @-}
+observedTreeComposite :: AtlasWitness source -> AtlasTransposal source middle -> AtlasHom middle target
+  -> AtlasTransposal middle target -> AtlasTransposalElement source -> ()
+observedTreeComposite witness first secondHom second source =
+  atlasTransposalMapValid witness first source `seq`
+  atlasHomSourceAgrees (atlasTransposalTargetWitness witness first) secondHom
+    (mapAtlasTransposalObject first source) `seq`
+  observedNativeComposite second first source
+
+{-@ observedHomTargetWitness :: sourceWitness:AtlasWitness source -> hom:AtlasHom source target
+      -> {witness:AtlasWitness target | atlasWitnessOwner witness == atlasHomTargetOwner sourceWitness hom} @-}
+observedHomTargetWitness :: AtlasWitness source -> AtlasHom source target -> AtlasWitness target
+observedHomTargetWitness = atlasHomTargetWitness
+
+{-@ observedTargetMap :: sourceWitness:AtlasWitness source
+      -> hom:{AtlasHom source target | atlasHomSourceOwner sourceWitness hom == atlasWitnessOwner sourceWitness}
+      -> sourceElement:{AtlasTransposalElement source | atlasTransposalElementValid sourceWitness sourceElement}
+      -> {targetElement:AtlasTransposalElement target |
+           atlasTransposalElementValid (atlasHomTargetWitness sourceWitness hom) targetElement} @-}
+observedTargetMap :: AtlasWitness source -> AtlasHom source target -> AtlasTransposalElement source -> AtlasTransposalElement target
+observedTargetMap sourceWitness hom source =
+  atlasHomSourceAgrees sourceWitness hom source `seq`
+  let target = mapAtlasHomObject sourceWitness hom source
+  in atlasHomTargetAgrees sourceWitness hom (atlasHomTargetWitness sourceWitness hom) target `seq` target
 
 {-@ observedOrdered :: transposal:AtlasTransposal source target
       -> (left:{AtlasTransposalElement source | atlasTransposalSourceValid transposal left}
@@ -1519,6 +1629,44 @@ observedNativeMap second first source =
   composeAtlasTransposalsRetains second first source
     (mapAtlasTransposalObject second (mapAtlasTransposalObject first source)) `seq`
     mapAtlasTransposalObject (composeAtlasTransposals second first) source
+
+{-@ observedNativeLeftIdentity :: identity:{AtlasTransposal target target | identity == identityAtlasTransposal}
+      -> arrow:AtlasTransposal source target
+      -> sourceElement:AtlasTransposalElement source -> targetElement:AtlasTransposalElement target
+      -> {mapAtlasTransposalObject (composeAtlasTransposals identity arrow) sourceElement == mapAtlasTransposalObject arrow sourceElement
+           && atlasTransposalPreimage (composeAtlasTransposals identity arrow) targetElement == atlasTransposalPreimage arrow targetElement
+           && (atlasTransposalPathValid (composeAtlasTransposals identity arrow) sourceElement <=> atlasTransposalPathValid arrow sourceElement)
+           && atlasTransposalSourceOwner (composeAtlasTransposals identity arrow) == atlasTransposalSourceOwner arrow
+           && atlasTransposalTargetOwner (composeAtlasTransposals identity arrow) == atlasTransposalTargetOwner arrow} @-}
+observedNativeLeftIdentity :: AtlasTransposal target target -> AtlasTransposal source target
+  -> AtlasTransposalElement source -> AtlasTransposalElement target -> ()
+observedNativeLeftIdentity = atlasTransposalLeftIdentity
+
+{-@ observedNativeRightIdentity :: identity:{AtlasTransposal source source | identity == identityAtlasTransposal}
+      -> arrow:AtlasTransposal source target
+      -> sourceElement:AtlasTransposalElement source -> targetElement:AtlasTransposalElement target
+      -> {mapAtlasTransposalObject (composeAtlasTransposals arrow identity) sourceElement == mapAtlasTransposalObject arrow sourceElement
+           && atlasTransposalPreimage (composeAtlasTransposals arrow identity) targetElement == atlasTransposalPreimage arrow targetElement
+           && (atlasTransposalPathValid (composeAtlasTransposals arrow identity) sourceElement <=> atlasTransposalPathValid arrow sourceElement)
+           && atlasTransposalSourceOwner (composeAtlasTransposals arrow identity) == atlasTransposalSourceOwner arrow
+           && atlasTransposalTargetOwner (composeAtlasTransposals arrow identity) == atlasTransposalTargetOwner arrow} @-}
+observedNativeRightIdentity :: AtlasTransposal source source -> AtlasTransposal source target
+  -> AtlasTransposalElement source -> AtlasTransposalElement target -> ()
+observedNativeRightIdentity = atlasTransposalRightIdentity
+
+{-@ observedNativeAssociativity :: third:AtlasTransposal next target
+      -> second:AtlasTransposal middle next -> first:AtlasTransposal source middle
+      -> sourceElement:AtlasTransposalElement source -> targetElement:AtlasTransposalElement target
+      -> {mapAtlasTransposalObject (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement == mapAtlasTransposalObject (composeAtlasTransposals (composeAtlasTransposals third second) first) sourceElement
+           && atlasTransposalPreimage (composeAtlasTransposals third (composeAtlasTransposals second first)) targetElement == atlasTransposalPreimage (composeAtlasTransposals (composeAtlasTransposals third second) first) targetElement
+           && (atlasTransposalSourceValid (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement <=> atlasTransposalSourceValid (composeAtlasTransposals (composeAtlasTransposals third second) first) sourceElement)
+           && (atlasTransposalPathValid (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement <=> atlasTransposalPathValid (composeAtlasTransposals (composeAtlasTransposals third second) first) sourceElement)
+           && atlasTransposalSourceOwner (composeAtlasTransposals third (composeAtlasTransposals second first)) == atlasTransposalSourceOwner (composeAtlasTransposals (composeAtlasTransposals third second) first)
+           && atlasTransposalTargetOwner (composeAtlasTransposals third (composeAtlasTransposals second first)) == atlasTransposalTargetOwner (composeAtlasTransposals (composeAtlasTransposals third second) first)} @-}
+observedNativeAssociativity :: AtlasTransposal next target -> AtlasTransposal middle next
+  -> AtlasTransposal source middle -> AtlasTransposalElement source -> AtlasTransposalElement target -> ()
+observedNativeAssociativity = atlasTransposalAssociativity
+
 """
 def native_transposal_guard(original, replacement):
     signature = TRANSPOSAL_NATIVE_PUBLIC_SOURCE.split("{-@ observedNative ::", 1)[1].split(
@@ -1527,7 +1675,156 @@ def native_transposal_guard(original, replacement):
         original, replacement, 1) + "\nproofGuard = observedNative\n"
 
 
+def native_owned_composition_guard(original):
+    signature = TRANSPOSAL_NATIVE_PUBLIC_SOURCE.split("{-@ observedOwnedComposite ::", 1)[1].split(
+        "\nobservedOwnedComposite sourceWitness", 1)[0]
+    return ("{-@ observedOwnedComposite ::" + signature).replace("observedOwnedComposite", "proofGuard").replace(
+        original, "True", 1) + "\nproofGuard = observedOwnedComposite\n"
+
+
+def native_law_guard(observed, original, replacement):
+    signature = TRANSPOSAL_NATIVE_PUBLIC_SOURCE.split("{-@ " + observed + " ::", 1)[1].split(
+        "\n" + observed + " =", 1)[0]
+    return ("{-@ " + observed + " ::" + signature).replace(observed, "proofGuard").replace(
+        original, replacement, 1) + "\nproofGuard = " + observed + "\n"
+
+
 TRANSPOSAL_NATIVE_PUBLIC_GUARDS = {
+    "native transposal tree target membership requires source membership": r"""
+{-@ proofGuard :: witness:AtlasWitness source -> arrow:AtlasTransposal source target
+      -> element:{AtlasTransposalElement source | atlasTransposalPathValid arrow element}
+      -> {result:AtlasTransposalElement target |
+           atlasTransposalElementValid (atlasTransposalTargetWitness witness arrow) result} @-}
+proofGuard :: AtlasWitness source -> AtlasTransposal source target
+  -> AtlasTransposalElement source -> AtlasTransposalElement target
+proofGuard = observedNativeTargetMap
+""",
+    "native transposal tree target membership requires path acceptance": r"""
+{-@ proofGuard :: witness:AtlasWitness source -> arrow:AtlasTransposal source target
+      -> element:{AtlasTransposalElement source | atlasTransposalElementValid witness element}
+      -> {result:AtlasTransposalElement target |
+           atlasTransposalElementValid (atlasTransposalTargetWitness witness arrow) result} @-}
+proofGuard :: AtlasWitness source -> AtlasTransposal source target
+  -> AtlasTransposalElement source -> AtlasTransposalElement target
+proofGuard = observedNativeTargetMap
+""",
+    "native transposal tree target witness retains the stored owner": r"""
+{-@ proofGuard :: witness:AtlasWitness source
+      -> arrow:{AtlasTransposal source target | atlasTransposalTargetOwner arrow /= Nothing}
+      -> {result:AtlasWitness target | atlasTransposalTargetOwner arrow /= Just (atlasWitnessOwner result)} @-}
+proofGuard :: AtlasWitness source -> AtlasTransposal source target -> AtlasWitness target
+proofGuard = observedNativeTargetWitness
+""",
+    "native transposal tree target witness preserves identity-only owners": r"""
+{-@ proofGuard :: witness:AtlasWitness source
+      -> arrow:{AtlasTransposal source target | atlasTransposalTargetOwner arrow == Nothing}
+      -> {result:AtlasWitness target | atlasWitnessOwner result /= atlasWitnessOwner witness} @-}
+proofGuard :: AtlasWitness source -> AtlasTransposal source target -> AtlasWitness target
+proofGuard = observedNativeTargetWitness
+""",
+    "native transposal tree target witness cannot substitute its input owner": r"""
+{-@ proofGuard :: first:AtlasWitness source -> second:AtlasWitness source
+      -> arrow:{AtlasTransposal source target | atlasTransposalTargetOwner arrow == Nothing}
+      -> {result:AtlasWitness target | atlasWitnessOwner result == atlasWitnessOwner first} @-}
+proofGuard :: AtlasWitness source -> AtlasWitness source -> AtlasTransposal source target -> AtlasWitness target
+proofGuard _ second = observedNativeTargetWitness second
+""",
+    "native transposal tree target validity cannot prove false": r"""
+{-@ proofGuard :: witness:AtlasWitness source -> arrow:AtlasTransposal source target
+      -> element:{AtlasTransposalElement source |
+           atlasTransposalElementValid witness element && atlasTransposalPathValid arrow element}
+      -> {proof:() | False} @-}
+proofGuard :: AtlasWitness source -> AtlasTransposal source target -> AtlasTransposalElement source -> ()
+proofGuard witness arrow source = observedNativeTargetMap witness arrow source `seq` ()
+""",
+    "native transposal target witness membership requires its source owner": r"""
+{-@ proofGuard :: sourceWitness:AtlasWitness source -> hom:AtlasHom source target
+      -> sourceElement:{AtlasTransposalElement source | atlasTransposalElementValid sourceWitness sourceElement}
+      -> {targetElement:AtlasTransposalElement target |
+           atlasTransposalElementValid (atlasHomTargetWitness sourceWitness hom) targetElement} @-}
+proofGuard :: AtlasWitness source -> AtlasHom source target -> AtlasTransposalElement source -> AtlasTransposalElement target
+proofGuard = observedTargetMap
+""",
+    "native transposal target witness membership requires source membership": r"""
+{-@ proofGuard :: sourceWitness:AtlasWitness source
+      -> hom:{AtlasHom source target | atlasHomSourceOwner sourceWitness hom == atlasWitnessOwner sourceWitness}
+      -> sourceElement:AtlasTransposalElement source
+      -> {targetElement:AtlasTransposalElement target |
+           atlasTransposalElementValid (atlasHomTargetWitness sourceWitness hom) targetElement} @-}
+proofGuard :: AtlasWitness source -> AtlasHom source target -> AtlasTransposalElement source -> AtlasTransposalElement target
+proofGuard = observedTargetMap
+""",
+
+    "native transposal target witness retains the materialized owner": r"""
+{-@ proofGuard :: sourceWitness:AtlasWitness source -> hom:AtlasHom source target
+      -> {witness:AtlasWitness target | atlasWitnessOwner witness /= atlasHomTargetOwner sourceWitness hom} @-}
+proofGuard :: AtlasWitness source -> AtlasHom source target -> AtlasWitness target
+proofGuard = observedHomTargetWitness
+""",
+    "native transposal target witness does not substitute owners": r"""
+{-@ proofGuard :: sourceWitness:AtlasWitness source -> first:AtlasHom source target -> second:AtlasHom source target
+      -> {witness:AtlasWitness target | atlasWitnessOwner witness == atlasHomTargetOwner sourceWitness first} @-}
+proofGuard :: AtlasWitness source -> AtlasHom source target -> AtlasHom source target -> AtlasWitness target
+proofGuard sourceWitness _ second = observedHomTargetWitness sourceWitness second
+""",
+    "native transposal target witness cannot prove false": r"""
+{-@ proofGuard :: sourceWitness:AtlasWitness source -> hom:AtlasHom source target -> {proof:() | False} @-}
+proofGuard :: AtlasWitness source -> AtlasHom source target -> ()
+proofGuard sourceWitness hom = observedHomTargetWitness sourceWitness hom `seq` ()
+""",
+
+    "native transposal associativity retains raw map": native_law_guard(
+        "observedNativeAssociativity", "mapAtlasTransposalObject (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement ==", "mapAtlasTransposalObject (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement /="),
+    "native transposal associativity retains every inverse lookup": native_law_guard(
+        "observedNativeAssociativity", "atlasTransposalPreimage (composeAtlasTransposals third (composeAtlasTransposals second first)) targetElement ==", "atlasTransposalPreimage (composeAtlasTransposals third (composeAtlasTransposals second first)) targetElement /="),
+    "native transposal associativity retains source domain": native_law_guard(
+        "observedNativeAssociativity", "(atlasTransposalSourceValid (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement <=> atlasTransposalSourceValid (composeAtlasTransposals (composeAtlasTransposals third second) first) sourceElement)", "not (atlasTransposalSourceValid (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement <=> atlasTransposalSourceValid (composeAtlasTransposals (composeAtlasTransposals third second) first) sourceElement)"),
+    "native transposal associativity retains path acceptance": native_law_guard(
+        "observedNativeAssociativity", "(atlasTransposalPathValid (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement <=> atlasTransposalPathValid (composeAtlasTransposals (composeAtlasTransposals third second) first) sourceElement)", "not (atlasTransposalPathValid (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement <=> atlasTransposalPathValid (composeAtlasTransposals (composeAtlasTransposals third second) first) sourceElement)"),
+    "native transposal associativity retains source owner": native_law_guard(
+        "observedNativeAssociativity", "atlasTransposalSourceOwner (composeAtlasTransposals third (composeAtlasTransposals second first)) ==", "atlasTransposalSourceOwner (composeAtlasTransposals third (composeAtlasTransposals second first)) /="),
+    "native transposal associativity retains target owner": native_law_guard(
+        "observedNativeAssociativity", "atlasTransposalTargetOwner (composeAtlasTransposals third (composeAtlasTransposals second first)) ==", "atlasTransposalTargetOwner (composeAtlasTransposals third (composeAtlasTransposals second first)) /="),
+    "native transposal left identity requires identity evidence": native_law_guard(
+        "observedNativeLeftIdentity", "identity == identityAtlasTransposal", "True"),
+    "native transposal left identity retains the raw map": native_law_guard(
+        "observedNativeLeftIdentity", "mapAtlasTransposalObject (composeAtlasTransposals identity arrow) sourceElement ==", "mapAtlasTransposalObject (composeAtlasTransposals identity arrow) sourceElement /="),
+    "native transposal left identity retains every inverse lookup": native_law_guard(
+        "observedNativeLeftIdentity", "atlasTransposalPreimage (composeAtlasTransposals identity arrow) targetElement ==", "atlasTransposalPreimage (composeAtlasTransposals identity arrow) targetElement /="),
+    "native transposal left identity retains path acceptance": native_law_guard(
+        "observedNativeLeftIdentity", "(atlasTransposalPathValid (composeAtlasTransposals identity arrow) sourceElement <=> atlasTransposalPathValid arrow sourceElement)", "not (atlasTransposalPathValid (composeAtlasTransposals identity arrow) sourceElement <=> atlasTransposalPathValid arrow sourceElement)"),
+    "native transposal left identity retains the source owner": native_law_guard(
+        "observedNativeLeftIdentity", "atlasTransposalSourceOwner (composeAtlasTransposals identity arrow) ==", "atlasTransposalSourceOwner (composeAtlasTransposals identity arrow) /="),
+    "native transposal left identity retains the target owner": native_law_guard(
+        "observedNativeLeftIdentity", "atlasTransposalTargetOwner (composeAtlasTransposals identity arrow) ==", "atlasTransposalTargetOwner (composeAtlasTransposals identity arrow) /="),
+    "native transposal right identity requires identity evidence": native_law_guard(
+        "observedNativeRightIdentity", "identity == identityAtlasTransposal", "True"),
+    "native transposal right identity retains the raw map": native_law_guard(
+        "observedNativeRightIdentity", "mapAtlasTransposalObject (composeAtlasTransposals arrow identity) sourceElement ==", "mapAtlasTransposalObject (composeAtlasTransposals arrow identity) sourceElement /="),
+    "native transposal right identity retains every inverse lookup": native_law_guard(
+        "observedNativeRightIdentity", "atlasTransposalPreimage (composeAtlasTransposals arrow identity) targetElement ==", "atlasTransposalPreimage (composeAtlasTransposals arrow identity) targetElement /="),
+    "native transposal right identity retains path acceptance": native_law_guard(
+        "observedNativeRightIdentity", "(atlasTransposalPathValid (composeAtlasTransposals arrow identity) sourceElement <=> atlasTransposalPathValid arrow sourceElement)", "not (atlasTransposalPathValid (composeAtlasTransposals arrow identity) sourceElement <=> atlasTransposalPathValid arrow sourceElement)"),
+    "native transposal right identity retains the source owner": native_law_guard(
+        "observedNativeRightIdentity", "atlasTransposalSourceOwner (composeAtlasTransposals arrow identity) ==", "atlasTransposalSourceOwner (composeAtlasTransposals arrow identity) /="),
+    "native transposal right identity retains the target owner": native_law_guard(
+        "observedNativeRightIdentity", "atlasTransposalTargetOwner (composeAtlasTransposals arrow identity) ==", "atlasTransposalTargetOwner (composeAtlasTransposals arrow identity) /="),
+    "native transposal retains its path domain": native_transposal_guard(
+        "atlasTransposalPathValid result == atlasHomSourceValid witness hom",
+        "atlasTransposalPathValid result /= atlasHomSourceValid witness hom"),
+    "native transposal owned composition requires the first source owner": native_owned_composition_guard(
+        "atlasHomSourceOwner sourceWitness firstHom == atlasWitnessOwner sourceWitness"),
+    "native transposal owned composition requires the second source owner": native_owned_composition_guard(
+        "atlasHomSourceOwner (atlasHomTargetWitness sourceWitness firstHom) secondHom == atlasHomTargetOwner sourceWitness firstHom"),
+    "native transposal owned composition requires source membership": native_owned_composition_guard(
+        "atlasTransposalElementValid sourceWitness sourceElement"),
+    "native transposal owned composition requires the first path domain": native_owned_composition_guard(
+        "atlasTransposalPathValid first == atlasHomSourceValid sourceWitness firstHom"),
+    "native transposal owned composition requires the second path domain": native_owned_composition_guard(
+        "atlasTransposalPathValid second == atlasHomSourceValid (atlasHomTargetWitness sourceWitness firstHom) secondHom"),
+    "native transposal owned composition requires the retained first map": native_owned_composition_guard(
+        "mapAtlasTransposalObject first == mapAtlasHomObject sourceWitness firstHom"),
+
     "native transposal witnessed map requires owner agreement": r"""
 {-@ proofGuard :: witness:AtlasWitness source -> hom:AtlasHom source target
       -> sourceElement:{AtlasTransposalElement source | atlasTransposalElementValid witness sourceElement}
@@ -1689,7 +1986,7 @@ TRANSPOSAL_OBJECTS_PUBLIC_SOURCE = r"""
 {-@ LIQUID "--higherorder" @-}
 module TransposalObjectsPublicGuard where
 import Atlas (AtlasMorphismAction, atlasMorphismSource, atlasMorphismTarget)
-import Atlas.Witness (AtlasOwner, atlasOwner)
+import Atlas.Witness (AtlasOwner, atlasOwner, AtlasObjectEquality, AtlasWitnessData, atlasWitnessOwner)
 import AtlasTransposal.Objects
 import AtlasTransposal.Element (TransposalElementData, transposalElementValid)
 
@@ -1711,6 +2008,12 @@ observedSourceOwner objects = withTransposalObjects objects (\source _ _ -> atla
 observedTargetOwner :: TransposalObjects sa ss sd ta ts td -> AtlasOwner
 observedTargetOwner objects = withTransposalObjects objects (\_ target _ -> atlasOwner target)
 
+{-@ observedTargetWitness :: AtlasObjectEquality target ta ts td -> objects:TransposalObjects sa ss sd ta ts td
+      -> {witness:AtlasWitnessData target ta ts td | atlasWitnessOwner witness == transposalObjectsTargetOwner objects} @-}
+observedTargetWitness :: AtlasObjectEquality target ta ts td -> TransposalObjects sa ss sd ta ts td
+  -> AtlasWitnessData target ta ts td
+observedTargetWitness = transposalObjectsTargetWitness
+
 {-@ observedObjectsMap :: objects:TransposalObjects sa ss sd ta ts td
       -> source:TransposalElementData sa ss sd
       -> {target:TransposalElementData ta ts td |
@@ -1721,6 +2024,21 @@ observedObjectsMap :: TransposalObjects sa ss sd ta ts td
 observedObjectsMap objects source = withTransposalObjects objects (\_ _ forward -> forward source)
 """
 TRANSPOSAL_OBJECTS_PUBLIC_GUARDS = {
+    "transposal materialization target witness retains its owner": r"""
+{-@ proofGuard :: AtlasObjectEquality target ta ts td -> objects:TransposalObjects sa ss sd ta ts td
+      -> {witness:AtlasWitnessData target ta ts td | atlasWitnessOwner witness /= transposalObjectsTargetOwner objects} @-}
+proofGuard :: AtlasObjectEquality target ta ts td -> TransposalObjects sa ss sd ta ts td -> AtlasWitnessData target ta ts td
+proofGuard = observedTargetWitness
+""",
+    "transposal materialization target witness does not substitute owners": r"""
+{-@ proofGuard :: AtlasObjectEquality target ta ts td -> first:TransposalObjects sa ss sd ta ts td
+      -> second:TransposalObjects sa ss sd ta ts td
+      -> {witness:AtlasWitnessData target ta ts td | atlasWitnessOwner witness == transposalObjectsTargetOwner first} @-}
+proofGuard :: AtlasObjectEquality target ta ts td -> TransposalObjects sa ss sd ta ts td
+  -> TransposalObjects sa ss sd ta ts td -> AtlasWitnessData target ta ts td
+proofGuard equality _ second = observedTargetWitness equality second
+""",
+
     "transposal materialization construction retains its source owner": r"""
 {-@ proofGuard :: action:AtlasMorphismAction m sa ta ss ts sd td so sf to tf
       -> {objects:TransposalObjects sa ss sd ta ts td |
@@ -1775,9 +2093,23 @@ TRANSPOSAL_ACTION_PUBLIC_SOURCE = r"""
 {-@ LIQUID "--higherorder" @-}
 module TransposalActionPublicGuard where
 import Atlas (Atlas)
+import Atlas.Witness (AtlasWitnessData, atlasOwner, withAtlasWitnessData)
 import AtlasTransposal.Element (TransposalElementData, transposalElementValid)
 import AtlasTransposal.Action
 import DomanialInsertion.Core (DomanialInsertion (..), composePartialInverses)
+
+{-@ observedWitnessedComposition :: witness:AtlasWitnessData object a s d -> source:TransposalElementData a s d
+      -> {result:TransposalElementData a s d | result == source} @-}
+observedWitnessedComposition :: AtlasWitnessData object a s d -> TransposalElementData a s d -> TransposalElementData a s d
+observedWitnessedComposition witness source =
+  withAtlasWitnessData witness $ \_ firstOwner ->
+    withAtlasWitnessData witness $ \_ secondOwner ->
+      let first = identityTransposalAction firstOwner
+          second = identityTransposalAction secondOwner
+      in identityTransposalActionRetains firstOwner source `seq`
+        identityTransposalActionRetains secondOwner source `seq`
+        composeTransposalActionsMap second first source `seq`
+        mapTransposalAction (composeTransposalActions second first) source
 
 {-@ observedAction :: sourceOwner:Atlas sa ss sd so sf -> targetOwner:Atlas ta ts td to tf
       -> forward:(source:TransposalElementData sa ss sd
@@ -1819,35 +2151,35 @@ observedPreimage :: TransposalAction sa ss sd so sf ta ts td to tf
 observedPreimage action target = transposalActionPreimage action target
 
 {-@ observedComposition :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> {action:TransposalAction sa ss sd so sf ta ts td to tf |
            transposalActionSource action == transposalActionSource first
            && transposalActionTarget action == transposalActionTarget second} @-}
 observedComposition :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf -> TransposalAction sa ss sd so sf ta ts td to tf
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1 -> TransposalAction sa ss sd so sf ta ts td to tf
 observedComposition = composeTransposalActions
 
 {-@ observedCompositePreimage :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> target:TransposalElementData ta ts td
       -> {result:Maybe (TransposalElementData sa ss sd) |
            result == composePartialInverses (transposalActionPreimage first) (transposalActionPreimage second) target} @-}
 observedCompositePreimage :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf -> TransposalElementData ta ts td
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1 -> TransposalElementData ta ts td
   -> Maybe (TransposalElementData sa ss sd)
 observedCompositePreimage second first target = composeTransposalActionsPreimage second first target `seq`
   transposalActionPreimage (composeTransposalActions second first) target
 
 {-@ observedCompositeMap :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> source:TransposalElementData sa ss sd
       -> {target:TransposalElementData ta ts td |
            target == mapTransposalAction second (mapTransposalAction first source)} @-}
 observedCompositeMap :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf -> TransposalElementData sa ss sd
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1 -> TransposalElementData sa ss sd
   -> TransposalElementData ta ts td
 observedCompositeMap second first source = composeTransposalActionsMap second first source `seq`
   mapTransposalAction (composeTransposalActions second first) source
@@ -1867,6 +2199,12 @@ def transposal_action_guard(old, new):
 
 
 TRANSPOSAL_ACTION_PUBLIC_GUARDS = {
+    "owned transposal action composes independently eliminated owners": r"""
+{-@ proofGuard :: witness:AtlasWitnessData object a s d -> source:TransposalElementData a s d
+      -> {result:TransposalElementData a s d | result /= source} @-}
+proofGuard :: AtlasWitnessData object a s d -> TransposalElementData a s d -> TransposalElementData a s d
+proofGuard = observedWitnessedComposition
+""",
     "owned transposal action requires forward validity": transposal_action_guard(
         "transposalElementValid sourceOwner source => transposalElementValid targetOwner target", "True"),
     "owned transposal action requires inverse result validity": transposal_action_guard(
@@ -1883,7 +2221,7 @@ TRANSPOSAL_ACTION_PUBLIC_GUARDS = {
         "transposalActionPreimage action == backward", "transposalActionPreimage action /= backward"),
     "owned transposal action requires the actual middle owner": r"""
 proofGuard :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf -> TransposalAction sa ss sd so sf ta ts td to tf
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1 -> TransposalAction sa ss sd so sf ta ts td to tf
 proofGuard = observedComposition
 """,
     "owned transposal action restricts the inverse law to its source domain": r"""
@@ -1899,25 +2237,25 @@ proofGuard = transposalActionLeftInverse
 """,
     "owned transposal action retains every composed raw lookup": r"""
 {-@ proofGuard :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> target:TransposalElementData ta ts td
       -> {result:Maybe (TransposalElementData sa ss sd) |
            result /= composePartialInverses (transposalActionPreimage first) (transposalActionPreimage second) target} @-}
 proofGuard :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf -> TransposalElementData ta ts td
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1 -> TransposalElementData ta ts td
   -> Maybe (TransposalElementData sa ss sd)
 proofGuard = observedCompositePreimage
 """,
     "owned transposal action retains its composed raw map": r"""
 {-@ proofGuard :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> source:TransposalElementData sa ss sd
       -> {target:TransposalElementData ta ts td |
            target /= mapTransposalAction second (mapTransposalAction first source)} @-}
 proofGuard :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf -> TransposalElementData sa ss sd
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1 -> TransposalElementData sa ss sd
   -> TransposalElementData ta ts td
 proofGuard = observedCompositeMap
 """,
@@ -1939,9 +2277,18 @@ TRANSPOSAL_ELEMENT_PUBLIC_SOURCE = r"""
 {-@ LIQUID "--higherorder" @-}
 module TransposalElementPublicGuard where
 import Atlas (Atlas, atlasPageElements, normalizeAtlasElement)
+import Atlas.Witness (atlasOwner)
 import AtlasTransposal.Element
 import PageElements (pageElementTraceValid)
 import PageElements.Structure (PageElement, SomePageElement (..))
+
+{-@ observedOwnerTransfer :: first:Atlas a s d o f
+      -> second:{Atlas a s d o2 f2 | atlasOwner second == atlasOwner first}
+      -> element:{TransposalElementData a s d | transposalElementValid first element}
+      -> {result:TransposalElementData a s d | result == element && transposalElementValid second result} @-}
+observedOwnerTransfer :: Atlas a s d o f -> Atlas a s d o2 f2
+  -> TransposalElementData a s d -> TransposalElementData a s d
+observedOwnerTransfer first second element = transposalOwnersAgree first second element `seq` element
 
 {-@ observedElement :: owner:Atlas a s d o f
       -> source:{PageElement s object | pageElementTraceValid (atlasPageElements owner) source}
@@ -1971,6 +2318,23 @@ observedValid owner element = withTransposalElementOf owner element
   (pageElementTraceValid (atlasPageElements owner))
 """
 TRANSPOSAL_ELEMENT_PUBLIC_GUARDS = {
+    "transposal owner transfer requires complete owner equality": r"""
+{-@ proofGuard :: first:Atlas a s d o f -> second:Atlas a s d o2 f2
+      -> element:{TransposalElementData a s d | transposalElementValid first element}
+      -> {result:TransposalElementData a s d | result == element && transposalElementValid second result} @-}
+proofGuard :: Atlas a s d o f -> Atlas a s d o2 f2
+  -> TransposalElementData a s d -> TransposalElementData a s d
+proofGuard = observedOwnerTransfer
+""",
+    "transposal owner transfer requires source membership": r"""
+{-@ proofGuard :: first:Atlas a s d o f
+      -> second:{Atlas a s d o2 f2 | atlasOwner second == atlasOwner first}
+      -> element:TransposalElementData a s d
+      -> {result:TransposalElementData a s d | result == element && transposalElementValid second result} @-}
+proofGuard :: Atlas a s d o f -> Atlas a s d o2 f2
+  -> TransposalElementData a s d -> TransposalElementData a s d
+proofGuard = observedOwnerTransfer
+""",
     "transposal elements require an owning valid source": r"""
 proofGuard :: Atlas a s d o f -> PageElement s object -> TransposalElementData a s d
 proofGuard = observedElement

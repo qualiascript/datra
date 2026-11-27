@@ -20,7 +20,8 @@ module AtlasTransposal.Action
 import Atlas (Atlas, AtlasMorphismAction, atlasMorphismSource, atlasMorphismTarget,
   mapAtlasMorphismActionObject, normalizeAtlasElement, normalizeAtlasElementTraceValid, atlasCoherenceIdempotent)
 import AtlasTransposal.Element
-  (transposalElementValid)
+  (transposalElementValid, transposalOwnersAgree)
+import Atlas.Witness (atlasOwner)
 import AtlasTransposal.Element.Internal (TransposalElementData (..))
 import DomanialInsertion.Core
   ( DomanialInsertion (..), insertionOn, composePartialInverses )
@@ -130,15 +131,15 @@ identityTransposalActionRetains owner source =
 -- ALIGN: ATLAS-TRANSPOSAL-OWNED-COMPOSITION.
 {-@ opaque-reflect composeTransposalActions @-}
 {-@ composeTransposalActions :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> {action:TransposalAction sa ss sd so sf ta ts td to tf |
            transposalActionSource action == transposalActionSource first
            && transposalActionTarget action == transposalActionTarget second
            && mapTransposalAction action == composedMap second first
            && transposalActionPreimage action == composedPreimage second first} @-}
 composeTransposalActions :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1
   -> TransposalAction sa ss sd so sf ta ts td to tf
 composeTransposalActions second first =
   TransposalAction (transposalActionSource first) (transposalActionTarget second)
@@ -147,63 +148,70 @@ composeTransposalActions second first =
 
 {-@ reflect composedMap @-}
 {-@ composedMap :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> source:TransposalElementData sa ss sd
       -> {target:TransposalElementData ta ts td |
            transposalElementValid (transposalActionSource first) source => transposalElementValid (transposalActionTarget second) target} @-}
 composedMap :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1
   -> TransposalElementData sa ss sd -> TransposalElementData ta ts td
-composedMap second first source = mapTransposalAction second (mapTransposalAction first source)
+composedMap second first source =
+  let middle = mapTransposalAction first source
+  in transposalOwnersAgree (transposalActionTarget first) (transposalActionSource second) middle `seq`
+    mapTransposalAction second middle
 
 {-@ reflect composedPreimage @-}
 {-@ composedPreimage :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> target:TransposalElementData ta ts td
       -> {result:Maybe ({source:TransposalElementData sa ss sd |
            transposalElementValid (transposalActionTarget second) target => transposalElementValid (transposalActionSource first) source}) |
            result == composePartialInverses (transposalActionPreimage first) (transposalActionPreimage second) target} @-}
 composedPreimage :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1
   -> TransposalElementData ta ts td -> Maybe (TransposalElementData sa ss sd)
 composedPreimage second first target = case transposalActionPreimage second target of
   Nothing -> Nothing
-  Just middle -> transposalActionPreimage first middle
+  Just middle ->
+    transposalOwnersAgree (transposalActionSource second) (transposalActionTarget first) middle `seq`
+      transposalActionPreimage first middle
 
 {-@ composedRoundTrip :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> source:{TransposalElementData sa ss sd | transposalElementValid (transposalActionSource first) source}
       -> {composedPreimage second first (composedMap second first source) == Just source} @-}
 composedRoundTrip :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf -> TransposalElementData sa ss sd -> ()
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1 -> TransposalElementData sa ss sd -> ()
 composedRoundTrip second first source =
+  transposalOwnersAgree (transposalActionTarget first) (transposalActionSource second)
+    (mapTransposalAction first source) `seq`
   storedTransposalLeftInverse second (mapTransposalAction first source) `seq`
     storedTransposalLeftInverse first source
 
 -- ALIGN: ATLAS-TRANSPOSAL-OWNED-COMPOSITION-MAP.
 {-@ composeTransposalActionsMap :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> source:TransposalElementData sa ss sd
       -> {mapTransposalAction (composeTransposalActions second first) source
            == mapTransposalAction second (mapTransposalAction first source)} @-}
 composeTransposalActionsMap :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf -> TransposalElementData sa ss sd -> ()
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1 -> TransposalElementData sa ss sd -> ()
 composeTransposalActionsMap second first source =
   composeTransposalActions second first `seq` composedMap second first source `seq` ()
 
 -- ALIGN: ATLAS-TRANSPOSAL-OWNED-COMPOSITION-PREIMAGE.
 {-@ composeTransposalActionsPreimage :: second:TransposalAction ma ms md mo mf ta ts td to tf
-      -> first:{TransposalAction sa ss sd so sf ma ms md mo mf |
-           transposalActionTarget first == transposalActionSource second}
+      -> first:{TransposalAction sa ss sd so sf ma ms md mo1 mf1 |
+           atlasOwner (transposalActionTarget first) == atlasOwner (transposalActionSource second)}
       -> target:TransposalElementData ta ts td
       -> {transposalActionPreimage (composeTransposalActions second first) target
            == composePartialInverses (transposalActionPreimage first) (transposalActionPreimage second) target} @-}
 composeTransposalActionsPreimage :: TransposalAction ma ms md mo mf ta ts td to tf
-  -> TransposalAction sa ss sd so sf ma ms md mo mf -> TransposalElementData ta ts td -> ()
+  -> TransposalAction sa ss sd so sf ma ms md mo1 mf1 -> TransposalElementData ta ts td -> ()
 composeTransposalActionsPreimage second first target =
   composeTransposalActions second first `seq` composedPreimage second first target `seq` ()
 

@@ -26,7 +26,9 @@ module AtlasTransposal.Internal
   , atlasTransposalPathValid
   , atlasTransposalSourceOwner, atlasTransposalTargetOwner
   , atlasHomSourceOwner, atlasHomTargetOwner
-  , atlasHomSourceAgrees
+  , atlasHomSourceAgrees, atlasHomTargetAgrees, atlasHomMiddleValid, atlasHomNextSourceValid
+  , atlasHomTargetWitness
+  , atlasTransposalTargetWitness, atlasTransposalMapValid
   , atlasHomSourceValid, atlasHomTargetValid, mapAtlasHomObject
   , mapAtlasTransposalObject
   , atlasTransposalPreimage
@@ -34,6 +36,7 @@ module AtlasTransposal.Internal
   , identityAtlasTransposal
   , identityAtlasTransposalRetains
   , composeAtlasTransposals
+  , atlasTransposalLeftIdentity, atlasTransposalRightIdentity, atlasTransposalAssociativity
   , composeAtlasTransposalsRetains
   , atlasTransposalPagination
   , mapAtlasTransposalElement
@@ -56,10 +59,13 @@ import AtlasTransposal.Primitive.Internal (primitiveAtlasTransposal)
 import AtlasTransposal.Syntax.Internal
   ( AtlasTransposal (..)
   , atlasTransposalSourceOwner, atlasTransposalTargetOwner
+  , atlasTransposalTargetWitness
   , atlasTransposalSourceValid, atlasTransposalPathValid
   , mapAtlasTransposalObject, atlasTransposalPreimage
   , atlasTransposalLeftInverse, identityAtlasTransposal, identityAtlasTransposalRetains
-  , composeAtlasTransposals, composeAtlasTransposalsRetains )
+  , composeAtlasTransposals, composeAtlasTransposalsRetains
+  , atlasTransposalLeftIdentity, atlasTransposalRightIdentity, atlasTransposalAssociativity )
+import qualified AtlasTransposal.Syntax.Internal as Syntax (atlasTransposalMapValid)
 import AtlasTransposal.Element.Internal
   (AtlasTransposalElement, TransposalElementData (..))
 import AtlasTransposal.Element (transposalElementSource, transposalWitnessElementValid)
@@ -67,8 +73,8 @@ import Atlas.Witness (atlasWitnessOwner,
   atlasWitnessElementValid, normalizeAtlasWitnessElement, atlasWitnessNormalizeValid)
 import AtlasTransposal.Action (transposalAction)
 import AtlasTransposal.Objects
-  ( transposalObjectsMap, transposalObjectsWitnessAgrees, withTransposalObjects
-  , homTransposalObjects, homTransposalObjectsRetains
+  ( transposalObjectsMap, transposalObjectsWitnessAgrees, transposalObjectsTargetWitnessAgrees, withTransposalObjects
+  , atlasHomTargetWitness, homTransposalObjects, homTransposalObjectsRetains
   , atlasHomSourceOwner, atlasHomTargetOwner, atlasHomSourceValid, atlasHomTargetValid, mapAtlasHomObject )
 import Control.Category (Category (..))
 import DatraOrdinal (ordinalLT)
@@ -101,6 +107,15 @@ atlasTransposalElement witness source =
 {-@ reflect atlasTransposalElementValid @-}
 atlasTransposalElementValid :: AtlasWitness atlasObject -> AtlasTransposalElement atlasObject -> Bool
 atlasTransposalElementValid witness element = transposalWitnessElementValid witness element
+
+-- | Preserve owning membership through an accepted native syntax tree.
+{-@ atlasTransposalMapValid :: witness:AtlasWitness source -> arrow:AtlasTransposal source target
+      -> element:{AtlasTransposalElement source |
+           atlasTransposalElementValid witness element && atlasTransposalPathValid arrow element}
+      -> {atlasTransposalElementValid (atlasTransposalTargetWitness witness arrow)
+           (mapAtlasTransposalObject arrow element)} @-}
+atlasTransposalMapValid :: AtlasWitness source -> AtlasTransposal source target -> AtlasTransposalElement source -> ()
+atlasTransposalMapValid witness arrow source = Syntax.atlasTransposalMapValid witness arrow source
 
 -- | Eliminate the existential cell identity of an Atlas element.
 withAtlasTransposalElement
@@ -143,6 +158,46 @@ atlasHomSourceAgrees :: AtlasWitness source -> AtlasHom source target -> AtlasTr
 atlasHomSourceAgrees witness hom element =
   transposalObjectsWitnessAgrees witness (homTransposalObjects witness hom) element
 
+-- | The materialized target domain is the witnessed middle domain.
+{-@ atlasHomTargetAgrees :: sourceWitness:AtlasWitness source -> hom:AtlasHom source target
+      -> targetWitness:{AtlasWitness target | atlasWitnessOwner targetWitness == atlasHomTargetOwner sourceWitness hom}
+      -> element:AtlasTransposalElement target
+      -> {atlasTransposalElementValid targetWitness element <=> atlasHomTargetValid sourceWitness hom element} @-}
+atlasHomTargetAgrees :: AtlasWitness source -> AtlasHom source target -> AtlasWitness target
+  -> AtlasTransposalElement target -> ()
+atlasHomTargetAgrees sourceWitness hom targetWitness element =
+  transposalObjectsTargetWitnessAgrees targetWitness (homTransposalObjects sourceWitness hom) element
+
+-- | Propagate source membership across the actual middle allocation.
+-- ALIGN: ATLAS-TRANSPOSAL-MIDDLE-DOMAIN.
+{-@ atlasHomMiddleValid :: sourceWitness:AtlasWitness source
+      -> first:{AtlasHom source middle | atlasHomSourceOwner sourceWitness first == atlasWitnessOwner sourceWitness}
+      -> middleWitness:{AtlasWitness middle | atlasWitnessOwner middleWitness == atlasHomTargetOwner sourceWitness first}
+      -> second:{AtlasHom middle target | atlasHomSourceOwner middleWitness second == atlasWitnessOwner middleWitness}
+      -> sourceElement:{AtlasTransposalElement source | atlasTransposalElementValid sourceWitness sourceElement}
+      -> {atlasHomSourceValid middleWitness second (mapAtlasHomObject sourceWitness first sourceElement)} @-}
+atlasHomMiddleValid :: AtlasWitness source -> AtlasHom source middle -> AtlasWitness middle -> AtlasHom middle target
+  -> AtlasTransposalElement source -> ()
+atlasHomMiddleValid sourceWitness first middleWitness second source =
+  atlasHomSourceAgrees sourceWitness first source `seq`
+  let middle = mapAtlasHomObject sourceWitness first source
+  in atlasHomTargetAgrees sourceWitness first middleWitness middle `seq`
+    atlasHomSourceAgrees middleWitness second middle
+
+-- | Obtain the middle witness from the first materialization itself.
+-- ALIGN: ATLAS-TRANSPOSAL-DERIVED-MIDDLE-DOMAIN.
+{-@ atlasHomNextSourceValid :: sourceWitness:AtlasWitness source
+      -> first:{AtlasHom source middle | atlasHomSourceOwner sourceWitness first == atlasWitnessOwner sourceWitness}
+      -> second:{AtlasHom middle target |
+           atlasHomSourceOwner (atlasHomTargetWitness sourceWitness first) second == atlasHomTargetOwner sourceWitness first}
+      -> sourceElement:{AtlasTransposalElement source | atlasTransposalElementValid sourceWitness sourceElement}
+      -> {atlasHomSourceValid (atlasHomTargetWitness sourceWitness first) second
+           (mapAtlasHomObject sourceWitness first sourceElement)} @-}
+atlasHomNextSourceValid :: AtlasWitness source -> AtlasHom source middle -> AtlasHom middle target
+  -> AtlasTransposalElement source -> ()
+atlasHomNextSourceValid sourceWitness first second source =
+  atlasHomMiddleValid sourceWitness first (atlasHomTargetWitness sourceWitness first) second source
+
 -- | Restrict an Atlas arrow to a transposal.
 --
 -- The final argument certifies, for every accepted @sourceElement@, that
@@ -167,6 +222,7 @@ atlasTransposal
        atlasTransposalSourceOwner result == Just (atlasWitnessOwner sourceWitness)
        && atlasTransposalTargetOwner result == Just (atlasHomTargetOwner sourceWitness hom)
        && atlasTransposalSourceValid result == atlasHomSourceValid sourceWitness hom
+       && atlasTransposalPathValid result == atlasHomSourceValid sourceWitness hom
        && mapAtlasTransposalObject result == mapAtlasHomObject sourceWitness hom
        && atlasTransposalPreimage result == objectPreimage}
 @-}

@@ -11,15 +11,18 @@
 module AtlasTransposal.Syntax.Internal
   ( AtlasTransposal (..)
   , atlasTransposalSourceOwner, atlasTransposalTargetOwner
+  , atlasTransposalTargetWitness, atlasTransposalMapValid
   , atlasTransposalSourceValid, atlasTransposalPathValid
   , mapAtlasTransposalObject, atlasTransposalPreimage
   , atlasTransposalLeftInverse, identityAtlasTransposal, identityAtlasTransposalRetains
   , composeAtlasTransposals, composeAtlasTransposalsRetains
+  , atlasTransposalLeftIdentity, atlasTransposalRightIdentity, atlasTransposalAssociativity
   ) where
 
-import Atlas (identityAtlasHom, AtlasHom, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData)
-import Atlas.Witness (AtlasOwner, atlasOwner)
-import AtlasTransposal.Element (AtlasTransposalElement, transposalElementValid)
+import Atlas (atlasHomTargetObjectEquality, identityAtlasHom, AtlasHom, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData)
+import Atlas.Witness (AtlasWitness, AtlasOwner, atlasOwner, atlasWitnessOwner, atlasWitnessFor)
+import AtlasTransposal.Element (AtlasTransposalElement, transposalElementValid,
+  transposalWitnessElementValid, transposalWitnessOwnerAgrees)
 import AtlasTransposal.Action
   (TransposalAction, transposalActionSource, transposalActionTarget,
    mapTransposalAction, transposalActionPreimage, transposalActionLeftInverse)
@@ -45,10 +48,62 @@ data AtlasTransposal source target where
     -> AtlasTransposal source target
   IdentityAtlasTransposal
     :: AtlasHom source target
-    -> DomanialInsertion (AtlasTransposalElement source) (AtlasTransposalElement target)
+    -> TransposalIdentity source target
     -> AtlasTransposal source target
   CompositeAtlasTransposal :: AtlasTransposal middle target -> AtlasTransposal source middle
     -> AtlasTransposal source target
+
+-- | A symbolic identity transports a supplied owner along with its raw action.
+-- Keeping the transport law here avoids specializing object-indexed carriers
+-- when the recursive interpreter eliminates the syntax node.
+{-@ data TransposalIdentity source target = TransposalIdentity
+      { storedIdentityInsertion :: DomanialInsertion (AtlasTransposalElement source) (AtlasTransposalElement target)
+      , identityTargetWitness :: witness:AtlasWitness source
+          -> {result:AtlasWitness target | atlasWitnessOwner result == atlasWitnessOwner witness}
+      , identityMapValid :: witness:AtlasWitness source
+          -> element:{AtlasTransposalElement source | transposalWitnessElementValid witness element}
+          -> {transposalWitnessElementValid (identityTargetWitness witness)
+                (applyInsertion storedIdentityInsertion element)}
+      } @-}
+data TransposalIdentity source target = TransposalIdentity
+  { storedIdentityInsertion :: DomanialInsertion (AtlasTransposalElement source) (AtlasTransposalElement target)
+  , identityTargetWitness :: AtlasWitness source -> AtlasWitness target
+  , identityMapValid :: AtlasWitness source -> AtlasTransposalElement source -> ()
+  }
+
+-- | Recover the last stored target, or preserve the supplied owner through an
+-- identity-only tree. No runtime equality test on Atlas owners is needed.
+-- ALIGN: ATLAS-TRANSPOSAL-NATIVE-TARGET-WITNESS.
+{-@ opaque-reflect atlasHomTargetObjectEquality @-}
+{-@ reflect atlasTransposalTargetWitness @-}
+{-@ atlasTransposalTargetWitness :: witness:AtlasWitness source -> arrow:AtlasTransposal source target
+      -> {result:AtlasWitness target |
+           atlasTransposalTargetOwner arrow == Just (atlasWitnessOwner result)
+           || (atlasTransposalTargetOwner arrow == Nothing
+                && atlasWitnessOwner result == atlasWitnessOwner witness)} @-}
+atlasTransposalTargetWitness :: AtlasWitness source -> AtlasTransposal source target -> AtlasWitness target
+atlasTransposalTargetWitness witness (PrimitiveAtlasTransposal hom action) =
+  atlasWitnessFor (atlasHomTargetObjectEquality witness hom) (transposalActionTarget action)
+atlasTransposalTargetWitness witness (IdentityAtlasTransposal _ identity) = identityTargetWitness identity witness
+atlasTransposalTargetWitness witness (CompositeAtlasTransposal second first) =
+  atlasTransposalTargetWitness (atlasTransposalTargetWitness witness first) second
+
+-- | An accepted execution ends in its recovered target's owning domain.
+-- The path premise is needed independently of witnessed source membership.
+-- ALIGN: ATLAS-TRANSPOSAL-NATIVE-TARGET-VALID.
+{-@ atlasTransposalMapValid :: witness:AtlasWitness source -> arrow:AtlasTransposal source target
+      -> element:{AtlasTransposalElement source |
+           transposalWitnessElementValid witness element && atlasTransposalPathValid arrow element}
+      -> {transposalWitnessElementValid (atlasTransposalTargetWitness witness arrow)
+           (mapAtlasTransposalObject arrow element)} @-}
+atlasTransposalMapValid :: AtlasWitness source -> AtlasTransposal source target -> AtlasTransposalElement source -> ()
+atlasTransposalMapValid witness arrow@(PrimitiveAtlasTransposal _ action) source =
+  let target = mapTransposalAction action source
+  in transposalWitnessOwnerAgrees (atlasTransposalTargetWitness witness arrow) (transposalActionTarget action) target
+atlasTransposalMapValid witness (IdentityAtlasTransposal _ identity) source = identityMapValid identity witness source
+atlasTransposalMapValid witness (CompositeAtlasTransposal second first) source =
+  atlasTransposalMapValid witness first source `seq`
+    atlasTransposalMapValid (atlasTransposalTargetWitness witness first) second (mapAtlasTransposalObject first source)
 
 -- | Symbolic identities carry no fixed owner. A composite retains its first
 -- and last materialized owners, skipping identity-only subtrees.
@@ -102,7 +157,7 @@ mapAtlasTransposalObject
   -> AtlasTransposalElement source
   -> AtlasTransposalElement target
 mapAtlasTransposalObject (PrimitiveAtlasTransposal _ action) source = mapTransposalAction action source
-mapAtlasTransposalObject (IdentityAtlasTransposal _ insertion) source = applyInsertion insertion source
+mapAtlasTransposalObject (IdentityAtlasTransposal _ identity) source = applyInsertion (storedIdentityInsertion identity) source
 mapAtlasTransposalObject (CompositeAtlasTransposal second first) source =
   mapAtlasTransposalObject second (mapAtlasTransposalObject first source)
 
@@ -113,7 +168,7 @@ atlasTransposalPreimage
   -> AtlasTransposalElement target
   -> Maybe (AtlasTransposalElement source)
 atlasTransposalPreimage (PrimitiveAtlasTransposal _ action) target = transposalActionPreimage action target
-atlasTransposalPreimage (IdentityAtlasTransposal _ insertion) target = preimage insertion target
+atlasTransposalPreimage (IdentityAtlasTransposal _ identity) target = preimage (storedIdentityInsertion identity) target
 atlasTransposalPreimage (CompositeAtlasTransposal second first) target =
   case atlasTransposalPreimage second target of
     Nothing -> Nothing
@@ -135,8 +190,8 @@ atlasTransposalLeftInverse
 atlasTransposalLeftInverse (PrimitiveAtlasTransposal _ action) source
   | transposalElementValid (transposalActionSource action) source = transposalActionLeftInverse action source
   | otherwise = ()
-atlasTransposalLeftInverse (IdentityAtlasTransposal _ insertion) source =
-  insertionLeftInverse insertion source
+atlasTransposalLeftInverse (IdentityAtlasTransposal _ identity) source =
+  insertionLeftInverse (storedIdentityInsertion identity) source
 atlasTransposalLeftInverse (CompositeAtlasTransposal second first) source =
   atlasTransposalLeftInverse second (mapAtlasTransposalObject first source) `seq`
     atlasTransposalLeftInverse first source
@@ -146,7 +201,19 @@ atlasTransposalLeftInverse (CompositeAtlasTransposal second first) source =
 {-@ opaque-reflect identityAtlasHom @-}
 {-@ reflect identityAtlasTransposal @-}
 identityAtlasTransposal :: AtlasTransposal object object
-identityAtlasTransposal = IdentityAtlasTransposal identityAtlasHom identityInsertion
+identityAtlasTransposal = IdentityAtlasTransposal identityAtlasHom
+  (TransposalIdentity identityInsertion preserveIdentityWitness preserveIdentityMembership)
+
+{-@ reflect preserveIdentityWitness @-}
+preserveIdentityWitness :: AtlasWitness object -> AtlasWitness object
+preserveIdentityWitness witness = witness
+
+{-@ preserveIdentityMembership :: witness:AtlasWitness object
+      -> source:{AtlasTransposalElement object | transposalWitnessElementValid witness source}
+      -> {transposalWitnessElementValid (preserveIdentityWitness witness)
+           (applyInsertion identityInsertion source)} @-}
+preserveIdentityMembership :: AtlasWitness object -> AtlasTransposalElement object -> ()
+preserveIdentityMembership _ source = identityInsertionApply source
 
 -- | Observe identity on every raw input, without an owning-domain premise.
 -- ALIGN: ATLAS-TRANSPOSAL-NATIVE-IDENTITY-CALLBACKS.
@@ -197,3 +264,78 @@ instance Category AtlasTransposal where
   id = identityAtlasTransposal
   (.) = composeAtlasTransposals
 
+-- | Symbolic identity preserves raw execution and retained endpoint owners.
+-- ALIGN: ATLAS-TRANSPOSAL-LEFT-IDENTITY.
+{-@ atlasTransposalLeftIdentity :: identity:{AtlasTransposal target target | identity == identityAtlasTransposal}
+      -> arrow:AtlasTransposal source target
+      -> sourceElement:AtlasTransposalElement source -> targetElement:AtlasTransposalElement target
+      -> {mapAtlasTransposalObject (composeAtlasTransposals identity arrow) sourceElement == mapAtlasTransposalObject arrow sourceElement
+           && atlasTransposalPreimage (composeAtlasTransposals identity arrow) targetElement == atlasTransposalPreimage arrow targetElement
+           && (atlasTransposalPathValid (composeAtlasTransposals identity arrow) sourceElement <=> atlasTransposalPathValid arrow sourceElement)
+           && atlasTransposalSourceOwner (composeAtlasTransposals identity arrow) == atlasTransposalSourceOwner arrow
+           && atlasTransposalTargetOwner (composeAtlasTransposals identity arrow) == atlasTransposalTargetOwner arrow} @-}
+atlasTransposalLeftIdentity :: AtlasTransposal target target -> AtlasTransposal source target
+  -> AtlasTransposalElement source -> AtlasTransposalElement target -> ()
+atlasTransposalLeftIdentity identity arrow source target =
+  identityAtlasTransposalRetains identity (mapAtlasTransposalObject arrow source) `seq`
+  identityAtlasTransposalRetains identity target `seq`
+  case atlasTransposalSourceOwner arrow of
+    Nothing -> ()
+    Just _ -> ()
+
+-- | Symbolic identity preserves raw execution and retained endpoint owners.
+-- ALIGN: ATLAS-TRANSPOSAL-RIGHT-IDENTITY.
+{-@ atlasTransposalRightIdentity :: identity:{AtlasTransposal source source | identity == identityAtlasTransposal}
+      -> arrow:AtlasTransposal source target
+      -> sourceElement:AtlasTransposalElement source -> targetElement:AtlasTransposalElement target
+      -> {mapAtlasTransposalObject (composeAtlasTransposals arrow identity) sourceElement == mapAtlasTransposalObject arrow sourceElement
+           && atlasTransposalPreimage (composeAtlasTransposals arrow identity) targetElement == atlasTransposalPreimage arrow targetElement
+           && (atlasTransposalPathValid (composeAtlasTransposals arrow identity) sourceElement <=> atlasTransposalPathValid arrow sourceElement)
+           && atlasTransposalSourceOwner (composeAtlasTransposals arrow identity) == atlasTransposalSourceOwner arrow
+           && atlasTransposalTargetOwner (composeAtlasTransposals arrow identity) == atlasTransposalTargetOwner arrow} @-}
+atlasTransposalRightIdentity :: AtlasTransposal source source -> AtlasTransposal source target
+  -> AtlasTransposalElement source -> AtlasTransposalElement target -> ()
+atlasTransposalRightIdentity identity arrow source target =
+  identityAtlasTransposalRetains identity source `seq`
+  case atlasTransposalTargetOwner arrow of
+    Nothing -> inverseIdentity
+    Just _ -> inverseIdentity
+  where
+    inverseIdentity = case atlasTransposalPreimage arrow target of
+      Nothing -> ()
+      Just value -> identityAtlasTransposalRetains identity value
+
+-- | Regrouping syntax preserves both raw callbacks, domains, and endpoint owners.
+-- ALIGN: ATLAS-TRANSPOSAL-ASSOCIATIVITY.
+{-@ atlasTransposalAssociativity :: third:AtlasTransposal next target
+      -> second:AtlasTransposal middle next -> first:AtlasTransposal source middle
+      -> sourceElement:AtlasTransposalElement source -> targetElement:AtlasTransposalElement target
+      -> {mapAtlasTransposalObject (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement == mapAtlasTransposalObject (composeAtlasTransposals (composeAtlasTransposals third second) first) sourceElement
+           && atlasTransposalPreimage (composeAtlasTransposals third (composeAtlasTransposals second first)) targetElement == atlasTransposalPreimage (composeAtlasTransposals (composeAtlasTransposals third second) first) targetElement
+           && (atlasTransposalSourceValid (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement <=> atlasTransposalSourceValid (composeAtlasTransposals (composeAtlasTransposals third second) first) sourceElement)
+           && (atlasTransposalPathValid (composeAtlasTransposals third (composeAtlasTransposals second first)) sourceElement <=> atlasTransposalPathValid (composeAtlasTransposals (composeAtlasTransposals third second) first) sourceElement)
+           && atlasTransposalSourceOwner (composeAtlasTransposals third (composeAtlasTransposals second first)) == atlasTransposalSourceOwner (composeAtlasTransposals (composeAtlasTransposals third second) first)
+           && atlasTransposalTargetOwner (composeAtlasTransposals third (composeAtlasTransposals second first)) == atlasTransposalTargetOwner (composeAtlasTransposals (composeAtlasTransposals third second) first)} @-}
+atlasTransposalAssociativity :: AtlasTransposal next target -> AtlasTransposal middle next
+  -> AtlasTransposal source middle -> AtlasTransposalElement source -> AtlasTransposalElement target -> ()
+atlasTransposalAssociativity third second first _ target =
+  atlasTransposalPreimageAssociativity third second first target `seq`
+  case (atlasTransposalSourceOwner first, atlasTransposalTargetOwner third) of
+    (Nothing, Nothing) -> ()
+    (Nothing, Just _) -> ()
+    (Just _, Nothing) -> ()
+    (Just _, Just _) -> ()
+
+{-@ atlasTransposalPreimageAssociativity :: third:AtlasTransposal next target
+      -> second:AtlasTransposal middle next -> first:AtlasTransposal source middle
+      -> targetElement:AtlasTransposalElement target
+      -> {atlasTransposalPreimage (composeAtlasTransposals third (composeAtlasTransposals second first)) targetElement
+           == atlasTransposalPreimage (composeAtlasTransposals (composeAtlasTransposals third second) first) targetElement} @-}
+atlasTransposalPreimageAssociativity :: AtlasTransposal next target -> AtlasTransposal middle next
+  -> AtlasTransposal source middle -> AtlasTransposalElement target -> ()
+atlasTransposalPreimageAssociativity third second _ target =
+  case atlasTransposalPreimage third target of
+    Nothing -> ()
+    Just middle -> case atlasTransposalPreimage second middle of
+      Nothing -> ()
+      Just _ -> ()
