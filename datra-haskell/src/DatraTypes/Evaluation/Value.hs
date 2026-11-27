@@ -6,7 +6,6 @@
 module Evaluation.Value
   ( SyntaxCategory (..)
   , PrimitiveType (..)
-  , CanonicalStringImplementation (..)
   , DatraType
   , DatraTypeFamily (..)
   , structuralDatraType
@@ -15,10 +14,8 @@ module Evaluation.Value
   , primitiveDatraType
   , totalBlockDatraType
   , datraTypeFamily
-  , canonicalStringImplementation
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
-  , RuntimeFunctionInsertion (..)
   , FunctionSource (..)
   , applyFunctionSource
   , specifyFunctionSource
@@ -31,7 +28,6 @@ module Evaluation.Value
   , withFunctionSyntax
   , makeFunctionBodyValue
   , interpretedFunctionBody
-  , interpretedRuntimeFunctionInsertion
   , syntaxCategoryTypeValue
   , functionAlternatives
   , isFunctionFamily
@@ -89,8 +85,6 @@ module Evaluation.Value
   , coalizeNamedMapView
   , coalizeNamedOrdinalMapView
   , interpretedSimpleIdentifierName
-  , ToStringInverseDecision (..)
-  , ProvenInjectiveToString (..)
   , InterpretedAtlasMapFederationPrimitive (..)
   , InterpretedAtlasMapFederation
   , PresentationOwner (..)
@@ -364,9 +358,6 @@ data EvaluatedAtlasMapFederationMember
       (Maybe EvaluatedAtlasMapFederationMember)
       EvaluatedAtlasMapFederationMember
   | EvaluatedDependentSumMember InterpretedValue
-  | EvaluatedToStringMember
-      InterpretedValue
-      EvaluatedAtlasMapFederationMember
   | EvaluatedCanonicalTypeMember CanonicalResult
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
@@ -400,13 +391,6 @@ data EvaluatedFunctionInvocation = EvaluatedFunctionInvocation
   , functionInvocationContract :: Maybe InterpretedValue
   }
 
--- | The executable forward operation attached to a runtime function.
-data RuntimeFunctionInsertion = RuntimeFunctionInsertion
-  { applyRuntimeFunction
-      :: InterpretedValue
-      -> Either InterpretingError InterpretedValue
-  }
-
 data EvaluatedFunctionBody
   = EvaluatedRuntimeFunctionBody FunctionSource EvaluatedFunction
 
@@ -425,7 +409,6 @@ data EvaluatedFunction = EvaluatedFunction
         -> PreparedFunctionArgument
         -> Either InterpretingError EvaluatedFunctionInvocation)
   , functionValidatesResult :: Bool
-  , functionInsertion :: Maybe RuntimeFunctionInsertion
   }
 
 -- | Ordinary evaluation is unrestricted. Shadowing consistency is established
@@ -546,24 +529,6 @@ interpretedFunctionBody value = case interpretedForm value of
   SpecificationForm specification ->
     interpretedFunctionBody (evaluatedSpecificationSourceValue specification)
   _ -> Nothing
-
--- | Recover the executable insertion evidence attached either directly to a
--- function or through its runtime body. Typed wrappers deliberately keep the
--- body separate from the signature, so consumers must inspect both layers.
-interpretedRuntimeFunctionInsertion
-  :: InterpretedValue
-  -> Maybe RuntimeFunctionInsertion
-interpretedRuntimeFunctionInsertion value =
-  case interpretedFunction value >>= functionInsertionFrom of
-    Just insertion -> Just insertion
-    Nothing -> interpretedFunctionBody value >>= bodyInsertion
-  where
-    bodyInsertion (EvaluatedRuntimeFunctionBody _ function) =
-      functionInsertionFrom function
-    functionInsertionFrom function =
-      case functionInsertion function of
-        Just insertion -> Just insertion
-        Nothing -> functionBody function >>= bodyInsertion
 
 interpretedFunction :: InterpretedValue -> Maybe EvaluatedFunction
 interpretedFunction value = case interpretedForm value of
@@ -945,21 +910,7 @@ newtype EvaluatedIdentifierExpression = EvaluatedIdentifierExpression
   { evaluatedIdentifierExpressionBody :: Expression
   }
 
--- | The partial inverse carried by a proven pointwise string conversion.
-data ToStringInverseDecision
-  = ToStringInverseMatched [InterpretedValue]
-  | ToStringInverseRejected
-
-data ProvenInjectiveToString = ProvenInjectiveToString
-  { injectiveToStringCharacterAlphabet :: Maybe String
-  , injectiveToStringExactStrings :: Maybe [String]
-  , injectiveToStringExcludesSubstring :: String -> Bool
-  , invertInjectiveToString :: String -> ToStringInverseDecision
-  }
-
 -- | Primitive Atlas-map federation kinds understood by the interpreter.
--- The injective string primitive carries the language facts and inverse that
--- justified its construction.
 data InterpretedAtlasMapFederationPrimitive
   = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
   | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
@@ -968,9 +919,6 @@ data InterpretedAtlasMapFederationPrimitive
   | EitherAtlasMapFederation EvaluatedEither
   | DependentArgumentTypeAtlasMapFederation EvaluatedDependentArgumentType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedDependentArgumentType
-  | ToStringAtlasMapFederation
-      InterpretedValue
-      ProvenInjectiveToString
 
 type InterpretedAtlasMapFederation =
   AtlasMapFederationExpression

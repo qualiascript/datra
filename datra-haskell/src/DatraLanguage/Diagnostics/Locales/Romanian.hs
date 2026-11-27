@@ -133,9 +133,6 @@ localizeSyntaxRewriteFailure failure = case failure of
       [ "declarația anterioară: " <> earlier
       , "declarația ulterioară: " <> later
       ]
-  NonInjectiveDependentDeclaration declaration ->
-    LocalizedMessage "declarația dependentă nu este injectivă"
-      ["declarație: " <> declaration]
   InvalidDependentDeclarationModifiers written correct ->
     LocalizedMessage "modificatorii declarației sunt nevalizi"
       [ "modificatori scriși: " <> unwords written
@@ -326,14 +323,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "compilatorul nu poate decide această operație pe federații"
         ["operația: " <> federationOperation operation]
-    NonInjectiveStringInterpolation ->
+    InjectiveValueConstructionNotImplemented ->
       LocalizedMessage
-        "interpolare de șir neinjectivă"
-        ["valori distincte din interpolare pot avea aceeași formă de șir"]
-    NoCanonicalStringConversion ->
-      LocalizedMessage
-        "valoarea nu are o conversie canonică în șir"
-        ["sunt acceptate doar conversii în șir injective și reversibile"]
+        "construcția valorilor injective nu este implementată"
+        ["declarațiile val dependente și imaginile punctuale de șir așteaptă dovezi structurale de inserție"]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
         "alternativele Either nu sunt hărți Atlas diferențiabile"

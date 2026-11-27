@@ -8,11 +8,7 @@ module Evaluation.Specification.String
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
-import Evaluation.Specification.Decision
-  ( Decision (..)
-  , decideAny
-  , mapDecision
-  )
+import Evaluation.Specification.Decision (Decision (..), decideAny)
 import Evaluation.Value
 
 -- | Whether a value denotes only strings.  Most cases are visible directly
@@ -46,10 +42,7 @@ federationProducesStrings federation =
       case interpretedMapComponents valueMap of
         [AsciiStringSemantics _] -> True
         _ -> False
-    PrimitiveAtlasMapFederation primitive ->
-      case primitive of
-        ToStringAtlasMapFederation _ _ -> True
-        _ -> False
+    PrimitiveAtlasMapFederation _ -> False
     CoalizedAtlasMapFederation operand ->
       federationProducesStrings operand
     ConcatenatedAtlasMapFederation left right ->
@@ -112,20 +105,7 @@ selectCharacters selectMember characters federation =
                     (CanonicalAsciiString expected))
               else DecisionRefuted)
         _ -> Nothing
-    PrimitiveAtlasMapFederation primitive ->
-      case primitive of
-        ToStringAtlasMapFederation source proof ->
-          Just
-            (case invertInjectiveToString proof characters of
-              ToStringInverseMatched candidates ->
-                decideAny
-                  [ mapDecision
-                      (EvaluatedToStringMember candidate)
-                      (selectMember candidate source)
-                  | candidate <- candidates
-                  ]
-              ToStringInverseRejected -> DecisionRefuted)
-        _ -> Nothing
+    PrimitiveAtlasMapFederation _ -> Nothing
     CoalizedAtlasMapFederation operand ->
       selectCharacters selectMember characters operand
     ConcatenatedAtlasMapFederation left right -> do

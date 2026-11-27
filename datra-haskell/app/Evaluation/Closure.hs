@@ -188,12 +188,6 @@ rewrite mode inDefinition active resolver bound expression =
         body)
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
-    OptionalType operand
-      | Nothing <- optionalIdentifierExpression expression ->
-          recur
-            (FunctionApplication
-              (IdentifierReference (SimpleIdentifierString "Maybe"))
-              operand)
     _ -> traverseExpressionChildren recur expression
   where
     recur = rewrite mode inDefinition active resolver bound

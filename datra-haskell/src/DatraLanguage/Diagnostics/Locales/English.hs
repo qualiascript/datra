@@ -137,9 +137,6 @@ localizeSyntaxRewriteFailure failure = case failure of
       [ "earlier declaration: " <> earlier
       , "later declaration: " <> later
       ]
-  NonInjectiveDependentDeclaration declaration ->
-    LocalizedMessage "dependent declaration is not injective"
-      ["declaration: " <> declaration]
   InvalidDependentDeclarationModifiers written correct ->
     LocalizedMessage "declaration modifiers are invalid"
       [ "written modifiers: " <> unwords written
@@ -325,14 +322,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "the compiler cannot decide this Atlas-map federation operation"
         ["operation: " <> federationOperation operation]
-    NonInjectiveStringInterpolation ->
+    InjectiveValueConstructionNotImplemented ->
       LocalizedMessage
-        "non-injective string interpolation"
-        ["distinct values in the interpolation can have the same string form"]
-    NoCanonicalStringConversion ->
-      LocalizedMessage
-        "value does not have a canonical string conversion"
-        ["only injective, round-trippable string conversions are accepted"]
+        "injective value construction is not implemented"
+        ["dependent val declarations and pointwise string images await structural insertion evidence"]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
         "Either alternatives are not distinguishable Atlas maps"

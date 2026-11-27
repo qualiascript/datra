@@ -3,8 +3,6 @@ module Evaluation.Specification.Projection
   ( specificationProjection
   ) where
 
-import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
 import BooleanType (DatraBoolean (..))
 import Evaluation.Error (InterpretingError)
 import Evaluation.Identifier (identifierNameFederationFor)
@@ -120,13 +118,6 @@ templateHoles target member =
             <*> templateHoles right rightMember
         _ -> pure Nothing
     AsciiStringForm _ -> pure (Just [])
-    ToStringForm ->
-      case (interpretedAtlasMapFederation target, member) of
-        ( PrimitiveAtlasMapFederation
-            (ToStringAtlasMapFederation original _)
-          , EvaluatedToStringMember selected _
-          ) -> Just . pure <$> specifyValues selected original
-        _ -> pure Nothing
     _ -> pure Nothing
 
 combineHoles :: Maybe [value] -> Maybe [value] -> Maybe [value]

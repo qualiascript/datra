@@ -1,73 +1,30 @@
 -- | Internal pointwise conversion used by string-template interpolation.
 -- There is deliberately no surface-language name for this operation.
 module Evaluation.ToString
-  ( CanonicalStringCodec (..)
-  , toStringValue
-  , stringFederationValue
+  ( toStringValue
   , templateValue
   , stringConversionIsIdentity
-  , stringFederationConcatenationIsInjective
   ) where
 
-import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (..)
-  )
-import Data.List (isInfixOf, nub)
 import Evaluation.Construction (makeAsciiString)
-import Evaluation.Error (InterpretingError)
+import Evaluation.Error
+  ( InterpretingError (InjectiveValueConstructionNotImplemented) )
 import Evaluation.Specification.String (valueProducesStrings)
-import Evaluation.ToString.Injectivity (proveInjectiveToString)
 import Evaluation.Value
 
--- | The canonical presentation is a codec, not merely a pretty-printer.
--- Decoding returns every value interpretation of the text; selection against
--- the original federation decides which candidate is its member. Keeping the
--- inverse here makes injectivity structural for maps, Either values, and
--- identifier wrappers instead of baking their surface shapes into the proof.
-data CanonicalStringCodec = CanonicalStringCodec
-  { renderCanonicalString :: InterpretedValue -> String
-  , decodeCanonicalString :: String -> [InterpretedValue]
-  }
-
--- | Convert a total value to its canonical source spelling, or retain a
--- pointwise string-federation map for a non-total value. Strings are identity
--- values so their source delimiters never become data.
+-- | Conversion of a concrete value remains safe. Pointwise conversion of a
+-- federation used to manufacture alleged injectivity evidence from rendered
+-- strings; it is intentionally unavailable until the structural insertion
+-- design is implemented.
 toStringValue
-  :: CanonicalStringCodec
+  :: (InterpretedValue -> String)
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-toStringValue codec source = Right (stringFederationValue codec source)
-
--- | Total internal conversion used when constructing a StringExpression.
--- Every result denotes only strings, including pointwise conversions of
--- non-total input federations.
-stringFederationValue
-  :: CanonicalStringCodec
-  -> InterpretedValue
-  -> InterpretedValue
-stringFederationValue codec source =
-  if stringConversionIsIdentity source
-    then source
-    else if interpretedTypeIsTotal source
-      then
-        makeAsciiString (renderCanonicalString codec source)
-      else
-        pointwiseFederation
-          (proveInjectiveToString
-            (interpretedDatraType source)
-            (decodeCanonicalString codec)
-            source)
-  where
-    pointwiseFederation proof =
-      makeInterpretedValue
-        structuralDatraType
-        ToStringForm
-        NoInsertion
-        emptyInterpretedMap
-        (PrimitiveAtlasMapFederation
-          (ToStringAtlasMapFederation source proof))
-        NonTotalInterpretedMap
-        (ToStringSemantics (interpretedSemantics source))
+toStringValue render source
+  | stringConversionIsIdentity source = Right source
+  | interpretedTypeIsTotal source =
+      Right (makeAsciiString (render source))
+  | otherwise = Left InjectiveValueConstructionNotImplemented
 
 -- | Retain the ordinary concatenation result while recording that its members
 -- are the pointwise outputs of one string template. A concrete string is
@@ -92,124 +49,3 @@ templateValue value =
 
 stringConversionIsIdentity :: InterpretedValue -> Bool
 stringConversionIsIdentity = valueProducesStrings
-
--- | Decide the string-specific case omitted by generic Atlas federation
--- concatenation: a fixed nonempty delimiter makes the product injective when
--- at least one adjacent variable side excludes it.
-stringFederationConcatenationIsInjective
-  :: InterpretedAtlasMapFederation
-  -> InterpretedAtlasMapFederation
-  -> Bool
-stringFederationConcatenationIsInjective left right =
-  finiteLanguagesAreInjective
-    || trailingBoundaryIsInjective
-    || leadingBoundaryIsInjective
-  where
-    finiteLanguagesAreInjective =
-      case (federationExactStrings left, federationExactStrings right) of
-        (Just leftStrings, Just rightStrings) ->
-          let concatenations =
-                [leftString <> rightString
-                | leftString <- leftStrings
-                , rightString <- rightStrings
-                ]
-          in length concatenations == length (nub concatenations)
-        _ -> False
-    trailingBoundaryIsInjective =
-      case trailingStringDelimiter left of
-        Just (prefix, delimiter) ->
-          not (null delimiter)
-            && ( stringFederationExcludes delimiter prefix
-                  || stringFederationExcludes delimiter right
-               )
-        Nothing -> False
-    leadingBoundaryIsInjective =
-      case leadingStringDelimiter right of
-        Just (delimiter, suffix) ->
-          not (null delimiter)
-            && ( stringFederationExcludes delimiter left
-                  || stringFederationExcludes delimiter suffix
-               )
-        Nothing -> False
-
-federationExactStrings
-  :: InterpretedAtlasMapFederation
-  -> Maybe [String]
-federationExactStrings federation =
-  case federation of
-    SingletonAtlasMapFederation valueMap ->
-      case interpretedMapComponents valueMap of
-        [AsciiStringSemantics characters] -> Just [characters]
-        _ -> Nothing
-    PrimitiveAtlasMapFederation primitive ->
-      case primitive of
-        ToStringAtlasMapFederation _ proof ->
-          injectiveToStringExactStrings proof
-        _ -> Nothing
-    CoalizedAtlasMapFederation operand ->
-      federationExactStrings operand
-    ConcatenatedAtlasMapFederation left right -> do
-      leftStrings <- federationExactStrings left
-      rightStrings <- federationExactStrings right
-      pure
-        [leftString <> rightString
-        | leftString <- leftStrings
-        , rightString <- rightStrings
-        ]
-    SequentialAtlasMapFederation _ -> Nothing
-    ExpansionAtlasMapFederation _ _ -> Nothing
-
-trailingStringDelimiter
-  :: InterpretedAtlasMapFederation
-  -> Maybe (InterpretedAtlasMapFederation, String)
-trailingStringDelimiter
-    (ConcatenatedAtlasMapFederation left right) =
-      (\delimiter -> (left, delimiter)) <$> singletonAsciiString right
-trailingStringDelimiter _ = Nothing
-
-leadingStringDelimiter
-  :: InterpretedAtlasMapFederation
-  -> Maybe (String, InterpretedAtlasMapFederation)
-leadingStringDelimiter
-    (ConcatenatedAtlasMapFederation left right) =
-      (\delimiter -> (delimiter, right)) <$> singletonAsciiString left
-leadingStringDelimiter _ = Nothing
-
-singletonAsciiString
-  :: InterpretedAtlasMapFederation
-  -> Maybe String
-singletonAsciiString (SingletonAtlasMapFederation valueMap) =
-  case interpretedMapComponents valueMap of
-    [AsciiStringSemantics characters] -> Just characters
-    _ -> Nothing
-singletonAsciiString _ = Nothing
-
-stringFederationExcludes
-  :: String
-  -> InterpretedAtlasMapFederation
-  -> Bool
-stringFederationExcludes delimiter federation =
-  case federation of
-    SingletonAtlasMapFederation valueMap ->
-      case interpretedMapComponents valueMap of
-        [AsciiStringSemantics characters] ->
-          not (delimiter `isInfixOf` characters)
-        _ -> False
-    PrimitiveAtlasMapFederation primitive ->
-      case primitive of
-        ToStringAtlasMapFederation _ proof ->
-          injectiveToStringExcludesSubstring proof delimiter
-            || case injectiveToStringCharacterAlphabet proof of
-              Nothing -> False
-              Just alphabet -> any (`notElem` alphabet) delimiter
-        _ -> False
-    CoalizedAtlasMapFederation operand ->
-      stringFederationExcludes delimiter operand
-    SequentialAtlasMapFederation members ->
-      all (stringFederationExcludes delimiter) members
-    ExpansionAtlasMapFederation leftValue rightValue ->
-      stringFederationExcludes delimiter leftValue
-        && stringFederationExcludes delimiter rightValue
-    ConcatenatedAtlasMapFederation leftValue rightValue ->
-      stringFederationExcludes delimiter leftValue
-        && stringFederationExcludes delimiter rightValue

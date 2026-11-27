@@ -3,7 +3,10 @@
 ## Status and scope
 
 This document defines a follow-up design for generic string expressions. Its
-implementation is outside the identifier-expression pull request.
+parser, template, concatenation, matching, and string-federation foundations
+are already present. The generic `_StrExpr T` image, its retained insertion,
+and its inverse-selection proof path are not implemented. The former
+string-oriented injectivity approximation has been removed.
 
 The proof and inverse required by a canonical string image are defined in
 [DEPENDENT_DECLARATION_INJECTIVITY.md](./DEPENDENT_DECLARATION_INJECTIVITY.md).
@@ -194,7 +197,7 @@ Specification in either direction delegates to the same family operations
 and inverse-selection evidence. There is no second specification table for
 syntax categories or string interpolation.
 
-## Representation boundaries
+## Future representation boundaries
 
 Responsibilities are divided as follows:
 
@@ -205,7 +208,9 @@ Responsibilities are divided as follows:
   abstraction.
 - DatraLanguage owns only the syntax-level `StringTemplateInterpolation`
   wrapper, whose payload is an ordinary expression.
-- DatraHost exposes that implementation as `datra.StrExpr`.
+- a future typed native-capability provider may supply the implementation used
+  by an ordinary `datra.StrExpr` declaration; the current `DatraHost` module is
+  inert and exposes no namespace or capability;
 - `std.datra` publishes the `_StrExpr` family with the definition above.
 - The application parser owns quoted interpolation syntax and any parser
   capability required by a syntax-category insertion.
@@ -242,8 +247,8 @@ keep it beside `_StrExpr`:
   typed selection evidence instead of a parallel template AST.
 
 Temporary compatibility constructors or dual matching paths are not part of
-the design. All remaining clients must use `_StrExpr T` and the generic
-internal hook.
+the design. Future clients must use `_StrExpr T` and the typed capability
+boundary.
 
 ## Required invariants
 

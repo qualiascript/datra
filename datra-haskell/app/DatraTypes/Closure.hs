@@ -20,8 +20,6 @@ newtype DependencyAddress = DependencyAddress
 
 data DependencyKey
   = BindingDependency String Expression
-  | SelectedDependency [SimpleIdentifierString] Expression
-  | ContextualDependency ContextualRole Natural Expression
   deriving (Eq, Show)
 
 data Dependency = Dependency

@@ -56,7 +56,6 @@ data SyntaxRewriteFailure
   | AmbiguousStrictSyntaxImport Expression
   | RewriteStackExhausted
   | OverlappingDependentDeclarations String String
-  | NonInjectiveDependentDeclaration String
   | InvalidDependentDeclarationModifiers [String] [String]
   | ExpectedDependentDeclaration Expression
   | RejectedSyntaxCandidates [DatraError CandidateRejectionReport]

@@ -8,7 +8,6 @@ module DatraTypes
   , DatraType
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
-  , RuntimeFunctionInsertion (..)
   , FunctionSource (..)
   , applyFunctionSource
   , specifyFunctionSource
@@ -21,7 +20,6 @@ module DatraTypes
   , withFunctionSyntax
   , makeFunctionBodyValue
   , interpretedFunctionBody
-  , interpretedRuntimeFunctionInsertion
   , makeDependentSumValue
   , dependentSumView
   , dependentSumElementType
@@ -110,13 +108,12 @@ module DatraTypes
   , justUnderlying
   , optionalUnderlying
   , nothingValue
+  , isNothingValue
   , asciiStringValue
   , makeIdentifierExpression
   , charTypeValue
   , listTypeValue
   , streamTypeValue
-  , CanonicalStringCodec (..)
-  , stringFederationValue
   , stringConversionIsIdentity
   , toStringValue
   , templateValue
@@ -169,8 +166,6 @@ module DatraTypes
   , IntegerRangeKind (..)
   , integerLimitRangeValue
   , integerLimitRangeIsSubfederationOf
-  , valuedIntegerRangeInsertion
-  , boundedIntegerRangeInsertion
   , integerTypeValue
   , dependentArgumentTypeValue
   , dependentArgumentTemplateTypeValue
@@ -179,7 +174,6 @@ module DatraTypes
   , identifierUnderlyingValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
-  , canonicalValueMarker
   , definitionMarker
   , withTrailingIdentifierMarker
   , hasTrailingIdentifierMarker
@@ -344,15 +338,14 @@ import Evaluation.Arguments
   )
 import Evaluation.Optional
   ( justUnderlying
+  , isNothingValue
   , makeNothing
   , makeOptionalValue
   , optionalPresentType
   , optionalUnderlying
   )
 import Evaluation.ToString
-  ( CanonicalStringCodec (..)
-  , stringConversionIsIdentity
-  , stringFederationValue
+  ( stringConversionIsIdentity
   , templateValue
   , toStringValue
   )
@@ -452,16 +445,11 @@ import Evaluation.LimitRange
   , integerLimitRangeValue
   , integerLimitRangeIsSubfederationOf
   )
-import Evaluation.RangeInsertion
-  ( valuedIntegerRangeInsertion
-  , boundedIntegerRangeInsertion
-  )
 import Evaluation.Length (mapLengthValue)
 import Evaluation.Identifier
   ( dependentArgumentTypeValue
   , dependentArgumentTemplateTypeValue
   , identifierTemplateTypeValue
-  , canonicalValueMarker
   , definitionMarker
   , hasTrailingIdentifierMarker
   , simpleIdentifierName
@@ -496,7 +484,6 @@ import Evaluation.Value
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , EvaluatedFunctionBody (..)
-  , RuntimeFunctionInsertion (..)
   , FunctionSource (..)
   , applyFunctionSource
   , specifyFunctionSource
@@ -509,7 +496,6 @@ import Evaluation.Value
   , withFunctionSyntax
   , makeFunctionBodyValue
   , interpretedFunctionBody
-  , interpretedRuntimeFunctionInsertion
   , makeDependentSumValue
   , dependentSumView
   , dependentSumElementType
