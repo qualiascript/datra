@@ -41,6 +41,8 @@ import Atlas
   , mapAtlasHomData
   , mapAtlasHomElement
   )
+import AtlasTransposal.Element.Internal
+  (AtlasTransposalElement, TransposalElementData (..))
 import Control.Category (Category (..))
 import DomanialInsertion
   ( DomanialInsertion
@@ -64,29 +66,6 @@ import Pagination (PaginationMorphism, SomePageElementArrow)
 import PageElements.Structure (positionAtPage)
 import Prelude hiding ((.), id)
 
--- | One object of the finite page-element category belonging to an Atlas.
---
--- The constructor is hidden. 'atlasTransposalElement' first applies the
--- Atlas's coherence map, so padded occurrences denote their genuine stored
--- representative. This is the carrier on which Lean's @F.Pa.obj@ is required
--- to be injective; it deliberately does not use the non-injective action on
--- the auxiliary padded spine.
-type role AtlasTransposalElement nominal
-data AtlasTransposalElement atlasObject where
-  AtlasTransposalElement
-    :: PageElement (AtlasObjectPaginationScope atlasObject) object
-    -> AtlasTransposalElement atlasObject
-
-instance Eq (AtlasTransposalElement atlasObject) where
-  AtlasTransposalElement left == AtlasTransposalElement right =
-    pageElementPage left == pageElementPage right
-      && pageElementPosition left == pageElementPosition right
-
-instance Show (AtlasTransposalElement atlasObject) where
-  showsPrec _ (AtlasTransposalElement element) =
-    showString "AtlasTransposalElement "
-      . shows (pageElementPage element, pageElementPosition element)
-
 -- | Turn an occurrence on the padded spine into the corresponding genuine
 -- Atlas element.
 -- ALIGN: ATLAS-TRANSPOSE-ELEMENT-EQUIVALENCE.
@@ -101,9 +80,9 @@ atlasTransposalElement witness element =
 
 -- | Eliminate the existential cell identity of an Atlas element.
 withAtlasTransposalElement
-  :: AtlasTransposalElement atlasObject
+  :: TransposalElementData a s d
   -> (forall object.
-        PageElement (AtlasObjectPaginationScope atlasObject) object
+        PageElement s object
         -> result)
   -> result
 withAtlasTransposalElement (AtlasTransposalElement element) useElement =
@@ -115,8 +94,8 @@ withAtlasTransposalElement (AtlasTransposalElement element) useElement =
 {-@ reflect atlasTransposalElementLT @-}
 -- ALIGN: ATLAS-ORDER-INTERPRETATION.
 atlasTransposalElementLT
-  :: AtlasTransposalElement atlasObject
-  -> AtlasTransposalElement atlasObject
+  :: TransposalElementData a s d
+  -> TransposalElementData a s d
   -> Bool
 atlasTransposalElementLT
     (AtlasTransposalElement left)

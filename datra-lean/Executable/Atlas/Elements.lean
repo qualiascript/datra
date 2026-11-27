@@ -1,4 +1,5 @@
 import Executable.Atlas.Data
+import Executable.PageElementLookup
 
 namespace Datra.Executable.Atlas
 open CategoryTheory
@@ -12,6 +13,49 @@ def transposalElement (X : Atlas) (x : X.Element) : X.TransposalElement :=
 
 def withTransposalElement {X : Atlas} {Result : Sort*} (x : X.TransposalElement)
     (useElement : X.Element → Result) : Result := useElement x.val
+
+/-- The executable existential stores a raw occurrence. Its scalar owner test
+is explicit; identifying its payload with an owning cell is separate evidence. -/
+structure TransposalElementData (X : Atlas) where
+  source : PageElement X.pages
+
+namespace TransposalElementData
+
+def valid (X : Atlas) (element : TransposalElementData X) : Prop :=
+  X.pages.traceValid element.source = true ∧
+    element.source.normalize (X.pages.depth - 1) X.pages.depth = element.source
+
+def ofSource (X : Atlas) (source : PageElement X.pages) : TransposalElementData X :=
+  ⟨source.normalize (X.pages.depth - 1) X.pages.depth⟩
+
+-- ALIGN: ATLAS-TRANSPOSAL-OWNED-ELEMENT.
+theorem at_valid (X : Atlas) (source : PageElement X.pages)
+    (accepted : X.pages.traceValid source = true) :
+    valid X (ofSource X source) ∧
+      (ofSource X source).source = source.normalize (X.pages.depth - 1) X.pages.depth :=
+  ⟨⟨X.pages.traceValid_normalize X.pagination.folio.valid source accepted,
+      PageElement.normalize_idempotent _ _ source⟩, rfl⟩
+
+-- ALIGN: ATLAS-TRANSPOSAL-OWNED-ELIMINATION.
+def withOwned {X : Atlas} {Result : Sort*} (element : TransposalElementData X)
+    (accepted : valid X element)
+    (useSource : (source : PageElement X.pages) →
+      X.pages.traceValid source = true →
+      source.normalize (X.pages.depth - 1) X.pages.depth = source →
+      source = element.source → Result) : Result :=
+  useSource element.source accepted.1 accepted.2 rfl
+
+def ofElement {X : Atlas} (element : X.TransposalElement) : TransposalElementData X :=
+  ⟨element.val.val⟩
+
+theorem ofElement_valid {X : Atlas} (element : X.TransposalElement) :
+    valid X (ofElement element) :=
+  ⟨element.val.traceValid X.pagination.folio.valid, congrArg Subtype.val element.property⟩
+
+theorem at_ofElement (X : Atlas) (source : X.Element) :
+    ofSource X source.val = ofElement (transposalElement X source) := rfl
+
+end TransposalElementData
 
 namespace TransposalElement
 

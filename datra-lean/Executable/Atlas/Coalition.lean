@@ -74,6 +74,23 @@ theorem coalitionElementReaches_iff {X : Atlas} (c : X.CoalitionElement) (target
   · rintro ⟨arrow⟩
     exact ⟨arrow.precedes, arrow.transported⟩
 
+-- ALIGN: COALITION-DATUM-NATURALITY.
+theorem coalitionElementAlongArrow {X : Atlas} (c : X.CoalitionElement)
+    {source target : X.Element} (first : c.source ⟶ source) (second : source ⟶ target) :
+    coalitionElementReaches c target = true ∧
+      coalitionElementAt c target (first ≫ second) =
+        (X.data.action.normalizedMap second).map (coalitionElementAt c source first) :=
+  ⟨(coalitionElementReaches_iff c target).mpr ⟨first ≫ second⟩, X.data.composition first second c.datum⟩
+
+-- ALIGN: COALITION-DATUM-NORMALIZATION.
+theorem coalitionElementAtNormalized {X : Atlas} (c : X.CoalitionElement) (target : X.Element)
+    (arrow : c.source ⟶ target) :
+    coalitionElementReaches c target.normalize = true ∧
+      coalitionElementAt c target.normalize (arrow ≫ target.toNormalized) =
+        coalitionElementAt c target arrow := by
+  obtain ⟨reaches, transported⟩ := coalitionElementAlongArrow c arrow target.toNormalized
+  exact ⟨reaches, transported.trans (X.data.coherence target _)⟩
+
 -- ALIGN: COALITION-DATUM-TRANSPORT.
 theorem coalitionElementAt_originImage {X : Atlas} (c : X.CoalitionElement) (target : X.Element)
     (arrow : c.source ⟶ target) :

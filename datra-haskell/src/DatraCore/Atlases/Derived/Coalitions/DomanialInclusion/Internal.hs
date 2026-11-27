@@ -51,7 +51,6 @@ import Atlas
   , AtlasWitness
   , atlasHom
   , atlasMorphism
-  , atlasMorphismAction
   , atlasOriginCell
   , atlasWitness
   , withAtlasWitness
@@ -77,9 +76,8 @@ import DomanialInclusion.LiquidInternal
   ( dominionAtlasMap, dominionCoalitionElement
   , coalitionValue, coaDomIncIso, coaDomIncIsoLeftInverse, coaDomIncIsoRightInverse )
 import DomanialInclusion.Action
-  ( originObjectMap, constantObject, constantObjectPreservesArrow, constantComponentInsertion )
-import DomanialInclusion.Component
-  ( coalitionComponentMap, constantComponentNaturality )
+  ( originObjectMap, constantObject, constantObjectPreservesArrow )
+import DomanialInclusion.Morphism (coalitionMorphismAction)
 import DomanialInclusion.Presentation
   ( DominionPaginationScope, onePageFolio, onePagePagination
   , DominionAtlas, DominionAtlasObject, dominionAtlas, withDominionAtlas
@@ -155,18 +153,17 @@ coaToDomInc sourceDominion targetOwner insertion backward leftInverse =
         targetWitness = atlasWitness targetAtlas
 
         action =
-          atlasMorphismAction
+          coalitionMorphismAction
             (originObjectMap @targetObject)
-            sourceAtlas
+            sourceDominion
             targetAtlas
+            targetOrigin
             (constantObject targetAtlas targetOrigin)
-            (constantComponentInsertion (originObjectMap @targetObject) sourceDominion
-              targetAtlas targetOrigin (constantObject targetAtlas targetOrigin)
-              (applyInsertion insertion) backward leftInverse)
+            (applyInsertion insertion)
+            backward
+            leftInverse
             (constantObjectPreservesArrow (originObjectMap @targetObject)
               sourceAtlas targetAtlas targetOrigin)
-            (constantComponentNaturality sourceDominion targetAtlas targetOrigin
-              (coalitionComponentMap targetAtlas targetOrigin (applyInsertion insertion)))
 
         hom = atlasHom (atlasMorphism action)
 

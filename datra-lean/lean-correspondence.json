@@ -7051,13 +7051,6 @@
       "lean_declaration": "componentAccepted"
     },
     {
-      "id": "DOMINC-COMPONENT-NATURALITY",
-      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Component.hs",
-      "haskell_declaration": "constantComponentNaturality",
-      "lean_namespace": "Datra.Executable.DomanialInclusion",
-      "lean_declaration": "constantComponentNaturality"
-    },
-    {
       "id": "DOMINC-CONSTANT-OBJECT",
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Action.hs",
       "haskell_declaration": "constantObject",
@@ -7091,6 +7084,55 @@
       "haskell_declaration": "constantComponentInsertion",
       "lean_namespace": "Datra.Executable.DomanialInclusion",
       "lean_declaration": "constantComponentInsertion"
+    },
+    {
+      "id": "COALITION-DATUM-NATURALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Data.hs",
+      "haskell_declaration": "coalitionElementAlongArrow",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionElementAlongArrow"
+    },
+    {
+      "id": "COALITION-DATUM-NORMALIZATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element/Data.hs",
+      "haskell_declaration": "coalitionElementAtNormalized",
+      "lean_namespace": "Datra.Executable.Atlas",
+      "lean_declaration": "coalitionElementAtNormalized"
+    },
+    {
+      "id": "DOMINC-MORPHISM-ASSEMBLY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Morphism.hs",
+      "haskell_declaration": "coalitionMorphismAction",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "coalitionMorphismAction"
+    },
+    {
+      "id": "DOMINC-MAPPED-NATURALITY",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Morphism.hs",
+      "haskell_declaration": "constantMappedNaturality",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "constantMappedNaturality"
+    },
+    {
+      "id": "DOMINC-MAPPED-COMPONENT-VALUE",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Morphism.hs",
+      "haskell_declaration": "constantComponentValue",
+      "lean_namespace": "Datra.Executable.DomanialInclusion",
+      "lean_declaration": "coalitionActionComponent_map"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-OWNED-ELEMENT",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Element.hs",
+      "haskell_declaration": "transposalElementAt",
+      "lean_namespace": "Datra.Executable.Atlas.TransposalElementData",
+      "lean_declaration": "at_valid"
+    },
+    {
+      "id": "ATLAS-TRANSPOSAL-OWNED-ELIMINATION",
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Element.hs",
+      "haskell_declaration": "withTransposalElementOf",
+      "lean_namespace": "Datra.Executable.Atlas.TransposalElementData",
+      "lean_declaration": "withOwned"
     }
   ],
   "modules": [
@@ -8120,7 +8162,6 @@
       "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Internal.hs",
       "module": "AtlasTransposal.Internal",
       "types": [
-        "AtlasTransposalElement",
         "AtlasTransposal"
       ],
       "reflected": [
@@ -9705,6 +9746,8 @@
         "coalitionElementExtensionality",
         "withCoalitionElementOf",
         "coalitionElementAt",
+        "coalitionElementAlongArrow",
+        "coalitionElementAtNormalized",
         "coalitionElementCoverageAt",
         "coalitionFromCharted",
         "coalitionUnrankAt",
@@ -10614,7 +10657,6 @@
       "refinement_aliases": [],
       "embeddings": [],
       "refinements": [
-        "constantComponentNaturality",
         "coalitionComponentInsertion",
         "coalitionComponentInsertionOn",
         "coalitionComponentMap",
@@ -10647,6 +10689,79 @@
         "constantObjectPreservesArrow"
       ],
       "variances": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion/Morphism.hs",
+      "module": "DomanialInclusion.Morphism",
+      "lean_target": "Datra.Executable.DomanialInclusion",
+      "coverage": "aligned",
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "variances": [],
+      "opaque_reflected": [],
+      "reflected": [],
+      "refinements": [
+        "coalitionMorphismAction",
+        "constantComponentValue",
+        "constantMappedNaturality"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/Coalitions/Coalition/Element.hs",
+      "module": "Coalition.Element",
+      "lean_target": "Datra.Executable.Atlas",
+      "coverage": "aligned",
+      "types": [],
+      "aliases": [],
+      "predicates": [],
+      "refinement_aliases": [],
+      "embeddings": [],
+      "variances": [],
+      "opaque_reflected": [],
+      "reflected": [],
+      "refinements": [
+        "coalitionElementAlongArrow",
+        "coalitionElementAtNormalized"
+      ]
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Element/Internal.hs",
+      "module": "AtlasTransposal.Element.Internal",
+      "lean_target": "Datra.Executable.Atlas.TransposalElementData",
+      "coverage": "partial",
+      "types": [
+        "TransposalElementData"
+      ],
+      "reflected": [],
+      "refinements": [],
+      "aliases": [
+        "AtlasTransposalElement"
+      ],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": []
+    },
+    {
+      "haskell_file": "datra-haskell/src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal/Element.hs",
+      "module": "AtlasTransposal.Element",
+      "lean_target": "Datra.Executable.Atlas.TransposalElementData",
+      "coverage": "aligned",
+      "types": [],
+      "reflected": [
+        "transposalElementSource",
+        "transposalElementValid"
+      ],
+      "refinements": [
+        "transposalElementAt",
+        "withTransposalElementOf"
+      ],
+      "aliases": [],
+      "embeddings": [],
+      "predicates": [],
+      "refinement_aliases": []
     }
   ],
   "trust_boundary": []

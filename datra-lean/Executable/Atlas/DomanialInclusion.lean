@@ -620,19 +620,84 @@ theorem DominionAtlas.mapDataIdentity {A : Type} (owner : DominionAtlas A)
     rw [owner.carrierEquiv_preimage]
     simp only [Equiv.apply_symm_apply]
 
-/-- A fixed target component commutes with the retained source action and the
-normalized target identity. This is the inclusion assembler's data law. -/
--- ALIGN: DOMINC-COMPONENT-NATURALITY.
-theorem constantComponentNaturality {A : Type} (owner : DominionAtlas A) {X : Atlas}
-    (target : X.Element) (forward : A → X.cellData target.val.cell)
-    {source destination : owner.atlas.Element} (arrow : source ⟶ destination)
+theorem DominionAtlas.carrierEquiv_normalize {A : Type} (owner : DominionAtlas A)
+    (source : owner.atlas.Element) (datum : owner.atlas.cellData source.val.cell) :
+    owner.carrierEquiv source.normalize datum = owner.carrierEquiv source datum := rfl
+
+section CoalitionMorphismAssembly
+variable {A : Type} (owner : DominionAtlas A) {X : Atlas} (target : X.Element)
+  (mapObject : PageElement owner.allocation.atlasDescription.pagination.pages → X.Element)
+  (constant : ∀ source, mapObject source = target)
+  (forward : A → X.CertifiedCoalitionElement)
+  (originArrow : ∀ value, (forward value).val.source ⟶ target)
+  (backward : ∀ occurrence : X.Element, X.cellData occurrence.val.cell → Option A)
+  (leftInverse : ∀ (occurrence : X.Element) (same : occurrence = target) value,
+    backward occurrence (Atlas.coalitionElementAt (forward value).val occurrence
+      (originArrow value ≫ eqToHom same.symm)) = some value)
+
+/-- Interpret the checked component on the retained owner's accepted carrier. -/
+def coalitionActionComponent (source : owner.atlas.Element) :
+    DomanialInsertion (owner.atlas.cellData source.val.cell) (X.cellData (mapObject source.val).val.cell) :=
+  (constantComponentInsertion owner target mapObject constant forward originArrow backward leftInverse source.val).reindex
+    ((owner.acceptedConstantEquiv source.val).symm.trans (owner.carrierEquiv source).symm) (Equiv.refl _)
+
+-- ALIGN: DOMINC-MAPPED-COMPONENT-VALUE.
+theorem coalitionActionComponent_map (source : owner.atlas.Element)
     (datum : owner.atlas.cellData source.val.cell) :
-    forward (owner.carrierEquiv destination
-      ((owner.atlas.data.action.normalizedMap arrow).map datum)).value =
-      (X.data.action.normalizedMap (𝟙 target.normalize)).map
-        (forward (owner.carrierEquiv source datum).value) := by
-  rw [owner.carrierEquiv_map, X.data.identity]
-  rfl
+    (coalitionActionComponent owner target mapObject constant forward originArrow backward leftInverse source).map datum =
+      Atlas.coalitionElementAt (forward (owner.carrierEquiv source datum).value).val (mapObject source.val)
+        (originArrow _ ≫ eqToHom (constant source.val).symm) := rfl
+
+variable
+  (pageLaw : ∀ {source destination : owner.atlas.Element}, (source ⟶ destination) →
+    ((mapObject source.normalize.val).normalize ⟶ (mapObject destination.normalize.val).normalize))
+
+-- ALIGN: DOMINC-MAPPED-NATURALITY.
+theorem constantMappedNaturality {source destination : owner.atlas.Element}
+    (sourceArrow : source ⟶ destination) (datum : owner.atlas.cellData source.val.cell) :
+    (coalitionActionComponent owner target mapObject constant forward originArrow backward leftInverse destination.normalize).map
+        ((owner.atlas.data.action.normalizedMap sourceArrow).map datum) =
+      (X.data.action.normalizedMap (pageLaw sourceArrow)).map
+        ((coalitionActionComponent owner target mapObject constant forward originArrow backward leftInverse source.normalize).map datum) := by
+  rw [coalitionActionComponent_map, coalitionActionComponent_map]
+  simp only [DominionAtlas.carrierEquiv_normalize]
+  rw [owner.carrierEquiv_map]
+  let value := (owner.carrierEquiv source datum).value
+  let element := (forward value).val
+  let left := mapObject source.normalize.val
+  let right := mapObject destination.normalize.val
+  let leftArrow : element.source ⟶ left := originArrow value ≫ eqToHom (constant _).symm
+  let rightArrow : element.source ⟶ right := originArrow value ≫ eqToHom (constant _).symm
+  have transported := (Atlas.coalitionElementAlongArrow element
+    (leftArrow ≫ left.toNormalized) (pageLaw sourceArrow)).2
+  rw [(Atlas.coalitionElementAtNormalized element left leftArrow).2] at transported
+  exact ((Atlas.coalitionElementAtNormalized element right rightArrow).2).symm.trans transported
+
+-- ALIGN: DOMINC-MORPHISM-ASSEMBLY.
+def coalitionMorphismAction : PrimitiveAtlasMorphism owner.atlas X where
+  object source := mapObject source.val
+  component := coalitionActionComponent owner target mapObject constant forward originArrow backward leftInverse
+  arrow := pageLaw
+  naturality := constantMappedNaturality owner target mapObject constant forward originArrow backward leftInverse pageLaw
+
+theorem coalitionMorphismAction_callbacks :
+    (coalitionMorphismAction owner target mapObject constant forward originArrow backward leftInverse pageLaw).object =
+        (fun source => mapObject source.val) ∧
+      (coalitionMorphismAction owner target mapObject constant forward originArrow backward leftInverse pageLaw).component =
+        coalitionActionComponent owner target mapObject constant forward originArrow backward leftInverse := ⟨rfl, rfl⟩
+
+theorem coalitionMorphismAction_preimage (source : owner.atlas.Element)
+    (datum : X.cellData (mapObject source.val).val.cell) :
+    (((coalitionMorphismAction owner target mapObject constant forward originArrow backward leftInverse pageLaw).component
+        source).preimage datum).map (owner.carrierEquiv source) =
+      (backward (mapObject source.val) datum).map CellData.mk := by
+  change (((constantComponentInsertion owner target mapObject constant forward originArrow backward leftInverse source.val).preimage
+      datum).map ((owner.acceptedConstantEquiv source.val).symm.trans (owner.carrierEquiv source).symm)).map
+      (owner.carrierEquiv source) = _
+  simp only [Option.map_map, Function.comp_def, Equiv.trans_apply, Equiv.apply_symm_apply]
+  exact constantComponentInsertion_preimage owner target mapObject constant forward originArrow backward leftInverse source.val datum
+
+end CoalitionMorphismAssembly
 
 -- ALIGN: DOMINC-OWNER-COALITION.
 def dominionCoalitionElement {A : Type} (owner : DominionAtlas A) (value : A) :

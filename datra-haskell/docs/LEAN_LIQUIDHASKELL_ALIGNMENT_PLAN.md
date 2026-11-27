@@ -67,10 +67,11 @@ The public Atlas interface exposes the exact normalized insertion from its
 retained presentation. The Dominion-inclusion owner uses this equation to prove
 that transport has the constant identity forward map and decoder on every valid
 owning arrow. Lean proves equality of the entire insertion after the carrier
-identification, including inverse lookups. These facts provide the source-action
-equations used by the inclusion assembler's checked constant-component
-naturality callback. That callback combines constant-cell reconstruction with
-the target Atlas identity law on accepted data at a valid normalized occurrence.
+identification, including inverse lookups. These source-action equations combine
+with coalition transport laws: evaluation at an arrow's target agrees with the owning Atlas action on evaluation at its
+source, and normalizing the target preserves the transported datum. Checked
+public wrappers retain both laws for callers, including their owning validity
+and reachability premises.
 The exposed `DomanialInclusion.Action` interface owns the constant object-map
 symbol and callback. The callback retains every target field, the complete untyped occurrence, and its owning
 trace validity. Its checked page-arrow certificate sends every source pair,
@@ -89,12 +90,34 @@ lookup. The inclusion assembler uses this shared helper, with rank-polymorphic
 inverse evidence at occurrences equal to the selected target. Public-client
 checks reject missing constant-target, reachability, or inverse premises and
 contradictions of the retained callbacks.
-The complete primitive assembly still needs to connect the specialized dependent
-component callbacks to its data-naturality certificate. The component-membership
-contracts and the constant-data naturality theorem are checked separately; their
-composition through the concrete object-map specialization is not yet checked.
-The transposal, coverage, and stable-owner construction contracts remain separate
+The exposed `DomanialInclusion.Morphism` constructor checks the complete primitive
+morphism assembly while keeping the object-map symbol abstract. Its pointwise
+component equation connects the stored forward callback to coalition evaluation.
+Naturality follows from the retained Dominion's identity transport, the coalition
+transport law, and normalization at both target endpoints. Construction retains
+the actual source and target owners, object-map witness, object callback, and
+entire component callback. The inclusion assembler consumes this constructor.
+Lean builds the corresponding morphism over the retained owner's accepted
+carrier and proves that every inverse lookup recovers the supplied decoder after
+erasing source-membership evidence. Public-client checks reject missing inverse,
+constant-target, validity, or page-law premises and contradicting retained owners
+or callbacks.
+The outer `coaToDomInc` contract still needs to connect canonical-origin
+elimination and its supplied callbacks to this constructor. Transposal inverse
+and order, coverage, and stable-owner construction contracts remain separate
 obligations.
+Transposal elements use one private raw carrier with explicit Atlas scope,
+page scope, and datum-family parameters. The exposed `AtlasTransposal.Element`
+interface checks normalization and trace validity against the actual supplied
+Atlas, retains the exact normalized occurrence, and gives both certificates to
+its rank-polymorphic eliminator. The native transposal, ordered-transposal, and
+stable-transversal wrappers share this carrier. Lean models the raw package and
+its checked operations, and proves that constructing it from an owning indexed
+cell agrees with the certified transposal-element constructor. Scalar trace
+validity alone does not identify an arbitrary stored dependent payload with the
+owning cell. That payload bridge, the native witness constructor's owning
+contract, and restriction of transposal inverse/order laws to the accepted source
+domain remain explicit obligations; normalization alone cannot justify them.
 The Charter object has an executable
 coverage-enumeration Dominion, guarded data-arrow inverses, and an isomorphism
 to the written covered-subtype Atlas. The complete-action helper preserves

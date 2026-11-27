@@ -50,6 +50,7 @@ import Atlas
   , atlasPageElements
   , atlasWitness
   )
+import AtlasTransposal.Element (TransposalElementData)
 import AtlasTransposal
   ( AtlasTransposal
   , AtlasTransposalElement
@@ -110,12 +111,12 @@ stableAtlasOrigin valueAtlas =
     atlasTransposalElement (atlasWitness valueAtlas) origin
 
 {-@ reflect stableElementPage @-}
-stableElementPage :: AtlasTransposalElement atlasObject -> Natural
+stableElementPage :: TransposalElementData a s d -> Natural
 stableElementPage element =
   withAtlasTransposalElement element pageElementPage
 
 {-@ reflect stableElementPosition @-}
-stableElementPosition :: AtlasTransposalElement atlasObject -> Ordinal
+stableElementPosition :: TransposalElementData a s d -> Ordinal
 stableElementPosition element =
   withAtlasTransposalElement element pageElementPosition
 

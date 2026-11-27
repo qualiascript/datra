@@ -171,6 +171,7 @@ library
         AtlasCoveredPageElement
         AtlasMap
         AtlasTransposal
+        AtlasTransposal.Element
         OrderedAtlasTransposal
         ChainedDominionAtlas
         ChainedDominionAtlas.Data
@@ -199,6 +200,7 @@ library
         DomanialInclusion.Data
         DomanialInclusion.Action
         DomanialInclusion.Component
+        DomanialInclusion.Morphism
         DomanialInclusion.Presentation
         StableAtlasTransversal
         DataTransformation
@@ -238,6 +240,7 @@ library
         AtlasMap.Internal
         TotalAtlasMap.Internal
         AtlasTransposal.Internal
+        AtlasTransposal.Element.Internal
         OrderedAtlasTransposal.Internal
         AtlasTransversal.Internal
         AtlasTransversalMap.Internal

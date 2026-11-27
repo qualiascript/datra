@@ -30,6 +30,7 @@ import Atlas
   , AtlasObjectPaginationScope
   , AtlasWitness
   )
+import AtlasTransposal.Element (TransposalElementData)
 import AtlasTransposal
   ( AtlasTransposal
   , AtlasTransposalElement
@@ -74,8 +75,8 @@ data OrderedAtlasTransposal source target where
 
 {-@ reflect orderedElementLT @-}
 orderedElementLT
-  :: AtlasTransposalElement atlasObject
-  -> AtlasTransposalElement atlasObject
+  :: TransposalElementData a s d
+  -> TransposalElementData a s d
   -> Bool
 orderedElementLT = atlasTransposalElementLT
 

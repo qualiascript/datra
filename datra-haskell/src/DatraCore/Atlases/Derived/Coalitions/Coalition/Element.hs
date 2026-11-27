@@ -27,6 +27,8 @@ module Coalition.Element
   , withCoalitionElementOf
   , coalitionElementReaches
   , coalitionElementAt
+  , coalitionElementAlongArrow
+  , coalitionElementAtNormalized
   , coalitionElementCoverageAt
   , coalitionCoveredElement
   , coalitionFromCovered
@@ -38,5 +40,39 @@ module Coalition.Element
   , withMappedCoalitionAction
   ) where
 
-import Coalition.Element.Data
+import Coalition.Element.Data hiding (coalitionElementAlongArrow, coalitionElementAtNormalized)
+import qualified Coalition.Element.Data as Data (coalitionElementAlongArrow, coalitionElementAtNormalized)
+import Atlas (Atlas, atlasPageElements, mapAtlasData, normalizeAtlasElement)
+import AtlasExtent (cellTraceValid)
+import DomanialInsertion.Core (DomanialInsertion (..))
+import PageElements (PageElement, originPageElement)
+import PageElements.Structure (PageElementArrow, arrowSource, arrowTarget)
 import Coalition.Action (mapCoalitionElement, withMappedCoalitionAction, withMappedCoalitionElement)
+
+-- | Preserve the checked transport contract through the public interface.
+{-@ coalitionElementAlongArrow :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
+      -> element:{CoalitionData a s d | coalitionElementValid owner element
+           && coalitionElementSource element == originPageElement (atlasPageElements owner)
+           && coalitionElementReaches element (arrowSource arrow)}
+      -> {coalitionElementReaches element (arrowTarget arrow)
+           && coalitionElementAt owner (arrowTarget arrow) element
+             == applyInsertion (mapAtlasData owner arrow)
+                  (coalitionElementAt owner (arrowSource arrow) element)} @-}
+coalitionElementAlongArrow :: Atlas a s d o f -> PageElementArrow s source target
+  -> CoalitionData a s d -> ()
+coalitionElementAlongArrow = Data.coalitionElementAlongArrow
+
+-- | Preserve the checked transport contract through the public interface.
+{-@ coalitionElementAtNormalized :: owner:Atlas a s d o f
+      -> target:{PageElement s object | cellTraceValid owner target}
+      -> element:{CoalitionData a s d | coalitionElementValid owner element
+           && coalitionElementSource element == originPageElement (atlasPageElements owner)
+           && coalitionElementReaches element target}
+      -> {coalitionElementReaches element (normalizeAtlasElement owner target)
+           && coalitionElementAt owner (normalizeAtlasElement owner target) element
+                == coalitionElementAt owner target element} @-}
+coalitionElementAtNormalized :: Atlas a s d o f -> PageElement s object
+  -> CoalitionData a s d -> ()
+coalitionElementAtNormalized = Data.coalitionElementAtNormalized

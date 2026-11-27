@@ -8,11 +8,10 @@
 
 -- | Checked data components for the Dominion-inclusion hom correspondence.
 module DomanialInclusion.Component
-  ( coalitionComponentInsertion, coalitionComponentMap, constantComponentNaturality, acceptDominionComponent, acceptedDominionPreimage ) where
+  ( coalitionComponentInsertion, coalitionComponentMap, acceptDominionComponent, acceptedDominionPreimage ) where
 
 import Atlas
-  ( Atlas, atlasPageElements, atlasAcceptsDatum, mapAtlasData, normalizeAtlasElement
-  , normalizeAtlasElementTraceValid, atlasAcceptsDatumNormalized, atlasIdentityWitness )
+  ( Atlas, atlasPageElements, atlasAcceptsDatum )
 import AtlasExtent (cellTraceValid)
 import Coalition.Element
   ( CoalitionData, coalitionElementAt, coalitionElementReaches
@@ -20,44 +19,10 @@ import Coalition.Element
 import DomanialInsertion.Core (DomanialInsertion (..), domanialInsertion, insertionOn, composePartialInverses)
 import DomanialInclusion.Data
   ( DominionCellData, dominionCellProjection, dominionCellProjectionPreimage, domIncHomFromValue
-  , dominionCellDataValue, dominionCellDataReconstruct, identityCellMap )
+  , dominionCellDataValue, dominionCellDataReconstruct )
 import DomanialInclusion.Presentation
-  ( DominionAtlas, DominionPaginationScope, dominionAtlas, dominionMapDataIdentity, dominionAcceptsDatum )
-import PageElements (PageElement, originPageElement, pageElementTraceValid)
-import PageElements.Structure
-  ( PageElementArrow, arrowSource, arrowTarget, pageElementArrow, identityPageElementArrow )
-
--- | A constant component commutes with source transport and the target identity.
--- ALIGN: DOMINC-COMPONENT-NATURALITY.
-{-@ constantComponentNaturality :: sourceOwner:DominionAtlas ownerScope a
-      -> targetAtlas:Atlas atlasScope scope cellData origin final
-      -> targetOccurrence:{PageElement scope object | cellTraceValid targetAtlas targetOccurrence}
-      -> forward:(a -> {datum:cellData object | atlasAcceptsDatum targetAtlas targetOccurrence datum})
-      -> sourceArrow:{PageElementArrow (DominionPaginationScope a) source target |
-           pageElementTraceValid (atlasPageElements (dominionAtlas sourceOwner)) (arrowSource sourceArrow)
-           && pageElementTraceValid (atlasPageElements (dominionAtlas sourceOwner)) (arrowTarget sourceArrow)}
-      -> datum:DominionCellData a source
-      -> {domIncHomFromValue forward
-            (applyInsertion (mapAtlasData (dominionAtlas sourceOwner) sourceArrow) datum)
-           == applyInsertion
-                (mapAtlasData targetAtlas
-                  (pageElementArrow (normalizeAtlasElement targetAtlas targetOccurrence)
-                    (normalizeAtlasElement targetAtlas targetOccurrence)))
-                (domIncHomFromValue forward datum)} @-}
-constantComponentNaturality :: DominionAtlas owner a
-  -> Atlas atlasScope scope cellData origin final -> PageElement scope object
-  -> (a -> cellData object)
-  -> PageElementArrow (DominionPaginationScope a) source target
-  -> DominionCellData a source -> ()
-constantComponentNaturality sourceOwner targetAtlas targetOccurrence forward sourceArrow datum =
-  dominionMapDataIdentity sourceOwner sourceArrow `seq`
-    dominionCellDataReconstruct (identityCellMap datum) `seq`
-    dominionCellDataReconstruct datum `seq`
-      normalizeAtlasElementTraceValid targetAtlas targetOccurrence `seq`
-        atlasAcceptsDatumNormalized targetAtlas targetOccurrence
-          (forward (dominionCellDataValue datum)) `seq`
-          atlasIdentityWitness targetAtlas (normalizeAtlasElement targetAtlas targetOccurrence)
-            (forward (dominionCellDataValue datum))
+  ( DominionAtlas, DominionPaginationScope, dominionAtlas, dominionAcceptsDatum )
+import PageElements (PageElement, originPageElement )
 
 -- | A coalition inverse is defined only on covered values. The component
 -- inverse additionally handles arbitrary target data, including uncovered data.
