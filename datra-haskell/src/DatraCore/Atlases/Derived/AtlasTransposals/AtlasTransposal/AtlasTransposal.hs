@@ -35,6 +35,7 @@ module AtlasTransposal
   , atlasHomTargetWitness
   , atlasTransposalTargetWitness, atlasTransposalMapValid
   , atlasTransposalOwnedPath, atlasTransposalComposeOwned
+  , atlasTransposalCompositionOwners, atlasTransposalOwnersAssociativity
   , atlasHomSourceValid
   , atlasHomTargetValid
   , mapAtlasHomObject
@@ -79,7 +80,7 @@ import AtlasTransposal.Internal
 
 import qualified AtlasTransposal.Internal as Internal
   (atlasTransposalOwnedPath, atlasTransposalComposeOwned, atlasTransposalTargetWitness, atlasTransposalMapValid, atlasTransposalLeftIdentity, atlasTransposalRightIdentity, atlasTransposalAssociativity, atlasTransposal, atlasTransposalElement, identityAtlasTransposalRetains, composeAtlasTransposalsRetains, atlasHomSourceAgrees, atlasHomTargetAgrees, atlasHomMiddleValid, atlasHomNextSourceValid)
-import qualified AtlasTransposal.Syntax.Internal as Syntax (atlasTransposalPathSource)
+import qualified AtlasTransposal.Syntax.Internal as Syntax (atlasTransposalPathSource, atlasTransposalCompositionOwners, atlasTransposalOwnersAssociativity)
 import qualified AtlasTransposal.Objects as Objects (atlasHomTargetWitness)
 import DomanialInsertion.Core (composePartialInverses)
 
@@ -276,3 +277,24 @@ atlasTransposalComposeOwned witness first second =
       -> {atlasTransposalPathValid arrow source => atlasTransposalSourceValid arrow source} @-}
 atlasTransposalPathSource :: AtlasTransposal source target -> AtlasTransposalElement source -> ()
 atlasTransposalPathSource arrow source = Syntax.atlasTransposalPathSource arrow source
+
+{-@ atlasTransposalCompositionOwners :: second:AtlasTransposal middle target -> first:AtlasTransposal source middle
+      -> {atlasTransposalSourceOwner (composeAtlasTransposals second first)
+             == (if atlasTransposalSourceOwner first == Nothing then atlasTransposalSourceOwner second else atlasTransposalSourceOwner first)
+           && atlasTransposalTargetOwner (composeAtlasTransposals second first)
+             == (if atlasTransposalTargetOwner second == Nothing then atlasTransposalTargetOwner first else atlasTransposalTargetOwner second)
+           && (TransposalCompatible (composeAtlasTransposals second first)
+             <=> (TransposalCompatible first && TransposalCompatible second
+               && (atlasTransposalTargetOwner first == Nothing || atlasTransposalSourceOwner second == Nothing
+                 || atlasTransposalTargetOwner first == atlasTransposalSourceOwner second)))} @-}
+atlasTransposalCompositionOwners second first = Syntax.atlasTransposalCompositionOwners second first
+
+{-@ atlasTransposalOwnersAssociativity :: third:AtlasTransposal next target
+      -> second:AtlasTransposal middle next -> first:AtlasTransposal source middle
+      -> {atlasTransposalSourceOwner (composeAtlasTransposals third (composeAtlasTransposals second first))
+             == atlasTransposalSourceOwner (composeAtlasTransposals (composeAtlasTransposals third second) first)
+           && atlasTransposalTargetOwner (composeAtlasTransposals third (composeAtlasTransposals second first))
+             == atlasTransposalTargetOwner (composeAtlasTransposals (composeAtlasTransposals third second) first)
+           && (TransposalCompatible (composeAtlasTransposals third (composeAtlasTransposals second first))
+             <=> TransposalCompatible (composeAtlasTransposals (composeAtlasTransposals third second) first))} @-}
+atlasTransposalOwnersAssociativity third second first = Syntax.atlasTransposalOwnersAssociativity third second first

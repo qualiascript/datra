@@ -52,6 +52,16 @@ def targetEvidence {Evidence : Object → Type*}
   | .composite second first =>
       targetEvidence @primitiveEvidence (targetEvidence @primitiveEvidence source first) second
 
+/-- Replace each primitive by its underlying native syntax, retaining the
+identity and composition nodes of the outer syntax. -/
+-- ALIGN: ATLAS-ORDERED-NATIVE-PROJECTION.
+def expandPrimitives {Underlying : Object → Object → Type*}
+    (operation : ∀ {X Y}, Primitive X Y → AtlasHom Underlying X Y)
+    {X Y} : AtlasHom Primitive X Y → AtlasHom Underlying X Y
+  | .primitive value => operation value
+  | .identity => .identity
+  | .composite second first => .composite (expandPrimitives @operation second) (expandPrimitives @operation first)
+
 def presheafIdentity : AtlasHom Primitive X X := .identity
 
 /-- Eliminate the explicit Haskell equality wrapper into Lean's indexed

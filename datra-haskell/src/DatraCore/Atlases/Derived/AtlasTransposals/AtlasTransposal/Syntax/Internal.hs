@@ -13,6 +13,7 @@ module AtlasTransposal.Syntax.Internal
   , atlasTransposalSourceOwner, atlasTransposalTargetOwner
   , atlasTransposalTargetWitness, atlasTransposalMapValid
   , atlasTransposalOwnedPath, atlasTransposalComposeOwned
+  , atlasTransposalCompositionOwners, atlasTransposalOwnersAssociativity
   , atlasTransposalSourceValid, atlasTransposalPathValid, atlasTransposalPathSource
   , mapAtlasTransposalObject, atlasTransposalPreimage
   , atlasTransposalLeftInverse, identityAtlasTransposal, identityAtlasTransposalRetains
@@ -300,6 +301,58 @@ composeAtlasTransposals
   -> AtlasTransposal source target
 composeAtlasTransposals = CompositeAtlasTransposal
 
+-- | Observe the complete owner summary without supplying raw elements.
+-- ALIGN: ATLAS-TRANSPOSAL-COMPOSITION-OWNERS.
+{-@ atlasTransposalCompositionOwners :: second:AtlasTransposal middle target -> first:AtlasTransposal source middle
+      -> {atlasTransposalSourceOwner (composeAtlasTransposals second first)
+             == (if atlasTransposalSourceOwner first == Nothing then atlasTransposalSourceOwner second else atlasTransposalSourceOwner first)
+           && atlasTransposalTargetOwner (composeAtlasTransposals second first)
+             == (if atlasTransposalTargetOwner second == Nothing then atlasTransposalTargetOwner first else atlasTransposalTargetOwner second)
+           && (atlasTransposalOwnersCompatible (composeAtlasTransposals second first)
+             <=> (atlasTransposalOwnersCompatible first && atlasTransposalOwnersCompatible second
+               && (atlasTransposalTargetOwner first == Nothing || atlasTransposalSourceOwner second == Nothing
+                 || atlasTransposalTargetOwner first == atlasTransposalSourceOwner second)))} @-}
+atlasTransposalCompositionOwners :: AtlasTransposal middle target -> AtlasTransposal source middle -> ()
+atlasTransposalCompositionOwners second first =
+  case (atlasTransposalSourceOwner first, atlasTransposalTargetOwner second) of
+    (Nothing, Nothing) -> ()
+    (Nothing, Just _) -> ()
+    (Just _, Nothing) -> ()
+    (Just _, Just _) -> ()
+
+-- | Reassociation preserves compatibility even across identity-only subtrees.
+-- ALIGN: ATLAS-TRANSPOSAL-OWNER-ASSOCIATIVITY.
+{-@ atlasTransposalOwnersAssociativity :: third:AtlasTransposal next target
+      -> second:AtlasTransposal middle next -> first:AtlasTransposal source middle
+      -> {atlasTransposalSourceOwner (composeAtlasTransposals third (composeAtlasTransposals second first))
+             == atlasTransposalSourceOwner (composeAtlasTransposals (composeAtlasTransposals third second) first)
+           && atlasTransposalTargetOwner (composeAtlasTransposals third (composeAtlasTransposals second first))
+             == atlasTransposalTargetOwner (composeAtlasTransposals (composeAtlasTransposals third second) first)
+           && (atlasTransposalOwnersCompatible (composeAtlasTransposals third (composeAtlasTransposals second first))
+             <=> atlasTransposalOwnersCompatible (composeAtlasTransposals (composeAtlasTransposals third second) first))} @-}
+atlasTransposalOwnersAssociativity :: AtlasTransposal next target -> AtlasTransposal middle next
+  -> AtlasTransposal source middle -> ()
+atlasTransposalOwnersAssociativity third second first =
+  compatibleAssociativity third second first `seq`
+  case (atlasTransposalSourceOwner first, atlasTransposalTargetOwner third) of
+    (Nothing, Nothing) -> ()
+    (Nothing, Just _) -> ()
+    (Just _, Nothing) -> ()
+    (Just _, Just _) -> ()
+
+{-@ compatibleAssociativity :: third:AtlasTransposal next target
+      -> second:AtlasTransposal middle next -> first:AtlasTransposal source middle
+      -> {atlasTransposalOwnersCompatible (composeAtlasTransposals third (composeAtlasTransposals second first))
+           <=> atlasTransposalOwnersCompatible (composeAtlasTransposals (composeAtlasTransposals third second) first)} @-}
+compatibleAssociativity :: AtlasTransposal next target -> AtlasTransposal middle next -> AtlasTransposal source middle -> ()
+compatibleAssociativity _ second _ =
+  atlasTransposalOwnersEmpty second `seq`
+  case (atlasTransposalSourceOwner second, atlasTransposalTargetOwner second) of
+    (Nothing, Nothing) -> ()
+    (Nothing, Just _) -> ()
+    (Just _, Nothing) -> ()
+    (Just _, Just _) -> ()
+
 -- | Compose owner evidence for the existing syntax operation. The second
 -- subtree starts at the actual target witness recovered from the first.
 -- ALIGN: ATLAS-TRANSPOSAL-OWNER-COMPATIBLE-COMPOSITION.
@@ -399,11 +452,7 @@ atlasTransposalAssociativity :: AtlasTransposal next target -> AtlasTransposal m
   -> AtlasTransposal source middle -> AtlasTransposalElement source -> AtlasTransposalElement target -> ()
 atlasTransposalAssociativity third second first _ target =
   atlasTransposalPreimageAssociativity third second first target `seq`
-  case (atlasTransposalSourceOwner first, atlasTransposalTargetOwner third) of
-    (Nothing, Nothing) -> ()
-    (Nothing, Just _) -> ()
-    (Just _, Nothing) -> ()
-    (Just _, Just _) -> ()
+    atlasTransposalOwnersAssociativity third second first
 
 {-@ atlasTransposalPreimageAssociativity :: third:AtlasTransposal next target
       -> second:AtlasTransposal middle next -> first:AtlasTransposal source middle

@@ -223,6 +223,66 @@ theorem owners_empty {Owner : Type*}
       cases hs : sourceOwner @sourceOf first <;>
         cases ht : targetOwner @targetOf second <;> simp_all [sourceOwner, targetOwner]
 
+/-- Equality of endpoint owners and of the complete join certificate. -/
+def SameOwners {Owner : Type*} (sourceOf targetOf : ∀ {X Y}, Primitive X Y → Owner)
+    {X Y X' Y'} (first : AtlasHom Primitive X Y) (second : AtlasHom Primitive X' Y') : Prop :=
+  sourceOwner @sourceOf first = sourceOwner @sourceOf second ∧
+  targetOwner @targetOf first = targetOwner @targetOf second ∧
+  (OwnersCompatible @sourceOf @targetOf first ↔ OwnersCompatible @sourceOf @targetOf second)
+
+theorem SameOwners.trans {Owner : Type*} {sourceOf targetOf : ∀ {X Y}, Primitive X Y → Owner}
+    {X Y M N U V} {first : AtlasHom Primitive X Y} {middle : AtlasHom Primitive M N} {last : AtlasHom Primitive U V}
+    (a : SameOwners @sourceOf @targetOf first middle) (b : SameOwners @sourceOf @targetOf middle last) :
+    SameOwners @sourceOf @targetOf first last :=
+  ⟨a.1.trans b.1, a.2.1.trans b.2.1, a.2.2.trans b.2.2⟩
+
+theorem sameOwners_comp_left {Owner : Type*}
+    (sourceOf targetOf : ∀ {X Y}, Primitive X Y → Owner)
+    {X M Y} (first : AtlasHom Primitive X M) (second other : AtlasHom Primitive M Y)
+    (same : SameOwners @sourceOf @targetOf second other) :
+    SameOwners @sourceOf @targetOf (.composite second first) (.composite other first) := by
+  rcases same with ⟨hs, ht, hc⟩
+  simp [SameOwners, sourceOwner, targetOwner, OwnersCompatible, hs, ht, hc]
+
+-- ALIGN: ATLAS-TRANSPOSAL-COMPOSITION-OWNERS.
+theorem composition_owners {Owner : Type*}
+    (sourceOf targetOf : ∀ {X Y}, Primitive X Y → Owner)
+    {X M Y} (second : AtlasHom Primitive M Y) (first : AtlasHom Primitive X M) :
+    sourceOwner @sourceOf (.composite second first) =
+      (sourceOwner @sourceOf first).orElse (fun _ => sourceOwner @sourceOf second) ∧
+    targetOwner @targetOf (.composite second first) =
+      (targetOwner @targetOf second).orElse (fun _ => targetOwner @targetOf first) ∧
+    (OwnersCompatible @sourceOf @targetOf (.composite second first) ↔
+      OwnersCompatible @sourceOf @targetOf first ∧ OwnersCompatible @sourceOf @targetOf second ∧
+      (targetOwner @targetOf first = none ∨ sourceOwner @sourceOf second = none ∨
+        targetOwner @targetOf first = sourceOwner @sourceOf second)) := by
+  constructor
+  · cases hs : sourceOwner @sourceOf first <;> simp [sourceOwner, hs, Option.orElse]
+  constructor
+  · cases ht : targetOwner @targetOf second <;> simp [targetOwner, ht, Option.orElse]
+  · rfl
+
+-- ALIGN: ATLAS-TRANSPOSAL-OWNER-ASSOCIATIVITY.
+theorem owners_associativity {Owner : Type*}
+    (sourceOf targetOf : ∀ {X Y}, Primitive X Y → Owner)
+    {X M N Y} (third : AtlasHom Primitive N Y) (second : AtlasHom Primitive M N)
+    (first : AtlasHom Primitive X M) :
+    sourceOwner @sourceOf (.composite third (.composite second first)) =
+      sourceOwner @sourceOf (.composite (.composite third second) first) ∧
+    targetOwner @targetOf (.composite third (.composite second first)) =
+      targetOwner @targetOf (.composite (.composite third second) first) ∧
+    (OwnersCompatible @sourceOf @targetOf (.composite third (.composite second first)) ↔
+      OwnersCompatible @sourceOf @targetOf (.composite (.composite third second) first)) := by
+  constructor
+  · cases hs : sourceOwner @sourceOf first <;> cases hm : sourceOwner @sourceOf second <;>
+      simp [sourceOwner, hs, hm]
+  constructor
+  · cases ht : targetOwner @targetOf third <;> cases hm : targetOwner @targetOf second <;>
+      simp [targetOwner, ht, hm]
+  have empty := owners_empty @sourceOf @targetOf second
+  cases hs : sourceOwner @sourceOf second <;> cases ht : targetOwner @targetOf second <;>
+    simp_all [OwnersCompatible, sourceOwner, targetOwner, and_assoc, and_comm, and_left_comm]
+
 /-- The existing syntax composition preserves owner evidence when its second
 subtree is owned by the first subtree's recovered target witness. -/
 -- ALIGN: ATLAS-TRANSPOSAL-OWNER-COMPATIBLE-COMPOSITION.

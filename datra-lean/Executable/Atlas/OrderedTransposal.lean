@@ -41,6 +41,45 @@ theorem relation_of_owned_domain {Object : Type*} {Primitive : Object → Object
     relation (mapObject @forward arrow left) (mapObject @forward arrow right) :=
   orderLaw left right (ownerPath left leftValid) (ownerPath right rightValid) related
 
+/-- Normalizing the outer composition preserves the owner certificate of
+its expanded native syntax, even when a primitive expands to an identity tree. -/
+-- ALIGN: ATLAS-ORDERED-NORMALIZED-OWNERS.
+theorem normalized_expansion_owners {Object : Type*}
+    {Outer Native : Object → Object → Type*} {Owner : Type*}
+    (operation : ∀ {X Y}, Outer X Y → AtlasHom Native X Y)
+    (sourceOf targetOf : ∀ {X Y}, Native X Y → Owner)
+    {X M Y} (first : AtlasHom Outer X M) : ∀ second : AtlasHom Outer M Y,
+    SameOwners @sourceOf @targetOf
+      ((AtlasHom.composeAtlasHoms second first).expandPrimitives @operation)
+      (.composite (second.expandPrimitives @operation) (first.expandPrimitives @operation)) := by
+  induction first with
+  | identity =>
+      intro second
+      cases second <;> simp [AtlasHom.composeAtlasHoms, AtlasHom.expandPrimitives,
+        SameOwners, sourceOwner, targetOwner, OwnersCompatible]
+  | primitive value =>
+      intro second
+      cases second <;> simp [AtlasHom.composeAtlasHoms, AtlasHom.expandPrimitives,
+        SameOwners, sourceOwner, targetOwner, OwnersCompatible]
+  | composite middle first ihMiddle _ =>
+      intro second
+      cases second with
+      | identity => simp [AtlasHom.composeAtlasHoms, AtlasHom.expandPrimitives,
+          SameOwners, sourceOwner, targetOwner, OwnersCompatible]
+      | primitive value =>
+          have congruent := sameOwners_comp_left @sourceOf @targetOf (first.expandPrimitives @operation)
+            _ _ (ihMiddle (.primitive value))
+          have assoc := owners_associativity @sourceOf @targetOf (operation value)
+            (middle.expandPrimitives @operation) (first.expandPrimitives @operation)
+          exact congruent.trans ⟨assoc.1.symm, assoc.2.1.symm, assoc.2.2.symm⟩
+      | composite second last =>
+          have congruent := sameOwners_comp_left @sourceOf @targetOf (first.expandPrimitives @operation)
+            _ _ (ihMiddle (.composite second last))
+          have assoc := owners_associativity @sourceOf @targetOf
+            ((AtlasHom.composite second last).expandPrimitives @operation)
+            (middle.expandPrimitives @operation) (first.expandPrimitives @operation)
+          exact congruent.trans ⟨assoc.1.symm, assoc.2.1.symm, assoc.2.2.symm⟩
+
 end Datra.Executable.TransposalPath
 
 namespace Datra.Executable.Atlas
