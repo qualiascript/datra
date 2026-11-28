@@ -28,7 +28,7 @@ module Coalition.Element.Data
   , coalitionElementRank
   , coalitionElementCode
   , coalitionElementSource
-  , coalitionElementValid
+  , coalitionElementValid, coalitionOwnersAgree
   , withCoalitionElement
   , withCoalitionElementOf
   , coalitionElementReaches
@@ -40,7 +40,7 @@ module Coalition.Element.Data
   , coalitionFromCovered
   , coalitionFromCoveredRoundTrip
   , coalition
-  , coalitionUnrank
+  , coalitionUnrank, coalitionRankRoundTrip
   ) where
 
 import Coalition.Element.Internal
@@ -55,6 +55,7 @@ import Coalition.Element.Internal
   )
 
 import qualified Coalition.Element.Internal as Internal (CoalitionData (..), coalitionElement)
+import Atlas.Witness (atlasOwner)
 import Atlas
   ( Atlas, atlasPageElements, atlasAcceptsDatum, mapAtlasData, atlasCompositionWitness
   , normalizeAtlasElement, atlasNormalizationArrow, atlasCoherenceWitness )
@@ -507,3 +508,13 @@ coalitionUnitInsertion :: (element -> Bool) -> (element -> SomePageElement scope
   -> SomePageElement scope -> (value -> element) -> (element -> Maybe value) -> (value -> ())
   -> DomanialInsertion value element
 coalitionUnitInsertion _ _ _ forward backward leftInverse = DomanialInsertion forward backward leftInverse
+
+-- | Complete-owner equality transfers the full canonical coalition domain.
+-- ALIGN: COALITION-OWNER-DOMAIN-AGREEMENT.
+{-@ coalitionOwnersAgree :: first:Atlas a s d o f
+      -> second:{Atlas a s d o2 f2 | atlasOwner second == atlasOwner first}
+      -> element:CoalitionData a s d
+      -> {(coalitionElementValid first element <=> coalitionElementValid second element)
+           && originPageElement (atlasPageElements first) == originPageElement (atlasPageElements second)} @-}
+coalitionOwnersAgree :: Atlas a s d o f -> Atlas a s d o2 f2 -> CoalitionData a s d -> ()
+coalitionOwnersAgree _ _ _ = ()

@@ -1,3 +1,4 @@
+import Executable.Atlas.Materialization
 import Executable.DataTransformation
 import Executable.Atlas.TotalMap
 import Executable.Atlas.ChainedDominionCanonical

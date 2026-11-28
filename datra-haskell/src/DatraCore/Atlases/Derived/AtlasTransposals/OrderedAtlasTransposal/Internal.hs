@@ -42,6 +42,8 @@ import AtlasTransposal
   , atlasTransposalHom
   , atlasTransposalSourceValid
   , atlasTransposalPathValid, atlasTransposalPathSource
+  , atlasTransposalSourceOwner, atlasTransposalTargetOwner
+  , atlasTransposalCompositionOwners, atlasTransposalOwnersAssociativity
   , atlasTransposalOwnedPath, atlasTransposalElementValid
   , identityAtlasTransposalRetains, composeAtlasTransposalsRetains
   , atlasTransposalLeftInverse
@@ -68,6 +70,19 @@ import Prelude hiding ((.), id)
 -- @elementLT@ relation. Primitive restrictions retain their supplied proof;
 -- identity and composition are syntax constructors whose proofs are derived.
 type role OrderedAtlasTransposal nominal nominal
+{-@ data OrderedAtlasTransposal source target where
+      PrimitiveOrderedAtlasTransposal :: forall source target.
+        OrderedTransposalAction source target -> OrderedAtlasTransposal source target
+      IdentityOrderedAtlasTransposal :: forall source target.
+        OrderedIdentityEquality source target
+        -> action:{OrderedTransposalAction source target |
+             atlasTransposalSourceOwner (storedOrderedTransposal action) == Nothing
+             && atlasTransposalTargetOwner (storedOrderedTransposal action) == Nothing
+             && TransposalCompatible (storedOrderedTransposal action)}
+        -> OrderedAtlasTransposal source target
+      CompositeOrderedAtlasTransposal :: forall source target middle.
+        OrderedAtlasTransposal middle target -> OrderedAtlasTransposal source middle
+        -> OrderedAtlasTransposal source target @-}
 data OrderedAtlasTransposal source target where
   PrimitiveOrderedAtlasTransposal
     :: OrderedTransposalAction source target
@@ -153,6 +168,7 @@ orderedAtlasTransposal transposal preservesOrder =
       | otherwise = ()
 
 -- | Forget only the ordering restriction, retaining the injectivity evidence.
+-- ALIGN: ATLAS-ORDERED-NATIVE-PROJECTION.
 {-@ reflect orderedAtlasTransposalTransposal @-}
 orderedAtlasTransposalTransposal
   :: OrderedAtlasTransposal source target
@@ -255,20 +271,37 @@ identityOrderProof identity left right =
 
 -- | Compose ordered transposals in categorical order.
 -- ALIGN: ATLAS-ORDERED-COMPOSITION.
+-- ALIGN: ATLAS-ORDERED-NORMALIZED-OWNERS.
+{-@ composeOrderedAtlasTransposals :: second:OrderedAtlasTransposal middle target
+      -> first:OrderedAtlasTransposal source middle
+      -> {result:OrderedAtlasTransposal source target |
+           atlasTransposalSourceOwner (orderedAtlasTransposalTransposal result)
+             == atlasTransposalSourceOwner (composeAtlasTransposals (orderedAtlasTransposalTransposal second) (orderedAtlasTransposalTransposal first))
+           && atlasTransposalTargetOwner (orderedAtlasTransposalTransposal result)
+             == atlasTransposalTargetOwner (composeAtlasTransposals (orderedAtlasTransposalTransposal second) (orderedAtlasTransposalTransposal first))
+           && (TransposalCompatible (orderedAtlasTransposalTransposal result)
+             <=> TransposalCompatible (composeAtlasTransposals (orderedAtlasTransposalTransposal second) (orderedAtlasTransposalTransposal first)))} @-}
 composeOrderedAtlasTransposals
   :: OrderedAtlasTransposal middle target
   -> OrderedAtlasTransposal source middle
   -> OrderedAtlasTransposal source target
-composeOrderedAtlasTransposals (IdentityOrderedAtlasTransposal (OrderedIdentityEquality Refl) _) first = first
-composeOrderedAtlasTransposals second (IdentityOrderedAtlasTransposal (OrderedIdentityEquality Refl) _) = second
-composeOrderedAtlasTransposals
-  second
-  (CompositeOrderedAtlasTransposal middle first) =
-    CompositeOrderedAtlasTransposal
-      (composeOrderedAtlasTransposals second middle)
-      first
 composeOrderedAtlasTransposals second first =
-  CompositeOrderedAtlasTransposal second first
+  atlasTransposalCompositionOwners (orderedAtlasTransposalTransposal second)
+    (orderedAtlasTransposalTransposal first) `seq`
+  case (second, first) of
+    (IdentityOrderedAtlasTransposal (OrderedIdentityEquality Refl) _, _) -> first
+    (_, IdentityOrderedAtlasTransposal (OrderedIdentityEquality Refl) _) -> second
+    (_, CompositeOrderedAtlasTransposal middle initial) ->
+      atlasTransposalOwnersAssociativity (orderedAtlasTransposalTransposal second)
+        (orderedAtlasTransposalTransposal middle) (orderedAtlasTransposalTransposal initial) `seq`
+      let reduced = composeOrderedAtlasTransposals second middle
+      in atlasTransposalCompositionOwners
+           (composeAtlasTransposals (orderedAtlasTransposalTransposal second) (orderedAtlasTransposalTransposal middle))
+           (orderedAtlasTransposalTransposal initial) `seq`
+         atlasTransposalCompositionOwners (orderedAtlasTransposalTransposal reduced)
+           (orderedAtlasTransposalTransposal initial) `seq`
+         CompositeOrderedAtlasTransposal reduced initial
+    _ -> CompositeOrderedAtlasTransposal second first
 
 -- | Ordered Atlas transposals form the next wide subcategory in the
 -- restriction chain.

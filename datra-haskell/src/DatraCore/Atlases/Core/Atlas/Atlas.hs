@@ -184,28 +184,13 @@ import Atlas.Witness
   ( AtlasObjectEquality (..), AtlasObject, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData
   , AtlasOwner, atlasOwner, atlasWitnessOwner, AtlasWitness, AtlasWitnessData, atlasWitness, withAtlasWitness, atlasWitnessElementValid, normalizeAtlasWitnessElement, atlasWitnessNormalizeValid )
 import Atlas.Morphism.Internal
-  ( AtlasMorphism
-  , AtlasMorphismImage
-  , AtlasHom
-  , identityAtlasHom
-  , composeAtlasHoms
-  , atlasMorphism
-  , withAtlasMorphismAction
-  , atlasMorphismPagination
-  , atlasHom
-  , atlasHomTargetObjectEquality
-  , materializeAtlasHom
-  , atlasHomPagination
-  , mapAtlasHomElement
-  , mapAtlasHomArrow
-  , mapAtlasHomData
-  , composeAtlasMorphisms
-  , identityAtlasMorphism
-  , mapAtlasMorphismArrow
-  , mapAtlasMorphismData
-  , mapAtlasMorphismElement
-  , withAtlasMorphismImage
-  )
+  ( AtlasMorphism, AtlasMorphismImage, AtlasHom, identityAtlasHom, composeAtlasHoms
+  , atlasMorphism, atlasHom, atlasHomTargetObjectEquality, materializeAtlasHom
+  , composeAtlasMorphisms, identityAtlasMorphism, withAtlasMorphismImage )
+import Atlas.Morphism.Evaluation.Internal
+  ( withAtlasMorphismAction, atlasMorphismPagination, atlasHomPagination
+  , mapAtlasHomElement, mapAtlasHomArrow, mapAtlasHomData
+  , mapAtlasMorphismArrow, mapAtlasMorphismData, mapAtlasMorphismElement )
 
 import qualified PageElements as Elements
 import PageElements.Structure (PageElement, PageElementArrow, pageElementPage, pageElementPosition,

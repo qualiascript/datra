@@ -12,6 +12,10 @@ module Atlas.Morphism
   , identityAtlasObjectMap
   , identityAtlasMorphismObject
   , identityAtlasMorphismPreservesArrow
+  , identityAtlasMorphismAction
+  , identityAtlasMorphismComponent
+  , composeAtlasMorphismComponents
+  , composeAtlasMorphismNaturality
   , atlasObjectMap
   , atlasMorphismAction
   , atlasMorphismSource
@@ -23,6 +27,7 @@ module Atlas.Morphism
   , atlasMorphismActionPreservesArrow
   , atlasMorphismActionNaturality
   , atlasMorphismObjectMapWitness
+  , normalizedActionObject
   , normalizeAtlasMorphismAction
   , normalizeAtlasMorphismActionRetains
   ) where
@@ -35,6 +40,10 @@ import Atlas.Morphism.LiquidInternal
   , identityAtlasObjectMap
   , identityAtlasMorphismObject
   , identityAtlasMorphismPreservesArrow
+  , identityAtlasMorphismAction
+  , identityAtlasMorphismComponent
+  , composeAtlasMorphismComponents
+  , composeAtlasMorphismNaturality
   , atlasObjectMap
   , atlasMorphismAction
   , atlasMorphismSource
@@ -46,6 +55,7 @@ import Atlas.Morphism.LiquidInternal
   , atlasMorphismActionPreservesArrow
   , atlasMorphismActionNaturality
   , atlasMorphismObjectMapWitness
+  , normalizedActionObject
   , normalizeAtlasMorphismAction
   , normalizeAtlasMorphismActionRetains
   )

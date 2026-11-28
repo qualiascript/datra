@@ -22,7 +22,7 @@ module Coalition.Element
   , coalitionElementRank
   , coalitionElementCode
   , coalitionElementSource
-  , coalitionElementValid
+  , coalitionElementValid, coalitionOwnersAgree
   , withCoalitionElement
   , withCoalitionElementOf
   , coalitionElementReaches
@@ -34,7 +34,7 @@ module Coalition.Element
   , coalitionFromCovered
   , coalitionFromCoveredRoundTrip
   , coalition
-  , coalitionUnrank
+  , coalitionUnrank, coalitionRankRoundTrip
   , mapCoalitionElement
   , withMappedCoalitionElement
   , withMappedCoalitionAction

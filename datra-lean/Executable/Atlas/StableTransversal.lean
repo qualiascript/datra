@@ -48,6 +48,267 @@ theorem StableTransversalAction.forward_valid {X Y : Atlas}
   rw [action.forward value]
   exact (mapCoalitionElement action.transversal value).property
 
+/-- The mapped coalition is accepted by the next action when its retained
+source owner equals the first action's actual mapped target owner. -/
+-- ALIGN: ATLAS-STABLE-NEXT-SOURCE-DOMAIN.
+theorem StableTransversalAction.next_source_valid {X M N Y : Atlas}
+    (first : StableTransversalAction X M) (_second : StableTransversalAction N Y)
+    (owners : atlasOwner N = atlasOwner M) (source : X.Coalition) :
+    let sameOwner : M = N := congrArg AtlasOwner.value owners.symm
+    CoalitionElement.Valid (sameOwner ▸ first.insertion.map source) :=
+  (CoalitionElement.owners_agree M N owners.symm _).1.mp (first.forward_valid source)
+
+/-- Restrict the retained raw target to the mapper's canonical carrier. No
+successful or failed inverse lookup is changed. -/
+def StableTransversalAction.canonicalInsertion {X Y : Atlas}
+    (action : StableTransversalAction X Y) : DomanialInsertion X.Coalition Y.Coalition where
+  map source := ⟨action.insertion.map source, action.forward_valid source⟩
+  preimage target := action.insertion.preimage target.val
+  leftInverse source := action.insertion.leftInverse source
+
+/-- Complete-owner equality permits the requested target's canonical domain. -/
+def StableTransversalAction.insertionForOwner {X Y : Atlas}
+    (action : StableTransversalAction X Y) (target : Atlas)
+    (owners : atlasOwner target = atlasOwner Y) :
+    DomanialInsertion X.Coalition target.Coalition :=
+  let sameOwner : Y = target := (congrArg AtlasOwner.value owners).symm
+  sameOwner ▸ action.canonicalInsertion
+
+@[simp] theorem StableTransversalAction.canonicalInsertion_map {X Y : Atlas}
+    (action : StableTransversalAction X Y) (source : X.Coalition) :
+    (action.canonicalInsertion.map source).val = action.insertion.map source := rfl
+
+@[simp] theorem StableTransversalAction.canonicalInsertion_preimage {X Y : Atlas}
+    (action : StableTransversalAction X Y) (target : Y.Coalition) :
+    action.canonicalInsertion.preimage target = action.insertion.preimage target.val := rfl
+
+/-- Scalar observations decode the same canonical record before calling the
+stored primitive operation. They introduce no alternative insertion. -/
+def StableTransversalAction.forwardCode {X Y : Atlas} (action : StableTransversalAction X Y)
+    (code : Nat) : Option Nat :=
+  (coalitionUnrank X code).map (fun source => coalitionElementCode (action.insertion.map source))
+
+def StableTransversalAction.inverseCode {X Y : Atlas} (action : StableTransversalAction X Y)
+    (code : Nat) : Option Nat :=
+  (coalitionUnrank Y code).bind (fun target => coalitionMaybeCode (action.insertion.preimage target.val))
+
+namespace StableCoalitionSyntax
+
+/-- Actual owner indices supply the native syntax's complete-owner certificates. -/
+abbrev Syntax := AtlasHom StableTransversalAction
+
+def sourceOwner {X Y : Atlas} (arrow : Syntax X Y) : Option AtlasOwner :=
+  TransposalPath.sourceOwner (fun {X _} _ => atlasOwner X) arrow
+
+def targetOwner {X Y : Atlas} (arrow : Syntax X Y) : Option AtlasOwner :=
+  TransposalPath.targetOwner (fun {_ Y} _ => atlasOwner Y) arrow
+
+def OwnersCompatible {X Y : Atlas} (arrow : Syntax X Y) : Prop :=
+  TransposalPath.OwnersCompatible (fun {X _} _ => atlasOwner X)
+    (fun {_ Y} _ => atlasOwner Y) arrow
+
+/-- Normalization preserves the actual endpoint owners and every join premise. -/
+-- ALIGN: ATLAS-STABLE-NORMALIZED-OWNERS.
+theorem normalized_owners {X M Y : Atlas} (second : Syntax M Y) (first : Syntax X M) :
+    sourceOwner (AtlasHom.composeAtlasHoms second first) = sourceOwner (.composite second first) ∧
+    targetOwner (AtlasHom.composeAtlasHoms second first) = targetOwner (.composite second first) ∧
+    (OwnersCompatible (AtlasHom.composeAtlasHoms second first) ↔
+      OwnersCompatible (.composite second first)) := by
+  have expanded {A B : Atlas} (arrow : Syntax A B) :
+      arrow.expandPrimitives (fun action => .primitive action) = arrow := by
+    induction arrow <;> simp_all [AtlasHom.expandPrimitives]
+  have retained := TransposalPath.normalized_expansion_owners
+    (fun action : StableTransversalAction _ _ => .primitive action)
+    (fun {X _} _ => atlasOwner X) (fun {_ Y} _ => atlasOwner Y) first second
+  simpa only [expanded] using retained
+
+def scopedInsertion {X Y : Atlas} : Syntax X Y → DomanialInsertion X.Coalition Y.Coalition
+  | .primitive action => action.canonicalInsertion
+  | .identity => DomanialInsertion.identity _
+  | .composite second first => (scopedInsertion first).comp (scopedInsertion second)
+
+/-- The public Coalizing operation accepts actual source and target owners.
+Complete-owner equality transports both canonical domains of the same insertion. -/
+def insertionForOwners {X Y : Atlas} (arrow : Syntax X Y) (source target : Atlas)
+    (sourceOwner : atlasOwner source = atlasOwner X)
+    (targetOwner : atlasOwner target = atlasOwner Y) :
+    DomanialInsertion source.Coalition target.Coalition := by
+  have sourceEq : source = X := congrArg AtlasOwner.value sourceOwner
+  have targetEq : target = Y := congrArg AtlasOwner.value targetOwner
+  cases sourceEq
+  cases targetEq
+  exact scopedInsertion arrow
+
+/-- Naming equal owners changes neither the forward map nor any partial-inverse
+result, including failure and successful lookups outside the forward image. -/
+-- ALIGN: COALITION-OWNED-DOMAINS.
+theorem insertionForOwners_agrees {X Y : Atlas} (arrow : Syntax X Y) (source target : Atlas)
+    (sourceOwner : atlasOwner source = atlasOwner X)
+    (targetOwner : atlasOwner target = atlasOwner Y) :
+    HEq (insertionForOwners arrow source target sourceOwner targetOwner) (scopedInsertion arrow) := by
+  have sourceEq : source = X := congrArg AtlasOwner.value sourceOwner
+  have targetEq : target = Y := congrArg AtlasOwner.value targetOwner
+  cases sourceEq
+  cases targetEq
+  rfl
+
+theorem scopedInsertion_primitive_map {X Y : Atlas} (action : StableTransversalAction X Y)
+    (source : X.Coalition) :
+    ((scopedInsertion (.primitive action)).map source).val = action.insertion.map source := rfl
+
+theorem scopedInsertion_primitive_preimage {X Y : Atlas} (action : StableTransversalAction X Y)
+    (target : Y.Coalition) :
+    (scopedInsertion (.primitive action)).preimage target = action.insertion.preimage target.val := rfl
+
+def forwardCodes {X Y : Atlas} : Syntax X Y → Nat → Option Nat
+  | .primitive action => action.forwardCode
+  | .identity => some
+  | .composite second first => fun code => (forwardCodes first code).bind (forwardCodes second)
+
+def inverseCodes {X Y : Atlas} : Syntax X Y → Nat → Option Nat
+  | .primitive action => action.inverseCode
+  | .identity => some
+  | .composite second first => fun code => (inverseCodes second code).bind (inverseCodes first)
+
+/-- Both scalar observations share one owner-independent package. -/
+structure CodeFunctions where
+  forward : Nat → Option Nat
+  inverse : Nat → Option Nat
+
+-- ALIGN: ATLAS-STABLE-CODE-OBSERVATIONS.
+def codeFunctions {X Y : Atlas} (arrow : Syntax X Y) : CodeFunctions :=
+  ⟨forwardCodes arrow, inverseCodes arrow⟩
+
+theorem codeFunctions_observations {X Y : Atlas} (arrow : Syntax X Y) :
+    (codeFunctions arrow).forward = forwardCodes arrow ∧
+      (codeFunctions arrow).inverse = inverseCodes arrow := ⟨rfl, rfl⟩
+
+/-- Induct on the first tree and split on the second in each case. Identity
+and primitive cases reduce directly; reassociation uses the child equation
+and `Option.bind_assoc`. -/
+-- ALIGN: ATLAS-STABLE-NORMALIZED-FORWARD-CODES.
+theorem forwardCodes_comp {X M Y : Atlas} (second : Syntax M Y) (first : Syntax X M) :
+    forwardCodes (AtlasHom.composeAtlasHoms second first) =
+      fun code => (forwardCodes first code).bind (forwardCodes second) := by
+  induction first with
+  | identity => cases second <;> simp [AtlasHom.composeAtlasHoms, forwardCodes]
+  | primitive action => cases second <;> simp [AtlasHom.composeAtlasHoms, forwardCodes]
+  | composite middle first ihMiddle _ =>
+    cases second <;> simp_all [AtlasHom.composeAtlasHoms, forwardCodes, funext_iff, Option.bind_assoc]
+
+/-- The same syntax induction uses reverse-order binds for the inverse;
+`Option.bind_assoc` also preserves either unsuccessful lookup. -/
+-- ALIGN: ATLAS-STABLE-NORMALIZED-INVERSE-CODES.
+theorem inverseCodes_comp {X M Y : Atlas} (second : Syntax M Y) (first : Syntax X M) :
+    inverseCodes (AtlasHom.composeAtlasHoms second first) =
+      fun code => (inverseCodes second code).bind (inverseCodes first) := by
+  induction first with
+  | identity => cases second <;> simp [AtlasHom.composeAtlasHoms, inverseCodes]
+  | primitive action => cases second <;> simp [AtlasHom.composeAtlasHoms, inverseCodes]
+  | composite middle first ihMiddle _ =>
+    cases second <;> simp_all [AtlasHom.composeAtlasHoms, inverseCodes, funext_iff, Option.bind_assoc]
+
+/-- A normalization result retains its owners, compatibility, and both pointwise
+observations of the original syntax. -/
+structure NormalizedStable (X Y : Atlas) where
+  original : Syntax X Y
+  result : Syntax X Y
+  source : sourceOwner result = sourceOwner original
+  target : targetOwner result = targetOwner original
+  compatible : OwnersCompatible result ↔ OwnersCompatible original
+  forward : ∀ code, forwardCodes result code = forwardCodes original code
+  inverse : ∀ code, inverseCodes result code = inverseCodes original code
+
+-- ALIGN: ATLAS-STABLE-NORMALIZATION-PACKAGE.
+def normalizedData {X M Y : Atlas} (second : Syntax M Y) (first : Syntax X M) :
+    NormalizedStable X Y where
+  original := .composite second first
+  result := AtlasHom.composeAtlasHoms second first
+  source := (normalized_owners second first).1
+  target := (normalized_owners second first).2.1
+  compatible := (normalized_owners second first).2.2
+  forward code := congrFun (forwardCodes_comp second first) code
+  inverse code := congrFun (inverseCodes_comp second first) code
+
+theorem normalizedData_result {X M Y : Atlas} (second : Syntax M Y) (first : Syntax X M) :
+    (normalizedData second first).result = AtlasHom.composeAtlasHoms second first := rfl
+
+-- ALIGN: COALITION-FORWARD-CODE-OBSERVATION.
+theorem forwardCodes_at {X Y : Atlas} (arrow : Syntax X Y) (source : X.Coalition) :
+    forwardCodes arrow (coalitionElementCode source.val) =
+      some (coalitionElementCode ((scopedInsertion arrow).map source).val) := by
+  induction arrow with
+  | primitive action =>
+    simp [forwardCodes, StableTransversalAction.forwardCode, coalition_roundtrip,
+      scopedInsertion, StableTransversalAction.canonicalInsertion]
+  | identity => rfl
+  | composite second first ihSecond ihFirst =>
+    simp only [forwardCodes, ihFirst, Option.bind_some]
+    exact ihSecond ((scopedInsertion first).map source)
+
+-- ALIGN: COALITION-INVERSE-CODE-OBSERVATION.
+theorem inverseCodes_at {X Y : Atlas} (arrow : Syntax X Y) (target : Y.Coalition) :
+    inverseCodes arrow (coalitionElementCode target.val) =
+      coalitionMaybeCode ((scopedInsertion arrow).preimage target) := by
+  induction arrow with
+  | primitive action =>
+    simp [inverseCodes, StableTransversalAction.inverseCode, coalition_roundtrip,
+      scopedInsertion, StableTransversalAction.canonicalInsertion]
+  | identity => rfl
+  | composite second first ihSecond ihFirst =>
+    simp only [inverseCodes, ihSecond]
+    cases found : (scopedInsertion second).preimage target with
+    | none => simp [coalitionMaybeCode, found, scopedInsertion, DomanialInsertion.comp]
+    | some middle =>
+      simp only [coalitionMaybeCode, Option.map_some, Option.bind_some]
+      rw [ihFirst middle]
+      simp [coalitionMaybeCode, scopedInsertion, DomanialInsertion.comp, found]
+
+-- ALIGN: COALITION-IDENTITY-MAP.
+def identityMap (X : Atlas) : DomanialInsertion X.Coalition X.Coalition :=
+  scopedInsertion (.identity : Syntax X X)
+
+-- ALIGN: COALITION-IDENTITY.
+theorem identityMap_observations (X : Atlas) (value : X.Coalition) :
+    (identityMap X).map value = value ∧ (identityMap X).preimage value = some value :=
+  ⟨rfl, rfl⟩
+
+/-- Simplifying the syntax preserves the complete insertion, including the
+chosen inverse on targets outside the image. Induction follows the first tree:
+identity and primitive cases reduce after splitting the second tree; the
+composite case uses the child equation and `DomanialInsertion.comp_assoc`. -/
+theorem scopedInsertion_comp {X M Y : Atlas} (second : Syntax M Y) (first : Syntax X M) :
+    scopedInsertion (AtlasHom.composeAtlasHoms second first) =
+      (scopedInsertion first).comp (scopedInsertion second) := by
+  induction first with
+  | identity => cases second <;> simp [AtlasHom.composeAtlasHoms, scopedInsertion]
+  | primitive action => cases second <;> simp [AtlasHom.composeAtlasHoms, scopedInsertion]
+  | composite middle first ihMiddle _ =>
+    cases second <;> simp_all [AtlasHom.composeAtlasHoms, scopedInsertion, DomanialInsertion.comp_assoc]
+
+-- ALIGN: COALITION-COMPOSITION.
+theorem scopedInsertion_comp_map {X M Y : Atlas} (second : Syntax M Y) (first : Syntax X M)
+    (source : X.Coalition) :
+    (scopedInsertion (AtlasHom.composeAtlasHoms second first)).map source =
+      (scopedInsertion second).map ((scopedInsertion first).map source) := by
+  rw [scopedInsertion_comp]
+  rfl
+
+-- ALIGN: COALITION-COMPOSITION-PREIMAGE.
+theorem scopedInsertion_comp_preimage {X M Y : Atlas} (second : Syntax M Y) (first : Syntax X M)
+    (target : Y.Coalition) :
+    (scopedInsertion (AtlasHom.composeAtlasHoms second first)).preimage target =
+      ((scopedInsertion second).preimage target).bind (scopedInsertion first).preimage := by
+  rw [scopedInsertion_comp]
+  rfl
+
+theorem scopedInsertion_composite_preimage {X M Y : Atlas}
+    (second : Syntax M Y) (first : Syntax X M) (target : Y.Coalition) :
+    (scopedInsertion (.composite second first)).preimage target =
+      ((scopedInsertion second).preimage target).bind (scopedInsertion first).preimage := rfl
+
+end StableCoalitionSyntax
+
 -- ALIGN: ATLAS-STABLE-SOURCE-PACKAGE.
 def StableTransversalAction.ofInverse {X Y : Atlas} (transversal : Transversal X Y)
     (preserves : stableOriginPreserved transversal = true)
@@ -264,12 +525,10 @@ theorem coalitionInsertion_interpretation {X Y : Atlas} (f : StableTransversal X
       exact (ih₂ (first.coalitionInsertion.map c)).trans
         (congrArg (Datra.Semantics.stableCoalitionMap second.toSemantics) (ih₁ c))
 
--- ALIGN: COALITION-IDENTITY.
 theorem coalitionCarrierInsertion_identity (X : Atlas) :
     (identity : StableTransversal X X).coalitionCarrierInsertion = DomanialInsertion.identity _ := by
   exact DomanialInsertion.reindex_identity (coalitionValueEquiv X).symm
 
--- ALIGN: COALITION-COMPOSITION.
 theorem coalitionCarrierInsertion_comp {X Y Z : Atlas} (second : StableTransversal Y Z)
     (first : StableTransversal X Y) :
     (comp second first).coalitionCarrierInsertion =
@@ -349,4 +608,34 @@ theorem withCoalitionPreimage_eq {X Y : Atlas} {Result : Type*} (arrow : StableT
   rw [withCoalitionPreimage, coalitionInverse_apply]
 
 end StableTransversal
+
+namespace StableCoalitionSyntax
+
+/-- Interpret the retained primitive actions in the stable category. -/
+def toStable {X Y : Atlas} : Syntax X Y → StableTransversal X Y
+  | .primitive action => StableTransversal.ofAction action
+  | .identity => .identity
+  | .composite second first => .composite (toStable second) (toStable first)
+
+/-- The scoped interpreter retains both executable directions of the existing
+stable interpretation, including unsuccessful inverse lookups. -/
+-- ALIGN: ATLAS-STABLE-SCOPED-INSERTION.
+theorem scopedInsertion_agrees {X Y : Atlas} (arrow : Syntax X Y) :
+    scopedInsertion arrow = (toStable arrow).coalitionCarrierInsertion := by
+  induction arrow with
+  | primitive action =>
+    change action.canonicalInsertion = (StableTransversal.ofAction action).coalitionCarrierInsertion
+    apply DomanialInsertion.ext
+    · funext source
+      apply Subtype.ext
+      rw [StableTransversal.coalitionCarrierInsertion_ofAction_map]
+      exact action.forward source
+    · funext target
+      exact (StableTransversal.coalitionCarrierInsertion_ofAction_preimage action target).symm
+  | identity => exact (StableTransversal.coalitionCarrierInsertion_identity _).symm
+  | composite second first ihSecond ihFirst =>
+    simp only [scopedInsertion, toStable, ihFirst, ihSecond]
+    exact (DomanialInsertion.reindex_comp _ _ _ _ _).symm
+
+end StableCoalitionSyntax
 end Datra.Executable.Atlas

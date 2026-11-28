@@ -101,6 +101,20 @@ def CoalitionElement.Valid {X : Atlas} (c : X.CoalitionElement) : Prop :=
   c.charted.Valid c.source ∧ c.originRank = X.originImageRank c.source c.datum ∧
     c.source = FolioData.ValidElement.originElement X.pages
 
+/-- Equality of complete owners transports the cached coalition domain and
+its canonical origin, even when endpoint carrier types were hidden. -/
+-- ALIGN: COALITION-OWNER-DOMAIN-AGREEMENT.
+theorem CoalitionElement.owners_agree (first second : Atlas)
+    (owners : atlasOwner first = atlasOwner second) (element : first.CoalitionElement) :
+    let sameOwner : first = second := congrArg AtlasOwner.value owners
+    (element.Valid ↔ CoalitionElement.Valid (sameOwner ▸ element)) ∧
+      HEq (FolioData.ValidElement.originElement first.pages)
+        (FolioData.ValidElement.originElement second.pages) := by
+  dsimp only
+  generalize_proofs sameOwner
+  cases sameOwner
+  exact ⟨Iff.rfl, HEq.rfl⟩
+
 abbrev CertifiedCoalitionElement (X : Atlas) :=
   {c : X.CoalitionElement // CoalitionElement.Valid c}
 
@@ -358,6 +372,30 @@ def coalitionDominion (X : Atlas) : Dominion X.Coalition where
   rank c := coalitionElementCode c.val
   unrank := coalitionUnrank X
   coherence := coalition_roundtrip
+
+/-- Canonical codes determine the complete cached coalition record. -/
+-- ALIGN: COALITION-CODE-EXTENSIONALITY.
+theorem coalitionCodeExtensionality {X : Atlas} (left right : X.Coalition)
+    (codes : coalitionElementCode left.val = coalitionElementCode right.val) : left = right :=
+  (coalitionDominion X).rank_injective codes
+
+def coalitionMaybeCode {X : Atlas} (value : Option X.Coalition) : Option Nat :=
+  value.map (fun source => coalitionElementCode source.val)
+
+/-- Optional code observations distinguish failure and recover every successful
+canonical result, including values outside an insertion's forward image. -/
+theorem coalitionMaybeCode_injective (X : Atlas) :
+    Function.Injective (@coalitionMaybeCode X) := by
+  intro left right codes
+  cases left with
+  | none => cases right <;> simp_all [coalitionMaybeCode]
+  | some left =>
+    cases right with
+    | none => simp [coalitionMaybeCode] at codes
+    | some right =>
+      have same : coalitionElementCode left.val = coalitionElementCode right.val :=
+        Option.some.inj codes
+      exact congrArg some (coalitionCodeExtensionality left right same)
 
 -- ALIGN: COALITION-CODE-INTERPRETATION.
 theorem coalitionElementCode_interpretation {X : Atlas} (c : X.CertifiedCoalitionElement) :

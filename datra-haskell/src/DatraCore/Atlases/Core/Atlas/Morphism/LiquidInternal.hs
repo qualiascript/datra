@@ -1,4 +1,7 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -6,6 +9,7 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
+{-@ embed AtlasEquality * as TypeEquality @-}
 
 -- | LiquidHaskell-verified primitive Atlas morphism actions.
 module Atlas.Morphism.LiquidInternal
@@ -18,6 +22,10 @@ module Atlas.Morphism.LiquidInternal
   , atlasMorphismAction
   , identityAtlasMorphismObject
   , identityAtlasMorphismPreservesArrow
+  , identityAtlasMorphismAction
+  , identityAtlasMorphismComponent
+  , composeAtlasMorphismComponents
+  , composeAtlasMorphismNaturality
   , atlasMorphismSource
   , atlasMorphismTarget
   , mapAtlasMorphismActionObject
@@ -32,11 +40,14 @@ module Atlas.Morphism.LiquidInternal
   , normalizeAtlasMorphismActionRetains
   ) where
 
+import Atlas.Witness (atlasOwner, atlasWitnessData, atlasWitnessOwnerAgrees, atlasOwnersMembershipAgrees, atlasOwnersMapDataAgree)
 import Atlas.Internal
 import qualified PageElements as Elements (pageElementTraceValid)
 import Data.Kind (Type)
+import Data.Type.Equality ((:~:) (Refl))
+import Atlas.Morphism.Equality.Internal (AtlasEquality (..))
 import DomanialInsertion.Core
-  ( DomanialInsertion (..)
+  ( DomanialInsertion (..), identityInsertionApply, composeInsertions, composeInsertionsApply
   )
 
 import PageElements.Structure
@@ -50,6 +61,8 @@ import PageElements.Structure
   , pageElementArrow
   , normalizeSomePageElementPreservesArrowAt
   )
+
+{-@ predicate MorphismSameCell X Y = pageElementPage X == pageElementPage Y && pageElementPosition X == pageElementPosition Y && pageElementTrace X == pageElementTrace Y && pageElementCell X == pageElementCell Y @-}
 
 {-@ predicate MorphismCellValid A X = Elements.pageElementTraceValid (atlasPageElements A) X @-}
 
@@ -561,10 +574,7 @@ normalizedActionNaturality action arrow datum =
 {-@ reflect identityAtlasMorphismObject @-}
 {-@ identityAtlasMorphismObject :: Atlas a s d o f -> source:PageElement s object
       -> {target:PageElement s (AtlasMappedObject IdentityAtlasObjectMap object) |
-           pageElementPage target == pageElementPage source
-           && pageElementPosition target == pageElementPosition source
-           && pageElementTrace target == pageElementTrace source
-           && pageElementCell target == pageElementCell source} @-}
+           MorphismSameCell target source} @-}
 identityAtlasMorphismObject :: Atlas a s d o f -> PageElement s object
   -> PageElement s (AtlasMappedObject IdentityAtlasObjectMap object)
 identityAtlasMorphismObject _ source = source
@@ -593,3 +603,282 @@ identityAtlasMorphismPreservesArrow _ owner source@(SomePageElement left) target
             identityAtlasMorphismObject owner (normalizeAtlasElement owner right) `seq`
               normalizeSomePageElementPreservesArrowAt (atlasCardinality owner - 1)
                 (fromIntegral (atlasCardinality owner)) source target
+
+-- | Assemble the coherent identity using the owning accepted data carrier.
+-- ALIGN: ATLAS-PRIMITIVE-IDENTITY-ACTION.
+{-@ opaque-reflect identityAtlasMorphismAction @-}
+{-@ identityAtlasMorphismAction :: owner:Atlas a s d o f
+      -> {action:AtlasMorphismAction IdentityAtlasObjectMap a a s s d d o f o f |
+           atlasMorphismSource action == owner
+           && atlasMorphismTarget action == owner
+           && mapAtlasMorphismActionObject action == identityAtlasMorphismObject owner
+           && mapAtlasMorphismActionComponent action == identityAtlasMorphismComponent owner} @-}
+identityAtlasMorphismAction :: Atlas a s d o f
+  -> AtlasMorphismAction IdentityAtlasObjectMap a a s s d d o f o f
+identityAtlasMorphismAction owner =
+  atlasMorphismAction identityAtlasObjectMap owner owner
+    (identityAtlasMorphismObject owner)
+    (identityAtlasMorphismComponent owner)
+    (identityAtlasMorphismPreservesArrow identityAtlasObjectMap owner)
+    (identityAtlasMorphismNaturality owner)
+
+-- ALIGN: ATLAS-PRIMITIVE-IDENTITY-COMPONENT.
+{-@ reflect identityAtlasMorphismComponent @-}
+{-@ identityAtlasMorphismComponent :: owner:Atlas a s d o f
+      -> source:PageElement s object
+      -> DomanialInsertion
+           ({datum:d object | atlasAcceptsDatum owner source datum})
+           ({datum:d (AtlasMappedObject IdentityAtlasObjectMap object) |
+              atlasAcceptsDatum owner (identityAtlasMorphismObject owner source) datum}) @-}
+identityAtlasMorphismComponent :: forall a s d o f object. Atlas a s d o f -> PageElement s object
+  -> DomanialInsertion (d object) (d (AtlasMappedObject IdentityAtlasObjectMap object))
+identityAtlasMorphismComponent owner source =
+  coherentInsertionAt @object @(AtlasMappedObject IdentityAtlasObjectMap object)
+    (AtlasEquality Refl) owner source (identityAtlasMorphismObject owner source)
+
+{-@ identityAtlasMorphismNaturality :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           MorphismCellValid owner (arrowSource arrow)
+           && MorphismCellValid owner (arrowTarget arrow)}
+      -> datum:{d source | atlasAcceptsDatum owner (arrowSource arrow) datum}
+      -> {applyInsertion
+            (identityAtlasMorphismComponent owner (normalizeAtlasElement owner (arrowTarget arrow)))
+            (applyInsertion (mapAtlasData owner arrow) datum)
+          == applyInsertion
+            (mapAtlasData owner
+              (pageElementArrow
+                (normalizeAtlasElement owner (identityAtlasMorphismObject owner
+                  (normalizeAtlasElement owner (arrowSource arrow))))
+                (normalizeAtlasElement owner (identityAtlasMorphismObject owner
+                  (normalizeAtlasElement owner (arrowTarget arrow))))))
+            (applyInsertion
+              (identityAtlasMorphismComponent owner (normalizeAtlasElement owner (arrowSource arrow))) datum)} @-}
+identityAtlasMorphismNaturality :: forall a s d o f source target. Atlas a s d o f
+  -> PageElementArrow s source target -> d source -> ()
+identityAtlasMorphismNaturality owner arrow datum =
+  coherentInsertionNaturalityAt @source @target
+    @(AtlasMappedObject IdentityAtlasObjectMap source) @(AtlasMappedObject IdentityAtlasObjectMap target)
+    (AtlasEquality Refl) (AtlasEquality Refl) owner arrow
+    (identityAtlasMorphismObject owner (normalizeAtlasElement owner (arrowSource arrow)))
+    (identityAtlasMorphismObject owner (normalizeAtlasElement owner (arrowTarget arrow)))
+    datum
+
+-- | Transport coherence along a genuine type equality and an unchanged cell.
+-- ALIGN: ATLAS-COHERENT-INSERTION-TRANSPORT.
+{-@ reflect coherentInsertionAt @-}
+{-@ coherentInsertionAt :: AtlasEquality source target
+      -> owner:Atlas a s d o f -> element:PageElement s source
+      -> selected:{PageElement s target |
+           MorphismSameCell selected element}
+      -> DomanialInsertion
+          ({datum:d source | atlasAcceptsDatum owner element datum})
+          ({datum:d target | atlasAcceptsDatum owner selected datum}) @-}
+coherentInsertionAt :: forall source target a s d o f. AtlasEquality source target
+  -> Atlas a s d o f -> PageElement s source -> PageElement s target
+  -> DomanialInsertion (d source) (d target)
+coherentInsertionAt equality owner element _ =
+  case coherencePacket @source @target equality owner element of
+    CoherentInsertion _ _ _ insertion -> insertion
+
+{-@ type CoherenceLaw a s d o f source target mappedSource mappedTarget =
+      sourceEquality:AtlasEquality source mappedSource
+      -> targetEquality:AtlasEquality target mappedTarget
+      -> owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           MorphismCellValid owner (arrowSource arrow)
+           && MorphismCellValid owner (arrowTarget arrow)}
+      -> sourceMapped:{PageElement s mappedSource |
+           MorphismSameCell sourceMapped (normalizeAtlasElement owner (arrowSource arrow))}
+      -> targetMapped:{PageElement s mappedTarget |
+           MorphismSameCell targetMapped (normalizeAtlasElement owner (arrowTarget arrow))}
+      -> datum:{d source | atlasAcceptsDatum owner (arrowSource arrow) datum}
+      -> {applyInsertion
+            (coherentInsertionAt targetEquality owner (normalizeAtlasElement owner (arrowTarget arrow)) targetMapped)
+            (applyInsertion (mapAtlasData owner arrow) datum)
+          == applyInsertion
+            (mapAtlasData owner
+              (pageElementArrow (normalizeAtlasElement owner sourceMapped) (normalizeAtlasElement owner targetMapped)))
+            (applyInsertion
+              (coherentInsertionAt sourceEquality owner (normalizeAtlasElement owner (arrowSource arrow)) sourceMapped) datum)} @-}
+
+-- ALIGN: ATLAS-COHERENT-INSERTION-NATURALITY.
+{-@ coherentInsertionNaturalityAt :: CoherenceLaw a s d o f source target mappedSource mappedTarget @-}
+coherentInsertionNaturalityAt
+  :: forall source target mappedSource mappedTarget a s d o f.
+     AtlasEquality source mappedSource -> AtlasEquality target mappedTarget
+  -> Atlas a s d o f -> PageElementArrow s source target
+  -> PageElement s mappedSource -> PageElement s mappedTarget -> d source -> ()
+coherentInsertionNaturalityAt sourceEquality targetEquality owner arrow sourceMapped targetMapped datum =
+  case coherenceNaturalityPacket @a @s @d @o @f @source @target @mappedSource @mappedTarget
+      sourceEquality targetEquality of
+    CoherenceNaturality law -> law sourceEquality targetEquality owner arrow sourceMapped targetMapped datum
+
+{-@ rawCoherentNaturalityAt :: CoherenceLaw a s d o f source target source target @-}
+rawCoherentNaturalityAt
+  :: forall source target a s d o f.
+     AtlasEquality source source -> AtlasEquality target target
+  -> Atlas a s d o f -> PageElementArrow s source target
+  -> PageElement s source -> PageElement s target -> d source -> ()
+rawCoherentNaturalityAt sourceEquality@(AtlasEquality Refl) targetEquality@(AtlasEquality Refl) owner arrow sourceMapped targetMapped datum =
+  coherencePacket @source @source (AtlasEquality Refl) owner (normalizeAtlasElement owner (arrowSource arrow)) `seq`
+    coherencePacket @target @target (AtlasEquality Refl) owner (normalizeAtlasElement owner (arrowTarget arrow)) `seq`
+      atlasCoherenceIdempotent owner (arrowSource arrow) `seq`
+        atlasCoherenceIdempotent owner (arrowTarget arrow) `seq`
+          atlasArrowNormalizationAgrees owner arrow `seq`
+            mapAtlasDataNormalized owner arrow `seq`
+              coherentInsertionAt @source @source sourceEquality owner (normalizeAtlasElement owner (arrowSource arrow)) sourceMapped `seq`
+                coherentInsertionAt @target @target targetEquality owner (normalizeAtlasElement owner (arrowTarget arrow)) targetMapped `seq`
+                  identityInsertionApply datum `seq`
+                    identityInsertionApply (applyInsertion (mapAtlasData owner arrow) datum)
+
+-- | Check the law at identical cell indices before transporting the entire
+-- certificate. Its field retains the law when hidden carrier indices change.
+{-@ data CoherenceNaturality a s d o f source target mappedSource mappedTarget = CoherenceNaturality
+  { coherenceNaturalityLaw :: CoherenceLaw a s d o f source target mappedSource mappedTarget }
+  @-}
+data CoherenceNaturality a s d o f source target mappedSource mappedTarget = CoherenceNaturality
+  { coherenceNaturalityLaw :: AtlasEquality source mappedSource -> AtlasEquality target mappedTarget
+      -> Atlas a s d o f -> PageElementArrow s source target
+      -> PageElement s mappedSource -> PageElement s mappedTarget -> d source -> () }
+
+coherenceNaturalityPacket :: forall a s d o f source target mappedSource mappedTarget.
+  AtlasEquality source mappedSource -> AtlasEquality target mappedTarget
+  -> CoherenceNaturality a s d o f source target mappedSource mappedTarget
+coherenceNaturalityPacket (AtlasEquality Refl) (AtlasEquality Refl) =
+  (CoherenceNaturality rawCoherentNaturalityAt
+    :: CoherenceNaturality a s d o f source target source target)
+
+-- | Keep the insertion with its owner and selected cells so that a nominal
+-- type-equality conversion preserves both accepted-data predicates.
+{-@ data CoherentInsertion a s d o f source target = CoherentInsertion
+  { coherentOwner :: Atlas a s d o f
+  , coherentSource :: PageElement s source
+  , coherentTarget :: PageElement s target
+  , coherentMapping :: DomanialInsertion
+      ({datum:d source | atlasAcceptsDatum coherentOwner coherentSource datum})
+      ({datum:d target | atlasAcceptsDatum coherentOwner coherentTarget datum})
+  } @-}
+data CoherentInsertion a s d o f source target = CoherentInsertion
+  { coherentOwner :: Atlas a s d o f
+  , coherentSource :: PageElement s source
+  , coherentTarget :: PageElement s target
+  , coherentMapping :: DomanialInsertion (d source) (d target)
+  }
+
+{-@ reflect coherencePacket @-}
+{-@ coherencePacket :: AtlasEquality source target -> owner:Atlas a s d o f
+      -> element:PageElement s source
+      -> {packet:CoherentInsertion a s d o f source target |
+           coherentOwner packet == owner
+           && coherentSource packet == element
+           && MorphismSameCell (coherentTarget packet) element} @-}
+coherencePacket :: forall source target a s d o f. AtlasEquality source target
+  -> Atlas a s d o f -> PageElement s source -> CoherentInsertion a s d o f source target
+coherencePacket (AtlasEquality Refl) owner element =
+  (CoherentInsertion owner element element (atlasDataCoherence owner element)
+    :: CoherentInsertion a s d o f source source)
+
+-- | Compose accepted components at the normalized middle occurrence, retaining
+-- the actual intermediate owner rather than only its nominal scope.
+-- ALIGN: ATLAS-COMPOSITE-COMPONENT.
+{-@ opaque-reflect composeAtlasMorphismComponents @-}
+{-@ composeAtlasMorphismComponents :: second:AtlasMorphismAction n ma ta ms ts md td mo mf to tf
+      -> first:{AtlasMorphismAction m sa ma ss ms sd md so sf mo2 mf2 |
+           atlasOwner (atlasMorphismTarget first) == atlasOwner (atlasMorphismSource second)}
+      -> source:PageElement ss object
+      -> {result:DomanialInsertion
+           ({datum:sd object | atlasAcceptsDatum (atlasMorphismSource first) source datum})
+           ({datum:td (AtlasMappedObject n (AtlasMappedObject m object)) |
+              atlasAcceptsDatum (atlasMorphismTarget second)
+                (mapAtlasMorphismActionObject second
+                  (normalizeAtlasElement (atlasMorphismSource second)
+                    (normalizeAtlasElement (atlasMorphismTarget first)
+                      (mapAtlasMorphismActionObject first source)))) datum}) |
+           result == composeInsertions
+             (mapAtlasMorphismActionComponent second
+               (normalizeAtlasElement (atlasMorphismSource second)
+                 (normalizeAtlasElement (atlasMorphismTarget first)
+                   (mapAtlasMorphismActionObject first source))))
+             (mapAtlasMorphismActionComponent first source)} @-}
+composeAtlasMorphismComponents
+  :: AtlasMorphismAction n ma ta ms ts md td mo mf to tf
+  -> AtlasMorphismAction m sa ma ss ms sd md so sf mo2 mf2
+  -> PageElement ss object
+  -> DomanialInsertion (sd object) (td (AtlasMappedObject n (AtlasMappedObject m object)))
+composeAtlasMorphismComponents second first source =
+  let targetFirst = atlasMorphismTarget first
+      sourceSecond = atlasMorphismSource second
+      rawMiddle = mapAtlasMorphismActionObject first source
+      witness = atlasWitnessData targetFirst
+      middle = normalizeAtlasElement sourceSecond (normalizeAtlasElement targetFirst rawMiddle)
+  in atlasWitnessOwnerAgrees witness targetFirst rawMiddle `seq`
+    atlasWitnessOwnerAgrees witness sourceSecond rawMiddle `seq`
+    atlasOwnersMembershipAgrees targetFirst sourceSecond rawMiddle `seq`
+    atlasCoherenceIdempotent targetFirst rawMiddle `seq`
+    atlasCoherenceIdempotent sourceSecond rawMiddle `seq`
+      composeInsertions (mapAtlasMorphismActionComponent second middle)
+        (mapAtlasMorphismActionComponent first source)
+
+-- | The composite component commutes with owning data transport. The middle
+-- insertion agrees in full across the retained owner equality.
+-- ALIGN: ATLAS-COMPOSITE-NATURALITY.
+{-@ composeAtlasMorphismNaturality :: second:AtlasMorphismAction n ma ta ms ts md td mo mf to tf
+      -> first:{AtlasMorphismAction m sa ma ss ms sd md so sf mo2 mf2 |
+           atlasOwner (atlasMorphismTarget first) == atlasOwner (atlasMorphismSource second)}
+      -> arrow:{PageElementArrow ss source target |
+           MorphismCellValid (atlasMorphismSource first) (arrowSource arrow)
+           && MorphismCellValid (atlasMorphismSource first) (arrowTarget arrow)}
+      -> datum:{sd source | atlasAcceptsDatum (atlasMorphismSource first) (arrowSource arrow) datum}
+      -> {applyInsertion
+            (composeAtlasMorphismComponents second first (normalizeAtlasElement (atlasMorphismSource first) (arrowTarget arrow)))
+            (applyInsertion (mapAtlasData (atlasMorphismSource first) arrow) datum)
+          == applyInsertion
+            (mapAtlasData (atlasMorphismTarget second)
+              (pageElementArrow (normalizeAtlasElement (atlasMorphismTarget second) (mapAtlasMorphismActionObject second (normalizeAtlasElement (atlasMorphismSource second) (normalizeAtlasElement (atlasMorphismTarget first) (mapAtlasMorphismActionObject first (normalizeAtlasElement (atlasMorphismSource first) (arrowSource arrow))))))) (normalizeAtlasElement (atlasMorphismTarget second) (mapAtlasMorphismActionObject second (normalizeAtlasElement (atlasMorphismSource second) (normalizeAtlasElement (atlasMorphismTarget first) (mapAtlasMorphismActionObject first (normalizeAtlasElement (atlasMorphismSource first) (arrowTarget arrow)))))))))
+            (applyInsertion
+              (composeAtlasMorphismComponents second first (normalizeAtlasElement (atlasMorphismSource first) (arrowSource arrow))) datum)} @-}
+composeAtlasMorphismNaturality
+  :: AtlasMorphismAction n ma ta ms ts md td mo mf to tf
+  -> AtlasMorphismAction m sa ma ss ms sd md so sf mo2 mf2
+  -> PageElementArrow ss source target -> sd source -> ()
+
+composeAtlasMorphismNaturality second first arrow datum =
+  let sourceOwner = atlasMorphismSource first
+      targetFirst = atlasMorphismTarget first
+      sourceSecond = atlasMorphismSource second
+      source = normalizeAtlasElement sourceOwner (arrowSource arrow)
+      target = normalizeAtlasElement sourceOwner (arrowTarget arrow)
+      rawMiddleSource = mapAtlasMorphismActionObject first source
+      rawMiddleTarget = mapAtlasMorphismActionObject first target
+      middleSource = normalizedActionObject first (arrowSource arrow)
+      middleTarget = normalizedActionObject first (arrowTarget arrow)
+      witness = atlasWitnessData targetFirst
+      targetDatum = applyInsertion (mapAtlasData sourceOwner arrow) datum
+      secondSource = normalizeAtlasElement sourceSecond middleSource
+      secondTarget = normalizeAtlasElement sourceSecond middleTarget
+  in normalizeAtlasElementTraceValid sourceOwner (arrowSource arrow) `seq`
+    normalizeAtlasElementTraceValid sourceOwner (arrowTarget arrow) `seq`
+    atlasAcceptsDatumNormalized sourceOwner (arrowSource arrow) datum `seq`
+    atlasAcceptsDatumNormalized sourceOwner (arrowTarget arrow) targetDatum `seq`
+    atlasMorphismActionPreservesArrow first (SomePageElement (arrowSource arrow)) (SomePageElement (arrowTarget arrow)) `seq`
+    let middleArrow = pageElementArrow middleSource middleTarget
+        middleDatum = applyInsertion (mapAtlasMorphismActionComponent first source) datum
+    in atlasWitnessOwnerAgrees witness targetFirst middleSource `seq`
+    atlasWitnessOwnerAgrees witness targetFirst middleTarget `seq`
+    atlasWitnessOwnerAgrees witness sourceSecond middleSource `seq`
+    atlasWitnessOwnerAgrees witness sourceSecond middleTarget `seq`
+    atlasOwnersMembershipAgrees targetFirst sourceSecond middleSource `seq`
+    atlasOwnersMembershipAgrees targetFirst sourceSecond middleTarget `seq`
+    atlasCoherenceIdempotent targetFirst rawMiddleSource `seq`
+    atlasCoherenceIdempotent targetFirst rawMiddleTarget `seq`
+    atlasCoherenceIdempotent sourceSecond middleSource `seq`
+    atlasCoherenceIdempotent sourceSecond middleTarget `seq`
+    atlasMorphismActionNaturality first arrow datum `seq`
+    atlasOwnersMapDataAgree targetFirst sourceSecond middleArrow `seq`
+    atlasMorphismActionNaturality second middleArrow middleDatum `seq`
+    composeAtlasMorphismComponents second first source `seq`
+    composeAtlasMorphismComponents second first target `seq`
+    composeInsertionsApply (mapAtlasMorphismActionComponent second secondSource)
+      (mapAtlasMorphismActionComponent first source) datum `seq`
+    composeInsertionsApply (mapAtlasMorphismActionComponent second secondTarget)
+      (mapAtlasMorphismActionComponent first target) targetDatum

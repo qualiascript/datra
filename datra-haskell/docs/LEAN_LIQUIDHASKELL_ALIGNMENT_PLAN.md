@@ -120,8 +120,16 @@ owner substitution even when the nominal scopes agree. Lean proves the same
 construction/elimination round trip. Consuming the type-equality evidence to
 specialize a callback's carrier parameters still needs care: LiquidHaskell
 can lose the owner equation across the resulting type-family coercion. Equality of the
-complete owner packages gives checked agreement of trace validity and raw
-normalization, even when the hidden origin and final carrier types differ. Normalization
+complete owner packages gives checked agreement of trace validity, raw
+normalization, accepted-data predicates, and the entire normalized data
+insertion, even when the hidden origin and final carrier types differ. The
+data agreements are exposed through `Atlas.Witness`. Lean retains the raw
+membership action in `RawAtlasOwner` and interprets it through the canonical
+accepted-carrier Atlas; agreement of raw predicates is proved from equality of
+that complete package. Public-client checks derive pointwise membership and
+both insertion directions, and reject missing owner equality, contradictory
+observations, invalid arrow endpoints, and a false conclusion from self-owner
+agreement. Normalization
 preserves the witnessed trace domain and is idempotent on every raw occurrence.
 The native transposal-element constructor uses that normalization directly,
 retains its exact raw output, and certifies membership when the input belongs to
@@ -166,6 +174,24 @@ that owner and the materialized target owner in its result. Native primitive
 construction also retains the exact source and path predicates, forward function,
 and supplied inverse. The checked witness bridge identifies its source predicate
 with witnessed normalized membership when the complete source owners agree.
+For a checked materialized action, `atlasTransposalFromAction` builds the included
+symbolic Hom and native raw transposal from that same action. It retains the
+actual source and target owners, the owning source and path predicates, the
+normalized raw object map, and every result of the supplied partial inverse.
+Its inverse callback must preserve membership and recover every accepted source
+image. The two Atlas witnesses recover only the nominal indices; the actual
+owners come from the action. Charter's unit and counit and the Dominion-inclusion
+hom construction use this interface directly. Their remaining inverse, order,
+coverage, and stable assembly obligations still require checked caller proofs.
+Lean constructs the same raw primitive and proves its retained owners and
+callbacks. When the raw object callback represents the primitive morphism's
+object function, its normalized map agrees with the owning-cell interpretation.
+Public-client checks retain all of these observations and derive owning-domain
+evidence from the actual action's source-owner equation. Rejection checks prevent
+substituting owners, maps, inverses, or source predicates, omitting either inverse
+certificate, and treating an unrelated source witness as the owner. Focused
+Charter and Dominion-inclusion runtime checks retain their map, inverse, and
+uncovered-input rejection behavior through this construction.
 The target-witness bridge identifies the materialized target domain in the same
 way. `atlasWitnessFor` preserves an existing object index alongside the actual
 owner, without specializing the carrier parameters. Target type evidence is
@@ -174,6 +200,56 @@ values. `atlasHomTargetWitness` combines this evidence with the target stored in
 the actual materialized object package and retains that package's owner equation.
 The public wrapper also retains the exact witness value, so later materialization
 uses the same witness as the checked composition helper.
+`Atlas.Materialization` exposes checked endpoint observations of the actual
+symbolic materializer. A primitive retains its stored materialized owners,
+an identity retains the supplied witness's owner, and a composite follows the
+first subtree's recovered target witness into the second subtree. The resulting
+morphism retains the symbolic source and target observations, and both witness
+recovery functions retain the actual target owner. The syntax and materializer
+live in the checked `Atlas.Morphism.Internal` module. Dependent object/data
+evaluation lives in `Atlas.Morphism.Evaluation.Internal`; there is one
+materializer and one evaluator. The equality-evidence datatype is shared with
+the checked presheaf laws through its private representation module.
+Public-client checks retain the materialized endpoints, target witnesses, and
+primitive/identity/composite endpoint equations. They reject substituting the
+supplied witness for a primitive's stored source, substituting an intermediate
+target for the final target, and contradicting any retained owner. The shared
+equality representation also passes the presheaf consistency rejection checks.
+Lean models these structural owner observations and proves the materialization
+bridge with explicit agreement between the supplied source witness and the
+interpreted source Atlas. Connecting the syntax observations to the complete
+action's owners remains an assembly obligation, as does agreement of the native
+raw object map with its included Hom. Nominal type equality alone does not
+establish either agreement.
+
+Complete-action identity uses the checked `identityAtlasMorphismAction`
+constructor. It retains both actual owners, the raw identity object callback,
+and the accepted coherence insertion. The insertion travels with its owner and
+endpoint cells through an explicit type-equality witness; a checked naturality
+certificate carries the normalized data equation through the same change of
+phantom indices. The evaluator consumes this constructor directly. Lean uses
+the corresponding transported coherence insertion and proves its naturality
+at the selected normalized cells. Composite data components use the checked
+`composeAtlasMorphismComponents` operation. It requires equality of the complete
+middle owners, transfers membership across both middle normalizations, and
+retains the exact composed insertion, including its partial inverse. The
+evaluator delegates to this operation. `composeAtlasMorphismNaturality` proves
+that these components commute with owning Atlas data transport: the first
+action's naturality equation feeds the second's through the complete
+middle-owner data-map agreement. Source membership transfers through
+normalization before the component is applied, and the middle arrow is
+constructed only after its page law is established. Lean's composition
+constructor uses the corresponding standalone theorem. The evaluator delegates
+its naturality callback to the checked Haskell proof. Transport to the composite
+object-map symbol, complete composite-action assembly, and the outer evaluation
+owner contract remain separate obligations.
+Public composite-component checks retain the entire insertion and inverse,
+reject missing middle-owner equality and source membership, and reject a
+contradictory target predicate or a false conclusion from composing identities.
+Public-client checks retain both identity owners and both callbacks, require
+accepted source data, and retain target membership. Consistency checks reject
+deriving `False` from either the insertion or naturality certificate.
+
 The middle-domain lemma carries a witnessed source through the first map
 into the second map's source domain using equality of the complete middle
 owners. The derived version obtains its middle witness from the first package,
@@ -253,17 +329,27 @@ path-dependent contract. The owning-domain wrapper uses native owner evidence
 to establish both path premises from witnessed source membership. Lean proves
 the raw relation-preservation induction and its owning-domain specialization
 alongside the certified-cell semantic interpretation.
+Ordered composition retains both endpoint owners and an equivalent recursive
+compatibility certificate when simplifying identities and reassociating trees.
+The identity constructor stores checked ownerless native syntax. Native owner
+composition and associativity laws carry the certificate through normalization;
+no element-domain premise is needed for these structural laws. Lean expands
+each ordered primitive into its complete native tree before proving the same
+normalization result, including primitives that wrap identity-only native trees.
+Public-client checks derive the composed order and inverse guarantees from the
+owning source domain. Rejection checks require both subtree certificates and
+the actual source and intermediate owners, and reject an incompatible result.
+The focused runtime test checks both identity simplifications, reassociation,
+wrapped native identities and compositions, and an identity-only native tree,
+retaining forward results, strict order, and inverse recovery.
 Scalar trace validity alone does not identify an arbitrary stored dependent
 payload with the owning cell. That payload bridge, agreement with the included
 Atlas morphism, and discharging source and join owner equations at materialization
 callers remain explicit obligations. The recursive native proof propagates the
 accepted domain through arbitrary trees once those owner equations are supplied;
-matching nominal scopes alone does not discharge them. Ordered composition's
-identity simplification and reassociation must retain owner evidence through
-their normalized underlying syntax. Stable-transversal assembly must likewise
-retain this evidence so its certificates apply to every accepted intermediate
-value. A leading symbolic
-identity has a total raw source predicate and no stored owner, so the witness
+matching nominal scopes alone does not discharge them. Stable-transversal
+assembly must retain this evidence so its certificates apply to every accepted
+intermediate value. A leading symbolic identity has a total raw source predicate and no stored owner, so the witness
 bridge supplies actual source membership rather than using that predicate as an
 owning certificate.
 Derived inclusion and Charter callbacks
@@ -621,14 +707,98 @@ continues to accept all raw target records; its off-image behavior is unchanged.
 Lean derives the matching target-validity certificate from the retained forward
 equation. The declared extent target and the mapper's retained target remain
 separate ownership obligations until their value-level correspondence is proved.
-The generic insertion eliminator
-and its identity/composition cases still need contracts retaining those domains.
+Complete-owner equality transfers both cached coalition validity and the canonical
+origin through the public `coalitionOwnersAgree` interface. The checked
+`stableActionNextSourceValid` lemma uses the first action's retained target
+certificate and this owner equality to establish the second action's full source
+domain. Its premise names the actual mapped target, independently of the declared
+extent target. Lean proves the same transport of the canonical coalition carrier.
+Rejection checks require complete-owner equality, valid cached source data, and
+the canonical source origin, and reject replacing the actual mapped target with
+the declared extent target.
+Stable syntax exposes its actual source and mapped-target owners through the
+public interface. Its composition normalizer preserves both endpoint owners and
+an equivalent recursive compatibility certificate when removing identities and
+reassociating composites. The certificate requires compatible constituent trees
+and equality of the actual intermediate owners whenever both are present. Lean
+proves the corresponding normalization theorem for the retained primitive syntax.
+Public-client rejection checks prevent dropping either constituent certificate
+or the actual join equation, contradicting compatibility, or replacing either
+retained endpoint owner.
+The public `withStableAtlasTransversalCoalitionInsertion` eliminator retains
+canonical source and target domains through primitive, identity, and composition
+cases. Its callback receives the actual source Atlas and its endpoint equation.
+Identity preserves the supplied target owner. Composition recovers the second
+action's source owner and uses it as the first action's target, with recursive
+compatibility supplying the actual join equation. A concrete owner-and-insertion
+record retains both domains across indexed constructor cases; its ownership
+predicate is carried through the callback before opening the record.
+The internal domain-transport helper retains the identical insertion. Scoped
+identity and composition helpers retain equality with `identityInsertion` and
+`composeInsertions`, respectively. These exact helper equations support the
+observations through the complete interpreter.
+The same record retains forward and inverse code functions and checked
+pointwise equations relating them to the stored insertion. Primitive code
+observations use the public canonical decoder and the actual stored callbacks;
+identity observes `Just`, and composition uses the same partial-inverse
+composition operation. Both equations survive owner transport and every
+indexed constructor case. The public `stableCoalitionInsertionData` constructor
+retains the supplied complete owners, both canonical domains, and the recursive
+code observations. `stableCoalitionMap` projects its insertion directly, so
+the public forward and inverse observation proofs refer to the executed map.
+The canonical decoder round trip proves that equal codes recover equal complete
+coalition records; optional codes also distinguish failed inverse lookups.
+Canonical code equality therefore determines the complete dependent payload
+and cache. Lean proves the matching
+observations and injectivity on the canonical and optional canonical carriers.
+Public-client checks establish both mapping and inverse recovery through the
+exposed interface. Rejection checks require recursive compatibility, the actual
+terminal owner, both parts of canonical source validity, and canonical inverse
+inputs; they reject substituted source ownership and noncanonical inverse results.
+The source refinement constrains every successful inverse result. The scoped
+carriers therefore retain complete-owner agreements; a forward-only path
+condition cannot replace that contract. Primitive inverses, failed lookups, and
+off-image lookups keep their supplied behavior, and compositions use the checked
+partial-inverse composition operation.
+Lean's scoped interpreter restricts each retained primitive insertion to canonical
+coalitions, composes those insertions, and proves equality with the existing
+stable carrier interpretation in both executable directions.
+`stableCoalitionMap` and `coalizingFunctorHom` use this scoped execution path
+through the exposed interface. Their checked contracts take the actual source
+and target Atlases, require recursive compatibility and matching endpoint
+owners, and retain both canonical domains in the resulting insertion. For an
+identity-only arrow, the supplied complete owners must agree. The object action
+also retains its canonical coalition carrier. Witness-based assembly obtains
+the target Atlas through the public witness eliminator. Lean transports the same
+scoped insertion between equal complete owners and proves heterogeneous equality
+of the entire insertion. Public-client checks verify forward and inverse domains
+and reject missing compatibility, endpoint ownership, cached validity, or
+canonical-origin evidence, as well as noncanonical successful inverse results.
+The stable normalizer returns its syntax and checked pointwise forward and
+inverse equations in one package. Identity removal and reassociation preserve
+both complete endpoint owners, recursive compatibility, and both scalar code
+observations. Composition projects that same normalization result; its public
+code laws recover the package's certificates.
+The Coalizing identity law preserves the complete canonical record and returns
+that record from the inverse. Its owner-indexed identity map specializes the
+public stable interpreter. The composition laws equate the normalized map with
+successive execution and equate every inverse lookup with the two constituent
+lookups in reverse order, including failure at either stage. Canonical code
+extensionality turns the checked scalar observations into these record equations.
+Lean proves the matching equations for the scoped insertion and connects it to
+the stable carrier interpretation. Public-client checks recover these equations
+through the exposed interfaces and reject reversed code composition, changed
+forward or inverse results, missing canonical input, and missing middle-owner
+evidence. The focused core regression exercises both identity simplifications,
+reassociation, successful inverse recovery, and failure at either inverse stage.
+Higher-level assembly and representation obligations remain separate from these
+pointwise equations.
 The exposed `DomanialInsertion.Core` interface checks the composed forward
 equation and both partial-inverse cases: failure of the second inverse is
 retained, and its successful intermediate is passed to the first inverse.
 Lean proves these same equations for arbitrary target inputs. These generic
-composition laws do not by themselves connect a stable action's target owner
-to the next action's source-domain predicate.
+composition laws require the stable-domain bridge and its complete-owner
+premise when the intermediate accepted carriers have different presentations.
 The public inverse callback retains source ownership through the full stable
 syntax. Its hidden function package stores the source Atlas and an inverse
 whose every successful result is a valid canonical source, including for raw
@@ -638,8 +808,9 @@ partial-inverse composition helper as ordinary domanial insertions. The package
 is built independently of a target lookup. The callback requires a valid
 canonical target, supplies a valid canonical source, and preserves failed
 lookups. Lean proves that this observation agrees with the existing carrier
-insertion's partial inverse for every canonical target. The generic insertion
-accessor's forward-domain contract remains separate from this inverse boundary.
+insertion's partial inverse for every canonical target. The scoped insertion
+also checks its forward-domain contract. The public Coalizing API retains both
+owning domains and checks its identity and composition equations on those domains.
 Lean accepts a stable
 primitive's explicit inverse on canonical coalition records and transports it
 through the covered-value equivalence. Returning to the record carrier recovers
@@ -1836,20 +2007,17 @@ The alignment is complete when all of the following hold:
 
 ## Current implementation priorities
 
-1. Retain native owner-compatibility evidence through ordered composition's
-   identity simplification and reassociation, and discharge source and join owner
-   equations at materialization callers.
-2. Retain the stored canonical source domain through the generic stable-insertion
-   eliminator and its identity/composition cases. Primitive construction and
-   the raw coalition mapper already check that domain.
-3. Connect each mapped target's validity to the next insertion's source domain
-   when composing stable insertions, preserving the exact forward/inverse laws.
-4. Complete the Charter and Dominion-inclusion assembly contracts, preserving
-   their existing Lean interpretation and inverse laws.
-5. Finish the remaining core representation bridges and derived constructions
+1. Connect the checked materializer's endpoint observations to complete-action
+   evaluation, then discharge source and join owner equations at callers using
+   the native owning-domain theorem and ordered composition's retained owner
+   certificate. Prove agreement of native object execution with the included Hom.
+2. Complete the Charter and Dominion-inclusion assembly contracts using the
+   checked Coalizing identity/composition laws, while preserving their existing
+   Lean interpretation and inverse laws.
+3. Finish the remaining core representation bridges and derived constructions
    in Phase 7's dependency order. Keep the manifest's partial and pending
    statuses until their complete obligations are checked.
-6. Remove superseded code and perform the final validation and preprint audit
+4. Remove superseded code and perform the final validation and preprint audit
    required by the definition of done.
 
 The module-loading failure (`ModuleRequiresBlock`) is outside this alignment

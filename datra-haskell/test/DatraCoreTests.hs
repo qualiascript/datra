@@ -1,5 +1,7 @@
 {-# LANGUAGE QualifiedDo #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Main (main) where
@@ -296,7 +298,7 @@ testRankedDominionAtlas =
   let included = dominionAtlas sourceOwner
       traversal = rankedDominionInsertionTraversal sourceOwner ranked identityInsertion
       coalitionMap = stableCoalitionMap
-        (atlasWitness included) (atlasWitness valueAtlas) traversal
+        included valueAtlas traversal
       sourceElement = dominionCoalitionElement sourceOwner 7
   assert "coalition inverses recover images across different folio depths"
     (preimage coalitionMap (applyInsertion coalitionMap sourceElement) == Just sourceElement)
@@ -306,7 +308,7 @@ testRankedDominionAtlas =
       composed = composeStableAtlasTransversals traversal
         (dominionMap sourceOwner sourceOwner double)
       composedMap = stableCoalitionMap
-        (atlasWitness included) (atlasWitness valueAtlas) composed
+        included valueAtlas composed
       targetElement = applyInsertion composedMap sourceElement
   assert "composed coalition maps preserve their supplied inverses"
     (coalitionElementRank targetElement == 14
@@ -317,7 +319,7 @@ testRankedDominionAtlas =
       roundingComposed = composeStableAtlasTransversals traversal
         (dominionMap sourceOwner sourceOwner roundingDouble)
       roundingMap = stableCoalitionMap
-        (atlasWitness included) (atlasWitness valueAtlas) roundingComposed
+        included valueAtlas roundingComposed
   assert "composed coalition inverses retain supplied successful off-image lookups"
     (preimage roundingMap (rankedDominionCoalitionElement ranked 3)
       == Just (dominionCoalitionElement sourceOwner 1))
@@ -3335,24 +3337,34 @@ testOrderedAtlasTransposal =
                     includedIdentity = Category.id Category.. composed
                     leftElement = atlasTransposalElement witness left
                     rightElement = atlasTransposalElement witness right
-                    mappedLeft =
-                      mapOrderedAtlasTransposalObject
-                        includedIdentity leftElement
-                    mappedRight =
-                      mapOrderedAtlasTransposalObject
-                        includedIdentity rightElement
+                    wrappedIdentity =
+                      orderedAtlasTransposal identityAtlasTransposal (\_ _ -> ())
+                    wrappedComposite =
+                      orderedAtlasTransposal (transposal Category.. transposal) (\_ _ -> ())
+                    examples =
+                      [ ("left identity", includedIdentity)
+                      , ("right identity", composed Category.. Category.id)
+                      , ("reassociation", ordered Category.. composed)
+                      , ("wrapped identity", wrappedIdentity Category.. composed)
+                      , ("wrapped native composition", wrappedComposite Category.. composed)
+                      , ("identity-only native tree", wrappedIdentity Category.. wrappedIdentity)
+                      ]
                 assert "ordered transposal test source is strictly ordered"
                   (atlasTransposalElementLT leftElement rightElement)
-                orderedAtlasTransposalPreservesOrder
-                  includedIdentity leftElement rightElement `seq` pure ()
-                orderedAtlasTransposalOwnedOrder witness
-                  includedIdentity leftElement rightElement `seq` pure ()
-                assert "ordered transposals preserve strict Atlas order"
-                  (atlasTransposalElementLT mappedLeft mappedRight)
-                assert "ordered transposals retain transposal injectivity"
-                  ( orderedAtlasTransposalPreimage includedIdentity mappedLeft
-                      == Just leftElement
-                  )
+                mapM_ (\(label, candidate) -> do
+                  let mappedLeft = mapOrderedAtlasTransposalObject candidate leftElement
+                      mappedRight = mapOrderedAtlasTransposalObject candidate rightElement
+                  orderedAtlasTransposalPreservesOrder
+                    candidate leftElement rightElement `seq` pure ()
+                  orderedAtlasTransposalOwnedOrder witness
+                    candidate leftElement rightElement `seq` pure ()
+                  assert ("ordered transposal preserves strict order: " ++ label)
+                    (atlasTransposalElementLT mappedLeft mappedRight)
+                  assert ("ordered transposal retains injectivity: " ++ label)
+                    (orderedAtlasTransposalPreimage candidate mappedLeft == Just leftElement)
+                  assert ("ordered transposal retains identity forward map: " ++ label)
+                    (mappedLeft == leftElement && mappedRight == rightElement)
+                  ) examples
           _ -> fail "test setup failed: expected two ordered Atlas elements"
 
 testAtlasTransversal :: IO ()
@@ -3477,7 +3489,7 @@ testCoalition =
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
-      testAtlasDisjointLaw $ \valueAtlas ->
+      testAtlasDisjointLaw $ \(valueAtlas :: Atlas a s d o f) ->
         let witness = atlasWitness valueAtlas
             transposal =
               atlasTransposal witness identityAtlasHom Just (const ())
@@ -3557,33 +3569,49 @@ testCoalition =
                 [identityAtlasTransversal, transversal, transversal Category.. transversal]
               let mapped =
                     applyInsertion
-                      (coalizingFunctorHom witness witness stable)
+                      (coalizingFunctorHom valueAtlas valueAtlas stable)
                       element
-                  composed =
-                    coalizingFunctorHom
-                      witness
-                      witness
-                      (stable Category.. stable)
               assert "the Coalizing functor maps the stable origin component"
                 (coalitionElementRank mapped == 7)
               assert "the Coalizing arrow has the inherited partial inverse"
                 (preimage
-                  (coalizingFunctorHom witness witness stable)
+                  (coalizingFunctorHom valueAtlas valueAtlas stable)
                   mapped == Just element)
               assert "a coalition preimage outside the arrow image is total"
                 (isNothing (preimage
                   (coalizingFunctorHom
-                    witness witness doublingStable)
+                    valueAtlas valueAtlas doublingStable)
                   element))
               assert "the coalition dominion rank round-trips"
                 (unrank valueCoalition (rank valueCoalition element)
                   == Just element)
-              coalizingFunctorIdentity witness element `seq`
-                coalizingFunctorComposition
-                  witness witness witness stable stable element `seq`
-                    assert "the Coalizing functor preserves composition"
-                      (coalitionElementRank
-                        (applyInsertion composed element) == 7)
+              let identityMap = coalizingIdentityMap @(AtlasObject a s d) valueAtlas
+                  doublingMap = stableCoalitionMap valueAtlas valueAtlas doublingStable
+                  doubled = applyInsertion doublingMap element
+                  quadrupled = applyInsertion doublingMap doubled
+              coalizingFunctorIdentity @(AtlasObject a s d) valueAtlas element `seq` do
+                assert "the Coalizing identity preserves the complete canonical record"
+                  (applyInsertion identityMap element == element)
+                assert "the Coalizing identity inverse returns the same record"
+                  (preimage identityMap element == Just element)
+              mapM_ (\(first, second) -> do
+                let firstMap = stableCoalitionMap valueAtlas valueAtlas first
+                    secondMap = stableCoalitionMap valueAtlas valueAtlas second
+                    directMap = stableCoalitionMap valueAtlas valueAtlas (second Category.. first)
+                coalizingFunctorComposition valueAtlas valueAtlas valueAtlas first second element `seq`
+                  assert "normalized Coalizing composition preserves the complete forward result"
+                    (applyInsertion directMap element == applyInsertion secondMap (applyInsertion firstMap element))
+                mapM_ (\target ->
+                  coalizingFunctorCompositionPreimage valueAtlas valueAtlas valueAtlas first second target `seq`
+                    assert "normalized Coalizing composition preserves successful and failed inverses"
+                      (preimage directMap target ==
+                        (preimage secondMap target >>= preimage firstMap)))
+                  [element, doubled, quadrupled])
+                [ (identityStableAtlasTransversal, doublingStable)
+                , (doublingStable, identityStableAtlasTransversal)
+                , (doublingStable, doublingStable)
+                , (doublingStable Category.. stable, doublingStable)
+                ]
 
 testDomanialInclusion :: IO ()
 testDomanialInclusion =

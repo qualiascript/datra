@@ -52,20 +52,27 @@ theorem normalized_expansion_owners {Object : Type*}
     SameOwners @sourceOf @targetOf
       ((AtlasHom.composeAtlasHoms second first).expandPrimitives @operation)
       (.composite (second.expandPrimitives @operation) (first.expandPrimitives @operation)) := by
+  have ownerEta (owner : Option Owner) :
+      (match owner with | none => none | some value => some value) = owner := by
+    cases owner <;> rfl
   induction first with
   | identity =>
       intro second
       cases second <;> simp [AtlasHom.composeAtlasHoms, AtlasHom.expandPrimitives,
         SameOwners, sourceOwner, targetOwner, OwnersCompatible]
+      all_goals exact (ownerEta _).symm
   | primitive value =>
       intro second
       cases second <;> simp [AtlasHom.composeAtlasHoms, AtlasHom.expandPrimitives,
         SameOwners, sourceOwner, targetOwner, OwnersCompatible]
+      all_goals exact (ownerEta _).symm
   | composite middle first ihMiddle _ =>
       intro second
       cases second with
-      | identity => simp [AtlasHom.composeAtlasHoms, AtlasHom.expandPrimitives,
-          SameOwners, sourceOwner, targetOwner, OwnersCompatible]
+      | identity =>
+          simp [AtlasHom.composeAtlasHoms, AtlasHom.expandPrimitives,
+            SameOwners, sourceOwner, targetOwner, OwnersCompatible]
+          exact (ownerEta _).symm
       | primitive value =>
           have congruent := sameOwners_comp_left @sourceOf @targetOf (first.expandPrimitives @operation)
             _ _ (ihMiddle (.primitive value))

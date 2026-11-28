@@ -558,6 +558,47 @@ theorem mapTransposalMorphismElement_primitive {X Y : Atlas}
     TransposalElementData.ofSource Y (operation.object source.val.normalize).val
   rw [objectMatches source.val.normalize]
 
+/-- Restrict the actual materialized object map using its supplied raw inverse. -/
+def TransposalAction.fromMorphism {X Y : Atlas}
+    (object : PageElement X.pages → PageElement Y.pages)
+    (preservesTrace : ∀ source, X.pages.traceValid source = true → Y.pages.traceValid (object source) = true)
+    (backward : TransposalElementData Y → Option (TransposalElementData X))
+    (backwardValid : ∀ target source, TransposalElementData.valid Y target →
+      backward target = some source → TransposalElementData.valid X source)
+    (leftInverse : ∀ source, TransposalElementData.valid X source →
+      backward (mapTransposalMorphismElement object source) = some source) : TransposalAction X Y :=
+  transposalAction (mapTransposalMorphismElement object) backward
+    (mapTransposalMorphismElement_valid object preservesTrace) backwardValid leftInverse
+
+namespace OwnedTransposalSyntax
+
+variable {X Y : Atlas}
+    (object : PageElement X.pages → PageElement Y.pages)
+    (preservesTrace : ∀ source, X.pages.traceValid source = true → Y.pages.traceValid (object source) = true)
+    (backward : TransposalElementData Y → Option (TransposalElementData X))
+    (backwardValid : ∀ target source, TransposalElementData.valid Y target →
+      backward target = some source → TransposalElementData.valid X source)
+    (leftInverse : ∀ source, TransposalElementData.valid X source →
+      backward (mapTransposalMorphismElement object source) = some source)
+
+def fromMorphismAction : Syntax X Y :=
+  .primitive (TransposalAction.fromMorphism object preservesTrace backward backwardValid leftInverse)
+
+-- ALIGN: ATLAS-TRANSPOSAL-ACTION-CONSTRUCTION.
+theorem fromMorphismAction_retains :
+    let arrow := fromMorphismAction object preservesTrace backward backwardValid leftInverse
+    sourceOwner arrow = some (atlasOwner X) ∧ targetOwner arrow = some (atlasOwner Y) ∧
+      TransposalPath.OwnersCompatible (Primitive := TransposalAction)
+        (fun {X _} _ => atlasOwner X) (fun {_ Y} _ => atlasOwner Y) arrow ∧
+      TransposalPath.sourceValid (Primitive := TransposalAction)
+        (fun {X _} _ source => TransposalElementData.valid X source) arrow = TransposalElementData.valid X ∧
+      pathValid arrow = TransposalElementData.valid X ∧
+      mapObject arrow = mapTransposalMorphismElement object ∧
+      TransposalPath.preimage (fun action => action.preimage) arrow = backward :=
+  ⟨rfl, rfl, trivial, rfl, rfl, rfl, rfl⟩
+
+end OwnedTransposalSyntax
+
 /-- Materialization hides dependent morphism indices while retaining its one
 raw object function and the two owner domains used to certify that function. -/
 structure TransposalObjects (X Y : Atlas) where
@@ -709,6 +750,22 @@ def Agrees {X Y : Atlas} (action : TransposalAction X Y) (hom : Hom X Y) : Prop 
   ∀ source : X.TransposalElement,
     action.map (TransposalElementData.ofElement source) =
       TransposalElementData.ofElement (TransposalElement.mapHom hom source)
+
+/-- A primitive built from one materialized action uses the same normalized
+object map in its raw and owning-cell interpretations. -/
+theorem fromMorphism_agrees {X Y : Atlas} (operation : PrimitiveAtlasMorphism X Y)
+    (object : PageElement X.pages → PageElement Y.pages)
+    (objectMatches : ∀ source : X.Element, object source.val = (operation.object source).val)
+    (preservesTrace : ∀ source, X.pages.traceValid source = true → Y.pages.traceValid (object source) = true)
+    (backward : TransposalElementData Y → Option (TransposalElementData X))
+    (backwardValid : ∀ target source, TransposalElementData.valid Y target →
+      backward target = some source → TransposalElementData.valid X source)
+    (leftInverse : ∀ source, TransposalElementData.valid X source →
+      backward (mapTransposalMorphismElement object source) = some source) :
+    (fromMorphism object preservesTrace backward backwardValid leftInverse).Agrees
+      (.primitive (.primitive operation)) := by
+  intro source
+  exact mapTransposalMorphismElement_primitive operation object objectMatches source
 
 theorem semantic_injective {X Y : Atlas} (action : TransposalAction X Y) (hom : Hom X Y)
     (agrees : action.Agrees hom) : Datra.Semantics.IsTransposal hom.finiteSemantics := by

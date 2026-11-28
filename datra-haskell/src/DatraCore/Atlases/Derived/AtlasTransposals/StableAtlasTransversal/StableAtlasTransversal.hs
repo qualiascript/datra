@@ -11,12 +11,21 @@ module StableAtlasTransversal
   , stableAtlasTransversalOrderedTransposal
   , stableAtlasTransversalTransposal
   , stableAtlasTransversalHom
+  , stableCoalitionSourceOwner, stableCoalitionTargetOwner, stableCoalitionOwnersEmpty
+  , ScopedInsertionData, stableCoalitionInsertionData
+  , scopedInsertionSource, scopedInsertionTarget, scopedInsertionValue
+  , scopedInsertionForwardCodes, scopedInsertionInverseCodes
+  , scopedInsertionForwardObservation, scopedInsertionInverseObservation
+  , coalitionCodeExtensionality, coalitionMaybeCode, coalitionIdentityCode
   , stableAtlasTransversalSourceWitness
-  , stableAtlasTransversalCoalitionInsertion
+  , withStableAtlasTransversalCoalitionInsertion
   , withStableAtlasTransversalCoalitionPreimage
   , stableAtlasTransversalPreservesExtent
+  -- Identity exposes both scalar code models; normalization preserves their
+  -- pointwise forward and inverse observations alongside the endpoint owners.
   , identityStableAtlasTransversal
   , composeStableAtlasTransversals
+  , normalizedForwardCodes, normalizedInverseCodes
   , mapStableAtlasTransversalObject
   , stableAtlasTransversalPreimage
   , stableAtlasTransversalLeftInverse
@@ -32,6 +41,7 @@ module StableAtlasTransversal
 import StableAtlasTransversal.Internal
   ( StableAtlasTransversal
   , composeStableAtlasTransversals
+  , normalizedForwardCodes, normalizedInverseCodes
   , identityStableAtlasTransversal
   , mapStableAtlasTransversalArrow
   , mapStableAtlasTransversalCoveredPageElement
@@ -40,8 +50,14 @@ import StableAtlasTransversal.Internal
   , mapStableAtlasTransversalObject
   , stableAtlasTransversal
   , stableAtlasTransversalHom
+  , stableCoalitionSourceOwner, stableCoalitionTargetOwner, stableCoalitionOwnersEmpty
+  , ScopedInsertionData, stableCoalitionInsertionData
+  , scopedInsertionSource, scopedInsertionTarget, scopedInsertionValue
+  , scopedInsertionForwardCodes, scopedInsertionInverseCodes
+  , scopedInsertionForwardObservation, scopedInsertionInverseObservation
+  , coalitionCodeExtensionality, coalitionMaybeCode, coalitionIdentityCode
   , stableAtlasTransversalSourceWitness
-  , stableAtlasTransversalCoalitionInsertion
+  , withStableAtlasTransversalCoalitionInsertion
   , withStableAtlasTransversalCoalitionPreimage
   , stableAtlasTransversalLeftInverse
   , stableAtlasTransversalOrderedTransposal

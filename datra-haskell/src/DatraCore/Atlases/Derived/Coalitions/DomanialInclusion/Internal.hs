@@ -49,8 +49,6 @@ import Atlas
   (AtlasObjectEquality (..),  AtlasObjectCellData
   , AtlasObjectPaginationScope
   , AtlasWitness
-  , atlasHom
-  , atlasMorphism
   , atlasOriginCell
   , atlasWitness
   , withAtlasWitness
@@ -58,8 +56,9 @@ import Atlas
 import AtlasCoveredPageElement
   ( withAtlasCoveredPageElement
   )
+import Atlas.Witness (withAtlasWitnessData)
 import AtlasTransposal
-  ( atlasTransposal
+  ( atlasTransposalFromAction
   , atlasTransposalElement
   )
 import AtlasTransversal (atlasTransversal)
@@ -123,11 +122,10 @@ domIncToCoa
   -> StableAtlasTransversal (DominionAtlasObject owner a) target
   -> DomanialInsertion a (CoalitionElement target)
 domIncToCoa sourceDominion targetWitness arrow =
+  withAtlasWitnessData targetWitness $ \_ targetOwner ->
   composeInsertions
-    (stableCoalitionMap sourceWitness targetWitness arrow)
+    (stableCoalitionMap (dominionAtlas sourceDominion) targetOwner arrow)
     (snd (coaDomIncIso sourceDominion))
-  where
-    sourceWitness = atlasWitness (dominionAtlas sourceDominion)
 
 -- | Inverse half of the adjunction.  The target origin is captured as a
 -- type-level object-map witness. The explicit component inverse must recover
@@ -165,8 +163,6 @@ coaToDomInc sourceDominion targetOwner insertion backward leftInverse =
             (constantObjectPreservesArrow (originObjectMap @targetObject)
               sourceAtlas targetAtlas targetOrigin)
 
-        hom = atlasHom (atlasMorphism action)
-
         sourceOriginElement =
           withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
             atlasTransposalElement sourceWitness sourceOrigin
@@ -179,9 +175,10 @@ coaToDomInc sourceDominion targetOwner insertion backward leftInverse =
           | otherwise = Nothing
 
         transposal =
-          atlasTransposal
+          atlasTransposalFromAction
             sourceWitness
-            hom
+            targetWitness
+            action
             objectPreimage
             (const ())
 

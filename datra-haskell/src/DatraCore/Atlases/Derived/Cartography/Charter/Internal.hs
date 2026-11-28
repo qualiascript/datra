@@ -68,7 +68,7 @@ import AtlasCoveredPageElement
 import AtlasMap (AtlasMap, atlasMap, atlasMapAtlas, atlasMapCoversDatum)
 import AtlasTransposal
   ( AtlasTransposalElement
-  , atlasTransposal
+  , atlasTransposal, atlasTransposalFromAction
   , atlasTransposalElement
   , withAtlasTransposalElement
   )
@@ -356,12 +356,11 @@ chartCounit valueAtlas backward leftInverse =
             somePageElementTransportedReflexive source)
         (\_ _ -> ())
 
-    hom = atlasHom (atlasMorphism action)
-
     transposal =
-      atlasTransposal
+      atlasTransposalFromAction
         chartedWitness
-        hom
+        (atlasWitness valueAtlas)
+        action
         (Just . relabelElement chartedWitness)
         (const ())
 
@@ -395,9 +394,10 @@ chartUnit sourceMap =
           (\_ _ -> ())
 
       transposal =
-        atlasTransposal
+        atlasTransposalFromAction
           sourceWitness
-          (atlasHom (atlasMorphism action))
+          (atlasWitness (chartAtlas valueAtlas))
+          action
           (Just . relabelElement sourceWitness)
           (const ())
   in atlasTransversal

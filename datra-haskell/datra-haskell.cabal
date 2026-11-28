@@ -159,6 +159,7 @@ library
         Pagination
         Atlas
         Atlas.Morphism
+        Atlas.Materialization
         Atlas.Witness
         Atlas.Presheaf
         AtlasExtent
@@ -238,6 +239,8 @@ library
         AtlasMapFederation.Internal
         AtlasHorizontalSum.Internal
         Atlas.Morphism.Internal
+        Atlas.Morphism.Equality.Internal
+        Atlas.Morphism.Evaluation.Internal
         Atlas.Witness.Internal
         Atlas.Morphism.LiquidInternal
         AtlasCoveredPageElement.Internal

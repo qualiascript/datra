@@ -1,4 +1,5 @@
 import Executable.Atlas.Data
+import Executable.Atlas.Membership
 import Executable.PageElementLookup
 import Executable.Atlas.Syntax
 
@@ -9,6 +10,56 @@ structure AtlasOwner where
   value : Atlas
 
 def atlasOwner (owner : Atlas) : AtlasOwner := ⟨owner⟩
+
+/-- The runtime owner before interpreting membership as an accepted carrier.
+Retaining the raw action is necessary to compare its predicates and partial
+inverses; equality of the interpreted Atlas alone does not recover them. -/
+structure RawAtlasOwner where
+  pagination : Pagination
+  cellData : PageElementCell → Type
+  action : AtlasMembershipAction pagination.pages cellData
+  folioOwner : action.FolioOwner
+  laws : @AtlasMembershipAction.Laws _ _ _ _ action folioOwner
+
+namespace RawAtlasOwner
+open CategoryTheory
+
+instance (owner : RawAtlasOwner) : owner.action.FolioOwner := owner.folioOwner
+
+def toAtlas (owner : RawAtlasOwner) : Atlas :=
+  owner.action.toCanonicalAtlas owner.pagination owner.laws
+
+def toOwner (owner : RawAtlasOwner) : AtlasOwner := atlasOwner owner.toAtlas
+
+def accepts (owner : RawAtlasOwner) (occurrence : PageElement owner.pagination.pages)
+    (datum : owner.cellData occurrence.cell) : Bool :=
+  owner.action.acceptsAt (owner.pagination.pages.depth - 1) owner.pagination.pages.depth occurrence datum
+
+-- ALIGN: ATLAS-OWNERS-DATUM-AGREEMENT.
+theorem membership_agrees (first second : RawAtlasOwner) (same : first = second)
+    (source : PageElement first.pagination.pages) (target : PageElement second.pagination.pages)
+    (sameOccurrence : HEq source target) : HEq (first.accepts source) (second.accepts target) := by
+  cases same
+  cases eq_of_heq sameOccurrence
+  rfl
+
+-- ALIGN: ATLAS-OWNERS-DATA-MAP-AGREEMENT.
+theorem mapData_agree (first second : RawAtlasOwner) (same : first = second)
+    {source target : first.pagination.pages.ValidElement}
+    {otherSource otherTarget : second.pagination.pages.ValidElement}
+    (sameSource : HEq source otherSource) (sameTarget : HEq target otherTarget)
+    (arrow : source ⟶ target) (otherArrow : otherSource ⟶ otherTarget) :
+    HEq (first.action.normalizedMap arrow) (second.action.normalizedMap otherArrow) := by
+  cases same
+  cases eq_of_heq sameSource
+  cases eq_of_heq sameTarget
+  cases Subsingleton.elim arrow otherArrow
+  rfl
+
+theorem interpretation_agrees (first second : RawAtlasOwner) (same : first = second) :
+    first.toOwner = second.toOwner := congrArg toOwner same
+
+end RawAtlasOwner
 
 /-- The raw witness retains an actual owning Atlas. Nominal object indices do
 not replace this value in the elimination contract. -/

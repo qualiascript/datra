@@ -15,13 +15,14 @@ module Atlas.Witness.Internal
   , AtlasOwner, atlasOwner, atlasWitnessOwner
   , AtlasWitness, AtlasWitnessData (..), atlasWitnessFor, atlasWitnessData, atlasWitness, withAtlasWitnessData, withAtlasWitness
   , atlasWitnessElementValid, normalizeAtlasWitnessElement, atlasWitnessNormalizeValid
-  , atlasWitnessOwnerAgrees
+  , atlasWitnessOwnerAgrees, atlasOwnersMembershipAgrees, atlasOwnersMapDataAgree
   ) where
 
 import Atlas.Internal
-  (Atlas, atlasPageElements, normalizeAtlasElement, normalizeAtlasElementTraceValid, atlasCoherenceIdempotent)
+  (Atlas, atlasPageElements, normalizeAtlasElement, normalizeAtlasElementTraceValid, atlasCoherenceIdempotent, atlasAcceptsDatum, mapAtlasData)
 import Data.Kind (Type)
 import PageElements (PageElement, pageElementTraceValid)
+import PageElements.Structure (PageElementArrow, arrowSource, arrowTarget)
 
 -- | A type-level name for one Atlas object. The generative Atlas token is the
 -- decisive identity; the pagination scope and data family are retained so an
@@ -165,3 +166,27 @@ atlasWitnessNormalizeValid witness@(AtlasWitness _ owner) source =
   (if atlasWitnessElementValid witness source
      then normalizeAtlasElementTraceValid owner source else ()) `seq`
     atlasCoherenceIdempotent owner source
+
+-- | Equality of the complete owner retains the raw accepted-data predicate,
+-- including at occurrences outside the folio domain.
+-- ALIGN: ATLAS-OWNERS-DATUM-AGREEMENT.
+{-@ atlasOwnersMembershipAgrees :: first:Atlas a s d o f
+      -> second:{Atlas a s d o2 f2 | atlasOwner second == atlasOwner first}
+      -> occurrence:PageElement s cell
+      -> {atlasAcceptsDatum first occurrence == atlasAcceptsDatum second occurrence} @-}
+atlasOwnersMembershipAgrees :: Atlas a s d o f -> Atlas a s d o2 f2
+  -> PageElement s cell -> ()
+atlasOwnersMembershipAgrees _ _ _ = ()
+
+-- | Owner equality retains the entire normalized insertion, so both forward
+-- execution and partial inverse lookup agree.
+-- ALIGN: ATLAS-OWNERS-DATA-MAP-AGREEMENT.
+{-@ atlasOwnersMapDataAgree :: first:Atlas a s d o f
+      -> second:{Atlas a s d o2 f2 | atlasOwner second == atlasOwner first}
+      -> arrow:{PageElementArrow s source target |
+           pageElementTraceValid (atlasPageElements first) (arrowSource arrow)
+           && pageElementTraceValid (atlasPageElements first) (arrowTarget arrow)}
+      -> {mapAtlasData first arrow == mapAtlasData second arrow} @-}
+atlasOwnersMapDataAgree :: Atlas a s d o f -> Atlas a s d o2 f2
+  -> PageElementArrow s source target -> ()
+atlasOwnersMapDataAgree _ _ _ = ()

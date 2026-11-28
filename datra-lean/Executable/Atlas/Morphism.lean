@@ -192,17 +192,59 @@ theorem component_normalized (f : PrimitiveAtlasMorphism X Y) (x : X.Element) :
     HEq (f.component x.normalize.normalize) (f.component x.normalize) := by
   rw [FolioData.ValidElement.normalize_idempotent]
 
+/- The Haskell transport package retains the owner, both selected cells, and
+their accepted insertion while an equality witness changes the phantom index.
+Here those ownership constraints are carried directly by the indices. -/
+structure CoherentInsertion (X : Atlas) (source target : X.Element) where
+  insertion : DomanialInsertion (X.cellData source.val.cell) (X.cellData target.val.cell)
+
+def coherencePacket (X : Atlas) (source target : X.Element) (same : source = target) :
+    CoherentInsertion X source target := by
+  subst target
+  exact ⟨DomanialInsertion.identity _⟩
+
+-- ALIGN: ATLAS-COHERENT-INSERTION-TRANSPORT.
+def coherentInsertionAt (X : Atlas) (source target : X.Element) (same : source = target) :
+    DomanialInsertion (X.cellData source.val.cell) (X.cellData target.val.cell) :=
+  (coherencePacket X source target same).insertion
+
+/-- Transport of the coherence insertion is natural at the selected normalized
+cells. Haskell retains this law in a checked certificate before specializing
+the phantom cell indices. -/
+-- ALIGN: ATLAS-COHERENT-INSERTION-NATURALITY.
+theorem coherentInsertion_naturality (X : Atlas) {source target : X.Element}
+    (edge : source ⟶ target) (sourceMapped targetMapped : X.Element)
+    (sourceSame : source.normalize = sourceMapped) (targetSame : target.normalize = targetMapped)
+    (mappedEdge : sourceMapped.normalize ⟶ targetMapped.normalize)
+    (datum : X.cellData source.val.cell) :
+    (coherentInsertionAt X target.normalize targetMapped targetSame).map
+        ((X.data.action.normalizedMap edge).map datum) =
+      (X.data.action.normalizedMap mappedEdge).map
+        ((coherentInsertionAt X source.normalize sourceMapped sourceSame).map datum) := by
+  subst sourceMapped
+  subst targetMapped
+  have sameEdge : mappedEdge = FolioData.ValidElement.normalizeArrow
+      (FolioData.ValidElement.normalizeArrow edge) := Subsingleton.elim _ _
+  rw [sameEdge]
+  change (X.data.action.normalizedMap edge).map datum =
+    (X.data.action.normalizedMap (FolioData.ValidElement.normalizeArrow
+      (FolioData.ValidElement.normalizeArrow edge))).map datum
+  rw [AtlasAction.normalizedMap_normalizeArrow, AtlasAction.normalizedMap_normalizeArrow]
+
+-- ALIGN: ATLAS-PRIMITIVE-IDENTITY-ACTION.
 def identity (X : Atlas) : PrimitiveAtlasMorphism X X where
   object := id
-  component _ := DomanialInsertion.identity _
+  component source := coherentInsertionAt X source source rfl
   arrow := fun arrow => FolioData.ValidElement.normalizeArrow
     (FolioData.ValidElement.normalizeArrow arrow)
   naturality := by
     intro source target arrow datum
-    change (X.data.action.normalizedMap arrow).map datum =
-      (X.data.action.normalizedMap (FolioData.ValidElement.normalizeArrow
-        (FolioData.ValidElement.normalizeArrow arrow))).map datum
-    rw [AtlasAction.normalizedMap_normalizeArrow, AtlasAction.normalizedMap_normalizeArrow]
+    exact coherentInsertion_naturality X arrow source.normalize target.normalize rfl rfl
+      (FolioData.ValidElement.normalizeArrow (FolioData.ValidElement.normalizeArrow arrow)) datum
+
+-- ALIGN: ATLAS-PRIMITIVE-IDENTITY-COMPONENT.
+theorem identity_component (X : Atlas) (source : X.Element) :
+    (identity X).component source = DomanialInsertion.identity _ := rfl
 
 /-- The raw identity object callback preserves the complete occurrence. -/
 -- ALIGN: ATLAS-PRIMITIVE-IDENTITY-OBJECT.
@@ -250,6 +292,24 @@ theorem normalized_object_trace_valid (operation : PrimitiveAtlasMorphism X Y)
     Y.pages.traceValid (operation.normalized.object source).val = true :=
   operation.normalized.object_trace_valid source
 
+/-- Naturality of the actual composed components, before packaging the
+complete morphism. Both steps use the same intermediate owning Atlas. -/
+-- ALIGN: ATLAS-COMPOSITE-NATURALITY.
+theorem composed_naturality {Z : Atlas} (second : PrimitiveAtlasMorphism Y Z)
+    (first : PrimitiveAtlasMorphism X Y) {source target : X.Element}
+    (arrow : source ⟶ target) (datum : X.cellData source.val.cell) :
+    ((first.component target.normalize).comp
+      (second.component (first.object target.normalize).normalize.normalize)).map
+        ((X.data.action.normalizedMap arrow).map datum) =
+      (Z.data.action.normalizedMap (second.arrow (first.arrow arrow))).map
+        (((first.component source.normalize).comp
+          (second.component (first.object source.normalize).normalize.normalize)).map datum) := by
+  have firstStep := congrArg
+    (second.component (first.object target.normalize).normalize.normalize).map
+    (first.naturality arrow datum)
+  have secondStep := second.naturality (first.arrow arrow) ((first.component source.normalize).map datum)
+  exact firstStep.trans secondStep
+
 /-- Collapse a composition only after retaining the complete, normalized
 object action and both partial inverses. No coverage condition is imposed on
 the intermediate Atlas or either factor. -/
@@ -259,13 +319,13 @@ def comp {Z : Atlas} (second : PrimitiveAtlasMorphism Y Z) (first : PrimitiveAtl
   component source := (first.component source).comp
     (second.component (first.object source).normalize.normalize)
   arrow := fun arrow => second.arrow (first.arrow arrow)
-  naturality := by
-    intro source target arrow datum
-    have firstStep := congrArg
-      (second.component (first.object target.normalize).normalize.normalize).map
-      (first.naturality arrow datum)
-    have secondStep := second.naturality (first.arrow arrow) ((first.component source.normalize).map datum)
-    exact firstStep.trans secondStep
+  naturality := composed_naturality second first
+
+-- ALIGN: ATLAS-COMPOSITE-COMPONENT.
+theorem comp_component {Z : Atlas} (second : PrimitiveAtlasMorphism Y Z)
+    (first : PrimitiveAtlasMorphism X Y) (source : X.Element) :
+    (comp second first).component source = (first.component source).comp
+      (second.component (first.object source).normalize.normalize) := rfl
 
 noncomputable def finitePageFunctor (f : PrimitiveAtlasMorphism X Y) :
     X.toSemantics.El ⥤ Y.toSemantics.El :=

@@ -26,6 +26,7 @@ module AtlasTransposal
   , withAtlasTransposalElement
   , atlasTransposalElementLT
   , atlasTransposal
+  , atlasTransposalFromAction
   , atlasTransposalHom
   , atlasTransposalSourceValid
   , atlasTransposalPathValid, atlasTransposalPathSource
@@ -77,6 +78,8 @@ import AtlasTransposal.Internal
   , mapAtlasTransposalObject
   , withAtlasTransposalElement
   )
+
+import AtlasTransposal.Primitive.Internal (atlasTransposalFromAction)
 
 import qualified AtlasTransposal.Internal as Internal
   (atlasTransposalOwnedPath, atlasTransposalComposeOwned, atlasTransposalTargetWitness, atlasTransposalMapValid, atlasTransposalLeftIdentity, atlasTransposalRightIdentity, atlasTransposalAssociativity, atlasTransposal, atlasTransposalElement, identityAtlasTransposalRetains, composeAtlasTransposalsRetains, atlasHomSourceAgrees, atlasHomTargetAgrees, atlasHomMiddleValid, atlasHomNextSourceValid)
@@ -287,6 +290,7 @@ atlasTransposalPathSource arrow source = Syntax.atlasTransposalPathSource arrow 
              <=> (TransposalCompatible first && TransposalCompatible second
                && (atlasTransposalTargetOwner first == Nothing || atlasTransposalSourceOwner second == Nothing
                  || atlasTransposalTargetOwner first == atlasTransposalSourceOwner second)))} @-}
+atlasTransposalCompositionOwners :: AtlasTransposal middle target -> AtlasTransposal source middle -> ()
 atlasTransposalCompositionOwners second first = Syntax.atlasTransposalCompositionOwners second first
 
 {-@ atlasTransposalOwnersAssociativity :: third:AtlasTransposal next target
@@ -297,4 +301,6 @@ atlasTransposalCompositionOwners second first = Syntax.atlasTransposalCompositio
              == atlasTransposalTargetOwner (composeAtlasTransposals (composeAtlasTransposals third second) first)
            && (TransposalCompatible (composeAtlasTransposals third (composeAtlasTransposals second first))
              <=> TransposalCompatible (composeAtlasTransposals (composeAtlasTransposals third second) first))} @-}
+atlasTransposalOwnersAssociativity :: AtlasTransposal next target -> AtlasTransposal middle next
+  -> AtlasTransposal source middle -> ()
 atlasTransposalOwnersAssociativity third second first = Syntax.atlasTransposalOwnersAssociativity third second first
