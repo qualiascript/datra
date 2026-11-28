@@ -24,6 +24,7 @@ module AtlasTransversal.Internal
   , atlasTransversalPreservesCoverage
   , mapAtlasTransversalCoveredPageElement
   , withAtlasTransversalCoveredImage
+  , withAtlasTransversalCoveredAction
   , atlasTransversalSize
   , identityAtlasTransversal
   , composeAtlasTransversals
@@ -255,34 +256,35 @@ mapTransversalAction action covered =
     TransversalImage targetOccurrence targetDatum ->
       atlasCoveredByWitness (transversalTarget action) targetOccurrence targetDatum witness
 
--- | Identity needs no new owner. Every actual image retains the Atlas used to
--- certify it, including when a later identity leaves that image unchanged.
-type role TransversalCoveredImage nominal nominal
-data TransversalCoveredImage source target where
-  UnchangedTransversalCoveredImage :: TransversalCoveredImage object object
-  MappedTransversalCoveredImage
-    :: CoveredImageData a s d o f
-    -> TransversalCoveredImage source (AtlasObject a s d)
+-- | Resolve ownership once for the whole covered-data operation. Identity
+-- retains its caller's owner; a mapped action retains the final primitive owner.
+type role TransversalCoveredAction nominal nominal
+data TransversalCoveredAction source target where
+  UnchangedTransversalCoveredAction :: TransversalCoveredAction object object
+  MappedTransversalCoveredAction
+    :: CoveredActionData (AtlasCoveredPageElement source) a s d o f
+    -> TransversalCoveredAction source (AtlasObject a s d)
 
-type role CoveredImageData nominal nominal nominal nominal nominal
-{-@ data CoveredImageData a s d o f = CoveredImageData
-      { coveredImageOwner :: Atlas a s d o f
-      , coveredImageValue :: {covered:CoveredPageElement a s d |
-                               coveredPageElementValid coveredImageOwner covered}
+type role CoveredActionData nominal nominal nominal nominal nominal nominal
+{-@ data CoveredActionData source a s d o f = CoveredActionData
+      { coveredActionOwner :: Atlas a s d o f
+      , coveredActionMap :: source -> {covered:CoveredPageElement a s d |
+                               coveredPageElementValid coveredActionOwner covered}
       } @-}
-data CoveredImageData a s d o f = CoveredImageData
-  { coveredImageOwner :: Atlas a s d o f
-  , coveredImageValue :: CoveredPageElement a s d
+data CoveredActionData source a s d o f = CoveredActionData
+  { coveredActionOwner :: Atlas a s d o f
+  , coveredActionMap :: source -> CoveredPageElement a s d
   }
 
-{-@ withCoveredImageData :: image:CoveredImageData a s d o f
-      -> (owner:Atlas a s d o f
-            -> {covered:CoveredPageElement a s d | coveredPageElementValid owner covered}
-            -> result)
-      -> result @-}
-withCoveredImageData :: CoveredImageData a s d o f
-  -> (Atlas a s d o f -> CoveredPageElement a s d -> result) -> result
-withCoveredImageData image useImage = useImage (coveredImageOwner image) (coveredImageValue image)
+{-@ composeCoveredActionData :: second:CoveredActionData (CoveredPageElement ma ms md) a s d o f
+      -> first:CoveredActionData source ma ms md mo mf
+      -> {result:CoveredActionData source a s d o f |
+           coveredActionOwner result == coveredActionOwner second} @-}
+composeCoveredActionData :: CoveredActionData (CoveredPageElement ma ms md) a s d o f
+  -> CoveredActionData source ma ms md mo mf -> CoveredActionData source a s d o f
+composeCoveredActionData second first =
+  CoveredActionData (coveredActionOwner second)
+    (\source -> coveredActionMap second (coveredActionMap first source))
 
 {-@ measure atlasTransversalSize @-}
 {-@ atlasTransversalSize :: AtlasTransversal source target -> {size:Integer | size > 0} @-}
@@ -292,29 +294,75 @@ atlasTransversalSize (PrimitiveAtlasTransversal _) = 1
 atlasTransversalSize (CompositeAtlasTransversal second first) =
   1 + atlasTransversalSize second + atlasTransversalSize first
 
--- ALIGN: ATLAS-TRANSVERSAL-OWNED-IMAGE.
-{-@ transversalCoveredImage :: transversal:AtlasTransversal source target
-      -> AtlasCoveredPageElement source -> TransversalCoveredImage source target
+-- ALIGN: ATLAS-TRANSVERSAL-OWNED-ACTION.
+{-@ transversalCoveredAction :: transversal:AtlasTransversal source target
+      -> TransversalCoveredAction source target
       / [atlasTransversalSize transversal] @-}
-transversalCoveredImage
-  :: AtlasTransversal source target
-  -> AtlasCoveredPageElement source
-  -> TransversalCoveredImage source target
-transversalCoveredImage IdentityAtlasTransversal _ = UnchangedTransversalCoveredImage
-transversalCoveredImage (PrimitiveAtlasTransversal action) covered =
-  MappedTransversalCoveredImage
-    (CoveredImageData (transversalTarget action) (mapTransversalAction action covered))
-transversalCoveredImage (CompositeAtlasTransversal second first) covered =
-  let mapSecond = transversalCoveredImage second
-  in case transversalCoveredImage first covered of
-    UnchangedTransversalCoveredImage -> mapSecond covered
-    MappedTransversalCoveredImage image ->
-      case mapSecond (coveredImageValue image) of
-        UnchangedTransversalCoveredImage -> MappedTransversalCoveredImage image
-        MappedTransversalCoveredImage result -> MappedTransversalCoveredImage result
+transversalCoveredAction :: AtlasTransversal source target -> TransversalCoveredAction source target
+transversalCoveredAction IdentityAtlasTransversal = UnchangedTransversalCoveredAction
+transversalCoveredAction (PrimitiveAtlasTransversal action) =
+  MappedTransversalCoveredAction
+    (CoveredActionData (transversalTarget action) (mapTransversalAction action))
+transversalCoveredAction (CompositeAtlasTransversal second first) =
+  composeTransversalCoveredActions (transversalCoveredAction second) (transversalCoveredAction first)
 
--- | Inspect a covered image with the exact owner that certifies it. The target
--- origin and final-page carriers remain existential inside the callback.
+composeTransversalCoveredActions :: TransversalCoveredAction middle target
+  -> TransversalCoveredAction source middle -> TransversalCoveredAction source target
+composeTransversalCoveredActions UnchangedTransversalCoveredAction first = first
+composeTransversalCoveredActions (MappedTransversalCoveredAction second) first =
+  case first of
+    UnchangedTransversalCoveredAction -> MappedTransversalCoveredAction second
+    MappedTransversalCoveredAction source ->
+      MappedTransversalCoveredAction (composeCoveredActionData second source)
+
+-- | Retain the source-domain contract while the syntax refines its indices.
+type role CoveredActionConsumer nominal nominal nominal nominal nominal nominal nominal nominal nominal
+{-@ data CoveredActionConsumer sa ss sd so sf ta ts td result = CoveredActionConsumer
+      { coveredConsumerSource :: Atlas sa ss sd so sf
+      , coveredConsumerUse :: forall o f. owner:Atlas ta ts td o f
+          -> ({source:CoveredPageElement sa ss sd | coveredPageElementValid coveredConsumerSource source}
+               -> {image:CoveredPageElement ta ts td | coveredPageElementValid owner image})
+          -> result
+      } @-}
+data CoveredActionConsumer sa ss sd so sf ta ts td result = CoveredActionConsumer
+  { coveredConsumerSource :: Atlas sa ss sd so sf
+  , coveredConsumerUse :: forall o f. Atlas ta ts td o f
+      -> (CoveredPageElement sa ss sd -> CoveredPageElement ta ts td) -> result
+  }
+
+useIdentityCoveredAction :: CoveredActionConsumer a s d o f a s d result -> result
+useIdentityCoveredAction consumer =
+  coveredConsumerUse consumer (coveredConsumerSource consumer) (\source -> source)
+
+useMappedCoveredAction :: CoveredActionConsumer sa ss sd so sf ta ts td result
+  -> CoveredActionData (CoveredPageElement sa ss sd) ta ts td to tf -> result
+useMappedCoveredAction consumer action =
+  coveredConsumerUse consumer (coveredActionOwner action) (coveredActionMap action)
+
+-- | The callback receives one target owner and a map certified for that owner
+-- on every accepted source, so downstream assembly can retain the entire map.
+-- ALIGN: ATLAS-TRANSVERSAL-OWNED-ACTION-ELIMINATION.
+{-@ withAtlasTransversalCoveredAction
+      :: sourceOwner:Atlas sa ss sd so sf
+      -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+      -> (forall o f. owner:Atlas ta ts td o f
+            -> ({source:CoveredPageElement sa ss sd | coveredPageElementValid sourceOwner source}
+                 -> {image:CoveredPageElement ta ts td | coveredPageElementValid owner image})
+            -> result)
+      -> result @-}
+withAtlasTransversalCoveredAction
+  :: Atlas sa ss sd so sf
+  -> AtlasTransversal (AtlasObject sa ss sd) (AtlasObject ta ts td)
+  -> (forall o f. Atlas ta ts td o f
+        -> (CoveredPageElement sa ss sd -> CoveredPageElement ta ts td) -> result)
+  -> result
+withAtlasTransversalCoveredAction sourceOwner transversal useAction =
+  let consumer = CoveredActionConsumer sourceOwner useAction
+  in case transversalCoveredAction transversal of
+    UnchangedTransversalCoveredAction -> useIdentityCoveredAction consumer
+    MappedTransversalCoveredAction action -> useMappedCoveredAction consumer action
+
+-- | Inspect an image using the same retained operation and target owner.
 -- ALIGN: ATLAS-TRANSVERSAL-OWNED-ELIMINATION.
 {-@ withAtlasTransversalCoveredImage
       :: sourceOwner:Atlas sa ss sd so sf
@@ -331,23 +379,19 @@ withAtlasTransversalCoveredImage
   -> (forall o f. Atlas ta ts td o f -> CoveredPageElement ta ts td -> result)
   -> result
 withAtlasTransversalCoveredImage sourceOwner transversal covered useImage =
-  let sourceImage = CoveredImageData sourceOwner covered
-  in case transversalCoveredImage transversal covered of
-    UnchangedTransversalCoveredImage -> withCoveredImageData sourceImage useImage
-    MappedTransversalCoveredImage image -> withCoveredImageData image useImage
+  withAtlasTransversalCoveredAction sourceOwner transversal
+    (\owner forward -> useImage owner (forward covered))
 
--- | Map a covered page element and derive coverage of its exact target image. This
--- is total: malformed preservation callbacks are rejected when the primitive
--- transversal is compiled, rather than producing a runtime failure here.
+-- | Apply the retained operation. Identity returns the exact input record.
 -- ALIGN: ATLAS-TRANSVERSAL-COVERED-IMAGE.
 mapAtlasTransversalCoveredPageElement
   :: AtlasTransversal source target
   -> AtlasCoveredPageElement source
   -> AtlasCoveredPageElement target
 mapAtlasTransversalCoveredPageElement transversal covered =
-  case transversalCoveredImage transversal covered of
-    UnchangedTransversalCoveredImage -> covered
-    MappedTransversalCoveredImage image -> coveredImageValue image
+  case transversalCoveredAction transversal of
+    UnchangedTransversalCoveredAction -> covered
+    MappedTransversalCoveredAction action -> coveredActionMap action covered
 
 -- | The covered-page-element preservation condition of an Atlas transversal.
 -- This is named separately from the operational mapper so downstream

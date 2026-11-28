@@ -1,3 +1,7 @@
+{-# LANGUAGE CPP #-}
+#include "../../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+
 -- | Coalitions and the Coalizing functor from stable Atlas transversals to
 -- domanial insertions.
 module Coalition
@@ -8,8 +12,10 @@ module Coalition
   , stableCoalitionMap
   , coalizingFunctorObject
   , coalizingFunctorHom
+  , coalizingIdentityMap
   , coalizingFunctorIdentity
   , coalizingFunctorComposition
+  , coalizingFunctorCompositionPreimage
   ) where
 
 import Coalition.Internal

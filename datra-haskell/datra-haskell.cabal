@@ -158,6 +158,9 @@ library
         PageElements
         Pagination
         Atlas
+        Atlas.Morphism
+        Atlas.Materialization
+        Atlas.Witness
         Atlas.Presheaf
         AtlasExtent
         AtlasTerritory
@@ -170,11 +173,28 @@ library
         AtlasCoveredPageElement
         AtlasMap
         AtlasTransposal
+        AtlasTransposal.Element
+        AtlasTransposal.Action
+        AtlasTransposal.Objects
         OrderedAtlasTransposal
         ChainedDominionAtlas
         ChainedDominionAtlas.Data
         ChainedDominionAtlas.Action
+        ChainedDominionAtlas.Presentation
+        TwoPagePresentation
+        TwoPageCoverage
+        ChainedDominionAtlas.Owner
+        ChainedDominionAtlas.Coverage
+        ChainedDominionAtlas.Coalition
+        ChainedDominionAtlas.Canonical
         RankedDominionAtlas
+        RankedDominionAtlas.Data
+        RankedDominionAtlas.Action
+        RankedDominionAtlas.Presentation
+        RankedDominionAtlas.Pagination
+        RankedDominionAtlas.Owner
+        RankedDominionAtlas.Coverage
+        RankedDominionAtlas.Coalition
         AtlasTransversal
         AtlasTransversalMap
         Charter
@@ -182,6 +202,9 @@ library
         Coalition.Element
         DomanialInclusion
         DomanialInclusion.Data
+        DomanialInclusion.Action
+        DomanialInclusion.Component
+        DomanialInclusion.Morphism
         DomanialInclusion.Presentation
         StableAtlasTransversal
         DataTransformation
@@ -216,11 +239,17 @@ library
         AtlasMapFederation.Internal
         AtlasHorizontalSum.Internal
         Atlas.Morphism.Internal
+        Atlas.Morphism.Equality.Internal
+        Atlas.Morphism.Evaluation.Internal
+        Atlas.Witness.Internal
         Atlas.Morphism.LiquidInternal
         AtlasCoveredPageElement.Internal
         AtlasMap.Internal
         TotalAtlasMap.Internal
         AtlasTransposal.Internal
+        AtlasTransposal.Syntax.Internal
+        AtlasTransposal.Primitive.Internal
+        AtlasTransposal.Element.Internal
         OrderedAtlasTransposal.Internal
         AtlasTransversal.Internal
         AtlasTransversalMap.Internal
@@ -230,7 +259,6 @@ library
         Coalition.Element.Internal
         Coalition.Element.Data
         Coalition.Action
-        Coalition.Action.Internal
         DomanialInclusion.Internal
         DomanialInclusion.LiquidInternal
         StableAtlasTransversal.Internal

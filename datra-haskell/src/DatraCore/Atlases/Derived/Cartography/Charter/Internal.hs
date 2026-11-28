@@ -35,7 +35,8 @@ module Charter.Internal
   ) where
 
 import Atlas
-  ( Atlas
+  ( AtlasObjectEquality (..)
+  , Atlas
   , AtlasHom
   , AtlasMorphism
   , AtlasObject
@@ -67,7 +68,7 @@ import AtlasCoveredPageElement
 import AtlasMap (AtlasMap, atlasMap, atlasMapAtlas, atlasMapCoversDatum)
 import AtlasTransposal
   ( AtlasTransposalElement
-  , atlasTransposal
+  , atlasTransposal, atlasTransposalFromAction
   , atlasTransposalElement
   , withAtlasTransposalElement
   )
@@ -222,8 +223,8 @@ chartHom
         -> ChartedCellData source object -> ())
   -> AtlasHom (ChartedAtlasObject source) (ChartedAtlasObject target)
 chartHom sourceWitness targetWitness transversal backward leftInverse =
-  withAtlasWitness sourceWitness $ \_ ->
-  withAtlasWitness targetWitness $ \_ ->
+  withAtlasWitness sourceWitness $ \AtlasObjectEquality _ ->
+  withAtlasWitness targetWitness $ \AtlasObjectEquality _ ->
   atlasHom (chartMorphism (materializeAtlasHom sourceWitness (atlasTransversalHom transversal)) transversal backward leftInverse)
 
 relabelElement
@@ -248,8 +249,8 @@ chartMap
        (ChartedAtlasObject source)
        (ChartedAtlasObject target)
 chartMap sourceWitness targetWitness transversal backward leftInverse =
-  withAtlasWitness sourceWitness $ \sourceAtlas ->
-  withAtlasWitness targetWitness $ \targetAtlas ->
+  withAtlasWitness sourceWitness $ \AtlasObjectEquality sourceAtlas ->
+  withAtlasWitness targetWitness $ \AtlasObjectEquality targetAtlas ->
   let sourceChartWitness = atlasWitness (chartAtlas sourceAtlas)
       hom = chartHom sourceWitness targetWitness transversal backward leftInverse
 
@@ -355,12 +356,11 @@ chartCounit valueAtlas backward leftInverse =
             somePageElementTransportedReflexive source)
         (\_ _ -> ())
 
-    hom = atlasHom (atlasMorphism action)
-
     transposal =
-      atlasTransposal
+      atlasTransposalFromAction
         chartedWitness
-        hom
+        (atlasWitness valueAtlas)
+        action
         (Just . relabelElement chartedWitness)
         (const ())
 
@@ -372,7 +372,7 @@ chartUnit
   :: AtlasMap source
   -> AtlasTransversal source (ChartedAtlasObject source)
 chartUnit sourceMap =
-  withAtlasWitness (atlasMapAtlas sourceMap) $ \valueAtlas ->
+  withAtlasWitness (atlasMapAtlas sourceMap) $ \AtlasObjectEquality valueAtlas ->
   let ordered = orderedAtlasTransposal transposal (\_ _ -> ())
       sourceWitness = atlasWitness valueAtlas
       action =
@@ -394,9 +394,10 @@ chartUnit sourceMap =
           (\_ _ -> ())
 
       transposal =
-        atlasTransposal
+        atlasTransposalFromAction
           sourceWitness
-          (atlasHom (atlasMorphism action))
+          (atlasWitness (chartAtlas valueAtlas))
+          action
           (Just . relabelElement sourceWitness)
           (const ())
   in atlasTransversal
@@ -417,7 +418,7 @@ chartLift
   -> AtlasTransversalMap source (ChartedAtlasObject target)
 chartLift sourceMap targetWitness arrow =
   let sourceWitness = atlasMapAtlas sourceMap
-  in withAtlasWitness sourceWitness $ \sourceAtlas ->
+  in withAtlasWitness sourceWitness $ \AtlasObjectEquality sourceAtlas ->
       composeAtlasTransversalMaps
         (chartMap sourceWitness targetWitness arrow
           (\occurrence datum -> Just (chartCellData sourceAtlas occurrence datum

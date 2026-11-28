@@ -46,15 +46,9 @@ module DomanialInclusion.Internal
   ) where
 
 import Atlas
-  ( AtlasMappedObject
-  , AtlasObjectCellData
-  , AtlasObjectMap
+  (AtlasObjectEquality (..),  AtlasObjectCellData
   , AtlasObjectPaginationScope
   , AtlasWitness
-  , atlasHom
-  , atlasMorphism
-  , atlasMorphismAction
-  , atlasObjectMap
   , atlasOriginCell
   , atlasWitness
   , withAtlasWitness
@@ -62,8 +56,9 @@ import Atlas
 import AtlasCoveredPageElement
   ( withAtlasCoveredPageElement
   )
+import Atlas.Witness (withAtlasWitnessData)
 import AtlasTransposal
-  ( atlasTransposal
+  ( atlasTransposalFromAction
   , atlasTransposalElement
   )
 import AtlasTransversal (atlasTransversal)
@@ -77,8 +72,11 @@ import Coalition.Element
   )
 import Data.Void (Void, absurd)
 import DomanialInclusion.LiquidInternal
-  ( coalitionComponentInsertion, dominionAtlasMap, dominionCoalitionElement
+  ( dominionAtlasMap, dominionCoalitionElement
   , coalitionValue, coaDomIncIso, coaDomIncIsoLeftInverse, coaDomIncIsoRightInverse )
+import DomanialInclusion.Action
+  ( originObjectMap, constantObject, constantObjectPreservesArrow )
+import DomanialInclusion.Morphism (coalitionMorphismAction)
 import DomanialInclusion.Presentation
   ( DominionPaginationScope, onePageFolio, onePagePagination
   , DominionAtlas, DominionAtlasObject, dominionAtlas, withDominionAtlas
@@ -111,15 +109,6 @@ import StableAtlasTransversal
   , stableAtlasTransversal
   )
 
--- | A constant object-map whose codomain is the hidden target-origin cell.
-data OriginObjectMap targetObject
-
-type instance
-  AtlasMappedObject (OriginObjectMap targetObject) sourceObject = targetObject
-
-originObjectMap :: AtlasObjectMap (OriginObjectMap targetObject)
-originObjectMap = atlasObjectMap
-
 -- | The initial dominion from the Lean construction.
 emptyDominion :: Dominion Void
 emptyDominion = dominion absurd (const Nothing) absurd
@@ -133,11 +122,10 @@ domIncToCoa
   -> StableAtlasTransversal (DominionAtlasObject owner a) target
   -> DomanialInsertion a (CoalitionElement target)
 domIncToCoa sourceDominion targetWitness arrow =
+  withAtlasWitnessData targetWitness $ \_ targetOwner ->
   composeInsertions
-    (stableCoalitionMap sourceWitness targetWitness arrow)
+    (stableCoalitionMap (dominionAtlas sourceDominion) targetOwner arrow)
     (snd (coaDomIncIso sourceDominion))
-  where
-    sourceWitness = atlasWitness (dominionAtlas sourceDominion)
 
 -- | Inverse half of the adjunction.  The target origin is captured as a
 -- type-level object-map witness. The explicit component inverse must recover
@@ -155,34 +143,25 @@ coaToDomInc
         -> a -> ())
   -> StableAtlasTransversal (DominionAtlasObject owner a) target
 coaToDomInc sourceDominion targetOwner insertion backward leftInverse =
-  withAtlasWitness targetOwner $ \targetAtlas ->
+  withAtlasWitness targetOwner $ \AtlasObjectEquality targetAtlas ->
   withPageElement (atlasOriginCell targetAtlas) $
     \(targetOrigin :: PageElement targetScope targetObject) ->
     let sourceAtlas = dominionAtlas sourceDominion
         sourceWitness = atlasWitness sourceAtlas
         targetWitness = atlasWitness targetAtlas
 
-        component
-          :: forall sourceObject.
-             PageElement (DominionPaginationScope a) sourceObject
-          -> DomanialInsertion
-               (DominionCellData a sourceObject)
-               (AtlasObjectCellData target targetObject)
-        component _ =
-          coalitionComponentInsertion targetAtlas targetOrigin (applyInsertion insertion)
-            (backward targetOrigin) (leftInverse targetOrigin)
-
         action =
-          atlasMorphismAction
+          coalitionMorphismAction
             (originObjectMap @targetObject)
-            sourceAtlas
+            sourceDominion
             targetAtlas
-            (const targetOrigin)
-            component
-            (\_ _ -> ())
-            (\_ _ -> ())
-
-        hom = atlasHom (atlasMorphism action)
+            targetOrigin
+            (constantObject targetAtlas targetOrigin)
+            (applyInsertion insertion)
+            backward
+            leftInverse
+            (constantObjectPreservesArrow (originObjectMap @targetObject)
+              sourceAtlas targetAtlas targetOrigin)
 
         sourceOriginElement =
           withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
@@ -196,9 +175,10 @@ coaToDomInc sourceDominion targetOwner insertion backward leftInverse =
           | otherwise = Nothing
 
         transposal =
-          atlasTransposal
+          atlasTransposalFromAction
             sourceWitness
-            hom
+            targetWitness
+            action
             objectPreimage
             (const ())
 

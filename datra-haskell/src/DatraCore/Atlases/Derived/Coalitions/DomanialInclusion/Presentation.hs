@@ -19,6 +19,7 @@ module DomanialInclusion.Presentation
   , onePageFolio, onePagePagination, dominionPresentation
   , DominionAtlas, DominionAtlasObject, dominionAtlas, withDominionAtlas
   , dominionAcceptsDatum
+  , dominionMapDataIdentity
   , CanonicalDominion (..), CanonicalDominionAtlasScope, canonicalDominionAtlas ) where
 
 import Atlas
@@ -26,6 +27,7 @@ import Atlas
   , AtlasPresentation, atlasPresentationForPredicate, atlasPresentationPagination, atlasPresentationAction
   , AtlasDataAction, atlasActionDomain, atlasActionMembership, atlasActionDataAt
   , atlasDescriptionMembership, normalizeAtlasElement
+  , atlasDescriptionMap, mapAtlasData, normalizeAtlasArrow, atlasPageElements
   , atlasActionMap, atlasMembership, atlasPredicateDataAction )
 import Atlas.Construction (AtlasConstruction (..), FixedAtlasScope, constructAtlas)
 import DomanialInclusion.Data
@@ -149,6 +151,21 @@ dominionAcceptsDatum owner occurrence datum =
   in atlasDescriptionMembership value occurrence datum `seq`
      atlasMembership acceptsConstantDatum `seq`
      acceptsConstantDatum (normalizeAtlasElement value occurrence) datum `seq` ()
+
+-- | Both callbacks of the owning Atlas transport are the constant insertion.
+-- ALIGN: DOMINC-OWNER-MAP-IDENTITY.
+{-@ dominionMapDataIdentity :: owner:DominionAtlas ownerScope a
+      -> arrow:{PageElementArrow (DominionPaginationScope a) source target |
+           pageElementTraceValid (atlasPageElements (dominionAtlas owner)) (arrowSource arrow)
+           && pageElementTraceValid (atlasPageElements (dominionAtlas owner)) (arrowTarget arrow)}
+      -> {applyInsertion (mapAtlasData (dominionAtlas owner) arrow) == identityCellMap
+           && preimage (mapAtlasData (dominionAtlas owner) arrow) == identityCellPreimage} @-}
+dominionMapDataIdentity :: DominionAtlas owner a
+  -> PageElementArrow (DominionPaginationScope a) source target -> ()
+dominionMapDataIdentity owner arrow =
+  let value = dominionAtlas owner
+  in atlasDescriptionMap value arrow `seq`
+     constantDataMap (normalizeAtlasArrow value arrow) `seq` ()
 
 -- ALIGN: DOMINC-ATLAS-INTERPRETATION.
 -- ALIGN: DOMINC-STABLE-ISOMORPHISM.

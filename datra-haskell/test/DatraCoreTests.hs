@@ -1,9 +1,12 @@
 {-# LANGUAGE QualifiedDo #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Main (main) where
 
+import Atlas.Witness (atlasWitnessData, withAtlasWitnessData)
 import Atlas
 import AtlasExtent
 import AtlasConfederation
@@ -15,11 +18,15 @@ import AtlasMap
 import AtlasMerge
 import AtlasSequence
 import AtlasTransposal
+import qualified AtlasTransposal.Action as TransposalAction
+import qualified AtlasTransposal.Element as TransposalElement
 import AtlasTransversal
 import AtlasTransversalMap
 import AtlasTerritory
 import Chain
 import ChainedDominionAtlas
+import qualified ChainedDominionAtlas.Coverage as ChainedCoverage
+import qualified ChainedDominionAtlas.Coalition as ChainedCoalition
 import qualified ChainedDominionAtlas.Data as ChainedData
 import Charter
 import Coalition
@@ -41,6 +48,7 @@ import HorizontalSum
 import HorizontalSum.Syntax
 import Navigation
 import PageElements
+import qualified PageElements.Structure as RawPageElement
 import qualified PageElements.TraceChain as TraceChain
 import Pagination
 import Numeric.Natural (Natural)
@@ -55,6 +63,7 @@ import StableDataTransversal
 import TotalAtlasMap
 
 import Data.Maybe (isJust, isNothing)
+import Data.Coerce (coerce)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Void (Void, absurd)
 import Hedgehog qualified as H
@@ -113,6 +122,8 @@ testTree =
         , testCase "charter counit rejects uncovered inverse" testCharterCounitUncoveredInverse
         , testCase "charter map rejects uncovered source inverse" testCharterMapUncoveredInverse
         , testCase "ordered atlas transposal" testOrderedAtlasTransposal
+        , testCase "transposal action composition across witness eliminations" testTransposalActionWitnessComposition
+        , testCase "transposal target witness through nested syntax" testTransposalTargetWitness
         , testCase "atlas transversal" testAtlasTransversal
         , testCase "stable atlas transversal" testStableAtlasTransversal
         , testCase "coalition" testCoalition
@@ -267,13 +278,27 @@ testRankedDominionAtlas =
   assert "every natural rank selects one singleton final region"
     (map regionAt selectedRanks
       == map (const (Just True)) selectedRanks)
+  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
+    withPageElement (lastPageElement (atlasPageElements valueAtlas) (chainIndexOf spine 1)) $ \region ->
+      case (unrank (atlasDataAt valueAtlas origin) 1, unrank (atlasDataAt valueAtlas region) 0) of
+        (Just extentDatum, Just regionDatum) -> do
+          assert "ranked extent membership rejects region-tagged data"
+            (atlasAcceptsDatum valueAtlas origin extentDatum
+              && not (atlasAcceptsDatum valueAtlas origin (coerce regionDatum)))
+          assert "ranked region membership rejects extent-tagged data"
+            (atlasAcceptsDatum valueAtlas region regionDatum
+              && not (atlasAcceptsDatum valueAtlas region (coerce extentDatum)))
+          withPageElement (lastPageElement (atlasPageElements valueAtlas) (chainIndexOf spine 2)) $ \other ->
+            assert "ranked region membership rejects data at another rank"
+              (not (atlasAcceptsDatum valueAtlas other (coerce regionDatum)))
+        _ -> fail "Ranked Dominion lost a populated cell"
   assert "ranked dominion coalition elements retain target ranks"
     (coalitionElementRank
       (rankedDominionCoalitionElement ranked 37) == 37)
   let included = dominionAtlas sourceOwner
       traversal = rankedDominionInsertionTraversal sourceOwner ranked identityInsertion
       coalitionMap = stableCoalitionMap
-        (atlasWitness included) (atlasWitness valueAtlas) traversal
+        included valueAtlas traversal
       sourceElement = dominionCoalitionElement sourceOwner 7
   assert "coalition inverses recover images across different folio depths"
     (preimage coalitionMap (applyInsertion coalitionMap sourceElement) == Just sourceElement)
@@ -283,13 +308,40 @@ testRankedDominionAtlas =
       composed = composeStableAtlasTransversals traversal
         (dominionMap sourceOwner sourceOwner double)
       composedMap = stableCoalitionMap
-        (atlasWitness included) (atlasWitness valueAtlas) composed
+        included valueAtlas composed
       targetElement = applyInsertion composedMap sourceElement
   assert "composed coalition maps preserve their supplied inverses"
     (coalitionElementRank targetElement == 14
       && preimage composedMap targetElement == Just sourceElement)
   assert "composed coalition inverses reject values outside the image"
     (isNothing (preimage composedMap (rankedDominionCoalitionElement ranked 3)))
+  let roundingDouble = domanialInsertion (* 2) (Just . (`div` 2)) (const ())
+      roundingComposed = composeStableAtlasTransversals traversal
+        (dominionMap sourceOwner sourceOwner roundingDouble)
+      roundingMap = stableCoalitionMap
+        included valueAtlas roundingComposed
+  assert "composed coalition inverses retain supplied successful off-image lookups"
+    (preimage roundingMap (rankedDominionCoalitionElement ranked 3)
+      == Just (dominionCoalitionElement sourceOwner 1))
+  let coalitionSamples = [0, 1, 3]
+  CoalitionElement.withMappedCoalitionAction included
+    (stableAtlasTransversalTransversal composed) $ \owner forward -> do
+      assert "the complete coalition operation retains the final owner's folio"
+        (atlasCardinality owner == 2)
+      mapM_ (\value -> do
+        let image = forward (dominionCoalitionElement sourceOwner value)
+        assert "one coalition operation certifies distinct inputs for the same target"
+          (CoalitionElement.coalitionElementValid owner image
+            && coalitionElementRank image == 2 * value)) coalitionSamples
+  CoalitionElement.withMappedCoalitionAction included identityAtlasTransversal $ \owner forward ->
+    mapM_ (\value -> do
+      let source = dominionCoalitionElement sourceOwner value
+          image = forward source
+      assert "the identity coalition operation retains its source owner and canonical code"
+        (atlasCardinality owner == 1
+          && CoalitionElement.coalitionElementValid owner image
+          && CoalitionElement.coalitionElementCode image == CoalitionElement.coalitionElementCode source
+          && coalitionElementRank image == value)) coalitionSamples
   let observePreimage :: Atlas a s d o f -> CoalitionElement.CoalitionData a s d
         -> (Bool, Natural, Bool)
       observePreimage owner recovered =
@@ -366,6 +418,24 @@ testChainedDominionAtlas = do
       assert "the chained extent rejects region-tagged data"
         (atlasAcceptsDatum valueAtlas origin (ChainedData.ChainedDominionExtentDatum 3)
           && not (atlasAcceptsDatum valueAtlas origin (ChainedData.ChainedDominionRegionDatum 3)))
+      mapM_ (\selected -> do
+        let element = chainedDominionCoalitionElement owner selected
+            rebuilt = chainedDominionCoalitionElement owner (ChainedCoalition.chainedCoalitionValue element)
+        assert "chained coalition construction retains its value and canonical origin"
+          (ChainedCoalition.chainedCoalitionValue element == selected
+            && CoalitionElement.coalitionElementValid valueAtlas element
+            && withPageElement (CoalitionElement.coalitionElementSource element)
+              (\source -> pageElementPage source == 0 && cellTraceValid valueAtlas source))
+        assert "chained coalition reconstruction retains both canonical caches"
+          (CoalitionElement.coalitionElementCode rebuilt == CoalitionElement.coalitionElementCode element
+            && coalitionElementRank rebuilt == coalitionElementRank element)) [3, 4]
+      let selectedInsertion = domanialInsertion (const 3)
+            (\value -> if value == 3 then Just () else Nothing) (const ())
+          coalitionInsertion = ChainedCoalition.chainedCoalitionInsertion owner selectedInsertion
+      assert "chained coalition insertion preserves successful and failed inverse lookups"
+        (ChainedCoalition.chainedCoalitionValue (applyInsertion coalitionInsertion ()) == 3
+          && preimage coalitionInsertion (chainedDominionCoalitionElement owner 3) == Just ()
+          && isNothing (preimage coalitionInsertion (chainedDominionCoalitionElement owner 4)))
       mapM_ (\(page, position, selected, other) ->
         case pageElementIndex (atlasPageElements valueAtlas) page (finiteOrdinal position) of
           Nothing -> assert "the selected chained occurrence exists" False
@@ -379,6 +449,11 @@ testChainedDominionAtlas = do
               (atlasAcceptsDatum valueAtlas region accepted
                 && not (atlasAcceptsDatum valueAtlas region wrongValue)
                 && not (atlasAcceptsDatum valueAtlas region wrongTag))
+            let coverage = ChainedCoverage.chainedDominionCoverage owner region accepted
+            assert "chained coverage retains its exact datum on genuine and padded regions"
+              (coverageWitnessCovers valueAtlas region accepted coverage
+                && not (coverageWitnessCovers valueAtlas region wrongValue coverage)
+                && not (coverageWitnessCovers valueAtlas region wrongTag coverage))
             assert "accepted chained region data round-trip through their Dominion"
               (unrank regionData (rank regionData accepted) == Just accepted)
             assert "the chained region insertion retains its accepted carrier"
@@ -3163,6 +3238,74 @@ testDomanialInclusionUncoveredInverse =
                     assert "the adjunction inverse terminates outside the covered image"
                       (rejected == Just True)
 
+-- Each elimination hides fresh origin/final carrier types, even though both
+-- callbacks recover the same actual owner. Composition must use that owner.
+testTransposalActionWitnessComposition :: IO ()
+testTransposalActionWitnessComposition =
+  emptyAtlas $ \owner ->
+    let witness = atlasWitnessData owner
+    in withPageElement (atlasOriginCell owner) $ \origin ->
+      withAtlasWitnessData witness $ \_ firstOwner ->
+        withAtlasWitnessData witness $ \_ secondOwner -> do
+          let first = TransposalAction.identityTransposalAction firstOwner
+              second = TransposalAction.identityTransposalAction secondOwner
+              composed = TransposalAction.composeTransposalActions second first
+              valid = atlasTransposalElement witness origin
+              outside = atlasTransposalElement witness
+                (RawPageElement.PageElement 0 (finiteOrdinal 100) [finiteOrdinal 100]
+                  (RawPageElement.pageElementCell origin))
+              rawTrace element =
+                let source = TransposalElement.transposalElementSource element
+                in (RawPageElement.somePageElementPage source,
+                    RawPageElement.somePageElementPosition source,
+                    RawPageElement.somePageElementTrace source)
+          assert "the origin belongs to the witnessed owner" (atlasTransposalElementValid witness valid)
+          assert "the raw regression input is outside the witnessed domain"
+            (not (atlasTransposalElementValid witness outside))
+          mapM_ (\element -> do
+            let image = TransposalAction.mapTransposalAction composed element
+            assert "composition retains the raw page, position, and trace"
+              (rawTrace image == rawTrace element)
+            assert "composition retains successful inverse results outside the domain"
+              (fmap rawTrace (TransposalAction.transposalActionPreimage composed element) == Just (rawTrace element)))
+            [valid, outside]
+
+-- The recovered target must retain the real domain, even though a symbolic
+-- identity's raw path predicate accepts values outside that domain.
+testTransposalTargetWitness :: IO ()
+testTransposalTargetWitness =
+  emptyAtlas $ \owner ->
+    withPageElement (atlasOriginCell owner) $ \origin -> do
+      let witness = atlasWitness owner
+          source = atlasTransposalElement witness origin
+          outside = atlasTransposalElement witness
+            (RawPageElement.PageElement 0 (finiteOrdinal 100) [finiteOrdinal 100]
+              (RawPageElement.pageElementCell origin))
+          primitive = atlasTransposal witness identityAtlasHom Just (const ())
+          identity = identityAtlasTransposal `asTypeOf` primitive
+          identityTree = composeAtlasTransposals identity (composeAtlasTransposals identity identity)
+          nested = composeAtlasTransposals
+            (composeAtlasTransposals identity primitive)
+            (composeAtlasTransposals primitive identityTree)
+      mapM_ (\arrow -> do
+        let target = atlasTransposalTargetWitness witness arrow
+            image = mapAtlasTransposalObject arrow source
+        atlasTransposalOwnedPath witness arrow source `seq` pure ()
+        assert "compatible owners propagate source membership through the complete path"
+          (atlasTransposalPathValid arrow source)
+        atlasTransposalMapValid witness arrow source `seq` pure ()
+        assert "the recovered target owns the mapped source" (atlasTransposalElementValid target image)
+        assert "the recovered target does not acquire out-of-domain values"
+          (not (atlasTransposalElementValid target outside))
+        assert "nested syntax retains the source inverse"
+          (atlasTransposalPreimage arrow image == Just source))
+        [identity, identityTree, primitive, nested]
+      assert "identity-only path acceptance is not owning membership"
+        (atlasTransposalPathValid identityTree outside)
+      assert "identity witness transport leaves the raw callbacks unchanged"
+        (mapAtlasTransposalObject identityTree outside == outside
+          && atlasTransposalPreimage identityTree outside == Just outside)
+
 testOrderedAtlasTransposal :: IO ()
 testOrderedAtlasTransposal =
   pagination threePageFolio $ \valuePagination ->
@@ -3194,22 +3337,34 @@ testOrderedAtlasTransposal =
                     includedIdentity = Category.id Category.. composed
                     leftElement = atlasTransposalElement witness left
                     rightElement = atlasTransposalElement witness right
-                    mappedLeft =
-                      mapOrderedAtlasTransposalObject
-                        includedIdentity leftElement
-                    mappedRight =
-                      mapOrderedAtlasTransposalObject
-                        includedIdentity rightElement
+                    wrappedIdentity =
+                      orderedAtlasTransposal identityAtlasTransposal (\_ _ -> ())
+                    wrappedComposite =
+                      orderedAtlasTransposal (transposal Category.. transposal) (\_ _ -> ())
+                    examples =
+                      [ ("left identity", includedIdentity)
+                      , ("right identity", composed Category.. Category.id)
+                      , ("reassociation", ordered Category.. composed)
+                      , ("wrapped identity", wrappedIdentity Category.. composed)
+                      , ("wrapped native composition", wrappedComposite Category.. composed)
+                      , ("identity-only native tree", wrappedIdentity Category.. wrappedIdentity)
+                      ]
                 assert "ordered transposal test source is strictly ordered"
                   (atlasTransposalElementLT leftElement rightElement)
-                orderedAtlasTransposalPreservesOrder
-                  includedIdentity leftElement rightElement `seq` pure ()
-                assert "ordered transposals preserve strict Atlas order"
-                  (atlasTransposalElementLT mappedLeft mappedRight)
-                assert "ordered transposals retain transposal injectivity"
-                  ( orderedAtlasTransposalPreimage includedIdentity mappedLeft
-                      == Just leftElement
-                  )
+                mapM_ (\(label, candidate) -> do
+                  let mappedLeft = mapOrderedAtlasTransposalObject candidate leftElement
+                      mappedRight = mapOrderedAtlasTransposalObject candidate rightElement
+                  orderedAtlasTransposalPreservesOrder
+                    candidate leftElement rightElement `seq` pure ()
+                  orderedAtlasTransposalOwnedOrder witness
+                    candidate leftElement rightElement `seq` pure ()
+                  assert ("ordered transposal preserves strict order: " ++ label)
+                    (atlasTransposalElementLT mappedLeft mappedRight)
+                  assert ("ordered transposal retains injectivity: " ++ label)
+                    (orderedAtlasTransposalPreimage candidate mappedLeft == Just leftElement)
+                  assert ("ordered transposal retains identity forward map: " ++ label)
+                    (mappedLeft == leftElement && mappedRight == rightElement)
+                  ) examples
           _ -> fail "test setup failed: expected two ordered Atlas elements"
 
 testAtlasTransversal :: IO ()
@@ -3334,7 +3489,7 @@ testCoalition =
       testAtlasIdentityLaw
       testAtlasCompositionLaw
       testAtlasCoherenceLaw
-      testAtlasDisjointLaw $ \valueAtlas ->
+      testAtlasDisjointLaw $ \(valueAtlas :: Atlas a s d o f) ->
         let witness = atlasWitness valueAtlas
             transposal =
               atlasTransposal witness identityAtlasHom Just (const ())
@@ -3414,33 +3569,49 @@ testCoalition =
                 [identityAtlasTransversal, transversal, transversal Category.. transversal]
               let mapped =
                     applyInsertion
-                      (coalizingFunctorHom witness witness stable)
+                      (coalizingFunctorHom valueAtlas valueAtlas stable)
                       element
-                  composed =
-                    coalizingFunctorHom
-                      witness
-                      witness
-                      (stable Category.. stable)
               assert "the Coalizing functor maps the stable origin component"
                 (coalitionElementRank mapped == 7)
               assert "the Coalizing arrow has the inherited partial inverse"
                 (preimage
-                  (coalizingFunctorHom witness witness stable)
+                  (coalizingFunctorHom valueAtlas valueAtlas stable)
                   mapped == Just element)
               assert "a coalition preimage outside the arrow image is total"
                 (isNothing (preimage
                   (coalizingFunctorHom
-                    witness witness doublingStable)
+                    valueAtlas valueAtlas doublingStable)
                   element))
               assert "the coalition dominion rank round-trips"
                 (unrank valueCoalition (rank valueCoalition element)
                   == Just element)
-              coalizingFunctorIdentity witness element `seq`
-                coalizingFunctorComposition
-                  witness witness witness stable stable element `seq`
-                    assert "the Coalizing functor preserves composition"
-                      (coalitionElementRank
-                        (applyInsertion composed element) == 7)
+              let identityMap = coalizingIdentityMap @(AtlasObject a s d) valueAtlas
+                  doublingMap = stableCoalitionMap valueAtlas valueAtlas doublingStable
+                  doubled = applyInsertion doublingMap element
+                  quadrupled = applyInsertion doublingMap doubled
+              coalizingFunctorIdentity @(AtlasObject a s d) valueAtlas element `seq` do
+                assert "the Coalizing identity preserves the complete canonical record"
+                  (applyInsertion identityMap element == element)
+                assert "the Coalizing identity inverse returns the same record"
+                  (preimage identityMap element == Just element)
+              mapM_ (\(first, second) -> do
+                let firstMap = stableCoalitionMap valueAtlas valueAtlas first
+                    secondMap = stableCoalitionMap valueAtlas valueAtlas second
+                    directMap = stableCoalitionMap valueAtlas valueAtlas (second Category.. first)
+                coalizingFunctorComposition valueAtlas valueAtlas valueAtlas first second element `seq`
+                  assert "normalized Coalizing composition preserves the complete forward result"
+                    (applyInsertion directMap element == applyInsertion secondMap (applyInsertion firstMap element))
+                mapM_ (\target ->
+                  coalizingFunctorCompositionPreimage valueAtlas valueAtlas valueAtlas first second target `seq`
+                    assert "normalized Coalizing composition preserves successful and failed inverses"
+                      (preimage directMap target ==
+                        (preimage secondMap target >>= preimage firstMap)))
+                  [element, doubled, quadrupled])
+                [ (identityStableAtlasTransversal, doublingStable)
+                , (doublingStable, identityStableAtlasTransversal)
+                , (doublingStable, doublingStable)
+                , (doublingStable Category.. stable, doublingStable)
+                ]
 
 testDomanialInclusion :: IO ()
 testDomanialInclusion =

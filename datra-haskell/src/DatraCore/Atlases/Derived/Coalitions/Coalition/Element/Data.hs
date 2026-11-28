@@ -20,6 +20,7 @@ module Coalition.Element.Data
   , coalitionViewSource
   , coalitionElementViewSource
   , coalitionElement
+  , coalitionUnitInsertion, coalitionCounitInsertion
   , coalitionElementEliminate
   , coalitionElementWitnessIndependent
   , coalitionElementExtensionality
@@ -27,17 +28,19 @@ module Coalition.Element.Data
   , coalitionElementRank
   , coalitionElementCode
   , coalitionElementSource
-  , coalitionElementValid
+  , coalitionElementValid, coalitionOwnersAgree
   , withCoalitionElement
   , withCoalitionElementOf
   , coalitionElementReaches
   , coalitionElementAt
+  , coalitionElementAlongArrow
+  , coalitionElementAtNormalized
   , coalitionElementCoverageAt
   , coalitionCoveredElement
   , coalitionFromCovered
   , coalitionFromCoveredRoundTrip
   , coalition
-  , coalitionUnrank
+  , coalitionUnrank, coalitionRankRoundTrip
   ) where
 
 import Coalition.Element.Internal
@@ -52,7 +55,10 @@ import Coalition.Element.Internal
   )
 
 import qualified Coalition.Element.Internal as Internal (CoalitionData (..), coalitionElement)
-import Atlas (Atlas, atlasPageElements, atlasAcceptsDatum, mapAtlasData)
+import Atlas.Witness (atlasOwner)
+import Atlas
+  ( Atlas, atlasPageElements, atlasAcceptsDatum, mapAtlasData, atlasCompositionWitness
+  , normalizeAtlasElement, atlasNormalizationArrow, atlasCoherenceWitness )
 import AtlasExtent (cellTraceValid, cellTraceHasOrigin, cellOriginRankMap)
 import AtlasCoveredPageElement
   ( CoverageWitness, coverageWitnessCovers, coverageWitnessOriginRank
@@ -64,11 +70,13 @@ import Charter.Data
   ( ChartedDatum, chartCellData, chartedCellDataValue, chartedDatumValid, chartedCellCoverage
   , chartedCellDataEqual, chartedCellDataRank, chartedUnrank, chartedRankRoundTrip )
 import Dominion (Dominion, dominion, rank, unrank)
-import DomanialInsertion (applyInsertion)
+import DomanialInsertion.Core (DomanialInsertion (..))
 import Numeric.Natural (Natural)
 import PageElements (PageElement, originPageElement, somePageElementTraceValid
   , pageElementArrow, somePageElementPrecedes, somePageElementTransported)
-import PageElements.Structure (SomePageElement (..))
+import PageElements.Structure
+  ( SomePageElement (..), PageElementArrow, arrowSource, arrowTarget
+  , composePageElementArrows, pageElementArrowThin )
 
 {-@ reflect Internal.coalitionElement @-}
 {-@ reflect withCoalitionElement @-}
@@ -318,6 +326,43 @@ coalitionElementAt owner target (Internal.CoalitionElement source datum _) =
      cellOriginRankMap owner arrow value `seq`
      applyInsertion (mapAtlasData owner arrow) value
 
+-- | Transporting a coalition to the next cell agrees with the Atlas action.
+-- ALIGN: COALITION-DATUM-NATURALITY.
+{-@ coalitionElementAlongArrow :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           cellTraceValid owner (arrowSource arrow) && cellTraceValid owner (arrowTarget arrow)}
+      -> element:{CoalitionData a s d | CoalitionValid owner element
+           && coalitionElementReaches element (arrowSource arrow)}
+      -> {coalitionElementReaches element (arrowTarget arrow)
+           && coalitionElementAt owner (arrowTarget arrow) element
+             == applyInsertion (mapAtlasData owner arrow)
+                  (coalitionElementAt owner (arrowSource arrow) element)} @-}
+coalitionElementAlongArrow :: Atlas a s d o f -> PageElementArrow s source target
+  -> CoalitionData a s d -> ()
+coalitionElementAlongArrow owner arrow (Internal.CoalitionElement source datum _) =
+  let first = pageElementArrow source (arrowSource arrow)
+      composite = composePageElementArrows arrow first
+  in composite `seq`
+     pageElementArrowThin composite (pageElementArrow source (arrowTarget arrow)) `seq`
+     atlasCompositionWitness owner arrow first (chartedCellDataValue datum)
+
+-- | Normalization preserves the dependent datum transported from the coalition.
+-- ALIGN: COALITION-DATUM-NORMALIZATION.
+{-@ coalitionElementAtNormalized :: owner:Atlas a s d o f
+      -> target:{PageElement s object | cellTraceValid owner target}
+      -> element:{CoalitionData a s d | CoalitionValid owner element
+           && coalitionElementReaches element target}
+      -> {coalitionElementReaches element (normalizeAtlasElement owner target)
+           && coalitionElementAt owner (normalizeAtlasElement owner target) element
+                == coalitionElementAt owner target element} @-}
+coalitionElementAtNormalized :: Atlas a s d o f -> PageElement s object
+  -> CoalitionData a s d -> ()
+coalitionElementAtNormalized owner target element =
+  let arrow = atlasNormalizationArrow owner target
+      datum = coalitionElementAt owner target element
+  in coalitionElementAlongArrow owner arrow element `seq`
+     atlasCoherenceWitness owner target arrow datum
+
 -- | The original certified witness also covers the transported datum.
 -- ALIGN: COALITION-COVERAGE-TRANSPORT.
 {-@ coalitionElementCoverageAt :: owner:Atlas a s d o f
@@ -435,3 +480,41 @@ coalition owner =
   coalitionDominionOn (coalitionElementValid owner) coalitionElementSource
     (originPageElement (atlasPageElements owner)) coalitionElementCode
     (coalitionUnrank owner) (coalitionRankRoundTrip owner)
+
+-- | These constructor specializations retain the coalition's membership and
+-- exact origin while leaving the ordinary value carrier unrestricted.
+-- ALIGN: COALITION-COUNIT-INSERTION.
+{-@ coalitionCounitInsertion :: accepts:(element -> Bool)
+      -> source:(element -> SomePageElement scope) -> origin:SomePageElement scope
+      -> forward:({x:element | accepts x && source x == origin} -> value)
+      -> backward:(value -> Maybe ({x:element | accepts x && source x == origin}))
+      -> (x:{element | accepts x && source x == origin} -> {backward (forward x) == Just x})
+      -> {insertion:DomanialInsertion ({x:element | accepts x && source x == origin}) value |
+           applyInsertion insertion == forward && preimage insertion == backward} @-}
+coalitionCounitInsertion :: (element -> Bool) -> (element -> SomePageElement scope)
+  -> SomePageElement scope -> (element -> value) -> (value -> Maybe element) -> (element -> ())
+  -> DomanialInsertion element value
+coalitionCounitInsertion _ _ _ forward backward leftInverse = DomanialInsertion forward backward leftInverse
+
+-- ALIGN: COALITION-UNIT-INSERTION.
+{-@ coalitionUnitInsertion :: accepts:(element -> Bool)
+      -> source:(element -> SomePageElement scope) -> origin:SomePageElement scope
+      -> forward:(value -> {x:element | accepts x && source x == origin})
+      -> backward:({x:element | accepts x && source x == origin} -> Maybe value)
+      -> (x:value -> {backward (forward x) == Just x})
+      -> {insertion:DomanialInsertion value ({x:element | accepts x && source x == origin}) |
+           applyInsertion insertion == forward && preimage insertion == backward} @-}
+coalitionUnitInsertion :: (element -> Bool) -> (element -> SomePageElement scope)
+  -> SomePageElement scope -> (value -> element) -> (element -> Maybe value) -> (value -> ())
+  -> DomanialInsertion value element
+coalitionUnitInsertion _ _ _ forward backward leftInverse = DomanialInsertion forward backward leftInverse
+
+-- | Complete-owner equality transfers the full canonical coalition domain.
+-- ALIGN: COALITION-OWNER-DOMAIN-AGREEMENT.
+{-@ coalitionOwnersAgree :: first:Atlas a s d o f
+      -> second:{Atlas a s d o2 f2 | atlasOwner second == atlasOwner first}
+      -> element:CoalitionData a s d
+      -> {(coalitionElementValid first element <=> coalitionElementValid second element)
+           && originPageElement (atlasPageElements first) == originPageElement (atlasPageElements second)} @-}
+coalitionOwnersAgree :: Atlas a s d o f -> Atlas a s d o2 f2 -> CoalitionData a s d -> ()
+coalitionOwnersAgree _ _ _ = ()

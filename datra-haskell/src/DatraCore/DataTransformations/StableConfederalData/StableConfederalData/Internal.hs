@@ -50,7 +50,7 @@ import AtlasConfederation
   , singletonAtlasConfederation
   , singletonAtlasConfederationHom
   )
-import Atlas (AtlasWitness, withAtlasWitness)
+import Atlas (AtlasObjectEquality (..), AtlasWitness, withAtlasWitness)
 import AtlasFederation
   ( AtlasFederation
   , atlasFederationConfederation
@@ -267,7 +267,7 @@ embedAtlasMap
   :: AtlasMap atlasObject
   -> StableConfederalData (EmbeddedAtlasMap atlasObject)
 embedAtlasMap valueMap =
-  withAtlasWitness (atlasMapAtlas valueMap) $ \valueAtlas ->
+  withAtlasWitness (atlasMapAtlas valueMap) $ \AtlasObjectEquality valueAtlas ->
       singletonAtlasConfederation valueAtlas `seq`
         stableConfederalData
           (flip composeAtlasConfederationHoms)
@@ -338,8 +338,8 @@ restrictStableConfederalDataToStableAtlases stableData =
         (RestrictedStableConfederalDataValue targetWitness value) =
       let sourceWitness =
             stableAtlasTransversalSourceWitness transversal targetWitness
-      in withAtlasWitness sourceWitness $ \sourceAtlas ->
-          withAtlasWitness targetWitness $ \targetAtlas ->
+      in withAtlasWitness sourceWitness $ \AtlasObjectEquality sourceAtlas ->
+          withAtlasWitness targetWitness $ \AtlasObjectEquality targetAtlas ->
             RestrictedStableConfederalDataValue
               sourceWitness
               (mapStableConfederalData
@@ -374,8 +374,8 @@ restrictStableConfederalDataHomToStableAtlases
         (RestrictedStableConfederalDataValue targetWitness value) =
       let sourceWitness =
             stableAtlasTransversalSourceWitness transversal targetWitness
-      in withAtlasWitness sourceWitness $ \sourceAtlas ->
-          withAtlasWitness targetWitness $ \targetAtlas ->
+      in withAtlasWitness sourceWitness $ \AtlasObjectEquality sourceAtlas ->
+          withAtlasWitness targetWitness $ \AtlasObjectEquality targetAtlas ->
             naturality
               (singletonAtlasConfederationHom
                 sourceAtlas targetAtlas transversal)

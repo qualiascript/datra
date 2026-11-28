@@ -28,6 +28,7 @@ module DomanialInclusion.Data
   , domIncHomNaturalityLeftValue
   , domIncHomNaturalityRightValue
   , dominionCellProjection
+  , dominionCellProjectionPreimage
   ) where
 
 import Data.Kind (Type)
@@ -228,6 +229,10 @@ domIncHomNaturalityRightValue
 domIncHomNaturalityRightValue _ _ _ = ()
 
 -- | The data wrapper and its projection are an explicit carrier equivalence.
+-- ALIGN: DOMINC-CELL-PROJECTION.
+{-@ dominionCellProjection :: {result:DomanialInsertion (DominionCellData a object) a |
+      applyInsertion result == dominionCellDataValue
+      && preimage result == dominionCellProjectionPreimage} @-}
 dominionCellProjection :: DomanialInsertion (DominionCellData a object) a
 dominionCellProjection =
   domanialInsertion

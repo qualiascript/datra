@@ -8,7 +8,8 @@
 -- | Atlases and their morphisms, built over finite paginations with an
 -- explicitly stable infinite padded spine.
 --
--- Atlas object and primitive-morphism laws are checked by LiquidHaskell.
+-- Atlas object and primitive-morphism laws are checked by LiquidHaskell over
+-- valid owning arrows and the corresponding accepted data carriers.
 module Atlas
   ( Atlas
   , atlasPredicateDataAction
@@ -24,10 +25,13 @@ module Atlas
   , IdentityAtlasObjectMap
   , AtlasMorphismImage
   , AtlasObject
+  , AtlasObjectEquality (..)
   , AtlasObjectAtlasScope
   , AtlasObjectPaginationScope
   , AtlasObjectCellData
   , AtlasWitness
+  , AtlasWitnessData
+  , AtlasOwner, atlasOwner, atlasWitnessOwner
   , AtlasHom
   , identityAtlasHom
   , composeAtlasHoms
@@ -44,6 +48,7 @@ module Atlas
   , atlasPresentationAction
   , atlasDescription
   , atlasDescriptionMembership
+  , atlasDescriptionMap
   , withAtlasPresentation
   , atlasPagination
   , atlasFolio
@@ -69,12 +74,17 @@ module Atlas
   , atlasMorphismObjectMapWitness
   , withAtlasMorphismAction
   , normalizeAtlasMorphismAction
+  , normalizeAtlasMorphismActionRetains
   , atlasMorphismActionPreservesArrow
   , atlasMorphismSource
   , atlasMorphismTarget
   , mapAtlasMorphismActionComponent
   , mapAtlasMorphismActionObject
+  , mapAtlasMorphismActionElement
+  , mapPrimitiveElement
   , identityAtlasObjectMap
+  , identityAtlasMorphismObject
+  , identityAtlasMorphismPreservesArrow
   , atlasObjectMap
   , withAtlasMorphismImage
   , atlasMorphism
@@ -86,7 +96,11 @@ module Atlas
   , composeAtlasMorphisms
   , atlasWitness
   , withAtlasWitness
+  , atlasWitnessElementValid
+  , normalizeAtlasWitnessElement
+  , atlasWitnessNormalizeValid
   , atlasHom
+  , atlasHomTargetObjectEquality
   , materializeAtlasHom
   , atlasHomPagination
   , mapAtlasHomElement
@@ -129,7 +143,6 @@ import Atlas.Internal
   , atlasCoherenceWitness
   , atlasCompositionWitness
   , atlasDisjointWitness
-  , atlasDataAt
   , atlasAcceptsDatum
   , atlasDataCoherence
   , atlasFolio
@@ -144,51 +157,40 @@ import Atlas.Internal
   , normalizeAtlasElement
   , withAtlasPageChain
   )
-import qualified Atlas.Internal as Internal (atlasNormalizationAgrees, atlasArrowNormalizationAgrees, atlasPresentation, withAtlasPresentation, normalizeAtlasElementTraceValid, atlasAcceptsDatumNormalized, atlasNormalizationArrow, mapAtlasDataNormalized, normalizeAtlasArrowTraceValid)
-import Atlas.Morphism.Internal
-  ( AtlasMorphism
-  , AtlasMorphismAction
+import qualified Atlas.Internal as Internal (atlasDataAt, atlasDescriptionMap, atlasNormalizationAgrees, atlasArrowNormalizationAgrees, atlasPresentation, withAtlasPresentation, normalizeAtlasElementTraceValid, atlasAcceptsDatumNormalized, atlasNormalizationArrow, mapAtlasDataNormalized, normalizeAtlasArrowTraceValid)
+import Atlas.Morphism
+  ( AtlasMorphismAction
   , AtlasObjectMap
   , AtlasMappedObject
   , IdentityAtlasObjectMap
-  , AtlasMorphismImage
-  , AtlasObject
-  , AtlasObjectAtlasScope
-  , AtlasObjectPaginationScope
-  , AtlasObjectCellData
-  , AtlasWitness
-  , AtlasHom
-  , identityAtlasHom
-  , composeAtlasHoms
-  , atlasMorphism
+  , identityAtlasObjectMap
+  , identityAtlasMorphismObject
+  , identityAtlasMorphismPreservesArrow
+  , atlasObjectMap
   , atlasMorphismAction
-  , atlasMorphismActionNaturality
-  , atlasMorphismObjectMapWitness
-  , withAtlasMorphismAction
-  , normalizeAtlasMorphismAction
-  , atlasMorphismActionPreservesArrow
   , atlasMorphismSource
   , atlasMorphismTarget
-  , mapAtlasMorphismActionComponent
   , mapAtlasMorphismActionObject
-  , identityAtlasObjectMap
-  , atlasObjectMap
-  , atlasMorphismPagination
-  , atlasWitness
-  , withAtlasWitness
-  , atlasHom
-  , materializeAtlasHom
-  , atlasHomPagination
-  , mapAtlasHomElement
-  , mapAtlasHomArrow
-  , mapAtlasHomData
-  , composeAtlasMorphisms
-  , identityAtlasMorphism
-  , mapAtlasMorphismArrow
-  , mapAtlasMorphismData
-  , mapAtlasMorphismElement
-  , withAtlasMorphismImage
+  , mapAtlasMorphismActionComponent
+  , mapAtlasMorphismActionElement
+  , mapPrimitiveElement
+  , atlasMorphismActionPreservesArrow
+  , atlasMorphismActionNaturality
+  , atlasMorphismObjectMapWitness
+  , normalizeAtlasMorphismAction
+  , normalizeAtlasMorphismActionRetains
   )
+import Atlas.Witness
+  ( AtlasObjectEquality (..), AtlasObject, AtlasObjectAtlasScope, AtlasObjectPaginationScope, AtlasObjectCellData
+  , AtlasOwner, atlasOwner, atlasWitnessOwner, AtlasWitness, AtlasWitnessData, atlasWitness, withAtlasWitness, atlasWitnessElementValid, normalizeAtlasWitnessElement, atlasWitnessNormalizeValid )
+import Atlas.Morphism.Internal
+  ( AtlasMorphism, AtlasMorphismImage, AtlasHom, identityAtlasHom, composeAtlasHoms
+  , atlasMorphism, atlasHom, atlasHomTargetObjectEquality, materializeAtlasHom
+  , composeAtlasMorphisms, identityAtlasMorphism, withAtlasMorphismImage )
+import Atlas.Morphism.Evaluation.Internal
+  ( withAtlasMorphismAction, atlasMorphismPagination, atlasHomPagination
+  , mapAtlasHomElement, mapAtlasHomArrow, mapAtlasHomData
+  , mapAtlasMorphismArrow, mapAtlasMorphismData, mapAtlasMorphismElement )
 
 import qualified PageElements as Elements
 import PageElements.Structure (PageElement, PageElementArrow, pageElementPage, pageElementPosition,
@@ -196,11 +198,34 @@ import PageElements.Structure (PageElement, PageElementArrow, pageElementPage, p
 import Pagination (Pagination, paginationPageElements)
 import Folio (folioLength)
 import DomanialInsertion.Core (applyInsertion)
+import Dominion (Dominion)
 
 {-@ opaque-reflect atlasMembership @-}
 {-@ opaque-reflect atlasActionDomain @-}
 {-@ opaque-reflect atlasActionMembership @-}
+{-@ opaque-reflect atlasActionDataAt @-}
 {-@ opaque-reflect atlasActionMap @-}
+
+-- | Retain the exact normalized lookup through the public Atlas interface.
+{-@ opaque-reflect atlasDataAt @-}
+{-@ atlasDataAt :: owner:Atlas a s d o f
+      -> source:{PageElement s object | Elements.pageElementTraceValid (atlasPageElements owner) source}
+      -> {result:Dominion ({datum:d object | atlasAcceptsDatum owner source datum}) |
+           result == atlasActionDataAt (atlasPresentationAction (atlasDescription owner))
+             (normalizeAtlasElement owner source)} @-}
+atlasDataAt :: Atlas a s d o f -> PageElement s object -> Dominion (d object)
+atlasDataAt owner source = Internal.atlasDataAt owner source
+
+-- ALIGN: ATLAS-DESCRIPTION-MAP.
+{-@ atlasDescriptionMap :: owner:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target |
+           Elements.pageElementTraceValid (atlasPageElements owner) (arrowSource arrow)
+           && Elements.pageElementTraceValid (atlasPageElements owner) (arrowTarget arrow)}
+      -> {mapAtlasData owner arrow ==
+           atlasActionMap (atlasPresentationAction (atlasDescription owner))
+             (normalizeAtlasArrow owner arrow)} @-}
+atlasDescriptionMap :: Atlas a s d o f -> PageElementArrow s source target -> ()
+atlasDescriptionMap = Internal.atlasDescriptionMap
 
 -- ALIGN: ATLAS-PREDICATE-CONSTRUCTION.
 -- | Assemble an Atlas from a predicate action whose laws use the public

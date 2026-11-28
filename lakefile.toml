@@ -4,6 +4,12 @@ defaultTargets = ["datra"]
 
 [[lean_lib]]
 name = "Datra"
+srcDir = "datra-lean"
+roots = ["Semantics"]
+globs = ["Semantics", "Executable.+"]
+
+[[lean_lib]]
+name = "datra"
 globs = ["datra"]
 
 [[require]]

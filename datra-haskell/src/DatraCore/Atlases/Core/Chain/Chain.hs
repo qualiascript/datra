@@ -26,6 +26,7 @@ module Chain
   , hasArrow
   , sumChains
   , spine
+  , spinePosition
   ) where
 
 import Chain.Internal
@@ -51,6 +52,9 @@ import Chain.Internal
   , positionMatches
   , spine
   )
+import qualified Chain.Internal as Internal (spinePosition)
+import DatraOrdinal (finiteOrdinal)
+import Numeric.Natural (Natural)
 import Chain.Sum (sumChains)
 
 {-@ opaque-reflect chainPosition @-}
@@ -58,3 +62,9 @@ import Chain.Sum (sumChains)
 {-@ opaque-reflect chainLookup @-}
 {-@ opaque-reflect chainIndexPosition @-}
 {-@ opaque-reflect chainIndexOrderType @-}
+
+{-@ opaque-reflect spine @-}
+-- ALIGN: CHAIN-SPINE-POSITION.
+{-@ spinePosition :: value:Natural -> {chainPosition spine value == finiteOrdinal value} @-}
+spinePosition :: Natural -> ()
+spinePosition = Internal.spinePosition

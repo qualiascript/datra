@@ -1,105 +1,36 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+#include "../../../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
+{-@ embed AtlasEquality * as TypeEquality @-}
 
--- | Hidden runtime representation of the LiquidHaskell-checked Atlas category.
+-- | Symbolic Atlas syntax, materialization, and checked endpoint retention.
 module Atlas.Morphism.Internal
-  ( AtlasMorphism (..)
-  , AtlasMorphismAction
-  , AtlasObjectMap
-  , AtlasMappedObject
-  , IdentityAtlasObjectMap
-  , identityAtlasObjectMap
-  , atlasObjectMap
-  , AtlasMorphismImage
-  , atlasMorphismAction
-  , atlasMorphismActionNaturality
-  , atlasMorphismActionPreservesArrow
-  , atlasMorphismSource
-  , atlasMorphismTarget
-  , mapAtlasMorphismActionObject
-  , mapAtlasMorphismActionComponent
-  , atlasMorphismObjectMapWitness
-  , atlasMorphism
-  , withAtlasMorphismAction
-  , normalizeAtlasMorphismAction
-  , withAtlasMorphismImage
-  , atlasMorphismPagination
-  , mapAtlasMorphismElement
-  , mapAtlasMorphismArrow
-  , mapAtlasMorphismData
-  , identityAtlasMorphism
-  , composeAtlasMorphisms
-  , AtlasObject
-  , AtlasObjectAtlasScope
-  , AtlasObjectPaginationScope
-  , AtlasObjectCellData
-  , AtlasWitness (..)
-  , atlasWitness
-  , withAtlasWitness
-  , AtlasHom (..)
-  , AtlasEquality (..)
-  , identityAtlasHom
-  , composeAtlasHoms
-  , atlasHom
-  , materializeAtlasHom
-  , atlasHomPagination
-  , mapAtlasHomElement
-  , mapAtlasHomArrow
-  , mapAtlasHomData
+  ( AtlasMorphism (..), AtlasMorphismImage (..), AtlasHom (..), AtlasEquality (..)
+  , atlasMorphism, withAtlasMorphismImage, identityAtlasMorphism, composeAtlasMorphisms
+  , identityAtlasHom, composeAtlasHoms, atlasHom, atlasHomTargetObjectEquality
+  , materializeAtlasHom, atlasMorphismTargetWitness, targetAtlasWitness
+  , morphismSourceOwner, morphismTargetOwner, homSourceOwner, homTargetOwner
   ) where
-
-import Atlas.Internal
-  ( Atlas
-  , atlasCardinality
-  , atlasCoherence
-  , normalizeAtlasElement
-  , normalizeAtlasArrow
-  )
-import Atlas.Morphism.LiquidInternal
-  ( AtlasMorphismAction
-  , AtlasObjectMap
-  , AtlasMappedObject
-  , IdentityAtlasObjectMap
-  , identityAtlasObjectMap
-  , atlasObjectMap
-  , atlasMorphismAction
-  , atlasMorphismActionNaturality
-  , atlasMorphismActionPreservesArrow
-  , atlasMorphismObjectMapWitness
-  , atlasMorphismSource
-  , atlasMorphismTarget
-  , mapAtlasMorphismActionComponent
-  , mapAtlasMorphismActionElement
-  , mapAtlasMorphismActionObject
-  )
-import Control.Category (Category (..))
+import Atlas.Internal (Atlas)
+import Atlas.Morphism (AtlasMorphismAction, atlasMorphismSource, atlasMorphismTarget)
+import Atlas.Witness.Internal
+  (AtlasObjectEquality (..), withAtlasWitness, AtlasObject, AtlasObjectAtlasScope,
+   AtlasObjectPaginationScope, AtlasObjectCellData, AtlasWitness, AtlasWitnessData (..),
+   AtlasOwner, atlasOwner, atlasWitnessOwner, atlasWitness, atlasWitnessData)
 import Data.Kind (Type)
+import DomanialInsertion (DomanialInsertion)
+import PageElements.Structure (PageElement)
+import Atlas.Morphism.Equality.Internal (AtlasEquality (..))
 import Data.Type.Equality ((:~:) (Refl))
-import DomanialInsertion
-  ( DomanialInsertion
-  , applyInsertion
-  , composeInsertions
-  , identityInsertion
-  )
-import PageElements.Structure
-  ( PageElement
-  , PageElementArrow
-  , arrowSource
-  , arrowTarget
-  , pageElementArrow
-  )
-import PageElements.Structure (SomePageElement (..))
-import PageElements.Structure (normalizeSomePageElementPreservesArrowAt)
-import Pagination
-  ( PaginationMorphism
-  , SomePageElementArrow
-  , composePaginationMorphisms
-  , mapPaginationArrow
-  , paginationMorphism
-  )
+import Control.Category (Category (..))
 import Prelude hiding ((.), id)
 
 -- | The observable image of one source cell. Its target identity remains
@@ -112,12 +43,11 @@ data AtlasMorphismImage
   (targetCellData :: Type -> Type)
   (sourceObject :: Type) where
   AtlasMorphismImage
-    :: PageElement targetScope targetObject
-    -> DomanialInsertion
-         (sourceCellData sourceObject)
-         (targetCellData targetObject)
-    -> AtlasMorphismImage
-         targetScope sourceCellData targetCellData sourceObject
+    :: forall targetScope sourceCellData targetCellData sourceObject targetObject.
+       { materializedImageTarget :: PageElement targetScope targetObject
+       , materializedImageInsertion :: DomanialInsertion
+           (sourceCellData sourceObject) (targetCellData targetObject)
+       } -> AtlasMorphismImage targetScope sourceCellData targetCellData sourceObject
 
 -- | Eliminate the hidden target-cell identity of a mapped Atlas cell.
 withAtlasMorphismImage
@@ -133,280 +63,83 @@ withAtlasMorphismImage
 withAtlasMorphismImage (AtlasMorphismImage target insertion) useImage =
   useImage target insertion
 
--- | A morphism is a LiquidHaskell-checked primitive, an object's coherence
--- identity, or a categorical composite. The structural identity/composite
--- cases ensure those operations cannot bypass the primitive proof boundary.
 type role AtlasMorphism nominal nominal nominal nominal nominal nominal
 data AtlasMorphism
-  (sourceAtlasScope :: Type)
-  (targetAtlasScope :: Type)
-  (sourceScope :: Type)
-  (targetScope :: Type)
-  (sourceCellData :: Type -> Type)
-  (targetCellData :: Type -> Type) where
+  (sa :: Type)
+  (ta :: Type)
+  (ss :: Type)
+  (ts :: Type)
+  (sd :: Type -> Type)
+  (td :: Type -> Type) where
   PrimitiveAtlasMorphism
-    :: AtlasMorphismAction
-         objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
-         sourceCellData targetCellData
-         sourceOrigin sourceFinal targetOrigin targetFinal
+    :: forall sa ta ss ts sd td m so sf to tf. AtlasMorphismAction
+         m sa ta ss ts
+         sd td
+         so sf to tf
     -> AtlasMorphism
-         sourceAtlasScope targetAtlasScope
-         sourceScope targetScope sourceCellData targetCellData
+         sa ta
+         ss ts sd td
   IdentityAtlasMorphism
-    :: Atlas atlasScope scope cellData origin final
-    -> AtlasMorphism atlasScope atlasScope scope scope cellData cellData
+    :: Atlas a s d o f
+    -> AtlasMorphism a a s s d d
   CompositeAtlasMorphism
     :: AtlasMorphism
-         middleAtlasScope targetAtlasScope
-         middleScope targetScope middleCellData targetCellData
+         ma ta
+         ms ts md td
     -> AtlasMorphism
-         sourceAtlasScope middleAtlasScope
-         sourceScope middleScope sourceCellData middleCellData
+         sa ma
+         ss ms sd md
     -> AtlasMorphism
-         sourceAtlasScope targetAtlasScope
-         sourceScope targetScope sourceCellData targetCellData
+         sa ta
+         ss ts sd td
 
 -- | Promote a checked primitive action to an Atlas morphism.
+{-@ reflect atlasMorphism @-}
 atlasMorphism
   :: AtlasMorphismAction
-       objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
-       sourceCellData targetCellData
-       sourceOrigin sourceFinal targetOrigin targetFinal
+       m sa ta ss ts
+       sd td
+       so sf to tf
   -> AtlasMorphism
-       sourceAtlasScope targetAtlasScope
-       sourceScope targetScope sourceCellData targetCellData
+       sa ta
+       ss ts sd td
 atlasMorphism = PrimitiveAtlasMorphism
-
--- | The object identity of a complete composite retains both component
--- symbols. Normalization preserves these phantom identities.
-data CompositeAtlasObjectMap first second
-
-type instance AtlasMappedObject (CompositeAtlasObjectMap first second) source =
-  AtlasMappedObject second (AtlasMappedObject first source)
-
-normalizedActionObject
-  :: AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
-       sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
-  -> PageElement sourceScope sourceObject
-  -> PageElement targetScope (AtlasMappedObject objectMap sourceObject)
-normalizedActionObject action source =
-  normalizeAtlasElement (atlasMorphismTarget action)
-    (mapAtlasMorphismActionObject action
-      (normalizeAtlasElement (atlasMorphismSource action) source))
-
--- | Make all callbacks valid on padded occurrences as well as genuine cells.
--- ALIGN: ATLAS-NORMALIZED-ACTION.
-normalizeAtlasMorphismAction
-  :: AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
-       sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
-  -> AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
-       sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
-normalizeAtlasMorphismAction action =
-  atlasMorphismAction (atlasMorphismObjectMapWitness action)
-    (atlasMorphismSource action) (atlasMorphismTarget action)
-    (normalizedActionObject action)
-    (\source -> mapAtlasMorphismActionComponent action
-      (normalizeAtlasElement (atlasMorphismSource action) source))
-    (atlasMorphismActionPreservesArrow action)
-    (\arrow datum -> atlasMorphismActionNaturality action
-      (normalizeAtlasArrow (atlasMorphismSource action) arrow) datum)
-
-composeAtlasMorphismActions
-  :: AtlasMorphismAction second middleAtlasScope targetAtlasScope middleScope targetScope
-       middleCellData targetCellData middleOrigin middleFinal targetOrigin targetFinal
-  -> AtlasMorphismAction first sourceAtlasScope middleAtlasScope sourceScope middleScope
-       sourceCellData middleCellData sourceOrigin sourceFinal middleOrigin' middleFinal'
-  -> AtlasMorphismAction (CompositeAtlasObjectMap first second)
-       sourceAtlasScope targetAtlasScope sourceScope targetScope sourceCellData targetCellData
-       sourceOrigin sourceFinal targetOrigin targetFinal
-composeAtlasMorphismActions second first =
-  atlasMorphismAction atlasObjectMap
-    (atlasMorphismSource first) (atlasMorphismTarget second)
-    (\source -> mapAtlasMorphismActionObject second
-      (normalizeAtlasElement (atlasMorphismSource second)
-        (normalizeAtlasElement (atlasMorphismTarget first) (mapAtlasMorphismActionObject first source))))
-    (\source ->
-      composeInsertions
-        (mapAtlasMorphismActionComponent second
-          (normalizeAtlasElement (atlasMorphismSource second)
-            (normalizeAtlasElement (atlasMorphismTarget first) (mapAtlasMorphismActionObject first source))))
-        (mapAtlasMorphismActionComponent first source))
-    (\source target ->
-      atlasMorphismActionPreservesArrow first source target `seq`
-        atlasMorphismActionPreservesArrow second
-          (mapAtlasMorphismActionElement first source)
-          (mapAtlasMorphismActionElement first target))
-    (\arrow datum ->
-      atlasMorphismActionNaturality first arrow datum `seq`
-        atlasMorphismActionNaturality second
-          (pageElementArrow
-            (normalizedActionObject first (arrowSource arrow))
-            (normalizedActionObject first (arrowTarget arrow)))
-          (applyInsertion
-            (mapAtlasMorphismActionComponent first
-              (normalizeAtlasElement (atlasMorphismSource first) (arrowSource arrow))) datum))
-
--- | Expose one action for the complete morphism, preserving its normalized
--- object map and composed data insertion. Restrictions such as Charter must
--- be applied here: intermediate factors need not preserve the restricted data.
--- ALIGN: ATLAS-COMPLETE-ACTION.
-withAtlasMorphismAction
-  :: AtlasMorphism sourceAtlasScope targetAtlasScope sourceScope targetScope sourceCellData targetCellData
-  -> (forall objectMap sourceOrigin sourceFinal targetOrigin targetFinal.
-        AtlasMorphismAction objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
-          sourceCellData targetCellData sourceOrigin sourceFinal targetOrigin targetFinal
-        -> result)
-  -> result
-withAtlasMorphismAction (PrimitiveAtlasMorphism action) useAction = useAction action
-withAtlasMorphismAction (IdentityAtlasMorphism valueAtlas) useAction =
-  useAction (atlasMorphismAction identityAtlasObjectMap valueAtlas valueAtlas id
-    (const identityInsertion)
-    (normalizeSomePageElementPreservesArrowAt
-      (atlasCardinality valueAtlas - 1) (fromIntegral (atlasCardinality valueAtlas)))
-    (\_ _ -> ()))
-withAtlasMorphismAction (CompositeAtlasMorphism second first) useAction =
-  withAtlasMorphismAction first $ \firstAction ->
-    withAtlasMorphismAction second $ \secondAction ->
-      useAction (composeAtlasMorphismActions secondAction firstAction)
-
--- | Apply an Atlas morphism to a cell and its attached data carrier.
--- Primitive maps normalize at both boundaries. Identity is coherence;
--- composition recursively inserts the middle object's coherence.
--- ALIGN: ATLAS-MATERIALIZED-DATA-INTERPRETATION.
-mapAtlasMorphismData
-  :: AtlasMorphism
-       sourceAtlasScope targetAtlasScope
-       sourceScope targetScope sourceCellData targetCellData
-  -> PageElement sourceScope sourceObject
-  -> AtlasMorphismImage
-       targetScope sourceCellData targetCellData sourceObject
-mapAtlasMorphismData (PrimitiveAtlasMorphism action) source =
-  let sourceAtlas = atlasMorphismSource action
-      normalizedSource = normalizeAtlasElement sourceAtlas source
-  in AtlasMorphismImage
-      (normalizedActionObject action source)
-      (mapAtlasMorphismActionComponent action normalizedSource)
-mapAtlasMorphismData (IdentityAtlasMorphism valueAtlas) source =
-  AtlasMorphismImage
-    (normalizeAtlasElement valueAtlas source)
-    identityInsertion
-mapAtlasMorphismData (CompositeAtlasMorphism second first) source =
-  withAtlasMorphismImage
-    (mapAtlasMorphismData first source) $ \middle firstInsertion ->
-      withAtlasMorphismImage
-        (mapAtlasMorphismData second middle) $ \target secondInsertion ->
-          AtlasMorphismImage target
-            (composeInsertions secondInsertion firstInsertion)
-
--- | Apply the page-element part of an Atlas morphism.
--- ALIGN: ATLAS-MATERIALIZED-OBJECT-INTERPRETATION.
-mapAtlasMorphismElement
-  :: AtlasMorphism
-       sourceAtlasScope targetAtlasScope
-       sourceScope targetScope sourceCellData targetCellData
-  -> PageElement sourceScope sourceObject
-  -> SomePageElement targetScope
-mapAtlasMorphismElement morphism source =
-  withAtlasMorphismImage
-    (mapAtlasMorphismData morphism source)
-    (\target _ -> SomePageElement target)
-
--- | Recover the induced functor on the full padded page-element spines.
-atlasMorphismPagination
-  :: AtlasMorphism
-       sourceAtlasScope targetAtlasScope
-       sourceScope targetScope sourceCellData targetCellData
-  -> PaginationMorphism sourceScope targetScope
-atlasMorphismPagination (PrimitiveAtlasMorphism action) =
-  paginationMorphism
-    (mapAtlasMorphismActionElement action)
-    (atlasMorphismActionPreservesArrow action)
-atlasMorphismPagination (IdentityAtlasMorphism valueAtlas) =
-  atlasCoherence valueAtlas
-atlasMorphismPagination (CompositeAtlasMorphism second first) =
-  composePaginationMorphisms
-    (atlasMorphismPagination second)
-    (atlasMorphismPagination first)
-
--- | Apply the page-element part of an Atlas morphism to an arrow.
-mapAtlasMorphismArrow
-  :: AtlasMorphism
-       sourceAtlasScope targetAtlasScope
-       sourceScope targetScope sourceCellData targetCellData
-  -> PageElementArrow sourceScope sourceObject targetObject
-  -> SomePageElementArrow targetScope
-mapAtlasMorphismArrow morphism =
-  mapPaginationArrow (atlasMorphismPagination morphism)
 
 -- | The coherent identity of a particular Atlas. Its page action is the
 -- normalization idempotent, not the raw full-spine identity.
 -- ALIGN: ATLAS-IDENTITY-COHERENCE.
 -- ALIGN: ATLAS-MATERIALIZED-IDENTITY.
+-- ALIGN: ATLAS-MATERIALIZED-IDENTITY-OWNERS.
+{-@ identityAtlasMorphism :: owner:Atlas a s d o f
+      -> {result:AtlasMorphism a a s s d d |
+           morphismSourceOwner result == atlasOwner owner
+           && morphismTargetOwner result == atlasOwner owner} @-}
 identityAtlasMorphism
-  :: Atlas atlasScope scope cellData origin final
-  -> AtlasMorphism atlasScope atlasScope scope scope cellData cellData
+  :: Atlas a s d o f
+  -> AtlasMorphism a a s s d d
 identityAtlasMorphism = IdentityAtlasMorphism
 
 -- | Compose in categorical order. Recursive evaluation explicitly retains
 -- the middle Atlas coherence, giving Karoubi composition @g . eMiddle . f@.
 -- ALIGN: ATLAS-COMPOSE-COHERENCE.
 -- ALIGN: ATLAS-MATERIALIZED-COMPOSITION.
+-- ALIGN: ATLAS-MATERIALIZED-COMPOSITION-OWNERS.
+{-@ composeAtlasMorphisms :: second:AtlasMorphism ma ta ms ts md td
+      -> first:AtlasMorphism sa ma ss ms sd md
+      -> {result:AtlasMorphism sa ta ss ts sd td |
+           morphismSourceOwner result == morphismSourceOwner first
+           && morphismTargetOwner result == morphismTargetOwner second} @-}
 composeAtlasMorphisms
   :: AtlasMorphism
-       middleAtlasScope targetAtlasScope
-       middleScope targetScope middleCellData targetCellData
+       ma ta
+       ms ts md td
   -> AtlasMorphism
-       sourceAtlasScope middleAtlasScope
-       sourceScope middleScope sourceCellData middleCellData
+       sa ma
+       ss ms sd md
   -> AtlasMorphism
-       sourceAtlasScope targetAtlasScope
-       sourceScope targetScope sourceCellData targetCellData
+       sa ta
+       ss ts sd td
 composeAtlasMorphisms = CompositeAtlasMorphism
-
--- | A type-level name for one Atlas object. The generative Atlas token is the
--- decisive identity; the pagination scope and data family are retained so an
--- arrow's executable source and target types can be recovered.
-type role AtlasObject nominal nominal nominal
-data AtlasObject
-  (atlasScope :: Type)
-  (paginationScope :: Type)
-  (cellData :: Type -> Type)
-
-type family AtlasObjectAtlasScope object :: Type where
-  AtlasObjectAtlasScope (AtlasObject atlasScope paginationScope cellData) =
-    atlasScope
-
-type family AtlasObjectPaginationScope object :: Type where
-  AtlasObjectPaginationScope
-    (AtlasObject atlasScope paginationScope cellData) = paginationScope
-
-type family AtlasObjectCellData object :: Type -> Type where
-  AtlasObjectCellData
-    (AtlasObject atlasScope paginationScope cellData) = cellData
-
--- | Runtime evidence for a type-level 'AtlasObject'. Origin and final-page
--- carrier types remain existential because morphism operations do not expose
--- them.
-type role AtlasWitness nominal
-data AtlasWitness object where
-  AtlasWitness
-    :: Atlas atlasScope paginationScope cellData origin final
-    -> AtlasWitness (AtlasObject atlasScope paginationScope cellData)
-
--- | Name an Atlas value as a category object witness.
-atlasWitness
-  :: Atlas atlasScope paginationScope cellData origin final
-  -> AtlasWitness (AtlasObject atlasScope paginationScope cellData)
-atlasWitness = AtlasWitness
-
--- | Eliminate a witness while retaining its type-level Atlas identity.
-withAtlasWitness
-  :: AtlasWitness object
-  -> (forall atlasScope paginationScope cellData origin final.
-       object ~ AtlasObject atlasScope paginationScope cellData
-       => Atlas atlasScope paginationScope cellData origin final -> result)
-  -> result
-withAtlasWitness (AtlasWitness valueAtlas) useAtlas = useAtlas valueAtlas
 
 -- | A genuine 'Control.Category' arrow over type-level Atlas objects.
 --
@@ -414,23 +147,18 @@ withAtlasWitness (AtlasWitness valueAtlas) useAtlas = useAtlas valueAtlas
 -- interpreted as the witnessed object's coherence morphism by
 -- 'materializeAtlasHom'. Primitive arrows retain their checked
 -- 'AtlasMorphism'; composition is an indexed syntax node.
--- | A proof-only wrapper gives LiquidHaskell a named logical sort for equality
--- witnesses. Atlas arrow indices and primitive payloads retain their types.
-type role AtlasEquality nominal nominal
-data AtlasEquality (source :: Type) (target :: Type) = AtlasEquality (source :~: target)
-
 type role AtlasHom nominal nominal
 data AtlasHom source target
-  = forall sourceAtlasScope targetAtlasScope
-      sourceScope targetScope sourceCellData targetCellData.
+  = forall sa ta
+      ss ts sd td.
     PrimitiveAtlasHom
       (source :~:
-        AtlasObject sourceAtlasScope sourceScope sourceCellData)
+        AtlasObject sa ss sd)
       (target :~:
-        AtlasObject targetAtlasScope targetScope targetCellData)
+        AtlasObject ta ts td)
       (AtlasMorphism
-        sourceAtlasScope targetAtlasScope
-        sourceScope targetScope sourceCellData targetCellData)
+        sa ta
+        ss ts sd td)
   | IdentityAtlasHom (AtlasEquality source target)
   | forall middle.
     CompositeAtlasHom
@@ -453,32 +181,54 @@ composeAtlasHoms second (CompositeAtlasHom middle first) =
 composeAtlasHoms second first = CompositeAtlasHom second first
 
 -- | Lift a checked semantic morphism into the ordinary category wrapper.
+{-@ reflect atlasHom @-}
 atlasHom
   :: AtlasMorphism
-       sourceAtlasScope targetAtlasScope
-       sourceScope targetScope sourceCellData targetCellData
+       sa ta
+       ss ts sd td
   -> AtlasHom
-       (AtlasObject sourceAtlasScope sourceScope sourceCellData)
-       (AtlasObject targetAtlasScope targetScope targetCellData)
+       (AtlasObject sa ss sd)
+       (AtlasObject ta ts td)
 atlasHom = PrimitiveAtlasHom Refl Refl
 
+-- | Recover the target's type indexing without materializing either owner.
+atlasHomTargetObjectEquality :: AtlasWitness source -> AtlasHom source target
+  -> AtlasObjectEquality target (AtlasObjectAtlasScope target) (AtlasObjectPaginationScope target) (AtlasObjectCellData target)
+atlasHomTargetObjectEquality witness hom =
+  withAtlasWitness witness $ \equality _ -> targetAtlasObjectEquality equality hom
+
+-- ALIGN: ATLASHOM-TARGET-OBJECT-EQUALITY.
+targetAtlasObjectEquality :: AtlasObjectEquality source a s d -> AtlasHom source target
+  -> AtlasObjectEquality target (AtlasObjectAtlasScope target) (AtlasObjectPaginationScope target) (AtlasObjectCellData target)
+targetAtlasObjectEquality AtlasObjectEquality (IdentityAtlasHom (AtlasEquality Refl)) = AtlasObjectEquality
+targetAtlasObjectEquality _ (PrimitiveAtlasHom _ Refl _) = AtlasObjectEquality
+targetAtlasObjectEquality equality (CompositeAtlasHom second first) =
+  targetAtlasObjectEquality (targetAtlasObjectEquality equality first) second
+
 -- | The target object carried by an already materialized morphism.
+-- ALIGN: ATLAS-MORPHISM-TARGET-WITNESS.
+{-@ atlasMorphismTargetWitness :: morphism:AtlasMorphism sa ta ss ts sd td
+      -> {witness:AtlasWitness (AtlasObject ta ts td) |
+           atlasWitnessOwner witness == morphismTargetOwner morphism} @-}
 atlasMorphismTargetWitness
-  :: AtlasMorphism
-       sourceAtlasScope targetAtlasScope
-       sourceScope targetScope sourceCellData targetCellData
+  :: forall sa ta ss ts sd td. AtlasMorphism
+       sa ta
+       ss ts sd td
   -> AtlasWitness
-       (AtlasObject targetAtlasScope targetScope targetCellData)
+       (AtlasObject ta ts td)
 atlasMorphismTargetWitness (PrimitiveAtlasMorphism action) =
-  AtlasWitness (atlasMorphismTarget action)
+  atlasWitness (atlasMorphismTarget action)
 atlasMorphismTargetWitness (IdentityAtlasMorphism valueAtlas) =
-  AtlasWitness valueAtlas
+  (atlasWitnessData valueAtlas :: AtlasWitnessData (AtlasObject sa ss sd) sa ss sd)
 atlasMorphismTargetWitness (CompositeAtlasMorphism second _) =
   atlasMorphismTargetWitness second
 
 -- | Recover the target witness of a symbolic arrow from its source witness.
 -- Identity returns its input witness; primitive arrows recover the target
 -- Atlas stored by their checked action; composition follows the two stages.
+-- ALIGN: ATLASHOM-RETAINED-TARGET-WITNESS.
+{-@ targetAtlasWitness :: witness:AtlasWitness source -> hom:AtlasHom source target
+      -> {result:AtlasWitness target | atlasWitnessOwner result == homTargetOwner witness hom} @-}
 targetAtlasWitness
   :: AtlasWitness source
   -> AtlasHom source target
@@ -501,6 +251,14 @@ targetAtlasWitness sourceWitness (CompositeAtlasHom second first) =
 -- ALIGN: ATLAS-TALL-RESTRICT.
 -- ALIGN: ATLAS-CONCRETE-IDENTITY.
 -- ALIGN: ATLAS-CONCRETE-COMPOSITION.
+{-@ opaque-reflect materializeAtlasHom @-}
+-- ALIGN: ATLASHOM-MATERIALIZED-OWNERS.
+{-@ materializeAtlasHom :: witness:AtlasWitness source -> hom:AtlasHom source target
+      -> {morphism:AtlasMorphism (AtlasObjectAtlasScope source) (AtlasObjectAtlasScope target)
+           (AtlasObjectPaginationScope source) (AtlasObjectPaginationScope target)
+           (AtlasObjectCellData source) (AtlasObjectCellData target) |
+           morphismSourceOwner morphism == homSourceOwner witness hom
+           && morphismTargetOwner morphism == homTargetOwner witness hom} @-}
 materializeAtlasHom
   :: AtlasWitness source
   -> AtlasHom source target
@@ -511,7 +269,7 @@ materializeAtlasHom
        (AtlasObjectPaginationScope target)
        (AtlasObjectCellData source)
        (AtlasObjectCellData target)
-materializeAtlasHom (AtlasWitness valueAtlas) (IdentityAtlasHom (AtlasEquality Refl)) =
+materializeAtlasHom (AtlasWitness _ valueAtlas) (IdentityAtlasHom (AtlasEquality Refl)) =
   identityAtlasMorphism valueAtlas
 materializeAtlasHom _ (PrimitiveAtlasHom Refl Refl morphism) = morphism
 materializeAtlasHom sourceWitness (CompositeAtlasHom second first) =
@@ -529,46 +287,32 @@ instance Category AtlasHom where
   id = identityAtlasHom
   (.) = composeAtlasHoms
 
--- | Recover the full-spine pagination functor of a symbolic Atlas arrow.
-atlasHomPagination
-  :: AtlasWitness source
-  -> AtlasHom source target
-  -> PaginationMorphism
-       (AtlasObjectPaginationScope source)
-       (AtlasObjectPaginationScope target)
-atlasHomPagination sourceWitness =
-  atlasMorphismPagination . materializeAtlasHom sourceWitness
 
--- | Apply a symbolic Atlas arrow to one page element.
--- ALIGN: ATLAS-SYMBOLIC-OBJECT-INTERPRETATION.
-mapAtlasHomElement
-  :: AtlasWitness source
-  -> AtlasHom source target
-  -> PageElement (AtlasObjectPaginationScope source) object
-  -> SomePageElement (AtlasObjectPaginationScope target)
-mapAtlasHomElement sourceWitness hom =
-  mapAtlasMorphismElement (materializeAtlasHom sourceWitness hom)
+-- ALIGN: ATLAS-MORPHISM-SOURCE-OWNER.
+{-@ reflect morphismSourceOwner @-}
+morphismSourceOwner :: AtlasMorphism sa ta ss ts sd td -> AtlasOwner
+morphismSourceOwner (PrimitiveAtlasMorphism action) = atlasOwner (atlasMorphismSource action)
+morphismSourceOwner (IdentityAtlasMorphism owner) = atlasOwner owner
+morphismSourceOwner (CompositeAtlasMorphism _ first) = morphismSourceOwner first
 
--- | Apply a symbolic Atlas arrow to a page-element arrow.
-mapAtlasHomArrow
-  :: AtlasWitness source
-  -> AtlasHom source target
-  -> PageElementArrow
-       (AtlasObjectPaginationScope source) sourceObject targetObject
-  -> SomePageElementArrow (AtlasObjectPaginationScope target)
-mapAtlasHomArrow sourceWitness hom =
-  mapAtlasMorphismArrow (materializeAtlasHom sourceWitness hom)
+-- ALIGN: ATLAS-MORPHISM-TARGET-OWNER.
+{-@ reflect morphismTargetOwner @-}
+morphismTargetOwner :: AtlasMorphism sa ta ss ts sd td -> AtlasOwner
+morphismTargetOwner (PrimitiveAtlasMorphism action) = atlasOwner (atlasMorphismTarget action)
+morphismTargetOwner (IdentityAtlasMorphism owner) = atlasOwner owner
+morphismTargetOwner (CompositeAtlasMorphism second _) = morphismTargetOwner second
 
--- | Apply a symbolic Atlas arrow to a cell and its dependent data component.
--- ALIGN: ATLASHOM-DATA-INTERPRETATION.
-mapAtlasHomData
-  :: AtlasWitness source
-  -> AtlasHom source target
-  -> PageElement (AtlasObjectPaginationScope source) sourceObject
-  -> AtlasMorphismImage
-       (AtlasObjectPaginationScope target)
-       (AtlasObjectCellData source)
-       (AtlasObjectCellData target)
-       sourceObject
-mapAtlasHomData sourceWitness hom =
-  mapAtlasMorphismData (materializeAtlasHom sourceWitness hom)
+-- ALIGN: ATLASHOM-SOURCE-OWNER.
+{-@ reflect homSourceOwner @-}
+homSourceOwner :: AtlasWitness source -> AtlasHom source target -> AtlasOwner
+homSourceOwner _ (PrimitiveAtlasHom _ _ morphism) = morphismSourceOwner morphism
+homSourceOwner witness (IdentityAtlasHom _) = atlasWitnessOwner witness
+homSourceOwner witness (CompositeAtlasHom _ first) = homSourceOwner witness first
+
+-- ALIGN: ATLASHOM-TARGET-OWNER.
+{-@ reflect homTargetOwner @-}
+homTargetOwner :: AtlasWitness source -> AtlasHom source target -> AtlasOwner
+homTargetOwner _ (PrimitiveAtlasHom _ _ morphism) = morphismTargetOwner morphism
+homTargetOwner witness (IdentityAtlasHom _) = atlasWitnessOwner witness
+homTargetOwner witness (CompositeAtlasHom second first) =
+  homTargetOwner (targetAtlasWitness witness first) second

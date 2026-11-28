@@ -34,6 +34,7 @@ module Atlas.Internal
   , atlasPresentationAction
   , atlasDescription
   , atlasDescriptionMembership
+  , atlasDescriptionMap
   , withAtlasPresentation
   , atlasFromPresentationWithScope
   , atlasPagination
@@ -131,7 +132,6 @@ import Pagination
   , PaginationMorphism
   , paginationCardinality
   , paginationCoherence
-  , paginationCoherenceIdempotent
   , paginationFolio
   , paginationPageElements
   )
@@ -920,9 +920,12 @@ atlasAcceptsDatumNormalized value occurrence _ =
 -- @
 --
 -- holds by construction, up to extensional equality of 'Dominion' values.
+{-@ opaque-reflect atlasDataAt @-}
 {-@ atlasDataAt :: value:Atlas atlasScope scope cellData origin final
       -> occurrence:{PageElement scope object | AtlasValidCell value occurrence}
-      -> Dominion ({datum:cellData object | atlasAcceptsDatum value occurrence datum}) @-}
+      -> {result:Dominion ({datum:cellData object | atlasAcceptsDatum value occurrence datum}) |
+           result == atlasActionDataAt (atlasPresentationAction (atlasDescription value))
+             (normalizeAtlasElement value occurrence)} @-}
 -- ALIGN: ATLAS-MEMBERSHIP-RANK-INTERPRETATION.
 -- ALIGN: ATLAS-MEMBERSHIP-UNRANK-INTERPRETATION.
 atlasDataAt
@@ -956,6 +959,15 @@ mapAtlasData value pageArrow =
   normalizeAtlasArrowTraceValid value pageArrow `seq` atlasActionMap
     (atlasActionData (storedAtlasData value))
     (normalizeAtlasArrow value pageArrow)
+
+-- | Observe the entire stored insertion through the retained presentation.
+{-@ atlasDescriptionMap :: value:Atlas a s d o f
+      -> arrow:{PageElementArrow s source target | AtlasValidArrow value arrow}
+      -> {mapAtlasData value arrow ==
+           atlasActionMap (atlasPresentationAction (atlasDescription value))
+             (normalizeAtlasArrow value arrow)} @-}
+atlasDescriptionMap :: Atlas a s d o f -> PageElementArrow s source target -> ()
+atlasDescriptionMap value arrow = normalizeAtlasArrowTraceValid value arrow
 
 -- | Normalizing an arrow again preserves both directions of its data insertion.
 -- ALIGN: ATLAS-DATA-MAP-NORMALIZATION.
@@ -1180,9 +1192,15 @@ atlasElementLT valueAtlas left right =
         _ -> False
 
 -- | Pointwise idempotence of the Atlas coherence map.
+-- ALIGN: ATLAS-COHERENCE-IDEMPOTENT.
+{-@ atlasCoherenceIdempotent :: owner:Atlas a s d o f
+      -> source:PageElement s object
+      -> {normalizeAtlasElement owner (normalizeAtlasElement owner source)
+           == normalizeAtlasElement owner source} @-}
 atlasCoherenceIdempotent
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> ()
-atlasCoherenceIdempotent valueAtlas =
-  paginationCoherenceIdempotent (atlasPagination valueAtlas)
+atlasCoherenceIdempotent owner =
+  normalizePageElementIdempotentAt (atlasDataFinalPage (storedAtlasData owner))
+    (atlasDataTraceLimit (storedAtlasData owner))

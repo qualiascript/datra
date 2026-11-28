@@ -1,4 +1,4 @@
-.PHONY: check coverage verify-liquid docker-images docker-development docker-prod
+.PHONY: check check-alignment coverage verify-liquid docker-images docker-development docker-prod
 
 CABAL_PROJECT ?= cabal.project
 CABAL := cabal --project-file=$(CABAL_PROJECT)
@@ -12,6 +12,11 @@ check:
 	cabal check
 	$(CABAL) build all --enable-tests -f-liquid -j1
 	$(CABAL) test all -f-liquid -j1 --test-show-details=direct
+
+# Runtime validation for the Lean alignment goal excludes language tests.
+check-alignment:
+	cabal check
+	$(CABAL) test test:datra-core-test -f-liquid -j1 --test-show-details=direct
 
 coverage:
 	$(CABAL) test all --enable-coverage -f-liquid -j1 --test-show-details=direct

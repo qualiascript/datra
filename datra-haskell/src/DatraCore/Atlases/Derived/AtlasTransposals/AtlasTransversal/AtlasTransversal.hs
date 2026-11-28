@@ -17,6 +17,7 @@ module AtlasTransversal
   , atlasTransversalPreservesCoverage
   , mapAtlasTransversalCoveredPageElement
   , withAtlasTransversalCoveredImage
+  , withAtlasTransversalCoveredAction
   , identityAtlasTransversal
   , composeAtlasTransversals
   , mapAtlasTransversalObject
@@ -46,6 +47,7 @@ import AtlasTransversal.Internal
   , mapAtlasTransversalArrow
   , mapAtlasTransversalCoveredPageElement
   , withAtlasTransversalCoveredImage
+  , withAtlasTransversalCoveredAction
   , mapAtlasTransversalData
   , mapAtlasTransversalElement
   , mapAtlasTransversalObject
